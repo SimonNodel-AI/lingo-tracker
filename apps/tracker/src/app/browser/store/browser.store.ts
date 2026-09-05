@@ -151,6 +151,8 @@ export const BrowserStore = signalStore(
           collectionStats: null,
           currentFolderPath: '',
           expandedFolders: new Set<string>(),
+          preFilterExpandedFolders: null,
+          isRootExpanded: true,
           showNestedResources: loaded?.showNestedResources ?? true,
           compactLocale: loaded?.compactLocale ?? null,
           compactLocaleManuallyChanged: loaded?.compactLocaleManuallyChanged ?? false,

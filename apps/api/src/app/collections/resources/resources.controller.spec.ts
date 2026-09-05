@@ -1056,6 +1056,37 @@ describe('ResourcesController', () => {
       expect(getCache).toHaveBeenCalledWith('test-collection');
     });
 
+    it('should list every resource recursively at the root when includeNested is set', async () => {
+      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
+      const getCache = cacheService.getCache as jest.Mock;
+      const extractSubtree = core.extractSubtree as jest.Mock;
+      const extractResourcesRecursively = core.extractResourcesRecursively as jest.Mock;
+
+      getCacheStatus.mockReturnValue(CacheStatus.READY);
+      getCache.mockReturnValue(mockTreeNode);
+      extractResourcesRecursively.mockReturnValue([
+        ...mockTreeNode.resources,
+        {
+          key: 'save',
+          source: 'Save',
+          translations: { es: 'Guardar' },
+          metadata: {
+            en: { checksum: 'b' },
+            es: { status: 'new', checksum: '', baseChecksum: 'b' },
+          },
+        },
+      ]);
+
+      const result = await resourcesController.getTree('test-collection', '', 'true');
+      const tree = result as ResourceTreeDto;
+
+      // The root is a folder like any other: it honours includeNested and never goes
+      // through extractSubtree, which has no path to extract.
+      expect(extractSubtree).not.toHaveBeenCalled();
+      expect(extractResourcesRecursively).toHaveBeenCalledWith(mockTreeNode);
+      expect(tree.resources.map((r) => r.key)).toEqual(['title', 'save']);
+    });
+
     it('should extract and return subtree when cache is READY and path is provided', async () => {
       const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
       const getCache = cacheService.getCache as jest.Mock;

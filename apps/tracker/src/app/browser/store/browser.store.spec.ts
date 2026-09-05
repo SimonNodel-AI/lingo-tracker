@@ -46,6 +46,33 @@ describe('BrowserStore', () => {
     children: [{ name: 'buttons', fullPath: 'common.buttons', loaded: false }],
   };
 
+  const mockTreeWithNesting: ResourceTreeDto = {
+    path: '',
+    resources: [],
+    children: [
+      {
+        name: 'common',
+        fullPath: 'common',
+        loaded: true,
+        tree: {
+          path: 'common',
+          resources: [],
+          children: [{ name: 'buttons', fullPath: 'common.buttons', loaded: true }],
+        },
+      },
+      {
+        name: 'errors',
+        fullPath: 'errors',
+        loaded: true,
+        tree: {
+          path: 'errors',
+          resources: [],
+          children: [{ name: 'http', fullPath: 'errors.http', loaded: true }],
+        },
+      },
+    ],
+  };
+
   const mockCacheReady: CacheStatusDto = {
     status: 'ready',
     stats: {
@@ -389,6 +416,113 @@ describe('BrowserStore', () => {
       store.toggleFolderExpanded('errors');
 
       expect(store.expandedFolders().has('common')).toBe(true);
+      expect(store.expandedFolders().has('errors')).toBe(true);
+    });
+
+    it('should open a folder without closing it when already open', () => {
+      store.expandFolder('common');
+      store.expandFolder('common');
+
+      expect(store.expandedFolders().has('common')).toBe(true);
+    });
+
+    it('should reveal the selected folder by expanding its ancestors only', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeCommon));
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: [] });
+      await waitForSignals();
+
+      store.selectFolder('common.buttons.primary');
+      await waitForSignals();
+
+      // Ancestors are revealed; the selection itself is not opened, and the stored set is untouched.
+      expect(store.visibleExpandedFolders().has('common')).toBe(true);
+      expect(store.visibleExpandedFolders().has('common.buttons')).toBe(true);
+      expect(store.visibleExpandedFolders().has('common.buttons.primary')).toBe(false);
+      expect(store.expandedFolders().size).toBe(0);
+    });
+
+    it('should start with the root expanded', () => {
+      expect(store.isRootExpanded()).toBe(true);
+    });
+
+    it('should toggle the root row', () => {
+      store.toggleRootExpanded();
+      expect(store.isRootExpanded()).toBe(false);
+
+      store.toggleRootExpanded();
+      expect(store.isRootExpanded()).toBe(true);
+    });
+
+    it('should expand every folder in view and leave the root open', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeWithNesting));
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: [] });
+      await waitForSignals();
+
+      expect(store.areAllFoldersExpanded()).toBe(false);
+
+      store.expandAllFolders();
+
+      expect(store.expandedFolders().has('common')).toBe(true);
+      expect(store.expandedFolders().has('errors')).toBe(true);
+      // A folder with no child folders has nothing to open, so it never enters the set.
+      expect(store.expandedFolders().has('common.buttons')).toBe(false);
+      expect(store.areAllFoldersExpanded()).toBe(true);
+      expect(store.isRootExpanded()).toBe(true);
+    });
+
+    it('should collapse every folder but keep the root open', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeWithNesting));
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: [] });
+      await waitForSignals();
+
+      store.expandAllFolders();
+      store.collapseAllFolders();
+
+      expect(store.expandedFolders().size).toBe(0);
+      expect(store.isRootExpanded()).toBe(true);
+    });
+
+    it('should open branches holding matches while filtering and restore expansion on clear', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeWithNesting));
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: [] });
+      await waitForSignals();
+
+      store.toggleFolderExpanded('errors');
+
+      store.setFolderTreeFilter('buttons');
+
+      // The branch leading to the match is open; the user's unrelated branch is set aside.
+      expect(store.expandedFolders().has('common')).toBe(true);
+      expect(store.expandedFolders().has('errors')).toBe(false);
+
+      store.setFolderTreeFilter('');
+
+      expect(store.expandedFolders().has('errors')).toBe(true);
+      expect(store.expandedFolders().has('common')).toBe(false);
+    });
+
+    it('should prune expanded paths under a deleted folder', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeWithNesting));
+      vi.spyOn(apiService, 'deleteFolder').mockReturnValue(of({ deleted: true, path: 'common' }));
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: [] });
+      await waitForSignals();
+
+      store.expandAllFolders();
+      store.deleteFolder('common');
+      await waitForSignals();
+
+      expect(store.expandedFolders().has('common')).toBe(false);
+      expect(store.expandedFolders().has('common.buttons')).toBe(false);
       expect(store.expandedFolders().has('errors')).toBe(true);
     });
   });

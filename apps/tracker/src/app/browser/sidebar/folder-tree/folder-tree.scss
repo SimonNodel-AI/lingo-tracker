@@ -96,13 +96,12 @@
   align-items: center;
   justify-content: center;
   gap: var(--spacing-3);
-  padding: var(--spacing-8);
-  flex: 1;
+  padding: var(--spacing-6) var(--spacing-4);
 
   .empty-icon {
-    font-size: 48px;
-    width: 48px;
-    height: 48px;
+    font-size: 32px;
+    width: 32px;
+    height: 32px;
     color: var(--color-text-tertiary);
   }
 
@@ -136,4 +135,129 @@
       background: var(--color-border-strong);
     }
   }
+}
+
+// The collection root. It stands for the whole collection rather than a folder in it, so it
+// stays pinned while a deep tree scrolls beneath, carries a heavier label, and owns the
+// expand/collapse-all control whose scope is exactly the tree below it.
+.root-drop-zone {
+  position: sticky;
+  top: calc(var(--spacing-2) * -1);
+  z-index: 1;
+  margin: calc(var(--spacing-2) * -1) calc(var(--spacing-2) * -1) 0;
+  padding: var(--spacing-2) var(--spacing-2) var(--spacing-1);
+  background: var(--color-background-subtle);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  transition: background-color var(--transition-normal), border-color var(--transition-normal);
+
+  &.drop-target-valid {
+    background-color: color-mix(in srgb, var(--color-success) 12%, var(--color-background-subtle));
+    border-bottom-color: var(--color-success);
+  }
+
+  &.drop-target-invalid {
+    background-color: color-mix(in srgb, var(--color-error) 12%, var(--color-background-subtle));
+    border-bottom-color: var(--color-error);
+  }
+}
+
+.root-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  cursor: pointer;
+  border-radius: var(--border-radius-sm);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  user-select: none;
+
+  &:hover:not(.selected) {
+    background-color: var(--color-background-muted);
+  }
+
+  &.selected {
+    background-color: var(--color-primary-subtle);
+    color: var(--color-primary);
+
+    .root-icon,
+    .expand-toggle,
+    .expand-all-toggle {
+      color: var(--color-primary);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+  }
+
+  .root-icon {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+  }
+
+  .root-name {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--color-text-primary);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.expand-toggle {
+  @extend %tree-expand-toggle;
+}
+
+// Always visible, unlike the per-folder delete button: this is the tree's only
+// whole-tree control and hiding it behind hover would make it unfindable.
+.expand-all-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: 24px;
+  justify-content: center;
+  padding: 0;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  width: 24px;
+
+  mat-icon {
+    font-size: 18px;
+    height: 18px;
+    line-height: 18px;
+    width: 18px;
+  }
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-background-muted);
+    color: var(--color-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+}
+
+// A hair of indent under the root — enough to read as nested without charging every folder
+// a full indent level, which would cost real width in a narrow sidebar.
+.root-children {
+  padding-top: var(--spacing-1);
+  padding-left: var(--spacing-1);
 }

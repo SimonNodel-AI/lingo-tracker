@@ -22,7 +22,6 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'browser.sortDescending': 'Sort descending',
         'browser.sortAscendingTooltip': 'Sort ascending (A→Z)',
         'browser.sortDescendingTooltip': 'Sort descending (Z→A)',
-        'browser.selectFolderFirst': 'Select a folder first',
         'browser.addNewTranslationTooltip': 'Add a new translation',
         'browser.noTranslation': 'No translation',
         'browser.commentPrefix': 'Comment:',

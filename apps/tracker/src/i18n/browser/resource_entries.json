@@ -158,16 +158,6 @@
     "ja": "降順でソート（Z→A）",
     "de": "Sortieren absteigend (Z→A)"
   },
-  "selectFolderFirst": {
-    "source": "Select a folder first",
-    "comment": "Tooltip shown on Add Translation button when no folder is selected",
-    "tags": ["browser"],
-    "es": "Seleccione una carpeta primero",
-    "fr-ca": "Sélectionnez d'abord un dossier",
-    "ru": "Сначала выберите папку.",
-    "ja": "まずフォルダを選択してください。",
-    "de": "Wählen Sie zuerst einen Ordner aus."
-  },
   "addNewTranslationTooltip": {
     "source": "Add a new translation",
     "comment": "Tooltip shown on Add Translation button when a folder is selected",

@@ -28,16 +28,7 @@
   }
 
   @if (!store.isLoading() && !store.error()) {
-    @if (!store.currentFolderPath()) {
-      <div class="empty-state">
-        <mat-card class="empty-state__card">
-          <mat-card-content>
-            <mat-icon class="empty-state__icon">folder_open</mat-icon>
-            <p class="empty-state__text">{{ TOKENS.BROWSER.SELECTFOLDERFIRST | transloco }}</p>
-          </mat-card-content>
-        </mat-card>
-      </div>
-    } @else if (store.sortedTranslations().length === 0) {
+    @if (store.sortedTranslations().length === 0) {
       <div class="empty-state">
         <mat-card class="empty-state__card">
           <mat-card-content>

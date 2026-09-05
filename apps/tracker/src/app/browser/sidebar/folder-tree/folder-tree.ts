@@ -27,6 +27,7 @@ import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { SearchInput } from '../../../shared/components/search-input';
 import { MatIconModule } from '@angular/material/icon';
+import { CdkDropList, type CdkDrag, type CdkDragDrop } from '@angular/cdk/drag-drop';
 import type { DragData } from '../../types/drag-data';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 
@@ -39,8 +40,10 @@ const SCROLL_INTERVAL_MS = 50;
  * FolderTree component for hierarchical folder navigation.
  *
  * Features:
- * - Search/filter folders
- * - Progressive loading (click to load)
+ * - Search/filter folders, which opens the branches holding matches
+ * - Collapsible folders, plus expand/collapse-all on the root row
+ * - An artificial root row standing for the collection itself, so the content area can
+ *   list every resource across every folder
  * - Folder selection
  * - Toggle between current folder and nested resources view
  * - Disabled state during search
@@ -59,6 +62,7 @@ const SCROLL_INTERVAL_MS = 50;
     InlineFolderInput,
     TranslocoPipe,
     SearchInput,
+    CdkDropList,
   ],
   templateUrl: './folder-tree.html',
   styleUrl: './folder-tree.scss',
@@ -89,6 +93,20 @@ export class FolderTree {
 
   /** Signal exposing nested resources visibility from store */
   readonly showNestedResources = this.store.showNestedResources;
+
+  /** Whether the root row — the collection itself — is the current selection */
+  readonly isRootSelected = computed(() => this.store.currentFolderPath() === '');
+
+  /** True while a drag hovers the root row, for drop-target styling */
+  readonly isRootHoveredDuringDrag = signal(false);
+
+  /** Root accepts folders only: a resource is moved between folders, never onto the collection. */
+  readonly isValidRootDropTarget = computed(() => {
+    const dragData = this.activeDragData();
+    if (!dragData || dragData.type !== 'folder' || !dragData.path) return false;
+    // A folder already sitting at root has nowhere to go.
+    return dragData.path.includes('.');
+  });
 
   /** Drives the icon flip animation — true for one animation frame when toggled */
   readonly isNestedToggleFlipping = signal(false);
@@ -153,13 +171,74 @@ export class FolderTree {
     this.folderSelected.emit(folder.fullPath);
   }
 
+  /** Selects the collection root, whose resource list spans every folder. */
+  onRootClick(): void {
+    if (this.store.isDisabled()) return;
+    this.store.selectFolder('');
+    this.folderSelected.emit('');
+  }
+
+  /** Flips one folder open or shut from its chevron. */
+  onToggleExpanded(folderPath: string): void {
+    this.store.toggleFolderExpanded(folderPath);
+  }
+
+  /** Opens a folder that may already be open — from selection, ArrowRight, or a drag hover. */
+  onExpandRequested(folderPath: string): void {
+    this.store.expandFolder(folderPath);
+  }
+
+  /** Flips the root row itself, hiding or revealing the whole tree. */
+  onToggleRootExpanded(event: Event): void {
+    event.stopPropagation();
+    if (this.store.isDisabled()) return;
+    this.store.toggleRootExpanded();
+  }
+
+  /** ArrowRight on the root row opens it. */
+  onRootExpandKeydown(event: Event): void {
+    if (this.store.isDisabled() || this.store.isRootExpanded()) return;
+    event.preventDefault();
+    this.store.toggleRootExpanded();
+  }
+
+  /** ArrowLeft on the root row shuts it. */
+  onRootCollapseKeydown(event: Event): void {
+    if (this.store.isDisabled() || !this.store.isRootExpanded()) return;
+    event.preventDefault();
+    this.store.toggleRootExpanded();
+  }
+
   /**
-   * Handles load folder requests from child nodes.
-   * Loads the folder's children for expansion.
-   * Note: Selection is handled separately by onFolderClick.
+   * Opens or shuts every folder in view. Scoped to the filtered subtree while a filter is
+   * active, and the root row stays open either way so the top level remains reachable.
    */
-  onLoadFolder(folderPath: string): void {
-    this.store.loadFolderChildren(folderPath);
+  onToggleExpandAll(event: Event): void {
+    event.stopPropagation();
+    if (this.store.isDisabled()) return;
+
+    if (this.store.areAllFoldersExpanded()) this.store.collapseAllFolders();
+    else this.store.expandAllFolders();
+  }
+
+  /** Predicate for the root drop list: folders only, and only ones not already at root. */
+  canDropOnRoot = (drag: CdkDrag<DragData>): boolean => {
+    if (this.store.isReadOnly()) return false;
+
+    const dragData = drag.data;
+    if (!dragData || dragData.type !== 'folder' || !dragData.path) return false;
+
+    return dragData.path.includes('.');
+  };
+
+  /** Moves a folder dropped on the root row out to the top level. */
+  onRootDrop(event: CdkDragDrop<string>): void {
+    this.isRootHoveredDuringDrag.set(false);
+
+    const dragData = event.item.data as DragData;
+    if (dragData.type !== 'folder' || !dragData.path) return;
+
+    this.store.moveFolder({ sourceFolderPath: dragData.path, destinationFolderPath: '' });
   }
 
   /**

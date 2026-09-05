@@ -196,17 +196,17 @@ describe('TranslationList - Loading and Error States', () => {
     expect(errorContainer).toBeTruthy();
   });
 
-  it('should display "select a folder" empty state when no folder is selected', () => {
+  it('should show the empty-folder state rather than a select-a-folder prompt at the root', () => {
+    // The collection root is a real selection now — the sidebar's root row lands on it —
+    // so there is no "nothing selected" state left to prompt for.
     fixture.componentRef.setInput('collectionName', 'test');
     fixture.detectChanges();
 
-    const emptyState = fixture.nativeElement.querySelector('.empty-state');
     const icon = fixture.nativeElement.querySelector('.empty-state__icon');
     const text = fixture.nativeElement.querySelector('.empty-state__text');
 
-    expect(emptyState).toBeTruthy();
-    expect(icon?.textContent).toContain('folder_open');
-    expect(text?.textContent).toContain('Select a folder first');
+    expect(icon?.textContent).toContain('translate');
+    expect(text?.textContent).toContain('No translations found');
   });
 
   it('should display "no translations found" empty state when folder is selected but empty', async () => {

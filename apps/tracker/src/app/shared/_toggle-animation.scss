@@ -56,3 +56,50 @@
     cursor: not-allowed;
   }
 }
+
+// Shared twisty for the folder tree: one chevron glyph that rotates rather than swapping,
+// so opening and shutting a folder reads as the same object moving.
+//
+// Deliberately not a tab stop — in a deep tree that would double the number of stops. The
+// row carries aria-expanded and ArrowRight/ArrowLeft instead, which is the ARIA tree pattern.
+%tree-expand-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  height: 20px;
+  justify-content: center;
+  padding: 0;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+  width: 20px;
+
+  mat-icon {
+    font-size: 18px;
+    height: 18px;
+    line-height: 18px;
+    width: 18px;
+    transition: transform var(--transition-fast);
+  }
+
+  &.expanded mat-icon {
+    transform: rotate(90deg);
+  }
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-background-muted);
+    color: var(--color-text-primary);
+  }
+}
+
+// Occupies exactly the twisty's footprint so names stay on one vertical rule whether or
+// not a folder has children.
+%tree-expand-spacer {
+  display: block;
+  flex-shrink: 0;
+  height: 20px;
+  width: 20px;
+}
