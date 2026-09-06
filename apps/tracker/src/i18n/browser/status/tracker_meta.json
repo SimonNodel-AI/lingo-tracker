@@ -19,7 +19,7 @@
       "status": "translated"
     },
     "ja": {
-      "checksum": "ad4b0bd55882d4f7164630d4158d3c39",
+      "checksum": "ef5f9cf6987e3eef306718aa3c48c2f5",
       "baseChecksum": "03c2e7e41ffc181a4e84080b4710e81e",
       "status": "translated"
     },
@@ -34,17 +34,17 @@
       "checksum": "f1ac273d3c6d8e6489bf332819a2f650"
     },
     "es": {
-      "checksum": "605821ebcf6a2e53f03ec6e8e463d1bd",
+      "checksum": "ef928042b96e611faac34137124515a1",
       "baseChecksum": "f1ac273d3c6d8e6489bf332819a2f650",
       "status": "translated"
     },
     "fr-ca": {
-      "checksum": "3ae88690725fe012389643e0056634b6",
+      "checksum": "bbf6a331bc2fc35ecc328e2da8c3f7fc",
       "baseChecksum": "f1ac273d3c6d8e6489bf332819a2f650",
       "status": "translated"
     },
     "ru": {
-      "checksum": "0fa45772724dbd2cf9e99b15e04d7efa",
+      "checksum": "45286731379a1065ab7e4a468985873d",
       "baseChecksum": "f1ac273d3c6d8e6489bf332819a2f650",
       "status": "translated"
     },
@@ -54,7 +54,7 @@
       "status": "translated"
     },
     "de": {
-      "checksum": "e47ee5c96bf1921b48a43365b499d6dc",
+      "checksum": "2d698d066986540c9b0f8bb98fcb1f45",
       "baseChecksum": "f1ac273d3c6d8e6489bf332819a2f650",
       "status": "translated"
     }

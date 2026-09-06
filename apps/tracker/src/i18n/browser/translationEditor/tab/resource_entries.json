@@ -15,18 +15,18 @@
     "tags": ["browser"],
     "es": "Cambiar ubicación",
     "fr-ca": "Changer d'emplacement",
-    "ru": "Изменить местоположение",
-    "ja": "場所を変更する",
-    "de": "Standort ändern"
+    "ru": "Изменить папку",
+    "ja": "フォルダーを変更",
+    "de": "Ordner ändern"
   },
   "otherLocales": {
     "source": "Other Locales",
     "comment": "Tab label for the other locales section in the editor dialog",
     "tags": ["browser"],
-    "es": "Otros lugares",
-    "fr-ca": "Autres localités",
-    "ru": "Другие населенные пункты",
-    "ja": "その他の地域",
-    "de": "Andere Orte"
+    "es": "Otros idiomas",
+    "fr-ca": "Autres langues",
+    "ru": "Другие локали",
+    "ja": "他のロケール",
+    "de": "Weitere Sprachen"
   }
 }

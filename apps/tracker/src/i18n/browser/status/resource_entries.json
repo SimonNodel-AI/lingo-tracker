@@ -6,18 +6,18 @@
     "es": "Nuevo",
     "fr-ca": "Nouveau",
     "ru": "Новый",
-    "ja": "新しい",
+    "ja": "新規",
     "de": "Neu"
   },
   "stale": {
     "source": "Stale",
     "comment": "Translation status label: source has changed and translation is outdated",
     "tags": ["browser"],
-    "es": "Duro",
-    "fr-ca": "Vicié",
-    "ru": "Залежалый",
+    "es": "Desactualizado",
+    "fr-ca": "Obsolète",
+    "ru": "Устарело",
     "ja": "古くなった",
-    "de": "Abgestanden"
+    "de": "Veraltet"
   },
   "translated": {
     "source": "Translated",

@@ -44,9 +44,9 @@
     "comment": "Button to show remaining similar translation results, count is the number of hidden results",
     "tags": ["browser"],
     "es": "Mostrar {count} más",
-    "fr-ca": "Show {count} more",
-    "ru": "Показать {count} больше",
-    "ja": "{count} を表示",
-    "de": "Mehr anzeigen {count}"
+    "fr-ca": "Afficher {count} de plus",
+    "ru": "Показать ещё {count}",
+    "ja": "他 {count} 件を表示",
+    "de": "{count} weitere anzeigen"
   }
 }
