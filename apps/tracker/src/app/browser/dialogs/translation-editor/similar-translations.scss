@@ -119,3 +119,32 @@
     color: var(--color-primary);
   }
 }
+
+// At ~390px a single ellipsised line of a suggested translation shows almost
+// nothing — and the point of this card is judging whether the suggestion is the
+// same string. Give the value two lines and reclaim the gutters.
+@media (max-width: 639px) {
+  .card-header,
+  .card-content {
+    padding: var(--spacing-3);
+  }
+
+  .result-item {
+    padding: var(--spacing-2) var(--spacing-3);
+  }
+
+  .result-value {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .similar-translations-card,
+  .result-item {
+    transition: none;
+  }
+}

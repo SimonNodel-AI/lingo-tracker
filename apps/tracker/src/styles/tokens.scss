@@ -31,6 +31,9 @@
   // Semantic colors
   --color-success: #6da67e;
   --color-warning: #d9a441;
+  // Text-weight warning: --color-warning is a fill/border tone and only reaches
+  // ~2.1:1 on the parchment background, so it must never be used for copy.
+  --color-warning-text: #8a5a00;
   --color-error: #c95e5e;
   --color-info: #5a8db8;
   --color-info-subtle: #e6f0f8;
@@ -106,6 +109,7 @@
   // Semantic colors — dark mode
   --color-success: #7dbb8f;
   --color-warning: #e4b454;
+  --color-warning-text: #e4b454;
   --color-error: #d97878;
   --color-info: #7bafde;
   --color-info-subtle: #1a2d40;

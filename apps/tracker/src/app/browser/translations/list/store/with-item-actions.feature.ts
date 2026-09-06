@@ -68,10 +68,16 @@ export function withItemActions() {
           };
 
           const dialogRef = dialog.open(TranslationEditorDialog, {
-            width: '700px',
-            maxHeight: '90vh',
+            // Size, max-height and the small-viewport full-screen mode live in
+            // `.translation-editor-dialog-panel` (styles.scss) so the two call
+            // sites don't each carry their own copy of the numbers. `maxWidth`
+            // is overridden only to lift the CDK's inline 80vw default, which
+            // would otherwise beat the stylesheet.
+            panelClass: 'translation-editor-dialog-panel',
+            maxWidth: '100vw',
             data: dialogData,
             autoFocus: false,
+            ariaLabelledBy: 'dialog-title',
             restoreFocus: false,
           });
 

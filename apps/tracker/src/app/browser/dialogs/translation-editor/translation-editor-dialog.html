@@ -1,4 +1,4 @@
-<div role="dialog" [attr.aria-labelledby]="'dialog-title'" class="dialog-wrapper">
+<div class="dialog-wrapper">
   <!-- Dialog Header -->
   <div class="dialog-header">
     <div class="dialog-header-content">
@@ -23,10 +23,16 @@
         <mat-icon class="location-label-icon">folder_open</mat-icon>
         {{ TOKENS.BROWSER.TRANSLATIONEDITOR.LOCATIONLABEL | transloco }}
       </span>
-      <span class="location-pill">
+      <span
+        class="location-pill"
+        [class.location-pill--absorbed]="locationAbsorbedFlash()"
+        [matTooltip]="TOKENS.BROWSER.TRANSLATIONEDITOR.FULLKEYX | transloco : { key: fullKeyPreview() }"
+        matTooltipPosition="above"
+      >
         <mat-icon class="location-pill-icon">folder</mat-icon>
         <span class="location-pill-path">{{ selectedFolderPath() || (TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL | transloco) }}</span>
       </span>
+      <span class="sr-only" role="status">{{ locationAbsorbedMessage() }}</span>
     </div>
 
     @if (isReadOnly()) {
@@ -45,19 +51,41 @@
   </div>
 
   <!-- Tabbed Content -->
-  <mat-dialog-content class="dialog-tab-content">
+  <!--
+    Change Location is a hint and a tree; the other two tabs are long forms. The
+    content area resolves a definite height for Material's tab body to size
+    against, so it takes the shorter of the two rather than reserving the tallest
+    tab's box on every tab.
+  -->
+  <mat-dialog-content
+    class="dialog-tab-content"
+    [class.dialog-tab-content--short]="selectedTabIndex() === 2"
+  >
     <form [formGroup]="form">
       <mat-tab-group
         class="editor-tabs"
         animationDuration="150ms"
         [disableRipple]="false"
-        (selectedTabChange)="onTabChange()"
+        [selectedIndex]="selectedTabIndex()"
+        (selectedTabChange)="onTabChange($event.index)"
       >
         <!-- ───────────────────────────── Tab 1: Base Locale Info ───────────────────────────── -->
-        <mat-tab [label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.BASEINFO | transloco">
+        <mat-tab>
+          <ng-template mat-tab-label>
+            <span class="tab-label">
+              {{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.BASEINFO | transloco }}
+              @if (baseTabHasError()) {
+                <span
+                  class="tab-error-dot"
+                  [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TABHASERRORS | transloco"
+                  [matTooltip]="TOKENS.BROWSER.TRANSLATIONEDITOR.TABHASERRORS | transloco"
+                ></span>
+              }
+            </span>
+          </ng-template>
           <div class="tab-panel tab-panel--base">
             <!-- Translation Key -->
-            <mat-form-field appearance="outline" class="full-width">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
               <mat-label>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.TRANSLATIONKEY | transloco }}</mat-label>
               <input
                 #keyInput
@@ -65,11 +93,18 @@
                 formControlName="key"
                 required
                 autocomplete="off"
+                [readonly]="isEditMode()"
               />
               @if (form.controls.key.invalid && form.controls.key.touched) {
                 <mat-error>{{ getKeyErrorMessage() | transloco }}</mat-error>
               }
-              <mat-hint>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.KEYHINT | transloco }}</mat-hint>
+              <mat-hint>
+                @if (isEditMode()) {
+                  {{ TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.KEYRENAMINGNOTSUPPORTED | transloco }}
+                } @else {
+                  {{ TOKENS.BROWSER.TRANSLATIONEDITOR.KEYHINT | transloco }}
+                }
+              </mat-hint>
             </mat-form-field>
 
             <!-- Base Locale Card -->
@@ -81,37 +116,41 @@
               </div>
 
               <!-- Base Value -->
-              <mat-form-field appearance="outline" class="full-width">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
                 <mat-label>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.LOCALETRANSLATIONX | transloco : { locale: data.baseLocale.toUpperCase() } }}</mat-label>
-                <input
+                <textarea
                   #baseValueInput
                   matInput
-                  type="text"
+                  cdkTextareaAutosize
+                  cdkAutosizeMinRows="1"
+                  cdkAutosizeMaxRows="4"
                   formControlName="baseValue"
                   [placeholder]="TOKENS.BROWSER.TRANSLATIONEDITOR.ENTERTRANSLATIONX | transloco : { locale: data.baseLocale.toUpperCase() }"
                   required
                   autocomplete="off"
-                />
+                ></textarea>
                 @if (form.controls.baseValue.hasError('required') && form.controls.baseValue.touched) {
                   <mat-error>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.BASEVALUEREQUIRED | transloco }}</mat-error>
                 }
               </mat-form-field>
 
               <!-- Comment -->
-              <mat-form-field appearance="outline" class="full-width comment-field">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width comment-field">
                 <mat-label>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTLABEL | transloco }}</mat-label>
-                <input
+                <textarea
                   matInput
-                  type="text"
+                  cdkTextareaAutosize
+                  cdkAutosizeMinRows="1"
+                  cdkAutosizeMaxRows="4"
                   formControlName="comment"
                   [placeholder]="TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTPLACEHOLDER | transloco"
                   autocomplete="off"
-                />
+                ></textarea>
                 <mat-hint>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTHINT | transloco }}</mat-hint>
               </mat-form-field>
 
               <!-- Tags -->
-              <mat-form-field appearance="outline" class="full-width tags-field">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width tags-field">
                 <mat-label>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.LABEL | transloco }}</mat-label>
                 <mat-chip-grid #chipGrid [disabled]="isReadOnly()">
                   @for (tag of inheritedTagsList(); track tag) {
@@ -160,10 +199,12 @@
         </mat-tab>
 
         <!-- ───────────────────────────── Tab 2: Other Locales ───────────────────────────── -->
-        <mat-tab
-          [label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.OTHERLOCALES | transloco"
-          [disabled]="otherLocales().length === 0"
-        >
+        <mat-tab [disabled]="otherLocales().length === 0">
+          <ng-template mat-tab-label>
+            <span class="tab-label" [matTooltip]="otherLocalesTabTooltip()" matTooltipPosition="above">
+              {{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.OTHERLOCALES | transloco }}
+            </span>
+          </ng-template>
           <div class="tab-panel tab-panel--locales">
             <!-- Base value reference banner -->
             @if (form.controls.baseValue.value) {
@@ -184,13 +225,14 @@
                   <div class="locale-card-header">
                     <mat-icon class="locale-icon">translate</mat-icon>
                     <h3 class="locale-title">{{ getLocaleDisplayName(localeControl.value.locale) }}</h3>
+                    <span class="locale-code">{{ localeControl.value.locale }}</span>
                     @if (isEditMode()) {
-                      <mat-form-field appearance="outline" class="status-select">
+                      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="status-select">
                         <mat-label>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.STATUS | transloco }}</mat-label>
                         <mat-select formControlName="status">
                           @for (statusOption of translationStatusOptions; track statusOption) {
                             <mat-option [value]="statusOption">
-                              {{ statusOption }}
+                              {{ statusLabels[statusOption] | transloco }}
                             </mat-option>
                           }
                         </mat-select>
@@ -198,7 +240,7 @@
                     }
                   </div>
 
-                  <mat-form-field appearance="outline" class="full-width">
+                  <mat-form-field appearance="outline" subscriptSizing="dynamic" class="full-width">
                     <mat-label>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.LOCALETRANSLATIONX | transloco : { locale: getLocaleDisplayName(localeControl.value.locale) } }}</mat-label>
                     <input
                       matInput
@@ -215,7 +257,12 @@
         </mat-tab>
 
         <!-- ───────────────────────────── Tab 3: Change Location ───────────────────────────── -->
-        <mat-tab [label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.CHANGELOCATION | transloco" [disabled]="isReadOnly()">
+        <mat-tab [disabled]="isReadOnly()">
+          <ng-template mat-tab-label>
+            <span class="tab-label" [matTooltip]="locationTabTooltip()" matTooltipPosition="above">
+              {{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.CHANGELOCATION | transloco }}
+            </span>
+          </ng-template>
           <div class="tab-panel tab-panel--location">
             <!-- Inline description -->
             <p class="location-tab-hint">
@@ -255,7 +302,9 @@
         color="primary"
         type="button"
         (click)="onSubmit()"
-        [disabled]="form.invalid || isSubmitting()"
+        [disabled]="isSubmitting()"
+        [matTooltip]="TOKENS.BROWSER.TRANSLATIONEDITOR.SAVESHORTCUTHINT | transloco"
+        matTooltipPosition="above"
         class="submit-button"
       >
         @if (isSubmitting()) {

@@ -99,10 +99,13 @@ export class TranslationMainHeader {
     };
 
     const dialogRef = this.#dialog.open(TranslationEditorDialog, {
-      width: '700px',
-      maxHeight: '90vh',
+      // See `.translation-editor-dialog-panel` in styles.scss — it owns the
+      // dialog's box, including the full-screen treatment below 640px.
+      panelClass: 'translation-editor-dialog-panel',
+      maxWidth: '100vw',
       data: dialogData,
       autoFocus: false,
+      ariaLabelledBy: 'dialog-title',
     });
 
     dialogRef.afterClosed().subscribe((result: TranslationEditorResult | undefined) => {
