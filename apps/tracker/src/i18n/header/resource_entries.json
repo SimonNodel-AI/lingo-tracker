@@ -23,20 +23,20 @@
     "source": "{ count, plural, =1 {1 key} other {{count} keys} }",
     "comment": "Pluralized count of translation keys shown in the app header stats",
     "tags": ["header"],
-    "es": "{ count, plural, =1 {1 key} other {{count} keys} }",
-    "fr-ca": "{ count, plural, =1 {1 key} other {{count} keys} }",
-    "ru": "{ count, plural, =1 {1 key} other {{count} keys} }",
-    "ja": "{ count, plural, =1 {1 key} other {{count} keys} }",
-    "de": "{ count, plural, =1 {1 key} other {{count} keys} }"
+    "es": "{ count, plural, =1 {1 clave} other {{count} claves} }",
+    "fr-ca": "{ count, plural, =1 {1 clé} other {{count} clés} }",
+    "ru": "{ count, plural, one {{count} ключ} few {{count} ключа} many {{count} ключей} other {{count} ключа} }",
+    "ja": "{ count, plural, other {キー {count} 件} }",
+    "de": "{ count, plural, =1 {1 Schlüssel} other {{count} Schlüssel} }"
   },
   "localesCountX": {
     "source": "{ count, plural, =1 {1 locale} other {{count} locales} }",
     "comment": "Pluralized count of locales shown in the app header stats",
     "tags": ["header"],
-    "es": "{ count, plural, =1 {1 locale} other {{count} locales} }",
-    "fr-ca": "{ count, plural, =1 {1 locale} other {{count} locales} }",
-    "ru": "{ count, plural, =1 {1 locale} other {{count} locales} }",
-    "ja": "{ count, plural, =1 {1 locale} other {{count} locales} }",
-    "de": "{ count, plural, =1 {1 locale} other {{count} locales} }"
+    "es": "{ count, plural, =1 {1 idioma} other {{count} idiomas} }",
+    "fr-ca": "{ count, plural, =1 {1 langue} other {{count} langues} }",
+    "ru": "{ count, plural, one {{count} локаль} few {{count} локали} many {{count} локалей} other {{count} локали} }",
+    "ja": "{ count, plural, other {ロケール {count} 件} }",
+    "de": "{ count, plural, =1 {1 Sprache} other {{count} Sprachen} }"
   }
 }
