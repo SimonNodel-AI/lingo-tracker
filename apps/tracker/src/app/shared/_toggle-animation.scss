@@ -51,9 +51,62 @@
     background-color: var(--color-background-subtle);
   }
 
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+}
+
+// Shared shell for the toolbar's dropdown triggers (locale filter, status filter).
+//
+// Material's stroked button ships its own outline (rgba black 12%), text colour
+// (rgba black 87%) and 32px height, none of which come from the token set — put
+// side by side with %toolbar-icon-button that reads as two different control
+// families in one row. This re-bases the trigger on the same 40px box, the same
+// warm border, and the same hover/focus treatment as the icon buttons.
+%toolbar-filter-trigger {
+  align-items: center;
+  appearance: none;
+  background-color: var(--color-background);
+  cursor: pointer;
+  font-family: inherit;
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-text-secondary);
+  display: flex;
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  gap: var(--spacing-2);
+  height: var(--spacing-10);
+  line-height: 1;
+  min-width: 0;
+  padding: 0 var(--spacing-3);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    background-color: var(--color-background-muted);
+    border-color: var(--color-border-strong);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+
+  // The chevron is the trigger's own affordance, not part of the label, so it
+  // sits a step back from the text it follows.
+  .arrow-icon {
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+    font-size: 20px;
+    height: 20px;
+    width: 20px;
   }
 }
 

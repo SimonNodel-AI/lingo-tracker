@@ -1,11 +1,11 @@
+@use '../../../../shared/toggle-animation' as *;
+
 .status-filter-trigger {
-  align-items: center;
-  display: flex;
-  font-size: var(--font-size-sm);
-  gap: var(--spacing-1);
-  padding: var(--spacing-2) var(--spacing-3);
+  @extend %toolbar-filter-trigger;
 
   .filter-icon {
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
     font-size: 18px;
     height: 18px;
     width: 18px;
@@ -14,7 +14,7 @@
   .status-icons {
     align-items: center;
     display: flex;
-    gap: 2px;
+    gap: var(--spacing-1);
   }
 
   .status-indicator {
@@ -26,13 +26,6 @@
     &--inactive {
       opacity: 0.25;
     }
-  }
-
-  .arrow-icon {
-    font-size: 20px;
-    height: 20px;
-    margin-left: var(--spacing-1);
-    width: 20px;
   }
 }
 

@@ -56,7 +56,15 @@
   --color-text-primary: #2e2923;
   --color-text-secondary: #5a534a;
   --color-text-tertiary: #a89f93;
+  // Placeholder / hint text. Darker than tertiary because placeholders are read
+  // as text and must clear 4.5:1 against --color-background; tertiary is a
+  // decorative tint at 2.5:1 and is not safe for anything a user has to read.
+  --color-text-placeholder: #736b61;
   --color-text-inverse: #faf8f5;
+  // Ink on a filled primary control. The primary fill is the same light coral
+  // in both themes, so this ink stays dark in both — swapping it for
+  // --color-text-primary under dark drops the label to 2:1.
+  --color-text-on-primary: #2e2923;
 
   // Border colors — warm
   --color-border: #e5dfd7;
@@ -132,7 +140,9 @@
   --color-text-primary: #f3efe9;
   --color-text-secondary: #d4cdc3;
   --color-text-tertiary: #7d7569;
+  --color-text-placeholder: #8a8175;
   --color-text-inverse: #1c1814;
+  --color-text-on-primary: #2e2923;
 
   // Border colors
   --color-border: #433d36;

@@ -25,6 +25,11 @@ $footer-height: 32px;
 
 .app-container {
   display: grid;
+  // minmax(0, 1fr) rather than the implicit `auto` column: an auto column is
+  // sized by its widest item's min-content width, so a wide row inside the
+  // content area used to stretch the whole shell past the viewport and take the
+  // header and toolbar controls off screen with it.
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr $footer-height;
   grid-template-areas:
     'header'

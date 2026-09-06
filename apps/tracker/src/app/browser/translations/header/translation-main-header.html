@@ -2,9 +2,13 @@
   <div class="header-content">
     <app-translation-search />
 
-    <app-locale-filter [multiSelect]="store.canShowMultipleLocales()" />
+    <div class="toolbar-filters">
+      <app-locale-filter [multiSelect]="store.canShowMultipleLocales()" />
 
-    <app-status-filter />
+      <app-status-filter />
+    </div>
+
+    <span class="toolbar-divider" aria-hidden="true"></span>
 
     <button
       mat-icon-button
@@ -18,17 +22,22 @@
       <mat-icon>{{ store.sortDirection() === 'asc' ? 'arrow_upward' : 'arrow_downward' }}</mat-icon>
     </button>
 
+    <span class="toolbar-divider" aria-hidden="true"></span>
+
     <button
       mat-raised-button
       color="primary"
+      class="add-translation-button"
       (click)="handleAddTranslation()"
       [disabled]="store.effectiveDisabled()"
       [matTooltip]="TOKENS.BROWSER.ADDNEWTRANSLATIONTOOLTIP | transloco"
       [attr.aria-label]="TOKENS.BROWSER.ADDTRANSLATIONBUTTON | transloco"
     >
       <mat-icon>add</mat-icon>
-      <span>{{ TOKENS.BROWSER.ADDTRANSLATIONBUTTON | transloco }}</span>
+      <span class="add-translation-label">{{ TOKENS.BROWSER.ADDTRANSLATIONBUTTON | transloco }}</span>
     </button>
+
+    <span class="toolbar-divider" aria-hidden="true"></span>
 
     <button
       mat-icon-button

@@ -5,12 +5,18 @@
   top: 0;
   z-index: 10;
   background: var(--color-background-subtle);
+  // The toolbar reflows against the width of the content pane, not the window —
+  // the folder tree beside it can be open, collapsed, or resized.
+  container-type: inline-size;
 
   .header-content {
     border-bottom: 1px solid var(--color-border);
     display: flex;
     align-items: center;
+    // Zones are separated by a rule plus this gap; controls inside a zone sit
+    // closer together, so the row reads as four groups rather than six buttons.
     gap: var(--spacing-3);
+    row-gap: var(--spacing-2);
     padding: var(--spacing-3) var(--spacing-4);
     position: relative;
 
@@ -25,27 +31,6 @@
         radial-gradient(ellipse 150px 50px at 20% 50%, var(--wc-lavender) 0%, transparent 70%);
       pointer-events: none;
     }
-
-    mat-icon {
-      color: var(--color-text-secondary);
-    }
-
-    .density-toggle {
-      @extend %toolbar-icon-button;
-
-      margin-left: auto; // push to right
-
-      mat-icon {
-        // font-size must be accompanied by matching height/width so the icon
-        // element's bounding box matches the glyph size. Without this, the
-        // default 24px box is misaligned against the larger glyph even though
-        // the button host is a flex container with align-items: center.
-        font-size: var(--font-size-xl);
-        height: var(--font-size-xl);
-        width: var(--font-size-xl);
-        color: var(--color-text-secondary);
-      }
-    }
   }
 
   app-translation-search {
@@ -53,33 +38,87 @@
     min-width: 0; // Allow flex child to shrink below content size
   }
 
-  app-locale-filter {
+  .toolbar-filters {
+    align-items: center;
+    display: flex;
     flex-shrink: 0;
+    gap: var(--spacing-2);
+    min-width: 0;
   }
 
-  .sort-direction-toggle {
+  // A hairline between zones, sized to the control it separates rather than to
+  // the full toolbar height so it reads as a join, not a wall.
+  .toolbar-divider {
+    background-color: var(--color-border-strong);
+    flex: none;
+    height: var(--spacing-6);
+    width: 1px;
+  }
+
+  .sort-direction-toggle,
+  .density-toggle {
     @extend %toolbar-icon-button;
 
     mat-icon {
-      // Match height/width to font-size so the bounding box aligns with the
-      // glyph — same requirement as .density-toggle above.
+      // font-size must be accompanied by matching height/width so the icon
+      // element's bounding box matches the glyph size. Without this, the
+      // default 24px box is misaligned against the larger glyph even though
+      // the button host is a flex container with align-items: center.
+      color: var(--color-text-secondary);
       font-size: var(--font-size-xl);
       height: var(--font-size-xl);
       width: var(--font-size-xl);
     }
   }
 
-  button[mat-raised-button] {
-    display: flex;
+  .add-translation-button {
     align-items: center;
-    gap: var(--spacing-2);
-    height: 40px;
     border-radius: var(--border-radius-sm);
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--spacing-2);
+    height: var(--spacing-10);
+    // Material's raised button defaults its label to rgba(0, 0, 0, 0.87), which
+    // is off the token set. The fill is the same light coral in both themes, so
+    // its ink is a fixed dark token rather than the theme's text colour.
+    color: var(--color-text-on-primary);
 
     mat-icon {
+      color: inherit;
       font-size: var(--font-size-lg);
       height: 18px;
       width: 18px;
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring-color);
+      outline-offset: 2px;
+    }
+  }
+
+  // Below this width the six controls no longer fit on one line and used to run
+  // off the edge of the pane, taking the primary action with them. Search takes
+  // a line of its own and the controls it filters sit beneath it.
+  @container (max-width: 760px) {
+    .header-content {
+      flex-wrap: wrap;
+    }
+
+    app-translation-search {
+      flex: 1 0 100%;
+    }
+  }
+
+  // Narrower still, the label goes and the button keeps its icon; the tooltip
+  // and accessible name already carry the wording.
+  @container (max-width: 640px) {
+    .add-translation-label {
+      display: none;
+    }
+
+    .add-translation-button {
+      min-width: 0;
+      padding: 0 var(--spacing-3);
     }
   }
 }

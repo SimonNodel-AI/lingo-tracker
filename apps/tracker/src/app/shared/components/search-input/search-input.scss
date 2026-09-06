@@ -6,6 +6,15 @@
   width: 100%;
   margin: 0;
 
+  // Material's outlined field draws its own greyscale outline; re-base it on the
+  // warm border tokens so a search box sits in the same control family as the
+  // buttons beside it in a toolbar.
+  --mdc-outlined-text-field-outline-color: var(--color-border);
+  --mdc-outlined-text-field-hover-outline-color: var(--color-border-strong);
+  --mdc-outlined-text-field-focus-outline-color: var(--color-primary);
+  --mdc-outlined-text-field-input-text-color: var(--color-text-primary);
+  --mdc-outlined-text-field-container-shape: var(--border-radius-sm);
+
   ::ng-deep {
     .mat-mdc-form-field-flex {
       height: 40px;
@@ -13,6 +22,7 @@
     }
 
     .mat-mdc-text-field-wrapper {
+      background-color: var(--color-background);
       padding: 0;
     }
 
@@ -27,6 +37,13 @@
     input {
       font-size: var(--font-size-sm);
       margin-top: 0;
+
+      // Placeholders are read, so they clear 4.5:1. Material's default
+      // rgba(0, 0, 0, 0.54) lands at 4.2:1 on this background.
+      &::placeholder {
+        color: var(--color-text-placeholder);
+        opacity: 1;
+      }
     }
 
     .mat-mdc-form-field-icon-prefix {
@@ -35,7 +52,7 @@
       align-items: center;
 
       mat-icon {
-        color: var(--color-text-tertiary);
+        color: var(--color-text-placeholder);
       }
     }
 
