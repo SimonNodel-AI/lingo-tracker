@@ -1,30 +1,24 @@
-import {
-  Component,
-  ChangeDetectionStrategy,
-  type ElementRef,
-  input,
-  output,
-  computed,
-  effect,
-  inject,
-  signal,
-  viewChild,
-  type AfterViewInit,
-  type OnDestroy,
-} from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, computed, effect, inject, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { CdkDrag, CdkDragPlaceholder } from '@angular/cdk/drag-drop';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { BrowserStore } from '../../../store/browser.store';
-import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { TranslationItemHeader } from './item-header';
-import { TranslationItemLocales } from './item-locales';
+import { TranslationItemLocales, statusIconFor, statusLabelTokenFor } from './item-locales';
 import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import type { DragData } from '../../../types/drag-data';
 import { TranslationListStore } from '../store/translation-list.store';
+import { injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
 
 const EXPAND_THRESHOLD = 200;
+
+/**
+ * Number of locale rows rendered while a full-density item is collapsed.
+ * Kept in sync with the virtual-scroll itemSize estimate in translation-list.ts.
+ */
+const MAX_VISIBLE_LOCALE_ROWS = 4;
 const LONG_PRESS_THRESHOLD = 500;
 
 const STATUS_SORT_PRIORITY: Record<string, number> = {
@@ -58,7 +52,7 @@ const STATUS_SORT_PRIORITY: Record<string, number> = {
     class: 'translation-item',
   },
 })
-export class TranslationItem implements AfterViewInit, OnDestroy {
+export class TranslationItem {
   /** Translation data */
   translation = input.required<ResourceSummaryDto>();
 
@@ -76,7 +70,6 @@ export class TranslationItem implements AfterViewInit, OnDestroy {
 
   readonly #store = inject(BrowserStore);
   readonly #listStore = inject(TranslationListStore);
-  readonly #transloco = inject(TranslocoService);
   readonly TOKENS = TRACKER_TOKENS;
 
   /** Active collection name — always set when this component is rendered. */
@@ -84,22 +77,6 @@ export class TranslationItem implements AfterViewInit, OnDestroy {
 
   /** Whether this item was recently updated (flash highlight). */
   readonly isRecentlyUpdated = computed(() => this.#listStore.isRecentlyUpdated(this.translation().key));
-
-  /** Reference to the scrollable wrapper element (used as IntersectionObserver root). */
-  protected readonly scrollWrapper = viewChild<ElementRef<HTMLElement>>('scrollWrapper');
-
-  /** Reference to the invisible sentinel element observed to detect scroll-to-bottom. */
-  protected readonly scrollSentinel = viewChild<ElementRef<HTMLElement>>('scrollSentinel');
-
-  /**
-   * True when the user has scrolled far enough that the sentinel (placed at the
-   * bottom of the scrollable content) is visible within the scroll viewport.
-   * Used to hide the fade gradient when no more content is hidden below.
-   */
-  readonly isScrolledToBottom = signal(false);
-
-  /** Active IntersectionObserver instance — cleaned up on destroy or when conditions change. */
-  #scrollObserver: IntersectionObserver | undefined;
 
   /** Current search query from the store */
   readonly searchQuery = this.#store.searchQuery;
@@ -151,52 +128,39 @@ export class TranslationItem implements AfterViewInit, OnDestroy {
   /** Current density mode (reads from BrowserStore) */
   readonly currentDensityMode = computed(() => this.#store.densityMode());
 
-  /** Selected locale for compact mode: the first locale from filteredLocales() */
-  readonly primaryLocale = computed(() => {
-    const ls = this.#store.filteredLocales();
-    return (ls && ls.length > 0 && ls[0]) || this.#store.baseLocale();
-  });
-
   /**
-   * Locale to display in the status chip (compact mode).
-   * Logic:
-   * - If a specific locale is selected (other than base locale) → show that locale
-   * - If nothing is selected or only base locale is selected → show the primary locale
+   * The locale whose value the compact row displays, together with the status
+   * and value that belong to it.
+   *
+   * Compact density has room for exactly one value, so the row must say which
+   * locale that value belongs to — otherwise "empty" and "translated" look the
+   * same, and a row showing the base locale source reads as a finished
+   * translation. `isBaseFallback` marks the case where no non-base locale is
+   * available and the row is therefore showing source text.
    */
-  readonly statusChipLocale = computed(() => {
-    const activeLocales = this.#store.filteredLocales();
+  readonly compactDisplay = computed(() => {
     const base = this.#store.baseLocale();
+    const nonBaseLocales = this.#store.filteredLocales().filter((locale) => locale !== base);
 
-    // Filter out base locale from active locales
-    const nonBaseLocales = activeLocales.filter((locale) => locale !== base);
+    const locale = nonBaseLocales.length > 0 ? nonBaseLocales[0] : base;
+    const translation = this.translation();
 
-    // If exactly one non-base locale is selected, use it
-    if (nonBaseLocales.length === 1) {
-      return nonBaseLocales[0];
-    }
-
-    // Otherwise, fall back to primary locale (first in the list)
-    return this.primaryLocale();
+    return {
+      locale,
+      value: translation.translations[locale] || '',
+      status: translation.status?.[locale],
+      isBaseFallback: nonBaseLocales.length === 0,
+    };
   });
 
-  /**
-   * Value for the selected primary locale in compact mode.
-   * In compact mode, shows the translation value for the selected non-base locale.
-   * Falls back to base locale value if no non-base locale is selected.
-   */
-  readonly primaryLocaleValue = computed(() => {
-    const activeLocales = this.#store.filteredLocales();
-    const base = this.#store.baseLocale();
-    const translations = this.translation().translations;
+  /** Material icon for the compact row's status. */
+  readonly compactStatusIcon = computed(() => statusIconFor(this.compactDisplay().status));
 
-    // Filter out base locale to find selected non-base locales
-    const nonBaseLocales = activeLocales.filter((locale) => locale !== base);
+  /** Transloco token for the compact row's status label ('' when the status is unknown). */
+  readonly compactStatusToken = computed(() => statusLabelTokenFor(this.compactDisplay().status));
 
-    // If a non-base locale is selected, use the first one
-    const localeToDisplay = nonBaseLocales.length > 0 ? nonBaseLocales[0] : base;
-
-    return translations[localeToDisplay] || '';
-  });
+  /** Value rendered in the compact row. */
+  readonly primaryLocaleValue = computed(() => this.compactDisplay().value);
 
   /** Signal controlling whether the full-mode content is expanded */
   readonly isExpanded = signal(false);
@@ -205,15 +169,48 @@ export class TranslationItem implements AfterViewInit, OnDestroy {
   readonly showComment = signal(false);
 
   /**
-   * Returns true when the base value or any active locale value exceeds the
-   * visual threshold and therefore can be expanded.
+   * Locale rows rendered in full density. While collapsed the list is sliced to
+   * MAX_VISIBLE_LOCALE_ROWS; the rows left out are counted by hiddenLocaleCount
+   * and named on the expand button, so nothing is ever hidden silently.
    */
-  readonly needsExpansion = computed(() => {
-    const base = this.baseValue() || '';
-    if (base.length > EXPAND_THRESHOLD) return true;
+  readonly visibleLocaleTranslations = computed(() => {
+    const all = this.localeTranslations();
+    return this.isExpanded() ? all : all.slice(0, MAX_VISIBLE_LOCALE_ROWS);
+  });
+
+  /** Number of locale rows withheld by the collapsed state. */
+  readonly hiddenLocaleCount = computed(() =>
+    this.isExpanded() ? 0 : Math.max(0, this.localeTranslations().length - MAX_VISIBLE_LOCALE_ROWS),
+  );
+
+  /** True when the base value or any active locale value is clipped by its line clamp. */
+  readonly hasClippedValues = computed(() => {
+    if ((this.baseValue() || '').length > EXPAND_THRESHOLD) return true;
 
     return this.localeTranslations().some((v) => (v.value || '').length > EXPAND_THRESHOLD);
   });
+
+  /**
+   * Whether the expand control is offered. It answers "is anything hidden?" —
+   * either locale rows the collapsed list dropped, or values the line clamp cut.
+   */
+  readonly needsExpansion = computed(
+    () => this.isExpanded() || this.hiddenLocaleCount() > 0 || this.hasClippedValues(),
+  );
+
+  /**
+   * Token for the expand control's label. Resolved through the transloco pipe in
+   * the template rather than TranslocoService, so the label re-renders when the
+   * UI language changes.
+   */
+  readonly expandLabelToken = computed(() => {
+    if (this.isExpanded()) return TRACKER_TOKENS.BROWSER.TRANSLATIONITEM.SHOWLESS;
+    if (this.hiddenLocaleCount() > 0) return TRACKER_TOKENS.BROWSER.TRANSLATIONITEM.MORELOCALESX;
+    return TRACKER_TOKENS.BROWSER.TRANSLATIONITEM.SHOWMORE;
+  });
+
+  /** Interpolation params for expandLabelToken. */
+  readonly expandLabelParams = computed(() => ({ count: this.hiddenLocaleCount() }));
 
   /** Toggles the expanded state for full density mode */
   toggleExpansion(): void {
@@ -222,17 +219,6 @@ export class TranslationItem implements AfterViewInit, OnDestroy {
       key: this.translation().key,
       expanded: this.isExpanded(),
     });
-
-    // The fade and sentinel are only rendered when collapsed, so synchronise the
-    // observer with the new expansion state after Angular has updated the DOM.
-    this.#teardownScrollObserver();
-    this.isScrolledToBottom.set(false);
-
-    if (!this.isExpanded()) {
-      // Re-enter collapsed state: set up observer on the next microtask so the
-      // sentinel element has been rendered by Angular's change detection.
-      Promise.resolve().then(() => this.#setupScrollObserver());
-    }
   }
 
   /** Toggles the comment display for compact and medium density modes */
@@ -335,44 +321,6 @@ export class TranslationItem implements AfterViewInit, OnDestroy {
     });
   }
 
-  ngAfterViewInit(): void {
-    this.#setupScrollObserver();
-  }
-
-  ngOnDestroy(): void {
-    this.#teardownScrollObserver();
-  }
-
-  /**
-   * Creates the IntersectionObserver that watches the sentinel element inside
-   * the scroll wrapper. The observer is only created when there are more than
-   * 4 locale translations and the item is collapsed — conditions where the fade
-   * gradient is actually rendered.
-   *
-   * The scroll wrapper element is used as the root so intersection is measured
-   * against the scrollable viewport rather than the document viewport.
-   */
-  #setupScrollObserver(): void {
-    const shouldObserve = this.localeTranslations().length >= 4 && !this.isExpanded();
-    if (!shouldObserve) return;
-
-    const sentinel = this.scrollSentinel()?.nativeElement;
-    const wrapper = this.scrollWrapper()?.nativeElement;
-    if (!sentinel || !wrapper) return;
-
-    this.#scrollObserver = new IntersectionObserver(([entry]) => this.isScrolledToBottom.set(entry.isIntersecting), {
-      root: wrapper,
-      threshold: 0.1,
-    });
-    this.#scrollObserver.observe(sentinel);
-  }
-
-  /** Disconnects and discards the active IntersectionObserver. */
-  #teardownScrollObserver(): void {
-    this.#scrollObserver?.disconnect();
-    this.#scrollObserver = undefined;
-  }
-
   /** Returns a stable id for the rollup status element. */
   readonly statusId = computed(() => `rollup-${this.translation().key}`);
 
@@ -407,24 +355,10 @@ export class TranslationItem implements AfterViewInit, OnDestroy {
   });
 
   /**
-   * Returns a comma-separated breakdown of statuses across all locales for use in tooltips.
-   * Example: "2 stale, 3 verified, 1 new"
+   * Localized breakdown of statuses across all locales, announced to screen
+   * readers. Example: "2 stale, 3 verified, 1 new".
    */
-  readonly statusBreakdown = computed(() => {
-    const { counts, total } = this.#statusCounts();
-
-    if (total === 0) return this.#transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONITEM.NOSTATUSES);
-
-    const order: Array<keyof typeof counts> = ['stale', 'new', 'translated', 'verified'];
-    const parts: string[] = [];
-
-    for (const k of order) {
-      const c = counts[k];
-      if (c && c > 0) parts.push(`${c} ${k}`);
-    }
-
-    return parts.join(', ');
-  });
+  readonly statusBreakdown = injectStatusBreakdown(computed(() => this.#statusCounts().counts));
 
   /**
    * Roll-up status across ALL locales. Priority (worst first): stale > new > translated > verified

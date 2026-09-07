@@ -1,4 +1,11 @@
-.translation-item-locales {
+/*
+ * The item's width is set by a resizable panel, not the viewport, so the narrow
+ * layout below is driven by a container query rather than a breakpoint. This has
+ * to be :host — a bare `.translation-item-locales` selector is scoped to this
+ * component's content attribute, which the host element does not carry.
+ */
+:host {
+  container-type: inline-size;
   display: block;
 }
 
@@ -39,21 +46,30 @@
   height: var(--font-size-base);
   width: var(--font-size-base);
 
-  &.status-new, &.status-stale {
-    color: var(--color-warning);
+  // Each status carries its own hue: `new` (not started) and `stale` (drifted out
+  // of date) used to share one, which hid the more urgent of the two.
+  &.status-new {
+    color: var(--color-status-new);
+  }
+
+  &.status-stale {
+    color: var(--color-status-stale);
   }
 
   &.status-translated {
-    color: var(--color-info);
+    color: var(--color-status-translated);
   }
 
   &.status-verified {
-    color: var(--color-success);
+    color: var(--color-status-verified);
   }
 }
 
+/* The chip sat on --color-background-muted, the same fill as the item card, so
+   it read as loose text rather than a chip. */
 .status-chip {
-  background-color: var(--color-background-muted);
+  background-color: var(--color-background-subtle);
+  border: 1px solid var(--color-border);
   border-radius: var(--border-radius-full);
   color: var(--color-text-primary);
   flex-shrink: 0;
@@ -79,5 +95,28 @@
       -webkit-line-clamp: unset;
       display: block;
     }
+  }
+}
+
+/*
+ * Narrow items: the label column (code, icon, status chip) is a fixed ~230px, so
+ * on a narrow card it crowded the translation itself into a sliver. Stack the
+ * label above its value instead and give the value the full width — the value is
+ * the content, the label is the annotation.
+ */
+@container (max-width: 30rem) {
+  .locale-translations {
+    grid-template-columns: 1fr;
+    row-gap: 0;
+  }
+
+  .locale-value {
+    padding-bottom: var(--spacing-2);
+    padding-left: var(--spacing-1);
+  }
+
+  /* The colon only separates label from value when they share a line. */
+  .locale-separator {
+    display: none;
   }
 }

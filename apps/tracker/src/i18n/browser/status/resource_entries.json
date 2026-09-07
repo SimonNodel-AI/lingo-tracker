@@ -38,5 +38,45 @@
     "ru": "Подтверждено",
     "ja": "検証済み",
     "de": "Bestätigt"
+  },
+  "newCountX": {
+    "source": "{count, plural, =1 {1 new} other {{count} new}}",
+    "comment": "Count of locales with the \"new\" translation status, used in status breakdowns and the rollup accessible name",
+    "tags": ["browser"],
+    "es": "{count, plural, =1 {1 nueva} other {{count} nuevas}}",
+    "fr-ca": "{count, plural, =1 {1 nouvelle} other {{count} nouvelles}}",
+    "de": "{count, plural, =1 {1 neu} other {{count} neu}}",
+    "ja": "{count, plural, other {{count} 件が新規}}",
+    "ru": "{count, plural, one {{count} новый} few {{count} новых} many {{count} новых} other {{count} новых}}"
+  },
+  "staleCountX": {
+    "source": "{count, plural, =1 {1 stale} other {{count} stale}}",
+    "comment": "Count of locales with the \"stale\" translation status, used in status breakdowns and the rollup accessible name",
+    "tags": ["browser"],
+    "es": "{count, plural, =1 {1 desactualizada} other {{count} desactualizadas}}",
+    "fr-ca": "{count, plural, =1 {1 obsolète} other {{count} obsolètes}}",
+    "de": "{count, plural, =1 {1 veraltet} other {{count} veraltet}}",
+    "ja": "{count, plural, other {{count} 件が要更新}}",
+    "ru": "{count, plural, one {{count} устаревший} few {{count} устаревших} many {{count} устаревших} other {{count} устаревших}}"
+  },
+  "translatedCountX": {
+    "source": "{count, plural, =1 {1 translated} other {{count} translated}}",
+    "comment": "Count of locales with the \"translated\" translation status, used in status breakdowns and the rollup accessible name",
+    "tags": ["browser"],
+    "es": "{count, plural, =1 {1 traducida} other {{count} traducidas}}",
+    "fr-ca": "{count, plural, =1 {1 traduite} other {{count} traduites}}",
+    "de": "{count, plural, =1 {1 übersetzt} other {{count} übersetzt}}",
+    "ja": "{count, plural, other {{count} 件が翻訳済み}}",
+    "ru": "{count, plural, one {{count} переведённый} few {{count} переведённых} many {{count} переведённых} other {{count} переведённых}}"
+  },
+  "verifiedCountX": {
+    "source": "{count, plural, =1 {1 verified} other {{count} verified}}",
+    "comment": "Count of locales with the \"verified\" translation status, used in status breakdowns and the rollup accessible name",
+    "tags": ["browser"],
+    "es": "{count, plural, =1 {1 verificada} other {{count} verificadas}}",
+    "fr-ca": "{count, plural, =1 {1 vérifiée} other {{count} vérifiées}}",
+    "de": "{count, plural, =1 {1 geprüft} other {{count} geprüft}}",
+    "ja": "{count, plural, other {{count} 件が承認済み}}",
+    "ru": "{count, plural, one {{count} проверенный} few {{count} проверенных} many {{count} проверенных} other {{count} проверенных}}"
   }
 }

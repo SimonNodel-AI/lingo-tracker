@@ -35,18 +35,31 @@ export class StatusFilter {
   readonly store = inject(BrowserStore);
   readonly TOKENS = TRACKER_TOKENS;
 
+  /**
+   * Reads the shared status color spine so a status means the same color here as
+   * it does on the items being filtered. `new` and `stale` previously shared
+   * --color-warning, which made the two filters indistinguishable.
+   */
   readonly statusConfig: Record<TranslationStatus, { label: string; icon: string; color: string }> = {
-    new: { label: TRACKER_TOKENS.BROWSER.STATUS.NEW, icon: 'add_circle', color: 'var(--color-warning)' },
-    stale: { label: TRACKER_TOKENS.BROWSER.STATUS.STALE, icon: 'warning', color: 'var(--color-warning)' },
+    new: {
+      label: TRACKER_TOKENS.BROWSER.STATUS.NEW,
+      icon: 'add_circle',
+      color: 'var(--color-status-new)',
+    },
+    stale: {
+      label: TRACKER_TOKENS.BROWSER.STATUS.STALE,
+      icon: 'warning',
+      color: 'var(--color-status-stale)',
+    },
     translated: {
       label: TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED,
       icon: 'language',
-      color: 'var(--color-info)',
+      color: 'var(--color-status-translated)',
     },
     verified: {
       label: TRACKER_TOKENS.BROWSER.STATUS.VERIFIED,
       icon: 'check_circle',
-      color: 'var(--color-success)',
+      color: 'var(--color-status-verified)',
     },
   };
 

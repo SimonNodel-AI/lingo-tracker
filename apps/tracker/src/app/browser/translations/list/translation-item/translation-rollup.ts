@@ -15,7 +15,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { Overlay, OverlayModule, type OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal, PortalModule } from '@angular/cdk/portal';
 import { ViewContainerRef, type TemplateRef } from '@angular/core';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { injectActiveLang, injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
 
 /** Locale state for rollup display */
 export interface LocaleState {
@@ -23,12 +26,10 @@ export interface LocaleState {
   status: TranslationStatus;
 }
 
-/** Status configuration for display */
+/** Per-status display configuration. Color lives in CSS so both themes can move it. */
 interface StatusConfig {
-  label: string;
+  labelToken: string;
   icon: string;
-  color: string;
-  colorVar: string;
 }
 
 /** Close delay in ms */
@@ -41,20 +42,22 @@ const CLOSE_DELAY = 120;
 @Component({
   selector: 'app-translation-rollup',
   standalone: true,
-  imports: [CommonModule, OverlayModule, PortalModule, MatIconModule],
+  imports: [CommonModule, OverlayModule, PortalModule, MatIconModule, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div
+    <!-- A real button, not a div with role="button": it is focusable, it toggles,
+         and it must announce and behave like the control it looks like. -->
+    <button
       #trigger
       class="rollup"
-      role="button"
-      tabindex="0"
+      type="button"
       [attr.aria-label]="ariaLabel()"
       [attr.aria-expanded]="isOpen()"
       (mouseenter)="open()"
       (mouseleave)="closeSoon()"
       (focus)="open()"
       (blur)="close()"
+      (click)="toggle()"
       (keydown)="onKeydown($event)"
     >
       <!-- Segmented ring (SVG) -->
@@ -66,10 +69,10 @@ const CLOSE_DELAY = 120;
         @for (seg of ringSegments(); track seg.status) {
         <circle
           class="seg"
+          [ngClass]="'seg--' + seg.status"
           cx="20"
           cy="20"
           [attr.r]="radius"
-          [attr.stroke]="seg.color"
           [attr.stroke-dasharray]="seg.dashArray"
           [attr.stroke-dashoffset]="seg.dashOffset"
         />
@@ -92,7 +95,7 @@ const CLOSE_DELAY = 120;
           {{ centerIcon() }}
         </mat-icon>
       </div>
-    </div>
+    </button>
 
     <!-- Tooltip overlay content -->
     <ng-template #tooltipTpl>
@@ -107,11 +110,11 @@ const CLOSE_DELAY = 120;
           <div class="row">
             <mat-icon
               class="row-icon"
-              [style.color]="row.color"
+              [ngClass]="'row-icon--' + row.status"
               aria-hidden="true"
               >{{ row.icon }}</mat-icon
             >
-            <span class="label">{{ row.label }}</span>
+            <span class="label">{{ row.labelToken | transloco }}</span>
             <span class="locale-code">{{ row.code }}</span>
           </div>
           }
@@ -131,9 +134,14 @@ const CLOSE_DELAY = 120;
         position: relative;
         display: grid;
         place-items: center;
+        padding: 0;
+        border: none;
         border-radius: var(--border-radius-lg);
+        background: none;
+        color: inherit;
+        font: inherit;
         outline: none;
-        cursor: default;
+        cursor: pointer;
         user-select: none;
       }
 
@@ -176,7 +184,7 @@ const CLOSE_DELAY = 120;
 
       .center--issue {
         border: 2px solid
-          color-mix(in srgb, var(--color-warning) 45%, transparent);
+          color-mix(in srgb, var(--color-status-stale) 45%, transparent);
       }
 
       .center-icon {
@@ -187,27 +195,68 @@ const CLOSE_DELAY = 120;
       }
 
       .icon--issue {
-        color: var(--color-warning);
+        color: var(--color-status-stale);
       }
 
       .icon--translated {
-        color: var(--color-info);
+        color: var(--color-status-translated);
       }
 
       .icon--verified {
-        color: var(--color-success);
+        color: var(--color-status-verified);
+      }
+
+      /* One source of truth per status, shared by the ring and the tooltip rows. */
+      .seg--new {
+        stroke: var(--color-status-new);
+      }
+
+      .seg--stale {
+        stroke: var(--color-status-stale);
+      }
+
+      .seg--translated {
+        stroke: var(--color-status-translated);
+      }
+
+      .seg--verified {
+        stroke: var(--color-status-verified);
+      }
+
+      .row-icon--new {
+        color: var(--color-status-new);
+      }
+
+      .row-icon--stale {
+        color: var(--color-status-stale);
+      }
+
+      .row-icon--translated {
+        color: var(--color-status-translated);
+      }
+
+      .row-icon--verified {
+        color: var(--color-status-verified);
       }
 
       /* Tooltip panel - always dark for contrast in both themes */
       .tooltip {
+        /* This surface is dark under either theme, so the status hues here always
+           take their dark-surface values — the light-theme set is tuned for a
+           parchment card and would sink into this panel. */
+        --color-status-new: var(--status-new-on-dark);
+        --color-status-stale: var(--status-stale-on-dark);
+        --color-status-translated: var(--status-translated-on-dark);
+        --color-status-verified: var(--status-verified-on-dark);
+
         min-width: 200px;
         max-width: 360px;
         padding: var(--spacing-3);
         border-radius: var(--border-radius-xl);
-        background: #18181b;
-        color: #fafafa;
-        box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: var(--color-tooltip-surface);
+        color: var(--color-tooltip-text);
+        box-shadow: var(--shadow-lg);
+        border: 1px solid var(--color-border-strong);
       }
 
       .grid {
@@ -256,6 +305,8 @@ export class TranslationRollup implements OnDestroy {
 
   private readonly overlay = inject(Overlay);
   private readonly vcr = inject(ViewContainerRef);
+  private readonly transloco = inject(TranslocoService);
+  private readonly activeLang = injectActiveLang();
 
   readonly trigger = viewChild.required<ElementRef<HTMLElement>>('trigger');
   readonly tooltipTpl = viewChild.required<TemplateRef<unknown>>('tooltipTpl');
@@ -272,28 +323,20 @@ export class TranslationRollup implements OnDestroy {
   /** Status configuration */
   private readonly statusConfig: Record<TranslationStatus, StatusConfig> = {
     new: {
-      label: 'New',
+      labelToken: TRACKER_TOKENS.BROWSER.STATUS.NEW,
       icon: 'add_circle',
-      color: '#f97316',
-      colorVar: '--color-warning',
     },
     stale: {
-      label: 'Stale',
+      labelToken: TRACKER_TOKENS.BROWSER.STATUS.STALE,
       icon: 'warning',
-      color: '#eab308',
-      colorVar: '--color-warning',
     },
     translated: {
-      label: 'Translated',
+      labelToken: TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED,
       icon: 'language',
-      color: '#3b82f6',
-      colorVar: '--color-info',
     },
     verified: {
-      label: 'Verified',
+      labelToken: TRACKER_TOKENS.BROWSER.STATUS.VERIFIED,
       icon: 'check_circle',
-      color: '#10b981',
-      colorVar: '--color-success',
     },
   };
 
@@ -347,20 +390,23 @@ export class TranslationRollup implements OnDestroy {
     return 'language';
   });
 
-  /** Aria label for accessibility */
+  /** Localized status breakdown, e.g. "2 stale, 1 new". */
+  readonly breakdown = injectStatusBreakdown(this.counts);
+
+  /**
+   * Accessible name. Reads the breakdown rather than a "x of y" summary, because
+   * the ring already carries the proportion and the counts are what a listener
+   * cannot see. Depends on the active language so it survives a language switch.
+   */
   readonly ariaLabel = computed(() => {
-    const t = this.total();
-    if (t === 0) return 'No locales';
+    const breakdown = this.breakdown();
+    this.activeLang();
 
-    const parts: string[] = [];
-    parts.push(`${this.translatedLike()} of ${t} translated`);
+    if (this.total() === 0) return breakdown;
 
-    const c = this.counts();
-    if (c.new) parts.push(`${c.new} new`);
-    if (c.stale) parts.push(`${c.stale} stale`);
-    if (c.verified) parts.push(`${c.verified} verified`);
-
-    return `Translation rollup: ${parts.join(', ')}`;
+    return this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONITEM.ROLLUPARIALABELX, {
+      breakdown,
+    });
   });
 
   /** Ring segments for SVG */
@@ -380,7 +426,6 @@ export class TranslationRollup implements OnDestroy {
         const gap = circ - len;
         const seg = {
           status: st,
-          color: this.statusConfig[st].color,
           dashArray: `${len} ${gap}`,
           dashOffset: -acc,
         };
@@ -403,9 +448,8 @@ export class TranslationRollup implements OnDestroy {
       .map((l) => ({
         code: l.code,
         status: l.status,
-        label: this.statusConfig[l.status].label,
+        labelToken: this.statusConfig[l.status].labelToken,
         icon: this.statusConfig[l.status].icon,
-        color: this.statusConfig[l.status].color,
       }))
       .sort((a, b) => {
         const orderDiff = orderIndex(a.status) - orderIndex(b.status);
@@ -486,20 +530,20 @@ export class TranslationRollup implements OnDestroy {
     }
   }
 
-  /** Handle keyboard events */
+  /** Toggle the tooltip. Enter and Space reach this through the button's click. */
+  toggle(): void {
+    if (this.isOpen()) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+
+  /** Escape closes; Enter and Space are handled natively by the button. */
   onKeydown(ev: KeyboardEvent): void {
     if (ev.key === 'Escape') {
       ev.preventDefault();
       this.close();
-      return;
-    }
-    if (ev.key === 'Enter' || ev.key === ' ') {
-      ev.preventDefault();
-      if (this.isOpen()) {
-        this.close();
-      } else {
-        this.open();
-      }
     }
   }
 

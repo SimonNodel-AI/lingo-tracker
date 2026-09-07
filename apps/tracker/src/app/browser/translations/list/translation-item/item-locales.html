@@ -16,6 +16,7 @@
         class="locale-value"
         [class.full]="densityMode() === 'full'"
         [class.expanded]="isExpanded()"
+        dir="auto"
         [innerHTML]="(lt.value || '—') | highlight : searchQuery()"
       >
       </div>

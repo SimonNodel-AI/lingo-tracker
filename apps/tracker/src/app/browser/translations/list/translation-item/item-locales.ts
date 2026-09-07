@@ -12,6 +12,38 @@ export type LocaleTranslation = {
   status?: string;
 };
 
+/** Material icon name for a translation status. Shared with the compact item row. */
+export function statusIconFor(status: string | undefined): string {
+  switch (status) {
+    case 'verified':
+      return 'check_circle';
+    case 'translated':
+      return 'language';
+    case 'stale':
+      return 'warning';
+    case 'new':
+      return 'add_circle';
+    default:
+      return 'help_outline';
+  }
+}
+
+/** Transloco token for a translation status label. Shared with the compact item row. */
+export function statusLabelTokenFor(status: string | undefined): string {
+  switch (status) {
+    case 'verified':
+      return TRACKER_TOKENS.BROWSER.STATUS.VERIFIED;
+    case 'translated':
+      return TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED;
+    case 'stale':
+      return TRACKER_TOKENS.BROWSER.STATUS.STALE;
+    case 'new':
+      return TRACKER_TOKENS.BROWSER.STATUS.NEW;
+    default:
+      return '';
+  }
+}
+
 /**
  * Displays locale translations in a grid layout.
  * Supports different density modes with appropriate styling.
@@ -41,32 +73,10 @@ export class TranslationItemLocales {
   searchQuery = input<string>('');
 
   getStatusIcon(status: string | undefined): string {
-    switch (status) {
-      case 'verified':
-        return 'check_circle';
-      case 'translated':
-        return 'language';
-      case 'stale':
-        return 'warning';
-      case 'new':
-        return 'add_circle';
-      default:
-        return 'help_outline';
-    }
+    return statusIconFor(status);
   }
 
   getStatusLabel(status: string | undefined): string {
-    switch (status) {
-      case 'verified':
-        return TRACKER_TOKENS.BROWSER.STATUS.VERIFIED;
-      case 'translated':
-        return TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED;
-      case 'stale':
-        return TRACKER_TOKENS.BROWSER.STATUS.STALE;
-      case 'new':
-        return TRACKER_TOKENS.BROWSER.STATUS.NEW;
-      default:
-        return '';
-    }
+    return statusLabelTokenFor(status);
   }
 }

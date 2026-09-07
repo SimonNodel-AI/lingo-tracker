@@ -166,3 +166,12 @@ mark.search-highlight {
     transform: translateY(0);
   }
 }
+
+// The key chip tooltip carries an untruncated resource key, which is longer and
+// less breakable than ordinary tooltip copy.
+.key-chip-tooltip .mdc-tooltip__surface {
+  font-family: var(--font-family-mono);
+  max-width: 32rem;
+  overflow-wrap: anywhere;
+  text-align: left;
+}

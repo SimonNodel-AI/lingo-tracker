@@ -53,6 +53,7 @@
   font-weight: var(--font-weight-medium);
   gap: var(--spacing-1);
   height: auto;
+  min-width: 0;
   padding: var(--spacing-2) var(--spacing-3);
   text-align: left;
   transition: background-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -72,9 +73,12 @@
 
 }
 
+// Break at the <wbr> the key markup pipe places after each dot, so a wrapped key
+// splits between segments. `anywhere` is the fallback for a single segment that is
+// wider than the chip on its own.
 .key-text {
   flex: 1;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .copy-icon {

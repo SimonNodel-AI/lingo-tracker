@@ -188,16 +188,6 @@
     "ja": "コメント：",
     "de": "Kommentar:"
   },
-  "toggleExpansion": {
-    "source": "Toggle expansion",
-    "comment": "Aria-label for the expand/collapse button on a translation item",
-    "tags": ["browser"],
-    "es": "Activar o desactivar la expansión",
-    "fr-ca": "Basculer l'extension",
-    "ru": "Переключить расширение",
-    "ja": "展開を切り替える",
-    "de": "Erweiterung umschalten"
-  },
   "readOnlyNotice": {
     "source": "This collection is read-only. Its resources can't be modified.",
     "comment": "Banner shown above the translation list when the active collection is read-only.",

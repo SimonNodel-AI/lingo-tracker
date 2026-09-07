@@ -6,10 +6,13 @@
     type="button"
     (click)="onCopyKey()"
     (keydown.enter)="onCopyKey()"
-    [matTooltip]="TOKENS.COMMON.ACTIONS.CLICKTOCOPY | transloco"
-    [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONITEM.COPYKEYARIALABEL | transloco"
+    [matTooltip]="TOKENS.BROWSER.TRANSLATIONITEM.KEYTOOLTIPX | transloco : { key: fullKey() }"
+    matTooltipClass="key-chip-tooltip"
+    [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONITEM.COPYKEYARIALABELX | transloco : { key: fullKey() }"
   >
-    <span class="key-text" [innerHTML]="(fullKey() | truncateKey) | highlight : searchQuery()"></span>
+    <!-- The chip shows a shortened key; the untruncated key is on the tooltip and
+         in the accessible name, so it is readable without copying it out. -->
+    <span class="key-text" [innerHTML]="fullKey() | keyMarkup : searchQuery()"></span>
     <mat-icon class="copy-icon">content_copy</mat-icon>
   </button>
 

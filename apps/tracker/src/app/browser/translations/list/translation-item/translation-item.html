@@ -33,17 +33,39 @@
       (commentToggle)="toggleComment()"
     />
 
-    <div
-      class="compact-value"
-      [class.compact-value--empty]="!primaryLocaleValue().trim() && !showComment()"
-      [class.compact-value--comment]="showComment()"
-      [title]="showComment() ? '' : (primaryLocaleValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco))"
-    >
-      @if (showComment()) {
-        <span class="comment-text">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} <span [innerHTML]="translation().comment | highlight : searchQuery()"></span></span>
-      } @else {
-        <span [innerHTML]="(primaryLocaleValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
+    <div class="compact-row">
+      @if (!showComment()) {
+        <!-- Names the locale the single compact value belongs to, so an empty
+             locale and a base-locale fallback can never read as a translation. -->
+        <span
+          class="compact-locale"
+          [class.compact-locale--base]="compactDisplay().isBaseFallback"
+          [attr.aria-label]="
+            TOKENS.BROWSER.TRANSLATIONITEM.COMPACTLOCALEARIALABELX
+              | transloco : { locale: compactDisplay().locale, status: compactStatusToken() | transloco }
+          "
+        >
+          <mat-icon class="status-icon status-{{ compactDisplay().status }}" aria-hidden="true">{{ compactStatusIcon() }}</mat-icon>
+          <span class="compact-locale-code">{{ compactDisplay().locale }}</span>
+          @if (compactDisplay().isBaseFallback) {
+            <span class="compact-locale-tag">{{ TOKENS.BROWSER.TRANSLATIONITEM.BASELOCALETAG | transloco }}</span>
+          }
+        </span>
       }
+
+      <div
+        class="compact-value"
+        [class.compact-value--empty]="!primaryLocaleValue().trim() && !showComment()"
+        [class.compact-value--comment]="showComment()"
+        dir="auto"
+        [title]="showComment() ? '' : (primaryLocaleValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco))"
+      >
+        @if (showComment()) {
+          <span class="comment-text">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} <span [innerHTML]="translation().comment | highlight : searchQuery()"></span></span>
+        } @else {
+          <span [innerHTML]="(primaryLocaleValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
+        }
+      </div>
     </div>
   } @else {
     <!-- Full density: expanded details with overflow handling -->
@@ -54,47 +76,41 @@
       [translationEnabled]="translationEnabled()"
     />
 
-    <div class="base-value full" [class.expanded]="isExpanded()" [innerHTML]="baseValue() | highlight : searchQuery()">
+    <div class="base-value full" [class.expanded]="isExpanded()" dir="auto" [innerHTML]="baseValue() | highlight : searchQuery()">
     </div>
 
-    <!-- Comment row: comment text left, expand toggle right -->
-    <div class="comment-expand-row">
-      <p class="comment-text full">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} <span [innerHTML]="(translation().comment || '-') | highlight : searchQuery()"></span></p>
+    <!-- Comment row: comment text left, expand toggle right. Rendered only when it
+         has something to say — a "Comment: -" placeholder and its divider on every
+         item without a comment is noise, not information. -->
+    @if (translation().comment || needsExpansion()) {
+      <div class="comment-expand-row">
+        @if (translation().comment) {
+          <p class="comment-text full">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} <span [innerHTML]="translation().comment | highlight : searchQuery()"></span></p>
+        } @else {
+          <span></span>
+        }
 
-      @if (needsExpansion()) {
-        <button
-          class="expand-button"
-          type="button"
-          (click)="toggleExpansion()"
-          [attr.aria-expanded]="isExpanded()"
-          [attr.aria-label]="TOKENS.BROWSER.TOGGLEEXPANSION | transloco"
-        >
-          <mat-icon [class.rotated]="isExpanded()">expand_more</mat-icon>
-        </button>
-      }
-    </div>
-
-    <!-- Locale scroll container: relative wrapper so the fade overlay can be absolutely positioned -->
-    @if (localeTranslations().length > 0) {
-      <div class="locale-scroll-container" [class.collapsed]="!isExpanded()">
-        <div class="locale-scroll-wrapper" #scrollWrapper>
-          <app-translation-item-locales
-            [localeTranslations]="localeTranslations()"
-            [densityMode]="'full'"
-            [isExpanded]="isExpanded()"
-            [searchQuery]="searchQuery()"
-          />
-          <!-- Sentinel observed by IntersectionObserver to detect scroll position -->
-          <div class="locale-scroll-sentinel" #scrollSentinel aria-hidden="true"></div>
-        </div>
-        @if (!isExpanded() && localeTranslations().length >= 4) {
-          <div
-            class="locale-scroll-fade"
-            [class.hidden]="isScrolledToBottom()"
-            aria-hidden="true"
-          ></div>
+        @if (needsExpansion()) {
+          <button
+            class="expand-button"
+            type="button"
+            (click)="toggleExpansion()"
+            [attr.aria-expanded]="isExpanded()"
+          >
+            <span class="expand-button__label">{{ expandLabelToken() | transloco : expandLabelParams() }}</span>
+            <mat-icon [class.rotated]="isExpanded()" aria-hidden="true">expand_more</mat-icon>
+          </button>
         }
       </div>
+    }
+
+    @if (visibleLocaleTranslations().length > 0) {
+      <app-translation-item-locales
+        [localeTranslations]="visibleLocaleTranslations()"
+        [densityMode]="'full'"
+        [isExpanded]="isExpanded()"
+        [searchQuery]="searchQuery()"
+      />
     }
   }
 

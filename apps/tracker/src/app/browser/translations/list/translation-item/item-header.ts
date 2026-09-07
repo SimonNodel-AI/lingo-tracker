@@ -7,10 +7,9 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { CdkDragHandle } from '@angular/cdk/drag-drop';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { TruncateKeyPipe } from '../../../../shared/pipes/truncate-key.pipe';
+import { KeyMarkupPipe } from '../../../../shared/pipes/key-markup.pipe';
 import { TagList } from '../../../../shared/tag-list/tag-list.component';
 import { TranslationRollup, type LocaleState } from './translation-rollup';
-import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
@@ -34,10 +33,9 @@ import { TranslationListStore } from '../store/translation-list.store';
     MatProgressSpinnerModule,
     CdkDragHandle,
     TranslocoPipe,
-    TruncateKeyPipe,
+    KeyMarkupPipe,
     TagList,
     TranslationRollup,
-    HighlightPipe,
   ],
   templateUrl: './item-header.html',
   styleUrl: './item-header.scss',

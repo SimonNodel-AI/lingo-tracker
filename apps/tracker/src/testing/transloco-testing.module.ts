@@ -25,7 +25,6 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'browser.addNewTranslationTooltip': 'Add a new translation',
         'browser.noTranslation': 'No translation',
         'browser.commentPrefix': 'Comment:',
-        'browser.toggleExpansion': 'Toggle expansion',
         'browser.noResults': 'No results found',
         'browser.density.compactTooltip': 'Compact — 2-line view, high density',
         'browser.density.fullTooltip': 'Full — detailed view with comments and all locales',

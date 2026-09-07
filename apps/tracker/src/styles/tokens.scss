@@ -9,6 +9,9 @@
   --color-primary-hover: #c25d55;
   --color-primary-active: #b04a42;
   --color-primary-subtle: #fdf2f1;
+  // Text-weight primary: --color-primary is a fill tone and reaches only 2.68:1
+  // on a card, so copy that should read as "primary" uses this instead (5.05:1).
+  --color-primary-text: #a1443d;
 
   // Colors - Secondary (Deep Sky Blue)
   --color-secondary: #4a7fb5;
@@ -37,6 +40,36 @@
   --color-error: #c95e5e;
   --color-info: #5a8db8;
   --color-info-subtle: #e6f0f8;
+
+  // Translation status spine. Every surface that reports a status — locale rows,
+  // the compact badge, the rollup ring and its tooltip — reads these, so a status
+  // can never mean two different colors in two places. `new` and `stale` are
+  // deliberately distinct: one is work not started, the other is work gone out of
+  // date, and conflating them hides the more urgent of the two.
+  //
+  // Each status carries two values because the same token is painted on both a
+  // parchment card and an always-dark tooltip. One mid-tone that cleared 3:1 on
+  // both would force all four to the same lightness and make them harder to tell
+  // apart, so the surface picks instead. Ratios below are against the card
+  // background (--color-background-muted); every value clears 3:1 for non-text.
+  --status-new-on-light: #a87716; // 3.24:1
+  --status-new-on-dark: #e4b454; // 7.52:1
+  --status-stale-on-light: #b85c26; // 3.75:1
+  --status-stale-on-dark: #e08a4e; // 5.43:1
+  --status-translated-on-light: #3f7aa8; // 3.78:1
+  --status-translated-on-dark: #7bafde; // 6.19:1
+  --status-verified-on-light: #4e8a63; // 3.35:1
+  --status-verified-on-dark: #7dbb8f; // 6.43:1
+
+  --color-status-new: var(--status-new-on-light);
+  --color-status-stale: var(--status-stale-on-light);
+  --color-status-translated: var(--status-translated-on-light);
+  --color-status-verified: var(--status-verified-on-light);
+
+  // Tooltip panel. Stays dark in both themes, so it is built from whichever end
+  // of the neutral scale is dark in the current theme rather than a fixed hex.
+  --color-tooltip-surface: var(--color-neutral-800);
+  --color-tooltip-text: var(--color-neutral-50);
 
   // Watercolor accent palette (for splashes & decorative elements)
   --wc-coral: #e8847c;
@@ -95,6 +128,9 @@
   --color-primary-hover: #f0a09a;
   --color-primary-active: #d4726a;
   --color-primary-subtle: #3d2220;
+  // The dark-theme primary already clears 4.5:1 on a card (5.5:1), so text-weight
+  // primary needs no separate tone here.
+  --color-primary-text: var(--color-primary);
 
   // Colors - Secondary (Sky Blue — brightened)
   --color-secondary: #7bafde;
@@ -121,6 +157,18 @@
   --color-error: #d97878;
   --color-info: #7bafde;
   --color-info-subtle: #1a2d40;
+
+  // Translation status spine — dark. Primitives are declared once on :root; the
+  // theme only chooses which surface set applies.
+  --color-status-new: var(--status-new-on-dark);
+  --color-status-stale: var(--status-stale-on-dark);
+  --color-status-translated: var(--status-translated-on-dark);
+  --color-status-verified: var(--status-verified-on-dark);
+
+  // Tooltip panel — dark. The neutral scale is inverted here, so the dark end is
+  // the low numbers; this keeps the panel raised above the near-black page.
+  --color-tooltip-surface: var(--color-neutral-200);
+  --color-tooltip-text: var(--color-neutral-900);
 
   // Watercolor accents — slightly brighter for dark
   --wc-coral: #f0a09a;

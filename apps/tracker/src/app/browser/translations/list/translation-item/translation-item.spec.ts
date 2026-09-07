@@ -8,6 +8,7 @@ import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
+import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 
 async function configureTranslationItemTestBed(): Promise<{
   fixture: ComponentFixture<TranslationItem>;
@@ -81,17 +82,16 @@ describe('TranslationItem', () => {
     expect(html).toContain('No translation');
   });
 
-  it('should gracefully handle zero locales selected (compact fallback)', () => {
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+  it('should flag the base locale as a fallback when no non-base locale is available', () => {
+    store.setSelectedCollection({ collectionName: 'test', locales: ['en'], baseLocale: 'en' });
     store.setDensityMode('full');
     store.clearAllLocales();
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
 
-    // primaryLocale should fallback to baseLocale when filteredLocales is empty
-    expect(component.primaryLocale()).toBe(store.baseLocale());
+    expect(component.compactDisplay().locale).toBe(store.baseLocale());
+    expect(component.compactDisplay().isBaseFallback).toBe(true);
     const html = fixture.nativeElement.innerHTML as string;
-    // Should show a helpful message or at least not crash; check presence of key
     expect(html).toContain('common.buttons.save');
   });
 
@@ -139,14 +139,15 @@ describe('TranslationItem - Compact helpers', () => {
     ({ fixture, component, store } = await configureTranslationItemTestBed());
   });
 
-  it('should select primary locale from filteredLocales in store', () => {
+  it('should display the first non-base locale, not the base locale', () => {
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
     store.setDensityMode('full');
     store.clearAllLocales();
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
 
-    expect(component.primaryLocale()).toBe('en');
+    expect(component.compactDisplay().locale).toBe('es');
+    expect(component.compactDisplay().isBaseFallback).toBe(false);
   });
 
   it('should return selected non-base locale value, or base value when only base is selected', () => {
@@ -227,8 +228,17 @@ describe('TranslationItem - Compact helpers', () => {
     fixture.componentRef.setInput('translation', t);
     fixture.detectChanges();
 
-    // Expect order: stale, new, translated, verified (only present ones included)
-    expect(component.statusBreakdown()).toBe('2 stale, 1 new, 1 verified');
+    // The test harness has no translations loaded, so each part comes back as its
+    // resource key. Assert the contract — worst status first, zero counts omitted —
+    // rather than the English wording, which lives in the resource file.
+    const breakdown = component.statusBreakdown();
+
+    expect(breakdown).toContain(TRACKER_TOKENS.BROWSER.STATUS.STALECOUNTX);
+    expect(breakdown).toContain(TRACKER_TOKENS.BROWSER.STATUS.VERIFIEDCOUNTX);
+    expect(breakdown).not.toContain(TRACKER_TOKENS.BROWSER.STATUS.TRANSLATEDCOUNTX);
+    expect(breakdown.indexOf(TRACKER_TOKENS.BROWSER.STATUS.STALECOUNTX)).toBeLessThan(
+      breakdown.indexOf(TRACKER_TOKENS.BROWSER.STATUS.NEWCOUNTX),
+    );
   });
 });
 
@@ -257,6 +267,36 @@ describe('TranslationItem - Full density expansion', () => {
     fixture.detectChanges();
 
     expect(component.needsExpansion()).toBe(false);
+  });
+
+  it('needsExpansion should be true when locale rows are withheld by the collapsed state', () => {
+    store.setSelectedCollection({
+      collectionName: 'test',
+      locales: ['en', 'es', 'fr', 'de', 'ja', 'ru'],
+      baseLocale: 'en',
+    });
+    store.clearAllLocales();
+
+    const t: ResourceSummaryDto = {
+      key: 'k-many-locales',
+      translations: { en: 'short', es: 'corto', fr: 'court', de: 'kurz', ja: '短い', ru: 'коротко' },
+      status: {},
+    } as any;
+
+    fixture.componentRef.setInput('translation', t);
+    fixture.detectChanges();
+
+    // 5 non-base locales, 4 rows visible while collapsed
+    expect(component.hiddenLocaleCount()).toBe(1);
+    expect(component.visibleLocaleTranslations().length).toBe(4);
+    expect(component.needsExpansion()).toBe(true);
+
+    component.toggleExpansion();
+    fixture.detectChanges();
+
+    expect(component.hiddenLocaleCount()).toBe(0);
+    expect(component.visibleLocaleTranslations().length).toBe(5);
+    expect(component.needsExpansion()).toBe(true);
   });
 
   it('needsExpansion should be true when base long', () => {

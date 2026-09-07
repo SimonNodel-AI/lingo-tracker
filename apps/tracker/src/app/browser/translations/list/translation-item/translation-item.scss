@@ -55,13 +55,74 @@
 }
 
 
+.compact-row {
+  align-items: baseline;
+  display: flex;
+  gap: var(--spacing-2);
+  min-width: 0;
+  padding-left: var(--spacing-1);
+}
+
+/*
+ * Locale badge: says which locale the single compact value belongs to.
+ * Without it an untranslated row and a finished one are indistinguishable.
+ */
+.compact-locale {
+  align-items: center;
+  color: var(--color-text-secondary);
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--spacing-1);
+}
+
+.compact-locale .status-icon {
+  flex-shrink: 0;
+  font-size: var(--font-size-base);
+  height: var(--font-size-base);
+  width: var(--font-size-base);
+
+  // Each status carries its own hue: `new` (not started) and `stale` (drifted out
+  // of date) used to share one, which hid the more urgent of the two.
+  &.status-new {
+    color: var(--color-status-new);
+  }
+
+  &.status-stale {
+    color: var(--color-status-stale);
+  }
+
+  &.status-translated {
+    color: var(--color-status-translated);
+  }
+
+  &.status-verified {
+    color: var(--color-status-verified);
+  }
+}
+
+.compact-locale-code {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+}
+
+/* Marks a row that is showing base-locale source text, not a translation. */
+.compact-locale-tag {
+  background-color: var(--color-background-subtle);
+  border-radius: var(--border-radius-full);
+  color: var(--color-text-placeholder);
+  font-size: var(--font-size-xs);
+  padding: 0 var(--spacing-1);
+}
+
 .compact-value {
-  color: var(--color-primary);
+  flex: 1;
+  color: var(--color-primary-text);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-snug);
   margin: 0;
-  padding: 0 0 0 var(--spacing-1);
+  padding: 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -69,8 +130,10 @@
   transition: opacity var(--transition-fast);
 }
 
+/* The "no translation" placeholder is a state the user has to read, not a hint,
+   so it takes a legible tone; italics keep it distinct from real content. */
 .compact-value--empty {
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   font-style: italic;
 }
 
@@ -85,8 +148,11 @@
   }
 }
 
+/* The base value stays the loudest thing in the item — it is the source text the
+   rest is measured against — but earns that through size and weight, with the
+   coral moved to a tone that is actually readable at body contrast. */
 .base-value {
-  color: var(--color-primary);
+  color: var(--color-primary-text);
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-bold);
   line-height: var(--line-height-normal);
@@ -148,7 +214,20 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  padding: var(--spacing-1);
+  gap: var(--spacing-1);
+  padding: var(--spacing-1) var(--spacing-2);
+}
+
+/* Names what expanding reveals ("+6 more locales"), so nothing is withheld silently. */
+.expand-button__label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+}
+
+.expand-button:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 2px;
 }
 
 .expand-button:hover {
@@ -170,79 +249,6 @@
 
 .expand-button mat-icon.rotated {
   transform: rotate(180deg);
-}
-
-/*
- * Outer container that establishes the stacking context for the fade overlay.
- * It is purely a positioning context — no overflow or max-height constraints
- * here so the inner wrapper can scroll independently.
- */
-.locale-scroll-container {
-  position: relative;
-}
-
-/*
- * Inner scroll wrapper: the actual overflow-y scroll region.
- * In the collapsed state the wrapper is height-constrained so locale rows
- * scroll within it. In the expanded state the wrapper grows to full content
- * height with no constraint.
- */
-.locale-scroll-container.collapsed .locale-scroll-wrapper {
-  max-height: calc(4 * var(--spacing-8)); /* ~4 locale rows × var(--spacing-8) each */
-}
-
-.locale-scroll-wrapper {
-  height: auto;
-  overflow-y: auto;
-
-  /* Hide scrollbar track visually while keeping scrollability */
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-border) transparent;
-
-  &::-webkit-scrollbar {
-    width: var(--spacing-1);
-  }
-
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background-color: var(--color-border);
-    border-radius: var(--border-radius-sm);
-  }
-}
-
-/*
- * Invisible sentinel element at the very end of scrollable content.
- * The IntersectionObserver watches this within the scroll wrapper as root;
- * when it becomes visible the fade gradient is hidden.
- */
-.locale-scroll-sentinel {
-  height: 1px;
-  pointer-events: none;
-}
-
-/*
- * Fade overlay hinting at additional locale rows below the visible area.
- * Absolutely positioned over the bottom of .locale-scroll-container so it
- * does NOT scroll with the content — it always sits at the visible bottom edge.
- * Transitions opacity smoothly so the disappearance is not jarring.
- */
-.locale-scroll-fade {
-  background: linear-gradient(to bottom, transparent 0%, var(--color-background-muted) 100%);
-  bottom: 0;
-  height: var(--spacing-6);
-  left: 0;
-  opacity: 1;
-  pointer-events: none;
-  position: absolute;
-  right: 0;
-  transition: opacity var(--transition-fast);
-
-  &.hidden {
-    opacity: 0;
-  }
 }
 
 .comment-text {
