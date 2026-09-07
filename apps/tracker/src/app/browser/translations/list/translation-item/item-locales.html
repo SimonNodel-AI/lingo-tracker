@@ -25,6 +25,19 @@
     </div>
   }
 
+  <!-- Every rendered locale shares one status, so the column says it once with a
+       count instead of repeating an identical chip down eleven rows. -->
+  @if (uniformSummary(); as summary) {
+    <div class="locale-status-summary">
+      <span [class]="'status-chip status-' + summary.status">
+        <mat-icon class="status-chip__icon" aria-hidden="true">
+          {{ getStatusIcon(summary.status) }}
+        </mat-icon>
+        <span class="status-chip__label">{{ summary.label }}</span>
+      </span>
+    </div>
+  }
+
   @for (lt of localeTranslations(); track lt.locale) {
     <div class="locale-line" [class.full]="densityMode() === 'full'">
       <div class="locale-label">
@@ -33,7 +46,7 @@
         <!-- Icon and label are one filled region rather than a glyph, a pill and a
              colon floating separately: the chip is what has to be readable down a
              column of rows, and it can only carry a hue if it owns an area. -->
-        @if (lt.status) {
+        @if (lt.status && !uniformStatus()) {
           <span [class]="'status-chip status-' + lt.status">
             <mat-icon class="status-chip__icon" aria-hidden="true">
               {{ getStatusIcon(lt.status) }}

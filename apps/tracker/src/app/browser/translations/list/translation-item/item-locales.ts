@@ -1,10 +1,19 @@
-import { Component, ChangeDetectionStrategy, input } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import { TranslocoPipe } from '@jsverse/transloco';
+import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { injectStatusBreakdown, type StatusCounts } from '../../../../shared/i18n/status-breakdown';
 import type { DensityMode } from '../../../types/density-mode';
+
+/** The statuses a locale row can carry, as a runtime guard over the string field. */
+const TRANSLATION_STATUSES: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
+
+function asTranslationStatus(status: string | undefined): TranslationStatus | undefined {
+  return TRANSLATION_STATUSES.find((s) => s === status);
+}
 
 export type LocaleTranslation = {
   locale: string;
@@ -99,6 +108,44 @@ export class TranslationItemLocales {
   searchQuery = input<string>('');
 
   readonly TOKENS = TRACKER_TOKENS;
+
+  /** Locale rows per status, over the rows actually rendered. */
+  private readonly statusCounts = computed<StatusCounts>(() => {
+    const counts: StatusCounts = { new: 0, stale: 0, translated: 0, verified: 0 };
+    for (const lt of this.localeTranslations()) {
+      const status = asTranslationStatus(lt.status);
+      if (status) counts[status]++;
+    }
+    return counts;
+  });
+
+  /** Localized "{n} translated" for the rendered rows. */
+  private readonly breakdown = injectStatusBreakdown(this.statusCounts);
+
+  /**
+   * The status every rendered row shares, if they share one.
+   *
+   * Eleven locales in the same state drew eleven identical chips, which is a
+   * pattern with nothing to find in it. One chip carrying the count says the same
+   * thing once. Two or more rows are needed before collapsing wins anything, and
+   * a row with no status is not a match — so a mixed card keeps its per-row chips,
+   * which is the case where the column is worth reading.
+   */
+  readonly uniformStatus = computed<TranslationStatus | undefined>(() => {
+    const rows = this.localeTranslations();
+    if (rows.length < 2) return undefined;
+
+    const first = asTranslationStatus(rows[0].status);
+    if (!first) return undefined;
+
+    return rows.every((lt) => lt.status === first) ? first : undefined;
+  });
+
+  /** The collapsed chip: the shared status, labelled with its count. */
+  readonly uniformSummary = computed(() => {
+    const status = this.uniformStatus();
+    return status ? { status, label: this.breakdown() } : undefined;
+  });
 
   getStatusIcon(status: string | undefined): string {
     return statusIconFor(status);

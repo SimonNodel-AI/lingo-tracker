@@ -80,17 +80,12 @@ const CLOSE_DELAY = 120;
         }
       </svg>
 
-      <!-- Center icon -->
-      <div
-        class="center"
-        [class.center--issue]="hasIssues()"
-        [class.center--ok]="!hasIssues()"
-      >
+      <!-- Center icon. The state class names the issue kind rather than the fact
+           of an issue, so new and stale differ in shape as well as in hue. -->
+      <div class="center" [ngClass]="'center--' + centerState()">
         <mat-icon
           class="center-icon"
-          [class.icon--issue]="hasIssues()"
-          [class.icon--verified]="!hasIssues() && isAllVerified()"
-          [class.icon--translated]="!hasIssues() && !isAllVerified()"
+          [ngClass]="'icon--' + centerState()"
           aria-hidden="true"
         >
           {{ centerIcon() }}
@@ -199,9 +194,17 @@ const CLOSE_DELAY = 120;
         box-shadow: var(--shadow-sm);
       }
 
-      .center--issue {
+      /* The ring of the centre disc repeats the status hue, so the issue kinds
+         differ twice over: once in the glyph, once in the border. */
+      .center--stale,
+      .center--mixed {
         border: 2px solid
           color-mix(in srgb, var(--color-status-stale) 45%, transparent);
+      }
+
+      .center--new {
+        border: 2px solid
+          color-mix(in srgb, var(--color-status-new) 45%, transparent);
       }
 
       .center-icon {
@@ -211,8 +214,13 @@ const CLOSE_DELAY = 120;
         line-height: 16px;
       }
 
-      .icon--issue {
+      .icon--stale,
+      .icon--mixed {
         color: var(--color-status-stale);
+      }
+
+      .icon--new {
+        color: var(--color-status-new);
       }
 
       .icon--translated {
@@ -389,25 +397,33 @@ export class TranslationRollup implements OnDestroy {
   /** Total non-base locales */
   readonly total = computed(() => this.effectiveLocales().length);
 
-  /** Count of translated + verified */
-  private readonly translatedLike = computed(() => this.counts().translated + this.counts().verified);
-
-  /** Whether there are issues (new or stale) */
-  readonly hasIssues = computed(() => this.counts().new > 0 || this.counts().stale > 0);
-
   /** Whether all locales are verified */
   readonly isAllVerified = computed(() => this.total() > 0 && this.counts().verified === this.total());
 
-  /** Whether all locales are translated (but not all verified) */
-  readonly isAllTranslated = computed(
-    () => this.total() > 0 && this.translatedLike() === this.total() && !this.isAllVerified(),
-  );
+  /**
+   * The single state the centre reports. `new` and `stale` are the two states a
+   * translator triages differently, so they stay separate here; `mixed` is the
+   * only case that merges them, and only because both are genuinely present.
+   */
+  readonly centerState = computed<'new' | 'stale' | 'mixed' | 'verified' | 'translated'>(() => {
+    const { new: isNew, stale } = this.counts();
+    if (isNew > 0 && stale > 0) return 'mixed';
+    if (stale > 0) return 'stale';
+    if (isNew > 0) return 'new';
+    return this.isAllVerified() ? 'verified' : 'translated';
+  });
 
-  /** Center icon based on state */
+  /**
+   * Center icon. Shape carries the state, so the two issue kinds stay legible to
+   * a reader who cannot separate the arcs by hue. The icons match the tooltip
+   * rows for the same status.
+   */
   readonly centerIcon = computed(() => {
-    if (this.hasIssues()) return 'priority_high';
-    if (this.isAllVerified()) return 'check';
-    return 'language';
+    const state = this.centerState();
+    if (state === 'mixed') return 'priority_high';
+    if (state === 'verified') return 'check';
+    if (state === 'translated') return 'language';
+    return this.statusConfig[state].icon;
   });
 
   /** Localized status breakdown, e.g. "2 stale, 1 new". */

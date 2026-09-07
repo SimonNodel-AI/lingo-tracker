@@ -341,11 +341,21 @@
    size to the text they sit beside, and restore the 44px floor under coarse
    input via the `pointer: coarse` rules in item-header.scss. Applying the floor
    here unconditionally is what made a two-line "compact" row 93px tall. */
-.item-container[data-density='full'] button,
-.expand-button {
+.item-container[data-density='full'] button:not(.expand-button) {
   /* minimum touch target size — no matching token for 44px */
   min-width: 44px;
   min-height: 44px;
+}
+
+/* The expand control is the only thing on its row when the item has no comment,
+   so its floor becomes the row's height: 44px of button under a 1px rule and a
+   4px pad measured 49px of band for a 32px control. It sizes to its content on a
+   fine pointer and takes the floor back where a finger needs it. */
+@media (pointer: coarse) {
+  .expand-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 .expand-button mat-icon {

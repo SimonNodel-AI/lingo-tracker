@@ -67,6 +67,16 @@
 }
 
 /*
+ * The collapsed status column. It spans both columns and sits between the source
+ * rule and the first locale, so it reads as a heading over the rows it describes
+ * rather than as an annotation on any one of them.
+ */
+.locale-status-summary {
+  grid-column: 1 / -1;
+  padding-top: var(--spacing-1);
+}
+
+/*
  * The status chip is the spine made visible. The four spine tones are graphic
  * weight — right for a ring segment, but as a lone 16px glyph a status was only
  * legible to someone already looking at that row. Filling the chip with the
