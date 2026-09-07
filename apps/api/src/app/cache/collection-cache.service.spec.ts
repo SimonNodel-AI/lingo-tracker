@@ -159,14 +159,15 @@ describe('CollectionCacheService', () => {
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.ERROR);
     });
 
-    it('should clear previous collection cache when setting new collection', () => {
+    it('should keep an existing collection cached when another collection is added', () => {
       const mainTree = createMockTree(['main']);
       mockCore.extractResourcesRecursively.mockReturnValue(mainTree.resources);
       service.setCacheStatus('Main', CacheStatus.READY, mainTree, undefined, 3);
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.READY);
 
       service.setCacheStatus('Admin', CacheStatus.INDEXING);
-      expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
+      expect(service.getCacheStatus('Main')).toBe(CacheStatus.READY);
+      expect(service.getCache('Main')).toEqual(mainTree);
       expect(service.getCacheStatus('Admin')).toBe(CacheStatus.INDEXING);
     });
 
@@ -262,13 +263,13 @@ describe('CollectionCacheService', () => {
       service.setCacheStatus('Main', CacheStatus.READY, mockTree, undefined, 3);
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.READY);
 
-      service.clearCache();
+      service.clearCache('Main');
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
       expect(service.getCache('Main')).toBeNull();
     });
 
     it('should handle clearing when no collection is cached', () => {
-      expect(() => service.clearCache()).not.toThrow();
+      expect(() => service.clearCache('Main')).not.toThrow();
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
     });
 
@@ -276,9 +277,72 @@ describe('CollectionCacheService', () => {
       const mockTree = createMockTree();
       mockCore.extractResourcesRecursively.mockReturnValue(mockTree.resources);
       service.setCacheStatus('Main', CacheStatus.READY, mockTree, undefined, 3);
-      service.clearCache();
+      service.clearCache('Main');
       service.setCacheStatus('Admin', CacheStatus.INDEXING);
       expect(service.getCacheStatus('Admin')).toBe(CacheStatus.INDEXING);
+    });
+
+    it('should leave other collections untouched', () => {
+      const mainTree = createMockTree(['main']);
+      const adminTree = createMockTree(['admin']);
+      mockCore.extractResourcesRecursively.mockReturnValue(mainTree.resources);
+      service.setCacheStatus('Main', CacheStatus.READY, mainTree, undefined, 3);
+      service.setCacheStatus('Admin', CacheStatus.READY, adminTree, undefined, 2);
+
+      service.clearCache('Main');
+
+      expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
+      expect(service.getCacheStatus('Admin')).toBe(CacheStatus.READY);
+      expect(service.getCache('Admin')).toEqual(adminTree);
+    });
+
+    it('should drop every collection when all caches are cleared', () => {
+      const mainTree = createMockTree(['main']);
+      const adminTree = createMockTree(['admin']);
+      mockCore.extractResourcesRecursively.mockReturnValue(mainTree.resources);
+      service.setCacheStatus('Main', CacheStatus.READY, mainTree, undefined, 3);
+      service.setCacheStatus('Admin', CacheStatus.READY, adminTree, undefined, 2);
+
+      service.clearAllCaches();
+
+      expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
+      expect(service.getCacheStatus('Admin')).toBe(CacheStatus.NOT_STARTED);
+      expect(service.getCachedCollectionNames()).toEqual([]);
+    });
+  });
+
+  describe('cache limit', () => {
+    it('should evict the least recently used collection once the limit is reached', () => {
+      process.env.LINGO_TRACKER_MAX_CACHED_COLLECTIONS = '2';
+      const limitedService = new CollectionCacheService();
+      delete process.env.LINGO_TRACKER_MAX_CACHED_COLLECTIONS;
+
+      const tree = createMockTree();
+      mockCore.extractResourcesRecursively.mockReturnValue(tree.resources);
+
+      limitedService.setCacheStatus('First', CacheStatus.READY, tree, undefined, 1);
+      limitedService.setCacheStatus('Second', CacheStatus.READY, tree, undefined, 1);
+
+      // Touching First makes Second the least recently used entry.
+      limitedService.getCache('First');
+
+      limitedService.setCacheStatus('Third', CacheStatus.READY, tree, undefined, 1);
+
+      expect(limitedService.getCacheStatus('Second')).toBe(CacheStatus.NOT_STARTED);
+      expect(limitedService.getCacheStatus('First')).toBe(CacheStatus.READY);
+      expect(limitedService.getCacheStatus('Third')).toBe(CacheStatus.READY);
+    });
+
+    it('should never evict a collection that is still indexing', () => {
+      process.env.LINGO_TRACKER_MAX_CACHED_COLLECTIONS = '1';
+      const limitedService = new CollectionCacheService();
+      delete process.env.LINGO_TRACKER_MAX_CACHED_COLLECTIONS;
+
+      limitedService.setCacheStatus('First', CacheStatus.INDEXING);
+      limitedService.setCacheStatus('Second', CacheStatus.INDEXING);
+
+      expect(limitedService.getCacheStatus('First')).toBe(CacheStatus.INDEXING);
+      expect(limitedService.getCacheStatus('Second')).toBe(CacheStatus.INDEXING);
     });
   });
 
@@ -364,14 +428,14 @@ describe('CollectionCacheService', () => {
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.READY);
       expect(service.getCache('Main')).toEqual(mainTree);
 
-      // Index Admin (this should clear Main's cache)
+      // Index Admin alongside Main
       await service.indexCollection('Admin', 'src/admin/i18n', 2);
 
       expect(service.getCacheStatus('Admin')).toBe(CacheStatus.READY);
       expect(service.getCache('Admin')).toEqual(adminTree);
 
-      // Main should have been cleared when Admin started
-      expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
+      // Main is untouched by Admin's indexing
+      expect(service.getCacheStatus('Main')).toBe(CacheStatus.READY);
     });
 
     it('should store error message when indexing fails', async () => {
@@ -397,7 +461,7 @@ describe('CollectionCacheService', () => {
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.ERROR);
     });
 
-    it('should clear previous collection cache when indexing new collection', async () => {
+    it('should keep both collections cached when indexing a second one', async () => {
       const mainTree = createMockTree(['main']);
       const adminTree = createMockTree(['admin']);
 
@@ -411,12 +475,13 @@ describe('CollectionCacheService', () => {
       expect(service.getCache('Main')).toEqual(mainTree);
 
       await service.indexCollection('Admin', 'src/admin/i18n', 2);
-      expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
+      expect(service.getCacheStatus('Main')).toBe(CacheStatus.READY);
+      expect(service.getCache('Main')).toEqual(mainTree);
       expect(service.getCacheStatus('Admin')).toBe(CacheStatus.READY);
       expect(service.getCache('Admin')).toEqual(adminTree);
     });
 
-    it('should maintain only the latest indexed collection', async () => {
+    it('should keep the stats of each cached collection separate', async () => {
       const mainTree = createMockTree(['main']);
       const adminTree = createMockTree(['admin']);
 
@@ -425,18 +490,11 @@ describe('CollectionCacheService', () => {
         .mockReturnValueOnce(mainTree.resources)
         .mockReturnValueOnce(adminTree.resources);
 
-      // Index Main first
       await service.indexCollection('Main', 'src/i18n', 3);
-      expect(service.getCacheStatus('Main')).toBe(CacheStatus.READY);
-      expect(service.getCache('Main')).toEqual(mainTree);
-
-      // Index Admin - should clear Main
       await service.indexCollection('Admin', 'src/admin/i18n', 2);
 
-      expect(service.getCacheStatus('Admin')).toBe(CacheStatus.READY);
-      expect(service.getCache('Admin')).toEqual(adminTree);
-      expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
-      expect(service.getCache('Main')).toBeNull();
+      expect(service.getCacheStats('Main')?.localeCount).toBe(3);
+      expect(service.getCacheStats('Admin')?.localeCount).toBe(2);
     });
 
     it('should handle error in one collection then successfully index another', async () => {
@@ -459,11 +517,11 @@ describe('CollectionCacheService', () => {
       }
       expect(service.getCacheStatus('Main')).toBe(CacheStatus.ERROR);
 
-      // Index Admin - should clear Main's error state and succeed
+      // Index Admin - Main keeps its own error state, Admin succeeds independently
       await service.indexCollection('Admin', 'src/admin/i18n', 2);
       expect(service.getCacheStatus('Admin')).toBe(CacheStatus.READY);
       expect(service.getCache('Admin')).toEqual(adminTree);
-      expect(service.getCacheStatus('Main')).toBe(CacheStatus.NOT_STARTED);
+      expect(service.getCacheStatus('Main')).toBe(CacheStatus.ERROR);
     });
   });
   describe('revalidate', () => {
@@ -544,7 +602,7 @@ describe('CollectionCacheService', () => {
 
       writeEntries({ ok: { source: 'OK' }, maybe: { source: 'Maybe' } });
       service.addResourceToCache('Main', createMockTree().resources[0], '');
-      service.refreshFingerprint();
+      service.refreshFingerprint('Main');
 
       writeEntries({ ok: { source: 'OK' }, maybe: { source: 'Maybe' }, later: { source: 'Later' } });
 

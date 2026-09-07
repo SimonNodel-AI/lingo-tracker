@@ -182,12 +182,13 @@ export class FoldersController {
 
       // Handle cross-collection moves
       let destinationTranslationsFolder: string | undefined;
+      let destinationCollectionName: string | undefined;
       if (moveFolderDto.toCollection) {
-        const destCollectionName = decodeURIComponent(moveFolderDto.toCollection);
-        if (!config.collections || !config.collections[destCollectionName]) {
-          throw new NotFoundException(`Destination collection "${destCollectionName}" not found`);
+        destinationCollectionName = decodeURIComponent(moveFolderDto.toCollection);
+        if (!config.collections || !config.collections[destinationCollectionName]) {
+          throw new NotFoundException(`Destination collection "${destinationCollectionName}" not found`);
         }
-        destinationTranslationsFolder = config.collections[destCollectionName].translationsFolder;
+        destinationTranslationsFolder = config.collections[destinationCollectionName].translationsFolder;
       }
 
       // Perform the move
@@ -201,14 +202,21 @@ export class FoldersController {
 
       // Update cache incrementally after successful folder move
       if (result.movedCount > 0) {
-        const moved = this.cacheService.moveFolderInCache(
-          decodedCollectionName,
-          moveFolderDto.sourceFolderPath,
-          moveFolderDto.destinationFolderPath,
-        );
-        if (!moved) {
-          // Fallback: clear cache if incremental update failed
-          this.cacheService.clearCache();
+        if (destinationCollectionName && destinationCollectionName !== decodedCollectionName) {
+          // A cross-collection move rewrites two trees; the incremental update only knows how
+          // to relocate a folder within one, so both caches are dropped instead.
+          this.cacheService.clearCache(decodedCollectionName);
+          this.cacheService.clearCache(destinationCollectionName);
+        } else {
+          const moved = this.cacheService.moveFolderInCache(
+            decodedCollectionName,
+            moveFolderDto.sourceFolderPath,
+            moveFolderDto.destinationFolderPath,
+          );
+          if (!moved) {
+            // Fallback: clear cache if incremental update failed
+            this.cacheService.clearCache(decodedCollectionName);
+          }
         }
       }
 

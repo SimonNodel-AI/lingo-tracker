@@ -299,7 +299,7 @@ export class ResourcesController {
 
       // Clear cache after successful resource deletion
       if (result.entriesDeleted > 0) {
-        this.#cacheService.clearCache();
+        this.#cacheService.clearCache(decodedCollectionName);
       }
 
       return {
@@ -349,6 +349,10 @@ export class ResourcesController {
         );
       }
 
+      // Every collection a move touched, so each one's cache is dropped and no untouched
+      // collection's cache is.
+      const affectedCollections = new Set<string>([decodedCollectionName]);
+
       for (const moveOp of dto.moves) {
         let destinationTranslationsFolder: string | undefined;
 
@@ -362,6 +366,7 @@ export class ResourcesController {
             continue;
           }
           destinationTranslationsFolder = config.collections[destCollectionName].translationsFolder;
+          affectedCollections.add(destCollectionName);
         }
 
         const moveResult = await moveResource(translationsFolder, {
@@ -382,7 +387,9 @@ export class ResourcesController {
 
       // Clear cache after successful resource move
       if (result.movedCount > 0) {
-        this.#cacheService.clearCache();
+        for (const affected of affectedCollections) {
+          this.#cacheService.clearCache(affected);
+        }
       }
 
       return result;
