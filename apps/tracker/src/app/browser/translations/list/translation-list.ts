@@ -103,7 +103,10 @@ export class TranslationList {
 
     switch (mode) {
       case 'compact':
-        return (isTouch ? 100 : 96) + this.#COMPACT_MARGIN_BOTTOM;
+        // One line, measured in the browser rather than derived: 4px padding, a
+        // 28px control row, 4px padding, plus the container border. The touch
+        // variant restores the 44px control floor and grows to match.
+        return (isTouch ? 54 : 38) + this.#COMPACT_MARGIN_BOTTOM;
 
       case 'full': {
         const filteredLocales = this.store.filteredLocales();

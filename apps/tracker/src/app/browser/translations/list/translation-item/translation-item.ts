@@ -1,12 +1,13 @@
 import { Component, ChangeDetectionStrategy, input, output, computed, effect, inject, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { CdkDrag, CdkDragPlaceholder } from '@angular/cdk/drag-drop';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { TranslationItemHeader } from './item-header';
-import { TranslationItemLocales, statusIconFor, statusLabelTokenFor } from './item-locales';
+import { TranslationItemLocales, statusIconFor, statusLabelTokenFor, type BaseTranslation } from './item-locales';
 import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import type { DragData } from '../../../types/drag-data';
 import { TranslationListStore } from '../store/translation-list.store';
@@ -20,6 +21,20 @@ const EXPAND_THRESHOLD = 200;
  */
 const MAX_VISIBLE_LOCALE_ROWS = 4;
 const LONG_PRESS_THRESHOLD = 500;
+
+/**
+ * Whether a locale's stored value is the base value verbatim.
+ *
+ * Checksums cannot catch this: copying the source into a locale produces a
+ * perfectly valid `translated` status, so the row would report finished work on a
+ * string nobody has touched. Compared trimmed, because trailing whitespace is not
+ * a translation. An empty value is the `new`/missing case and belongs to the
+ * status chip, not here.
+ */
+function isIdenticalToBase(value: string, baseValue: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length > 0 && trimmed === baseValue.trim();
+}
 
 const STATUS_SORT_PRIORITY: Record<string, number> = {
   stale: 0,
@@ -39,6 +54,7 @@ const STATUS_SORT_PRIORITY: Record<string, number> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     MatIconModule,
+    MatTooltipModule,
     TranslationItemHeader,
     TranslationItemLocales,
     HighlightPipe,
@@ -81,6 +97,9 @@ export class TranslationItem {
   /** Current search query from the store */
   readonly searchQuery = this.#store.searchQuery;
 
+  /** Whether the active collection is read-only (mutating actions are refused). */
+  readonly isReadOnly = this.#store.isReadOnly;
+
   // Timestamp when touch started (ms since epoch)
   #touchStartTs = 0;
 
@@ -104,19 +123,37 @@ export class TranslationItem {
     return this.translation().translations[base] || '';
   });
 
+  /**
+   * The source row for full density, or undefined when the collection has no base
+   * locale and there is therefore nothing to compare the translations against.
+   */
+  readonly baseRow = computed<BaseTranslation | undefined>(() => {
+    const value = this.baseValue();
+    if (!value.trim()) return undefined;
+
+    return { locale: this.#store.baseLocale(), value };
+  });
+
   /** Locale translations excluding base locale, sorted by status priority then locale code */
   readonly localeTranslations = computed(() => {
     const trans = this.translation();
     const base = this.#store.baseLocale();
     const activeLocales = this.#store.filteredLocales();
 
+    const baseValue = trans.translations[base] || '';
+
     return activeLocales
       .filter((locale) => locale !== base)
-      .map((locale) => ({
-        locale,
-        value: trans.translations[locale] || '',
-        status: trans.status ? trans.status[locale] : undefined,
-      }))
+      .map((locale) => {
+        const value = trans.translations[locale] || '';
+
+        return {
+          locale,
+          value,
+          status: trans.status ? trans.status[locale] : undefined,
+          isSameAsBase: isIdenticalToBase(value, baseValue),
+        };
+      })
       .sort((a, b) => {
         const priorityA = a.status ? (STATUS_SORT_PRIORITY[a.status] ?? 4) : 4;
         const priorityB = b.status ? (STATUS_SORT_PRIORITY[b.status] ?? 4) : 4;
@@ -129,14 +166,11 @@ export class TranslationItem {
   readonly currentDensityMode = computed(() => this.#store.densityMode());
 
   /**
-   * The locale whose value the compact row displays, together with the status
-   * and value that belong to it.
+   * The locale whose value the compact row annotates, together with its status.
    *
-   * Compact density has room for exactly one value, so the row must say which
-   * locale that value belongs to — otherwise "empty" and "translated" look the
-   * same, and a row showing the base locale source reads as a finished
-   * translation. `isBaseFallback` marks the case where no non-base locale is
-   * available and the row is therefore showing source text.
+   * `isBaseFallback` marks the case where the compact locale selection resolved to
+   * the base locale itself — there is then only one string on the row, and it is
+   * source text rather than a translation.
    */
   readonly compactDisplay = computed(() => {
     const base = this.#store.baseLocale();
@@ -144,12 +178,17 @@ export class TranslationItem {
 
     const locale = nonBaseLocales.length > 0 ? nonBaseLocales[0] : base;
     const translation = this.translation();
+    const value = translation.translations[locale] || '';
+    const isBaseFallback = nonBaseLocales.length === 0;
 
     return {
       locale,
-      value: translation.translations[locale] || '',
+      value,
       status: translation.status?.[locale],
-      isBaseFallback: nonBaseLocales.length === 0,
+      isBaseFallback,
+      // A base-locale fallback row is already labelled `source`; saying "same as
+      // source" next to it would be the same fact twice.
+      isSameAsBase: !isBaseFallback && isIdenticalToBase(value, translation.translations[base] || ''),
     };
   });
 
@@ -159,7 +198,40 @@ export class TranslationItem {
   /** Transloco token for the compact row's status label ('' when the status is unknown). */
   readonly compactStatusToken = computed(() => statusLabelTokenFor(this.compactDisplay().status));
 
-  /** Value rendered in the compact row. */
+  /**
+   * How the compact row composes itself. Three genuinely different situations,
+   * named rather than inferred in the template:
+   *
+   * - `paired` — the ordinary case. The base value identifies the row and the
+   *   selected locale's value sits beside it, so source and translation can be
+   *   judged against each other in one horizontal glance.
+   * - `source-only` — the compact locale selection resolved to the base locale
+   *   itself. One string, and it is source text; there is nothing to compare it
+   *   against, so no annotation value is shown.
+   * - `no-base` — the collection carries no base locale at all (a vendored
+   *   design-system collection may ship `ar`…`sv` and no `en`). There is no source
+   *   text to lead with, so the shown locale becomes the identity and the row says
+   *   the pick was automatic.
+   */
+  readonly compactLayout = computed<'paired' | 'source-only' | 'no-base'>(() => {
+    if (this.compactDisplay().isBaseFallback) return 'source-only';
+    if (!this.baseValue().trim()) return 'no-base';
+    return 'paired';
+  });
+
+  /**
+   * The string that identifies a compact row.
+   *
+   * The base value wherever one exists, because it is the only text on the row the
+   * developer already knows — they wrote it, and they arrived looking for it.
+   * Compact used to omit it entirely and lead with a translation, which handed a
+   * developer scanning an eleven-locale collection a script they could not read.
+   */
+  readonly identityValue = computed(() =>
+    this.compactLayout() === 'no-base' ? this.compactDisplay().value : this.baseValue(),
+  );
+
+  /** Value rendered in the compact row's annotation zone. */
   readonly primaryLocaleValue = computed(() => this.compactDisplay().value);
 
   /** Signal controlling whether the full-mode content is expanded */
@@ -277,6 +349,10 @@ export class TranslationItem {
 
       case 'delete':
       case 'del':
+        // The menu item is disabled in a read-only collection, so the keyboard
+        // must refuse the same way. Without this the shortcut opens a delete
+        // confirmation the API will reject after the user commits to it.
+        if (this.isReadOnly()) return;
         action = () => this.#listStore.deleteTranslation(this.translation(), this.#collectionName());
         break;
     }
@@ -323,18 +399,6 @@ export class TranslationItem {
 
   /** Returns a stable id for the rollup status element. */
   readonly statusId = computed(() => `rollup-${this.translation().key}`);
-
-  /** Returns true if this translation has tags or a comment. */
-  readonly hasMetadata = computed(() => {
-    const t = this.translation();
-    return Boolean((t.tags && t.tags.length > 0) || t.comment);
-  });
-
-  /** Returns first 3 tags for preview display in medium density mode. */
-  readonly previewTags = computed(() => {
-    const tags = this.translation().tags;
-    return tags?.slice(0, 3) ?? [];
-  });
 
   /**
    * Drag data for this translation item.

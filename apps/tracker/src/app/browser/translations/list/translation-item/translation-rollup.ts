@@ -50,6 +50,7 @@ const CLOSE_DELAY = 120;
     <button
       #trigger
       class="rollup"
+      [class.rollup--compact]="compact()"
       type="button"
       [attr.aria-label]="ariaLabel()"
       [attr.aria-expanded]="isOpen()"
@@ -155,6 +156,22 @@ const CLOSE_DELAY = 120;
         width: 40px;
         height: 40px;
         display: block;
+      }
+
+      /* Compact renders this on a single-line row, where 40px would set the row
+         height by itself. The ring is a graphic and scales cleanly. Declared after
+         the defaults so it wins on order rather than on a specificity hack. */
+      .rollup--compact,
+      .rollup--compact .ring {
+        width: 28px;
+        height: 28px;
+      }
+
+      @media (pointer: coarse) {
+        .rollup--compact {
+          width: 44px;
+          height: 44px;
+        }
       }
 
       .track {
@@ -302,6 +319,9 @@ export class TranslationRollup implements OnDestroy {
 
   /** Base locale code (excluded from display) */
   baseLocale = input<string>('en');
+
+  /** Renders at the smaller size compact's single-line row can afford. */
+  compact = input<boolean>(false);
 
   private readonly overlay = inject(Overlay);
   private readonly vcr = inject(ViewContainerRef);

@@ -14,6 +14,15 @@
   animation: icon-flip-animation 250ms ease-in-out;
 }
 
+// The flip only dresses a content swap that happens either way, so removing it
+// costs nothing. Both call sites — the density toggle and the folder-tree nested
+// toggle — inherit this guard from the pattern that owns the animation.
+@media (prefers-reduced-motion: reduce) {
+  .icon-flip {
+    animation: none;
+  }
+}
+
 // Shared placeholder for toolbar icon buttons (40×40 bordered icon buttons).
 //
 // Usage: @extend %toolbar-icon-button in any component that renders a small

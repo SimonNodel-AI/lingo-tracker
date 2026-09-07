@@ -95,6 +95,73 @@ describe('TranslationItem', () => {
     expect(html).toContain('common.buttons.save');
   });
 
+  describe('compact row composition', () => {
+    it('leads with the base value and annotates it with the selected locale', () => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.setDensityMode('compact');
+      store.setSelectedLocales(['es']);
+      fixture.componentRef.setInput('translation', mockTranslation);
+      fixture.detectChanges();
+
+      expect(component.compactLayout()).toBe('paired');
+      // The source string the developer wrote identifies the row...
+      expect(component.identityValue()).toBe('Save');
+      // ...and the selected locale sits beside it as the comparison.
+      expect(component.compactDisplay().locale).toBe('es');
+      expect(component.compactDisplay().value).toBe('Guardar');
+    });
+
+    it('shows source text alone when the selection resolves to the base locale', () => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en'], baseLocale: 'en' });
+      store.setDensityMode('compact');
+      store.clearAllLocales();
+      fixture.componentRef.setInput('translation', mockTranslation);
+      fixture.detectChanges();
+
+      expect(component.compactLayout()).toBe('source-only');
+      expect(component.identityValue()).toBe('Save');
+    });
+
+    it('falls back to the shown locale when the collection carries no base locale', () => {
+      // A vendored collection can ship translations with no base locale at all.
+      const noBase: ResourceSummaryDto = {
+        key: 'agGrid.addToLabels',
+        translations: { ar: 'إضافة', de: 'Hinzufügen' },
+        status: { ar: 'translated', de: 'translated' },
+      } as ResourceSummaryDto;
+
+      store.setSelectedCollection({ collectionName: 'ds', locales: ['ar', 'de'], baseLocale: 'en' });
+      store.setDensityMode('compact');
+      store.setSelectedLocales(['ar']);
+      fixture.componentRef.setInput('translation', noBase);
+      fixture.detectChanges();
+
+      expect(component.compactLayout()).toBe('no-base');
+      // There is no source text to lead with, so the shown locale becomes identity.
+      expect(component.identityValue()).toBe('إضافة');
+      // And the arbitrary pick is named rather than silent.
+      expect(fixture.nativeElement.innerHTML as string).toContain('default');
+    });
+
+    it('marks a translation that is the source text verbatim', () => {
+      const untouched: ResourceSummaryDto = {
+        key: 'common.buttons.add',
+        translations: { en: 'Add', 'fr-ca': 'Add' },
+        status: { 'fr-ca': 'translated' },
+      } as ResourceSummaryDto;
+
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' });
+      store.setDensityMode('compact');
+      store.setSelectedLocales(['fr-ca']);
+      fixture.componentRef.setInput('translation', untouched);
+      fixture.detectChanges();
+
+      // Status says `translated`; a checksum cannot see that nobody touched it.
+      expect(component.compactDisplay().status).toBe('translated');
+      expect(component.compactDisplay().isSameAsBase).toBe(true);
+    });
+  });
+
   it('rollupStatus should reflect all verified state as verified', () => {
     const t: ResourceSummaryDto = {
       key: 'k-all-verified',
@@ -187,32 +254,6 @@ describe('TranslationItem - Compact helpers', () => {
     const roll = component.rollupStatus();
     expect(roll[0]).toBe('stale');
     expect(roll[1]).toBe(1);
-  });
-
-  it('hasMetadata should be true when tags or comment present, false otherwise', () => {
-    const tWithMeta: ResourceSummaryDto = {
-      key: 'k',
-      translations: { en: 'a' },
-      status: {},
-      tags: ['ui', 'button'],
-      comment: 'Needs review',
-    } as any;
-
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en'], baseLocale: 'en' });
-    fixture.componentRef.setInput('translation', tWithMeta);
-    fixture.detectChanges();
-
-    expect(component.hasMetadata()).toBe(true);
-
-    const tNoMeta: ResourceSummaryDto = {
-      key: 'k2',
-      translations: { en: 'b' },
-      status: {},
-    } as any;
-
-    fixture.componentRef.setInput('translation', tNoMeta);
-    fixture.detectChanges();
-    expect(component.hasMetadata()).toBe(false);
   });
 
   it('statusBreakdown should return human readable counts in priority order', () => {
@@ -340,5 +381,100 @@ describe('TranslationItem - Full density expansion', () => {
     expect(component.isExpanded()).toBe(true);
     component.toggleExpansion();
     expect(component.isExpanded()).toBe(false);
+  });
+
+  describe('full-density source row', () => {
+    it('should expose the base locale as the source row', () => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.setDensityMode('full');
+      fixture.componentRef.setInput('translation', mockTranslation);
+      fixture.detectChanges();
+
+      expect(component.baseRow()).toEqual({ locale: 'en', value: 'Save' });
+    });
+
+    it('should render the source in the same grid as the translations', () => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+      store.setDensityMode('full');
+      fixture.componentRef.setInput('translation', mockTranslation);
+      fixture.detectChanges();
+
+      const grid = fixture.nativeElement.querySelector('.locale-translations');
+      expect(grid).toBeDefined();
+
+      const baseValue = grid?.querySelector('.locale-value--base');
+      expect(baseValue).toBeDefined();
+      expect(baseValue?.textContent?.trim()).toBe('Save');
+
+      // The source must be the grid's first line, so the reader meets it before
+      // the translations it is the reference for.
+      expect(grid?.firstElementChild?.classList.contains('locale-line--base')).toBe(true);
+    });
+
+    it('should omit the source row when the collection has no base value', () => {
+      const t: ResourceSummaryDto = {
+        key: 'k-no-base',
+        translations: { es: 'Guardar' },
+        status: { es: 'translated' },
+      } as any;
+
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.setDensityMode('full');
+      fixture.componentRef.setInput('translation', t);
+      fixture.detectChanges();
+
+      expect(component.baseRow()).toBeUndefined();
+      expect(fixture.nativeElement.querySelector('.locale-value--base')).toBeNull();
+    });
+  });
+
+  describe('read-only collections', () => {
+    beforeEach(() => {
+      fixture.componentRef.setInput('translation', mockTranslation);
+    });
+
+    it('should refuse the Delete shortcut when the collection is read-only', () => {
+      store.setSelectedCollection({
+        collectionName: 'vendored',
+        locales: ['en', 'es'],
+        baseLocale: 'en',
+        readOnly: true,
+      });
+      fixture.detectChanges();
+
+      const listStore = TestBed.inject(TranslationListStore);
+      const deleteSpy = vi.spyOn(listStore, 'deleteTranslation');
+
+      component.onKeyDown(new KeyboardEvent('keydown', { key: 'Delete' }));
+
+      expect(deleteSpy).not.toHaveBeenCalled();
+    });
+
+    it('should run the Delete shortcut when the collection is writable', () => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      fixture.detectChanges();
+
+      const listStore = TestBed.inject(TranslationListStore);
+      const deleteSpy = vi.spyOn(listStore, 'deleteTranslation').mockImplementation(() => undefined);
+
+      component.onKeyDown(new KeyboardEvent('keydown', { key: 'Delete' }));
+
+      expect(deleteSpy).toHaveBeenCalledOnce();
+    });
+
+    it('should show a lock in place of the drag handle when the collection is read-only', () => {
+      store.setSelectedCollection({
+        collectionName: 'vendored',
+        locales: ['en', 'es'],
+        baseLocale: 'en',
+        readOnly: true,
+      });
+      fixture.detectChanges();
+
+      const handle = fixture.nativeElement.querySelector('.translation-drag-handle');
+      expect(handle).toBeDefined();
+      expect(handle?.textContent?.trim()).toBe('lock');
+      expect(handle?.classList.contains('translation-drag-handle--locked')).toBe(true);
+    });
   });
 });

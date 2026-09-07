@@ -66,6 +66,40 @@
   --color-status-translated: var(--status-translated-on-light);
   --color-status-verified: var(--status-verified-on-light);
 
+  // Status chips. The tones above are graphic weight — correct for a ring
+  // segment, too light to set type on and only legible as a 16px glyph. A status
+  // chip is a filled region that has to read across a list at a glance and carry
+  // its own label, so it needs a third value the spine did not have: an ink dark
+  // enough for copy on its own fill.
+  //
+  // The four are deliberately NOT equal in force. Most rows in a healthy
+  // collection are `translated` or `verified`, and giving every status the same
+  // saturated fill turns a list into a wall of one colour where nothing can be
+  // picked out — the same mistake as an accent used on everything. So the two
+  // states that mean "nothing to do here" go quiet: a near-neutral fill with the
+  // hue carried only by ink and a hairline border. `new` and `stale` — the two
+  // that mean someone has work — keep a fill saturated enough to find in
+  // peripheral vision. Scanning a folder, the eye lands on the exceptions.
+  //
+  // Every ink is measured against its own surface at ≥4.5:1, so the label reads
+  // as body copy and the glyph clears the 3:1 control floor with room to spare.
+
+  // Needs work — full fill, findable without reading.
+  --color-status-new-surface: #e0cfae;
+  --color-status-new-border: #c7a86b;
+  --color-status-new-ink: #745415; // 4.54:1 on surface
+  --color-status-stale-surface: #e6c9b7;
+  --color-status-stale-border: #d29a79;
+  --color-status-stale-ink: #884720; // 4.51:1 on surface
+
+  // Done — quiet fill, hue in the ink and the border only.
+  --color-status-translated-surface: #e8e9e6;
+  --color-status-translated-border: #bbcbd6;
+  --color-status-translated-ink: #3a6d95; // 4.53:1 on surface
+  --color-status-verified-surface: #e9eae1;
+  --color-status-verified-border: #c0d0bf;
+  --color-status-verified-ink: #447353; // 4.53:1 on surface
+
   // Tooltip panel. Stays dark in both themes, so it is built from whichever end
   // of the neutral scale is dark in the current theme rather than a fixed hex.
   --color-tooltip-surface: var(--color-neutral-800);
@@ -164,6 +198,29 @@
   --color-status-stale: var(--status-stale-on-dark);
   --color-status-translated: var(--status-translated-on-dark);
   --color-status-verified: var(--status-verified-on-dark);
+
+  // Status chips — dark. Composed against the dark card rather than inverted
+  // from the light set: the on-dark spine tones are already text-weight, so here
+  // the surface is the value that moves, sunk toward the page black until the
+  // ink clears 4.5:1 on it. `stale` sits closest to the warm card and takes the
+  // narrowest separation of the four; that is the honest cost of keeping it
+  // distinguishable from `new` rather than the two sharing a hue.
+  // Needs work — full fill.
+  --color-status-new-surface: #5b4927;
+  --color-status-new-border: #997a3c;
+  --color-status-new-ink: var(--status-new-on-dark); // 4.51:1 on surface
+  --color-status-stale-surface: #493120;
+  --color-status-stale-border: #865533;
+  --color-status-stale-ink: var(--status-stale-on-dark); // 4.54:1 on surface
+
+  // Done — quiet. Sunk toward the page black rather than lifted off the card, so
+  // the resting states recede and the two above are the only things that glow.
+  --color-status-translated-surface: #1e2225;
+  --color-status-translated-border: #374756;
+  --color-status-translated-ink: var(--status-translated-on-dark); // 6.89:1 on surface
+  --color-status-verified-surface: #1e231d;
+  --color-status-verified-border: #384b3b;
+  --color-status-verified-ink: var(--status-verified-on-dark); // 7.14:1 on surface
 
   // Tooltip panel — dark. The neutral scale is inverted here, so the dark end is
   // the low numbers; this keeps the panel raised above the near-black page.

@@ -2,20 +2,63 @@
   class="locale-translations"
   [class.full]="densityMode() === 'full'"
 >
+  @if (baseRow(); as base) {
+    <!--
+      The source, as the grid's first row. Same columns, same measure and same
+      type size as every translation below it, so the eye compares wording on one
+      baseline instead of crossing from a heading to a second-column body value.
+      Its weight and its `source` tag are what separate it, not its geometry.
+    -->
+    <div class="locale-line locale-line--base">
+      <div class="locale-label">
+        <span class="locale-code">{{ base.locale }}</span>
+        <span class="base-tag">{{ TOKENS.BROWSER.TRANSLATIONITEM.BASELOCALETAG | transloco }}</span>
+      </div>
+      <div
+        class="locale-value locale-value--base"
+        [class.full]="densityMode() === 'full'"
+        [class.expanded]="isExpanded()"
+        [class.locale-value--empty]="!base.value"
+        dir="auto"
+        [innerHTML]="(base.value || '—') | highlight : searchQuery()"
+      ></div>
+    </div>
+  }
+
   @for (lt of localeTranslations(); track lt.locale) {
     <div class="locale-line" [class.full]="densityMode() === 'full'">
       <div class="locale-label">
         <span class="locale-code">{{ lt.locale }}</span>
-        <mat-icon [class]="'status-icon status-' + lt.status">
-          {{ getStatusIcon(lt.status) }}
-        </mat-icon>
-        <span class="status-chip">{{ getStatusLabel(lt.status) | transloco }}</span>
-        <span class="locale-separator">:</span>
+
+        <!-- Icon and label are one filled region rather than a glyph, a pill and a
+             colon floating separately: the chip is what has to be readable down a
+             column of rows, and it can only carry a hue if it owns an area. -->
+        @if (lt.status) {
+          <span [class]="'status-chip status-' + lt.status">
+            <mat-icon class="status-chip__icon" aria-hidden="true">
+              {{ getStatusIcon(lt.status) }}
+            </mat-icon>
+            <span class="status-chip__label">{{ getStatusLabel(lt.status) | transloco }}</span>
+          </span>
+        }
+
+        @if (lt.isSameAsBase) {
+          <span
+            class="same-as-source"
+            [attr.title]="
+              TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCEARIALABELX | transloco : { locale: lt.locale }
+            "
+          >
+            <mat-icon class="same-as-source__icon" aria-hidden="true">content_copy</mat-icon>
+            <span>{{ TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCETAG | transloco }}</span>
+          </span>
+        }
       </div>
       <div
         class="locale-value"
         [class.full]="densityMode() === 'full'"
         [class.expanded]="isExpanded()"
+        [class.locale-value--empty]="!lt.value"
         dir="auto"
         [innerHTML]="(lt.value || '—') | highlight : searchQuery()"
       >

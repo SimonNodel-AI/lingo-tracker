@@ -56,6 +56,19 @@ export class TranslationItemHeader {
   /** Translation data for deriving comment, tags, and locale states */
   translation = input.required<ResourceSummaryDto>();
 
+  /**
+   * How the header composes itself.
+   *
+   * `band` is the full-density tinted strip: key, tags, rollup and actions on
+   * their own row above the content.
+   *
+   * `inline` is the compact single line. It drops the band background, the tags
+   * and the separate comment button, and projects the row's content between the
+   * key chip and the right-hand rail — so compact reuses this component's key,
+   * rollup and menu rather than growing a second copy of them.
+   */
+  layout = input<'band' | 'inline'>('band');
+
   /** Whether comment is currently shown (compact mode) */
   showComment = input<boolean>(false);
 
@@ -89,6 +102,23 @@ export class TranslationItemHeader {
   /** Whether the active collection is read-only (mutating actions are disabled). */
   readonly isReadOnly = this.#browserStore.isReadOnly;
 
+  /**
+   * The leading glyph states what the row allows. A draggable row shows the grab
+   * handle; a row in a read-only collection shows a lock in the same slot.
+   *
+   * The lock replaces the handle rather than joining it. Dragging is already
+   * disabled here, so the handle is an affordance that lies, and a second icon
+   * beside it would repeat the collection banner on every row.
+   */
+  readonly leadGlyph = computed(() => (this.isReadOnly() ? 'lock' : 'drag_indicator'));
+
+  /** Accessible name and tooltip for the leading glyph, matching what it shows. */
+  readonly leadGlyphLabel = computed(() =>
+    this.isReadOnly()
+      ? TRACKER_TOKENS.BROWSER.READONLYNOTICE
+      : TRACKER_TOKENS.BROWSER.TRANSLATIONITEM.DRAGTOMOVEARIALABEL,
+  );
+
   /** The primary action opens the editor; in read-only collections it is view-only, so label/icon adapt. */
   readonly editActionLabel = computed(() =>
     this.isReadOnly() ? TRACKER_TOKENS.COMMON.ACTIONS.VIEW : TRACKER_TOKENS.COMMON.ACTIONS.EDIT,
@@ -97,6 +127,9 @@ export class TranslationItemHeader {
 
   /** Comment text derived from the translation input */
   readonly comment = computed(() => this.translation().comment);
+
+  /** Whether there is a comment worth offering a marker for. */
+  readonly hasComment = computed(() => Boolean(this.comment()));
 
   /** Current search query from the browser store */
   readonly searchQuery = this.#browserStore.searchQuery;

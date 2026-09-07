@@ -37,7 +37,136 @@
   align-items: center;
   color: var(--color-text-secondary);
   display: flex;
+  flex-shrink: 0;
   gap: var(--spacing-1);
+}
+
+/*
+ * Inline layout: the compact single line. No band fill, no negative margins, no
+ * bottom border — this IS the row, not a strip above it. The 40px min-height and
+ * 8px bottom margin the band needs are exactly the cost compact could not afford.
+ */
+.item-header--inline {
+  background: none;
+  border-bottom: none;
+  border-radius: 0;
+  gap: var(--spacing-2);
+  margin-bottom: 0;
+  margin-inline: 0;
+  margin-top: 0;
+  min-height: 0;
+  padding-inline: 0;
+
+  .key-chip {
+    // The key is the row's address, not its content: it holds a share of the
+    // width and yields the rest to the strings.
+    flex: 0 1 auto;
+    max-width: 34%;
+    padding: 2px var(--spacing-2);
+  }
+
+  // One line means the key cannot wrap. Truncating from the left keeps the leaf
+  // segment — the part that distinguishes `buttons.ok` from `buttons.cancel` —
+  // instead of the shared prefix every sibling row also has.
+  // Truncate from the LEFT. Every sibling row in a folder shares the same key
+  // prefix, so a right-hand ellipsis eats the one segment that tells them apart
+  // (`buttons.ok` vs `buttons.cancel`). An rtl container overflows at the start;
+  // the ltr child keeps the characters themselves in reading order, which a bare
+  // `direction: rtl` would not.
+  .key-text {
+    direction: rtl;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .key-text__inner {
+    direction: ltr;
+    unicode-bidi: embed;
+  }
+
+  .copy-icon {
+    display: none;
+  }
+
+  .translation-drag-handle {
+    font-size: var(--font-size-base);
+    height: var(--font-size-base);
+    width: var(--font-size-base);
+  }
+
+  // The 44px floor is a touch affordance. On a fine pointer it is the single
+  // biggest contributor to the row height, and compact is a scanning mode, so the
+  // controls shrink to the text they sit beside and grow back under coarse input.
+  .header-actions button {
+    height: 28px;
+    line-height: 28px;
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+    width: 28px;
+
+    mat-icon {
+      font-size: var(--font-size-lg);
+      height: var(--font-size-lg);
+      line-height: var(--font-size-lg);
+      width: var(--font-size-lg);
+    }
+  }
+
+  @media (pointer: coarse) {
+    .header-actions button {
+      height: 44px;
+      min-height: 44px;
+      min-width: 44px;
+      width: 44px;
+    }
+  }
+}
+
+/*
+ * The key markup pipe writes <wbr> after every dot so the band layout can wrap
+ * between segments. Blink honours those break opportunities even under
+ * `white-space: nowrap`, which put the key on two lines and set the compact row
+ * height. On one line there is nowhere to wrap to, so they are removed.
+ *
+ * ::ng-deep is required, not stylistic: the <wbr>s arrive through [innerHTML] and
+ * so never receive this component's encapsulation attribute. Kept behind :host
+ * and a layout-specific class so it cannot reach beyond this header.
+ */
+:host ::ng-deep .item-header--inline .key-text wbr {
+  display: none;
+}
+
+/*
+ * Comment marker. The band's comment button toggled the value out of the row and
+ * put the comment in its place; with a source string and a translation both on
+ * the line there is no slot to borrow, so the comment reveals itself on hover and
+ * focus instead of displacing content.
+ */
+.comment-marker {
+  background: none;
+  border: none;
+  border-radius: var(--border-radius-md);
+  color: var(--color-neutral-500);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+  position: relative;
+
+  &:hover,
+  &:focus-visible {
+    color: var(--color-text-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+
+  &--match {
+    color: var(--color-highlight-text);
+  }
 }
 
 .key-chip {
@@ -69,6 +198,12 @@
   &:focus-visible {
     outline: 2px solid var(--focus-ring-color);
     outline-offset: 2px;
+
+    // Hover was the only way to learn the chip copies, which taught keyboard
+    // users nothing. Focus reveals the same affordance the pointer gets.
+    .copy-icon {
+      opacity: 1;
+    }
   }
 
 }
@@ -129,7 +264,10 @@
 }
 
 .translation-drag-handle {
-  color: var(--color-text-tertiary);
+  // --color-text-tertiary is documented as a decorative tint (2.5:1) and lands at
+  // 2.1:1 on the card, under the 3:1 floor for a control. neutral-500 is the
+  // quietest tone that clears it in both themes (3.7:1 light, 5.5:1 dark).
+  color: var(--color-neutral-500);
   cursor: grab;
   flex-shrink: 0;
   font-size: var(--font-size-xl);
@@ -143,5 +281,21 @@
 
   &:active {
     cursor: grabbing;
+  }
+
+  // A read-only row cannot be dragged, so the glyph stops offering it. The lock
+  // sits a step below the handle's tone: it reports a standing condition rather
+  // than inviting a gesture, and the collection banner has already said it once.
+  // It stays above the 3:1 control floor because it carries the tooltip.
+  &--locked {
+    color: var(--color-neutral-500);
+    cursor: not-allowed;
+    opacity: 0.7;
+
+    &:hover,
+    &:active {
+      color: var(--color-neutral-500);
+      cursor: not-allowed;
+    }
   }
 }

@@ -10,6 +10,26 @@ export type LocaleTranslation = {
   locale: string;
   value: string;
   status?: string;
+  /**
+   * The stored value is byte-identical to the base locale's. The status metadata
+   * still says `translated` — a checksum cannot tell a deliberate loanword from a
+   * string nobody touched — so the row says it out loud instead of letting the
+   * status chip pass source text off as finished work.
+   */
+  isSameAsBase?: boolean;
+};
+
+/**
+ * The source string a translator judges every locale row against.
+ *
+ * It renders as the first row of the same grid rather than as a heading above it.
+ * A translation can only be judged against the source when the two sit on one
+ * baseline, in one measure, at one type size — a bold full-bleed heading and a
+ * second-column body value are two separate readings of the same sentence.
+ */
+export type BaseTranslation = {
+  locale: string;
+  value: string;
 };
 
 /** Material icon name for a translation status. Shared with the compact item row. */
@@ -63,6 +83,12 @@ export class TranslationItemLocales {
   /** Array of locale translations to display */
   localeTranslations = input.required<LocaleTranslation[]>();
 
+  /**
+   * The source row, rendered first and in the same grid as the locales. Absent in
+   * a collection with no base locale, where there is nothing to compare against.
+   */
+  baseRow = input<BaseTranslation | undefined>(undefined);
+
   /** Density mode affects styling */
   densityMode = input<DensityMode>('full');
 
@@ -71,6 +97,8 @@ export class TranslationItemLocales {
 
   /** Search query for highlighting */
   searchQuery = input<string>('');
+
+  readonly TOKENS = TRACKER_TOKENS;
 
   getStatusIcon(status: string | undefined): string {
     return statusIconFor(status);

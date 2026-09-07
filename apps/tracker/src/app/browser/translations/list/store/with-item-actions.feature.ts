@@ -106,6 +106,11 @@ export function withItemActions() {
         },
 
         deleteTranslation(translation: ResourceSummaryDto, collectionName: string): void {
+          // Last line of defence for every caller. A read-only collection must
+          // never reach the confirmation dialog: asking the user to confirm a
+          // deletion the API will refuse is a promise the UI cannot keep.
+          if (browserStore.isReadOnly()) return;
+
           const fullKey = resolveFullKey(
             translation.key,
             browserStore.isSearchMode(),

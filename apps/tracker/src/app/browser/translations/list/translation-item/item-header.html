@@ -1,6 +1,18 @@
-<!-- Full header with drag handle, key chip, tags, rollup and actions -->
-<div class="item-header">
-  <mat-icon class="translation-drag-handle" cdkDragHandle [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONITEM.DRAGTOMOVEARIALABEL | transloco">drag_indicator</mat-icon>
+<!--
+  Two layouts, one set of controls. `band` is the full-density strip; `inline` is
+  the compact single line, which projects the row's content between the key chip
+  and the right-hand rail. The key chip, rollup and action menu are declared once
+  and shared, so the two densities can never drift apart on what a row can do.
+-->
+<div class="item-header" [class.item-header--inline]="layout() === 'inline'">
+  <mat-icon
+    class="translation-drag-handle"
+    [class.translation-drag-handle--locked]="isReadOnly()"
+    cdkDragHandle
+    [matTooltip]="leadGlyphLabel() | transloco"
+    [attr.aria-label]="leadGlyphLabel() | transloco"
+    >{{ leadGlyph() }}</mat-icon
+  >
   <button
     class="key-chip"
     type="button"
@@ -12,27 +24,52 @@
   >
     <!-- The chip shows a shortened key; the untruncated key is on the tooltip and
          in the accessible name, so it is readable without copying it out. -->
-    <span class="key-text" [innerHTML]="fullKey() | keyMarkup : searchQuery()"></span>
+    <span class="key-text"><span class="key-text__inner" [innerHTML]="fullKey() | keyMarkup : searchQuery()"></span></span>
     <mat-icon class="copy-icon">content_copy</mat-icon>
   </button>
 
-  <div class="header-spacer"></div>
+  @if (layout() === 'inline') {
+    <!-- The row's own content: identity and annotation zones. -->
+    <ng-content />
+  } @else {
+    <div class="header-spacer"></div>
 
-  @if (tags().length || inheritedTags().length) {
-    <div class="header-tags">
-      <app-tag-list [tags]="tags()" [inheritedTags]="inheritedTags()" />
-    </div>
+    @if (tags().length || inheritedTags().length) {
+      <div class="header-tags">
+        <app-tag-list [tags]="tags()" [inheritedTags]="inheritedTags()" />
+      </div>
+    }
   }
 
   <div class="header-actions">
+    @if (layout() === 'inline' && hasComment()) {
+      <!-- Compact has no room to swap the value out for the comment, and doing so
+           put two unrelated data types in one slot. The comment is a marker that
+           reveals itself on hover and focus instead. -->
+      <button
+        class="comment-marker"
+        [class.comment-marker--match]="commentHasMatch()"
+        type="button"
+        [matTooltip]="comment() ?? ''"
+        matTooltipClass="comment-marker-tooltip"
+        [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONITEM.SHOWCOMMENTARIALABEL | transloco"
+      >
+        <mat-icon>comment</mat-icon>
+        @if (commentHasMatch()) {
+          <span class="match-badge"></span>
+        }
+      </button>
+    }
+
     @if (localeStates().length) {
       <app-translation-rollup
         [locales]="localeStates()"
         [baseLocale]="baseLocale()"
+        [compact]="layout() === 'inline'"
       />
     }
 
-    @if (!hideCommentButton()) {
+    @if (layout() === 'band' && !hideCommentButton()) {
       <button
         class="comment-button"
         [class.comment-button--active]="showComment()"

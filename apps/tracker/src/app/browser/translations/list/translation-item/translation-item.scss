@@ -1,10 +1,22 @@
-.translation-item {
-  /**
-   * Translation item wrapper for virtual scroll:
-   * - No padding or margin - spacing is managed by .item-container below
-   * - Virtual scroll handles height calculation via itemSize
-   */
+/**
+ * Translation item wrapper for virtual scroll:
+ * - No padding or margin - spacing is managed by .item-container below
+ * - Virtual scroll handles height calculation via itemSize
+ *
+ * This has to be :host. `.translation-item` is the class this component puts on
+ * its own host element, and a component stylesheet scopes bare selectors to its
+ * content attribute — which the host element does not carry.
+ */
+:host {
   display: block;
+
+  /*
+   * The row's width comes from a resizable panel, not the viewport, so what the
+   * compact line can afford is a question about this element rather than the
+   * screen. Inline-size only: the block axis stays auto so virtual scroll keeps
+   * measuring heights normally.
+   */
+  container-type: inline-size;
 }
 
 /* Visually hidden but accessible to screen readers */
@@ -44,9 +56,27 @@
     outline-offset: 2px;
   }
 
+  /* Compact rows sit 4px apart, so a 2px ring at a 2px offset lands exactly on
+     the neighbour's edge. Tightening the offset keeps the whole ring inside the
+     gap it has. */
+  &[data-density='compact']:focus-visible {
+    outline-offset: 1px;
+  }
+
+  /*
+   * The item's width comes from the virtual-scroll content wrapper, which is
+   * absolutely positioned and imposes none — so a nowrap line resolved to
+   * max-content and pushed the right-hand rail off-screen. The row is bounded by
+   * its container, and its children are allowed to shrink below their content.
+   */
+  max-width: 100%;
+  min-width: 0;
+
   /* Density-specific gap spacing */
   &[data-density='compact'] {
+    gap: 0;
     margin-bottom: var(--spacing-1);
+    padding: var(--spacing-1) var(--spacing-2);
   }
 
   &[data-density='full'] {
@@ -55,52 +85,76 @@
 }
 
 
-.compact-row {
-  align-items: baseline;
-  display: flex;
-  gap: var(--spacing-2);
+/*
+ * Compact zones. The row is one line composed by the header in `inline` layout:
+ * drag handle · key · identity · annotation · rail. Everything here is about what
+ * gives way first when the line runs out of room.
+ */
+
+/* Identity — the source string. Takes the larger share and truncates last,
+   because it is the only thing on the row a developer already recognises. */
+.compact-identity {
+  color: var(--color-text-primary);
+  // The zone that absorbs the squeeze. Everything in the annotation is a chip or
+  // a code that clips rather than reflows, so the identity is the only thing that
+  // can give way gracefully — and an ellipsis on a sentence is readable, where a
+  // status chip cut down to "Ne" is not.
+  flex: 1 1 0;
+  min-width: 4rem;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-snug);
   min-width: 0;
-  padding-left: var(--spacing-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/*
- * Locale badge: says which locale the single compact value belongs to.
- * Without it an untranslated row and a finished one are indistinguishable.
- */
-.compact-locale {
+/* No source text at all — a state to read, not content. */
+.compact-identity--empty {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Annotation — the selected locale, measured against the identity beside it. */
+.compact-annotation {
   align-items: center;
   color: var(--color-text-secondary);
   display: flex;
-  flex-shrink: 0;
-  gap: var(--spacing-1);
+  // Sizes to its own content and never shrinks below it: its parts are chips and
+  // codes with nothing to truncate. What it can no longer afford is dropped
+  // wholesale by the container queries at the end of this file, in priority
+  // order, rather than sliced in half.
+  flex: 0 0 auto;
+  gap: var(--spacing-2);
+  max-width: 100%;
+  min-width: 0;
 }
 
-.compact-locale .status-icon {
-  flex-shrink: 0;
-  font-size: var(--font-size-base);
-  height: var(--font-size-base);
-  width: var(--font-size-base);
+/* The tagged variants carry no value, so they claim only the width they need
+   and leave the rest to the identity. */
+.compact-annotation--tagged {
+  flex: 0 0 auto;
+}
 
-  // Each status carries its own hue: `new` (not started) and `stale` (drifted out
-  // of date) used to share one, which hid the more urgent of the two.
-  &.status-new {
-    color: var(--color-status-new);
-  }
+.compact-translation {
+  flex: 1 1 auto;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-snug);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  &.status-stale {
-    color: var(--color-status-stale);
-  }
-
-  &.status-translated {
-    color: var(--color-status-translated);
-  }
-
-  &.status-verified {
-    color: var(--color-status-verified);
-  }
+.compact-translation--empty {
+  color: var(--color-text-tertiary);
+  font-style: italic;
 }
 
 .compact-locale-code {
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
@@ -111,74 +165,119 @@
   background-color: var(--color-background-subtle);
   border-radius: var(--border-radius-full);
   color: var(--color-text-placeholder);
+  flex-shrink: 0;
   font-size: var(--font-size-xs);
   padding: 0 var(--spacing-1);
 }
 
-.compact-value {
-  flex: 1;
-  color: var(--color-primary-text);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  line-height: var(--line-height-snug);
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: opacity var(--transition-fast);
-}
+/*
+ * The collection has no base locale, so the app chose which locale to show. That
+ * choice is arbitrary and must never be silent — this names it as a default and
+ * its tooltip points at the locale filter. A real button so the explanation is
+ * reachable from the keyboard, not only on hover.
+ */
+.default-locale-tag {
+  background-color: var(--color-background-subtle);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--border-radius-full);
+  color: var(--color-text-placeholder);
+  cursor: help;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  padding: 0 var(--spacing-2);
 
-/* The "no translation" placeholder is a state the user has to read, not a hint,
-   so it takes a legible tone; italics keep it distinct from real content. */
-.compact-value--empty {
-  color: var(--color-text-secondary);
-  font-style: italic;
-}
-
-.compact-value--comment {
-  .comment-text {
-    font-weight: var(--font-weight-normal);
-    line-height: var(--line-height-snug);
-    display: inline;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
   }
 }
 
-/* The base value stays the loudest thing in the item — it is the source text the
-   rest is measured against — but earns that through size and weight, with the
-   coral moved to a tone that is actually readable at body contrast. */
-.base-value {
-  color: var(--color-primary-text);
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-bold);
-  line-height: var(--line-height-normal);
-  margin-top: calc(var(--spacing-1) * -0.5);
-  padding-left: var(--spacing-1);
-  white-space: pre-wrap; /* allow multi-line base values */
+/*
+ * Compact status chip. Mirrors item-locales.scss so a status looks identical in
+ * both densities — the toggle changes how much you see, never what a colour
+ * means.
+ */
+.compact-annotation .status-chip {
+  align-items: center;
+  background-color: var(--color-background-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-full);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  gap: calc(var(--spacing-1) / 2);
+  letter-spacing: 0.01em;
+  line-height: var(--line-height-snug);
+  padding: 0 var(--spacing-2);
+
+  &.status-new {
+    background-color: var(--color-status-new-surface);
+    border-color: var(--color-status-new-border);
+    color: var(--color-status-new-ink);
+  }
+
+  &.status-stale {
+    background-color: var(--color-status-stale-surface);
+    border-color: var(--color-status-stale-border);
+    color: var(--color-status-stale-ink);
+  }
+
+  &.status-translated {
+    background-color: var(--color-status-translated-surface);
+    border-color: var(--color-status-translated-border);
+    color: var(--color-status-translated-ink);
+  }
+
+  &.status-verified {
+    background-color: var(--color-status-verified-surface);
+    border-color: var(--color-status-verified-border);
+    color: var(--color-status-verified-ink);
+  }
 }
 
+.compact-annotation .status-chip__icon {
+  color: inherit;
+  flex-shrink: 0;
+  font-size: var(--font-size-sm);
+  height: var(--font-size-sm);
+  width: var(--font-size-sm);
+}
+
+/* Same contract as the full-density marker: the status chip reports the stored
+   metadata, this reports the thing the metadata cannot see. */
+.compact-annotation .same-as-source {
+  align-items: center;
+  border: 1px dashed var(--color-status-stale-border);
+  border-radius: var(--border-radius-full);
+  color: var(--color-status-stale-ink);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  gap: calc(var(--spacing-1) / 2);
+  padding: 0 var(--spacing-2);
+}
+
+.compact-annotation .same-as-source__icon {
+  font-size: var(--font-size-sm);
+  height: var(--font-size-sm);
+  width: var(--font-size-sm);
+}
+
+/* The base value stays the loudest thing in the item — it is the source text the
+   rest is measured against — but it earns that through size and weight alone.
+   The coral used to fire here on every row at full saturation, which is an accent
+   spent on the one element guaranteed to be present, leaving nothing for the
+   status chips or the primary action to be louder than. Neutral ink is also the
+   condition for reading base and translation as the same kind of thing. */
 /* Full density styles */
 .item-container[data-density='full'] {
   /* Height is determined by virtual scroll itemSize — no max-height constraint */
   padding-bottom: 0;
   position: relative;
-}
-
-.item-container[data-density='full'] .base-value.full {
-  /* Clamp base value to 2 lines when collapsed */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-
-.item-container[data-density='full'] .base-value.full.expanded {
-  -webkit-line-clamp: unset;
-  display: block;
 }
 
 /*
@@ -191,8 +290,11 @@
   box-shadow: var(--shadow-md);
 }
 
+/* The row now sits under the comparison grid rather than above it, so its rule
+   closes the block instead of opening one. */
 .item-container[data-density='full'] .comment-expand-row {
-  border-bottom: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-strong);
+  padding-top: var(--spacing-1);
 }
 
 /* Comment row: comment left, expand button right, vertically centred */
@@ -234,8 +336,12 @@
   background: var(--color-background-subtle);
 }
 
-/* Ensure touch targets meet minimum recommended size */
-.item-container button,
+/* Ensure touch targets meet minimum recommended size.
+   Scoped to full density: compact is a single-line scanning mode whose controls
+   size to the text they sit beside, and restore the 44px floor under coarse
+   input via the `pointer: coarse` rules in item-header.scss. Applying the floor
+   here unconditionally is what made a two-line "compact" row 93px tall. */
+.item-container[data-density='full'] button,
 .expand-button {
   /* minimum touch target size — no matching token for 44px */
   min-width: 44px;
@@ -276,6 +382,16 @@
   animation: borderFlash 1s ease-in-out;
 }
 
+// The flash reports that this row just changed. Under reduced motion the same
+// fact is held as a static border for the flash's duration rather than dropped —
+// the row still says it was updated, it just stops pulsing to say it.
+@media (prefers-reduced-motion: reduce) {
+  .item-container.recently-updated {
+    animation: none;
+    border-color: var(--focus-ring-color);
+  }
+}
+
 // CDK Drag & Drop Styles
 .cdk-drag-preview {
   opacity: 0.7;
@@ -294,4 +410,46 @@
 
 .cdk-drag-animating {
   transition: transform 250ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+/*
+ * What a narrow row gives up, in order. The annotation is the first to lose
+ * detail because the identity is what the row is for; nothing dropped here is
+ * lost outright — each still carries its text in a title or accessible name.
+ */
+@container (max-width: 52rem) {
+  /* The marker becomes its glyph. Its meaning stays on the title attribute. */
+  .compact-annotation .same-as-source span {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .compact-annotation .same-as-source {
+    padding: 0 var(--spacing-1);
+  }
+}
+
+@container (max-width: 40rem) {
+  /* Below this the translation is a word or two of noise. The status chip and
+     the marker still say what state the row is in, and the editor shows the
+     value in full. */
+  .compact-annotation .compact-translation {
+    display: none;
+  }
+}
+
+@container (max-width: 26rem) {
+  /* Last to go: the status label, leaving the chip as a coloured glyph. */
+  .compact-annotation .status-chip__label {
+    display: none;
+  }
+
+  .compact-annotation .status-chip {
+    padding: 0 var(--spacing-1);
+  }
 }
