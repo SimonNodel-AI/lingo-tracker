@@ -38,10 +38,16 @@
     min-width: 0; // Allow flex child to shrink below content size
   }
 
+  // The status rail is always-visible rather than folded into a dropdown, so
+  // this zone is now the widest thing in the row — and the one that grows most
+  // in German ("Überarbeitungsbedürftig") and Russian. It must therefore be
+  // allowed to shrink and wrap internally: pinned at flex-shrink: 0 it would
+  // push the primary action off the edge of the pane in those locales.
   .toolbar-filters {
     align-items: center;
     display: flex;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    flex-wrap: wrap;
     gap: var(--spacing-2);
     min-width: 0;
   }
@@ -96,16 +102,30 @@
     }
   }
 
-  // Below this width the six controls no longer fit on one line and used to run
-  // off the edge of the pane, taking the primary action with them. Search takes
-  // a line of its own and the controls it filters sit beneath it.
-  @container (max-width: 760px) {
+  // The rail decides the wrap points now. Search loses its line first: it is the
+  // only control that can give up its row without any of the others moving, and
+  // the filters are what the eye is on.
+  @container (max-width: 1040px) {
     .header-content {
       flex-wrap: wrap;
     }
 
     app-translation-search {
       flex: 1 0 100%;
+    }
+  }
+
+  // Below this the filter zone takes a full row of its own beneath search, so the
+  // rail can wrap internally without pushing the primary action off the edge.
+  @container (max-width: 760px) {
+    .toolbar-filters {
+      flex: 1 0 100%;
+    }
+
+    // With filters on their own row, the rule that separated them from sort has
+    // nothing left to separate.
+    .toolbar-filters + .toolbar-divider {
+      display: none;
     }
   }
 

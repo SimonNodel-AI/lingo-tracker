@@ -1233,6 +1233,89 @@ describe('BrowserStore', () => {
     });
   });
 
+  describe('Status Counts', () => {
+    // Deliberately overlapping: `alpha` is stale in one locale and new in
+    // another, so a needs-work count that adds new + stale would report 3
+    // resources where only 2 exist.
+    const mockStatusTree: ResourceTreeDto = {
+      path: '',
+      resources: [
+        {
+          key: 'alpha',
+          translations: { en: 'Alpha', es: 'Alfa', fr: 'Alpha', de: 'Alpha' },
+          status: { es: 'stale' as const, fr: 'new' as const, de: 'verified' as const },
+        },
+        {
+          key: 'beta',
+          translations: { en: 'Beta', es: 'Beta', fr: 'Beta', de: 'Beta' },
+          status: { es: 'new' as const, fr: 'translated' as const, de: 'translated' as const },
+        },
+        {
+          key: 'gamma',
+          translations: { en: 'Gamma', es: 'Gamma', fr: 'Gamma', de: 'Gamma' },
+          status: { es: 'verified' as const, fr: 'verified' as const, de: 'verified' as const },
+        },
+      ],
+      children: [],
+    };
+
+    beforeEach(async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockStatusTree));
+      store.setSelectedCollection({
+        collectionName: 'test',
+        locales: ['en', 'es', 'fr', 'de'],
+      });
+      await waitForSignals();
+      store.setDensityMode('full');
+      store.clearAllLocales();
+    });
+
+    it('should count resources, not status cells', () => {
+      // `gamma` is verified in all three target locales but is one resource.
+      expect(store.statusCounts().verified).toBe(2);
+    });
+
+    it('should count a resource under every status it carries', () => {
+      expect(store.statusCounts()).toEqual({ new: 2, stale: 1, translated: 1, verified: 2 });
+    });
+
+    it('should count needs work as a union rather than a sum', () => {
+      const { new: isNew, stale } = store.statusCounts();
+      expect(isNew + stale).toBe(3);
+      expect(store.needsWorkCount()).toBe(2);
+    });
+
+    it('should agree with the list a status filter actually produces', () => {
+      for (const status of ['new', 'stale', 'translated', 'verified'] as const) {
+        store.setSelectedStatuses([status]);
+        expect(store.sortedTranslations().length).toBe(store.statusCounts()[status]);
+      }
+    });
+
+    it('should agree with the list the needs-work shortcut produces', () => {
+      store.selectNeedsWorkStatuses();
+      expect(store.sortedTranslations().length).toBe(store.needsWorkCount());
+    });
+
+    it('should not collapse other counts when one status is selected', () => {
+      store.setSelectedStatuses(['new']);
+      expect(store.statusCounts()).toEqual({ new: 2, stale: 1, translated: 1, verified: 2 });
+    });
+
+    it('should narrow counts to the selected locales', () => {
+      store.setSelectedLocales(['de']);
+      expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 1, verified: 2 });
+      expect(store.needsWorkCount()).toBe(0);
+    });
+
+    it('should report zero for every status when the folder is empty', () => {
+      store.reset();
+      expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 0, verified: 0 });
+      expect(store.needsWorkCount()).toBe(0);
+    });
+  });
+
   describe('Resource Deletion', () => {
     it('should remove resource from translations cache', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));

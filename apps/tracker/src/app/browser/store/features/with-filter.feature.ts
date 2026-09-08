@@ -64,22 +64,7 @@ export function withFilterFeature<_>() {
         return available.filter((locale) => locale !== base);
       }),
 
-      statusFilterText: computed(() => {
-        const selected = selectedStatuses();
-        if (selected.length === 0) return 'All statuses';
-        if (selected.length === 1) {
-          const labels: Record<TranslationStatus, string> = {
-            new: 'New',
-            stale: 'Stale',
-            translated: 'Translated',
-            verified: 'Verified',
-          };
-          return labels[selected[0]];
-        }
-        return `${selected.length} statuses`;
-      }),
-
-      isShowingAllStatuses: computed(() => selectedStatuses().length === 0),
+      hasStatusFilter: computed(() => selectedStatuses().length > 0),
     })),
     withMethods((store) => ({
       setSelectedLocales(locales: string[]): void {

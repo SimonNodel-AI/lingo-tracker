@@ -1,22 +1,32 @@
 {
   "needsWork": {
-    "source": "Needs Work",
+    "source": "Needs work",
     "comment": "Quick filter button that selects new and stale statuses",
     "tags": ["browser"],
     "es": "Necesita trabajo",
-    "fr-ca": "Nécessite des travaux",
+    "fr-ca": "Nécessite des améliorations",
     "ru": "Требуется доработка",
     "ja": "改善が必要",
     "de": "Überarbeitungsbedürftig"
   },
-  "ariaLabelX": {
-    "source": "Filter by status. Currently showing: { text }",
-    "comment": "Aria-label for the status filter button. { text } is the current filter display text (e.g. 'All' or status name)",
+  "groupAriaLabel": {
+    "source": "Filter by status",
+    "comment": "Accessible group name for the row of status filter toggles in the browser toolbar.",
     "tags": ["browser"],
-    "es": "Filtrar por estado. Actualmente se muestra: {texto}",
-    "fr-ca": "Filtrer par statut. Affichage actuel : { texte }",
-    "ru": "Фильтр по статусу. В данный момент отображается: { текст }",
-    "ja": "ステータスで絞り込み。現在表示中：{テキスト}",
-    "de": "Nach Status filtern. Aktuell angezeigt: { text }"
+    "es": "Filtrar por estado",
+    "fr-ca": "Filtrer par statut",
+    "ru": "Фильтрация по статусу",
+    "ja": "ステータスでフィルタリング",
+    "de": "Nach Status filtern"
+  },
+  "needsWorkTooltip": {
+    "source": "New and stale entries",
+    "comment": "Tooltip on the Needs work filter toggle, explaining which two statuses it selects.",
+    "tags": ["browser"],
+    "es": "Entradas nuevas y obsoletas",
+    "fr-ca": "Nouvelles et anciennes entrées",
+    "ru": "Новые и устаревшие записи",
+    "ja": "新規エントリと古いエントリ",
+    "de": "Neue und veraltete Einträge"
   }
 }

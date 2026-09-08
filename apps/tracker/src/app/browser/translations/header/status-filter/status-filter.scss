@@ -1,67 +1,143 @@
-@use '../../../../shared/toggle-animation' as *;
+// The status rail. Four statuses plus a "Needs work" shortcut, always visible.
+//
+// Colour comes entirely from the status chip tokens in tokens.scss — the same
+// three-value sets (surface / border / ink) the rows below use — so the filter
+// and the thing it filters are painted from one spine. Nothing here invents a
+// tone; if a status changes colour, it changes here too.
 
-.status-filter-trigger {
-  @extend %toolbar-filter-trigger;
+.status-rail {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+}
 
-  .filter-icon {
-    color: var(--color-text-tertiary);
-    flex-shrink: 0;
-    font-size: 18px;
-    height: 18px;
-    width: 18px;
+.status-toggle {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-full);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  gap: var(--spacing-1);
+  // Sits inside the 40px control row without matching it — a toggle in a set of
+  // five is not the same weight of object as the search field beside it.
+  height: var(--spacing-8);
+  line-height: 1;
+  min-width: 0;
+  padding: 0 var(--spacing-2) 0 var(--spacing-1);
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+
+  &:hover {
+    background-color: var(--color-background-muted);
   }
 
-  .status-icons {
-    align-items: center;
-    display: flex;
-    gap: var(--spacing-1);
-  }
-
-  .status-indicator {
-    font-size: 16px;
-    height: 16px;
-    transition: opacity var(--transition-fast);
-    width: 16px;
-
-    &--inactive {
-      opacity: 0.25;
-    }
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
   }
 }
 
-:host ::ng-deep .status-filter-menu {
-  .menu-header {
-    display: flex;
-    justify-content: space-between;
-    padding: var(--spacing-2) var(--spacing-3);
-    border-bottom: 1px solid var(--mat-divider-color, var(--color-border));
-    gap: var(--spacing-2);
+// The dot is the only mark carrying status colour while a toggle is off, so it
+// stays at full strength until something is actually filtered.
+.status-dot {
+  border-radius: 50%;
+  flex-shrink: 0;
+  height: 7px;
+  margin-left: var(--spacing-1);
+  transition: opacity var(--transition-fast);
+  width: 7px;
+}
 
-    .action-button {
-      font-size: var(--font-size-xs);
-      padding: var(--spacing-1) var(--spacing-2);
-      min-width: auto;
-    }
+.status-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.82;
+}
+
+// Resting dot colours read from the graphic-weight spine; the pressed state
+// swaps to the chip sets, whose inks are measured for text on their own fill.
+.status-toggle[data-status='needsWork'] .status-dot {
+  background-color: var(--color-status-stale);
+}
+.status-toggle[data-status='new'] .status-dot {
+  background-color: var(--color-status-new);
+}
+.status-toggle[data-status='stale'] .status-dot {
+  background-color: var(--color-status-stale);
+}
+.status-toggle[data-status='translated'] .status-dot {
+  background-color: var(--color-status-translated);
+}
+.status-toggle[data-status='verified'] .status-dot {
+  background-color: var(--color-status-verified);
+}
+
+@mixin pressed($surface, $border, $ink) {
+  background-color: var($surface);
+  border-color: var($border);
+  color: var($ink);
+
+  .status-dot {
+    // Once the chip is filled, a separate coloured dot is a second mark saying
+    // the same thing; it drops to the label's ink and reads as a bullet.
+    background-color: currentcolor;
+  }
+}
+
+.status-toggle[aria-pressed='true'] {
+  &[data-status='needsWork'],
+  &[data-status='stale'] {
+    @include pressed(--color-status-stale-surface, --color-status-stale-border, --color-status-stale-ink);
   }
 
-  .status-option {
-    align-items: center;
-    display: flex;
-    gap: var(--spacing-2);
+  &[data-status='new'] {
+    @include pressed(--color-status-new-surface, --color-status-new-border, --color-status-new-ink);
+  }
 
-    .status-checkbox {
-      flex-shrink: 0;
-    }
+  &[data-status='translated'] {
+    @include pressed(--color-status-translated-surface, --color-status-translated-border, --color-status-translated-ink);
+  }
 
-    .status-icon {
-      flex-shrink: 0;
-      font-size: 20px;
-      height: 20px;
-      width: 20px;
-    }
+  &[data-status='verified'] {
+    @include pressed(--color-status-verified-surface, --color-status-verified-border, --color-status-verified-ink);
+  }
+}
 
-    .status-label {
-      flex: 1;
+// While a filter is on, the toggles that are off recede rather than disappear —
+// the user still has to be able to read what else is available and how much of
+// it there is, which is the whole reason the counts are on screen.
+.status-rail--filtering .status-toggle[aria-pressed='false'] {
+  // Not --color-text-tertiary: that tone is a 2.5:1 decorative tint, and this is
+  // a label with a number in it that still has to be read while it is stepped
+  // back. --color-text-placeholder is the darkest "quiet" tone that clears 4.5:1.
+  color: var(--color-text-placeholder);
+
+  .status-dot {
+    opacity: 0.4;
+  }
+
+  &:hover {
+    color: var(--color-text-secondary);
+
+    .status-dot {
+      opacity: 1;
     }
   }
 }

@@ -21,6 +21,27 @@ const initialTranslationsState: TranslationsState = {
   showNestedResources: true,
 };
 
+const ALL_STATUSES: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
+const NEEDS_WORK_STATUSES: readonly TranslationStatus[] = ['new', 'stale'];
+
+/**
+ * A resource is in scope for a status filter when any of the locales being
+ * filtered on carries one of those statuses.
+ *
+ * Both the list and the counts beside the filter toggles run through here, so
+ * the two can never drift into disagreeing about what a status means.
+ */
+function matchesAnyStatus(
+  item: { status?: Record<string, TranslationStatus | undefined> },
+  locales: readonly string[],
+  statuses: readonly TranslationStatus[],
+): boolean {
+  return locales.some((locale) => {
+    const localeStatus = item.status?.[locale];
+    return !!localeStatus && statuses.includes(localeStatus);
+  });
+}
+
 export function withTranslationsFeature<_>() {
   return signalStoreFeature(
     {
@@ -64,15 +85,50 @@ export function withTranslationsFeature<_>() {
           let filteredItems = items;
           if (statuses.length > 0) {
             const localesForFiltering = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
-            filteredItems = items.filter((item) =>
-              localesForFiltering.some((locale) => {
-                const localeStatus = item.status?.[locale];
-                return localeStatus && statuses.includes(localeStatus);
-              }),
-            );
+            filteredItems = items.filter((item) => matchesAnyStatus(item, localesForFiltering, statuses));
           }
 
           return sortTranslations(filteredItems, sortField(), sortDirection(), selectedLocales());
+        }),
+
+        /**
+         * How many resources each status would leave on screen if it were the only
+         * status selected — not how many status cells exist.
+         *
+         * The status filter shows these beside its toggles, so the number has to
+         * answer the question the user is actually asking before they click: "how
+         * much is behind this?". That means counting through `matchesAnyStatus`,
+         * the same predicate `sortedTranslations` filters with, so a count can
+         * never promise a row the list then declines to show.
+         *
+         * Deliberately computed over the status-unfiltered set, so selecting one
+         * status does not collapse the other three counts to zero and strand the
+         * user with no way to judge where to go next. A resource with a `stale`
+         * German entry and a `new` Japanese one counts once under each, so the
+         * four counts can legitimately sum past the total.
+         */
+        statusCounts: computed(() => {
+          const items = isSearchMode() ? searchResults() : translations();
+          const locales = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
+
+          const counts: Record<TranslationStatus, number> = { new: 0, stale: 0, translated: 0, verified: 0 };
+          for (const item of items) {
+            for (const status of ALL_STATUSES) {
+              if (matchesAnyStatus(item, locales, [status])) counts[status]++;
+            }
+          }
+          return counts;
+        }),
+
+        /**
+         * Resources with anything unfinished in the filtered locales. Counted as a
+         * union rather than `new + stale`, because a resource that is new in one
+         * locale and stale in another is one row, not two.
+         */
+        needsWorkCount: computed(() => {
+          const items = isSearchMode() ? searchResults() : translations();
+          const locales = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
+          return items.filter((item) => matchesAnyStatus(item, locales, NEEDS_WORK_STATUSES)).length;
         }),
       }),
     ),
