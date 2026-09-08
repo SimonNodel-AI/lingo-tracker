@@ -1,3 +1,40 @@
+# [0.18.0](https://github.com/simoncodes-ca/lingo-tracker/compare/v0.17.0...v0.18.0) (2026-09-08)
+
+
+### Bug Fixes
+
+* **api:** cache collections independently instead of one at a time ([0a2aa5d](https://github.com/simoncodes-ca/lingo-tracker/commit/0a2aa5dc0aeb5d7576a1785b5d0474635f30de1f))
+* **release:** pack the tarball after the CLI is rebuilt ([d476682](https://github.com/simoncodes-ca/lingo-tracker/commit/d47668236a10c3a994f62551f4debc5b7ea517aa))
+* **sample-translations:** repair escaped placeholders in playground fixtures ([134138f](https://github.com/simoncodes-ca/lingo-tracker/commit/134138f72bcaa42b1c4c13ed02bb747a9c616281))
+* **tracker:** complete the collections translations ([f74dddb](https://github.com/simoncodes-ca/lingo-tracker/commit/f74dddbab1ed0bc04bf60e6133f7f71790ab7875))
+* **tracker:** correct mistranslated status and editor copy ([ae2795e](https://github.com/simoncodes-ca/lingo-tracker/commit/ae2795ebd04215ac1e9b4d2f2fd6d8e5db3c6885))
+* **tracker:** describe where protected terms are actually enforced ([80152e3](https://github.com/simoncodes-ca/lingo-tracker/commit/80152e35e0f5b393e7c6fcf804bcecd15d61a00a))
+* **tracker:** keep Save reachable in the settings header on narrow screens ([354e47f](https://github.com/simoncodes-ca/lingo-tracker/commit/354e47fe29d51b8125c58a9390adb93e5af15453))
+* **tracker:** lead the compact row with the source string ([da9da80](https://github.com/simoncodes-ca/lingo-tracker/commit/da9da80624c67c7b310a5f5ab2fce9364fa6d7e1))
+* **tracker:** make the header Settings button inert on the settings page ([091f6fd](https://github.com/simoncodes-ca/lingo-tracker/commit/091f6fd44e60c28aee35d9cabe7b198ff21e6277))
+* **tracker:** make the translation item legible and honest ([4463497](https://github.com/simoncodes-ca/lingo-tracker/commit/44634973d34b0175569fb5b46e1ff2f04ecc53f2))
+* **tracker:** raise the skip link above the contrast floor ([92e8b56](https://github.com/simoncodes-ca/lingo-tracker/commit/92e8b56db2540f7db090dce1190cf1cbd3c8b77d))
+* **tracker:** rebuild the app header control group ([5e77b00](https://github.com/simoncodes-ca/lingo-tracker/commit/5e77b006f33810370c3b9b5c6ed91032b6f2b4be))
+* **tracker:** resolve header counts through the transloco pipe ([2cd931c](https://github.com/simoncodes-ca/lingo-tracker/commit/2cd931c023f431609beaecb317a07b6e58836b3e))
+* **tracker:** restore interpolation in translated aria-labels ([72abeec](https://github.com/simoncodes-ca/lingo-tracker/commit/72abeecec8ff958ef505cf5874e93620f44737b6))
+* **tracker:** separate the two issue states the rollup ring merged ([ce167bf](https://github.com/simoncodes-ca/lingo-tracker/commit/ce167bfdb836b2d18543c59203b7f062ec0f37cc))
+* **tracker:** set the resource comment as prose, not fine print ([91985c8](https://github.com/simoncodes-ca/lingo-tracker/commit/91985c8d961cb87b92e2e02aef2c456c26c31f4d))
+* **tracker:** show the system glyph when the theme follows the OS ([51fa9e3](https://github.com/simoncodes-ca/lingo-tracker/commit/51fa9e3b0c8ca9214f539f01462c58bd96e110bb))
+* **tracker:** unify the browser content toolbar ([cdc2442](https://github.com/simoncodes-ca/lingo-tracker/commit/cdc244298c1475d26a2aac797b806ab63a30a8f5))
+
+
+### Features
+
+* **api:** revalidate the collection cache against disk on read ([93f32bb](https://github.com/simoncodes-ca/lingo-tracker/commit/93f32bb1b08ebef6a049fb384eec0465902ee9e4)), closes [#86](https://github.com/simoncodes-ca/lingo-tracker/issues/86)
+* **cli:** add optional --quiet flag ([5898d7c](https://github.com/simoncodes-ca/lingo-tracker/commit/5898d7c9674605f57772d2431f629e3a62bd2b27))
+* **cli:** validate that translations interpolate the base value's placeholders ([18c824e](https://github.com/simoncodes-ca/lingo-tracker/commit/18c824efa238f41449fe4460028adda1e4b00746))
+* **tracker:** make status a first-class control in the browser toolbar ([f273c5d](https://github.com/simoncodes-ca/lingo-tracker/commit/f273c5d152f95dcdcf1472a86d1ac8ce5fa461c7))
+* **tracker:** make the folder tree collapsible and add a collection root ([4b01558](https://github.com/simoncodes-ca/lingo-tracker/commit/4b015585ae9921ea763864d94c343ed8aa7dd758))
+* **tracker:** manage protected terms as an editable list ([2ebe50a](https://github.com/simoncodes-ca/lingo-tracker/commit/2ebe50a582c33154aca201695fcf1e38e7d10002))
+* **tracker:** present the protected-terms explanation as an info callout ([e569e3e](https://github.com/simoncodes-ca/lingo-tracker/commit/e569e3edd65c854dc1a647f06d8949049ce41467))
+* **tracker:** rework the collections view as a dense card grid ([951df93](https://github.com/simoncodes-ca/lingo-tracker/commit/951df93cc1be073fe2e26709af424a81618cd737))
+* **tracker:** rework the translation editor dialog ([407d9a0](https://github.com/simoncodes-ca/lingo-tracker/commit/407d9a0e8252a5a69439ce8b615acf885396627a))
+
 # [0.17.0](https://github.com/simoncodes-ca/lingo-tracker/compare/v0.16.0...v0.17.0) (2026-09-01)
 
 
