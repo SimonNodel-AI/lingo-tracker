@@ -290,20 +290,69 @@
   box-shadow: var(--shadow-md);
 }
 
-/* The row now sits under the comparison grid rather than above it, so its rule
-   closes the block instead of opening one. */
-.item-container[data-density='full'] .comment-expand-row {
-  border-top: 1px solid var(--color-border-strong);
-  padding-top: var(--spacing-1);
+/*
+ * The note is the only human-written sentence on a card of derived values, and
+ * it used to be set as the least important thing on it: italic, secondary, and
+ * running unbroken across the full card width behind a "Comment:" prefix that
+ * repeated on every row.
+ *
+ * Nothing encloses it now — no fill, no rule. Space and the glyph do the whole
+ * job, which is what the card can afford: a fill quiet enough to sit on this
+ * surface is a shade off the surface itself, and a rule adds a second vertical
+ * line to a card whose only other one is the source divider.
+ *
+ * The glyph starts on the locale-code column instead of an arbitrary indent, so
+ * the note hangs off the same left edge as every row above it.
+ *
+ * Logical properties throughout — the note carries `dir="auto"`, and a comment
+ * written in an RTL script has to be able to flip.
+ */
+.item-note {
+  align-items: start;
+  column-gap: var(--spacing-3);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  margin-block: var(--spacing-2);
+  margin-inline-start: var(--spacing-1);
 }
 
-/* Comment row: comment left, expand button right, vertically centred */
-.comment-expand-row {
-  align-items: center;
+/*
+ * Carries what the deleted prefix used to say. It clears the 3:1 control floor
+ * in both themes, where --color-text-tertiary would not.
+ *
+ * The box is the height of the text's first line, not the height of the glyph,
+ * and the glyph is centred inside it. Sizing the box to the glyph top-aligned it
+ * to the grid row while the text sat lower in its own taller line box, which
+ * read as the icon floating above the sentence it labels.
+ */
+.item-note__icon {
+  color: var(--color-neutral-500);
+  display: grid;
+  font-size: var(--font-size-lg);
+  height: calc(var(--font-size-sm) * var(--line-height-relaxed));
+  place-items: center;
+  width: var(--font-size-lg);
+}
+
+/*
+ * A step quieter than the strings above it: this is the instruction, not the
+ * material being judged. The measure cap is the point of the whole change — the
+ * old line ran past 130 characters on a wide card, which is unreadable prose at
+ * any size.
+ */
+.item-note__text {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-relaxed);
+  margin: 0;
+  max-width: 72ch;
+  white-space: pre-wrap;
+}
+
+/* The expand control keeps its own row now that the note no longer shares one. */
+.expand-row {
   display: flex;
-  gap: var(--spacing-2);
-  justify-content: space-between;
-  min-height: var(--font-size-base);
+  justify-content: flex-end;
 }
 
 .expand-button {
@@ -347,10 +396,10 @@
   min-height: 44px;
 }
 
-/* The expand control is the only thing on its row when the item has no comment,
-   so its floor becomes the row's height: 44px of button under a 1px rule and a
-   4px pad measured 49px of band for a 32px control. It sizes to its content on a
-   fine pointer and takes the floor back where a finger needs it. */
+/* The expand control now always owns its row, so its floor is the row's height:
+   a 44px button under the grid measured 44px of band for a 32px control. It
+   sizes to its content on a fine pointer and takes the floor back where a finger
+   needs it. */
 @media (pointer: coarse) {
   .expand-button {
     min-width: 44px;
@@ -365,20 +414,6 @@
 
 .expand-button mat-icon.rotated {
   transform: rotate(180deg);
-}
-
-.comment-text {
-  color: var(--color-text-primary);
-  font-size: var(--font-size-sm);
-  font-style: italic;
-  line-height: var(--line-height-relaxed);
-  margin: 0;
-  padding-left: var(--spacing-1);
-  white-space: pre-wrap;
-
-  &.full {
-    color: var(--color-text-secondary);
-  }
 }
 
 @keyframes borderFlash {

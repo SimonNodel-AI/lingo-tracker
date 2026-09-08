@@ -142,28 +142,38 @@
       />
     }
 
-    <!-- Comment text left, expand toggle right. Rendered only when it has
-         something to say — a "Comment: -" placeholder and its divider on every
-         item without a comment is noise, not information. -->
-    @if (translation().comment || needsExpansion()) {
-      <div class="comment-expand-row">
-        @if (translation().comment) {
-          <p class="comment-text full">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} <span [innerHTML]="translation().comment | highlight : searchQuery()"></span></p>
-        } @else {
-          <span></span>
-        }
+    <!--
+      The note. It is the only sentence on this card a person wrote — everything
+      above it is derived from the files — so it gets an object of its own rather
+      than a prefixed line of fine print. Rendered only when it has something to
+      say: a "Comment: -" placeholder on every item without one is noise.
 
-        @if (needsExpansion()) {
-          <button
-            class="expand-button"
-            type="button"
-            (click)="toggleExpansion()"
-            [attr.aria-expanded]="isExpanded()"
-          >
-            <span class="expand-button__label">{{ expandLabelToken() | transloco : expandLabelParams() }}</span>
-            <mat-icon [class.rotated]="isExpanded()" aria-hidden="true">expand_more</mat-icon>
-          </button>
-        }
+      The prefix that used to be visible is now read-only-to-screen-readers. The
+      glyph names the block for sighted users; the word still names it for
+      everyone else, and it stays a translated token rather than becoming
+      hardcoded English in an aria-label.
+    -->
+    @if (translation().comment) {
+      <div class="item-note">
+        <mat-icon class="item-note__icon" aria-hidden="true">sticky_note_2</mat-icon>
+        <p class="item-note__text" dir="auto">
+          <span class="sr-only">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} </span>
+          <span [innerHTML]="translation().comment | highlight : searchQuery()"></span>
+        </p>
+      </div>
+    }
+
+    @if (needsExpansion()) {
+      <div class="expand-row">
+        <button
+          class="expand-button"
+          type="button"
+          (click)="toggleExpansion()"
+          [attr.aria-expanded]="isExpanded()"
+        >
+          <span class="expand-button__label">{{ expandLabelToken() | transloco : expandLabelParams() }}</span>
+          <mat-icon [class.rotated]="isExpanded()" aria-hidden="true">expand_more</mat-icon>
+        </button>
       </div>
     }
   }
