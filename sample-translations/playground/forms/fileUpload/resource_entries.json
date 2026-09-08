@@ -50,14 +50,14 @@
     "fr-ca": "File size exceeds {maxSize}"
   },
   "fileWasOverwritten": {
-    "source": "File '{filename}' was overwritten",
+    "source": "File ''{filename}'' was overwritten",
     "comment": "A message shown to the user when they upload a file that overrode a previously uploaded file",
     "tags": ["ui", "forms", "fileUpload"],
-    "de": "Datei „{filename}“ wurde überschrieben",
-    "es": "Se sobrescribió el archivo '{filename}'",
+    "de": "Die Datei ''{filename}'' wurde überschrieben.",
+    "es": "El archivo ''{filename}'' fue sobrescrito.",
     "fr-fr": "Le fichier « {filename} » a été écrasé",
-    "ja": "ファイル '{filename}' が上書きされました",
-    "fr-ca": "File '{filename}' was overwritten"
+    "ja": "ファイル「{filename}」が上書きされました",
+    "fr-ca": "Le fichier ''{filename}'' a été écrasé"
   },
   "dropYourFilesHere": {
     "source": "Drag & drop files here or",
@@ -70,13 +70,13 @@
     "fr-ca": "Drag & drop files here or"
   },
   "duplicateFileNotAllowed": {
-    "source": "Duplicate file '{filename}' already exists. Delete the existing file to upload.",
+    "source": "Duplicate file ''{filename}'' already exists. Delete the existing file to upload.",
     "comment": "Message shown when user try to upload same file again",
     "tags": ["ui", "forms", "fileUpload"],
-    "de": "Duplikat-Datei „{filename}“ ist bereits vorhanden. Löschen Sie zum Hochladen die vorhandene Datei.",
-    "es": "Ya existe el archivo duplicado '{filename}'. Elimine el archivo existente para cargarlo.",
+    "de": "Die Datei „{filename}“ ist bereits vorhanden. Bitte löschen Sie die vorhandene Datei, um sie hochzuladen.",
+    "es": "El archivo duplicado ''{filename}'' ya existe. Elimine el archivo existente para subirlo.",
     "fr-fr": "Un doublon du fichier « {filename} » existe déjà. Pour le téléverser, supprimez le fichier existant.",
-    "ja": "重複するファイル '{filename}' がすでに存在します。アップロードするには既存のファイルを削除してください。",
-    "fr-ca": "Duplicate file '{filename}' already exists. Delete the existing file to upload."
+    "ja": "重複ファイル「{filename}」が既に存在します。アップロードするには、既存のファイルを削除してください。",
+    "fr-ca": "Le fichier ''{filename}'' existe déjà. Supprimez le fichier existant avant de le télécharger."
   }
 }

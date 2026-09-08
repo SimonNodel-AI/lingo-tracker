@@ -173,22 +173,17 @@ This means a single `node apps/api/main.js` process serves both the UI and the A
 
 ## Collection Cache
 
-### Single-Collection Design
+### Bounded Multi-Collection Design
 
-`CollectionCacheService` holds at most one `CachedCollection` at a time, stored in a private field `#cachedCollection`. The constraint is intentional:
+`CollectionCacheService` holds a `Map` of `CachedCollection` entries keyed by collection name, capped at `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` (default 4) and evicted least-recently-used.
 
-**Memory constraints.** A fully-loaded [resource tree](glossary.md#resource-tree) for a large collection (thousands of keys, multiple locales, full translation values and metadata) can be several megabytes of JavaScript heap. Caching multiple collections simultaneously would multiply this linearly with no benefit in the typical usage pattern.
+**Why more than one.** Opening a second collection in another browser tab is a real usage pattern. With a single slot, each tab's 2-second `/cache/status` poll evicted the other tab's cache, so neither ever reached `READY`, both polled forever, and the server re-indexed continuously. Independent entries remove the contention entirely.
 
-**Typical single-collection usage pattern.** The Tracker UI exposes a collection selector, but users nearly always work within one collection at a time. Switching collections triggers a new cache build for the incoming collection — the outgoing collection's cache is discarded immediately when `setCacheStatus()` is called for a different collection name.
+**Why bounded.** A fully-loaded [resource tree](glossary.md#resource-tree) for a large collection (thousands of keys, multiple locales, full translation values and metadata) can be tens of megabytes of JavaScript heap, and that cost multiplies per cached collection. The cap is a memory budget; lower it to 1 to restore the old single-slot behaviour.
 
-```typescript
-// From CollectionCacheService.setCacheStatus()
-if (this.#cachedCollection && this.#cachedCollection.collectionName !== collectionName) {
-  this.#cachedCollection = null; // evict the previous collection
-}
-```
+**Eviction.** On inserting a new entry at the cap, the entry with the lowest `accessSequence` is dropped. `accessSequence` is a monotonic counter bumped on every read and write, not a clock — several collections can be touched inside the same millisecond and eviction still needs a strict order. An entry in `INDEXING` state is never chosen: discarding in-flight work would leave the request that started it waiting for nothing, so the map is allowed to overflow briefly when every entry is busy.
 
-There is no LRU strategy or size limit — the single-slot design is the entire eviction policy.
+**Per-entry state.** Fingerprint, revalidation throttle stamp and the deferred fingerprint-refresh timer all live on the entry. A read of one collection therefore cannot postpone another collection's staleness check.
 
 ### Cache State Machine
 
@@ -196,7 +191,7 @@ There is no LRU strategy or size limit — the single-slot design is the entire 
 
 ```mermaid
 stateDiagram-v2
-    [*] --> NOT_STARTED : server start\nor collection switch
+    [*] --> NOT_STARTED : server start\nor cache eviction
 
     NOT_STARTED --> INDEXING : indexCollection() called\n(triggered by first /tree or /cache/status request)
     ERROR --> INDEXING : indexCollection() called\n(auto-retry on next /tree request)
@@ -204,8 +199,8 @@ stateDiagram-v2
     INDEXING --> READY : core.loadResourceTree() succeeds
     INDEXING --> ERROR : core.loadResourceTree() throws
 
-    READY --> NOT_STARTED : clearCache() called\n(delete/move resource or locale change)
-    READY --> INDEXING : collection switch\ntriggers new indexCollection()
+    READY --> NOT_STARTED : clearCache(name) called\n(delete/move resource or locale change)
+    READY --> NOT_STARTED : evicted as least recently used\n(cache at its collection limit)
 
     READY --> READY : incremental update\n(addResourceToCache, addFolderToCache,\nremoveFolderFromCache, removeResourceFromCache,\nmoveFolderInCache)
 ```
@@ -216,8 +211,8 @@ State values are the string literals from the `CacheStatus` enum in `collection-
 |-------|-------------|---------|
 | `NOT_STARTED` | `"not-started"` | No cache exists for this collection. Indexing has not been requested yet. |
 | `INDEXING` | `"indexing"` | `core.loadResourceTree()` is running asynchronously. Read requests must wait. |
-| `READY` | `"ready"` | Tree is in memory. Read requests are served instantly from `#cachedCollection.tree`. |
-| `ERROR` | `"error"` | The last indexing attempt threw. The error message is stored in `#cachedCollection.error`. The next `/tree` or `/cache/status` request automatically re-triggers indexing. |
+| `READY` | `"ready"` | Tree is in memory. Read requests are served instantly from the entry's `tree`. |
+| `ERROR` | `"error"` | The last indexing attempt threw. The error message is stored on the entry. The next `/tree` or `/cache/status` request automatically re-triggers indexing. |
 
 ### Incremental Updates vs Full Cache Clear
 
@@ -231,9 +226,9 @@ After a successful write operation the cache is updated by one of two strategies
 | `removeResourceFromCache()` | `PATCH /resources` (when resource moves folder — removes from old location) |
 | `addFolderToCache()` | `POST /folders` |
 | `removeFolderFromCache()` | `DELETE /folders` |
-| `moveFolderInCache()` | `POST /folders/move` (with `clearCache()` fallback if structural navigation fails) |
+| `moveFolderInCache()` | `POST /folders/move` within one collection (with `clearCache(name)` fallback if structural navigation fails; a cross-collection move clears both collections instead) |
 
-**Full cache clear** — for operations where the breadth of changes cannot be tracked in a single incremental call, or where correctness risk outweighs the cost of a re-index. `clearCache()` sets `#cachedCollection` to `null`, returning state to `NOT_STARTED`. The next request to `/tree` or `/cache/status` triggers a fresh `indexCollection()`.
+**Full cache clear** — for operations where the breadth of changes cannot be tracked in a single incremental call, or where correctness risk outweighs the cost of a re-index. `clearCache(collectionName)` drops that one collection's entry, returning it to `NOT_STARTED`; the next request to `/tree` or `/cache/status` triggers a fresh `indexCollection()`. It is always scoped to the collection that was written — a write against one collection must never force a re-index of a collection somebody else is viewing. Cross-collection moves clear the source and every destination collection they touched. `clearAllCaches()` exists for changes that invalidate everything.
 
 | Operation | Why full clear |
 |---|---|

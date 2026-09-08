@@ -9,16 +9,6 @@
     "ja": "ドラッグして翻訳を移動",
     "de": "Zum Verschieben der Übersetzung ziehen"
   },
-  "copyKeyAriaLabel": {
-    "source": "Copy key",
-    "comment": "Aria-label for the copy key button on a translation item header",
-    "tags": ["browser"],
-    "es": "Copiar clave",
-    "fr-ca": "Copier la clé",
-    "ru": "Копировать ключ",
-    "ja": "コピーキー",
-    "de": "Schlüssel kopieren"
-  },
   "hideCommentAriaLabel": {
     "source": "Hide comment",
     "comment": "Aria-label for the comment toggle button when comment is currently shown",
@@ -88,5 +78,125 @@
     "ru": "Нет статусов",
     "ja": "ステータスなし",
     "de": "Keine Statusmeldungen"
+  },
+  "moreLocalesX": {
+    "source": "{ count, plural, =1 {1 more locale} other {{count} more locales} }",
+    "comment": "Label on the expand button of a translation item, showing how many locale rows are hidden below the collapsed area",
+    "tags": ["browser"],
+    "es": "{ count, plural, =1 {1 idioma más} other {{count} idiomas más} }",
+    "fr-ca": "{ count, plural, =1 {1 langue de plus} other {{count} langues de plus} }",
+    "de": "{ count, plural, =1 {1 weitere Region} other {{count} weitere Regionen} }",
+    "ja": "{ count, plural, other {他 {count} 件のロケール} }",
+    "ru": "{ count, plural, one {ещё {count} локаль} few {ещё {count} локали} many {ещё {count} локалей} other {ещё {count} локали} }"
+  },
+  "showLess": {
+    "source": "Show less",
+    "comment": "Label on the expand button of a translation item when it is expanded and can be collapsed again",
+    "tags": ["browser"],
+    "es": "Mostrar menos",
+    "fr-ca": "Afficher moins",
+    "ru": "Свернуть",
+    "ja": "折りたたむ",
+    "de": "Weniger anzeigen"
+  },
+  "showMore": {
+    "source": "Show more",
+    "comment": "Label on the expand button of a translation item when long values are clipped but no locale rows are hidden",
+    "tags": ["browser"],
+    "es": "Mostrar más",
+    "fr-ca": "Afficher plus",
+    "ru": "Показать больше",
+    "ja": "もっと見る",
+    "de": "Mehr anzeigen"
+  },
+  "compactLocaleAriaLabelX": {
+    "source": "Showing {locale}, status: {status}",
+    "comment": "Screen-reader label for the locale badge on a compact translation item, naming which locale the displayed value belongs to and its translation status",
+    "tags": ["browser"],
+    "es": "Mostrando {locale}, estado: {status}",
+    "fr-ca": "Affichage de {locale}, statut : {status}",
+    "ru": "Показано: {locale}, статус: {status}",
+    "ja": "{locale} を表示中、ステータス: {status}",
+    "de": "{locale} wird angezeigt, Status: {status}"
+  },
+  "baseLocaleTag": {
+    "source": "source",
+    "comment": "Short tag shown beside the locale code when a compact translation item is displaying the base locale source text rather than a translation",
+    "tags": ["browser"],
+    "es": "origen",
+    "fr-ca": "source",
+    "ru": "источник",
+    "ja": "原文",
+    "de": "Quelle"
+  },
+  "keyTooltipX": {
+    "source": "{key} — click to copy",
+    "comment": "Tooltip on the translation item key chip: shows the untruncated resource key followed by the copy action. {key} is a dot-delimited resource key and is never translated.",
+    "tags": ["browser"],
+    "es": "{key} — clic para copiar",
+    "fr-ca": "{key} — cliquer pour copier",
+    "de": "{key} — zum Kopieren klicken",
+    "ja": "{key} — クリックしてコピー",
+    "ru": "{key} — нажмите, чтобы скопировать"
+  },
+  "copyKeyAriaLabelX": {
+    "source": "Copy key {key}",
+    "comment": "Accessible name for the key chip button on a translation item header; names the full resource key that will be copied. {key} is a dot-delimited resource key and is never translated.",
+    "tags": ["browser"],
+    "es": "Copiar la clave {key}",
+    "fr-ca": "Copier la clé {key}",
+    "de": "Schlüssel {key} kopieren",
+    "ja": "キー {key} をコピー",
+    "ru": "Копировать ключ {key}"
+  },
+  "rollupAriaLabelX": {
+    "source": "Translation status: {breakdown}",
+    "comment": "Accessible name for the translation status rollup on a translation item. {breakdown} is an already-localized, locale-joined list of status counts such as \"2 stale, 1 new\".",
+    "tags": ["browser"],
+    "es": "Estado de traducción: {breakdown}",
+    "fr-ca": "État de traduction : {breakdown}",
+    "de": "Übersetzungsstatus: {breakdown}",
+    "ja": "翻訳ステータス: {breakdown}",
+    "ru": "Статус перевода: {breakdown}"
+  },
+  "sameAsSourceTag": {
+    "source": "same as source",
+    "comment": "Marker on a locale row whose translated value is byte-identical to the base locale value — it was never actually translated",
+    "tags": ["browser"],
+    "es": "igual que la fuente",
+    "fr-ca": "identique à la source",
+    "ru": "то же самое, что и источник",
+    "ja": "ソースと同じ",
+    "de": "gleich der Quelle"
+  },
+  "sameAsSourceAriaLabelX": {
+    "source": "{locale} is identical to the source text",
+    "comment": "Accessible description for a locale row whose value is byte-identical to the base locale value",
+    "tags": ["browser"],
+    "es": "{locale} es idéntico al texto fuente",
+    "fr-ca": "{locale} est identique au texte source",
+    "ru": "{locale} идентичен исходному тексту",
+    "ja": "{locale} はソーステキストと同一です",
+    "de": "{locale} ist identisch mit dem Quelltext"
+  },
+  "defaultLocaleTag": {
+    "source": "default",
+    "comment": "Short marker on the compact row when the shown locale was picked automatically rather than chosen by the user",
+    "tags": ["browser"],
+    "es": "por defecto",
+    "fr-ca": "défaut",
+    "ru": "по умолчанию",
+    "ja": "デフォルト",
+    "de": "Standard"
+  },
+  "defaultLocaleTooltipX": {
+    "source": "This collection has no base locale, so {locale} is shown by default. Pick a different one with the locale filter.",
+    "comment": "Tooltip explaining why a locale was auto-selected for the compact row, and how to change it",
+    "tags": ["browser"],
+    "es": "Esta colección no tiene una configuración regional base, por lo que {locale} se muestra por defecto. Seleccione una diferente con el filtro de configuración regional.",
+    "fr-ca": "Cette collection n'a pas de langue de base ; donc, {locale} est affiché par défaut. Choisissez-en un autre à l'aide du filtre de langue.",
+    "ru": "В этой коллекции отсутствует базовая локаль, поэтому по умолчанию отображается {locale}. Выберите другую локаль с помощью фильтра локали.",
+    "ja": "このコレクションには基本ロケールが設定されていないため、デフォルトで{locale}が表示されます。ロケールフィルターを使用して別のロケールを選択してください。",
+    "de": "Diese Sammlung hat kein Basisgebietsschema, daher wird standardmäßig {locale} angezeigt. Wählen Sie mit dem Gebietsschemafilter ein anderes Gebietsschema aus."
   }
 }

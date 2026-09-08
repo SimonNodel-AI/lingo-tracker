@@ -7,6 +7,9 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "target": "es2022",
+    // Match lib to target: the base config still pins lib to es2020, which hides
+    // ES2021 runtime APIs the browser bundle can rely on (e.g. Intl.ListFormat).
+    "lib": ["es2022", "dom"],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "emitDecoratorMetadata": false,

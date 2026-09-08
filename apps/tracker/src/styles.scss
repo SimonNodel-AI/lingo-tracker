@@ -46,6 +46,19 @@ pre {
   outline-offset: 2px;
 }
 
+// Browser-supplied surfaces theming: selection, form accents, scrollbars
+::selection {
+  background-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  color: var(--color-text-primary);
+}
+
+:root {
+  accent-color: var(--color-primary);
+  caret-color: var(--color-primary);
+  scrollbar-color: var(--color-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
 // Search term highlighting
 mark.search-highlight {
   background-color: var(--color-highlight);
@@ -62,6 +75,54 @@ mark.search-highlight {
   padding: 0;
   border-top: 3px solid var(--color-primary);
   box-shadow: var(--shadow-lg);
+}
+
+// The translation editor's outer box lives here, not in the two TS call sites.
+// The CDK puts the panel class on the overlay pane, which is the only element
+// that can carry the dialog's width and height; both call sites now pass this
+// class and nothing else, so there is one place to change the numbers.
+.translation-editor-dialog-panel {
+  width: 700px;
+  max-width: min(700px, calc(100vw - 2 * var(--spacing-8)));
+  max-height: 90vh;
+
+  // Material's dialog container already carries `max-height: inherit`; the
+  // component host repeats the trick so the flex column inside can distribute
+  // the height instead of guessing at chrome heights.
+  app-translation-editor-dialog {
+    display: block;
+    max-height: inherit;
+  }
+
+  // Below the `sm` breakpoint a 700px dialog collapses to whatever 80vw allows
+  // — 312px at 390px of viewport, a column too narrow to read a translation in.
+  // Material's standard answer at this size is a full-screen dialog, so take
+  // the whole screen, drop the floating chrome, and let the editor's own flex
+  // column own the height.
+  @media (max-width: 639px) {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+
+    .mat-mdc-dialog-container:has(app-translation-editor-dialog) {
+      height: 100%;
+      border-top-width: 0;
+
+      // The surface is the link in the chain between the container and the
+      // component; without a height of its own the dialog stops wherever its
+      // shortest tab ends and leaves the rest of the screen blank behind it.
+      .mat-mdc-dialog-surface {
+        height: 100%;
+        border-radius: 0;
+      }
+    }
+
+    app-translation-editor-dialog {
+      height: 100%;
+      max-height: 100%;
+    }
+  }
 }
 
 // Make overlay backdrops slightly darker
@@ -104,4 +165,13 @@ mark.search-highlight {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+// The key chip tooltip carries an untruncated resource key, which is longer and
+// less breakable than ordinary tooltip copy.
+.key-chip-tooltip .mdc-tooltip__surface {
+  font-family: var(--font-family-mono);
+  max-width: 32rem;
+  overflow-wrap: anywhere;
+  text-align: left;
 }

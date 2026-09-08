@@ -48,5 +48,35 @@
     "ru": "Добавить папку (Ctrl+Shift+N)",
     "ja": "フォルダを追加する（Ctrl+Shift+N）",
     "de": "Ordner hinzufügen (Strg+Umschalt+N)"
+  },
+  "expandAllTooltip": {
+    "source": "Expand all folders",
+    "comment": "Tooltip and aria-label for the expand-all control on the collection root row in the folder tree",
+    "tags": ["browser"],
+    "es": "Expandir todas las carpetas",
+    "fr-ca": "Développer tous les dossiers",
+    "ru": "Развернуть все папки",
+    "ja": "すべてのフォルダーを展開する",
+    "de": "Alle Ordner erweitern"
+  },
+  "collapseAllTooltip": {
+    "source": "Collapse all folders",
+    "comment": "Tooltip and aria-label for the collapse-all control on the collection root row in the folder tree",
+    "tags": ["browser"],
+    "es": "Contraer todas las carpetas",
+    "fr-ca": "Réduire tous les dossiers",
+    "ru": "Свернуть все папки",
+    "ja": "すべてのフォルダーを折りたたむ",
+    "de": "Alle Ordner ausblenden"
+  },
+  "rootFolderAriaLabelX": {
+    "source": "{name}, all resources in this collection",
+    "comment": "Aria-label for the collection root row in the folder tree; name is the collection name",
+    "tags": ["browser"],
+    "es": "{name}, todos los recursos de esta colección",
+    "fr-ca": "{name}, toutes les ressources de cette collection",
+    "ru": "{name}, все ресурсы в этой коллекции",
+    "ja": "{name}、このコレクションのすべてのリソース",
+    "de": "{name}, alle Ressourcen in dieser Sammlung"
   }
 }

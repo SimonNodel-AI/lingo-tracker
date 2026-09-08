@@ -7,6 +7,14 @@ import type {
 } from './types';
 
 /**
+ * The fields every per-value detail carries, whichever pass produced it.
+ *
+ * The ICU pass and the placeholder pass both report one explained problem per
+ * value, so they share a renderer rather than each growing their own.
+ */
+type ExplainedDetail = Pick<IcuValidationDetail, 'key' | 'locale' | 'collection' | 'message'>;
+
+/**
  * Maximum number of resources to display in each failure/warning category
  * before truncating with an overflow message.
  *
@@ -55,6 +63,14 @@ export function generateValidationSummary(result: ResourceValidationResult, opti
   if (result.icu) {
     sections.push(...buildIcuSections(result.icu));
   }
+  if (result.placeholders && result.placeholders.failures.length > 0) {
+    sections.push(
+      buildDetailSection(
+        `❌ Placeholder Failures (${result.placeholders.failures.length})`,
+        result.placeholders.failures,
+      ),
+    );
+  }
 
   sections.push(buildFooterSection(result, options));
   return sections.join('\n\n');
@@ -102,6 +118,10 @@ function buildStatisticsSection(result: ResourceValidationResult, options: Valid
     lines.push(`  ICU Values Compiled: ${result.icu.valuesChecked}`);
   }
 
+  if (result.placeholders) {
+    lines.push(`  Placeholders Compared: ${result.placeholders.valuesChecked}`);
+  }
+
   return lines.join('\n');
 }
 
@@ -122,27 +142,28 @@ function buildIcuSections(icu: IcuValidationResult): string[] {
     sections.push(buildUnsupportedLocalesSection(icu.unsupportedLocales));
   }
   if (icu.failures.length > 0) {
-    sections.push(buildIcuDetailSection(`❌ ICU Failures (${icu.failures.length})`, icu.failures));
+    sections.push(buildDetailSection(`❌ ICU Failures (${icu.failures.length})`, icu.failures));
   }
   if (icu.warnings.length > 0) {
-    sections.push(buildIcuDetailSection(`⚠️  ICU Warnings (${icu.warnings.length})`, icu.warnings));
+    sections.push(buildDetailSection(`⚠️  ICU Warnings (${icu.warnings.length})`, icu.warnings));
   }
 
   return sections;
 }
 
 /**
- * Builds a list of ICU details grouped by locale.
+ * Builds a list of per-value details grouped by locale.
  *
  * Each entry carries its own explanation, so unlike the status sections the
  * message is printed alongside the key rather than a shared emoji legend.
+ * Shared by the ICU and placeholder passes, which report the same shape.
  *
  * @param heading - Section heading, already including its count
- * @param details - The ICU details to list
+ * @param details - The details to list
  * @returns Formatted section string
  * @internal
  */
-function buildIcuDetailSection(heading: string, details: readonly IcuValidationDetail[]): string {
+function buildDetailSection(heading: string, details: readonly ExplainedDetail[]): string {
   const lines = [`${heading}:`, '─'.repeat(50)];
 
   const byLocale = groupByLocale(details);
@@ -305,6 +326,9 @@ function buildFooterSection(result: ResourceValidationResult, options: Validatio
   lines.push(`  Total Failures: ${result.failures.length}`);
   if (result.icu && result.icu.failures.length > 0) {
     lines.push(`  Total ICU Failures: ${result.icu.failures.length}`);
+  }
+  if (result.placeholders && result.placeholders.failures.length > 0) {
+    lines.push(`  Total Placeholder Failures: ${result.placeholders.failures.length}`);
   }
   if (options.allowTranslated && result.warnings.length > 0) {
     lines.push(`  Total Warnings: ${result.warnings.length}`);

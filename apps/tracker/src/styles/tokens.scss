@@ -9,6 +9,9 @@
   --color-primary-hover: #c25d55;
   --color-primary-active: #b04a42;
   --color-primary-subtle: #fdf2f1;
+  // Text-weight primary: --color-primary is a fill tone and reaches only 2.68:1
+  // on a card, so copy that should read as "primary" uses this instead (5.05:1).
+  --color-primary-text: #a1443d;
 
   // Colors - Secondary (Deep Sky Blue)
   --color-secondary: #4a7fb5;
@@ -31,9 +34,76 @@
   // Semantic colors
   --color-success: #6da67e;
   --color-warning: #d9a441;
+  // Text-weight warning: --color-warning is a fill/border tone and only reaches
+  // ~2.1:1 on the parchment background, so it must never be used for copy.
+  --color-warning-text: #8a5a00;
   --color-error: #c95e5e;
   --color-info: #5a8db8;
   --color-info-subtle: #e6f0f8;
+
+  // Translation status spine. Every surface that reports a status — locale rows,
+  // the compact badge, the rollup ring and its tooltip — reads these, so a status
+  // can never mean two different colors in two places. `new` and `stale` are
+  // deliberately distinct: one is work not started, the other is work gone out of
+  // date, and conflating them hides the more urgent of the two.
+  //
+  // Each status carries two values because the same token is painted on both a
+  // parchment card and an always-dark tooltip. One mid-tone that cleared 3:1 on
+  // both would force all four to the same lightness and make them harder to tell
+  // apart, so the surface picks instead. Ratios below are against the card
+  // background (--color-background-muted); every value clears 3:1 for non-text.
+  --status-new-on-light: #a87716; // 3.24:1
+  --status-new-on-dark: #e4b454; // 7.52:1
+  --status-stale-on-light: #b85c26; // 3.75:1
+  --status-stale-on-dark: #e08a4e; // 5.43:1
+  --status-translated-on-light: #3f7aa8; // 3.78:1
+  --status-translated-on-dark: #7bafde; // 6.19:1
+  --status-verified-on-light: #4e8a63; // 3.35:1
+  --status-verified-on-dark: #7dbb8f; // 6.43:1
+
+  --color-status-new: var(--status-new-on-light);
+  --color-status-stale: var(--status-stale-on-light);
+  --color-status-translated: var(--status-translated-on-light);
+  --color-status-verified: var(--status-verified-on-light);
+
+  // Status chips. The tones above are graphic weight — correct for a ring
+  // segment, too light to set type on and only legible as a 16px glyph. A status
+  // chip is a filled region that has to read across a list at a glance and carry
+  // its own label, so it needs a third value the spine did not have: an ink dark
+  // enough for copy on its own fill.
+  //
+  // The four are deliberately NOT equal in force. Most rows in a healthy
+  // collection are `translated` or `verified`, and giving every status the same
+  // saturated fill turns a list into a wall of one colour where nothing can be
+  // picked out — the same mistake as an accent used on everything. So the two
+  // states that mean "nothing to do here" go quiet: a near-neutral fill with the
+  // hue carried only by ink and a hairline border. `new` and `stale` — the two
+  // that mean someone has work — keep a fill saturated enough to find in
+  // peripheral vision. Scanning a folder, the eye lands on the exceptions.
+  //
+  // Every ink is measured against its own surface at ≥4.5:1, so the label reads
+  // as body copy and the glyph clears the 3:1 control floor with room to spare.
+
+  // Needs work — full fill, findable without reading.
+  --color-status-new-surface: #e0cfae;
+  --color-status-new-border: #c7a86b;
+  --color-status-new-ink: #745415; // 4.54:1 on surface
+  --color-status-stale-surface: #e6c9b7;
+  --color-status-stale-border: #d29a79;
+  --color-status-stale-ink: #884720; // 4.51:1 on surface
+
+  // Done — quiet fill, hue in the ink and the border only.
+  --color-status-translated-surface: #e8e9e6;
+  --color-status-translated-border: #bbcbd6;
+  --color-status-translated-ink: #3a6d95; // 4.53:1 on surface
+  --color-status-verified-surface: #e9eae1;
+  --color-status-verified-border: #c0d0bf;
+  --color-status-verified-ink: #447353; // 4.53:1 on surface
+
+  // Tooltip panel. Stays dark in both themes, so it is built from whichever end
+  // of the neutral scale is dark in the current theme rather than a fixed hex.
+  --color-tooltip-surface: var(--color-neutral-800);
+  --color-tooltip-text: var(--color-neutral-50);
 
   // Watercolor accent palette (for splashes & decorative elements)
   --wc-coral: #e8847c;
@@ -53,7 +123,15 @@
   --color-text-primary: #2e2923;
   --color-text-secondary: #5a534a;
   --color-text-tertiary: #a89f93;
+  // Placeholder / hint text. Darker than tertiary because placeholders are read
+  // as text and must clear 4.5:1 against --color-background; tertiary is a
+  // decorative tint at 2.5:1 and is not safe for anything a user has to read.
+  --color-text-placeholder: #736b61;
   --color-text-inverse: #faf8f5;
+  // Ink on a filled primary control. The primary fill is the same light coral
+  // in both themes, so this ink stays dark in both — swapping it for
+  // --color-text-primary under dark drops the label to 2:1.
+  --color-text-on-primary: #2e2923;
 
   // Border colors — warm
   --color-border: #e5dfd7;
@@ -84,6 +162,9 @@
   --color-primary-hover: #f0a09a;
   --color-primary-active: #d4726a;
   --color-primary-subtle: #3d2220;
+  // The dark-theme primary already clears 4.5:1 on a card (5.5:1), so text-weight
+  // primary needs no separate tone here.
+  --color-primary-text: var(--color-primary);
 
   // Colors - Secondary (Sky Blue — brightened)
   --color-secondary: #7bafde;
@@ -106,9 +187,45 @@
   // Semantic colors — dark mode
   --color-success: #7dbb8f;
   --color-warning: #e4b454;
+  --color-warning-text: #e4b454;
   --color-error: #d97878;
   --color-info: #7bafde;
   --color-info-subtle: #1a2d40;
+
+  // Translation status spine — dark. Primitives are declared once on :root; the
+  // theme only chooses which surface set applies.
+  --color-status-new: var(--status-new-on-dark);
+  --color-status-stale: var(--status-stale-on-dark);
+  --color-status-translated: var(--status-translated-on-dark);
+  --color-status-verified: var(--status-verified-on-dark);
+
+  // Status chips — dark. Composed against the dark card rather than inverted
+  // from the light set: the on-dark spine tones are already text-weight, so here
+  // the surface is the value that moves, sunk toward the page black until the
+  // ink clears 4.5:1 on it. `stale` sits closest to the warm card and takes the
+  // narrowest separation of the four; that is the honest cost of keeping it
+  // distinguishable from `new` rather than the two sharing a hue.
+  // Needs work — full fill.
+  --color-status-new-surface: #5b4927;
+  --color-status-new-border: #997a3c;
+  --color-status-new-ink: var(--status-new-on-dark); // 4.51:1 on surface
+  --color-status-stale-surface: #493120;
+  --color-status-stale-border: #865533;
+  --color-status-stale-ink: var(--status-stale-on-dark); // 4.54:1 on surface
+
+  // Done — quiet. Sunk toward the page black rather than lifted off the card, so
+  // the resting states recede and the two above are the only things that glow.
+  --color-status-translated-surface: #1e2225;
+  --color-status-translated-border: #374756;
+  --color-status-translated-ink: var(--status-translated-on-dark); // 6.89:1 on surface
+  --color-status-verified-surface: #1e231d;
+  --color-status-verified-border: #384b3b;
+  --color-status-verified-ink: var(--status-verified-on-dark); // 7.14:1 on surface
+
+  // Tooltip panel — dark. The neutral scale is inverted here, so the dark end is
+  // the low numbers; this keeps the panel raised above the near-black page.
+  --color-tooltip-surface: var(--color-neutral-200);
+  --color-tooltip-text: var(--color-neutral-900);
 
   // Watercolor accents — slightly brighter for dark
   --wc-coral: #f0a09a;
@@ -128,7 +245,9 @@
   --color-text-primary: #f3efe9;
   --color-text-secondary: #d4cdc3;
   --color-text-tertiary: #7d7569;
+  --color-text-placeholder: #8a8175;
   --color-text-inverse: #1c1814;
+  --color-text-on-primary: #2e2923;
 
   // Border colors
   --color-border: #433d36;

@@ -52,7 +52,7 @@ describe('LocaleFilter', () => {
 
     it('should show filter icon', () => {
       const icon = fixture.nativeElement.querySelector('.filter-icon');
-      expect(icon?.textContent?.trim()).toBe('filter_list');
+      expect(icon?.textContent?.trim()).toBe('translate');
     });
 
     it('should display current selection text', () => {

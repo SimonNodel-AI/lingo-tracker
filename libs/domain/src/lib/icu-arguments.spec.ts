@@ -1,0 +1,123 @@
+import { describe, it, expect } from 'vitest';
+import { findIcuArguments, compareIcuArguments } from './icu-arguments';
+
+describe('findIcuArguments', () => {
+  it('returns an empty set for a value with no arguments', () => {
+    expect(findIcuArguments('No placeholders here')).toEqual(new Set());
+  });
+
+  it('finds a plain argument', () => {
+    expect(findIcuArguments('Folder {name}')).toEqual(new Set(['name']));
+  });
+
+  it('accepts Transloco syntax', () => {
+    expect(findIcuArguments('Folder {{ name }}')).toEqual(new Set(['name']));
+  });
+
+  it('gives the same answer in either syntax', () => {
+    expect(findIcuArguments('Folder {{ name }}')).toEqual(findIcuArguments('Folder {name}'));
+  });
+
+  it('finds a formatted argument', () => {
+    expect(findIcuArguments('{count, number} files')).toEqual(new Set(['count']));
+  });
+
+  it('finds the argument a plural switches on', () => {
+    expect(findIcuArguments('{count, plural, =1 {1 file} other {# files}}')).toEqual(new Set(['count']));
+  });
+
+  it('finds arguments used only inside a branch', () => {
+    const value = '{count, plural, =1 {1 file in {dir}} other {# files in {dir}}}';
+    expect(findIcuArguments(value)).toEqual(new Set(['count', 'dir']));
+  });
+
+  it('finds arguments nested through a select inside a plural', () => {
+    const value = '{n, plural, =1 {{kind, select, a {{x}} other {{y}}}} other {#}}';
+    expect(findIcuArguments(value)).toEqual(new Set(['n', 'kind', 'x', 'y']));
+  });
+
+  it('excludes branch selectors', () => {
+    const args = findIcuArguments('{count, plural, =1 {one} one {one} few {few} other {many}}');
+    expect(args).toEqual(new Set(['count']));
+  });
+
+  it('excludes the octothorpe', () => {
+    expect(findIcuArguments('{count, plural, other {# items}}')).toEqual(new Set(['count']));
+  });
+
+  it('collapses a repeated argument', () => {
+    expect(findIcuArguments('{a} and {a} and {a}')).toEqual(new Set(['a']));
+  });
+
+  it('returns an empty set for an unparseable value', () => {
+    expect(findIcuArguments('{unbalanced')).toEqual(new Set());
+  });
+
+  it('is case-sensitive', () => {
+    expect(findIcuArguments('Ordner {Name}')).toEqual(new Set(['Name']));
+  });
+});
+
+describe('compareIcuArguments', () => {
+  it('returns null when the arguments match', () => {
+    expect(compareIcuArguments('Folder {name}', 'Ordner {name}')).toBeNull();
+  });
+
+  it('returns null when neither value interpolates anything', () => {
+    expect(compareIcuArguments('Save', 'Guardar')).toBeNull();
+  });
+
+  it('reports a translated argument name in both directions', () => {
+    expect(compareIcuArguments('Folder {name}', 'Carpeta {nombre}')).toEqual({
+      missing: ['name'],
+      unexpected: ['nombre'],
+    });
+  });
+
+  it('catches a case-only difference', () => {
+    // The one that survives review: German `{{ Name }}` looks right and is not.
+    expect(compareIcuArguments('Folder {name}', 'Ordner {Name}')).toEqual({
+      missing: ['name'],
+      unexpected: ['Name'],
+    });
+  });
+
+  it('reports a dropped argument with nothing unexpected', () => {
+    expect(compareIcuArguments('Folder {name}', 'Dossier')).toEqual({ missing: ['name'], unexpected: [] });
+  });
+
+  it('reports an added argument with nothing missing', () => {
+    expect(compareIcuArguments('Folder', 'Dossier {name}')).toEqual({ missing: [], unexpected: ['name'] });
+  });
+
+  it('ignores ordering and repetition', () => {
+    expect(compareIcuArguments('{a} then {b}', '{b} then {a} then {a}')).toBeNull();
+  });
+
+  it('compares across syntaxes', () => {
+    expect(compareIcuArguments('Folder {name}', 'Ordner {{ name }}')).toBeNull();
+  });
+
+  it('tolerates a locale using a different plural category', () => {
+    // Categories are ICU vocabulary, not arguments; they are meant to differ.
+    const base = '{count, plural, =1 {1 file} other {# files}}';
+    const russian = '{count, plural, one {# файл} few {# файла} other {# файлов}}';
+    expect(compareIcuArguments(base, russian)).toBeNull();
+  });
+
+  it('sorts both lists so a report is stable', () => {
+    const mismatch = compareIcuArguments('{b} {a}', '{d} {c}');
+    expect(mismatch).toEqual({ missing: ['a', 'b'], unexpected: ['c', 'd'] });
+  });
+
+  it('reports nothing when the translation is unparseable', () => {
+    // An unparseable value is the ICU compile check's defect to report, not this
+    // one's — and reporting it here would name the wrong repair, since a value
+    // that will not parse looks identical to one that dropped every placeholder.
+    expect(compareIcuArguments('Folder {name}', '{unbalanced')).toBeNull();
+  });
+
+  it('reports nothing when the base value is unparseable', () => {
+    expect(compareIcuArguments('{unbalanced', 'Ordner {name}')).toBeNull();
+  });
+});

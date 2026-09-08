@@ -1,9 +1,27 @@
+@use '../../../../styles/breakpoints' as bp;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Host & dialog container
 // ─────────────────────────────────────────────────────────────────────────────
+// The outer box — width, max-height and the small-viewport full-screen mode —
+// is owned by `.translation-editor-dialog-panel` in styles.scss, because the CDK
+// appends the overlay pane outside this component. Nothing here restates those
+// numbers; the height simply flows down the pane → container → host chain.
 :host {
   display: block;
-  max-width: 750px;
+  block-size: 100%;
+}
+
+// Column layout: header, pre-tab block and actions take their natural height,
+// and the tab content absorbs whatever is left. This replaces a hard-coded
+// content height that overflowed the panel whenever the pre-tab block grew —
+// an error banner or the read-only notice was enough to push the save button
+// off the bottom of the screen.
+.dialog-wrapper {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  max-block-size: 100%;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,6 +30,7 @@
 
 .dialog-header {
   position: relative;
+  flex-shrink: 0;
   padding: var(--spacing-5) var(--spacing-6) var(--spacing-4);
   border-bottom: 1px solid var(--color-border);
 }
@@ -53,6 +72,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 .dialog-pretab {
+  flex-shrink: 0;
   padding: var(--spacing-3) var(--spacing-6);
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-background-subtle);
@@ -99,6 +119,37 @@
   overflow: hidden;
 }
 
+// A dotted key hands its prefix to this pill, several centimetres from the field
+// the user is typing in. One authored beat so the hand-off is impossible to miss.
+.location-pill--absorbed {
+  animation: location-absorbed 900ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes location-absorbed {
+  from {
+    border-color: var(--color-primary);
+    background-color: color-mix(in srgb, var(--color-primary) 26%, transparent);
+    box-shadow: 0 6px 18px -8px color-mix(in srgb, var(--color-primary) 70%, transparent);
+    transform: translateY(-2px);
+  }
+  to {
+    border-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+    background-color: var(--color-primary-subtle);
+    box-shadow: 0 0 0 transparent;
+    transform: none;
+  }
+}
+
+// Visually hidden, still announced — the live region that says the same thing.
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .location-pill-icon {
   font-size: var(--font-size-sm);
   width: 1rem;
@@ -137,10 +188,10 @@
   align-items: center;
   gap: var(--spacing-2);
   padding: var(--spacing-2) var(--spacing-4);
-  background-color: color-mix(in srgb, var(--color-warn, #b26a00) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--color-warn, #b26a00) 24%, transparent);
+  background-color: color-mix(in srgb, var(--color-warning) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 24%, transparent);
   border-radius: var(--border-radius-md);
-  color: var(--color-warn, #b26a00);
+  color: var(--color-warning-text);
 
   .readonly-icon {
     font-size: var(--font-size-lg);
@@ -173,23 +224,41 @@
 // Main dialog content — contains the tab group
 // ─────────────────────────────────────────────────────────────────────────────
 
-.dialog-tab-content {
+// `:host` prefix (0,2,0) outranks Material's own `.mat-mdc-dialog-content`
+// (0,1,0) without an `!important`, which is why both overrides below are plain.
+:host .dialog-tab-content {
   // Override Material's default padding so the tab bar sits flush
-  padding: 0 !important;
+  padding: 0;
   color: var(--color-text-primary);
   background-color: var(--color-background);
-  // Fixed height so the dialog content area doesn't shift when switching tabs
-  height: 570px;
+  // The height has to stay *definite*: the form, the tab group and Material's
+  // tab body all resolve `height: 100%` against it, and an auto height silently
+  // turns Tab 2's locale list from a scroll region into 1500px of clipped
+  // content. So it keeps a resolved height — but a viewport-relative one, and a
+  // shorter one for the tab that has less to say. The flat 570px it replaces
+  // made every tab reserve the tallest tab's box, painting 350px of nothing
+  // under the folder tree at 1440.
+  flex: 1 1 auto;
+  min-height: 0;
+  height: min(570px, 62vh);
+
+  // Change Location holds one hint and a tree, and neither needs a percentage
+  // height to resolve against — so this tab sizes to its content and the panel
+  // stops reserving the locale list's box under a two-folder tree.
+  &.dialog-tab-content--short {
+    height: auto;
+    max-height: min(480px, 54vh);
+  }
   // Disable Material's default overflow:auto so the tab group controls scrolling
   // internally. Without this, the entire tab group (header + body) scrolls together,
   // which causes the tab strip and the base locale banner to scroll away.
-  overflow: hidden !important;
+  overflow: hidden;
 }
 
 // The <form> inside .dialog-tab-content has no intrinsic height, which breaks
-// the height chain for any descendant using height: 100%. Propagate the fixed
-// 570px height of the mat-dialog-content container downward so that the
-// mat-tab-group (height: 100%) resolves to the correct pixel value.
+// the height chain for any descendant using height: 100%. Propagate the
+// resolved height of the mat-dialog-content container downward so that the
+// mat-tab-group (height: 100%) resolves to a real pixel value.
 .dialog-tab-content form {
   height: 100%;
 }
@@ -208,11 +277,33 @@
 
   // Tab header strip — must not participate in scrolling. flex-shrink: 0
   // prevents the header from being compressed when the body needs space.
+  //
+  // Material's answer to labels that outgrow the strip is pagination, which at
+  // 390px scrolled the *selected* tab out of view with nothing left to say
+  // which one it was. Three tabs is a strip, not a list: below 700px the type
+  // shrinks, MDC's 90px tab min-width and 24px side padding go, and the label
+  // is allowed a second line. All three then fit at 390px in every shipped
+  // locale — including "Basisinformationen" and "Базовая информация" — so the
+  // chevrons never appear and the active tab is always the underlined one.
   ::ng-deep .mat-mdc-tab-header {
     flex-shrink: 0;
     border-bottom: 1px solid var(--color-border);
     background-color: var(--color-background-subtle);
     padding: 0 var(--spacing-4);
+
+    @media (max-width: 700px) {
+      padding: 0;
+    }
+  }
+
+  ::ng-deep .mat-mdc-tab {
+    @media (max-width: 700px) {
+      min-width: 0;
+      flex-grow: 1;
+      padding: 0 var(--spacing-2);
+      // Room for two lines without the ink bar riding the descenders.
+      height: 58px;
+    }
   }
 
   // Individual tab labels
@@ -221,6 +312,14 @@
     font-weight: var(--font-weight-medium);
     color: var(--color-text-secondary);
     letter-spacing: 0;
+
+    @media (max-width: 700px) {
+      font-size: var(--font-size-xs);
+      line-height: var(--line-height-tight);
+      white-space: normal;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
   }
 
   // Active tab label
@@ -459,13 +558,10 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring-color) 25%, transparent);
   }
 
+  // The locale value field reserves no subscript space of its own — that is
+  // `subscriptSizing="dynamic"` on the field, not a deep override here.
   .full-width {
     margin-top: var(--spacing-2);
-
-    // Locale value inputs carry no validation — remove reserved subscript space.
-    ::ng-deep .mat-mdc-form-field-subscript-wrapper {
-      display: none;
-    }
   }
 }
 
@@ -473,10 +569,6 @@
 :host .status-select {
   width: 140px;
   margin-left: auto;
-
-  ::ng-deep .mat-mdc-form-field-subscript-wrapper {
-    display: none;
-  }
 
   ::ng-deep .mat-mdc-text-field-wrapper {
     padding-top: 4px;
@@ -508,8 +600,7 @@
 }
 
 // The FolderPicker is `initiallyExpanded` but the toggle header is still
-// rendered. Hide it so users can't collapse the tree inside this tab,
-// and force the content panel visible as a safety net.
+// rendered. Hide it so users can't collapse the tree inside this tab.
 .location-folder-picker {
   ::ng-deep app-folder-picker {
     .folder-picker {
@@ -521,14 +612,18 @@
       display: none;
     }
 
-    // Force the content panel to show regardless of the internal `isExpanded` signal
+    // `initiallyExpanded` keeps this panel rendered, so it needs no forced
+    // display — only the framing the tab context gives it.
     .folder-picker-content {
-      display: block !important;
       border: 1px solid var(--color-border);
       border-radius: var(--border-radius-md);
       margin-top: 0;
       overflow-y: auto;
-      max-height: 320px;
+      // Sized by the tree, between a floor that keeps a two-folder collection
+      // reading as a tree and a ceiling that scales with the viewport instead
+      // of a flat 320px.
+      min-height: 140px;
+      max-height: min(420px, 46vh);
       padding: var(--spacing-3);
     }
   }
@@ -539,6 +634,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 mat-dialog-actions {
+  flex-shrink: 0;
   padding: var(--spacing-4) var(--spacing-6);
   border-top: 1px solid var(--color-border);
   background-color: var(--color-background);
@@ -599,5 +695,139 @@ mat-dialog-actions {
   .cancel-button,
   .close-button {
     transition: none;
+  }
+
+  // The pill still lands on its new value; only the beat is dropped.
+  .location-pill--absorbed {
+    animation: none;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab labels — validity signal
+// ─────────────────────────────────────────────────────────────────────────────
+
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+
+  @media (max-width: 700px) {
+    justify-content: center;
+    gap: var(--spacing-1);
+    text-align: center;
+  }
+}
+
+// Marks the tab holding a blocking error, so a rejected save is legible from
+// whichever tab the user happens to be standing on.
+.tab-error-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background-color: var(--color-error);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error) 18%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .locale-card,
+  .base-locale-card,
+  .base-value-reference {
+    transition: none;
+  }
+}
+
+// The locale name is now human-readable, so keep the raw code visible for the
+// developer who thinks in `fr-ca` rather than "French (Canada)".
+.locale-code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  background-color: color-mix(in srgb, var(--color-text-primary) 6%, transparent);
+  border-radius: var(--border-radius-sm);
+  padding: 0 var(--spacing-1);
+  letter-spacing: 0.02em;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Narrow viewports
+//
+// Below the `sm` breakpoint the panel goes full-screen (see
+// `.translation-editor-dialog-panel` in styles.scss) and every horizontal
+// affordance in here has to survive ~390px of width holding German and Russian
+// copy. Three things break at that width and are fixed together below: the tab
+// strip paginates and hides its own active tab, the locale card header runs the
+// status select off the edge, and the 24px gutters eat a sixth of the line.
+// ─────────────────────────────────────────────────────────────────────────────
+
+@include bp.sm-max {
+  // Full-screen mode: the content area takes everything the chrome leaves,
+  // rather than stopping at the desktop ceiling and stranding blank space.
+  // Full-screen mode: the panel has a definite height of its own, so the flex
+  // column can hand the content area whatever the chrome leaves rather than
+  // stopping at the desktop ceiling and stranding blank space beneath it.
+  :host .dialog-tab-content,
+  :host .dialog-tab-content.dialog-tab-content--short {
+    height: auto;
+    max-height: none;
+  }
+
+  .dialog-header {
+    padding: var(--spacing-4) var(--spacing-4) var(--spacing-3);
+  }
+
+  .mat-dialog-title {
+    font-size: var(--font-size-xl);
+  }
+
+  .dialog-pretab {
+    padding: var(--spacing-3) var(--spacing-4);
+    gap: var(--spacing-2);
+  }
+
+  .tab-panel {
+    padding: var(--spacing-4);
+    gap: var(--spacing-4);
+  }
+
+  .base-value-reference {
+    padding: var(--spacing-3) var(--spacing-4);
+    margin: var(--spacing-3) var(--spacing-4) 0;
+  }
+
+  .other-locales-section {
+    padding: var(--spacing-3) var(--spacing-4) var(--spacing-4);
+    gap: var(--spacing-3);
+  }
+
+  .locale-card,
+  .base-locale-card {
+    padding: var(--spacing-3);
+  }
+
+  // The status select is a peer of the locale name, not a right-hand rail:
+  // at this width it drops onto its own full-width line instead of squeezing
+  // "French (Canada)" into three characters.
+  .locale-card-header {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-2);
+  }
+
+  :host .status-select {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  // Both actions get equal weight and a full-width target — there is no room
+  // for a right-aligned pair, and neither is a thumb-friendly hit area at 64px.
+  mat-dialog-actions {
+    padding: var(--spacing-3) var(--spacing-4);
+
+    .cancel-button,
+    .submit-button {
+      flex: 1 1 0;
+      min-height: 44px;
+    }
   }
 }

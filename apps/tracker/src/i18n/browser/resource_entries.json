@@ -158,16 +158,6 @@
     "ja": "降順でソート（Z→A）",
     "de": "Sortieren absteigend (Z→A)"
   },
-  "selectFolderFirst": {
-    "source": "Select a folder first",
-    "comment": "Tooltip shown on Add Translation button when no folder is selected",
-    "tags": ["browser"],
-    "es": "Seleccione una carpeta primero",
-    "fr-ca": "Sélectionnez d'abord un dossier",
-    "ru": "Сначала выберите папку.",
-    "ja": "まずフォルダを選択してください。",
-    "de": "Wählen Sie zuerst einen Ordner aus."
-  },
   "addNewTranslationTooltip": {
     "source": "Add a new translation",
     "comment": "Tooltip shown on Add Translation button when a folder is selected",
@@ -197,16 +187,6 @@
     "ru": "Комментарий:",
     "ja": "コメント：",
     "de": "Kommentar:"
-  },
-  "toggleExpansion": {
-    "source": "Toggle expansion",
-    "comment": "Aria-label for the expand/collapse button on a translation item",
-    "tags": ["browser"],
-    "es": "Activar o desactivar la expansión",
-    "fr-ca": "Basculer l'extension",
-    "ru": "Переключить расширение",
-    "ja": "展開を切り替える",
-    "de": "Erweiterung umschalten"
   },
   "readOnlyNotice": {
     "source": "This collection is read-only. Its resources can't be modified.",

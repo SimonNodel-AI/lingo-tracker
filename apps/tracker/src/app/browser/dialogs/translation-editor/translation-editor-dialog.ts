@@ -49,7 +49,7 @@ import { FolderPicker } from './folder-picker/folder-picker';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged, switchMap, catchError, takeUntil, tap } from 'rxjs/operators';
 import { of } from 'rxjs';
-import { normalizeTag } from '@simoncodes-ca/domain';
+import { isValidSegment, normalizeTag } from '@simoncodes-ca/domain';
 
 export interface TranslationEditorDialogData {
   mode: 'create' | 'edit';
@@ -129,10 +129,19 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly TOKENS = TRACKER_TOKENS;
 
   @ViewChild('keyInput') keyInput?: ElementRef<HTMLInputElement>;
-  @ViewChild('baseValueInput') baseValueInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('baseValueInput') baseValueInput?: ElementRef<HTMLTextAreaElement>;
 
   #commentConfirmationShown = false;
   #originalBaseValue = '';
+  #originalTags: string[] = [];
+  #originalFolderPath = '';
+  /**
+   * The folder path this dialog last derived from a dotted key. Typing `a.` then
+   * `b.` has to extend `a`, not re-anchor on `b`; a folder the user picked on the
+   * Location tab is never extended, only replaced.
+   */
+  #folderFromKey: string | null = null;
+  #locationFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
   readonly isSubmitting = signal(false);
   readonly errorMessage = signal<string | null>(null);
@@ -140,6 +149,14 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly isSearchingSimilar = signal(false);
   readonly baseValueLength = signal(0);
   readonly isLocalesScrolled = signal(false);
+  /** True while the location pill is highlighting a folder it just absorbed from the key field. */
+  readonly locationAbsorbedFlash = signal(false);
+  /** Live-region text announcing the same move to a screen reader, which cannot see the flash. */
+  readonly locationAbsorbedMessage = signal('');
+  /** Which tab is showing; owned here so validation can steer the user to the failure. */
+  readonly selectedTabIndex = signal(0);
+  /** Set once the user attempts to save, so errors surface on untouched fields too. */
+  readonly submitAttempted = signal(false);
 
   readonly tagSeparatorKeyCodes = [ENTER, COMMA] as const;
   readonly tagInputText = signal('');
@@ -197,6 +214,55 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   );
   readonly hasSearchQuery = computed(() => this.baseValueLength() >= 3);
 
+  /**
+   * Bumped on every form status change. Reactive forms are not signal-based, so
+   * anything computed from validity has to read this to stay live.
+   */
+  readonly formRevision = signal(0);
+
+  /**
+   * The base-info tab owns both required controls, so it is the only tab that
+   * can hold a blocking error today. Reading `formRevision` keeps this live.
+   */
+  readonly baseTabHasError = computed(() => {
+    this.formRevision();
+    if (!this.submitAttempted()) {
+      return false;
+    }
+    return this.form.controls.key.invalid || this.form.controls.baseValue.invalid;
+  });
+
+  /** Localized label for a translation status, so the spine never shows raw enum text. */
+  readonly statusLabels: Record<TranslationStatus, string> = {
+    new: TRACKER_TOKENS.BROWSER.STATUS.NEW,
+    translated: TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED,
+    stale: TRACKER_TOKENS.BROWSER.STATUS.STALE,
+    verified: TRACKER_TOKENS.BROWSER.STATUS.VERIFIED,
+  };
+
+  /** Explains a disabled Other Locales tab instead of leaving it silently grey. */
+  readonly otherLocalesTabTooltip = computed(() =>
+    this.otherLocales().length === 0
+      ? this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.NOOTHERLOCALESTOOLTIP)
+      : '',
+  );
+
+  /** Explains a disabled Change Location tab instead of leaving it silently grey. */
+  readonly locationTabTooltip = computed(() =>
+    this.isReadOnly() ? this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.READONLYTABTOOLTIP) : '',
+  );
+
+  /** The complete dot-delimited key, for the location pill's tooltip. */
+  readonly fullKeyPreview = computed(() => {
+    this.formRevision();
+    const folder = this.selectedFolderPath();
+    const key = this.form.controls.key.value.trim();
+    if (!key) {
+      return folder;
+    }
+    return folder ? `${folder}.${key}` : key;
+  });
+
   readonly allTagSuggestions = computed(() => {
     const seen = new Set<string>();
     for (const resource of this.browserStore.translations()) {
@@ -235,15 +301,75 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       this.#populateOtherLocaleTranslations();
     }
 
+    this.#originalTags = [...this.tagsList()];
+    this.#originalFolderPath = this.selectedFolderPath();
+
     this.#setupSimilarResourcesSearch();
+
+    if (!this.isEditMode()) {
+      this.#setupDottedKeyAbsorption();
+    }
+
+    this.form.statusChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.formRevision.update((revision) => revision + 1);
+    });
+    this.form.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
+      this.formRevision.update((revision) => revision + 1);
+    });
 
     // View-only mode: lock down all inputs. Save is hidden in the template.
     if (this.isReadOnly()) {
       this.form.disable({ emitEvent: false });
     }
+
+    this.#guardAgainstAccidentalClose();
+  }
+
+  /**
+   * Escape and backdrop clicks used to discard the whole form without a word.
+   * Take ownership of both so an edited entry always gets a confirmation first.
+   */
+  #guardAgainstAccidentalClose(): void {
+    this.dialogRef.disableClose = true;
+
+    this.dialogRef
+      .keydownEvents()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((event) => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          void this.onCancel();
+        }
+      });
+
+    this.dialogRef
+      .backdropClick()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe(() => {
+        void this.onCancel();
+      });
+  }
+
+  /** True when closing now would throw away work the user has done. */
+  hasUnsavedChanges(): boolean {
+    if (this.isReadOnly() || this.isSubmitting()) {
+      return false;
+    }
+
+    if (this.form.dirty) {
+      return true;
+    }
+
+    if (this.selectedFolderPath() !== this.#originalFolderPath) {
+      return true;
+    }
+
+    const tags = this.tagsList();
+    return tags.length !== this.#originalTags.length || tags.some((tag, i) => tag !== this.#originalTags[i]);
   }
 
   ngOnDestroy(): void {
+    clearTimeout(this.#locationFlashTimer);
     this.destroy$.next();
     this.destroy$.complete();
   }
@@ -344,6 +470,77 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       });
   }
 
+  /**
+   * The primary user arrives holding a full dotted key — `apps.common.buttons.ok` —
+   * and the key control only accepts a single segment. Rather than rejecting the
+   * one string they have, take the dotted prefix as the folder and keep the leaf.
+   *
+   * Listening on `valueChanges` covers every way text arrives: typed, pasted,
+   * dropped, or completed by the browser. The pattern validator stays on as the
+   * backstop for characters that are invalid in any position.
+   */
+  #setupDottedKeyAbsorption(): void {
+    this.form.controls.key.valueChanges.pipe(takeUntil(this.destroy$)).subscribe((value) => {
+      this.#absorbDottedKey(value);
+    });
+  }
+
+  #absorbDottedKey(rawValue: string): void {
+    if (!rawValue.includes('.')) {
+      return;
+    }
+
+    // Empty segments cover leading, trailing and consecutive dots in one pass;
+    // a trailing dot means the user has finished a folder but not started a leaf.
+    const segments = rawValue.split('.').filter((segment) => segment.length > 0);
+    const leaf = rawValue.endsWith('.') ? '' : (segments.pop() ?? '');
+
+    // Anything the pattern validator would reject is left in the field verbatim,
+    // so the error names the real problem instead of a silently mangled key.
+    if (segments.some((segment) => !isValidSegment(segment))) {
+      return;
+    }
+
+    this.#setKeyControl(leaf);
+
+    if (segments.length === 0) {
+      return;
+    }
+
+    const prefix = segments.join('.');
+    const isContinuation = this.#folderFromKey !== null && this.selectedFolderPath() === this.#folderFromKey;
+    const nextFolder = isContinuation ? `${this.#folderFromKey}.${prefix}` : prefix;
+
+    this.#folderFromKey = nextFolder;
+    this.selectedFolderPath.set(nextFolder);
+    this.#announceLocationAbsorbed(nextFolder);
+  }
+
+  /** Writes the leaf back without re-entering the subscription that produced it. */
+  #setKeyControl(leaf: string): void {
+    const control = this.form.controls.key;
+    control.setValue(leaf, { emitEvent: false });
+    control.markAsDirty();
+    control.updateValueAndValidity({ emitEvent: false });
+    this.formRevision.update((revision) => revision + 1);
+  }
+
+  /**
+   * The prefix leaves the field the user is looking at and lands in a pill above
+   * it, so say so twice: a highlight for the eye, a live region for the reader.
+   */
+  #announceLocationAbsorbed(folderPath: string): void {
+    this.locationAbsorbedMessage.set(
+      this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.LOCATIONFROMKEYX, { folder: folderPath }),
+    );
+
+    clearTimeout(this.#locationFlashTimer);
+    this.locationAbsorbedFlash.set(false);
+    // Let the class drop for a frame so a second paste re-runs the animation.
+    requestAnimationFrame(() => this.locationAbsorbedFlash.set(true));
+    this.#locationFlashTimer = setTimeout(() => this.locationAbsorbedFlash.set(false), 900);
+  }
+
   #shouldSearchForSimilar(currentValue: string): boolean {
     if (!currentValue || currentValue.trim().length < 3) {
       return false;
@@ -356,19 +553,20 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     return true;
   }
 
-  @HostListener('window:keydown.escape')
-  onEscapeKey(): void {
-    this.onCancel();
-  }
+  // Escape is handled through `dialogRef.keydownEvents()` in
+  // `#guardAgainstAccidentalClose`. A window-scoped listener also fired for
+  // keystrokes aimed at the confirmation dialogs stacked on top of this one,
+  // closing the editor underneath them and destroying the form.
 
   @HostListener('window:keydown.control.enter', ['$event'])
   @HostListener('window:keydown.meta.enter', ['$event'])
   onCtrlEnter(event: Event): void {
     event.preventDefault();
-    this.onSubmit();
+    void this.onSubmit();
   }
 
-  onTabChange(): void {
+  onTabChange(index: number): void {
+    this.selectedTabIndex.set(index);
     this.isLocalesScrolled.set(false);
   }
 
@@ -376,16 +574,41 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.isLocalesScrolled.set((event.target as HTMLElement).scrollTop > 0);
   }
 
-  onCancel(): void {
+  async onCancel(): Promise<void> {
+    if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
+      return;
+    }
     this.dialogRef.close();
   }
 
+  #confirmDiscard(): Promise<boolean> {
+    const dialogData: ConfirmationDialogData = {
+      title: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.TITLE),
+      message: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.MESSAGE),
+      confirmButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.DISCARD),
+      cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.KEEPEDITING),
+    };
+
+    return new Promise((resolve) => {
+      this.dialog
+        .open<ConfirmationDialog, ConfirmationDialogData, boolean>(ConfirmationDialog, {
+          data: dialogData,
+          width: '440px',
+          disableClose: true,
+        })
+        .afterClosed()
+        .subscribe((discard) => resolve(discard === true));
+    });
+  }
+
   onFolderConfirmed(folderPath: string): void {
+    this.#folderFromKey = null;
     this.selectedFolderPath.set(folderPath);
   }
 
   onFolderCreated(folder: FolderNodeDto): void {
     // Store's createFolderAt already updated rootFolders, just update selection
+    this.#folderFromKey = null;
     this.selectedFolderPath.set(folder.fullPath);
   }
 
@@ -439,7 +662,14 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   async onSubmit(): Promise<void> {
-    if (this.isReadOnly() || this.form.invalid || this.isSubmitting()) {
+    if (this.isReadOnly() || this.isSubmitting()) {
+      return;
+    }
+
+    // The save button stays enabled so an invalid form can explain itself
+    // rather than presenting a dead control with no error anywhere on screen.
+    if (this.form.invalid) {
+      this.#revealValidationFailure();
       return;
     }
 
@@ -461,6 +691,24 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     }
   }
 
+  /**
+   * Names the problem, steers to the tab that holds it, and puts the caret in
+   * the offending field. Both required controls live on the base-info tab.
+   */
+  #revealValidationFailure(): void {
+    this.submitAttempted.set(true);
+    this.form.markAllAsTouched();
+    this.formRevision.update((revision) => revision + 1);
+    this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS));
+
+    this.selectedTabIndex.set(0);
+
+    queueMicrotask(() => {
+      const target = this.form.controls.key.invalid ? this.keyInput : this.baseValueInput;
+      target?.nativeElement.focus();
+    });
+  }
+
   #handleEditSubmit(formValue: TranslationFormValue, commentValue: string): void {
     if (!this.data.resource) {
       this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.MISSINGRESOURCE));
@@ -475,16 +723,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     const newFolderPath = this.selectedFolderPath();
     const originalFolderPath = this.data.folderPath || '';
 
-    const hasKeyChanged = newKey !== this.data.resource.key;
+    // The key control is readonly in edit mode (`html`), so `newKey` can only
+    // ever equal the original; renaming is a move, handled by the CLI.
     const hasFolderChanged = newFolderPath !== originalFolderPath;
-
-    if (hasKeyChanged) {
-      this.isSubmitting.set(false);
-      this.errorMessage.set(
-        this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.KEYRENAMINGNOTSUPPORTED),
-      );
-      return;
-    }
 
     const filledTranslations = formValue.translations.filter((translation) => {
       const hasValue = translation.value.trim().length > 0;
@@ -715,8 +956,23 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     }>;
   }
 
+  /**
+   * Renders a locale as a name the reader recognises ("French (Canada)") with
+   * the raw code as the fallback, rather than shouting `FR-CA` at them.
+   */
   getLocaleDisplayName(locale: string | undefined): string {
-    return locale ? locale.toUpperCase() : '';
+    if (!locale) {
+      return '';
+    }
+
+    const code = locale.toUpperCase();
+    try {
+      const names = new Intl.DisplayNames([this.transloco.getActiveLang()], { type: 'language' });
+      const name = names.of(locale);
+      return name && name.toLowerCase() !== locale.toLowerCase() ? name : code;
+    } catch {
+      return code;
+    }
   }
 
   getKeyErrorMessage(): string {

@@ -99,3 +99,85 @@ export function rebaseFolderPaths(folder: FolderNodeDto, newParentPath: string):
       : undefined,
   };
 }
+
+/**
+ * Collects the full paths of every folder in the tree that has at least one child,
+ * i.e. every folder that expand-all has something to open.
+ */
+export function collectExpandablePaths(folders: FolderNodeDto[]): string[] {
+  const paths: string[] = [];
+
+  const walk = (nodes: FolderNodeDto[]): void => {
+    for (const node of nodes) {
+      const children = node.tree?.children ?? [];
+      if (children.length > 0) {
+        paths.push(node.fullPath);
+        walk(children);
+      }
+    }
+  };
+
+  walk(folders);
+  return paths;
+}
+
+/**
+ * Returns the strict ancestor paths of a dot-delimited folder path, outermost first.
+ * `apps.common.buttons` yields `['apps', 'apps.common']`. The path itself is excluded:
+ * revealing a folder does not open it.
+ */
+export function collectAncestorPaths(path: string): string[] {
+  if (!path) return [];
+
+  const segments = path.split('.');
+  const ancestors: string[] = [];
+
+  for (let i = 1; i < segments.length; i++) {
+    ancestors.push(segments.slice(0, i).join('.'));
+  }
+
+  return ancestors;
+}
+
+/**
+ * Removes a path and everything beneath it from a set of expanded paths.
+ * Used after a folder is deleted so the set cannot accumulate paths that no longer exist.
+ */
+export function prunePathsUnder(paths: ReadonlySet<string>, removedPath: string): Set<string> {
+  const prefix = `${removedPath}.`;
+  const next = new Set<string>();
+
+  for (const path of paths) {
+    if (path === removedPath || path.startsWith(prefix)) continue;
+    next.add(path);
+  }
+
+  return next;
+}
+
+/**
+ * Rewrites expanded paths after a folder moves, so a subtree the user had opened
+ * stays open where it lands instead of snapping shut.
+ */
+export function rebaseExpandedPaths(
+  paths: ReadonlySet<string>,
+  sourcePath: string,
+  destinationParentPath: string,
+): Set<string> {
+  const segments = sourcePath.split('.');
+  const folderName = segments[segments.length - 1];
+  const newSourcePath = destinationParentPath ? `${destinationParentPath}.${folderName}` : folderName;
+
+  if (newSourcePath === sourcePath) return new Set(paths);
+
+  const prefix = `${sourcePath}.`;
+  const next = new Set<string>();
+
+  for (const path of paths) {
+    if (path === sourcePath) next.add(newSourcePath);
+    else if (path.startsWith(prefix)) next.add(`${newSourcePath}.${path.slice(prefix.length)}`);
+    else next.add(path);
+  }
+
+  return next;
+}

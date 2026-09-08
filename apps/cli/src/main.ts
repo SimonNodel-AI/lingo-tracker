@@ -175,6 +175,7 @@ program
   .description('Generate translation bundles for deployment')
   .option('--name <names>', 'Bundle name(s) - single name or comma-separated (e.g., core,admin)')
   .option('--locale <locales>', 'Locale(s) to generate - comma-separated (e.g., en,fr)')
+  .option('--quiet', 'Suppress progress and success output (warnings and errors are still shown)')
   .option('--verbose', 'Show detailed output including warnings')
   .addOption(new Option('--token-casing <casing>', 'Token property key casing').choices(['upperCase', 'camelCase']))
   .option(
@@ -311,6 +312,11 @@ program
     "Warn when a base-locale plural selects by category (one, few, ...) instead of an exact '=N' match",
     false,
   )
+  .option(
+    '--skip-placeholders',
+    'Do not check that each translation interpolates the same placeholders as its base value',
+    false,
+  )
   .addHelpText(
     'after',
     `
@@ -330,6 +336,9 @@ Examples:
 
   # Also warn about base-locale plurals that break when copied to ja/ko
   $ lingo-tracker validate --require-portable-plurals
+
+  # Skip the placeholder-agreement check
+  $ lingo-tracker validate --skip-placeholders
 
   # Use in CI pipeline (exits with code 1 on validation failure)
   $ lingo-tracker validate || exit 1
@@ -444,6 +453,10 @@ Notes:
   - The base locale is compiled too: its value is copied into every translation slot
   - Use --skip-icu to run the status gate alone; it does not disable
     --require-portable-plurals, which parses rather than compiles
+  - Checks that every translation interpolates the same placeholders as its base
+    value; a renamed one ('{name}' translated to '{nombre}') renders as empty
+    text rather than raising, so no other check sees it. Use --skip-placeholders
+    to turn this off
   - --skip-locales excludes target locales only; the base locale is always
     compiled, since its value is copied into every translation slot
   - Validates ALL collections and ALL target locales (no filtering) by default

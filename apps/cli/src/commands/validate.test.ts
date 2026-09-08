@@ -186,6 +186,7 @@ describe('validateCommand', () => {
           allowTranslated: false,
           skippedLocales: [],
           icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+          placeholders: { baseLocale: 'en' },
         },
       );
 
@@ -193,6 +194,7 @@ describe('validateCommand', () => {
         allowTranslated: false,
         skippedLocales: [],
         icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+        placeholders: { baseLocale: 'en' },
       });
 
       expect(console.log).toHaveBeenCalledWith('Validation summary output');
@@ -299,6 +301,7 @@ describe('validateCommand', () => {
         allowTranslated: false,
         skippedLocales: [],
         icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+        placeholders: { baseLocale: 'en' },
       });
     });
 
@@ -351,6 +354,7 @@ describe('validateCommand', () => {
         allowTranslated: false,
         skippedLocales: [],
         icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+        placeholders: { baseLocale: 'en' },
       });
     });
 
@@ -402,6 +406,7 @@ describe('validateCommand', () => {
         allowTranslated: false,
         skippedLocales: [],
         icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+        placeholders: { baseLocale: 'en' },
       });
     });
 
@@ -661,12 +666,14 @@ describe('validateCommand', () => {
         allowTranslated: true,
         skippedLocales: [],
         icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+        placeholders: { baseLocale: 'en' },
       });
 
       expect(mockGenerateValidationSummary).toHaveBeenCalledWith(warningResult, {
         allowTranslated: true,
         skippedLocales: [],
         icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+        placeholders: { baseLocale: 'en' },
       });
 
       expect(console.log).toHaveBeenCalledWith('Validation summary output');
@@ -757,7 +764,60 @@ describe('validateCommand', () => {
         allowTranslated: false,
         skippedLocales: [],
         icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
+        placeholders: { baseLocale: 'en' },
       });
+    });
+  });
+
+  describe('placeholder checking', () => {
+    const successResult = {
+      totalResourcesValidated: 6,
+      totalUniqueKeys: 2,
+      localesValidated: 3,
+      collectionsValidated: 2,
+      statusCounts: { new: 0, translated: 0, stale: 0, verified: 6 },
+      failures: [],
+      warnings: [],
+      successes: [],
+      passed: true,
+    };
+
+    it('should check placeholders against the base locale by default', async () => {
+      mockValidateResources.mockReturnValue(successResult);
+
+      await validateCommand({});
+
+      expect(mockValidateResources).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Array),
+        expect.objectContaining({ placeholders: { baseLocale: 'en' } }),
+      );
+    });
+
+    it('should skip the check when --skip-placeholders is given', async () => {
+      mockValidateResources.mockReturnValue(successResult);
+
+      await validateCommand({ skipPlaceholders: true });
+
+      expect(mockValidateResources).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Array),
+        expect.objectContaining({ placeholders: undefined }),
+      );
+    });
+
+    it('should keep checking placeholders when ICU compilation is skipped', async () => {
+      // The two passes answer different questions, so opting out of one must
+      // not quietly opt out of the other.
+      mockValidateResources.mockReturnValue(successResult);
+
+      await validateCommand({ skipIcu: true });
+
+      expect(mockValidateResources).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(Array),
+        expect.objectContaining({ placeholders: { baseLocale: 'en' } }),
+      );
     });
   });
 

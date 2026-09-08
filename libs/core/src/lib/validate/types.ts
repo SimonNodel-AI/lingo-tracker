@@ -29,6 +29,83 @@ export interface ValidationOptions {
    * Omit when no ICU check is wanted at all.
    */
   readonly icu?: IcuValidationOptions;
+
+  /**
+   * When present, every translation is checked against its base value for the
+   * arguments it interpolates.
+   *
+   * A third question again: a translation can be approved by a reviewer and
+   * compile cleanly while interpolating an argument nobody passes, because a
+   * machine translator renamed it along with the prose. ICU renders the
+   * argument as empty text rather than raising, so nothing else catches it.
+   *
+   * Omit to skip the check.
+   */
+  readonly placeholders?: PlaceholderValidationOptions;
+}
+
+/**
+ * Options controlling the placeholder-agreement pass.
+ */
+export interface PlaceholderValidationOptions {
+  /**
+   * The locale whose value defines the arguments a translation must interpolate.
+   *
+   * The base value is the contract: it is what the calling code passes
+   * arguments for, so it is what every translation has to agree with.
+   */
+  readonly baseLocale: string;
+}
+
+/**
+ * A translation whose interpolated arguments disagree with its base value.
+ */
+export interface PlaceholderValidationDetail {
+  /**
+   * The full dot-delimited key of the resource (e.g., 'common.buttons.ok').
+   */
+  readonly key: string;
+
+  /**
+   * The locale the offending value is stored under.
+   */
+  readonly locale: string;
+
+  /**
+   * The collection this resource belongs to.
+   */
+  readonly collection: string;
+
+  /**
+   * Arguments the base value interpolates that this translation does not.
+   */
+  readonly missing: readonly string[];
+
+  /**
+   * Arguments this translation interpolates that the base value does not.
+   */
+  readonly unexpected: readonly string[];
+
+  /**
+   * A single-line explanation suitable for a CI log.
+   */
+  readonly message: string;
+}
+
+/**
+ * Outcome of the placeholder-agreement pass.
+ */
+export interface PlaceholderValidationResult {
+  /**
+   * Translations whose arguments disagree with their base value. These are hard
+   * blockers: the placeholder renders as empty text wherever it appears.
+   */
+  readonly failures: readonly PlaceholderValidationDetail[];
+
+  /**
+   * How many stored translations were actually compared.
+   */
+  readonly valuesChecked: number;
 }
 
 /**
@@ -205,8 +282,15 @@ export interface ResourceValidationResult {
   readonly icu?: IcuValidationResult;
 
   /**
-   * Whether the validation passed overall (no status failures and no ICU
-   * compile failures). Note: warnings do not cause validation to fail.
+   * Outcome of the placeholder-agreement pass, when one was requested.
+   * Undefined when placeholder checking was disabled.
+   */
+  readonly placeholders?: PlaceholderValidationResult;
+
+  /**
+   * Whether the validation passed overall (no status failures, no ICU compile
+   * failures, and no placeholder mismatches). Note: warnings do not cause
+   * validation to fail.
    */
   readonly passed: boolean;
 }

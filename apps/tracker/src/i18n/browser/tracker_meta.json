@@ -539,36 +539,6 @@
       "status": "translated"
     }
   },
-  "selectFolderFirst": {
-    "en": {
-      "checksum": "addf30815d3754a3170b8d0d9b3f7196"
-    },
-    "es": {
-      "checksum": "f05d4a9337ae4bbf227281a5375eed29",
-      "baseChecksum": "addf30815d3754a3170b8d0d9b3f7196",
-      "status": "translated"
-    },
-    "fr-ca": {
-      "checksum": "2d975dbf2e3f83915e39ce6f550724cb",
-      "baseChecksum": "addf30815d3754a3170b8d0d9b3f7196",
-      "status": "translated"
-    },
-    "ru": {
-      "checksum": "55a41223d9c642c59c0ff06f085d27a6",
-      "baseChecksum": "addf30815d3754a3170b8d0d9b3f7196",
-      "status": "translated"
-    },
-    "ja": {
-      "checksum": "9586322b0e1c3ac2016a8878266fde6e",
-      "baseChecksum": "addf30815d3754a3170b8d0d9b3f7196",
-      "status": "translated"
-    },
-    "de": {
-      "checksum": "25dd264201a52111b9b20ad7d6e9b37d",
-      "baseChecksum": "addf30815d3754a3170b8d0d9b3f7196",
-      "status": "translated"
-    }
-  },
   "addNewTranslationTooltip": {
     "en": {
       "checksum": "e26fd2bf951546994a81c53bc593e520"
@@ -656,36 +626,6 @@
     "de": {
       "checksum": "4b097715317ccc915985b3527a068f3a",
       "baseChecksum": "240f3031f25601fa128bd4e15f0a37de",
-      "status": "translated"
-    }
-  },
-  "toggleExpansion": {
-    "en": {
-      "checksum": "a600b0cbba3359d934a659341e5b727b"
-    },
-    "es": {
-      "checksum": "de65def594f2cf991756b46e3662b5dc",
-      "baseChecksum": "a600b0cbba3359d934a659341e5b727b",
-      "status": "translated"
-    },
-    "fr-ca": {
-      "checksum": "6c0219acbdc6307898118a325d8ff138",
-      "baseChecksum": "a600b0cbba3359d934a659341e5b727b",
-      "status": "translated"
-    },
-    "ru": {
-      "checksum": "73ccd74271a9e6b138f4b699c3bf78d8",
-      "baseChecksum": "a600b0cbba3359d934a659341e5b727b",
-      "status": "translated"
-    },
-    "ja": {
-      "checksum": "40786f814610f633f1b322b0caf01025",
-      "baseChecksum": "a600b0cbba3359d934a659341e5b727b",
-      "status": "translated"
-    },
-    "de": {
-      "checksum": "0481a68c4e2090ddb31725d7542181d9",
-      "baseChecksum": "a600b0cbba3359d934a659341e5b727b",
       "status": "translated"
     }
   },

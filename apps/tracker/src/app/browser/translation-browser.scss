@@ -50,6 +50,11 @@
  */
 .translation-main {
   flex: 1;
+  // Without this the pane grows to its content's min-content width — the
+  // toolbar's row of controls — and pushes the whole browser into a horizontal
+  // scroll that carries the primary action off screen. With it the pane stays
+  // inside the viewport and the toolbar reflows against its real width.
+  min-width: 0;
   overflow: hidden;
   background: var(--color-background);
   display: flex;
@@ -58,7 +63,7 @@
   /**
    * Sticky header stays at top during scroll
    */
-  app-translation-main-header {
+  app-translation-header {
     flex-shrink: 0;
   }
 

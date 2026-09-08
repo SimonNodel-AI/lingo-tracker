@@ -36,12 +36,12 @@
     "es": {
       "checksum": "da3d1620b019c5340dac24168c4a3721",
       "baseChecksum": "765a0106f27fce3620418e6a5afece18",
-      "status": "stale"
+      "status": "translated"
     },
     "fr-ca": {
-      "checksum": "1228373b337d25fe96d944ad0103a4bc",
+      "checksum": "a8487b5a94351a9826d2deeebcf05ec1",
       "baseChecksum": "765a0106f27fce3620418e6a5afece18",
-      "status": "stale"
+      "status": "translated"
     },
     "ru": {
       "checksum": "5dcee4e9669d158cef1d3bcfbe2d985c",
@@ -114,7 +114,7 @@
       "status": "translated"
     },
     "de": {
-      "checksum": "b15777d65f74a76f6e45fe581a06a942",
+      "checksum": "9db3484f4e345f2c9cfe95a52b04dfd7",
       "baseChecksum": "5275ecd41038dd5cab36ac1d387e95aa",
       "status": "translated"
     }

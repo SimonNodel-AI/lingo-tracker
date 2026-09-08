@@ -56,16 +56,24 @@ export class TranslationList {
   protected readonly scrollViewport = viewChild(CdkVirtualScrollViewport);
 
   /**
-   * Fixed layout constants for full-mode item height calculation.
-   * - BASE_HEIGHT: header + base-value + comment row + padding + margin (~80px)
-   * - TOUCH_EXTRA: additional height on touch devices for larger tap targets (~16px)
-   * - LOCALE_ROW_HEIGHT: height of each locale translation row (~32px)
-   * - MAX_VISIBLE_LOCALE_ROWS: locale rows visible before scroll kicks in (4)
+   * Fixed layout constants for full-mode item height calculation, measured from a
+   * rendered item at desktop width (header 45 + base value 27 + comment/expand row
+   * 45 + padding 8 + three 4px gaps = 137, and 28px per locale row).
+   *
+   * These are an estimate for the common case, not a guarantee: a two-line base
+   * value, a wrapped comment, or the stacked locale layout a narrow item switches
+   * to all make the real height larger. CDK uses this to size the scrollbar and
+   * decide how many items to render, so being close matters more than being exact.
+   *
+   * - BASE_HEIGHT: header + base-value + comment row + padding + gaps
+   * - TOUCH_EXTRA: additional height on touch devices for larger tap targets
+   * - LOCALE_ROW_HEIGHT: height of each locale translation row
+   * - MAX_VISIBLE_LOCALE_ROWS: locale rows rendered while collapsed (4)
    * - MARGIN_BOTTOM: item-container margin-bottom = --spacing-3 (12px)
    */
-  readonly #FULL_BASE_HEIGHT = 80;
+  readonly #FULL_BASE_HEIGHT = 137;
   readonly #FULL_TOUCH_EXTRA = 16;
-  readonly #FULL_LOCALE_ROW_HEIGHT = 32;
+  readonly #FULL_LOCALE_ROW_HEIGHT = 28;
   readonly #FULL_MAX_VISIBLE_LOCALE_ROWS = 4;
   readonly #FULL_MARGIN_BOTTOM = 12; // --spacing-3
 
@@ -95,7 +103,10 @@ export class TranslationList {
 
     switch (mode) {
       case 'compact':
-        return (isTouch ? 100 : 96) + this.#COMPACT_MARGIN_BOTTOM;
+        // One line, measured in the browser rather than derived: 4px padding, a
+        // 28px control row, 4px padding, plus the container border. The touch
+        // variant restores the 44px control floor and grows to match.
+        return (isTouch ? 54 : 38) + this.#COMPACT_MARGIN_BOTTOM;
 
       case 'full': {
         const filteredLocales = this.store.filteredLocales();

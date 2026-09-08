@@ -44,7 +44,7 @@
     "comment": "Fallback error when resource creation fails",
     "tags": ["browser"],
     "es": "No se pudo crear la traducción",
-    "fr-ca": "Échec de la traduction",
+    "fr-ca": "Échec de la création de la traduction",
     "ru": "Не удалось создать перевод",
     "ja": "翻訳の作成に失敗しました",
     "de": "Übersetzung konnte nicht erstellt werden"
