@@ -35,6 +35,17 @@ export interface ValidateCommandOptions {
   skipIcu?: boolean;
 
   /**
+   * When true, translations are not checked against their base value for the
+   * placeholders they interpolate.
+   *
+   * The check is on by default because this defect is silent: a renamed
+   * placeholder renders as empty text rather than raising, so neither the
+   * status gate nor the ICU compile pass reports it. Use this to opt out where
+   * translations deliberately diverge from the base value's arguments.
+   */
+  skipPlaceholders?: boolean;
+
+  /**
    * When true, base-locale values selecting a plural branch by category
    * (`one`, `few`, …) rather than by exact `=N` match generate warnings.
    *
@@ -66,6 +77,7 @@ export interface ValidateCommandOptions {
  * - 'verified' status → SUCCESS (translation reviewed and approved)
  * - Missing metadata → treated as 'new' (FAILURE)
  * - Value does not compile as ICU for its own locale → FAILURE (unless --skip-icu)
+ * - Translation interpolates different placeholders than its base value → FAILURE (unless --skip-placeholders)
  *
  * **ICU Validation:**
  * Status validation asks whether a human approved a translation. It says
@@ -110,6 +122,9 @@ export interface ValidateCommandOptions {
  *
  * # Status gate only, without compiling values as ICU
  * $ lingo-tracker validate --skip-icu
+ *
+ * # Status and ICU gates only, without comparing placeholders
+ * $ lingo-tracker validate --skip-placeholders
  *
  * # Also warn about base-locale plurals that will not survive being copied
  * $ lingo-tracker validate --require-portable-plurals
@@ -182,6 +197,9 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
             requirePortablePlurals,
           }
         : undefined,
+    // A renamed placeholder renders as empty text instead of raising, so the
+    // ICU pass above cannot see it and the status gate has no opinion on it.
+    placeholders: options.skipPlaceholders ? undefined : { baseLocale: config.baseLocale },
   };
 
   const validationResult = validateResources(allCollections, localesToValidate, validationOptions);

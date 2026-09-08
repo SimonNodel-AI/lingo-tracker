@@ -17,3 +17,4 @@ export * from './lib/protected-terms';
 export * from './lib/normalized-levenshtein';
 export * from './lib/icu-locale-validation';
 export * from './lib/portable-plural-categories';
+export * from './lib/icu-arguments';
