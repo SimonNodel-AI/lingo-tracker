@@ -40,7 +40,7 @@ export class LocalesController {
 
       const result = await addLocaleToCollection(collectionName, body.locale);
 
-      this.#cacheService.clearCache();
+      this.#cacheService.clearCache(collectionName);
 
       return result;
     } catch (error: unknown) {
@@ -80,7 +80,7 @@ export class LocalesController {
 
       const result = await removeLocaleFromCollection(collectionName, locale);
 
-      this.#cacheService.clearCache();
+      this.#cacheService.clearCache(collectionName);
 
       return result;
     } catch (error: unknown) {

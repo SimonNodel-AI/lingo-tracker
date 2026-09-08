@@ -1,4 +1,11 @@
-.translation-item-locales {
+/*
+ * The item's width is set by a resizable panel, not the viewport, so the narrow
+ * layout below is driven by a container query rather than a breakpoint. This has
+ * to be :host — a bare `.translation-item-locales` selector is scoped to this
+ * component's content attribute, which the host element does not carry.
+ */
+:host {
+  container-type: inline-size;
   display: block;
 }
 
@@ -18,7 +25,7 @@
 .locale-label {
   align-items: center;
   display: flex;
-  gap: var(--spacing-3);
+  gap: var(--spacing-2);
 }
 
 .locale-code {
@@ -29,45 +36,144 @@
   min-width: 44px;
 }
 
-.locale-separator {
-  color: var(--color-text-tertiary);
+/*
+ * The source row reads as the reference the rows below are measured against, so
+ * it is separated by a rule and a wider interval rather than by a fill. A tinted
+ * band would put a second colour system next to the status chips, which are the
+ * only thing on this card allowed to carry hue.
+ *
+ * `.locale-line` is `display: contents`, so the rule has to be drawn on both
+ * cells; the line itself paints nothing.
+ */
+.locale-line--base > .locale-label,
+.locale-line--base > .locale-value {
+  /* --color-border is tuned against the page ground and disappears on the card's
+     own subtle surface. The -strong step is the quietest one that still reads as
+     a rule here, in both themes. */
+  border-bottom: 1px solid var(--color-border-strong);
+  padding-bottom: var(--spacing-2);
 }
 
-.status-icon {
-  flex-shrink: 0;
-  font-size: var(--font-size-base);
-  height: var(--font-size-base);
-  width: var(--font-size-base);
-
-  &.status-new, &.status-stale {
-    color: var(--color-warning);
-  }
-
-  &.status-translated {
-    color: var(--color-info);
-  }
-
-  &.status-verified {
-    color: var(--color-success);
-  }
-}
-
-.status-chip {
-  background-color: var(--color-background-muted);
+/* Quiet counterpart to the status chip: it names the row rather than rating it,
+   so it stays unfilled and carries no hue. */
+.base-tag {
+  background-color: var(--color-background-subtle);
   border-radius: var(--border-radius-full);
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   flex-shrink: 0;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   padding: calc(var(--spacing-1) / 2) var(--spacing-2);
-  min-width: 80px; /* wide enough for longest status label 'translated' */
 }
 
+/*
+ * The collapsed status column. It spans both columns and sits between the source
+ * rule and the first locale, so it reads as a heading over the rows it describes
+ * rather than as an annotation on any one of them.
+ */
+.locale-status-summary {
+  grid-column: 1 / -1;
+  padding-top: var(--spacing-1);
+}
+
+/*
+ * The status chip is the spine made visible. The four spine tones are graphic
+ * weight — right for a ring segment, but as a lone 16px glyph a status was only
+ * legible to someone already looking at that row. Filling the chip with the
+ * status surface gives the hue an area, so a column of rows reads as a pattern
+ * of blocks and an anomaly is findable without reading a word.
+ *
+ * Icon plus label sit inside the same fill, both on the ink tone, so colour is
+ * never the only code and the chip still passes with the hue removed.
+ */
+.status-chip {
+  align-items: center;
+  background-color: var(--color-background-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-full);
+  color: var(--color-text-primary);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  gap: calc(var(--spacing-1) / 2);
+  letter-spacing: 0.01em;
+  padding: calc(var(--spacing-1) / 2) var(--spacing-2);
+  /* Holds the column steady across locales; the longest label sets the floor,
+     and min-width lets RU and DE grow past it rather than truncate. */
+  min-width: 96px;
+
+  &.status-new {
+    background-color: var(--color-status-new-surface);
+    border-color: var(--color-status-new-border);
+    color: var(--color-status-new-ink);
+  }
+
+  &.status-stale {
+    background-color: var(--color-status-stale-surface);
+    border-color: var(--color-status-stale-border);
+    color: var(--color-status-stale-ink);
+  }
+
+  &.status-translated {
+    background-color: var(--color-status-translated-surface);
+    border-color: var(--color-status-translated-border);
+    color: var(--color-status-translated-ink);
+  }
+
+  &.status-verified {
+    background-color: var(--color-status-verified-surface);
+    border-color: var(--color-status-verified-border);
+    color: var(--color-status-verified-ink);
+  }
+}
+
+.status-chip__icon {
+  color: inherit;
+  flex-shrink: 0;
+  font-size: var(--font-size-base);
+  height: var(--font-size-base);
+  width: var(--font-size-base);
+}
+
+/*
+ * A value byte-identical to the base locale. The stored status is usually
+ * `translated`, which is exactly the case the chip cannot catch, so this rides
+ * alongside the chip rather than replacing it: the metadata is reported
+ * faithfully and the caveat is reported next to it.
+ */
+.same-as-source {
+  align-items: center;
+  border: 1px dashed var(--color-status-stale-border);
+  border-radius: var(--border-radius-full);
+  color: var(--color-status-stale-ink);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  gap: calc(var(--spacing-1) / 2);
+  padding: calc(var(--spacing-1) / 2) var(--spacing-2);
+  /* Matches the status chip it sits beside, so the two read as one row of
+     annotations rather than two things at slightly different heights. */
+}
+
+.same-as-source__icon {
+  font-size: var(--font-size-sm);
+  height: var(--font-size-sm);
+  width: var(--font-size-sm);
+}
+
+/*
+ * The translation is the content of this row, so it is set in the UI face at
+ * body weight rather than in mono. Mono was a costume for "technical": these are
+ * natural-language sentences a translator judges for wording, and the mono stack
+ * has no CJK coverage, so JA and RU were falling back mid-list.
+ */
 .locale-value {
   align-self: start;
-  color: var(--color-text-secondary);
-  font-family: var(--font-family-mono);
+  color: var(--color-text-primary);
   font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
 
   &.full {
     -webkit-box-orient: vertical;
@@ -79,5 +185,52 @@
       -webkit-line-clamp: unset;
       display: block;
     }
+  }
+}
+
+/*
+ * Same size and same measure as every translation, one step heavier. Weight is
+ * the whole difference: size or a second face would make the reader re-scale
+ * between the source and the sentence they are judging against it.
+ */
+.locale-value--base {
+  font-weight: var(--font-weight-semibold);
+}
+
+/* An absent translation is a state to read, not content; italics keep the em-dash
+   from being mistaken for a value. Matches the compact row's empty treatment. */
+.locale-value--empty {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/*
+ * Narrow items: the label column (code, icon, status chip) is a fixed ~230px, so
+ * on a narrow card it crowded the translation itself into a sliver. Stack the
+ * label above its value instead and give the value the full width — the value is
+ * the content, the label is the annotation.
+ */
+@container (max-width: 30rem) {
+  .locale-translations {
+    grid-template-columns: 1fr;
+    row-gap: 0;
+  }
+
+  .locale-value {
+    padding-bottom: var(--spacing-2);
+    padding-left: var(--spacing-1);
+  }
+
+  /* The label row keeps its own line, so the chip no longer competes with the
+     value for horizontal room and can hold its full width. */
+  .locale-label {
+    padding-bottom: calc(var(--spacing-1) / 2);
+  }
+
+  /* Stacked, the two cells are two lines, so a rule under the label would cut
+     through the middle of the source row. Only the value closes it. */
+  .locale-line--base > .locale-label {
+    border-bottom: none;
+    padding-bottom: calc(var(--spacing-1) / 2);
   }
 }

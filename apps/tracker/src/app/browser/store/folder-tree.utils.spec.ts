@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { insertFolderIntoTree, removeFolderFromTree, findFolderInTree, rebaseFolderPaths } from './folder-tree.utils';
+import {
+  insertFolderIntoTree,
+  removeFolderFromTree,
+  findFolderInTree,
+  rebaseFolderPaths,
+  collectExpandablePaths,
+  collectAncestorPaths,
+  prunePathsUnder,
+  rebaseExpandedPaths,
+} from './folder-tree.utils';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 
 const leaf = (name: string, fullPath: string): FolderNodeDto => ({
@@ -223,5 +232,78 @@ describe('rebaseFolderPaths', () => {
     expect(bTree).toBeDefined();
     if (!bTree) return;
     expect(bTree.children[0].fullPath).toBe('root.a.b.deep');
+  });
+});
+
+describe('collectExpandablePaths', () => {
+  it('returns every folder that has children, depth first', () => {
+    const tree = [
+      withChildren(leaf('apps', 'apps'), [
+        withChildren(leaf('common', 'apps.common'), [leaf('buttons', 'apps.common.buttons')]),
+      ]),
+      leaf('errors', 'errors'),
+    ];
+
+    expect(collectExpandablePaths(tree)).toEqual(['apps', 'apps.common']);
+  });
+
+  it('skips folders whose children array is empty', () => {
+    expect(collectExpandablePaths([withChildren(leaf('apps', 'apps'), [])])).toEqual([]);
+  });
+
+  it('returns nothing for an empty tree', () => {
+    expect(collectExpandablePaths([])).toEqual([]);
+  });
+});
+
+describe('collectAncestorPaths', () => {
+  it('returns strict ancestors outermost first', () => {
+    expect(collectAncestorPaths('apps.common.buttons')).toEqual(['apps', 'apps.common']);
+  });
+
+  it('excludes the path itself, so revealing a folder does not open it', () => {
+    expect(collectAncestorPaths('apps')).toEqual([]);
+  });
+
+  it('returns nothing for the root path', () => {
+    expect(collectAncestorPaths('')).toEqual([]);
+  });
+});
+
+describe('prunePathsUnder', () => {
+  it('drops the removed path and everything beneath it', () => {
+    const paths = new Set(['apps', 'apps.common', 'apps.common.buttons', 'errors']);
+
+    expect([...prunePathsUnder(paths, 'apps.common')]).toEqual(['apps', 'errors']);
+  });
+
+  it('does not drop a sibling that merely shares a prefix', () => {
+    const paths = new Set(['apps', 'appsettings']);
+
+    expect([...prunePathsUnder(paths, 'apps')]).toEqual(['appsettings']);
+  });
+});
+
+describe('rebaseExpandedPaths', () => {
+  it('moves the subtree paths under the new parent', () => {
+    const paths = new Set(['apps', 'apps.common', 'apps.common.buttons', 'errors']);
+
+    const result = rebaseExpandedPaths(paths, 'apps.common', 'errors');
+
+    expect([...result].sort()).toEqual(['apps', 'errors', 'errors.common', 'errors.common.buttons']);
+  });
+
+  it('moves a subtree out to the root', () => {
+    const paths = new Set(['apps', 'apps.common', 'apps.common.buttons']);
+
+    const result = rebaseExpandedPaths(paths, 'apps.common', '');
+
+    expect([...result].sort()).toEqual(['apps', 'common', 'common.buttons']);
+  });
+
+  it('leaves the set alone when the path does not change', () => {
+    const paths = new Set(['apps', 'apps.common']);
+
+    expect([...rebaseExpandedPaths(paths, 'apps', '')]).toEqual(['apps', 'apps.common']);
   });
 });

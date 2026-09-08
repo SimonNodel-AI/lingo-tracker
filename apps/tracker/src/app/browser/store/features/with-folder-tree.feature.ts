@@ -7,7 +7,16 @@ import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { extractFolderNameFromPath, extractParentFolderPath } from '../../utils/folder-path.utils';
-import { insertFolderIntoTree, removeFolderFromTree, findFolderInTree, rebaseFolderPaths } from '../folder-tree.utils';
+import {
+  insertFolderIntoTree,
+  removeFolderFromTree,
+  findFolderInTree,
+  rebaseFolderPaths,
+  collectExpandablePaths,
+  collectAncestorPaths,
+  prunePathsUnder,
+  rebaseExpandedPaths,
+} from '../folder-tree.utils';
 import { toErrorMessage } from '../async-error.utils';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import type { FolderNodeDto, CreateFolderResponseDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
@@ -16,6 +25,9 @@ import type { Observable } from 'rxjs';
 interface FolderTreeState {
   rootFolders: FolderNodeDto[];
   expandedFolders: Set<string>;
+  /** Expansion as it stood before a filter took over; restored when the filter clears. */
+  preFilterExpandedFolders: Set<string> | null;
+  isRootExpanded: boolean;
   folderTreeFilter: string;
   isFolderTreeLoading: boolean;
   isAddingFolder: boolean;
@@ -28,6 +40,8 @@ interface FolderTreeState {
 const initialFolderTreeState: FolderTreeState = {
   rootFolders: [],
   expandedFolders: new Set<string>(),
+  preFilterExpandedFolders: null,
+  isRootExpanded: true,
   folderTreeFilter: '',
   isFolderTreeLoading: false,
   isAddingFolder: false,
@@ -91,6 +105,28 @@ export function withFolderTreeFeature<_>() {
       }),
     ),
 
+    // Second computed block: derives from filteredFolders, declared above.
+    withComputed(({ filteredFolders, expandedFolders, currentFolderPath }) => ({
+      /**
+       * Expansion as the tree renders it: what the user opened, plus the ancestors of the
+       * selected folder, so the selection can never hide inside a closed parent after a
+       * move, a delete, or a reload.
+       */
+      visibleExpandedFolders: computed(() => {
+        const visible = new Set(expandedFolders());
+        for (const ancestor of collectAncestorPaths(currentFolderPath())) visible.add(ancestor);
+        return visible;
+      }),
+
+      /** Drives the expand/collapse-all toggle, scoped to the filtered subtree when filtering. */
+      areAllFoldersExpanded: computed(() => {
+        const expandable = collectExpandablePaths(filteredFolders());
+        if (expandable.length === 0) return false;
+        const expanded = expandedFolders();
+        return expandable.every((path) => expanded.has(path));
+      }),
+    })),
+
     // First methods block: core loading operations (loadRootFolders, loadFolderChildren, etc.)
     // Kept separate so the second block can reference these methods via the store ref.
     withMethods((store) => {
@@ -106,8 +142,30 @@ export function withFolderTreeFeature<_>() {
       }
 
       return {
+        /**
+         * Applies the folder filter and takes expansion with it: a filter that hid its own
+         * matches inside collapsed parents would be useless, so matching branches open
+         * automatically. The pre-filter expansion is stashed and restored on clear, which
+         * keeps chevrons working normally while a filter is active.
+         */
         setFolderTreeFilter(filter: string): void {
-          patchState(store, { folderTreeFilter: filter });
+          const wasFiltering = store.folderTreeFilter().trim().length > 0;
+          const isFiltering = filter.trim().length > 0;
+
+          if (isFiltering) {
+            patchState(store, {
+              folderTreeFilter: filter,
+              preFilterExpandedFolders: wasFiltering ? store.preFilterExpandedFolders() : store.expandedFolders(),
+            });
+            patchState(store, { expandedFolders: new Set(collectExpandablePaths(store.filteredFolders())) });
+            return;
+          }
+
+          patchState(store, {
+            folderTreeFilter: filter,
+            expandedFolders: store.preFilterExpandedFolders() ?? store.expandedFolders(),
+            preFilterExpandedFolders: null,
+          });
         },
 
         toggleFolderExpanded(path: string): void {
@@ -115,6 +173,31 @@ export function withFolderTreeFeature<_>() {
           if (newExpanded.has(path)) newExpanded.delete(path);
           else newExpanded.add(path);
           patchState(store, { expandedFolders: newExpanded });
+        },
+
+        /** Opens a folder without closing it if it is already open — used when selecting a row. */
+        expandFolder(path: string): void {
+          if (!path || store.expandedFolders().has(path)) return;
+          patchState(store, { expandedFolders: new Set(store.expandedFolders()).add(path) });
+        },
+
+        toggleRootExpanded(): void {
+          patchState(store, { isRootExpanded: !store.isRootExpanded() });
+        },
+
+        /**
+         * Opens every folder in view. Scoped to the filtered subtree when a filter is active,
+         * so it never expands branches the user has just filtered away.
+         */
+        expandAllFolders(): void {
+          const expanded = new Set(store.expandedFolders());
+          for (const path of collectExpandablePaths(store.filteredFolders())) expanded.add(path);
+          patchState(store, { expandedFolders: expanded, isRootExpanded: true });
+        },
+
+        /** Closes every folder but leaves the root open, so the top level stays reachable. */
+        collapseAllFolders(): void {
+          patchState(store, { expandedFolders: new Set<string>(), isRootExpanded: true });
         },
 
         startAddingFolder(parentPath: string | null): void {
@@ -312,6 +395,7 @@ export function withFolderTreeFeature<_>() {
                       isDeletingFolder: false,
                       deletingFolderPath: null,
                       rootFolders: updatedFolders,
+                      expandedFolders: prunePathsUnder(store.expandedFolders(), folderPath),
                       error: null,
                     });
 
@@ -409,11 +493,18 @@ export function withFolderTreeFeature<_>() {
                         ? `${destinationFolderPath}.${folderName}`
                         : folderName;
 
+                      // Carry the moved subtree's own expansion across, then open the
+                      // destination so the folder is visible where it landed.
+                      const expanded = rebaseExpandedPaths(
+                        store.expandedFolders(),
+                        sourceFolderPath,
+                        destinationFolderPath,
+                      );
                       if (destinationFolderPath) {
-                        const expanded = new Set(store.expandedFolders());
                         expanded.add(destinationFolderPath);
-                        patchState(store, { expandedFolders: expanded });
+                        for (const ancestor of collectAncestorPaths(destinationFolderPath)) expanded.add(ancestor);
                       }
+                      patchState(store, { expandedFolders: expanded });
 
                       const includeNested = store.showNestedResources();
                       patchState(store, { currentFolderPath: movedFolderPath });

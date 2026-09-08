@@ -12,6 +12,7 @@ The LingoTracker API provides REST endpoints for managing translation resources,
 - **Base URL**: `http://localhost:3030/api`
 - **Default Port**: `3030` (configurable via `LINGO_TRACKER_PORT` environment variable)
 - **Cache revalidation interval**: `2000` ms (configurable via `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` environment variable)
+- **Cached collections**: `4` at most, least-recently-used evicted (configurable via `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` environment variable)
 - **Content-Type**: `application/json`
 - **Response Format**: JSON
 - **CORS**: Enabled with wildcard origin (`*`) in development

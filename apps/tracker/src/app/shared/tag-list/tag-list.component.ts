@@ -1,6 +1,8 @@
 import { Component, ChangeDetectionStrategy, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { TranslocoPipe } from '@jsverse/transloco';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 
 /**
  * Displays a horizontal list of tags as styled badges/chips.
@@ -10,7 +12,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
   selector: 'app-tag-list',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule, MatTooltipModule],
+  imports: [CommonModule, MatTooltipModule, TranslocoPipe],
   templateUrl: './tag-list.component.html',
   styleUrl: './tag-list.component.scss',
   host: {
@@ -18,6 +20,8 @@ import { MatTooltipModule } from '@angular/material/tooltip';
   },
 })
 export class TagList {
+  readonly TOKENS = TRACKER_TOKENS;
+
   /** Array of explicit (per-resource) tag strings to display */
   tags = input.required<string[]>();
 

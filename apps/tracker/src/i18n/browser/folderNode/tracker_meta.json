@@ -34,27 +34,27 @@
       "checksum": "2807ee06f9cee829069ff722e0076f63"
     },
     "es": {
-      "checksum": "c3fa7316902bf055a1e503dc6ef598ff",
+      "checksum": "919d3629485e94ca4c13bf8ca40183e6",
       "baseChecksum": "2807ee06f9cee829069ff722e0076f63",
       "status": "translated"
     },
     "fr-ca": {
-      "checksum": "aaf5400b2f5e2d034201e563be05efd9",
+      "checksum": "579125b969a55e9f1429775d20e2faa5",
       "baseChecksum": "2807ee06f9cee829069ff722e0076f63",
       "status": "translated"
     },
     "ru": {
-      "checksum": "6c01295f55133a6381deaa9b19f298ed",
+      "checksum": "91946bcd8bb4cbac5db6c724fee19b1f",
       "baseChecksum": "2807ee06f9cee829069ff722e0076f63",
       "status": "translated"
     },
     "ja": {
-      "checksum": "b279d2cfed0ba56b787c597461de81bb",
+      "checksum": "eac7a0a1e12765c214b1085965f45fb7",
       "baseChecksum": "2807ee06f9cee829069ff722e0076f63",
       "status": "translated"
     },
     "de": {
-      "checksum": "9a4eda48758fb87e7899ab93439e897c",
+      "checksum": "ea4bf7e72c09675cd73a2b718e4c4d45",
       "baseChecksum": "2807ee06f9cee829069ff722e0076f63",
       "status": "translated"
     }
@@ -94,27 +94,27 @@
       "checksum": "fa3c80ac936464dfdfec9ddb30c5278b"
     },
     "es": {
-      "checksum": "7ef23897809944b3a62659679103a9f8",
+      "checksum": "2ebbe550760e93b2e5c3aa8d85ca3d5f",
       "baseChecksum": "fa3c80ac936464dfdfec9ddb30c5278b",
       "status": "translated"
     },
     "fr-ca": {
-      "checksum": "1b45ccc834ef6f20800df6bb073ab938",
+      "checksum": "a4414fe89c6b56821b0511440ccd57fe",
       "baseChecksum": "fa3c80ac936464dfdfec9ddb30c5278b",
       "status": "translated"
     },
     "ru": {
-      "checksum": "4ece16ddf1acf1166eda7b86121240de",
+      "checksum": "f7aa0801eacf0a45bafe1203badf27b2",
       "baseChecksum": "fa3c80ac936464dfdfec9ddb30c5278b",
       "status": "translated"
     },
     "ja": {
-      "checksum": "5f068424ca259e11241a275b3e4887b1",
+      "checksum": "634d25d294c93e70c4ba06faafa0d980",
       "baseChecksum": "fa3c80ac936464dfdfec9ddb30c5278b",
       "status": "translated"
     },
     "de": {
-      "checksum": "0bf5b9676022deb80311c34c42e009e3",
+      "checksum": "d09bcbeebe5dbed0842e399607d15dd2",
       "baseChecksum": "fa3c80ac936464dfdfec9ddb30c5278b",
       "status": "translated"
     }

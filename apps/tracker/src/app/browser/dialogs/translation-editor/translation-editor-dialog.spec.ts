@@ -67,7 +67,13 @@ describe('TranslationEditorDialog', () => {
   };
 
   beforeEach(async () => {
-    dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+    dialogRef = {
+      close: vi.fn(),
+      afterOpened: vi.fn().mockReturnValue(of(undefined)),
+      keydownEvents: vi.fn().mockReturnValue(of()),
+      backdropClick: vi.fn().mockReturnValue(of()),
+      disableClose: false,
+    };
 
     mockDialog = {
       open: vi.fn().mockReturnValue({
@@ -138,11 +144,6 @@ describe('TranslationEditorDialog', () => {
       expect(component.form.controls.key.valid).toBe(true);
     });
 
-    it('should reject dots', () => {
-      component.form.controls.key.setValue('test.key');
-      expect(component.form.controls.key.hasError('pattern')).toBe(true);
-    });
-
     it('should reject slashes', () => {
       component.form.controls.key.setValue('test/key');
       expect(component.form.controls.key.hasError('pattern')).toBe(true);
@@ -173,9 +174,136 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should return correct error message for invalid pattern', () => {
-      component.form.controls.key.setValue('test.key');
+      component.form.controls.key.setValue('test key');
       component.form.controls.key.markAsTouched();
       expect(component.getKeyErrorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR);
+    });
+  });
+
+  describe('Dotted Keys - Location Absorption', () => {
+    it('should split a pasted full key into folder path and leaf', () => {
+      component.form.controls.key.setValue('apps.common.buttons.ok');
+
+      expect(component.form.controls.key.value).toBe('ok');
+      expect(component.selectedFolderPath()).toBe('apps.common.buttons');
+      expect(component.form.controls.key.valid).toBe(true);
+    });
+
+    it('should replace the folder the dialog opened on', () => {
+      expect(component.selectedFolderPath()).toBe('common.buttons');
+
+      component.form.controls.key.setValue('apps.header.title');
+
+      expect(component.selectedFolderPath()).toBe('apps.header');
+    });
+
+    it('should extend the derived folder while the user keeps typing dots', () => {
+      component.form.controls.key.setValue('apps.');
+      expect(component.selectedFolderPath()).toBe('apps');
+      expect(component.form.controls.key.value).toBe('');
+
+      component.form.controls.key.setValue('common.');
+      expect(component.selectedFolderPath()).toBe('apps.common');
+
+      component.form.controls.key.setValue('ok');
+      expect(component.selectedFolderPath()).toBe('apps.common');
+      expect(component.form.controls.key.value).toBe('ok');
+    });
+
+    it('should re-anchor on a folder the user picked instead of extending it', () => {
+      component.form.controls.key.setValue('apps.');
+      component.onFolderConfirmed('picked.folder');
+
+      component.form.controls.key.setValue('other.ok');
+
+      expect(component.selectedFolderPath()).toBe('other');
+    });
+
+    it('should collapse consecutive dots', () => {
+      component.form.controls.key.setValue('apps..common...ok');
+
+      expect(component.form.controls.key.value).toBe('ok');
+      expect(component.selectedFolderPath()).toBe('apps.common');
+    });
+
+    it('should strip a leading dot without touching the folder', () => {
+      component.form.controls.key.setValue('.ok');
+
+      expect(component.form.controls.key.value).toBe('ok');
+      expect(component.selectedFolderPath()).toBe('common.buttons');
+    });
+
+    it('should leave the folder alone when the value is only a dot', () => {
+      component.form.controls.key.setValue('.');
+
+      expect(component.form.controls.key.value).toBe('');
+      expect(component.selectedFolderPath()).toBe('common.buttons');
+    });
+
+    it('should absorb a dotted key pasted into a partially filled field', () => {
+      component.form.controls.key.setValue('ok');
+      // What the DOM reports after pasting `apps.common.` before an existing `ok`.
+      component.form.controls.key.setValue('apps.common.ok');
+
+      expect(component.form.controls.key.value).toBe('ok');
+      expect(component.selectedFolderPath()).toBe('apps.common');
+    });
+
+    it('should leave an invalid segment in the field for the pattern validator', () => {
+      component.form.controls.key.setValue('apps.bad key.ok');
+
+      expect(component.form.controls.key.value).toBe('apps.bad key.ok');
+      expect(component.form.controls.key.hasError('pattern')).toBe(true);
+      expect(component.selectedFolderPath()).toBe('common.buttons');
+    });
+
+    it('should submit the absorbed folder as part of the full key', async () => {
+      mockBrowserApi.createResource.mockReturnValue(of({ entriesCreated: 1, created: true }));
+
+      component.form.controls.key.setValue('apps.common.buttons.ok');
+      component.form.controls.baseValue.setValue('OK');
+      component.form.controls.comment.setValue('A comment');
+      await component.onSubmit();
+
+      expect(mockBrowserApi.createResource).toHaveBeenCalledWith(
+        'test-collection',
+        expect.objectContaining({ key: 'apps.common.buttons.ok' }),
+      );
+    });
+
+    it('should announce the move for screen readers', () => {
+      component.form.controls.key.setValue('apps.common.ok');
+
+      expect(component.locationAbsorbedMessage()).toContain('apps.common');
+    });
+
+    it('should not absorb dots in edit mode, where the key is readonly', async () => {
+      const mockResource: ResourceSummaryDto = {
+        key: 'existing_key',
+        translations: { en: 'Existing Value' },
+        status: {},
+      };
+      await setupTestBed(createMockData('edit', mockResource));
+
+      component.form.controls.key.setValue('apps.common.ok');
+
+      expect(component.form.controls.key.value).toBe('apps.common.ok');
+      expect(component.selectedFolderPath()).toBe('common.buttons');
+    });
+  });
+
+  describe('Auto-translate is not offered from the editor', () => {
+    it('should expose no auto-translate entry point on the component', () => {
+      const surface = component as unknown as Record<string, unknown>;
+      expect(surface['onAutoTranslate']).toBeUndefined();
+      expect(surface['canAutoTranslate']).toBeUndefined();
+      expect(surface['isAutoTranslating']).toBeUndefined();
+    });
+
+    it('should render no auto-translate control on the Other Locales tab', () => {
+      const host = fixture.nativeElement as HTMLElement;
+      expect(host.querySelector('.auto-translate-button')).toBeNull();
+      expect(host.querySelector('.locales-toolbar')).toBeNull();
     });
   });
 
@@ -246,7 +374,13 @@ describe('TranslationEditorDialog', () => {
     it('should use empty string for folderPath when not provided', async () => {
       const dataWithoutFolder = createMockData('create');
       dataWithoutFolder.folderPath = undefined;
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockDialog = {
         open: vi.fn().mockReturnValue({
           afterClosed: () => of(true),
@@ -271,14 +405,36 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Dialog Interaction', () => {
-    it('should close dialog on cancel', () => {
-      component.onCancel();
+    it('should close dialog on cancel when nothing has been edited', async () => {
+      await component.onCancel();
       expect(dialogRef.close).toHaveBeenCalledWith();
     });
 
-    it('should close dialog on Escape key', () => {
-      component.onEscapeKey();
+    it('should confirm before discarding unsaved edits', async () => {
+      component.form.controls.baseValue.setValue('Half-written value');
+      component.form.controls.baseValue.markAsDirty();
+
+      // The shared confirmation mock resolves to `true` (discard).
+      await component.onCancel();
+
+      expect(mockDialog.open).toHaveBeenCalled();
       expect(dialogRef.close).toHaveBeenCalledWith();
+    });
+
+    it('should keep the dialog open when the user chooses to keep editing', async () => {
+      mockDialog.open = vi.fn().mockReturnValue({ afterClosed: () => of(false) });
+      component.form.controls.baseValue.setValue('Half-written value');
+      component.form.controls.baseValue.markAsDirty();
+
+      await component.onCancel();
+
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('should take ownership of Escape so stacked dialogs cannot close the editor', () => {
+      expect(dialogRef.disableClose).toBe(true);
+      expect(dialogRef.keydownEvents).toHaveBeenCalled();
+      expect(dialogRef.backdropClick).toHaveBeenCalled();
     });
 
     it('should trigger save on Ctrl+Enter', async () => {
@@ -372,7 +528,13 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockDialog = {
         open: vi.fn().mockReturnValue({
           afterClosed: () => of(true),
@@ -492,7 +654,13 @@ describe('TranslationEditorDialog', () => {
 
   describe('Comment Confirmation Flow', () => {
     beforeEach(async () => {
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockDialog = {
         open: vi.fn().mockReturnValue({
           afterClosed: () => of(true),
@@ -716,7 +884,13 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockBrowserApi = {
         createResource: vi.fn().mockReturnValue(of({})),
         updateResource: vi
@@ -748,7 +922,13 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockBrowserApi = {
         createResource: vi.fn().mockReturnValue(of({})),
         updateResource: vi
@@ -782,7 +962,13 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockBrowserApi = {
         createResource: vi.fn().mockReturnValue(of({})),
         updateResource: vi.fn().mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true })),
@@ -820,7 +1006,13 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockBrowserApi = {
         createResource: vi.fn().mockReturnValue(of({})),
         updateResource: vi.fn().mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true })),
@@ -850,26 +1042,6 @@ describe('TranslationEditorDialog', () => {
       );
     });
 
-    it('should show error when key is changed in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
-
-      const editData = createMockData('edit', mockResource);
-      await setupTestBed(editData);
-
-      component.form.controls.key.setValue('new_key');
-      await component.onSubmit();
-
-      expect(component.errorMessage()).toBe(
-        'Key renaming is not yet supported. Please use the same key or create a new resource.',
-      );
-      expect(mockBrowserApi.updateResource).not.toHaveBeenCalled();
-      expect(dialogRef.close).not.toHaveBeenCalled();
-    });
-
     it('should handle update API errors', async () => {
       const mockResource: ResourceSummaryDto = {
         key: 'existing_key',
@@ -878,7 +1050,13 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockBrowserApi = {
         createResource: vi.fn().mockReturnValue(of({})),
         updateResource: vi.fn().mockReturnValue(
@@ -916,7 +1094,13 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = { close: vi.fn(), afterOpened: vi.fn().mockReturnValue(of(undefined)) };
+      dialogRef = {
+        close: vi.fn(),
+        afterOpened: vi.fn().mockReturnValue(of(undefined)),
+        keydownEvents: vi.fn().mockReturnValue(of()),
+        backdropClick: vi.fn().mockReturnValue(of()),
+        disableClose: false,
+      };
       mockBrowserApi = {
         createResource: vi.fn().mockReturnValue(of({})),
         updateResource: vi.fn().mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true })),

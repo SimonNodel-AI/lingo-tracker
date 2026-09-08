@@ -33,8 +33,8 @@
           <div class="skeleton-chip" aria-hidden="true"></div>
           <div class="skeleton-chip" aria-hidden="true"></div>
         } @else if (totalKeys() !== null) {
-          <span class="stat-chip">{{ keysText() }}</span>
-          <span class="stat-chip">{{ localesText() }}</span>
+          <span class="stat-chip">{{ TOKENS.HEADER.KEYSCOUNTX | transloco: { count: totalKeys() } }}</span>
+          <span class="stat-chip">{{ TOKENS.HEADER.LOCALESCOUNTX | transloco: { count: localeCount() } }}</span>
         }
       </div>
     }

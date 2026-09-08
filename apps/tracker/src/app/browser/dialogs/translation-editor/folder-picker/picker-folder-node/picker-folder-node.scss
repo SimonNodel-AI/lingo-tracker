@@ -52,6 +52,13 @@
     }
   }
 
+  // `.focused` tracks the tree's roving pseudo-focus, not real DOM focus, so a
+  // keyboard user tabbing straight into the add button used to land on an
+  // invisible control. Reveal it whenever anything inside the row truly has focus.
+  &:focus-within .add-button {
+    opacity: 1;
+  }
+
   // Expand/collapse button
   .expand-button {
     width: 24px;
@@ -156,5 +163,25 @@
     .mat-mdc-button-persistent-ripple::before {
       border-radius: 50%;
     }
+  }
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .folder-row,
+  .folder-row .add-button,
+  .folder-row .expand-button,
+  .folder-row .folder-icon,
+  .folder-row .folder-name {
+    transition: none;
+  }
+}
+
+// A folder row is ~32px tall, which is fine under a mouse and not a tap target.
+// Size by input method rather than viewport: a touchscreen laptop needs this at
+// 1440 just as much as a phone does at 390.
+@media (pointer: coarse) {
+  .folder-row {
+    padding-block: var(--spacing-3);
   }
 }

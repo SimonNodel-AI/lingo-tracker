@@ -13,11 +13,11 @@
     "source": "Folder { name }",
     "comment": "Aria-label for a folder node in the tree. { name } is the folder name",
     "tags": ["browser"],
-    "es": "Carpeta { nombre }",
-    "fr-ca": "Dossier { nom }",
-    "ru": "Папка { имя }",
-    "ja": "フォルダ {名前}",
-    "de": "Ordner { Name }"
+    "es": "Carpeta {name}",
+    "fr-ca": "Dossier {name}",
+    "ru": "Папка {name}",
+    "ja": "フォルダ {name}",
+    "de": "Ordner {name}"
   },
   "dragToMoveFolderAriaLabel": {
     "source": "Drag to move folder",
@@ -33,10 +33,10 @@
     "source": "Delete folder { name }",
     "comment": "Aria-label for the delete button on a folder node. { name } is the folder name",
     "tags": ["browser"],
-    "es": "Eliminar carpeta { nombre }",
-    "fr-ca": "Supprimer le dossier { nom }",
-    "ru": "Удалить папку {имя}",
-    "ja": "フォルダ {名前} を削除します",
-    "de": "Ordner { Name } löschen"
+    "es": "Eliminar carpeta {name}",
+    "fr-ca": "Supprimer le dossier {name}",
+    "ru": "Удалить папку {name}",
+    "ja": "フォルダ {name} を削除します",
+    "de": "Ordner {name} löschen"
   }
 }

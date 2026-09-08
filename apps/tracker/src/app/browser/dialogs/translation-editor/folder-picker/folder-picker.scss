@@ -96,3 +96,32 @@
     border-radius: var(--border-radius-sm);
   }
 }
+
+// Narrow widths: the picker is the whole tab, so it keeps the content and gives
+// back the gutters. The empty state's 64px icon is a desktop flourish.
+@media (max-width: 639px) {
+  .folder-picker-content {
+    padding: var(--spacing-2);
+  }
+
+  .folder-header {
+    padding: var(--spacing-2) var(--spacing-3);
+  }
+
+  .empty-state {
+    padding: var(--spacing-5) var(--spacing-3);
+
+    .empty-icon {
+      font-size: 44px;
+      height: 44px;
+      width: 44px;
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .folder-header,
+  .chevron-icon {
+    transition: none;
+  }
+}

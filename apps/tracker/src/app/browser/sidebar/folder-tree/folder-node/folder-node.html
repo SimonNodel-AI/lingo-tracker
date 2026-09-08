@@ -20,15 +20,16 @@
       class="folder-header"
       [class.selected]="isSelected()"
       [class.descendant-selected]="!isSelected() && showNestedResources() && isDescendantOfSelected()"
-      [class.unloaded]="!folder().loaded"
       (click)="onFolderClick()"
       [attr.role]="disabled() ? 'presentation' : 'treeitem'"
       [attr.tabindex]="disabled() ? -1 : 0"
       [attr.aria-label]="TOKENS.BROWSER.FOLDERNODE.FOLDERARIALABELX | transloco : { name: folder().name }"
-      [attr.aria-expanded]="folder().loaded ? 'true' : 'false'"
+      [attr.aria-expanded]="hasChildren() ? isExpanded() : null"
       [attr.aria-selected]="isSelected()"
       (keydown.enter)="onFolderClick()"
       (keydown.space)="onFolderClick()"
+      (keydown.arrowright)="onExpandKeydown($event)"
+      (keydown.arrowleft)="onCollapseKeydown($event)"
       (keydown.delete)="onDeleteKeydown($event)"
       cdkDrag
       [cdkDragData]="dragData()"
@@ -36,6 +37,20 @@
       (cdkDragStarted)="onDragStarted()"
       (cdkDragEnded)="onDragEnded()"
     >
+    @if (hasChildren()) {
+      <button
+        type="button"
+        class="expand-toggle"
+        tabindex="-1"
+        aria-hidden="true"
+        [class.expanded]="isExpanded()"
+        (click)="onToggleExpandedClick($event)"
+      >
+        <mat-icon>chevron_right</mat-icon>
+      </button>
+    } @else {
+      <span class="expand-spacer" aria-hidden="true"></span>
+    }
     <mat-icon class="folder-icon folder-drag-handle" cdkDragHandle [attr.aria-label]="TOKENS.BROWSER.FOLDERNODE.DRAGTOMOVEFOLDERARIALABEL | transloco">{{ folderIcon() }}</mat-icon>
     <span class="folder-name">{{ folder().name }}</span>
     @if (isNewlyCreated()) {
@@ -57,9 +72,9 @@
   </div>
   </div>
 
-  <!-- Loaded Children -->
-  @if (folder().loaded && folder().tree) {
-    <div class="folder-children">
+  <!-- Expanded Children -->
+  @if (isExpanded() || shouldShowInlineInput()) {
+    <div class="folder-children" role="group">
       @if (shouldShowInlineInput()) {
         <app-inline-folder-input
           [parentPath]="folder().fullPath"
@@ -67,22 +82,26 @@
           (cancelInput)="onFolderCancel()"
         />
       }
-      @for (child of folder().tree!.children; track child.fullPath) {
-        <app-folder-node
-          [folder]="child"
-          [selectedPath]="selectedPath()"
-          [showNestedResources]="showNestedResources()"
-          [disabled]="disabled()"
-          [readOnly]="readOnly()"
-          [activeDragData]="activeDragData()"
-          (folderClick)="folderClick.emit($event)"
-          (loadFolder)="loadFolder.emit($event)"
-          (deleteFolder)="deleteFolder.emit($event)"
-          (resourceDropped)="resourceDropped.emit($event)"
-          (folderDropped)="folderDropped.emit($event)"
-          (dragStarted)="dragStarted.emit($event)"
-          (dragEnded)="dragEnded.emit()"
-        />
+      @if (isExpanded()) {
+        @for (child of childFolders(); track child.fullPath) {
+          <app-folder-node
+            [folder]="child"
+            [selectedPath]="selectedPath()"
+            [showNestedResources]="showNestedResources()"
+            [expandedPaths]="expandedPaths()"
+            [disabled]="disabled()"
+            [readOnly]="readOnly()"
+            [activeDragData]="activeDragData()"
+            (folderClick)="folderClick.emit($event)"
+            (toggleExpanded)="toggleExpanded.emit($event)"
+            (expandRequested)="expandRequested.emit($event)"
+            (deleteFolder)="deleteFolder.emit($event)"
+            (resourceDropped)="resourceDropped.emit($event)"
+            (folderDropped)="folderDropped.emit($event)"
+            (dragStarted)="dragStarted.emit($event)"
+            (dragEnded)="dragEnded.emit()"
+          />
+        }
       }
     </div>
   }

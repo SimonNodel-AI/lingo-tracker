@@ -15,9 +15,9 @@ import type { DragData } from '../../../types/drag-data';
  *
  * Features:
  * - Displays folder icon and name
- * - Shows "click to load" for unloaded folders
- * - Recursively renders child folders
- * - Emits events for folder clicks and load requests
+ * - Chevron toggles expansion independently of selection
+ * - Recursively renders child folders while expanded
+ * - Emits events for folder clicks and expansion requests
  */
 @Component({
   selector: 'app-folder-node',
@@ -48,6 +48,9 @@ export class FolderNode {
   /** Whether nested resources mode is active */
   showNestedResources = input<boolean>(false);
 
+  /** Paths of every folder currently expanded, shared by the whole tree */
+  expandedPaths = input<ReadonlySet<string>>(new Set<string>());
+
   /** Whether the tree is disabled (transient: search/operation in progress). Blocks navigation too. */
   disabled = input<boolean>(false);
 
@@ -57,8 +60,11 @@ export class FolderNode {
   /** Emitted when a folder is clicked */
   folderClick = output<FolderNodeDto>();
 
-  /** Emitted when "load" is clicked for an unloaded folder */
-  loadFolder = output<string>();
+  /** Emitted when the chevron is activated, flipping this folder open or shut */
+  toggleExpanded = output<string>();
+
+  /** Emitted when a folder should open without closing if already open */
+  expandRequested = output<string>();
 
   /** Emitted when delete button is clicked or Delete key is pressed */
   deleteFolder = output<string>();
@@ -85,6 +91,15 @@ export class FolderNode {
 
   /** Mutation affordances (drag, drop, delete) are disabled when the tree is busy OR read-only. */
   readonly mutationDisabled = computed(() => this.disabled() || this.readOnly());
+
+  /** Child folders of this node, empty when the folder has none. */
+  readonly childFolders = computed(() => this.folder().tree?.children ?? []);
+
+  /** Only a folder with children gets a chevron; the rest get a spacer that keeps names aligned. */
+  readonly hasChildren = computed(() => this.childFolders().length > 0);
+
+  /** Whether this folder is currently expanded. */
+  readonly isExpanded = computed(() => this.expandedPaths().has(this.folder().fullPath));
 
   /** Timer for auto-expand on hover */
   #expandTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,25 +140,46 @@ export class FolderNode {
     if (this.showNestedResources() && this.isDescendantOfSelected()) {
       return 'folder_check';
     }
-    return this.folder().loaded ? 'folder_open' : 'folder';
+    return this.isExpanded() ? 'folder_open' : 'folder';
   });
 
   /**
-   * Handles folder click.
-   * Single click both selects the folder AND loads it (if not already loaded).
+   * Handles folder click: selects the folder and, if it was shut, opens it so a single
+   * click still drills down. Clicking an already-open folder leaves it open — collapsing
+   * is the chevron's job.
    */
   onFolderClick(): void {
-    if (!this.disabled()) {
-      const currentFolder = this.folder();
+    if (this.disabled()) return;
 
-      // Always emit folderClick to select the folder
-      this.folderClick.emit(currentFolder);
+    this.folderClick.emit(this.folder());
 
-      // If folder is not loaded, also emit loadFolder to trigger loading
-      if (!currentFolder.loaded) {
-        this.loadFolder.emit(currentFolder.fullPath);
-      }
+    if (this.hasChildren() && !this.isExpanded()) {
+      this.expandRequested.emit(this.folder().fullPath);
     }
+  }
+
+  /**
+   * Handles chevron activation. Stops propagation so opening a folder does not also
+   * select it — the chevron is the one control that touches expansion alone.
+   */
+  onToggleExpandedClick(event: Event): void {
+    event.stopPropagation();
+    if (this.disabled()) return;
+    this.toggleExpanded.emit(this.folder().fullPath);
+  }
+
+  /** ArrowRight opens a shut folder; on an open one it does nothing. */
+  onExpandKeydown(event: Event): void {
+    if (this.disabled() || !this.hasChildren() || this.isExpanded()) return;
+    event.preventDefault();
+    this.expandRequested.emit(this.folder().fullPath);
+  }
+
+  /** ArrowLeft shuts an open folder; on a shut one it does nothing. */
+  onCollapseKeydown(event: Event): void {
+    if (this.disabled() || !this.isExpanded()) return;
+    event.preventDefault();
+    this.toggleExpanded.emit(this.folder().fullPath);
   }
 
   /**
@@ -289,10 +325,10 @@ export class FolderNode {
   onDropListEntered(): void {
     this.isHoveredDuringDrag.set(true);
 
-    // Only auto-expand if folder is not already loaded and is a valid drop target
-    if (!this.folder().loaded && this.isValidDropTarget()) {
+    // Hovering a shut folder mid-drag opens it, so a drop can reach nested targets
+    if (this.hasChildren() && !this.isExpanded() && this.isValidDropTarget()) {
       this.#expandTimer = setTimeout(() => {
-        this.loadFolder.emit(this.folder().fullPath);
+        this.expandRequested.emit(this.folder().fullPath);
       }, 500);
     }
   }

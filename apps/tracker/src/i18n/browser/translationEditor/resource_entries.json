@@ -20,14 +20,14 @@
     "de": "Übersetzungsschlüssel"
   },
   "keyHint": {
-    "source": "Use only letters, numbers, underscores, and hyphens",
-    "comment": "Hint text below translation key input",
+    "source": "Entry name only — paste a full dotted key and its folder part moves to Location",
+    "comment": "Hint under the translation key field in the editor dialog. Explains that only the last segment lives here, and that pasting a full dot-delimited key moves the prefix into the folder location.",
     "tags": ["browser"],
-    "es": "Utilice únicamente letras, números, guiones bajos y guiones.",
-    "fr-ca": "Utilisez seulement des lettres, des chiffres, des traits de soulignement et des tirets.",
-    "ru": "Используйте только буквы, цифры, подчеркивания и дефисы.",
-    "ja": "文字、数字、アンダースコア、ハイフンのみを使用してください。",
-    "de": "Verwenden Sie nur Buchstaben, Zahlen, Unterstriche und Bindestriche."
+    "es": "Solo el nombre de la entrada: pegue una clave completa con puntos y su carpeta pasará a Ubicación",
+    "fr-ca": "Nom de l'entrée seulement — collez une clé complète avec des points et son dossier ira dans Emplacement",
+    "ru": "Только имя записи — вставьте полный ключ с точками, и его папка перейдёт в поле «Папка»",
+    "ja": "エントリ名のみ。ドット区切りの完全なキーを貼り付けると、フォルダー部分は「フォルダー」に移ります",
+    "de": "Nur der Eintragsname — fügen Sie einen vollständigen Schlüssel mit Punkten ein, sein Ordnerteil wandert zu „Ordner“"
   },
   "baseBadge": {
     "source": "Base",
@@ -37,7 +37,7 @@
     "fr-ca": "Base",
     "ru": "База",
     "ja": "ベース",
-    "de": "Base"
+    "de": "Basis"
   },
   "locationLabel": {
     "source": "Location:",
@@ -45,9 +45,9 @@
     "tags": ["browser"],
     "es": "Ubicación:",
     "fr-ca": "Emplacement :",
-    "ru": "Расположение:",
-    "ja": "位置：",
-    "de": "Standort:"
+    "ru": "Папка:",
+    "ja": "フォルダー：",
+    "de": "Ordner:"
   },
   "locationTabHint": {
     "source": "Choose a different folder for this translation resource.",
@@ -63,8 +63,8 @@
     "source": "{locale} Translation",
     "comment": "Label for locale translation input field, locale is uppercased locale code",
     "tags": ["browser"],
-    "es": "{locale} Traducción",
-    "fr-ca": "{locale} Traduction",
+    "es": "Traducción {locale}",
+    "fr-ca": "Traduction {locale}",
     "ru": "{locale} Перевод",
     "ja": "{locale} 翻訳",
     "de": "{locale} Übersetzung"
@@ -119,16 +119,6 @@
     "ja": "翻訳者向けに背景情報や指示を提供する",
     "de": "Geben Sie Kontext oder Anweisungen für die Übersetzer an."
   },
-  "otherLocalesToggleX": {
-    "source": "Add translations for other locales ({count} available)",
-    "comment": "Toggle label showing number of additional locales",
-    "tags": ["browser"],
-    "es": "Agregar traducciones para otras configuraciones regionales ({count} disponible)",
-    "fr-ca": "Ajouter des traductions pour d'autres langues ({count} disponibles)",
-    "ru": "Добавить переводы для других языковых версий ({count} доступны)",
-    "ja": "他のロケールの翻訳を追加してください（{count} が利用可能です）",
-    "de": "Übersetzungen für weitere Gebietsschemas hinzufügen ({count} verfügbar)"
-  },
   "status": {
     "source": "Status",
     "comment": "Label for translation status dropdown",
@@ -143,8 +133,8 @@
     "source": "Saving...",
     "comment": "Button text shown while form is submitting",
     "tags": ["browser"],
-    "es": "Ahorro...",
-    "fr-ca": "Économie...",
+    "es": "Guardando...",
+    "fr-ca": "Enregistrement...",
     "ru": "Сохранение...",
     "ja": "保存中...",
     "de": "Speichern..."
@@ -240,23 +230,93 @@
     "de": "Übersetzungsschlüssel erforderlich"
   },
   "keyPatternError": {
-    "source": "Only letters, numbers, underscores, and hyphens allowed",
-    "comment": "Validation error for invalid key characters",
+    "source": "Use letters, numbers, hyphens and underscores only",
+    "comment": "Validation error when the translation key contains a character that is invalid in any position. Dots are accepted and split into a folder path, so they are not named here.",
     "tags": ["browser"],
-    "es": "Solo se permiten letras, números, guiones bajos y guiones.",
-    "fr-ca": "Seules les lettres, les chiffres, les traits de soulignement et les tirets sont autorisés.",
-    "ru": "Разрешаются только буквы, цифры, подчеркивания и дефисы.",
-    "ja": "使用できる文字は、英字、数字、アンダースコア、ハイフンのみです。",
-    "de": "Nur Buchstaben, Zahlen, Unterstriche und Bindestriche sind erlaubt."
+    "es": "Use solo letras, números, guiones y guiones bajos",
+    "fr-ca": "Utilisez uniquement des lettres, des chiffres, des traits d'union et des tirets bas",
+    "ru": "Используйте только буквы, цифры, дефисы и подчёркивания",
+    "ja": "英数字、ハイフン、アンダースコアのみ使用できます",
+    "de": "Nur Buchstaben, Ziffern, Bindestriche und Unterstriche verwenden"
   },
   "readOnlyNotice": {
     "source": "This collection is read-only — you're viewing this resource in read-only mode.",
     "comment": "Banner in the resource editor dialog when the collection is read-only.",
     "tags": ["browser"],
-    "es": "This collection is read-only — you're viewing this resource in read-only mode.",
-    "fr-ca": "This collection is read-only — you're viewing this resource in read-only mode.",
-    "ru": "This collection is read-only — you're viewing this resource in read-only mode.",
-    "ja": "This collection is read-only — you're viewing this resource in read-only mode.",
-    "de": "This collection is read-only — you're viewing this resource in read-only mode."
+    "es": "Esta colección es de solo lectura: está viendo este recurso en modo de solo lectura.",
+    "fr-ca": "Cette collection est en lecture seule — vous consultez cette ressource en mode lecture seule.",
+    "ru": "Эта коллекция доступна только для чтения — вы просматриваете этот ресурс в режиме чтения.",
+    "ja": "このコレクションは読み取り専用です。このリソースは閲覧のみ可能です。",
+    "de": "Diese Sammlung ist schreibgeschützt — Sie sehen diese Ressource im Nur-Lese-Modus."
+  },
+  "fixErrors": {
+    "source": "Fix the highlighted fields before saving",
+    "comment": "Error banner shown when the user tries to save with invalid fields.",
+    "tags": ["browser"],
+    "es": "Corrija los campos resaltados antes de guardar",
+    "fr-ca": "Corrigez les champs surlignés avant d'enregistrer",
+    "ru": "Исправьте выделенные поля перед сохранением",
+    "ja": "保存する前に、強調表示されたフィールドを修正してください",
+    "de": "Beheben Sie die markierten Felder, bevor Sie speichern"
+  },
+  "tabHasErrors": {
+    "source": "This tab has errors",
+    "comment": "Accessible label for the error indicator on a dialog tab.",
+    "tags": ["browser"],
+    "es": "Esta pestaña tiene errores",
+    "fr-ca": "Cet onglet contient des erreurs",
+    "ru": "На этой вкладке есть ошибки",
+    "ja": "このタブにエラーがあります",
+    "de": "Dieser Tab enthält Fehler"
+  },
+  "readOnlyTabTooltip": {
+    "source": "Not available in a read-only collection",
+    "comment": "Tooltip on the disabled Change Location tab when the collection is read-only.",
+    "tags": ["browser"],
+    "es": "No disponible en una colección de solo lectura",
+    "fr-ca": "Non disponible dans une collection en lecture seule",
+    "ru": "Недоступно в коллекции только для чтения",
+    "ja": "読み取り専用のコレクションでは利用できません",
+    "de": "In einer schreibgeschützten Sammlung nicht verfügbar"
+  },
+  "noOtherLocalesTooltip": {
+    "source": "This collection has only the base locale",
+    "comment": "Tooltip on the disabled Other Locales tab when no other locales are configured.",
+    "tags": ["browser"],
+    "es": "Esta colección solo tiene el idioma base",
+    "fr-ca": "Cette collection n'a que la langue de base",
+    "ru": "В этой коллекции есть только базовая локаль",
+    "ja": "このコレクションには基準ロケールしかありません",
+    "de": "Diese Sammlung hat nur die Basissprache"
+  },
+  "saveShortcutHint": {
+    "source": "Press Ctrl + Enter to save",
+    "comment": "Tooltip on the save button advertising the keyboard shortcut.",
+    "tags": ["browser"],
+    "es": "Pulse Ctrl + Intro para guardar",
+    "fr-ca": "Appuyez sur Ctrl + Entrée pour enregistrer",
+    "ru": "Нажмите Ctrl + Enter, чтобы сохранить",
+    "ja": "Ctrl + Enter で保存します",
+    "de": "Zum Speichern Strg + Eingabe drücken"
+  },
+  "fullKeyX": {
+    "source": "Full key: {key}",
+    "comment": "Tooltip on the location pill showing the complete dot-delimited key.",
+    "tags": ["browser"],
+    "es": "Clave completa: {key}",
+    "fr-ca": "Clé complète : {key}",
+    "ru": "Полный ключ: {key}",
+    "ja": "完全なキー: {key}",
+    "de": "Vollständiger Schlüssel: {key}"
+  },
+  "locationFromKeyX": {
+    "source": "Location set to {folder} from the key you entered",
+    "comment": "Screen-reader announcement when a dotted key's prefix is moved into the folder location pill. {folder} is the dot-delimited folder path.",
+    "tags": ["browser"],
+    "es": "Ubicación establecida en {folder} a partir de la clave introducida",
+    "fr-ca": "Emplacement défini à {folder} à partir de la clé saisie",
+    "ru": "Папка задана как {folder} на основе введённого ключа",
+    "ja": "入力されたキーからフォルダーを {folder} に設定しました",
+    "de": "Ordner aus dem eingegebenen Schlüssel auf {folder} gesetzt"
   }
 }

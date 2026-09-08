@@ -113,11 +113,11 @@
     "source": "Folder selector, currently: { path }",
     "comment": "Aria-label for the folder picker header button. { path } is the currently selected folder path",
     "tags": ["browser"],
-    "es": "Selector de carpeta, actualmente: { ruta }",
-    "fr-ca": "Sélecteur de dossier, présentement : { chemin }",
-    "ru": "Селектор папки, в данный момент: { путь }",
-    "ja": "フォルダセレクター、現在の値: { パス }",
-    "de": "Ordnerauswahl, aktuell: { Pfad }"
+    "es": "Selector de carpeta, actualmente: {path}",
+    "fr-ca": "Sélecteur de dossier, présentement : {path}",
+    "ru": "Селектор папки, в данный момент: {path}",
+    "ja": "フォルダセレクター、現在の値: {path}",
+    "de": "Ordnerauswahl, aktuell: {path}"
   },
   "treeAriaLabel": {
     "source": "Folder tree",

@@ -49,50 +49,106 @@
     </div>
   }
 
-  <!-- Empty State -->
-  @if (!store.isFolderTreeLoading() && !store.error() && store.filteredFolders().length === 0 && !isAddingFolder()) {
-    <div class="empty-state">
-      <mat-icon class="empty-icon">folder_off</mat-icon>
-      <p class="empty-text">
-        {{ (store.folderTreeFilter() ? TOKENS.BROWSER.NOFOLDERSMATCHSEARCH : TOKENS.BROWSER.NOFOLDERSFOUND) | transloco }}
-      </p>
-    </div>
-  }
-
-  <!-- Root-level inline folder input (shown even when collection is empty) -->
-  @if (isAddingFolder() && addFolderParentPath() === null) {
-    <app-inline-folder-input
-      [parentPath]="null"
-      (confirm)="onFolderConfirm($event)"
-      (cancelInput)="onFolderCancel()"
-    />
-  }
-
-  <!-- Folder Tree -->
-  @if (store.filteredFolders().length > 0) {
+  @if (!store.error() && !(store.isFolderTreeLoading() && store.rootFolders().length === 0)) {
     <div
       #folderList
       class="folder-list"
       role="tree"
       (mousemove)="activeDragData() ? onDragMoved($event) : null"
     >
-      @for (folder of store.filteredFolders(); track folder.fullPath) {
-        <app-folder-node
-          [folder]="folder"
-          [selectedPath]="store.currentFolderPath()"
-          [showNestedResources]="showNestedResources()"
-          [disabled]="store.isDisabled()"
-          [readOnly]="store.isReadOnly()"
-          [isDeleting]="store.deletingFolderPath() === folder.fullPath"
-          [activeDragData]="activeDragData()"
-          (folderClick)="onFolderClick($event)"
-          (loadFolder)="onLoadFolder($event)"
-          (deleteFolder)="onDeleteFolder($event)"
-          (resourceDropped)="onResourceDropped($event)"
-          (folderDropped)="onFolderDropped($event)"
-          (dragStarted)="onDragStarted($event)"
-          (dragEnded)="onDragEnded()"
-        />
+      <!-- Collection root: the one node that lists every resource across every folder -->
+      <div
+        class="root-drop-zone"
+        [class.drop-target-valid]="isRootHoveredDuringDrag() && activeDragData() && isValidRootDropTarget()"
+        [class.drop-target-invalid]="isRootHoveredDuringDrag() && activeDragData() && !isValidRootDropTarget()"
+        cdkDropList
+        [cdkDropListData]="''"
+        [cdkDropListEnterPredicate]="canDropOnRoot"
+        [cdkDropListSortingDisabled]="true"
+        (cdkDropListDropped)="onRootDrop($event)"
+        (cdkDropListEntered)="isRootHoveredDuringDrag.set(true)"
+        (cdkDropListExited)="isRootHoveredDuringDrag.set(false)"
+      >
+        <div
+          class="root-row"
+          [class.selected]="isRootSelected()"
+          (click)="onRootClick()"
+          [attr.role]="store.isDisabled() ? 'presentation' : 'treeitem'"
+          [attr.tabindex]="store.isDisabled() ? -1 : 0"
+          [attr.aria-label]="TOKENS.BROWSER.FOLDERTREE.ROOTFOLDERARIALABELX | transloco : { name: collectionName() }"
+          [attr.aria-expanded]="store.isRootExpanded()"
+          [attr.aria-selected]="isRootSelected()"
+          (keydown.enter)="onRootClick()"
+          (keydown.space)="onRootClick()"
+          (keydown.arrowright)="onRootExpandKeydown($event)"
+          (keydown.arrowleft)="onRootCollapseKeydown($event)"
+        >
+          <button
+            type="button"
+            class="expand-toggle"
+            tabindex="-1"
+            aria-hidden="true"
+            [class.expanded]="store.isRootExpanded()"
+            (click)="onToggleRootExpanded($event)"
+          >
+            <mat-icon>chevron_right</mat-icon>
+          </button>
+          <mat-icon class="root-icon">{{ store.isReadOnly() ? 'lock' : 'folder_special' }}</mat-icon>
+          <span class="root-name">{{ collectionName() }}</span>
+          <button
+            type="button"
+            class="expand-all-toggle"
+            [disabled]="store.isDisabled()"
+            [matTooltip]="(store.areAllFoldersExpanded() ? TOKENS.BROWSER.FOLDERTREE.COLLAPSEALLTOOLTIP : TOKENS.BROWSER.FOLDERTREE.EXPANDALLTOOLTIP) | transloco"
+            [attr.aria-label]="(store.areAllFoldersExpanded() ? TOKENS.BROWSER.FOLDERTREE.COLLAPSEALLTOOLTIP : TOKENS.BROWSER.FOLDERTREE.EXPANDALLTOOLTIP) | transloco"
+            (click)="onToggleExpandAll($event)"
+          >
+            <mat-icon>{{ store.areAllFoldersExpanded() ? 'unfold_less' : 'unfold_more' }}</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      @if (store.isRootExpanded()) {
+        <div class="root-children" role="group">
+          <!-- Root-level inline folder input (shown even when the collection is empty) -->
+          @if (isAddingFolder() && addFolderParentPath() === null) {
+            <app-inline-folder-input
+              [parentPath]="null"
+              (confirm)="onFolderConfirm($event)"
+              (cancelInput)="onFolderCancel()"
+            />
+          }
+
+          @if (store.filteredFolders().length === 0 && !isAddingFolder()) {
+            <div class="empty-state">
+              <mat-icon class="empty-icon">folder_off</mat-icon>
+              <p class="empty-text">
+                {{ (store.folderTreeFilter() ? TOKENS.BROWSER.NOFOLDERSMATCHSEARCH : TOKENS.BROWSER.NOFOLDERSFOUND) | transloco }}
+              </p>
+            </div>
+          }
+
+          @for (folder of store.filteredFolders(); track folder.fullPath) {
+            <app-folder-node
+              [folder]="folder"
+              [selectedPath]="store.currentFolderPath()"
+              [showNestedResources]="showNestedResources()"
+              [expandedPaths]="store.visibleExpandedFolders()"
+              [disabled]="store.isDisabled()"
+              [readOnly]="store.isReadOnly()"
+              [isDeleting]="store.deletingFolderPath() === folder.fullPath"
+              [activeDragData]="activeDragData()"
+              (folderClick)="onFolderClick($event)"
+              (toggleExpanded)="onToggleExpanded($event)"
+              (expandRequested)="onExpandRequested($event)"
+              (deleteFolder)="onDeleteFolder($event)"
+              (resourceDropped)="onResourceDropped($event)"
+              (folderDropped)="onFolderDropped($event)"
+              (dragStarted)="onDragStarted($event)"
+              (dragEnded)="onDragEnded()"
+            />
+          }
+        </div>
       }
     </div>
   }

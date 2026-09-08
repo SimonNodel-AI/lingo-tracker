@@ -6,12 +6,12 @@
     "es": {
       "checksum": "919d3629485e94ca4c13bf8ca40183e6",
       "baseChecksum": "16708b0cacde01471507891eb88bcf2b",
-      "status": "stale"
+      "status": "translated"
     },
     "fr-ca": {
       "checksum": "579125b969a55e9f1429775d20e2faa5",
       "baseChecksum": "16708b0cacde01471507891eb88bcf2b",
-      "status": "stale"
+      "status": "translated"
     },
     "ru": {
       "checksum": "91946bcd8bb4cbac5db6c724fee19b1f",
@@ -96,12 +96,12 @@
     "es": {
       "checksum": "25077cf7679a114b0de5e0a0a9f3a64e",
       "baseChecksum": "aa85d08e5c2011ca6a07c0db14c82de2",
-      "status": "stale"
+      "status": "translated"
     },
     "fr-ca": {
       "checksum": "7a3c0707dbd14091260a5aca97d25f02",
       "baseChecksum": "aa85d08e5c2011ca6a07c0db14c82de2",
-      "status": "stale"
+      "status": "translated"
     },
     "ru": {
       "checksum": "da6ae24598b43f425bbeb36a05a35bed",
@@ -334,27 +334,27 @@
       "checksum": "b25b6c575d57b6fd62e0b80e20fe9c16"
     },
     "es": {
-      "checksum": "b11af281684aee0925985fc7d9cae889",
+      "checksum": "68cbff643c16a87e911880062606a88f",
       "baseChecksum": "b25b6c575d57b6fd62e0b80e20fe9c16",
       "status": "translated"
     },
     "fr-ca": {
-      "checksum": "944c1bba8a4b6cdb6d462fa4cd6cab58",
+      "checksum": "ffa7a136a656efe5d00faaf3eed884d0",
       "baseChecksum": "b25b6c575d57b6fd62e0b80e20fe9c16",
       "status": "translated"
     },
     "ru": {
-      "checksum": "d622603fd981f67772ec7f1bc7845ff3",
+      "checksum": "57d52358235bf90216858aeca6cdbbf9",
       "baseChecksum": "b25b6c575d57b6fd62e0b80e20fe9c16",
       "status": "translated"
     },
     "ja": {
-      "checksum": "08175456a2012dc021d7a17f35b7f4e1",
+      "checksum": "0c11c653b85f4afc2fb5824e72da9254",
       "baseChecksum": "b25b6c575d57b6fd62e0b80e20fe9c16",
       "status": "translated"
     },
     "de": {
-      "checksum": "ed06c442f616d33752f32266cbe3b87c",
+      "checksum": "f8d0c997ba33f59eb4f8fb38d87dcca5",
       "baseChecksum": "b25b6c575d57b6fd62e0b80e20fe9c16",
       "status": "translated"
     }

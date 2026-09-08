@@ -4,22 +4,22 @@
       "checksum": "8a99d337e7d73673d6afcfa72e7b82fd"
     },
     "es": {
-      "checksum": "f4168a0d52bc8582a0614fe8d4f26dbd",
+      "checksum": "077a07a6ddb0dbdc41cb363f5ace2f4f",
       "baseChecksum": "8a99d337e7d73673d6afcfa72e7b82fd",
       "status": "translated"
     },
     "fr-ca": {
-      "checksum": "ac4c82f234ba7f6fb0ac78e8d8dc395b",
+      "checksum": "1390f9ccbd185622ac251b2201cfe58e",
       "baseChecksum": "8a99d337e7d73673d6afcfa72e7b82fd",
       "status": "translated"
     },
     "ru": {
-      "checksum": "d44d30a0dbadd7dbcaebfe9f596e7a6a",
+      "checksum": "e3d8f380cfbc0a9bd3cd9448e06276cd",
       "baseChecksum": "8a99d337e7d73673d6afcfa72e7b82fd",
       "status": "translated"
     },
     "ja": {
-      "checksum": "a9125be4e99103ed768fb2f81ed360ed",
+      "checksum": "da3a8c1057273b8ab1e097387737c341",
       "baseChecksum": "8a99d337e7d73673d6afcfa72e7b82fd",
       "status": "translated"
     },

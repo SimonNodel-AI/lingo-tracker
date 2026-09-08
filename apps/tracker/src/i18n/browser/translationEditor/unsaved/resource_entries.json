@@ -1,0 +1,42 @@
+{
+  "title": {
+    "source": "Discard your changes?",
+    "comment": "Title of the confirmation shown when closing the translation editor with unsaved edits.",
+    "tags": ["browser"],
+    "es": "¿Descartar los cambios?",
+    "fr-ca": "Abandonner vos modifications ?",
+    "ru": "Отменить изменения?",
+    "ja": "変更を破棄しますか？",
+    "de": "Änderungen verwerfen?"
+  },
+  "message": {
+    "source": "This translation has unsaved changes. Closing now will lose them.",
+    "comment": "Message of the unsaved-changes confirmation in the translation editor.",
+    "tags": ["browser"],
+    "es": "Esta traducción tiene cambios sin guardar. Si la cierra ahora, se perderán.",
+    "fr-ca": "Cette traduction comporte des modifications non enregistrées. Les fermer maintenant les perdra.",
+    "ru": "В этом переводе есть несохранённые изменения. При закрытии они будут потеряны.",
+    "ja": "この翻訳には保存されていない変更があります。閉じると失われます。",
+    "de": "Diese Übersetzung hat ungespeicherte Änderungen. Beim Schließen gehen sie verloren."
+  },
+  "discard": {
+    "source": "Discard changes",
+    "comment": "Confirm button of the unsaved-changes dialog; closes the editor and loses edits.",
+    "tags": ["browser"],
+    "es": "Descartar los cambios",
+    "fr-ca": "Abandonner les modifications",
+    "ru": "Отменить изменения",
+    "ja": "変更を破棄",
+    "de": "Änderungen verwerfen"
+  },
+  "keepEditing": {
+    "source": "Keep editing",
+    "comment": "Cancel button of the unsaved-changes dialog; returns to the editor.",
+    "tags": ["browser"],
+    "es": "Seguir editando",
+    "fr-ca": "Continuer la modification",
+    "ru": "Продолжить редактирование",
+    "ja": "編集を続ける",
+    "de": "Weiter bearbeiten"
+  }
+}

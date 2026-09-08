@@ -1,12 +1,12 @@
 <button
-  mat-stroked-button
+  type="button"
   [matMenuTriggerFor]="localeMenu"
   data-testid="locale-filter-trigger"
   class="locale-filter-trigger"
   [attr.aria-label]="TOKENS.BROWSER.LOCALEFILTER.ARIALABELX | transloco : { text: store.localeFilterText() }"
   aria-haspopup="true"
 >
-  <mat-icon class="filter-icon">filter_list</mat-icon>
+  <mat-icon class="filter-icon">translate</mat-icon>
   <span class="filter-text">{{ store.localeFilterText() }}</span>
   <mat-icon class="arrow-icon">arrow_drop_down</mat-icon>
 </button>

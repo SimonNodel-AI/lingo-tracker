@@ -42,7 +42,6 @@ import type {
   UpdateResourceResponseDto,
   ResourceTreeDto,
   ResourceSummaryDto,
-  TranslationStatus,
   SearchTranslationsDto,
   SearchResultsDto,
   CacheStatusDto,
@@ -300,7 +299,7 @@ export class ResourcesController {
 
       // Clear cache after successful resource deletion
       if (result.entriesDeleted > 0) {
-        this.#cacheService.clearCache();
+        this.#cacheService.clearCache(decodedCollectionName);
       }
 
       return {
@@ -350,6 +349,10 @@ export class ResourcesController {
         );
       }
 
+      // Every collection a move touched, so each one's cache is dropped and no untouched
+      // collection's cache is.
+      const affectedCollections = new Set<string>([decodedCollectionName]);
+
       for (const moveOp of dto.moves) {
         let destinationTranslationsFolder: string | undefined;
 
@@ -363,6 +366,7 @@ export class ResourcesController {
             continue;
           }
           destinationTranslationsFolder = config.collections[destCollectionName].translationsFolder;
+          affectedCollections.add(destCollectionName);
         }
 
         const moveResult = await moveResource(translationsFolder, {
@@ -383,7 +387,9 @@ export class ResourcesController {
 
       // Clear cache after successful resource move
       if (result.movedCount > 0) {
-        this.#cacheService.clearCache();
+        for (const affected of affectedCollections) {
+          this.#cacheService.clearCache(affected);
+        }
       }
 
       return result;
@@ -555,18 +561,10 @@ export class ResourcesController {
         throw new HttpException('Cache is marked as ready but tree is not available', HttpStatus.INTERNAL_SERVER_ERROR);
       }
 
-      // If no path specified, return full tree
-      if (!path || path.trim() === '') {
-        const treeDto = mapResourceTreeToDto(cachedTree, collection.tags);
-        if (responseObj) {
-          responseObj.status(HttpStatus.OK).json(treeDto);
-          return treeDto;
-        }
-        return treeDto;
-      }
-
-      // Extract subtree at specified path
-      const subtree = extractSubtree(cachedTree, path);
+      // An empty path addresses the collection root, which the artificial root node in the
+      // Tracker sidebar selects. It is a folder like any other here, so it honours
+      // includeNested too and can list every resource in the collection.
+      const subtree = !path || path.trim() === '' ? cachedTree : extractSubtree(cachedTree, path);
 
       if (!subtree) {
         throw new NotFoundException(`Path "${path}" not found in collection tree`);
@@ -575,35 +573,9 @@ export class ResourcesController {
       const treeDto = mapResourceTreeToDto(subtree, collection.tags);
 
       if (isIncludeNested) {
-        const nestedResources = extractResourcesRecursively(subtree);
-        treeDto.resources = nestedResources.map((res) => {
-          // Find base locale
-          let baseLocale: string | undefined;
-          for (const [locale, meta] of Object.entries(res.metadata)) {
-            if (meta.status === undefined && meta.baseChecksum === undefined) {
-              baseLocale = locale;
-              break;
-            }
-          }
-
-          const translations: Record<string, string> = { ...res.translations };
-          if (baseLocale) {
-            translations[baseLocale] = res.source;
-          }
-
-          const status: Record<string, TranslationStatus | undefined> = {};
-          for (const [locale, meta] of Object.entries(res.metadata)) {
-            status[locale] = meta.status;
-          }
-
-          return {
-            key: res.key,
-            translations,
-            status,
-            comment: res.comment,
-            tags: res.tags,
-          };
-        });
+        treeDto.resources = extractResourcesRecursively(subtree).map((res) =>
+          mapResourceEntryToSummary(res, collection.tags),
+        );
       }
 
       if (responseObj) {

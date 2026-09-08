@@ -24,27 +24,99 @@
   </span>
 
   @if (currentDensityMode() === 'compact') {
-    <!-- Compact: 2-row layout -->
+    <!--
+      Compact: one line. The header composes it in `inline` layout and this is the
+      content it wraps around — identity first, annotation second, because the
+      developer arrives knowing the source string and nothing else on the row.
+    -->
     <app-translation-item-header
       [fullKey]="fullKey()"
       [translation]="translation()"
-      [showComment]="showComment()"
       [translationEnabled]="translationEnabled()"
-      (commentToggle)="toggleComment()"
-    />
-
-    <div
-      class="compact-value"
-      [class.compact-value--empty]="!primaryLocaleValue().trim() && !showComment()"
-      [class.compact-value--comment]="showComment()"
-      [title]="showComment() ? '' : (primaryLocaleValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco))"
+      layout="inline"
     >
-      @if (showComment()) {
-        <span class="comment-text">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} <span [innerHTML]="translation().comment | highlight : searchQuery()"></span></span>
-      } @else {
-        <span [innerHTML]="(primaryLocaleValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
+      <!-- Identity: the string the developer wrote. Truncates last. -->
+      <span
+        class="compact-identity"
+        [class.compact-identity--empty]="!identityValue().trim()"
+        dir="auto"
+        [title]="identityValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)"
+      >
+        <span [innerHTML]="(identityValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
+      </span>
+
+      <!-- Annotation: what the identity is measured against. -->
+      @switch (compactLayout()) {
+        @case ('paired') {
+          <span class="compact-annotation">
+            <span class="compact-locale-code">{{ compactDisplay().locale }}</span>
+
+            @if (compactDisplay().status) {
+              <span class="status-chip status-{{ compactDisplay().status }}" aria-hidden="true">
+                <mat-icon class="status-chip__icon">{{ compactStatusIcon() }}</mat-icon>
+                <span class="status-chip__label">{{ compactStatusToken() | transloco }}</span>
+              </span>
+            }
+
+            @if (compactDisplay().isSameAsBase) {
+              <span
+                class="same-as-source"
+                [attr.title]="
+                  TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCEARIALABELX
+                    | transloco : { locale: compactDisplay().locale }
+                "
+              >
+                <mat-icon class="same-as-source__icon" aria-hidden="true">content_copy</mat-icon>
+                <span>{{ TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCETAG | transloco }}</span>
+              </span>
+            }
+
+            <span
+              class="compact-translation"
+              [class.compact-translation--empty]="!compactDisplay().value.trim()"
+              dir="auto"
+              [title]="compactDisplay().value.trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)"
+            >
+              <span [innerHTML]="(compactDisplay().value.trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
+            </span>
+          </span>
+        }
+
+        @case ('source-only') {
+          <!-- The row is showing source text, not a translation. One tag, no value:
+               there is nothing to compare a string against itself. -->
+          <span class="compact-annotation compact-annotation--tagged">
+            <span class="compact-locale-code">{{ compactDisplay().locale }}</span>
+            <span class="compact-locale-tag">{{ TOKENS.BROWSER.TRANSLATIONITEM.BASELOCALETAG | transloco }}</span>
+          </span>
+        }
+
+        @case ('no-base') {
+          <!-- No base locale in this collection, so the identity is a locale the app
+               picked. Never let that pick be silent: name it and point at the
+               control that changes it. -->
+          <span class="compact-annotation compact-annotation--tagged">
+            <span class="compact-locale-code">{{ compactDisplay().locale }}</span>
+
+            @if (compactDisplay().status) {
+              <span class="status-chip status-{{ compactDisplay().status }}" aria-hidden="true">
+                <mat-icon class="status-chip__icon">{{ compactStatusIcon() }}</mat-icon>
+                <span class="status-chip__label">{{ compactStatusToken() | transloco }}</span>
+              </span>
+            }
+
+            <button
+              class="default-locale-tag"
+              type="button"
+              [matTooltip]="
+                TOKENS.BROWSER.TRANSLATIONITEM.DEFAULTLOCALETOOLTIPX
+                  | transloco : { locale: compactDisplay().locale }
+              "
+            >{{ TOKENS.BROWSER.TRANSLATIONITEM.DEFAULTLOCALETAG | transloco }}</button>
+          </span>
+        }
       }
-    </div>
+    </app-translation-item-header>
   } @else {
     <!-- Full density: expanded details with overflow handling -->
     <app-translation-item-header
@@ -54,46 +126,54 @@
       [translationEnabled]="translationEnabled()"
     />
 
-    <div class="base-value full" [class.expanded]="isExpanded()" [innerHTML]="baseValue() | highlight : searchQuery()">
-    </div>
+    <!--
+      Source and translations are one grid, not a heading followed by a list. The
+      comparison is the whole task in this density, and it only works when both
+      sides share a baseline, so nothing is allowed between them — the comment and
+      the expand control moved below the block they describe.
+    -->
+    @if (baseRow() || visibleLocaleTranslations().length > 0) {
+      <app-translation-item-locales
+        [baseRow]="baseRow()"
+        [localeTranslations]="visibleLocaleTranslations()"
+        [densityMode]="'full'"
+        [isExpanded]="isExpanded()"
+        [searchQuery]="searchQuery()"
+      />
+    }
 
-    <!-- Comment row: comment text left, expand toggle right -->
-    <div class="comment-expand-row">
-      <p class="comment-text full">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} <span [innerHTML]="(translation().comment || '-') | highlight : searchQuery()"></span></p>
+    <!--
+      The note. It is the only sentence on this card a person wrote — everything
+      above it is derived from the files — so it gets an object of its own rather
+      than a prefixed line of fine print. Rendered only when it has something to
+      say: a "Comment: -" placeholder on every item without one is noise.
 
-      @if (needsExpansion()) {
+      The prefix that used to be visible is now read-only-to-screen-readers. The
+      glyph names the block for sighted users; the word still names it for
+      everyone else, and it stays a translated token rather than becoming
+      hardcoded English in an aria-label.
+    -->
+    @if (translation().comment) {
+      <div class="item-note">
+        <mat-icon class="item-note__icon" aria-hidden="true">sticky_note_2</mat-icon>
+        <p class="item-note__text" dir="auto">
+          <span class="sr-only">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} </span>
+          <span [innerHTML]="translation().comment | highlight : searchQuery()"></span>
+        </p>
+      </div>
+    }
+
+    @if (needsExpansion()) {
+      <div class="expand-row">
         <button
           class="expand-button"
           type="button"
           (click)="toggleExpansion()"
           [attr.aria-expanded]="isExpanded()"
-          [attr.aria-label]="TOKENS.BROWSER.TOGGLEEXPANSION | transloco"
         >
-          <mat-icon [class.rotated]="isExpanded()">expand_more</mat-icon>
+          <span class="expand-button__label">{{ expandLabelToken() | transloco : expandLabelParams() }}</span>
+          <mat-icon [class.rotated]="isExpanded()" aria-hidden="true">expand_more</mat-icon>
         </button>
-      }
-    </div>
-
-    <!-- Locale scroll container: relative wrapper so the fade overlay can be absolutely positioned -->
-    @if (localeTranslations().length > 0) {
-      <div class="locale-scroll-container" [class.collapsed]="!isExpanded()">
-        <div class="locale-scroll-wrapper" #scrollWrapper>
-          <app-translation-item-locales
-            [localeTranslations]="localeTranslations()"
-            [densityMode]="'full'"
-            [isExpanded]="isExpanded()"
-            [searchQuery]="searchQuery()"
-          />
-          <!-- Sentinel observed by IntersectionObserver to detect scroll position -->
-          <div class="locale-scroll-sentinel" #scrollSentinel aria-hidden="true"></div>
-        </div>
-        @if (!isExpanded() && localeTranslations().length >= 4) {
-          <div
-            class="locale-scroll-fade"
-            [class.hidden]="isScrolledToBottom()"
-            aria-hidden="true"
-          ></div>
-        }
       </div>
     }
   }

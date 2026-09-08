@@ -1,3 +1,5 @@
+@use '../../../../shared/toggle-animation' as *;
+
 :host {
   display: block;
 }
@@ -48,7 +50,8 @@
     background-color: var(--color-primary-subtle);
     color: var(--color-primary);
 
-    .folder-icon {
+    .folder-icon,
+    .expand-toggle {
       color: var(--color-primary);
     }
   }
@@ -56,27 +59,6 @@
   &.descendant-selected {
     .folder-icon {
       color: color-mix(in srgb, var(--color-primary) 80%, var(--color-background));
-    }
-  }
-
-  &.unloaded {
-    color: var(--color-text-tertiary);
-
-    .folder-icon {
-      color: var(--color-text-tertiary);
-    }
-
-    .folder-name {
-      color: var(--color-text-tertiary);
-    }
-
-    &:hover {
-      color: var(--color-text-secondary);
-
-      .folder-icon,
-      .folder-name {
-        color: var(--color-text-secondary);
-      }
     }
   }
 
@@ -200,9 +182,19 @@
   }
 }
 
+.expand-toggle {
+  @extend %tree-expand-toggle;
+}
+
+.expand-spacer {
+  @extend %tree-expand-spacer;
+}
+
 .folder-children {
-  margin-left: var(--spacing-4);
-  padding-left: var(--spacing-2);
+  // 12px + 16px = the twisty width plus the row gap, so each child's twisty sits directly
+  // under its parent's folder icon and the guide rule runs between the two.
+  margin-left: var(--spacing-3);
+  padding-left: var(--spacing-4);
   border-left: 1px solid var(--color-border);
 }
 

@@ -11,6 +11,16 @@ import { computeTreeFingerprint, extractResourcesRecursively, treeFingerprintsMa
  */
 const DEFAULT_REVALIDATION_INTERVAL_MS = 2000;
 
+/**
+ * How many collections may be held in memory at once.
+ *
+ * Each entry holds a collection's whole tree, so the ceiling is a memory budget: several
+ * tabs on different collections each keep their own index instead of evicting each other,
+ * but an unbounded map would let a large workspace grow without limit. The least recently
+ * used entry is dropped when the cap is reached.
+ */
+const DEFAULT_MAX_CACHED_COLLECTIONS = 4;
+
 export enum CacheStatus {
   NOT_STARTED = 'not-started',
   INDEXING = 'indexing',
@@ -30,62 +40,89 @@ export interface CachedCollection {
   translationsFolder: string | null;
   /** Disk state as of the last index or self-write, used to spot outside changes */
   fingerprint: TreeFingerprint | null;
+  /**
+   * Monotonic use counter, bumped on every read and write of this entry. A counter rather
+   * than a clock: several collections can be touched within the same millisecond, and
+   * eviction still needs a strict order between them.
+   */
+  accessSequence: number;
+  /** Throttle stamp for this entry's disk fingerprint check */
+  lastRevalidationAt: number;
+  /** Deferred fingerprint refresh covering this entry's own writes */
+  pendingFingerprintRefresh: NodeJS.Timeout | null;
 }
 
 @Injectable()
 export class CollectionCacheService {
   readonly #logger = new Logger(CollectionCacheService.name);
-  #cachedCollection: CachedCollection | null = null;
-  #lastRevalidationAt = 0;
-  #pendingFingerprintRefresh: NodeJS.Timeout | null = null;
+  readonly #collections = new Map<string, CachedCollection>();
 
   readonly #revalidationIntervalMs = Number(
     process.env.LINGO_TRACKER_REVALIDATE_INTERVAL_MS ?? DEFAULT_REVALIDATION_INTERVAL_MS,
   );
 
+  #accessSequence = 0;
+
+  readonly #maxCachedCollections = Math.max(
+    1,
+    Number(process.env.LINGO_TRACKER_MAX_CACHED_COLLECTIONS ?? DEFAULT_MAX_CACHED_COLLECTIONS),
+  );
+
   getCacheStatus(collectionName: string): CacheStatus {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       return CacheStatus.NOT_STARTED;
     }
 
-    return this.#cachedCollection.status;
+    cached.accessSequence = ++this.#accessSequence;
+
+    return cached.status;
   }
 
   getCache(collectionName: string): ResourceTreeNode | null {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       return null;
     }
 
-    if (this.#cachedCollection.status !== CacheStatus.READY) {
+    if (cached.status !== CacheStatus.READY) {
       return null;
     }
 
-    return this.#cachedCollection.tree;
+    cached.accessSequence = ++this.#accessSequence;
+
+    return cached.tree;
   }
 
   getCacheMetadata(collectionName: string): { indexedAt: Date | null; error?: string } | null {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       return null;
     }
 
     return {
-      indexedAt: this.#cachedCollection.indexedAt,
-      error: this.#cachedCollection.error,
+      indexedAt: cached.indexedAt,
+      error: cached.error,
     };
   }
 
   getCacheStats(collectionName: string): { totalKeys: number; localeCount: number } | null {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       return null;
     }
 
-    if (this.#cachedCollection.status !== CacheStatus.READY) {
+    if (cached.status !== CacheStatus.READY) {
       return null;
     }
 
     return {
-      totalKeys: this.#cachedCollection.totalKeys,
-      localeCount: this.#cachedCollection.localeCount,
+      totalKeys: cached.totalKeys,
+      localeCount: cached.localeCount,
     };
   }
 
@@ -96,13 +133,12 @@ export class CollectionCacheService {
     error?: string,
     localeCount?: number,
   ): void {
-    if (this.#cachedCollection && this.#cachedCollection.collectionName !== collectionName) {
-      this.#logger.log(`Clearing cache for previous collection: ${this.#cachedCollection.collectionName}`);
-      this.#cachedCollection = null;
-    }
+    const existing = this.#collections.get(collectionName);
 
-    if (!this.#cachedCollection) {
-      this.#cachedCollection = {
+    if (!existing) {
+      this.#evictLeastRecentlyUsed(collectionName);
+
+      this.#collections.set(collectionName, {
         collectionName,
         status,
         tree: tree ?? null,
@@ -112,18 +148,22 @@ export class CollectionCacheService {
         localeCount: status === CacheStatus.READY ? (localeCount ?? 0) : 0,
         translationsFolder: null,
         fingerprint: null,
-      };
+        accessSequence: ++this.#accessSequence,
+        lastRevalidationAt: 0,
+        pendingFingerprintRefresh: null,
+      });
     } else {
-      this.#cachedCollection.status = status;
-      this.#cachedCollection.tree = tree ?? this.#cachedCollection.tree;
-      this.#cachedCollection.error = error;
+      existing.status = status;
+      existing.tree = tree ?? existing.tree;
+      existing.error = error;
+      existing.accessSequence = ++this.#accessSequence;
 
       if (status === CacheStatus.READY) {
-        this.#cachedCollection.indexedAt = new Date();
+        existing.indexedAt = new Date();
 
         if (tree) {
-          this.#cachedCollection.totalKeys = extractResourcesRecursively(tree).length;
-          this.#cachedCollection.localeCount = localeCount ?? 0;
+          existing.totalKeys = extractResourcesRecursively(tree).length;
+          existing.localeCount = localeCount ?? 0;
         }
       }
     }
@@ -131,13 +171,88 @@ export class CollectionCacheService {
     this.#logger.log(`Cache status set to ${status} for collection: ${collectionName}`);
   }
 
-  clearCache(): void {
-    this.#cancelPendingFingerprintRefresh();
+  /**
+   * Drops one collection's cache. Other collections are left alone: a write against one
+   * collection must never force a re-index of a collection somebody else is viewing.
+   *
+   * @param collectionName - The collection whose cache should be dropped
+   */
+  clearCache(collectionName: string): void {
+    const cached = this.#collections.get(collectionName);
 
-    if (this.#cachedCollection) {
-      this.#logger.log(`Clearing cache for collection: ${this.#cachedCollection.collectionName}`);
-      this.#cachedCollection = null;
+    if (!cached) {
+      return;
     }
+
+    this.#logger.log(`Clearing cache for collection: ${collectionName}`);
+    this.#dropEntry(cached);
+  }
+
+  /**
+   * Drops every cached collection. Reserved for changes that invalidate all of them, such
+   * as a config reload.
+   */
+  clearAllCaches(): void {
+    if (this.#collections.size === 0) {
+      return;
+    }
+
+    this.#logger.log(`Clearing cache for all ${this.#collections.size} cached collection(s)`);
+
+    for (const cached of [...this.#collections.values()]) {
+      this.#dropEntry(cached);
+    }
+  }
+
+  /** Names of the collections currently held in memory, most recently used last. */
+  getCachedCollectionNames(): string[] {
+    return [...this.#collections.values()]
+      .sort((a, b) => a.accessSequence - b.accessSequence)
+      .map((entry) => entry.collectionName);
+  }
+
+  #dropEntry(cached: CachedCollection): void {
+    this.#cancelPendingFingerprintRefresh(cached);
+    this.#collections.delete(cached.collectionName);
+  }
+
+  /**
+   * Makes room for a new entry once the cap is reached by dropping the least recently used
+   * collection. A collection that is still indexing is never chosen — discarding it would
+   * throw away in-flight work and leave the request that started it waiting for nothing —
+   * so the map is allowed to overflow briefly when every entry is busy.
+   *
+   * @param incomingCollectionName - Collection about to be cached, never a victim
+   */
+  #evictLeastRecentlyUsed(incomingCollectionName: string): void {
+    if (this.#collections.size < this.#maxCachedCollections) {
+      return;
+    }
+
+    let victim: CachedCollection | null = null;
+
+    for (const entry of this.#collections.values()) {
+      if (entry.collectionName === incomingCollectionName || entry.status === CacheStatus.INDEXING) {
+        continue;
+      }
+
+      if (!victim || entry.accessSequence < victim.accessSequence) {
+        victim = entry;
+      }
+    }
+
+    if (!victim) {
+      this.#logger.warn(
+        `Cache is at its ${this.#maxCachedCollections}-collection limit and every entry is still indexing; ` +
+          `caching ${incomingCollectionName} without evicting`,
+      );
+      return;
+    }
+
+    this.#logger.log(
+      `Evicting least recently used collection to stay within the cache limit: ${victim.collectionName}`,
+    );
+    this.#dropEntry(victim);
   }
 
   /**
@@ -148,17 +263,21 @@ export class CollectionCacheService {
    * @returns true if the folder was added, false if cache wasn't ready or parent not found
    */
   addFolderToCache(collectionName: string, folderName: string, parentPath?: string): boolean {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       this.#logger.warn(`Cannot add folder to cache: no cache for collection ${collectionName}`);
       return false;
     }
 
-    if (this.#cachedCollection.status !== CacheStatus.READY || !this.#cachedCollection.tree) {
+    if (cached.status !== CacheStatus.READY || !cached.tree) {
       this.#logger.warn(`Cannot add folder to cache: cache not ready for collection ${collectionName}`);
       return false;
     }
 
-    const tree = this.#cachedCollection.tree;
+    cached.accessSequence = ++this.#accessSequence;
+
+    const tree = cached.tree;
     const parentSegments = parentPath ? parentPath.split('.') : [];
     const fullPathSegments = [...parentSegments, folderName];
 
@@ -177,7 +296,7 @@ export class CollectionCacheService {
     const existingChild = parentNode.children.find((c) => c.name === folderName);
     if (existingChild) {
       this.#logger.log(`Folder "${folderName}" already exists in cache at path "${parentPath || 'root'}"`);
-      this.#scheduleFingerprintRefresh();
+      this.#scheduleFingerprintRefresh(cached);
       return true;
     }
 
@@ -198,7 +317,7 @@ export class CollectionCacheService {
     parentNode.children.sort((a, b) => a.name.localeCompare(b.name));
 
     this.#logger.log(`Added folder "${folderName}" to cache at path "${parentPath || 'root'}"`);
-    this.#scheduleFingerprintRefresh();
+    this.#scheduleFingerprintRefresh(cached);
     return true;
   }
 
@@ -210,17 +329,21 @@ export class CollectionCacheService {
    * @returns true if the resource was added, false if cache wasn't ready or folder not found
    */
   addResourceToCache(collectionName: string, resourceEntry: ResourceTreeEntry, folderPath: string): boolean {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       this.#logger.warn(`Cannot add resource to cache: no cache for collection ${collectionName}`);
       return false;
     }
 
-    if (this.#cachedCollection.status !== CacheStatus.READY || !this.#cachedCollection.tree) {
+    if (cached.status !== CacheStatus.READY || !cached.tree) {
       this.#logger.warn(`Cannot add resource to cache: cache not ready for collection ${collectionName}`);
       return false;
     }
 
-    const tree = this.#cachedCollection.tree;
+    cached.accessSequence = ++this.#accessSequence;
+
+    const tree = cached.tree;
 
     // Navigate to the target folder
     let targetNode: ResourceTreeNode = tree;
@@ -247,11 +370,11 @@ export class CollectionCacheService {
       targetNode.resources.push(resourceEntry);
       targetNode.resources.sort((a, b) => a.key.localeCompare(b.key));
       // Update total keys count
-      this.#cachedCollection.totalKeys++;
+      cached.totalKeys++;
       this.#logger.log(`Added resource "${resourceEntry.key}" to cache at path "${folderPath || 'root'}"`);
     }
 
-    this.#scheduleFingerprintRefresh();
+    this.#scheduleFingerprintRefresh(cached);
     return true;
   }
 
@@ -262,17 +385,21 @@ export class CollectionCacheService {
    * @returns true if the folder was removed, false if cache wasn't ready or folder not found
    */
   removeFolderFromCache(collectionName: string, folderPath: string): boolean {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       this.#logger.warn(`Cannot remove folder from cache: no cache for collection ${collectionName}`);
       return false;
     }
 
-    if (this.#cachedCollection.status !== CacheStatus.READY || !this.#cachedCollection.tree) {
+    if (cached.status !== CacheStatus.READY || !cached.tree) {
       this.#logger.warn(`Cannot remove folder from cache: cache not ready for collection ${collectionName}`);
       return false;
     }
 
-    const tree = this.#cachedCollection.tree;
+    cached.accessSequence = ++this.#accessSequence;
+
+    const tree = cached.tree;
     const pathSegments = folderPath.split('.');
 
     if (pathSegments.length === 0) {
@@ -304,7 +431,7 @@ export class CollectionCacheService {
     }
 
     this.#logger.log(`Removed folder "${folderPath}" from cache`);
-    this.#scheduleFingerprintRefresh();
+    this.#scheduleFingerprintRefresh(cached);
     return true;
   }
 
@@ -317,17 +444,21 @@ export class CollectionCacheService {
    * @returns true if the resource was found and removed, false otherwise
    */
   removeResourceFromCache(collectionName: string, resourceKey: string, folderPath: string): boolean {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       this.#logger.warn(`Cannot remove resource from cache: no cache for collection ${collectionName}`);
       return false;
     }
 
-    if (this.#cachedCollection.status !== CacheStatus.READY || !this.#cachedCollection.tree) {
+    if (cached.status !== CacheStatus.READY || !cached.tree) {
       this.#logger.warn(`Cannot remove resource from cache: cache not ready for collection ${collectionName}`);
       return false;
     }
 
-    const tree = this.#cachedCollection.tree;
+    cached.accessSequence = ++this.#accessSequence;
+
+    const tree = cached.tree;
 
     // Navigate to the target folder
     let targetNode: ResourceTreeNode = tree;
@@ -353,9 +484,9 @@ export class CollectionCacheService {
       return false;
     }
 
-    this.#cachedCollection.totalKeys--;
+    cached.totalKeys--;
     this.#logger.log(`Removed resource "${resourceKey}" from cache at path "${folderPath || 'root'}"`);
-    this.#scheduleFingerprintRefresh();
+    this.#scheduleFingerprintRefresh(cached);
     return true;
   }
 
@@ -369,17 +500,21 @@ export class CollectionCacheService {
    * @returns true if the folder was moved successfully, false if cache wasn't ready or operation failed
    */
   moveFolderInCache(collectionName: string, sourceFolderPath: string, destinationFolderPath: string): boolean {
-    if (!this.#cachedCollection || this.#cachedCollection.collectionName !== collectionName) {
+    const cached = this.#collections.get(collectionName);
+
+    if (!cached) {
       this.#logger.warn(`Cannot move folder in cache: no cache for collection ${collectionName}`);
       return false;
     }
 
-    if (this.#cachedCollection.status !== CacheStatus.READY || !this.#cachedCollection.tree) {
+    if (cached.status !== CacheStatus.READY || !cached.tree) {
       this.#logger.warn(`Cannot move folder in cache: cache not ready for collection ${collectionName}`);
       return false;
     }
 
-    const tree = this.#cachedCollection.tree;
+    cached.accessSequence = ++this.#accessSequence;
+
+    const tree = cached.tree;
     const sourceSegments = sourceFolderPath.split('.');
     const folderName = sourceSegments[sourceSegments.length - 1];
     const sourceParentSegments = sourceSegments.slice(0, -1);
@@ -445,7 +580,7 @@ export class CollectionCacheService {
     destParent.children.sort((a, b) => a.name.localeCompare(b.name));
 
     this.#logger.log(`Moved folder "${sourceFolderPath}" to "${destinationFolderPath || 'root'}" in cache`);
-    this.#scheduleFingerprintRefresh();
+    this.#scheduleFingerprintRefresh(cached);
     return true;
   }
 
@@ -465,24 +600,25 @@ export class CollectionCacheService {
    * @returns true when the cache was dropped and needs re-indexing
    */
   revalidate(collectionName: string, translationsFolder: string, cwd?: string): boolean {
-    const cached = this.#cachedCollection;
+    const cached = this.#collections.get(collectionName);
 
-    if (!cached || cached.collectionName !== collectionName || cached.status !== CacheStatus.READY) {
+    if (!cached || cached.status !== CacheStatus.READY) {
       return false;
     }
 
     const now = Date.now();
-    if (now - this.#lastRevalidationAt < this.#revalidationIntervalMs) {
+    if (now - cached.lastRevalidationAt < this.#revalidationIntervalMs) {
       return false;
     }
-    this.#lastRevalidationAt = now;
+    cached.lastRevalidationAt = now;
+    cached.accessSequence = ++this.#accessSequence;
 
     const fingerprint = computeTreeFingerprint({ translationsFolder, cwd });
 
     // A write of our own is still waiting for its deferred baseline refresh. Adopt the
     // fingerprint now instead of reading our own change as somebody else's.
-    if (this.#pendingFingerprintRefresh !== null) {
-      this.#cancelPendingFingerprintRefresh();
+    if (cached.pendingFingerprintRefresh !== null) {
+      this.#cancelPendingFingerprintRefresh(cached);
       cached.fingerprint = fingerprint;
       return false;
     }
@@ -492,7 +628,7 @@ export class CollectionCacheService {
     }
 
     this.#logger.log(`Translations folder changed on disk for collection ${collectionName}, dropping cache`);
-    this.clearCache();
+    this.clearCache(collectionName);
     return true;
   }
 
@@ -500,11 +636,15 @@ export class CollectionCacheService {
    * Re-takes the disk fingerprint so the cache's own writes do not later read as external
    * changes. Safe to call when no collection is cached.
    */
-  refreshFingerprint(): void {
-    this.#cancelPendingFingerprintRefresh();
+  refreshFingerprint(collectionName: string): void {
+    const cached = this.#collections.get(collectionName);
+    if (!cached) {
+      return;
+    }
 
-    const cached = this.#cachedCollection;
-    if (!cached?.translationsFolder) {
+    this.#cancelPendingFingerprintRefresh(cached);
+
+    if (!cached.translationsFolder) {
       return;
     }
 
@@ -517,24 +657,24 @@ export class CollectionCacheService {
    * Bulk endpoints mutate the cache once per resource in a synchronous loop, so deferring
    * collapses a whole batch into a single scan.
    */
-  #scheduleFingerprintRefresh(): void {
-    if (this.#pendingFingerprintRefresh !== null || !this.#cachedCollection?.translationsFolder) {
+  #scheduleFingerprintRefresh(cached: CachedCollection): void {
+    if (cached.pendingFingerprintRefresh !== null || !cached.translationsFolder) {
       return;
     }
 
-    this.#pendingFingerprintRefresh = setTimeout(() => {
-      this.#pendingFingerprintRefresh = null;
-      this.refreshFingerprint();
+    cached.pendingFingerprintRefresh = setTimeout(() => {
+      cached.pendingFingerprintRefresh = null;
+      this.refreshFingerprint(cached.collectionName);
     }, 0);
 
     // A pending refresh must never hold the process open on its own.
-    this.#pendingFingerprintRefresh.unref?.();
+    cached.pendingFingerprintRefresh.unref?.();
   }
 
-  #cancelPendingFingerprintRefresh(): void {
-    if (this.#pendingFingerprintRefresh !== null) {
-      clearTimeout(this.#pendingFingerprintRefresh);
-      this.#pendingFingerprintRefresh = null;
+  #cancelPendingFingerprintRefresh(cached: CachedCollection): void {
+    if (cached.pendingFingerprintRefresh !== null) {
+      clearTimeout(cached.pendingFingerprintRefresh);
+      cached.pendingFingerprintRefresh = null;
     }
   }
 
@@ -549,6 +689,9 @@ export class CollectionCacheService {
     this.setCacheStatus(collectionName, CacheStatus.INDEXING);
     const startTime = Date.now();
     const indexingCollectionName = collectionName;
+    // Identity, not name: a clearCache during the load replaces the entry, and the results
+    // of this run must not be written onto its successor.
+    const indexingEntry = this.#collections.get(collectionName);
 
     this.#logger.log(`Starting indexing for collection: ${collectionName}`);
 
@@ -567,22 +710,19 @@ export class CollectionCacheService {
       const duration = Date.now() - startTime;
       this.#logger.log(`Successfully indexed collection ${indexingCollectionName} in ${duration}ms`);
 
-      if (this.#cachedCollection?.collectionName !== indexingCollectionName) {
-        this.#logger.log(
-          `Discarding indexing results for ${indexingCollectionName} - collection changed to ${
-            this.#cachedCollection?.collectionName ?? 'none'
-          }`,
-        );
+      if (this.#collections.get(indexingCollectionName) !== indexingEntry) {
+        this.#logger.log(`Discarding indexing results for ${indexingCollectionName} - its cache entry was dropped`);
         return;
       }
 
       this.setCacheStatus(indexingCollectionName, CacheStatus.READY, tree, undefined, localeCount);
 
-      if (this.#cachedCollection) {
-        this.#cachedCollection.translationsFolder = translationsFolder;
-        this.#cachedCollection.fingerprint = fingerprint;
+      const cached = this.#collections.get(indexingCollectionName);
+      if (cached) {
+        cached.translationsFolder = translationsFolder;
+        cached.fingerprint = fingerprint;
+        cached.lastRevalidationAt = Date.now();
       }
-      this.#lastRevalidationAt = Date.now();
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -592,12 +732,8 @@ export class CollectionCacheService {
         error instanceof Error ? error.stack : undefined,
       );
 
-      if (this.#cachedCollection?.collectionName !== indexingCollectionName) {
-        this.#logger.log(
-          `Discarding error state for ${indexingCollectionName} - collection changed to ${
-            this.#cachedCollection?.collectionName ?? 'none'
-          }`,
-        );
+      if (this.#collections.get(indexingCollectionName) !== indexingEntry) {
+        this.#logger.log(`Discarding error state for ${indexingCollectionName} - its cache entry was dropped`);
         return;
       }
 

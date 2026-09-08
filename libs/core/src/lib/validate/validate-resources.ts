@@ -1,6 +1,7 @@
 import { loadResourcesFromCollections, type LoadedResource } from '../export/export-common';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { validateIcuValues } from './validate-icu';
+import { validatePlaceholders } from './validate-placeholders';
 import type { ValidationOptions, ResourceValidationResult, ResourceValidationDetail, StatusCounts } from './types';
 
 /**
@@ -23,6 +24,11 @@ import type { ValidationOptions, ResourceValidationResult, ResourceValidationDet
  * under the locale it is stored under. Any value that fails to compile is a
  * failure regardless of its status — plural categories are per-language, so a
  * value approved by a reviewer can still throw for its own locale.
+ *
+ * When `options.placeholders` is provided, a third pass checks that every
+ * translation interpolates the same arguments as its base value. A renamed
+ * argument renders as empty text rather than raising, so neither of the other
+ * two passes can see it.
  *
  * The function validates ALL resources comprehensively before returning results.
  * This ensures teams have complete visibility into translation status across
@@ -101,10 +107,18 @@ export function validateResources(
   // whether the stored value renders at all, not whether anyone approved it.
   const icu = options.icu ? validateIcuValues(loadedResources, targetLocales, options.icu) : undefined;
 
-  const passed = failures.length === 0 && (icu?.failures.length ?? 0) === 0;
+  // And placeholder agreement is a third: a value can be approved and compile
+  // cleanly while interpolating an argument the caller never passes.
+  const placeholders = options.placeholders
+    ? validatePlaceholders(loadedResources, targetLocales, options.placeholders.baseLocale)
+    : undefined;
+
+  const passed =
+    failures.length === 0 && (icu?.failures.length ?? 0) === 0 && (placeholders?.failures.length ?? 0) === 0;
 
   return {
     icu,
+    placeholders,
     totalResourcesValidated,
     totalUniqueKeys: loadedResources.length,
     localesValidated: targetLocales.length,
