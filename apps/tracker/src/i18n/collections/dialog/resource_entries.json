@@ -287,5 +287,175 @@
     "ru": "Для этой коллекции не настроен файл защищённых терминов. Настройте его через CLI, чтобы редактировать термины здесь.",
     "ja": "このコレクションには保護用語ファイルが設定されていません。ここで用語を編集するには、CLI で設定してください。",
     "de": "Für diese Sammlung ist keine Datei mit geschützten Begriffen konfiguriert. Richten Sie eine über die CLI ein, um Begriffe hier zu bearbeiten."
+  },
+  "createSubtitle": {
+    "source": "Point LingoTracker at a folder of translation files and choose the locales it tracks.",
+    "comment": "One-sentence purpose line under the Create Collection dialog title",
+    "tags": ["collections"],
+    "es": "Point LingoTracker at a folder of translation files and choose the locales it tracks.",
+    "fr-ca": "Point LingoTracker at a folder of translation files and choose the locales it tracks.",
+    "ru": "Point LingoTracker at a folder of translation files and choose the locales it tracks.",
+    "ja": "Point LingoTracker at a folder of translation files and choose the locales it tracks.",
+    "de": "Point LingoTracker at a folder of translation files and choose the locales it tracks."
+  },
+  "sourceTitle": {
+    "source": "Source",
+    "comment": "Heading of the dialog group holding the collection name and translations folder",
+    "tags": ["collections"],
+    "es": "Source",
+    "fr-ca": "Source",
+    "ru": "Source",
+    "ja": "Source",
+    "de": "Source"
+  },
+  "sourceHint": {
+    "source": "Where the translation files live.",
+    "comment": "Description under the Source group heading",
+    "tags": ["collections"],
+    "es": "Where the translation files live.",
+    "fr-ca": "Where the translation files live.",
+    "ru": "Where the translation files live.",
+    "ja": "Where the translation files live.",
+    "de": "Where the translation files live."
+  },
+  "nameLocked": {
+    "source": "Names can't be changed after creation.",
+    "comment": "Hint under the collection name in edit mode, where the name is shown locked",
+    "tags": ["collections"],
+    "es": "Names can't be changed after creation.",
+    "fr-ca": "Names can't be changed after creation.",
+    "ru": "Names can't be changed after creation.",
+    "ja": "Names can't be changed after creation.",
+    "de": "Names can't be changed after creation."
+  },
+  "localesDescription": {
+    "source": "Every locale this collection ships. Translations are compared against the base locale.",
+    "comment": "Description under the Locales group heading",
+    "tags": ["collections"],
+    "es": "Every locale this collection ships. Translations are compared against the base locale.",
+    "fr-ca": "Every locale this collection ships. Translations are compared against the base locale.",
+    "ru": "Every locale this collection ships. Translations are compared against the base locale.",
+    "ja": "Every locale this collection ships. Translations are compared against the base locale.",
+    "de": "Every locale this collection ships. Translations are compared against the base locale."
+  },
+  "addLocalePlaceholder": {
+    "source": "Add locale, e.g. de or pt-br",
+    "comment": "Placeholder of the inline input that adds a locale chip. de and pt-br are locale codes",
+    "tags": ["collections"],
+    "es": "Add locale, e.g. de or pt-br",
+    "fr-ca": "Add locale, e.g. de or pt-br",
+    "ru": "Add locale, e.g. de or pt-br",
+    "ja": "Add locale, e.g. de or pt-br",
+    "de": "Add locale, e.g. de or pt-br"
+  },
+  "baseHintCreate": {
+    "source": "Click a locale to make it the base.",
+    "comment": "Hint under the locale chips while creating a collection",
+    "tags": ["collections"],
+    "es": "Click a locale to make it the base.",
+    "fr-ca": "Click a locale to make it the base.",
+    "ru": "Click a locale to make it the base.",
+    "ja": "Click a locale to make it the base.",
+    "de": "Click a locale to make it the base."
+  },
+  "baseHintEdit": {
+    "source": "The base locale is fixed after creation. Removing a locale deletes its translations.",
+    "comment": "Hint under the locale chips while editing a collection",
+    "tags": ["collections"],
+    "es": "The base locale is fixed after creation. Removing a locale deletes its translations.",
+    "fr-ca": "The base locale is fixed after creation. Removing a locale deletes its translations.",
+    "ru": "The base locale is fixed after creation. Removing a locale deletes its translations.",
+    "ja": "The base locale is fixed after creation. Removing a locale deletes its translations.",
+    "de": "The base locale is fixed after creation. Removing a locale deletes its translations."
+  },
+  "localesInheritHint": {
+    "source": "Leave empty to use the locales from your global config.",
+    "comment": "Hint under the locale chips when no locale has been added yet",
+    "tags": ["collections"],
+    "es": "Leave empty to use the locales from your global config.",
+    "fr-ca": "Leave empty to use the locales from your global config.",
+    "ru": "Leave empty to use the locales from your global config.",
+    "ja": "Leave empty to use the locales from your global config.",
+    "de": "Leave empty to use the locales from your global config."
+  },
+  "makeBaseAriaX": {
+    "source": "Make {locale} the base locale",
+    "comment": "Screen-reader label of a locale chip button; clicking it sets that locale as the base",
+    "tags": ["collections"],
+    "es": "Make {locale} the base locale",
+    "fr-ca": "Make {locale} the base locale",
+    "ru": "Make {locale} the base locale",
+    "ja": "Make {locale} the base locale",
+    "de": "Make {locale} the base locale"
+  },
+  "optionsTitle": {
+    "source": "Options",
+    "comment": "Heading of the dialog group holding read-only and metadata settings",
+    "tags": ["collections"],
+    "es": "Options",
+    "fr-ca": "Options",
+    "ru": "Options",
+    "ja": "Options",
+    "de": "Options"
+  },
+  "advancedTitle": {
+    "source": "Tags & protected terms",
+    "comment": "Label of the collapsible row that reveals the tags and protected terms editors",
+    "tags": ["collections"],
+    "es": "Tags & protected terms",
+    "fr-ca": "Tags & protected terms",
+    "ru": "Tags & protected terms",
+    "ja": "Tags & protected terms",
+    "de": "Tags & protected terms"
+  },
+  "advancedEmpty": {
+    "source": "None yet",
+    "comment": "Summary shown on the collapsed Tags & protected terms row when both are empty",
+    "tags": ["collections"],
+    "es": "None yet",
+    "fr-ca": "None yet",
+    "ru": "None yet",
+    "ja": "None yet",
+    "de": "None yet"
+  },
+  "tagsCountX": {
+    "source": "{ count, plural, =1 {1 tag} other {{count} tags} }",
+    "comment": "Summary on the collapsed row: number of collection tags (ICU plural)",
+    "tags": ["collections"],
+    "es": "{ count, plural, =1 {1 tag} other {{count} tags} }",
+    "fr-ca": "{ count, plural, =1 {1 tag} other {{count} tags} }",
+    "ru": "{ count, plural, =1 {1 tag} other {{count} tags} }",
+    "ja": "{ count, plural, =1 {1 tag} other {{count} tags} }",
+    "de": "{ count, plural, =1 {1 tag} other {{count} tags} }"
+  },
+  "termsCountX": {
+    "source": "{ count, plural, =1 {1 term} other {{count} terms} }",
+    "comment": "Summary on the collapsed row: number of protected terms (ICU plural)",
+    "tags": ["collections"],
+    "es": "{ count, plural, =1 {1 term} other {{count} terms} }",
+    "fr-ca": "{ count, plural, =1 {1 term} other {{count} terms} }",
+    "ru": "{ count, plural, =1 {1 term} other {{count} terms} }",
+    "ja": "{ count, plural, =1 {1 term} other {{count} terms} }",
+    "de": "{ count, plural, =1 {1 term} other {{count} terms} }"
+  },
+  "editSubtitleX": {
+    "source": "Changes are saved to {file} in your working tree.",
+    "comment": "One-sentence line under the Edit Collection dialog title. {{ file }} is the config file name (.lingo-tracker.json), inserted by the app",
+    "tags": ["collections"],
+    "es": "Changes are saved to {file} in your working tree.",
+    "fr-ca": "Changes are saved to {file} in your working tree.",
+    "ru": "Changes are saved to {file} in your working tree.",
+    "ja": "Changes are saved to {file} in your working tree.",
+    "de": "Changes are saved to {file} in your working tree."
+  },
+  "folderHintX": {
+    "source": "Relative to the project root, next to {file}.",
+    "comment": "Hint under the translations folder field. {{ file }} is the config file name (.lingo-tracker.json), inserted by the app",
+    "tags": ["collections"],
+    "es": "Relative to the project root, next to {file}.",
+    "fr-ca": "Relative to the project root, next to {file}.",
+    "ru": "Relative to the project root, next to {file}.",
+    "ja": "Relative to the project root, next to {file}.",
+    "de": "Relative to the project root, next to {file}."
   }
 }

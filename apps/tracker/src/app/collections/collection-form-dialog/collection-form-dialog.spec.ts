@@ -130,6 +130,49 @@ describe('CollectionFormDialog — create mode', () => {
     expect(component.form.controls.baseLocale.value).toBe('');
   });
 
+  it('should let a clicked locale chip become the base', () => {
+    component.addLocaleInput.setValue('en');
+    component.addLocale();
+    component.addLocaleInput.setValue('fr-ca');
+    component.addLocale();
+
+    component.setBaseLocale('fr-ca');
+
+    expect(component.form.controls.baseLocale.value).toBe('fr-ca');
+    expect(component.isBaseLocale('fr-ca')).toBe(true);
+    expect(component.isBaseLocale('en')).toBe(false);
+  });
+
+  it('should ignore a base locale that is not in the list', () => {
+    component.addLocaleInput.setValue('en');
+    component.addLocale();
+
+    component.setBaseLocale('de');
+
+    expect(component.form.controls.baseLocale.value).toBe('en');
+  });
+
+  it('should add a pending locale when the input loses focus', () => {
+    component.addLocaleInput.setValue('es');
+    component.addLocaleIfPending();
+
+    expect(component.form.controls.locales.at(0).value).toBe('es');
+  });
+
+  it('should keep the tags and protected terms disclosure closed when there is nothing in it', () => {
+    expect(component.advancedOpen()).toBe(false);
+    component.toggleAdvanced();
+    expect(component.advancedOpen()).toBe(true);
+  });
+
+  it('should mark required fields touched instead of closing when submitted empty', async () => {
+    await component.onSubmit();
+
+    expect(component.form.controls.name.touched).toBe(true);
+    expect(component.showNameError).toBe(true);
+    expect(component.showFolderError).toBe(true);
+  });
+
   it('should not close dialog when form is invalid', async () => {
     await component.onSubmit();
     expect(mockDialogRef.close).not.toHaveBeenCalled();
@@ -172,6 +215,29 @@ describe('CollectionFormDialog — create mode', () => {
     component.addProtectedTerm({ value: 'iPhone', chipInput: { clear: () => undefined } } as never);
 
     expect(component.protectedTermsList()).toEqual(['iPhone', 'Node.js']);
+  });
+
+  it('should commit a typed tag on Enter or comma and clear the input', () => {
+    const input = { value: ' Design System ' } as HTMLInputElement;
+    const enter = { key: 'Enter', preventDefault: vi.fn() } as unknown as KeyboardEvent;
+
+    component.onChipInputKeydown(enter, input, 'tag');
+
+    expect(enter.preventDefault).toHaveBeenCalled();
+    expect(component.tagsList()).toEqual(['design-system']);
+    expect(input.value).toBe('');
+
+    const other = { key: 'a', preventDefault: vi.fn() } as unknown as KeyboardEvent;
+    component.onChipInputKeydown(other, { value: 'x' } as HTMLInputElement, 'tag');
+    expect(component.tagsList()).toEqual(['design-system']);
+  });
+
+  it('should commit a pending protected term when its input blurs', () => {
+    const input = { value: 'iPhone' } as HTMLInputElement;
+    component.commitChipInput(input, 'term');
+
+    expect(component.protectedTermsList()).toEqual(['iPhone']);
+    expect(input.value).toBe('');
   });
 
   it('should remove a protected term', () => {
@@ -311,5 +377,50 @@ describe('CollectionFormDialog — edit mode', () => {
     component.removeLocale(0);
     expect(component.form.controls.locales.length).toBe(3);
     expect(component.form.controls.locales.at(0).value).toBe('en');
+  });
+
+  it('should not offer a remove control for the base locale in edit mode', () => {
+    expect(component.canRemoveLocale(0)).toBe(false);
+    expect(component.canRemoveLocale(1)).toBe(true);
+  });
+
+  it('should not let the base locale change in edit mode', () => {
+    component.setBaseLocale('es');
+    expect(component.form.controls.baseLocale.value).toBe('en');
+  });
+
+  it('should open the disclosure when protected terms already exist', () => {
+    expect(component.advancedOpen()).toBe(true);
+  });
+});
+
+describe('CollectionFormDialog — edit mode with inherited base locale', () => {
+  let component: CollectionFormDialog;
+  let mockDialogRef: { close: ReturnType<typeof vi.fn> };
+
+  beforeEach(async () => {
+    TestBed.resetTestingModule();
+    const built = await buildTestBed({
+      mode: 'edit',
+      name: 'inherits-base',
+      config: { translationsFolder: './i18n', locales: ['en', 'de'] },
+      effectiveBaseLocale: 'en',
+    });
+    component = built.fixture.componentInstance;
+    mockDialogRef = built.mockDialogRef;
+  });
+
+  it('should mark and lock the inherited base locale', () => {
+    expect(component.displayedBaseLocale).toBe('en');
+    expect(component.isBaseLocale('en')).toBe(true);
+    expect(component.canRemoveLocale(0)).toBe(false);
+    expect(component.canRemoveLocale(1)).toBe(true);
+  });
+
+  it('should not write the inherited base locale into the collection on save', async () => {
+    await component.onSubmit();
+
+    const closeArg = mockDialogRef.close.mock.calls[0][0];
+    expect(closeArg.config).not.toHaveProperty('baseLocale');
   });
 });

@@ -127,7 +127,9 @@ export class CollectionsManager {
     import('./collection-form-dialog/collection-form-dialog').then((m) => {
       const dialogRef = this.#dialog.open(m.CollectionFormDialog, {
         data: { mode: 'create' },
-        width: '500px',
+        panelClass: 'collection-form-dialog-panel',
+        // Land on the first field, not the close button.
+        autoFocus: 'input',
       });
 
       dialogRef.afterClosed().subscribe((result) => {
@@ -152,14 +154,21 @@ export class CollectionsManager {
       return;
     }
 
+    const effectiveBaseLocale = this.store
+      .collectionEntriesWithLocales()
+      .find((item) => item.name === name)?.baseLocale;
+
     import('./collection-form-dialog/collection-form-dialog').then((m) => {
       const dialogRef = this.#dialog.open(m.CollectionFormDialog, {
         data: {
           mode: 'edit',
           name,
           config,
+          effectiveBaseLocale,
         },
-        width: '500px',
+        panelClass: 'collection-form-dialog-panel',
+        // Land on the first field, not the close button.
+        autoFocus: 'input',
       });
 
       dialogRef.afterClosed().subscribe((result) => {

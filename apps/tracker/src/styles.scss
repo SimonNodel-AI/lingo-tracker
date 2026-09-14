@@ -125,6 +125,36 @@ mark.search-highlight {
   }
 }
 
+// Collection create/edit dialog. Same top rule as the translation editor so the
+// two dialogs read as one family; the panel class carries the width because the
+// CDK puts it on the overlay pane, outside the component.
+.mat-mdc-dialog-container:has(app-collection-form-dialog) {
+  padding: 0;
+  border-top: 3px solid var(--color-primary);
+  box-shadow: var(--shadow-lg);
+}
+
+// Doubled with the pane class so this outranks Material's own `max-height: 100%`
+// on the pane, which has no definite height to resolve against and let the
+// dialog grow past the viewport. Every layer down to the component inherits the
+// viewport-based ceiling, so the body inside is the only thing that scrolls.
+.cdk-overlay-pane.collection-form-dialog-panel {
+  width: 540px;
+  max-width: min(540px, calc(100vw - 2 * var(--spacing-6)));
+  max-height: min(90vh, calc(100dvh - 2 * var(--spacing-8)));
+
+  .mat-mdc-dialog-container,
+  .mat-mdc-dialog-inner-container,
+  .mat-mdc-dialog-surface,
+  app-collection-form-dialog {
+    max-height: inherit;
+  }
+
+  app-collection-form-dialog {
+    display: block;
+  }
+}
+
 // Make overlay backdrops slightly darker
 .cdk-overlay-backdrop,
 .cdk-overlay-dark-backdrop {
