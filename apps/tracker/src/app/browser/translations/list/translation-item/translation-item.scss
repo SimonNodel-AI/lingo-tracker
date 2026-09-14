@@ -87,20 +87,19 @@
 
 /*
  * Compact zones. The row is one line composed by the header in `inline` layout:
- * drag handle · key · identity · annotation · rail. Everything here is about what
- * gives way first when the line runs out of room.
+ * drag handle · key · value · annotation · rail. One locale's value, never a
+ * pair; the annotation appears only when the value needs attention.
  */
 
-/* Identity — the source string. Takes the larger share and truncates last,
-   because it is the only thing on the row a developer already recognises. */
-.compact-identity {
+/* The value — whichever locale compact is showing. Takes the larger share and
+   truncates last: it is the row's content, everything else is a marker. */
+.compact-value {
   color: var(--color-text-primary);
-  // The zone that absorbs the squeeze. Everything in the annotation is a chip or
-  // a code that clips rather than reflows, so the identity is the only thing that
-  // can give way gracefully — and an ellipsis on a sentence is readable, where a
-  // status chip cut down to "Ne" is not.
+  // The zone that absorbs the squeeze. Everything in the annotation is a chip
+  // that clips rather than reflows, so the value is the only thing that can give
+  // way gracefully — and an ellipsis on a sentence is readable, where a status
+  // chip cut down to "Ne" is not.
   flex: 1 1 0;
-  min-width: 4rem;
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-snug);
@@ -110,93 +109,32 @@
   white-space: nowrap;
 }
 
-/* No source text at all — a state to read, not content. */
-.compact-identity--empty {
+/* No value for this locale — a state to read, not content. */
+.compact-value--empty {
   color: var(--color-text-secondary);
   font-style: italic;
 }
 
-/* Annotation — the selected locale, measured against the identity beside it. */
+/* Annotation — only rendered when the row has work to report: a new or stale
+   status, or a translation that is the source text verbatim. */
 .compact-annotation {
   align-items: center;
   color: var(--color-text-secondary);
   display: flex;
-  // Sizes to its own content and never shrinks below it: its parts are chips and
-  // codes with nothing to truncate. What it can no longer afford is dropped
-  // wholesale by the container queries at the end of this file, in priority
-  // order, rather than sliced in half.
+  // Sizes to its own content and never shrinks below it: its parts are chips
+  // with nothing to truncate. What it can no longer afford is dropped wholesale
+  // by the container queries at the end of this file, rather than sliced in half.
   flex: 0 0 auto;
   gap: var(--spacing-2);
-  max-width: 100%;
   min-width: 0;
-}
-
-/* The tagged variants carry no value, so they claim only the width they need
-   and leave the rest to the identity. */
-.compact-annotation--tagged {
-  flex: 0 0 auto;
-}
-
-.compact-translation {
-  flex: 1 1 auto;
-  font-size: var(--font-size-sm);
-  line-height: var(--line-height-snug);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.compact-translation--empty {
-  color: var(--color-text-tertiary);
-  font-style: italic;
-}
-
-.compact-locale-code {
-  color: var(--color-text-secondary);
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-}
-
-/* Marks a row that is showing base-locale source text, not a translation. */
-.compact-locale-tag {
-  background-color: var(--color-background-subtle);
-  border-radius: var(--border-radius-full);
-  color: var(--color-text-placeholder);
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  padding: 0 var(--spacing-1);
-}
-
-/*
- * The collection has no base locale, so the app chose which locale to show. That
- * choice is arbitrary and must never be silent — this names it as a default and
- * its tooltip points at the locale filter. A real button so the explanation is
- * reachable from the keyboard, not only on hover.
- */
-.default-locale-tag {
-  background-color: var(--color-background-subtle);
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--border-radius-full);
-  color: var(--color-text-placeholder);
-  cursor: help;
-  flex-shrink: 0;
-  font-family: inherit;
-  font-size: var(--font-size-xs);
-  padding: 0 var(--spacing-2);
-
-  &:focus-visible {
-    outline: 2px solid var(--focus-ring-color);
-    outline-offset: 2px;
-  }
 }
 
 /*
  * Compact status chip. Mirrors item-locales.scss so a status looks identical in
  * both densities — the toggle changes how much you see, never what a colour
- * means.
+ * means. Only `new` and `stale` are ever rendered here: the quiet states are
+ * left to the rollup ring. The 2px of vertical padding matches the full-density
+ * chip; without it the text sat flush against the border and read as cramped.
  */
 .compact-annotation .status-chip {
   align-items: center;
@@ -211,7 +149,7 @@
   gap: calc(var(--spacing-1) / 2);
   letter-spacing: 0.01em;
   line-height: var(--line-height-snug);
-  padding: 0 var(--spacing-2);
+  padding: calc(var(--spacing-1) / 2 + 1px) var(--spacing-2) calc(var(--spacing-1) / 2);
 
   &.status-new {
     background-color: var(--color-status-new-surface);
@@ -223,18 +161,6 @@
     background-color: var(--color-status-stale-surface);
     border-color: var(--color-status-stale-border);
     color: var(--color-status-stale-ink);
-  }
-
-  &.status-translated {
-    background-color: var(--color-status-translated-surface);
-    border-color: var(--color-status-translated-border);
-    color: var(--color-status-translated-ink);
-  }
-
-  &.status-verified {
-    background-color: var(--color-status-verified-surface);
-    border-color: var(--color-status-verified-border);
-    color: var(--color-status-verified-ink);
   }
 }
 
@@ -258,7 +184,7 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   gap: calc(var(--spacing-1) / 2);
-  padding: 0 var(--spacing-2);
+  padding: calc(var(--spacing-1) / 2 + 1px) var(--spacing-2) calc(var(--spacing-1) / 2);
 }
 
 .compact-annotation .same-as-source__icon {
@@ -475,16 +401,7 @@
   }
 
   .compact-annotation .same-as-source {
-    padding: 0 var(--spacing-1);
-  }
-}
-
-@container (max-width: 40rem) {
-  /* Below this the translation is a word or two of noise. The status chip and
-     the marker still say what state the row is in, and the editor shows the
-     value in full. */
-  .compact-annotation .compact-translation {
-    display: none;
+    padding: calc(var(--spacing-1) / 2 + 1px) var(--spacing-1) calc(var(--spacing-1) / 2);
   }
 }
 
@@ -495,6 +412,6 @@
   }
 
   .compact-annotation .status-chip {
-    padding: 0 var(--spacing-1);
+    padding: calc(var(--spacing-1) / 2 + 1px) var(--spacing-1) calc(var(--spacing-1) / 2);
   }
 }

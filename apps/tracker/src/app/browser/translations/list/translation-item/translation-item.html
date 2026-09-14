@@ -25,9 +25,10 @@
 
   @if (currentDensityMode() === 'compact') {
     <!--
-      Compact: one line. The header composes it in `inline` layout and this is the
-      content it wraps around — identity first, annotation second, because the
-      developer arrives knowing the source string and nothing else on the row.
+      Compact: one line, one locale. The header composes it in `inline` layout and
+      this is the content it wraps around. The value is whichever locale the
+      single-select filter has chosen — the base locale by default — and the only
+      annotation is a state that asks for work: new, stale, or identical to source.
     -->
     <app-translation-item-header
       [fullKey]="fullKey()"
@@ -35,86 +36,37 @@
       [translationEnabled]="translationEnabled()"
       layout="inline"
     >
-      <!-- Identity: the string the developer wrote. Truncates last. -->
       <span
-        class="compact-identity"
-        [class.compact-identity--empty]="!identityValue().trim()"
+        class="compact-value"
+        [class.compact-value--empty]="!compactDisplay().value.trim()"
         dir="auto"
-        [title]="identityValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)"
+        [title]="compactDisplay().value.trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)"
       >
-        <span [innerHTML]="(identityValue().trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
+        <span [innerHTML]="(compactDisplay().value.trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
       </span>
 
-      <!-- Annotation: what the identity is measured against. -->
-      @switch (compactLayout()) {
-        @case ('paired') {
-          <span class="compact-annotation">
-            <span class="compact-locale-code">{{ compactDisplay().locale }}</span>
-
-            @if (compactDisplay().status) {
-              <span class="status-chip status-{{ compactDisplay().status }}" aria-hidden="true">
-                <mat-icon class="status-chip__icon">{{ compactStatusIcon() }}</mat-icon>
-                <span class="status-chip__label">{{ compactStatusToken() | transloco }}</span>
-              </span>
-            }
-
-            @if (compactDisplay().isSameAsBase) {
-              <span
-                class="same-as-source"
-                [attr.title]="
-                  TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCEARIALABELX
-                    | transloco : { locale: compactDisplay().locale }
-                "
-              >
-                <mat-icon class="same-as-source__icon" aria-hidden="true">content_copy</mat-icon>
-                <span>{{ TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCETAG | transloco }}</span>
-              </span>
-            }
-
-            <span
-              class="compact-translation"
-              [class.compact-translation--empty]="!compactDisplay().value.trim()"
-              dir="auto"
-              [title]="compactDisplay().value.trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)"
-            >
-              <span [innerHTML]="(compactDisplay().value.trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)) | highlight : searchQuery()"></span>
+      @if (hasCompactAnnotation()) {
+        <span class="compact-annotation">
+          @if (compactDisplay().needsAttention) {
+            <span class="status-chip status-{{ compactDisplay().status }}" aria-hidden="true">
+              <mat-icon class="status-chip__icon">{{ compactStatusIcon() }}</mat-icon>
+              <span class="status-chip__label">{{ compactStatusToken() | transloco }}</span>
             </span>
-          </span>
-        }
+          }
 
-        @case ('source-only') {
-          <!-- The row is showing source text, not a translation. One tag, no value:
-               there is nothing to compare a string against itself. -->
-          <span class="compact-annotation compact-annotation--tagged">
-            <span class="compact-locale-code">{{ compactDisplay().locale }}</span>
-            <span class="compact-locale-tag">{{ TOKENS.BROWSER.TRANSLATIONITEM.BASELOCALETAG | transloco }}</span>
-          </span>
-        }
-
-        @case ('no-base') {
-          <!-- No base locale in this collection, so the identity is a locale the app
-               picked. Never let that pick be silent: name it and point at the
-               control that changes it. -->
-          <span class="compact-annotation compact-annotation--tagged">
-            <span class="compact-locale-code">{{ compactDisplay().locale }}</span>
-
-            @if (compactDisplay().status) {
-              <span class="status-chip status-{{ compactDisplay().status }}" aria-hidden="true">
-                <mat-icon class="status-chip__icon">{{ compactStatusIcon() }}</mat-icon>
-                <span class="status-chip__label">{{ compactStatusToken() | transloco }}</span>
-              </span>
-            }
-
-            <button
-              class="default-locale-tag"
-              type="button"
-              [matTooltip]="
-                TOKENS.BROWSER.TRANSLATIONITEM.DEFAULTLOCALETOOLTIPX
+          @if (compactDisplay().isSameAsBase) {
+            <span
+              class="same-as-source"
+              [attr.title]="
+                TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCEARIALABELX
                   | transloco : { locale: compactDisplay().locale }
               "
-            >{{ TOKENS.BROWSER.TRANSLATIONITEM.DEFAULTLOCALETAG | transloco }}</button>
-          </span>
-        }
+            >
+              <mat-icon class="same-as-source__icon" aria-hidden="true">content_copy</mat-icon>
+              <span>{{ TOKENS.BROWSER.TRANSLATIONITEM.SAMEASSOURCETAG | transloco }}</span>
+            </span>
+          }
+        </span>
       }
     </app-translation-item-header>
   } @else {

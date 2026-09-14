@@ -63,7 +63,7 @@
   flex-shrink: 0;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-  padding: calc(var(--spacing-1) / 2) var(--spacing-2);
+  padding: calc(var(--spacing-1) / 2 + 1px) var(--spacing-2) calc(var(--spacing-1) / 2);
 }
 
 /*
@@ -98,7 +98,10 @@
   font-weight: var(--font-weight-semibold);
   gap: calc(var(--spacing-1) / 2);
   letter-spacing: 0.01em;
-  padding: calc(var(--spacing-1) / 2) var(--spacing-2);
+  /* The extra pixel on top is an optical correction: at this size the label's
+     x-height sits below the geometric centre, so equal padding reads as text
+     hugging the bottom edge. The compact chip carries the same asymmetry. */
+  padding: calc(var(--spacing-1) / 2 + 1px) var(--spacing-2) calc(var(--spacing-1) / 2);
   /* Holds the column steady across locales; the longest label sets the floor,
      and min-width lets RU and DE grow past it rather than truncate. */
   min-width: 96px;
@@ -152,7 +155,7 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   gap: calc(var(--spacing-1) / 2);
-  padding: calc(var(--spacing-1) / 2) var(--spacing-2);
+  padding: calc(var(--spacing-1) / 2 + 1px) var(--spacing-2) calc(var(--spacing-1) / 2);
   /* Matches the status chip it sits beside, so the two read as one row of
      annotations rather than two things at slightly different heights. */
 }

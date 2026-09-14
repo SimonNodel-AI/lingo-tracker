@@ -15,6 +15,10 @@ async function configureTranslationItemTestBed(): Promise<{
   component: TranslationItem;
   store: InstanceType<typeof BrowserStore>;
 }> {
+  // View preferences persist per collection, so a compact locale picked by one
+  // test would otherwise be restored by the next.
+  localStorage.clear();
+
   await TestBed.configureTestingModule({
     imports: [TranslationItem, getTranslocoTestingModule()],
     providers: [
@@ -70,59 +74,91 @@ describe('TranslationItem', () => {
       status: { es: 'new' },
     } as any;
 
-    // Compact mode with 'es' selected: filteredLocales() = ['es'], so primaryLocaleValue() = ''
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+    store.setDensityMode('compact');
     store.setSelectedLocales(['es']);
     fixture.componentRef.setInput('translation', t);
     fixture.detectChanges();
 
-    // primaryLocaleValue shows the non-base locale's value ('es' which is empty)
-    expect(component.primaryLocaleValue()).toBe('');
+    expect(component.compactDisplay().value).toBe('');
     const html = fixture.nativeElement.innerHTML as string;
     expect(html).toContain('No translation');
   });
 
-  it('should flag the base locale as a fallback when no non-base locale is available', () => {
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en'], baseLocale: 'en' });
-    store.setDensityMode('full');
-    store.clearAllLocales();
-    fixture.componentRef.setInput('translation', mockTranslation);
-    fixture.detectChanges();
-
-    expect(component.compactDisplay().locale).toBe(store.baseLocale());
-    expect(component.compactDisplay().isBaseFallback).toBe(true);
-    const html = fixture.nativeElement.innerHTML as string;
-    expect(html).toContain('common.buttons.save');
-  });
-
   describe('compact row composition', () => {
-    it('leads with the base value and annotates it with the selected locale', () => {
+    it('shows the base value alone by default', () => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.setDensityMode('compact');
+      fixture.componentRef.setInput('translation', mockTranslation);
+      fixture.detectChanges();
+
+      const display = component.compactDisplay();
+      expect(display.locale).toBe('en');
+      expect(display.isBase).toBe(true);
+      expect(display.value).toBe('Save');
+      // Source text carries no status and no marker
+      expect(display.status).toBeUndefined();
+      expect(component.hasCompactAnnotation()).toBe(false);
+
+      const html = fixture.nativeElement.innerHTML as string;
+      expect(html).toContain('Save');
+      expect(html).not.toContain('Guardar');
+    });
+
+    it('replaces the base value with the selected locale value, not beside it', () => {
       store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
       store.setDensityMode('compact');
       store.setSelectedLocales(['es']);
       fixture.componentRef.setInput('translation', mockTranslation);
       fixture.detectChanges();
 
-      expect(component.compactLayout()).toBe('paired');
-      // The source string the developer wrote identifies the row...
-      expect(component.identityValue()).toBe('Save');
-      // ...and the selected locale sits beside it as the comparison.
       expect(component.compactDisplay().locale).toBe('es');
       expect(component.compactDisplay().value).toBe('Guardar');
+
+      const html = fixture.nativeElement.innerHTML as string;
+      expect(html).toContain('Guardar');
+      expect(html).not.toContain('>Save<');
     });
 
-    it('shows source text alone when the selection resolves to the base locale', () => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en'], baseLocale: 'en' });
+    it('hides the status chip for translated and verified rows', () => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
       store.setDensityMode('compact');
-      store.clearAllLocales();
+      store.setSelectedLocales(['es']);
       fixture.componentRef.setInput('translation', mockTranslation);
       fixture.detectChanges();
 
-      expect(component.compactLayout()).toBe('source-only');
-      expect(component.identityValue()).toBe('Save');
+      expect(component.compactDisplay().status).toBe('translated');
+      expect(component.compactDisplay().needsAttention).toBe(false);
+      expect(fixture.nativeElement.querySelector('.compact-annotation .status-chip')).toBeNull();
+
+      store.setSelectedLocales(['fr']);
+      fixture.detectChanges();
+      expect(component.compactDisplay().status).toBe('verified');
+      expect(fixture.nativeElement.querySelector('.compact-annotation .status-chip')).toBeNull();
     });
 
-    it('falls back to the shown locale when the collection carries no base locale', () => {
+    it('shows the status chip only for new and stale rows', () => {
+      const needsWork: ResourceSummaryDto = {
+        key: 'common.buttons.save',
+        translations: { en: 'Save', es: 'Guardar viejo', fr: '' },
+        status: { es: 'stale', fr: 'new' },
+      } as ResourceSummaryDto;
+
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+      store.setDensityMode('compact');
+      store.setSelectedLocales(['es']);
+      fixture.componentRef.setInput('translation', needsWork);
+      fixture.detectChanges();
+
+      expect(component.compactDisplay().needsAttention).toBe(true);
+      expect(fixture.nativeElement.querySelector('.compact-annotation .status-chip.status-stale')).not.toBeNull();
+
+      store.setSelectedLocales(['fr']);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.compact-annotation .status-chip.status-new')).not.toBeNull();
+    });
+
+    it('falls back to the first locale when the collection carries no base locale', () => {
       // A vendored collection can ship translations with no base locale at all.
       const noBase: ResourceSummaryDto = {
         key: 'agGrid.addToLabels',
@@ -132,15 +168,11 @@ describe('TranslationItem', () => {
 
       store.setSelectedCollection({ collectionName: 'ds', locales: ['ar', 'de'], baseLocale: 'en' });
       store.setDensityMode('compact');
-      store.setSelectedLocales(['ar']);
       fixture.componentRef.setInput('translation', noBase);
       fixture.detectChanges();
 
-      expect(component.compactLayout()).toBe('no-base');
-      // There is no source text to lead with, so the shown locale becomes identity.
-      expect(component.identityValue()).toBe('إضافة');
-      // And the arbitrary pick is named rather than silent.
-      expect(fixture.nativeElement.innerHTML as string).toContain('default');
+      expect(component.compactDisplay().locale).toBe('ar');
+      expect(component.compactDisplay().value).toBe('إضافة');
     });
 
     it('marks a translation that is the source text verbatim', () => {
@@ -159,6 +191,27 @@ describe('TranslationItem', () => {
       // Status says `translated`; a checksum cannot see that nobody touched it.
       expect(component.compactDisplay().status).toBe('translated');
       expect(component.compactDisplay().isSameAsBase).toBe(true);
+      expect(component.hasCompactAnnotation()).toBe(true);
+      expect(fixture.nativeElement.querySelector('.compact-annotation .same-as-source')).not.toBeNull();
+    });
+
+    it('shows one marker at most: the status chip wins over same-as-source', () => {
+      const untouchedNew: ResourceSummaryDto = {
+        key: 'common.buttons.add',
+        translations: { en: 'Add', 'fr-ca': 'Add' },
+        status: { 'fr-ca': 'new' },
+      } as ResourceSummaryDto;
+
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' });
+      store.setDensityMode('compact');
+      store.setSelectedLocales(['fr-ca']);
+      fixture.componentRef.setInput('translation', untouchedNew);
+      fixture.detectChanges();
+
+      expect(component.compactDisplay().needsAttention).toBe(true);
+      expect(component.compactDisplay().isSameAsBase).toBe(false);
+      expect(fixture.nativeElement.querySelector('.compact-annotation .status-chip.status-new')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.compact-annotation .same-as-source')).toBeNull();
     });
   });
 
@@ -206,36 +259,31 @@ describe('TranslationItem - Compact helpers', () => {
     ({ fixture, component, store } = await configureTranslationItemTestBed());
   });
 
-  it('should display the first non-base locale, not the base locale', () => {
+  it('should show the base locale in compact until a locale is picked', () => {
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
-    store.setDensityMode('full');
-    store.clearAllLocales();
+    store.setDensityMode('compact');
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
 
-    expect(component.compactDisplay().locale).toBe('es');
-    expect(component.compactDisplay().isBaseFallback).toBe(false);
+    expect(component.compactDisplay().locale).toBe('en');
+    expect(component.compactDisplay().isBase).toBe(true);
   });
 
-  it('should return selected non-base locale value, or base value when only base is selected', () => {
+  it('should follow the single compact selection', () => {
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
-    store.setDensityMode('full');
-    store.clearAllLocales();
+    store.setDensityMode('compact');
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
 
-    // When a non-base locale is in the list alongside base, show non-base value
-    expect(component.primaryLocaleValue()).toBe('Guardar');
+    expect(component.compactDisplay().value).toBe('Save');
 
-    // When only a non-base locale is selected, show its value
     store.setSelectedLocales(['es']);
     fixture.detectChanges();
-    expect(component.primaryLocaleValue()).toBe('Guardar');
+    expect(component.compactDisplay().value).toBe('Guardar');
 
-    // When only base locale is selected (or no non-base locales), show base value
     store.setSelectedLocales(['en']);
     fixture.detectChanges();
-    expect(component.primaryLocaleValue()).toBe('Save');
+    expect(component.compactDisplay().value).toBe('Save');
   });
 
   it('rollupStatus should calculate worst status across all locales', () => {

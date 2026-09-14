@@ -16,6 +16,7 @@ describe('LocaleFilter', () => {
       availableLocales: signal(['en', 'es', 'fr', 'de']),
       filterableLocales: signal(['es', 'fr', 'de']), // Excludes base locale 'en'
       selectedLocales: signal([]),
+      compactDisplayLocale: signal('en'),
       localeFilterText: signal('All locales'),
       isShowingAllLocales: signal(true),
       toggleLocale: vi.fn(),
@@ -73,6 +74,16 @@ describe('LocaleFilter', () => {
 
       expect(component.isLocaleSelected('en')).toBe(true);
       expect(component.isLocaleSelected('fr')).toBe(false);
+    });
+
+    it('should check the displayed locale in single-select mode even with no selection', () => {
+      fixture.componentRef.setInput('multiSelect', false);
+      mockStore.selectedLocales.set([]);
+      mockStore.compactDisplayLocale.set('en');
+      fixture.detectChanges();
+
+      expect(component.isLocaleSelected('en')).toBe(true);
+      expect(component.isLocaleSelected('es')).toBe(false);
     });
 
     it('should toggle locale', () => {

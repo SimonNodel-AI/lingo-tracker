@@ -1,6 +1,5 @@
 import { Component, ChangeDetectionStrategy, input, output, computed, effect, inject, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
-import { MatTooltipModule } from '@angular/material/tooltip';
 import { CdkDrag, CdkDragPlaceholder } from '@angular/cdk/drag-drop';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { BrowserStore } from '../../../store/browser.store';
@@ -54,7 +53,6 @@ const STATUS_SORT_PRIORITY: Record<string, number> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     MatIconModule,
-    MatTooltipModule,
     TranslationItemHeader,
     TranslationItemLocales,
     HighlightPipe,
@@ -166,29 +164,42 @@ export class TranslationItem {
   readonly currentDensityMode = computed(() => this.#store.densityMode());
 
   /**
-   * The locale whose value the compact row annotates, together with its status.
+   * What the compact row shows: one locale's value, and only what is worth
+   * saying about it.
    *
-   * `isBaseFallback` marks the case where the compact locale selection resolved to
-   * the base locale itself — there is then only one string on the row, and it is
-   * source text rather than a translation.
+   * The locale is the store's single compact selection — the base locale until
+   * the user picks another, at which point that locale's value takes the base
+   * value's place rather than sitting beside it. Compact used to show source and
+   * translation as a pair, which made the translation an awkward annotation
+   * hanging off the right-hand end of the row.
+   *
+   * `needsAttention` gates the status chip. `translated` and `verified` are the
+   * quiet states — the rollup already reports them — so a chip on every row saying
+   * so was noise. Only `new` and `stale` name work to be done, and only they are
+   * shown. A row carries at most one marker: the chip when the status asks for
+   * work, otherwise the same-as-source flag when a "finished" translation is
+   * really the source text.
    */
   readonly compactDisplay = computed(() => {
+    const locale = this.#store.compactDisplayLocale();
     const base = this.#store.baseLocale();
-    const nonBaseLocales = this.#store.filteredLocales().filter((locale) => locale !== base);
-
-    const locale = nonBaseLocales.length > 0 ? nonBaseLocales[0] : base;
     const translation = this.translation();
     const value = translation.translations[locale] || '';
-    const isBaseFallback = nonBaseLocales.length === 0;
+    const isBase = locale === base;
+    const status = isBase ? undefined : translation.status?.[locale];
+    const needsAttention = status === 'new' || status === 'stale';
 
     return {
       locale,
       value,
-      status: translation.status?.[locale],
-      isBaseFallback,
-      // A base-locale fallback row is already labelled `source`; saying "same as
-      // source" next to it would be the same fact twice.
-      isSameAsBase: !isBaseFallback && isIdenticalToBase(value, translation.translations[base] || ''),
+      isBase,
+      status,
+      needsAttention,
+      // Source text is trivially the same as itself, so the marker only means
+      // something for a translation — and only for one the status chip already
+      // calls finished. A `new` row that still holds the English copy is flagged
+      // once, by the chip; a second marker saying the same thing is noise.
+      isSameAsBase: !isBase && !needsAttention && isIdenticalToBase(value, translation.translations[base] || ''),
     };
   });
 
@@ -198,41 +209,11 @@ export class TranslationItem {
   /** Transloco token for the compact row's status label ('' when the status is unknown). */
   readonly compactStatusToken = computed(() => statusLabelTokenFor(this.compactDisplay().status));
 
-  /**
-   * How the compact row composes itself. Three genuinely different situations,
-   * named rather than inferred in the template:
-   *
-   * - `paired` — the ordinary case. The base value identifies the row and the
-   *   selected locale's value sits beside it, so source and translation can be
-   *   judged against each other in one horizontal glance.
-   * - `source-only` — the compact locale selection resolved to the base locale
-   *   itself. One string, and it is source text; there is nothing to compare it
-   *   against, so no annotation value is shown.
-   * - `no-base` — the collection carries no base locale at all (a vendored
-   *   design-system collection may ship `ar`…`sv` and no `en`). There is no source
-   *   text to lead with, so the shown locale becomes the identity and the row says
-   *   the pick was automatic.
-   */
-  readonly compactLayout = computed<'paired' | 'source-only' | 'no-base'>(() => {
-    if (this.compactDisplay().isBaseFallback) return 'source-only';
-    if (!this.baseValue().trim()) return 'no-base';
-    return 'paired';
+  /** Whether the compact row has anything to say beyond the value itself. */
+  readonly hasCompactAnnotation = computed(() => {
+    const display = this.compactDisplay();
+    return display.needsAttention || display.isSameAsBase;
   });
-
-  /**
-   * The string that identifies a compact row.
-   *
-   * The base value wherever one exists, because it is the only text on the row the
-   * developer already knows — they wrote it, and they arrived looking for it.
-   * Compact used to omit it entirely and lead with a translation, which handed a
-   * developer scanning an eleven-locale collection a script they could not read.
-   */
-  readonly identityValue = computed(() =>
-    this.compactLayout() === 'no-base' ? this.compactDisplay().value : this.baseValue(),
-  );
-
-  /** Value rendered in the compact row's annotation zone. */
-  readonly primaryLocaleValue = computed(() => this.compactDisplay().value);
 
   /** Signal controlling whether the full-mode content is expanded */
   readonly isExpanded = signal(false);

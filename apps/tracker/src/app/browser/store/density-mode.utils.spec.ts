@@ -6,7 +6,7 @@ const baseCtx: DensityModeContext = {
   currentSelectedLocales: ['en', 'es', 'de'],
   availableLocales: ['en', 'es', 'de', 'fr'],
   baseLocale: 'en',
-  compactLocale: null,
+  compactLocale: undefined,
   compactLocaleManuallyChanged: false,
   nonCompactSelectedLocales: [],
 };
@@ -32,17 +32,19 @@ describe('computeDensityModeTransition', () => {
     it('ignores saved compact locale if not in availableLocales', () => {
       const ctx: DensityModeContext = { ...baseCtx, compactLocale: 'jp' };
       const result = computeDensityModeTransition('compact', ctx);
-      expect(result.selectedLocales).toEqual(['en']); // first from currentSelectedLocales
+      expect(result.selectedLocales).toEqual(['en']); // base locale
     });
 
-    it('falls back to first of current selection when no saved compact locale', () => {
-      const result = computeDensityModeTransition('compact', baseCtx);
+    it('starts on the base locale, not the full-density filter, when nothing is saved', () => {
+      // The full-density filter is a set to compare, not a choice of what to read alone.
+      const ctx: DensityModeContext = { ...baseCtx, currentSelectedLocales: ['de', 'es'] };
+      const result = computeDensityModeTransition('compact', ctx);
       expect(result.selectedLocales).toEqual(['en']);
       expect(result.compactLocale).toBe('en');
     });
 
     it('falls back to base locale when no selection and no compact locale', () => {
-      const ctx: DensityModeContext = { ...baseCtx, currentSelectedLocales: [], compactLocale: null };
+      const ctx: DensityModeContext = { ...baseCtx, currentSelectedLocales: [], compactLocale: undefined };
       const result = computeDensityModeTransition('compact', ctx);
       expect(result.selectedLocales).toEqual(['en']);
     });
@@ -51,7 +53,7 @@ describe('computeDensityModeTransition', () => {
       const ctx: DensityModeContext = {
         ...baseCtx,
         currentSelectedLocales: [],
-        compactLocale: null,
+        compactLocale: undefined,
         baseLocale: '',
         availableLocales: ['fr', 'de'],
       };
@@ -127,7 +129,7 @@ describe('resolveCompactLocale', () => {
 
   it('falls back to base locale when no saved compact locale and no selection', () => {
     const result = resolveCompactLocale({
-      savedCompactLocale: null,
+      savedCompactLocale: undefined,
       currentSelectedLocales: [],
       availableLocales,
       baseLocale: 'en',
@@ -137,7 +139,7 @@ describe('resolveCompactLocale', () => {
 
   it('falls back to first available locale when no base locale and no selection', () => {
     const result = resolveCompactLocale({
-      savedCompactLocale: null,
+      savedCompactLocale: undefined,
       currentSelectedLocales: [],
       availableLocales: ['de', 'fr'],
       baseLocale: '',
@@ -145,19 +147,29 @@ describe('resolveCompactLocale', () => {
     expect(result).toEqual(['de']);
   });
 
-  it('returns first of current selection when multi-selected', () => {
+  it('falls back to base locale when the saved selection is not a single locale', () => {
     const result = resolveCompactLocale({
-      savedCompactLocale: null,
+      savedCompactLocale: undefined,
       currentSelectedLocales: ['de', 'en'],
       availableLocales,
       baseLocale: 'en',
     });
-    expect(result).toEqual(['de']);
+    expect(result).toEqual(['en']);
+  });
+
+  it('falls back to base locale when the saved single selection is no longer available', () => {
+    const result = resolveCompactLocale({
+      savedCompactLocale: undefined,
+      currentSelectedLocales: ['jp'],
+      availableLocales,
+      baseLocale: 'en',
+    });
+    expect(result).toEqual(['en']);
   });
 
   it('returns current single selection unchanged', () => {
     const result = resolveCompactLocale({
-      savedCompactLocale: null,
+      savedCompactLocale: undefined,
       currentSelectedLocales: ['es'],
       availableLocales,
       baseLocale: 'en',
