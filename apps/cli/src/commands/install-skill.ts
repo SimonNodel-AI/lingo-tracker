@@ -140,7 +140,7 @@ This regenerates both the JSON bundle files and the typed TypeScript token const
 npx lingo-tracker edit-resource \\
   --collection ${primary.name} \\
   --key <dot.delimited.key> \\
-  --baseValue "<new text>"
+  --base-value "<new text>"
 \`\`\`
 
 ### Delete a resource
