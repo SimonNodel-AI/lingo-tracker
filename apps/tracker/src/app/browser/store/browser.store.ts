@@ -146,7 +146,7 @@ export const BrowserStore = signalStore(
           isReadOnly: params.readOnly ?? false,
           selectedLocales: loaded?.selectedLocales || [],
           baseLocale,
-          cacheStatus: null,
+          cacheStatus: 'not-started',
           cacheError: null,
           collectionStats: null,
           currentFolderPath: '',

@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 import { BrowserStore } from './browser.store';
 import { BrowserApiService } from '../services/browser-api.service';
 import type { ResourceTreeDto, CacheStatusDto } from '@simoncodes-ca/data-transfer';
@@ -108,6 +108,18 @@ describe('BrowserStore', () => {
   });
 
   describe('Collection Selection', () => {
+    it('should show indexing state while the initial cache status request is pending', () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(NEVER);
+
+      store.setSelectedCollection({
+        collectionName: 'app-translations',
+        locales: ['en', 'es'],
+      });
+
+      expect(store.cacheStatus()).toBe('not-started');
+      expect(store.isCacheIndexing()).toBe(true);
+    });
+
     it('should set selected collection and load root folders', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
