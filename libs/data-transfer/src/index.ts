@@ -27,3 +27,8 @@ export * from './lib/translate-locale.dto';
 export * from './lib/add-locale.dto';
 export * from './lib/add-locale-response.dto';
 export * from './lib/remove-locale-response.dto';
+export * from './lib/bundle-definition.dto';
+export * from './lib/create-bundle.dto';
+export * from './lib/update-bundle.dto';
+export * from './lib/bundle-dry-run.dto';
+export * from './lib/bundle-generate-job.dto';
