@@ -45,6 +45,22 @@ export interface GenerateBundleParams {
    * skipped for this bundle — the keys themselves have no ICU content.
    */
   readonly debugKeysLocale?: string;
+  /**
+   * Called at the start of each locale iteration (the debug-keys locale, when
+   * requested, is included in `total` and emitted last).
+   */
+  readonly onProgress?: (event: BundleProgressEvent) => void;
+}
+
+export interface BundleProgressEvent {
+  /** Locale about to be processed (the debug-keys locale code for the debug file). */
+  readonly locale: string;
+  /** 1-based position of this locale in the run. */
+  readonly index: number;
+  /** Total number of files this run will attempt, including the debug-keys file. */
+  readonly total: number;
+  /** Output path of the file about to be written. */
+  readonly file: string;
 }
 
 export interface GenerateBundleResult {
@@ -52,7 +68,25 @@ export interface GenerateBundleResult {
   readonly filesGenerated: number;
   readonly warnings: string[];
   readonly localesProcessed: string[];
+  /** Number of keys written per processed locale (empty locales are omitted). */
+  readonly keysPerLocale: Record<string, number>;
   readonly typeGenerationResult?: GenerateTypesResult;
+}
+
+/**
+ * Optional trace collected while merging collections into a bundle.
+ * Used by the dry-run planner to report key conflicts and winning origins.
+ */
+export interface BundleKeyTrace {
+  /** Final (prefixed) keys that were defined by more than one resource. */
+  readonly conflicts: Set<string>;
+  /** Winning origin per final key. */
+  readonly origins: Map<string, BundleKeyOrigin>;
+}
+
+export interface BundleKeyOrigin {
+  readonly collectionName: string;
+  readonly sourceKey: string;
 }
 
 /**
@@ -71,9 +105,11 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
     tokenConstantName,
     transformICUToTransloco: transformICUToTranslocoOverride,
     debugKeysLocale,
+    onProgress,
   } = params;
   const warnings: string[] = [];
   const localesProcessed: string[] = [];
+  const keysPerLocale: Record<string, number> = {};
 
   // Resolve token casing: CLI override → bundle config → global config → default
   const resolvedTokenCasing: TokenCasing =
@@ -89,8 +125,18 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
   const targetLocales = locales ?? config.locales;
   let filesGenerated = 0;
   const resourceCache = new Map<string, ResourceEntries>();
+  const totalFiles = targetLocales.length + (debugKeysLocale ? 1 : 0);
+  let progressIndex = 0;
 
   for (const locale of targetLocales) {
+    progressIndex++;
+    onProgress?.({
+      locale,
+      index: progressIndex,
+      total: totalFiles,
+      file: getBundleOutputPath(bundleDefinition, locale),
+    });
+
     const bundleData = collectBundleData(
       bundleDefinition,
       config,
@@ -112,9 +158,18 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
 
     filesGenerated++;
     localesProcessed.push(locale);
+    keysPerLocale[locale] = Object.keys(bundleData).length;
   }
 
   if (debugKeysLocale) {
+    progressIndex++;
+    onProgress?.({
+      locale: debugKeysLocale,
+      index: progressIndex,
+      total: totalFiles,
+      file: getBundleOutputPath(bundleDefinition, debugKeysLocale),
+    });
+
     const debugBaseData = collectBundleData(
       bundleDefinition,
       config,
@@ -137,6 +192,7 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
       writeBundleFile(outputPath, hierarchicalData);
       filesGenerated++;
       localesProcessed.push(debugKeysLocale);
+      keysPerLocale[debugKeysLocale] = Object.keys(debugData).length;
     }
   }
 
@@ -144,7 +200,13 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
   let typeGenerationResult: GenerateTypesResult | undefined;
   if (hasTypeDistConfigured(bundleDefinition)) {
     try {
-      typeGenerationResult = await generateBundleTypes(bundleKey, config, resolvedTokenCasing, tokenConstantName);
+      typeGenerationResult = await generateBundleTypes(
+        bundleKey,
+        config,
+        resolvedTokenCasing,
+        tokenConstantName,
+        bundleDefinition,
+      );
       if (typeGenerationResult.fileGenerated) {
         // We don't increment filesGenerated here as it tracks bundle JSON files
         // But we could add a note to warnings or a new field if needed
@@ -163,20 +225,25 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
     filesGenerated,
     warnings,
     localesProcessed,
+    keysPerLocale,
     typeGenerationResult,
   };
 }
 
 /**
- * Collects all bundle data for a locale by processing collections
+ * Collects all bundle data for a locale by processing collections.
+ *
+ * When a `trace` is supplied, key conflicts and the winning origin of each
+ * final key are recorded so callers (e.g. the dry-run planner) can report them.
  */
-function collectBundleData(
+export function collectBundleData(
   bundleDefinition: BundleDefinition,
   config: LingoTrackerConfig,
   locale: string,
   warnings: string[],
   transformICUToTransloco: boolean,
   cache: Map<string, ResourceEntries>,
+  trace?: BundleKeyTrace,
 ): Record<string, string> {
   const bundleData: Record<string, string> = {};
 
@@ -198,6 +265,7 @@ function collectBundleData(
         warnings,
         cache,
         collectionConfig.tags,
+        trace,
       );
     }
   } else {
@@ -219,6 +287,7 @@ function collectBundleData(
         warnings,
         cache,
         collectionConfig.tags,
+        trace,
       );
     }
   }
@@ -239,6 +308,7 @@ function processCollection(
   warnings: string[],
   cache: Map<string, ResourceEntries>,
   collectionTags?: string[],
+  trace?: BundleKeyTrace,
 ): void {
   const resources = loadCollectionResources(translationsFolder, locale, baseLocale, cache, collectionTags);
   const filteredResources = filterResources(resources, collectionDef);
@@ -268,14 +338,17 @@ function processCollection(
     }
 
     if (finalKey in bundleData) {
+      trace?.conflicts.add(finalKey);
       if (mergeStrategy === 'override') {
         bundleData[finalKey] = finalValue;
+        trace?.origins.set(finalKey, { collectionName: collectionDef.name, sourceKey: resource.key });
       }
       // merge (default) - keep existing (first wins)
       // Skip to next resource since key already exists
     } else {
       // New key - add it
       bundleData[finalKey] = finalValue;
+      trace?.origins.set(finalKey, { collectionName: collectionDef.name, sourceKey: resource.key });
     }
   }
 }
@@ -308,7 +381,7 @@ function matchesAnyRule(resource: FlatResource, rules: EntrySelectionRule[]): bo
 /**
  * Determines output file path for bundle
  */
-function getBundleOutputPath(bundleDefinition: BundleDefinition, locale: string): string {
+export function getBundleOutputPath(bundleDefinition: BundleDefinition, locale: string): string {
   const fileName = bundleDefinition.bundleName.replace('{locale}', locale);
   return path.join(bundleDefinition.dist, `${fileName}.json`);
 }
