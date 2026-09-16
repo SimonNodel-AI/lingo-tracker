@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { Body, Controller, Get, HttpException, HttpStatus, Put } from '@nestjs/common';
 import { resolveProtectedTermsForConfig, setGlobalProtectedTerms } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
@@ -11,7 +12,7 @@ export class ConfigController {
   @Get()
   getConfig(): LingoTrackerConfigDto {
     const config = this.configService.getConfig();
-    return mapConfigToDto(config, resolveProtectedTermsForConfig(config));
+    return mapConfigToDto(config, resolveProtectedTermsForConfig(config), basename(process.cwd()));
   }
 
   /**

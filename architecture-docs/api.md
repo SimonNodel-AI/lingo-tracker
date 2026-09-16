@@ -76,6 +76,19 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 | `POST` | `/collections/:collectionName/locales` | Add a locale to a collection (clears cache) | `AddLocaleDto` | `AddLocaleResponseDto` |
 | `DELETE` | `/collections/:collectionName/locales/:locale` | Remove a locale from a collection (clears cache) | — | `RemoveLocaleResponseDto` |
 
+### Bundles
+
+Bundle definitions live under `bundles` in `.lingo-tracker.json` and are exposed on `GET /config`. Generation runs as an async job (one at a time, in order) that the client polls, mirroring the translation job flow.
+
+| Method | Path | Purpose | Request DTO | Response DTO |
+|--------|------|---------|-------------|--------------|
+| `POST` | `/bundles` | Create a [bundle](glossary.md#bundle) definition. Validation failures return 400 `{ message, errors[] }`; a duplicate name returns 409. | `CreateBundleDto` | `{ message: string }` |
+| `PUT` | `/bundles/:name` | Replace a bundle definition, optionally renaming it via `name` in the body. 404 when missing, 400 when invalid, 409 when the new name is taken. | `UpdateBundleDto` | `{ message: string }` |
+| `DELETE` | `/bundles/:name` | Remove a bundle definition (404 when missing) | — | `{ message: string }` |
+| `POST` | `/bundles/dry-run` | Plan a bundle from the request body without writing anything. The definition does not have to be saved, so the UI can preview unsaved edits. | `BundleDryRunRequestDto` | `BundleDryRunResultDto` |
+| `POST` | `/bundles/:name/generate` | Fire-and-forget: start a generation job for a saved bundle. Optional `locales` must be a subset of the project locales (400 otherwise). | `GenerateBundleRequestDto` | `BundleGenerateJobDto` (202 Accepted) |
+| `GET` | `/bundles/jobs/:jobId` | Poll a bundle generation job by ID | — | `BundleGenerateJobDto` |
+
 ---
 
 ## Component Diagram
@@ -331,7 +344,8 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 | `resource-tree.mapper.ts` | `ResourceTreeNode` → `ResourceTreeDto` | Flattens `folderPathSegments[]` array to a dot-delimited `path` string; merges `source` (base locale value) into the `translations` record keyed by the base locale string; extracts per-locale `status` from the `metadata` record |
 | `resource-tree.mapper.ts` | `ResourceTreeEntry` → `ResourceSummaryDto` | Identifies the base locale by the absence of `status` and `baseChecksum` in the metadata entry; produces a flat `{ key, translations, status, comment, tags, inheritedTags }` shape. The `inheritedTags` field carries the parent collection's `tags` so the UI can render them distinctly without re-reading the config. |
 | `collection.mapper.ts` | `LingoTrackerCollectionDto` ↔ `LingoTrackerCollection` | Bidirectional; shallow clone of `locales[]` and `tags[]` arrays to prevent aliasing. Carries the `protectedTermsFile` setting in both directions. Drops resolved `protectedTerms` on the way back to config, because terms live in a file and the controller writes them there separately. |
-| `config.mapper.ts` | `LingoTrackerConfig` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper`; shallow clone of `locales[]`. Takes an optional `ResolvedProtectedTerms` from the controller, so the mapper itself reads no files. |
+| `config.mapper.ts` | `LingoTrackerConfig` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper` and bundle mapping to `bundle.mapper`; shallow clone of `locales[]`. Takes an optional `ResolvedProtectedTerms` and `projectName` (basename of the API's working directory) from the controller, so the mapper itself reads no files. |
+| `bundle.mapper.ts` | `BundleDefinitionDto` ↔ `BundleDefinition`; `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | Bidirectional definition mapping trims strings and drops empty optionals so nothing spurious is written to the config. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper rebuilds written file paths from `localesProcessed` plus the types file. |
 | `search-result.mapper.ts` | `SearchResult` → `SearchResultDto` | Structurally identical types; mapper exists for explicit API boundary documentation |
 
 **Why does `config.mapper.ts` take resolved terms as an argument?** Protected terms live in JSON files outside `.lingo-tracker.json`. Building the DTO therefore requires reading the filesystem.
