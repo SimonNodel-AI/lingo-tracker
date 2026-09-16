@@ -1,0 +1,422 @@
+{
+  "ariaLabel": {
+    "en": {
+      "checksum": "4c85694f9c2a22d44f5e6ac1c92996c6"
+    },
+    "es": {
+      "checksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "baseChecksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "baseChecksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "baseChecksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "baseChecksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "baseChecksum": "4c85694f9c2a22d44f5e6ac1c92996c6",
+      "status": "new"
+    }
+  },
+  "hasErrors": {
+    "en": {
+      "checksum": "19a172fb9a6c96552f6e2e43c77b9ffe"
+    },
+    "es": {
+      "checksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "baseChecksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "baseChecksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "baseChecksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "baseChecksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "baseChecksum": "19a172fb9a6c96552f6e2e43c77b9ffe",
+      "status": "new"
+    }
+  },
+  "output": {
+    "en": {
+      "checksum": "29c2c02a361c9d7028472e5d92cd4a54"
+    },
+    "es": {
+      "checksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "baseChecksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "baseChecksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "baseChecksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "baseChecksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "baseChecksum": "29c2c02a361c9d7028472e5d92cd4a54",
+      "status": "new"
+    }
+  },
+  "collections": {
+    "en": {
+      "checksum": "a9fc91939a389c7c73e7a3f3cbf411cd"
+    },
+    "es": {
+      "checksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "baseChecksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "baseChecksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "baseChecksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "baseChecksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "baseChecksum": "a9fc91939a389c7c73e7a3f3cbf411cd",
+      "status": "new"
+    }
+  },
+  "types": {
+    "en": {
+      "checksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f"
+    },
+    "es": {
+      "checksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "baseChecksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "baseChecksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "baseChecksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "baseChecksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "baseChecksum": "f2d346b1bb7c1c85ab6f7f21e3666b9f",
+      "status": "new"
+    }
+  },
+  "options": {
+    "en": {
+      "checksum": "dae8ace18bdcbcc6ae5aece263e14fe8"
+    },
+    "es": {
+      "checksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "baseChecksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "baseChecksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "baseChecksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "baseChecksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "baseChecksum": "dae8ace18bdcbcc6ae5aece263e14fe8",
+      "status": "new"
+    }
+  },
+  "everyCollection": {
+    "en": {
+      "checksum": "c27e518b8faff2b7934d7ee24bdc0cd1"
+    },
+    "es": {
+      "checksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "baseChecksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "baseChecksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "baseChecksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "baseChecksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "baseChecksum": "c27e518b8faff2b7934d7ee24bdc0cd1",
+      "status": "new"
+    }
+  },
+  "icuSummary": {
+    "en": {
+      "checksum": "397d185e166ef2ad63d1de3890c27819"
+    },
+    "es": {
+      "checksum": "397d185e166ef2ad63d1de3890c27819",
+      "baseChecksum": "397d185e166ef2ad63d1de3890c27819",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "397d185e166ef2ad63d1de3890c27819",
+      "baseChecksum": "397d185e166ef2ad63d1de3890c27819",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "397d185e166ef2ad63d1de3890c27819",
+      "baseChecksum": "397d185e166ef2ad63d1de3890c27819",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "397d185e166ef2ad63d1de3890c27819",
+      "baseChecksum": "397d185e166ef2ad63d1de3890c27819",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "397d185e166ef2ad63d1de3890c27819",
+      "baseChecksum": "397d185e166ef2ad63d1de3890c27819",
+      "status": "new"
+    }
+  },
+  "allEntries": {
+    "en": {
+      "checksum": "a181a603769c1f98ad927e7367c7aa51"
+    },
+    "es": {
+      "checksum": "a181a603769c1f98ad927e7367c7aa51",
+      "baseChecksum": "a181a603769c1f98ad927e7367c7aa51",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "a181a603769c1f98ad927e7367c7aa51",
+      "baseChecksum": "a181a603769c1f98ad927e7367c7aa51",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "a181a603769c1f98ad927e7367c7aa51",
+      "baseChecksum": "a181a603769c1f98ad927e7367c7aa51",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "a181a603769c1f98ad927e7367c7aa51",
+      "baseChecksum": "a181a603769c1f98ad927e7367c7aa51",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "a181a603769c1f98ad927e7367c7aa51",
+      "baseChecksum": "a181a603769c1f98ad927e7367c7aa51",
+      "status": "new"
+    }
+  },
+  "rulesCountX": {
+    "en": {
+      "checksum": "d645063b36d2a9060f105f68bf34ea84"
+    },
+    "es": {
+      "checksum": "d645063b36d2a9060f105f68bf34ea84",
+      "baseChecksum": "d645063b36d2a9060f105f68bf34ea84",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "d645063b36d2a9060f105f68bf34ea84",
+      "baseChecksum": "d645063b36d2a9060f105f68bf34ea84",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "d645063b36d2a9060f105f68bf34ea84",
+      "baseChecksum": "d645063b36d2a9060f105f68bf34ea84",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "d645063b36d2a9060f105f68bf34ea84",
+      "baseChecksum": "d645063b36d2a9060f105f68bf34ea84",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "d645063b36d2a9060f105f68bf34ea84",
+      "baseChecksum": "d645063b36d2a9060f105f68bf34ea84",
+      "status": "new"
+    }
+  },
+  "addCollection": {
+    "en": {
+      "checksum": "4eba4fc0bdf2906a0417339b8ddce233"
+    },
+    "es": {
+      "checksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "baseChecksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "baseChecksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "baseChecksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "baseChecksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "baseChecksum": "4eba4fc0bdf2906a0417339b8ddce233",
+      "status": "new"
+    }
+  },
+  "noCollectionsLeft": {
+    "en": {
+      "checksum": "912d9597edd7de870d078c6f78b7e15f"
+    },
+    "es": {
+      "checksum": "912d9597edd7de870d078c6f78b7e15f",
+      "baseChecksum": "912d9597edd7de870d078c6f78b7e15f",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "912d9597edd7de870d078c6f78b7e15f",
+      "baseChecksum": "912d9597edd7de870d078c6f78b7e15f",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "912d9597edd7de870d078c6f78b7e15f",
+      "baseChecksum": "912d9597edd7de870d078c6f78b7e15f",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "912d9597edd7de870d078c6f78b7e15f",
+      "baseChecksum": "912d9597edd7de870d078c6f78b7e15f",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "912d9597edd7de870d078c6f78b7e15f",
+      "baseChecksum": "912d9597edd7de870d078c6f78b7e15f",
+      "status": "new"
+    }
+  },
+  "outputPlaceholder": {
+    "en": {
+      "checksum": "3317f120cd542fedbed2fe506b6e0b67"
+    },
+    "es": {
+      "checksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "baseChecksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "baseChecksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "baseChecksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "baseChecksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "baseChecksum": "3317f120cd542fedbed2fe506b6e0b67",
+      "status": "new"
+    }
+  },
+  "typesPlaceholder": {
+    "en": {
+      "checksum": "db3e286db4b574d6ebfdca5804df63cf"
+    },
+    "es": {
+      "checksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "baseChecksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "baseChecksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "baseChecksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "baseChecksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "baseChecksum": "db3e286db4b574d6ebfdca5804df63cf",
+      "status": "new"
+    }
+  }
+}

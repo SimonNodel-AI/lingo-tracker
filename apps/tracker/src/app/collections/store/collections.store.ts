@@ -5,6 +5,7 @@ import { pipe, tap, switchMap, catchError, of } from 'rxjs';
 import { inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { CollectionsApiService } from '../services/collections-api.service';
+import { withBundlesFeature } from './features/with-bundles.feature';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import type {
   LingoTrackerCollectionDto,
@@ -292,4 +293,5 @@ export const CollectionsStore = signalStore(
       },
     };
   }),
+  withBundlesFeature(),
 );

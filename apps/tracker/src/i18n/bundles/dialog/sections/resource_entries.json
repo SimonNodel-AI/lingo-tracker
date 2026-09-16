@@ -1,0 +1,142 @@
+{
+  "ariaLabel": {
+    "source": "Bundle sections",
+    "comment": "Accessible label for the sections rail in the bundle dialog",
+    "tags": ["bundles"],
+    "es": "Bundle sections",
+    "fr-ca": "Bundle sections",
+    "ru": "Bundle sections",
+    "ja": "Bundle sections",
+    "de": "Bundle sections"
+  },
+  "hasErrors": {
+    "source": "This section has errors",
+    "comment": "Accessible label for the red error dot on a rail item",
+    "tags": ["bundles"],
+    "es": "This section has errors",
+    "fr-ca": "This section has errors",
+    "ru": "This section has errors",
+    "ja": "This section has errors",
+    "de": "This section has errors"
+  },
+  "output": {
+    "source": "Output",
+    "comment": "Rail item and pane title: where the bundle files go",
+    "tags": ["bundles"],
+    "es": "Output",
+    "fr-ca": "Output",
+    "ru": "Output",
+    "ja": "Output",
+    "de": "Output"
+  },
+  "collections": {
+    "source": "Collections",
+    "comment": "Rail item and pane title: collections included in the bundle",
+    "tags": ["bundles"],
+    "es": "Collections",
+    "fr-ca": "Collections",
+    "ru": "Collections",
+    "ja": "Collections",
+    "de": "Collections"
+  },
+  "types": {
+    "source": "Types",
+    "comment": "Rail item and pane title: TypeScript key generation",
+    "tags": ["bundles"],
+    "es": "Types",
+    "fr-ca": "Types",
+    "ru": "Types",
+    "ja": "Types",
+    "de": "Types"
+  },
+  "options": {
+    "source": "Options",
+    "comment": "Rail item and pane title: generation options",
+    "tags": ["bundles"],
+    "es": "Options",
+    "fr-ca": "Options",
+    "ru": "Options",
+    "ja": "Options",
+    "de": "Options"
+  },
+  "everyCollection": {
+    "source": "every collection",
+    "comment": "Rail summary under Collections when every collection is included",
+    "tags": ["bundles"],
+    "es": "every collection",
+    "fr-ca": "every collection",
+    "ru": "every collection",
+    "ja": "every collection",
+    "de": "every collection"
+  },
+  "icuSummary": {
+    "source": "ICU → Transloco",
+    "comment": "Rail summary under Options naming the ICU-to-Transloco conversion",
+    "tags": ["bundles"],
+    "es": "ICU → Transloco",
+    "fr-ca": "ICU → Transloco",
+    "ru": "ICU → Transloco",
+    "ja": "ICU → Transloco",
+    "de": "ICU → Transloco"
+  },
+  "allEntries": {
+    "source": "all",
+    "comment": "Rail count next to a collection whose entries are all included",
+    "tags": ["bundles"],
+    "es": "all",
+    "fr-ca": "all",
+    "ru": "all",
+    "ja": "all",
+    "de": "all"
+  },
+  "rulesCountX": {
+    "source": "{ count, plural, =1 {1 rule} other {{count} rules} }",
+    "comment": "Rail count next to a collection filtered by rules (ICU plural)",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 rule} other {{count} rules} }",
+    "fr-ca": "{ count, plural, =1 {1 rule} other {{count} rules} }",
+    "ru": "{ count, plural, =1 {1 rule} other {{count} rules} }",
+    "ja": "{ count, plural, =1 {1 rule} other {{count} rules} }",
+    "de": "{ count, plural, =1 {1 rule} other {{count} rules} }"
+  },
+  "addCollection": {
+    "source": "Add a collection",
+    "comment": "Rail action opening the menu of collections to add to the bundle",
+    "tags": ["bundles"],
+    "es": "Add a collection",
+    "fr-ca": "Add a collection",
+    "ru": "Add a collection",
+    "ja": "Add a collection",
+    "de": "Add a collection"
+  },
+  "noCollectionsLeft": {
+    "source": "Every collection is already included",
+    "comment": "Hint when the add-collection menu has nothing left to offer",
+    "tags": ["bundles"],
+    "es": "Every collection is already included",
+    "fr-ca": "Every collection is already included",
+    "ru": "Every collection is already included",
+    "ja": "Every collection is already included",
+    "de": "Every collection is already included"
+  },
+  "outputPlaceholder": {
+    "source": "folder/file.json",
+    "comment": "Greyed placeholder under the Output rail item before a folder and file name are typed",
+    "tags": ["bundles"],
+    "es": "folder/file.json",
+    "fr-ca": "folder/file.json",
+    "ru": "folder/file.json",
+    "ja": "folder/file.json",
+    "de": "folder/file.json"
+  },
+  "typesPlaceholder": {
+    "source": "file.ts",
+    "comment": "Greyed placeholder under the Types rail item before a type file name is typed",
+    "tags": ["bundles"],
+    "es": "file.ts",
+    "fr-ca": "file.ts",
+    "ru": "file.ts",
+    "ja": "file.ts",
+    "de": "file.ts"
+  }
+}

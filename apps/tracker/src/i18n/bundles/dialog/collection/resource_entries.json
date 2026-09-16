@@ -1,0 +1,212 @@
+{
+  "description": {
+    "source": "Which entries this collection contributes and how they are keyed in the bundle.",
+    "comment": "Description under a collection pane title",
+    "tags": ["bundles"],
+    "es": "Which entries this collection contributes and how they are keyed in the bundle.",
+    "fr-ca": "Which entries this collection contributes and how they are keyed in the bundle.",
+    "ru": "Which entries this collection contributes and how they are keyed in the bundle.",
+    "ja": "Which entries this collection contributes and how they are keyed in the bundle.",
+    "de": "Which entries this collection contributes and how they are keyed in the bundle."
+  },
+  "remove": {
+    "source": "Remove",
+    "comment": "Button removing a collection from the bundle",
+    "tags": ["bundles"],
+    "es": "Remove",
+    "fr-ca": "Remove",
+    "ru": "Remove",
+    "ja": "Remove",
+    "de": "Remove"
+  },
+  "prefixLabel": {
+    "source": "Key prefix",
+    "comment": "Label for the bundled key prefix field",
+    "tags": ["bundles"],
+    "es": "Key prefix",
+    "fr-ca": "Key prefix",
+    "ru": "Key prefix",
+    "ja": "Key prefix",
+    "de": "Key prefix"
+  },
+  "prefixPlaceholder": {
+    "source": "none",
+    "comment": "Placeholder for the empty key prefix field",
+    "tags": ["bundles"],
+    "es": "none",
+    "fr-ca": "none",
+    "ru": "none",
+    "ja": "none",
+    "de": "none"
+  },
+  "conflictsLabel": {
+    "source": "On key conflicts",
+    "comment": "Label for the merge strategy segmented control",
+    "tags": ["bundles"],
+    "es": "On key conflicts",
+    "fr-ca": "On key conflicts",
+    "ru": "On key conflicts",
+    "ja": "On key conflicts",
+    "de": "On key conflicts"
+  },
+  "firstWins": {
+    "source": "First wins",
+    "comment": "Merge strategy option: the first collection keeps the key",
+    "tags": ["bundles"],
+    "es": "First wins",
+    "fr-ca": "First wins",
+    "ru": "First wins",
+    "ja": "First wins",
+    "de": "First wins"
+  },
+  "thisOverrides": {
+    "source": "This overrides",
+    "comment": "Merge strategy option: this collection overrides earlier values",
+    "tags": ["bundles"],
+    "es": "This overrides",
+    "fr-ca": "This overrides",
+    "ru": "This overrides",
+    "ja": "This overrides",
+    "de": "This overrides"
+  },
+  "entriesLabel": {
+    "source": "Entries",
+    "comment": "Label for the entries selection segmented control",
+    "tags": ["bundles"],
+    "es": "Entries",
+    "fr-ca": "Entries",
+    "ru": "Entries",
+    "ja": "Entries",
+    "de": "Entries"
+  },
+  "allEntries": {
+    "source": "All entries",
+    "comment": "Entries option: include every entry of the collection",
+    "tags": ["bundles"],
+    "es": "All entries",
+    "fr-ca": "All entries",
+    "ru": "All entries",
+    "ja": "All entries",
+    "de": "All entries"
+  },
+  "onlyMatching": {
+    "source": "Only matching rules",
+    "comment": "Entries option: include only entries matching the rules",
+    "tags": ["bundles"],
+    "es": "Only matching rules",
+    "fr-ca": "Only matching rules",
+    "ru": "Only matching rules",
+    "ja": "Only matching rules",
+    "de": "Only matching rules"
+  },
+  "rulesLabel": {
+    "source": "Rules",
+    "comment": "Label for the selection rules table",
+    "tags": ["bundles"],
+    "es": "Rules",
+    "fr-ca": "Rules",
+    "ru": "Rules",
+    "ja": "Rules",
+    "de": "Rules"
+  },
+  "rulesHint": {
+    "source": "an entry is included when any rule matches",
+    "comment": "Small hint next to the Rules label",
+    "tags": ["bundles"],
+    "es": "an entry is included when any rule matches",
+    "fr-ca": "an entry is included when any rule matches",
+    "ru": "an entry is included when any rule matches",
+    "ja": "an entry is included when any rule matches",
+    "de": "an entry is included when any rule matches"
+  },
+  "keyPatternLabel": {
+    "source": "Key pattern",
+    "comment": "Column header for the rule key pattern",
+    "tags": ["bundles"],
+    "es": "Key pattern",
+    "fr-ca": "Key pattern",
+    "ru": "Key pattern",
+    "ja": "Key pattern",
+    "de": "Key pattern"
+  },
+  "tagsLabel": {
+    "source": "Tags",
+    "comment": "Column header for the rule tags",
+    "tags": ["bundles"],
+    "es": "Tags",
+    "fr-ca": "Tags",
+    "ru": "Tags",
+    "ja": "Tags",
+    "de": "Tags"
+  },
+  "patternPlaceholder": {
+    "source": "apps.admin.*",
+    "comment": "Placeholder for a rule key pattern",
+    "tags": ["bundles"],
+    "es": "apps.admin.*",
+    "fr-ca": "apps.admin.*",
+    "ru": "apps.admin.*",
+    "ja": "apps.admin.*",
+    "de": "apps.admin.*"
+  },
+  "anyTag": {
+    "source": "any tag",
+    "comment": "Placeholder inside an empty rule tag editor",
+    "tags": ["bundles"],
+    "es": "any tag",
+    "fr-ca": "any tag",
+    "ru": "any tag",
+    "ja": "any tag",
+    "de": "any tag"
+  },
+  "operatorAny": {
+    "source": "any",
+    "comment": "Tag operator between chips: any tag must match",
+    "tags": ["bundles"],
+    "es": "any",
+    "fr-ca": "any",
+    "ru": "any",
+    "ja": "any",
+    "de": "any"
+  },
+  "operatorAll": {
+    "source": "all",
+    "comment": "Tag operator between chips: all tags must match",
+    "tags": ["bundles"],
+    "es": "all",
+    "fr-ca": "all",
+    "ru": "all",
+    "ja": "all",
+    "de": "all"
+  },
+  "toggleOperatorAria": {
+    "source": "Switch between matching any tag and all tags",
+    "comment": "Accessible label for the tag operator toggle",
+    "tags": ["bundles"],
+    "es": "Switch between matching any tag and all tags",
+    "fr-ca": "Switch between matching any tag and all tags",
+    "ru": "Switch between matching any tag and all tags",
+    "ja": "Switch between matching any tag and all tags",
+    "de": "Switch between matching any tag and all tags"
+  },
+  "removeRuleAriaX": {
+    "source": "Remove rule {index}",
+    "comment": "Accessible label for the remove-rule button",
+    "tags": ["bundles"],
+    "es": "Remove rule {index}",
+    "fr-ca": "Remove rule {index}",
+    "ru": "Remove rule {index}",
+    "ja": "Remove rule {index}",
+    "de": "Remove rule {index}"
+  },
+  "addRule": {
+    "source": "Add rule",
+    "comment": "Button adding a selection rule",
+    "tags": ["bundles"],
+    "es": "Add rule",
+    "fr-ca": "Add rule",
+    "ru": "Add rule",
+    "ja": "Add rule",
+    "de": "Add rule"
+  }
+}

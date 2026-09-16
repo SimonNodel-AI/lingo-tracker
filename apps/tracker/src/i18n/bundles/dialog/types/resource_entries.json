@@ -1,0 +1,82 @@
+{
+  "description": {
+    "source": "Typed keys generated alongside the bundle files.",
+    "comment": "Description under the Types pane title",
+    "tags": ["bundles"],
+    "es": "Typed keys generated alongside the bundle files.",
+    "fr-ca": "Typed keys generated alongside the bundle files.",
+    "ru": "Typed keys generated alongside the bundle files.",
+    "ja": "Typed keys generated alongside the bundle files.",
+    "de": "Typed keys generated alongside the bundle files."
+  },
+  "switchLabel": {
+    "source": "Generate TypeScript keys",
+    "comment": "Switch row label: generate a TypeScript token file",
+    "tags": ["bundles"],
+    "es": "Generate TypeScript keys",
+    "fr-ca": "Generate TypeScript keys",
+    "ru": "Generate TypeScript keys",
+    "ja": "Generate TypeScript keys",
+    "de": "Generate TypeScript keys"
+  },
+  "switchHintX": {
+    "source": "A {extension} file with a constant of every key, so templates never carry raw strings.",
+    "comment": "Switch row description; extension is .ts in code markup",
+    "tags": ["bundles"],
+    "es": "A {extension} file with a constant of every key, so templates never carry raw strings.",
+    "fr-ca": "A {extension} file with a constant of every key, so templates never carry raw strings.",
+    "ru": "A {extension} file with a constant of every key, so templates never carry raw strings.",
+    "ja": "A {extension} file with a constant of every key, so templates never carry raw strings.",
+    "de": "A {extension} file with a constant of every key, so templates never carry raw strings."
+  },
+  "fileLabel": {
+    "source": "Type file",
+    "comment": "Label for the TypeScript type file field",
+    "tags": ["bundles"],
+    "es": "Type file",
+    "fr-ca": "Type file",
+    "ru": "Type file",
+    "ja": "Type file",
+    "de": "Type file"
+  },
+  "filePlaceholder": {
+    "source": "./dist/i18n-types/admin.ts",
+    "comment": "Placeholder for the type file field",
+    "tags": ["bundles"],
+    "es": "./dist/i18n-types/admin.ts",
+    "fr-ca": "./dist/i18n-types/admin.ts",
+    "ru": "./dist/i18n-types/admin.ts",
+    "ja": "./dist/i18n-types/admin.ts",
+    "de": "./dist/i18n-types/admin.ts"
+  },
+  "casingLabel": {
+    "source": "Key casing",
+    "comment": "Label for the token key casing segmented control",
+    "tags": ["bundles"],
+    "es": "Key casing",
+    "fr-ca": "Key casing",
+    "ru": "Key casing",
+    "ja": "Key casing",
+    "de": "Key casing"
+  },
+  "constantLabel": {
+    "source": "Constant name",
+    "comment": "Label for the token constant name field",
+    "tags": ["bundles"],
+    "es": "Constant name",
+    "fr-ca": "Constant name",
+    "ru": "Constant name",
+    "ja": "Constant name",
+    "de": "Constant name"
+  },
+  "constantHint": {
+    "source": "Derived from the bundle name unless set.",
+    "comment": "Hint under the constant name field",
+    "tags": ["bundles"],
+    "es": "Derived from the bundle name unless set.",
+    "fr-ca": "Derived from the bundle name unless set.",
+    "ru": "Derived from the bundle name unless set.",
+    "ja": "Derived from the bundle name unless set.",
+    "de": "Derived from the bundle name unless set."
+  }
+}

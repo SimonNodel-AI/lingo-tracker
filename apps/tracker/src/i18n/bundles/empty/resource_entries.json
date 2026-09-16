@@ -1,0 +1,32 @@
+{
+  "title": {
+    "source": "No bundles yet",
+    "comment": "Title of the dashed empty card in the bundles column",
+    "tags": ["bundles"],
+    "es": "No bundles yet",
+    "fr-ca": "No bundles yet",
+    "ru": "No bundles yet",
+    "ja": "No bundles yet",
+    "de": "No bundles yet"
+  },
+  "message": {
+    "source": "A bundle combines collections into the per-locale JSON files your app loads with Transloco, and can emit typed key constants alongside them.",
+    "comment": "Explanation in the empty bundles card",
+    "tags": ["bundles"],
+    "es": "A bundle combines collections into the per-locale JSON files your app loads with Transloco, and can emit typed key constants alongside them.",
+    "fr-ca": "A bundle combines collections into the per-locale JSON files your app loads with Transloco, and can emit typed key constants alongside them.",
+    "ru": "A bundle combines collections into the per-locale JSON files your app loads with Transloco, and can emit typed key constants alongside them.",
+    "ja": "A bundle combines collections into the per-locale JSON files your app loads with Transloco, and can emit typed key constants alongside them.",
+    "de": "A bundle combines collections into the per-locale JSON files your app loads with Transloco, and can emit typed key constants alongside them."
+  },
+  "cta": {
+    "source": "Create bundle",
+    "comment": "Primary button in the empty bundles card",
+    "tags": ["bundles"],
+    "es": "Create bundle",
+    "fr-ca": "Create bundle",
+    "ru": "Create bundle",
+    "ja": "Create bundle",
+    "de": "Create bundle"
+  }
+}

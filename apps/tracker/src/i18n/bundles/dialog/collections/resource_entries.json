@@ -1,0 +1,82 @@
+{
+  "description": {
+    "source": "Which collections feed this bundle and how each one contributes.",
+    "comment": "Description under the Collections pane title",
+    "tags": ["bundles"],
+    "es": "Which collections feed this bundle and how each one contributes.",
+    "fr-ca": "Which collections feed this bundle and how each one contributes.",
+    "ru": "Which collections feed this bundle and how each one contributes.",
+    "ja": "Which collections feed this bundle and how each one contributes.",
+    "de": "Which collections feed this bundle and how each one contributes."
+  },
+  "includeAllLabel": {
+    "source": "Include every collection",
+    "comment": "Switch row label: include all collections in the bundle",
+    "tags": ["bundles"],
+    "es": "Include every collection",
+    "fr-ca": "Include every collection",
+    "ru": "Include every collection",
+    "ja": "Include every collection",
+    "de": "Include every collection"
+  },
+  "includeAllHintX": {
+    "source": "All {count} collections, all entries; the first collection wins when keys collide.",
+    "comment": "Switch row description for including every collection; count is the number of collections",
+    "tags": ["bundles"],
+    "es": "All {count} collections, all entries; the first collection wins when keys collide.",
+    "fr-ca": "All {count} collections, all entries; the first collection wins when keys collide.",
+    "ru": "All {count} collections, all entries; the first collection wins when keys collide.",
+    "ja": "All {count} collections, all entries; the first collection wins when keys collide.",
+    "de": "All {count} collections, all entries; the first collection wins when keys collide."
+  },
+  "summaryAllEntries": {
+    "source": "All entries",
+    "comment": "Collection row summary: every entry is included",
+    "tags": ["bundles"],
+    "es": "All entries",
+    "fr-ca": "All entries",
+    "ru": "All entries",
+    "ja": "All entries",
+    "de": "All entries"
+  },
+  "summaryPrefixX": {
+    "source": "prefix {prefix}",
+    "comment": "Collection row summary: the key prefix, in code markup",
+    "tags": ["bundles"],
+    "es": "prefix {prefix}",
+    "fr-ca": "prefix {prefix}",
+    "ru": "prefix {prefix}",
+    "ja": "prefix {prefix}",
+    "de": "prefix {prefix}"
+  },
+  "summaryOverrides": {
+    "source": "overrides",
+    "comment": "Collection row summary: this collection overrides earlier values on conflicts",
+    "tags": ["bundles"],
+    "es": "overrides",
+    "fr-ca": "overrides",
+    "ru": "overrides",
+    "ja": "overrides",
+    "de": "overrides"
+  },
+  "availableCountX": {
+    "source": "{ count, plural, =1 {1 available} other {{count} available} }",
+    "comment": "Count of collections not yet in the bundle (ICU plural)",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 available} other {{count} available} }",
+    "fr-ca": "{ count, plural, =1 {1 available} other {{count} available} }",
+    "ru": "{ count, plural, =1 {1 available} other {{count} available} }",
+    "ja": "{ count, plural, =1 {1 available} other {{count} available} }",
+    "de": "{ count, plural, =1 {1 available} other {{count} available} }"
+  },
+  "openAriaX": {
+    "source": "Open {name}",
+    "comment": "Accessible label for a collection row that opens its pane",
+    "tags": ["bundles"],
+    "es": "Open {name}",
+    "fr-ca": "Open {name}",
+    "ru": "Open {name}",
+    "ja": "Open {name}",
+    "de": "Open {name}"
+  }
+}
