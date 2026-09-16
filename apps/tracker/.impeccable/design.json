@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-14T00:00:00Z",
+  "generatedAt": "2026-09-16T05:03:32Z",
   "title": "Design System: LingoTracker",
   "extensions": {
     "colorMeta": {
@@ -437,7 +437,7 @@
       {
         "name": "transition-slow",
         "value": "300ms cubic-bezier(0.4, 0, 0.2, 1)",
-        "purpose": "Defined in tokens; reserved."
+        "purpose": "Determinate progress-bar width on a running bundle result strip."
       },
       {
         "name": "card-enter",
@@ -448,6 +448,21 @@
         "name": "disclosure-reveal",
         "value": "opacity 0->1, translateY(-4px)->0 over transition-normal",
         "purpose": "Disclosure panel opening; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "spin",
+        "value": "0.9s linear infinite",
+        "purpose": "Busy-button spinner ring; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "details-reveal",
+        "value": "opacity 0->1, translateY(-4px)->0 over transition-normal",
+        "purpose": "Result-strip Details panel opening; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "ring-pulse",
+        "value": "3s ease-in-out infinite, 0.5s stagger per ring",
+        "purpose": "Watercolor rings behind the empty Collections state; disabled under prefers-reduced-motion."
       }
     ],
     "breakpoints": [
@@ -470,6 +485,18 @@
       {
         "name": "xxl",
         "value": "1536px"
+      },
+      {
+        "name": "bundle-rail-stack",
+        "value": "799px"
+      },
+      {
+        "name": "split-stack",
+        "value": "1100px"
+      },
+      {
+        "name": "bundle-preview-collapse",
+        "value": "1199px"
       }
     ],
     "darkTheme": {
@@ -482,9 +509,9 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Material flat button in coral with dark ink; the single primary action in a dialog footer or page header.",
-      "html": "<button class=\"ds-btn-primary\">Create Collection</button>",
-      "css": ".ds-btn-primary { font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 500; line-height: 1; height: 36px; padding: 0 1rem; border: 0; border-radius: var(--border-radius-sm, 0.25rem); background: var(--color-primary, #d4726a); color: var(--color-text-on-primary, #2e2923); cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background: var(--color-primary-hover, #c25d55); } .ds-btn-primary:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.5; cursor: default; }"
+      "description": "Hand-rolled filled coral button; reserved for the one action on a page that has nothing else on it (the empty state, the error retry). Label is 700 and the glow is tightened to 0 4px 12px -5px at 34% coral — at 600 under a wide 45% halo the type dissolved into its own button. Replaces mat-flat-button, whose Material palette does not resolve to --color-primary.",
+      "html": "<button class=\"ds-btn-primary\">Create Bundle</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 700; letter-spacing: 0.01em; height: 40px; padding: 0 1.25rem; border: 1px solid var(--color-primary, #d4726a); border-radius: var(--border-radius-lg, 0.5rem); background: var(--color-primary, #d4726a); color: var(--color-text-on-primary, #2e2923); box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--color-primary, #d4726a) 34%, transparent); cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), border-color 150ms cubic-bezier(0.4,0,0.2,1), transform 200ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background: var(--color-primary-hover, #c25d55); border-color: var(--color-primary-hover, #c25d55); transform: translateY(-1px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.55; box-shadow: none; transform: none; cursor: default; }"
     },
     {
       "name": "Text Button",
@@ -549,6 +576,38 @@
       "description": "12px-radius parchment card with coral icon tile, bold name, two-line mono path, hairline footer of locale pills; lifts 2px on hover.",
       "html": "<article class=\"ds-card\"><div class=\"ds-card-header\"><span class=\"ds-card-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\"><path fill=\"currentColor\" d=\"M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z\"/></svg></span><div class=\"ds-card-heading\"><h3 class=\"ds-card-name\">trackerResources</h3><p class=\"ds-card-path\">apps/tracker/src/i18n</p></div></div><footer class=\"ds-card-footer\"><ul class=\"ds-card-chips\"><li class=\"ds-card-chip ds-card-chip--base\">en <span class=\"ds-card-chip-tag\">Base</span></li><li class=\"ds-card-chip\">es</li><li class=\"ds-card-chip\">fr-ca</li><li class=\"ds-card-chip ds-card-chip--more\">+3</li></ul></footer></article>",
       "css": ".ds-card { display: flex; flex-direction: column; width: 300px; padding: 1.25rem; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-xl, 0.75rem); background: var(--color-background, #faf8f5); box-shadow: 0 1px 3px 0 rgb(44 36 28 / 0.06); font-family: 'Nunito', sans-serif; cursor: pointer; transition: transform 200ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms cubic-bezier(0.4,0,0.2,1), background 200ms cubic-bezier(0.4,0,0.2,1); } .ds-card:hover { background: color-mix(in srgb, var(--color-primary, #d4726a) 3%, var(--color-background, #faf8f5)); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 40%, var(--color-border, #e5dfd7)); box-shadow: 0 4px 8px -1px rgb(44 36 28 / 0.08), 0 2px 4px -2px rgb(44 36 28 / 0.06); transform: translateY(-2px); } .ds-card:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 3px; } .ds-card-header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem; align-items: start; } .ds-card-icon { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: var(--border-radius-lg, 0.5rem); background: color-mix(in srgb, var(--color-primary, #d4726a) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-primary, #d4726a) 25%, transparent); color: var(--color-primary, #d4726a); } .ds-card-name { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; color: var(--color-text-primary, #2e2923); overflow-wrap: anywhere; } .ds-card-path { margin: 0.25rem 0 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; line-height: 1.45; min-height: calc(2 * 1.45 * 0.75rem); color: var(--color-text-secondary, #5a534a); overflow-wrap: anywhere; } .ds-card-footer { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border-subtle, #f0ebe4); } .ds-card-chips { display: flex; gap: 0.25rem; margin: 0; padding: 0; list-style: none; } .ds-card-chip { display: inline-flex; align-items: baseline; gap: 0.25rem; padding: 1px 0.5rem; border-radius: 9999px; border: 1px solid transparent; background: var(--color-background-muted, #ede8e0); color: var(--color-text-secondary, #5a534a); font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; font-weight: 600; line-height: 1.5; } .ds-card-chip--base { background: color-mix(in srgb, var(--color-secondary, #4a7fb5) 16%, transparent); border-color: color-mix(in srgb, var(--color-secondary, #4a7fb5) 35%, transparent); color: color-mix(in srgb, var(--color-secondary, #4a7fb5) 45%, var(--color-text-primary, #2e2923)); } .ds-card-chip--more { background: none; border-color: var(--color-border-strong, #d4cdc3); border-style: dashed; } .ds-card-chip-tag { font-family: 'Nunito', sans-serif; font-size: 0.625rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Hairline button on the card surface; the card-level and repeat action (Generate, Retry). Shown here in the --sm step.",
+      "html": "<button class=\"ds-btn-outline ds-btn-outline--sm\">Generate</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 600; letter-spacing: 0.01em; height: 40px; padding: 0 1.25rem; border: 1px solid var(--color-border-strong, #d4cdc3); border-radius: var(--border-radius-lg, 0.5rem); background: var(--color-background, #faf8f5); color: var(--color-text-primary, #2e2923); cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), border-color 150ms cubic-bezier(0.4,0,0.2,1), color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-outline--sm { height: 34px; padding: 0 0.75rem; font-size: 0.75rem; border-radius: var(--border-radius-md, 0.375rem); } .ds-btn-outline:hover { background: var(--color-background-subtle, #f5f1eb); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, var(--color-border-strong, #d4cdc3)); } .ds-btn-outline:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Third rung of the button ladder, for actions a visitor takes rarely (Add collection, Add bundle). No ground at rest, a plain border hairline, secondary ink and a coral leading glyph, so the repeated Generate buttons outrank it without either of them shouting. Frequency sets prominence, not a control's place in the hierarchy of nouns.",
+      "html": "<button class=\"ds-btn-quiet\"><span class=\"ds-btn-quiet__glyph\">+</span>Add bundle</button>",
+      "css": ".ds-btn-quiet { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'Nunito', sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.01em; height: 34px; padding: 0 0.75rem; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-md, 0.375rem); background: transparent; color: var(--color-text-secondary, #5a534a); cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), border-color 150ms cubic-bezier(0.4,0,0.2,1), color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-quiet__glyph { color: var(--color-primary, #d4726a); font-size: 16px; line-height: 1; } .ds-btn-quiet:hover { background: var(--color-background-subtle, #f5f1eb); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, var(--color-border-strong, #d4cdc3)); color: var(--color-text-primary, #2e2923); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-btn-quiet:disabled { opacity: 0.55; cursor: default; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "segmented-control",
+      "description": "Hand-rolled exclusive choice of 2-4 options inside a dialog; the approved alternative to Material button toggles. Selected pill fills parchment-muted; the well takes the sky focus glow.",
+      "html": "<div class=\"ds-segmented\"><button class=\"ds-segment ds-segment--on\" aria-pressed=\"true\">Nested</button><button class=\"ds-segment\" aria-pressed=\"false\">Flat</button></div>",
+      "css": ".ds-segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--color-border-strong, #d4cdc3); border-radius: var(--border-radius-md, 0.375rem); background: var(--color-background, #faf8f5); transition: border-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); } .ds-segmented:focus-within { border-color: var(--color-secondary, #4a7fb5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #4a7fb5) 22%, transparent); } .ds-segment { display: inline-flex; align-items: center; gap: 0.25rem; padding: 5px 0.75rem; border: 0; border-radius: var(--border-radius-sm, 0.25rem); background: transparent; color: var(--color-text-secondary, #5a534a); font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 500; line-height: 1.4; white-space: nowrap; cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-segment:hover { color: var(--color-text-primary, #2e2923); } .ds-segment:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: -2px; } .ds-segment--on { background: var(--color-background-muted, #ede8e0); color: var(--color-text-primary, #2e2923); font-weight: 600; }"
+    },
+    {
+      "name": "Bundle Card",
+      "kind": "card",
+      "refersTo": "card-compact",
+      "description": "Compact card in the home page's bundles column: coral tile, mono output pattern with {locale} promoted to ink, labelled meta rows, and a success result strip above the footer.",
+      "html": "<article class=\"ds-bundle-card\"><div class=\"ds-bc-head\"><span class=\"ds-bc-tile\"><svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\" fill=\"currentColor\"><path d=\"M20 8h-3V4H3v13h2a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h2v-5l-3-4ZM8 18.5A1.5 1.5 0 1 1 9.5 17 1.5 1.5 0 0 1 8 18.5Zm10 0A1.5 1.5 0 1 1 19.5 17 1.5 1.5 0 0 1 18 18.5ZM17 12V9.5h2.5l1.96 2.5Z\"/></svg></span><div class=\"ds-bc-heading\"><h3 class=\"ds-bc-name\">App Shell</h3><p class=\"ds-bc-path\">./src/assets/i18n/<span class=\"ds-bc-var\">{locale}</span>.json</p></div></div><div class=\"ds-bc-meta\"><div class=\"ds-bc-row\"><span class=\"ds-bc-label\">Collections</span><ul class=\"ds-bc-chips\"><li class=\"ds-bc-chip\">common</li><li class=\"ds-bc-chip ds-bc-chip--linked\">apps</li></ul></div><div class=\"ds-bc-row\"><span class=\"ds-bc-label\">Types</span><span class=\"ds-bc-mono\">src/app/i18n-tokens.ts</span></div></div><div class=\"ds-bc-result\"><span class=\"ds-bc-result-text\"><b>Generated</b><span class=\"ds-bc-sep\">·</span>4 files<span class=\"ds-bc-sep\">·</span>312 keys per locale<span class=\"ds-bc-sep\">·</span>no warnings</span><button class=\"ds-bc-details\">Details</button></div><div class=\"ds-bc-footer\"><span class=\"ds-bc-count\">4 locales</span><button class=\"ds-btn-outline ds-btn-outline--sm\">Generate</button></div></article>",
+      "css": ".ds-bundle-card { display: flex; flex-direction: column; padding: 1rem; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-xl, 0.75rem); background: var(--color-background, #faf8f5); box-shadow: var(--shadow-sm, 0 1px 3px 0 rgb(44 36 28 / 0.06)); font-family: 'Nunito', sans-serif; color: var(--color-text-primary, #2e2923); transition: transform 200ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms cubic-bezier(0.4,0,0.2,1), background 200ms cubic-bezier(0.4,0,0.2,1); } .ds-bundle-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md, 0 4px 8px -1px rgb(44 36 28 / 0.08), 0 2px 4px -2px rgb(44 36 28 / 0.06)); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 40%, var(--color-border, #e5dfd7)); background: color-mix(in srgb, var(--color-primary, #d4726a) 3%, var(--color-background, #faf8f5)); } .ds-bundle-card:hover .ds-bc-tile { background: color-mix(in srgb, var(--color-primary, #d4726a) 20%, transparent); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, transparent); } .ds-bc-head { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 0.75rem; align-items: start; } .ds-bc-tile { display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--border-radius-lg, 0.5rem); background: color-mix(in srgb, var(--color-primary, #d4726a) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-primary, #d4726a) 25%, transparent); color: var(--color-primary, #d4726a); transition: background 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms cubic-bezier(0.4,0,0.2,1); } .ds-bc-name { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; } .ds-bc-path { margin: 0.25rem 0 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; line-height: 1.45; color: var(--color-text-secondary, #5a534a); overflow-wrap: anywhere; } .ds-bc-var { color: var(--color-text-primary, #2e2923); font-weight: 600; } .ds-bc-meta { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; } .ds-bc-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; } .ds-bc-label { flex: none; width: 66px; font-size: 0.75rem; color: var(--color-text-secondary, #5a534a); } .ds-bc-mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; overflow-wrap: anywhere; } .ds-bc-chips { display: flex; flex-wrap: wrap; gap: 0.5rem 0.25rem; margin: 0; padding: 0; list-style: none; } .ds-bc-chip { display: inline-flex; align-items: center; padding: 1px 0.5rem 1px 6px; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-full, 9999px); background: var(--color-background-subtle, #f5f1eb); font-size: 0.75rem; font-weight: 500; line-height: 1.5; white-space: nowrap; } .ds-bc-chip--linked { background: color-mix(in srgb, var(--color-primary, #d4726a) 8%, transparent); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, var(--color-border, #e5dfd7)); color: var(--color-primary-text, #a1443d); } .ds-bc-result { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 0.5rem 0.75rem; border: 1px solid color-mix(in srgb, var(--color-success, #6da67e) 30%, transparent); border-radius: var(--border-radius-md, 0.375rem); background: color-mix(in srgb, var(--color-success, #6da67e) 10%, transparent); color: color-mix(in srgb, var(--color-success, #6da67e) 55%, var(--color-text-primary, #2e2923)); font-size: 0.75rem; line-height: 1.45; } .ds-bc-result-text { flex: 1; min-width: 0; } .ds-bc-result b { font-weight: 700; } .ds-bc-sep { margin: 0 5px; opacity: 0.6; } .ds-bc-details { border: 0; padding: 0 2px; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; } .ds-bc-details:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-bc-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border-subtle, #f0ebe4); } .ds-bc-count { font-size: 0.75rem; color: var(--color-text-secondary, #5a534a); }"
     }
   ],
   "narrative": {
@@ -598,6 +657,16 @@
         "name": "The Top-Rule Rule",
         "body": "Every dialog panel carries exactly one 3px solid --color-primary top border and zero container padding; the rule is the dialog's only decoration.",
         "section": "elevation"
+      },
+      {
+        "name": "The Separator-Break Rule",
+        "body": "A long mono identifier the user has to read back (an output pattern, a generated token path, a file tree entry) is split in the component after each `.`, `_`, `-`, or `/` and rejoined in the template with `<wbr />`, so it wraps between segments under `overflow-wrap: break-word`. `overflow-wrap: anywhere` stays the fallback for strings a template only ever receives whole (card paths, warning prose).",
+        "section": "typography"
+      },
+      {
+        "name": "The Hover-Link Rule",
+        "body": "Hovering or focusing a bundle card states the relationship instead of describing it: the bundle takes the card hover treatment (lift, `md`, 40% coral border, hover ground, tile to 20%/45% coral), each collection it consumes takes the same treatment via `.linked`, that bundle's own collection chips flip to the coral voice (8% coral ground, 45% coral border, `primary-text`), and every unrelated collection drops to `opacity: 0.5`. The dim is opacity only; nothing moves, and nothing recolours to say \"off\".",
+        "section": "components"
       }
     ],
     "dos": [
@@ -608,7 +677,11 @@
       "Do mark locked and read-only states with the amber lock tile (14% amber fill, warning-text ink) so they are unmistakable.",
       "Do reuse the locale pill for any locale, the text chip for any word-like tag, and the chip editor for any editable list.",
       "Do place surfaces one neutral step off their parent and separate them with 1px hairlines before reaching for a shadow.",
-      "Do honour prefers-reduced-motion by disabling reveal animations and hover lifts."
+      "Do honour prefers-reduced-motion by disabling reveal animations and hover lifts.",
+      "Do build page- and section-level actions from the hand-rolled `.btn` recipes (`--primary` filled coral, `--outline` hairline, `--sm` for card-level repeats); Material's palette does not resolve to `--color-primary`.",
+      "Do split long mono identifiers after `.`, `_`, `-`, and `/` and emit `<wbr />` between the parts when the component owns the string.",
+      "Do keep an affirmative footer glyph tied to real form validity: `success` when valid, `ink-tertiary` while not.",
+      "Do state a relationship with the existing hover treatment plus a 0.5 dim on the unrelated, rather than inventing a highlight colour."
     ],
     "donts": [
       "Don't set type in primary, warning, or ink-tertiary; use the text-weight tokens.",
@@ -616,7 +689,9 @@
       "Don't use uppercase or letterspaced text outside the BASE tag inside a chip.",
       "Don't use Grechen Fuemen anywhere but the wordmark.",
       "Don't add hard offset shadows, gradients on controls, or a second accent rule on a dialog.",
-      "Don't hard-code a status hue; read the status-* tokens."
+      "Don't hard-code a status hue; read the status-* tokens.",
+      "Don't use Material button toggles for an exclusive choice inside a dialog; the segmented control is the form.",
+      "Don't let an in-card result strip grow without a ceiling: clamp prose warnings and put the full text behind `title`, not on the page."
     ]
   }
 }
