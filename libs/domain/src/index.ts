@@ -18,3 +18,4 @@ export * from './lib/normalized-levenshtein';
 export * from './lib/icu-locale-validation';
 export * from './lib/portable-plural-categories';
 export * from './lib/icu-arguments';
+export * from './lib/js-identifier';
