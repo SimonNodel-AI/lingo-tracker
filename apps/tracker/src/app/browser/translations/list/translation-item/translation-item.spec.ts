@@ -476,6 +476,55 @@ describe('TranslationItem - Full density expansion', () => {
     });
   });
 
+  describe('double-click to edit', () => {
+    beforeEach(() => {
+      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+      fixture.componentRef.setInput('translation', mockTranslation);
+    });
+
+    function dblclick(el: Element | null): void {
+      expect(el).not.toBeNull();
+      el?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    }
+
+    it('leaves a double-click on the compact value to the browser text selection', () => {
+      store.setDensityMode('compact');
+      fixture.detectChanges();
+      const editSpy = vi
+        .spyOn(TestBed.inject(TranslationListStore), 'editTranslation')
+        .mockImplementation(() => undefined);
+
+      dblclick(fixture.nativeElement.querySelector('.compact-value'));
+
+      expect(editSpy).not.toHaveBeenCalled();
+    });
+
+    it('leaves a double-click on a full-density value to the browser text selection', () => {
+      store.setDensityMode('full');
+      fixture.detectChanges();
+      const editSpy = vi
+        .spyOn(TestBed.inject(TranslationListStore), 'editTranslation')
+        .mockImplementation(() => undefined);
+
+      dblclick(fixture.nativeElement.querySelector('.locale-value--base'));
+      dblclick(fixture.nativeElement.querySelector('.locale-line:not(.locale-line--base) .locale-value'));
+
+      expect(editSpy).not.toHaveBeenCalled();
+    });
+
+    it('opens the editor on a double-click of the header', () => {
+      store.setDensityMode('full');
+      fixture.detectChanges();
+      const editSpy = vi
+        .spyOn(TestBed.inject(TranslationListStore), 'editTranslation')
+        .mockImplementation(() => undefined);
+
+      dblclick(fixture.nativeElement.querySelector('.item-header'));
+
+      expect(editSpy).toHaveBeenCalledOnce();
+    });
+  });
+
   describe('read-only collections', () => {
     beforeEach(() => {
       fixture.componentRef.setInput('translation', mockTranslation);

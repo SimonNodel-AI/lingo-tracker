@@ -109,6 +109,24 @@
   white-space: nowrap;
 }
 
+/*
+ * The value is text to take away, not a control. A double-click here is the
+ * OS word-select gesture, so it must behave like any paragraph: text cursor,
+ * selectable, and a selection tinted from the palette instead of the browser's
+ * default blue. The editor is reached from the header, `E`, long-press or the
+ * menu. Shared with the full-density values in item-locales.scss.
+ */
+[data-selectable-text] {
+  cursor: text;
+  user-select: text;
+
+  &::selection,
+  & *::selection {
+    background: color-mix(in srgb, var(--color-primary) 28%, transparent);
+    color: var(--color-text-primary);
+  }
+}
+
 /* No value for this locale — a state to read, not content. */
 .compact-value--empty {
   color: var(--color-text-secondary);

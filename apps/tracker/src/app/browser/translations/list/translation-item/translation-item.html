@@ -39,6 +39,7 @@
       <span
         class="compact-value"
         [class.compact-value--empty]="!compactDisplay().value.trim()"
+        data-selectable-text
         dir="auto"
         [title]="compactDisplay().value.trim() || (TOKENS.BROWSER.NOTRANSLATION | transloco)"
       >
@@ -108,7 +109,7 @@
     @if (translation().comment) {
       <div class="item-note">
         <mat-icon class="item-note__icon" aria-hidden="true">sticky_note_2</mat-icon>
-        <p class="item-note__text" dir="auto">
+        <p class="item-note__text" data-selectable-text dir="auto">
           <span class="sr-only">{{ TOKENS.BROWSER.COMMENTPREFIX | transloco }} </span>
           <span [innerHTML]="translation().comment | highlight : searchQuery()"></span>
         </p>

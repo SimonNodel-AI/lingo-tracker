@@ -178,6 +178,17 @@
   font-size: var(--font-size-sm);
   line-height: var(--line-height-normal);
 
+  /* Plain text to copy out, not a surface that opens the editor. See the
+     `[data-selectable-text]` note in translation-item.scss. */
+  cursor: text;
+  user-select: text;
+
+  &::selection,
+  & *::selection {
+    background: color-mix(in srgb, var(--color-primary) 28%, transparent);
+    color: var(--color-text-primary);
+  }
+
   &.full {
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 6;

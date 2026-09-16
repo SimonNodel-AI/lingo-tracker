@@ -281,16 +281,23 @@ export class TranslationItem {
 
   // Double-click handler ---------------------------------------------------
   /**
-   * Opens the edit dialog when the item is double-clicked.
-   * Ignores double-clicks originating from interactive elements (buttons, inputs,
-   * anchors, selects) so that action-menu interactions are not accidentally
-   * treated as edit requests.
+   * Opens the edit dialog when the item's chrome is double-clicked.
+   *
+   * Two kinds of target are excluded. Interactive elements (buttons, inputs,
+   * anchors, selects), so that action-menu interactions are not treated as edit
+   * requests. And anything marked `data-selectable-text` — the base value, the
+   * locale values and the note — because on those a double-click is the
+   * operating system's word-select gesture: the person is reaching for ⌘C, and a
+   * dialog opening on top of the selection they just made defeats them. Those
+   * regions behave as plain text; the row's header, gaps and labels still open
+   * the editor, as do `E`, long-press and the actions menu.
    */
   onDoubleClick(event: MouseEvent): void {
     const target = event.target as HTMLElement;
     const isInteractiveElement = Boolean(target.closest('button, input, textarea, select, a, [role="button"]'));
+    const isSelectableText = Boolean(target.closest('[data-selectable-text]'));
 
-    if (isInteractiveElement) {
+    if (isInteractiveElement || isSelectableText) {
       return;
     }
 
