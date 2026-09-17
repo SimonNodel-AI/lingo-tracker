@@ -1,3 +1,23 @@
+# [0.19.0](https://github.com/simoncodes-ca/lingo-tracker/compare/v0.18.0...v0.19.0) (2026-09-17)
+
+
+### Bug Fixes
+
+* correct edit-resource example flag to --base-value ([f2d85ea](https://github.com/simoncodes-ca/lingo-tracker/commit/f2d85eac27245ce8901c1e587ecd5fd40c15fd0c))
+* **tracker:** let locale values be selected and copied instead of opening the editor ([e8650b2](https://github.com/simoncodes-ca/lingo-tracker/commit/e8650b201e7f5b2261436f8d9a5fd720e773f3b3))
+* **tracker:** make compact rows show one locale consistently ([3227357](https://github.com/simoncodes-ca/lingo-tracker/commit/32273576b4927ddb70934fbe72c784e22833b4e0))
+* **tracker:** show indexing state while cache status loads ([0b661fa](https://github.com/simoncodes-ca/lingo-tracker/commit/0b661faa4e0b73b0b4fe058da5574c53c3e7737e))
+
+
+### Features
+
+* **api:** expose bundle CRUD, dry run and job-based generation ([71a5d03](https://github.com/simoncodes-ca/lingo-tracker/commit/71a5d03fb8637fe053dd1654aaf6648298ef8831))
+* **core:** plan, validate and edit bundle definitions ([2cd35f2](https://github.com/simoncodes-ca/lingo-tracker/commit/2cd35f251ca8750cd6e4439c903b90d8838ca584))
+* **data-transfer:** add bundle DTOs ([e546182](https://github.com/simoncodes-ca/lingo-tracker/commit/e54618281f6a49e37e3ed04652adf71073c6a952))
+* **domain:** add JavaScript identifier validation ([5c5287e](https://github.com/simoncodes-ca/lingo-tracker/commit/5c5287e59c14533e5780520b375c3c71e9d99bf0))
+* **tracker:** manage and generate bundles from the collections page ([b551944](https://github.com/simoncodes-ca/lingo-tracker/commit/b55194444195f48cb9bdd172daa475f16e4a3768))
+* **tracker:** redesign the create and edit collection dialogs ([09531f9](https://github.com/simoncodes-ca/lingo-tracker/commit/09531f9622061c84dc3b575d4bda387b3efe6479))
+
 # [0.18.0](https://github.com/simoncodes-ca/lingo-tracker/compare/v0.17.0...v0.18.0) (2026-09-08)
 
 
