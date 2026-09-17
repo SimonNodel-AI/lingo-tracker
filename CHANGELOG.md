@@ -1,3 +1,10 @@
+## [0.19.1](https://github.com/simoncodes-ca/lingo-tracker/compare/v0.19.0...v0.19.1) (2026-09-17)
+
+
+### Bug Fixes
+
+* **ci:** migrate pnpm overrides to workspace config ([2c9a3aa](https://github.com/simoncodes-ca/lingo-tracker/commit/2c9a3aa1208ba10ae119a33a627d0bfafbe500b7))
+
 # [0.19.0](https://github.com/simoncodes-ca/lingo-tracker/compare/v0.18.0...v0.19.0) (2026-09-17)
 
 
