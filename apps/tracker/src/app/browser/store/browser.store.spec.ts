@@ -1,11 +1,11 @@
-import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
+import type { CacheStatusDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
 import { NEVER, of, throwError } from 'rxjs';
-import { BrowserStore } from './browser.store';
-import { BrowserApiService } from '../services/browser-api.service';
-import type { ResourceTreeDto, CacheStatusDto } from '@simoncodes-ca/data-transfer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { BrowserApiService } from '../services/browser-api.service';
+import { BrowserStore } from './browser.store';
 
 /**
  * Helper to wait for async signal updates from rxMethod.
@@ -17,6 +17,7 @@ const waitForSignals = () => new Promise<void>((resolve) => setTimeout(resolve, 
 
 describe('BrowserStore', () => {
   let store: InstanceType<typeof BrowserStore>;
+  let spectator: SpectatorService<BrowserStore>;
   let apiService: BrowserApiService;
 
   const mockTreeRoot: ResourceTreeDto = {
@@ -81,14 +82,16 @@ describe('BrowserStore', () => {
     },
   };
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule, getTranslocoTestingModule()],
-      providers: [BrowserStore, BrowserApiService],
-    });
+  const createStore = createServiceFactory({
+    service: BrowserStore,
+    imports: [HttpClientTestingModule, getTranslocoTestingModule()],
+    providers: [BrowserApiService],
+  });
 
-    store = TestBed.inject(BrowserStore);
-    apiService = TestBed.inject(BrowserApiService);
+  beforeEach(() => {
+    spectator = createStore();
+    store = spectator.service;
+    apiService = spectator.inject(BrowserApiService);
   });
 
   describe('Initialization', () => {

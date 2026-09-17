@@ -1,15 +1,16 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
-import { of } from 'rxjs';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
-import { CollectionsManager } from './collections-manager';
-import { CollectionsStore } from './store/collections.store';
-import { CollectionsApiService } from './services/collections-api.service';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import type { BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
+import { of } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
+import { CollectionsManager } from './collections-manager';
+import { CollectionsApiService } from './services/collections-api.service';
+import { CollectionsStore } from './store/collections.store';
 
 const config: LingoTrackerConfigDto = {
   exportFolder: 'dist/export',
@@ -54,31 +55,34 @@ const text = (fixture: ComponentFixture<CollectionsManager>): string =>
 describe('CollectionsManager', () => {
   let fixture: ComponentFixture<CollectionsManager>;
   let component: CollectionsManager;
+  let spectator: Spectator<CollectionsManager>;
   let store: InstanceType<typeof CollectionsStore>;
 
-  beforeEach(async () => {
+  const createComponent = createComponentFactory({
+    component: CollectionsManager,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [
+      provideTranslocoMessageformat(),
+      CollectionsStore,
+      { provide: CollectionsApiService, useValue: api },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+      { provide: Router, useValue: { navigate: vi.fn() } },
+    ],
+    detectChanges: false,
+  });
+
+  beforeEach(() => {
     vi.resetAllMocks();
     // Runs are mirrored to session storage, which jsdom keeps between tests.
     sessionStorage.clear();
     api.getConfig.mockReturnValue(of(config));
 
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [CollectionsManager, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [
-        provideTranslocoMessageformat(),
-        CollectionsStore,
-        { provide: CollectionsApiService, useValue: api },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(CollectionsManager);
-    component = fixture.componentInstance;
-    store = TestBed.inject(CollectionsStore);
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
+    store = spectator.inject(CollectionsStore);
     store.loadCollections();
-    fixture.detectChanges();
+    spectator.detectComponentChanges();
   });
 
   it('sorts collections by name, ignoring case', () => {
@@ -138,7 +142,7 @@ describe('CollectionsManager', () => {
   });
 
   it('navigates to the browser with the collection name encoded', () => {
-    const router = TestBed.inject(Router);
+    const router = spectator.inject(Router);
     component.navigateToBrowser('a b');
 
     expect(router.navigate).toHaveBeenCalledWith(['/browser', 'a%20b']);

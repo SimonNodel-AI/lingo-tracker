@@ -1,10 +1,11 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BundleCard } from './bundle-card';
-import type { BundleEntry, BundleRunState } from '../store/features/with-bundles.feature';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import type { BundleEntry, BundleRunState } from '../store/features/with-bundles.feature';
+import { BundleCard } from './bundle-card';
 
 const trackerEntry: BundleEntry = {
   name: 'tracker',
@@ -38,24 +39,30 @@ const completedRun: BundleRunState = {
 describe('BundleCard', () => {
   let fixture: ComponentFixture<BundleCard>;
   let component: BundleCard;
+  let spectator: Spectator<BundleCard>;
 
   const text = (): string => (fixture.nativeElement as HTMLElement).textContent?.replace(/\s+/g, ' ') ?? '';
   const query = <T extends Element>(selector: string): T | null =>
     (fixture.nativeElement as HTMLElement).querySelector<T>(selector);
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [BundleCard, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [provideTranslocoMessageformat()],
-    }).compileComponents();
+  const createComponent = createComponentFactory({
+    component: BundleCard,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [provideTranslocoMessageformat()],
+    detectChanges: false,
+  });
 
-    fixture = TestBed.createComponent(BundleCard);
-    component = fixture.componentInstance;
-    fixture.componentRef.setInput('entry', trackerEntry);
-    fixture.componentRef.setInput('collectionNames', ['trackerResources']);
-    fixture.componentRef.setInput('localeCount', 6);
-    fixture.componentRef.setInput('baseLocale', 'en');
-    fixture.detectChanges();
+  beforeEach(() => {
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
+    spectator.setInput({
+      entry: trackerEntry,
+      collectionNames: ['trackerResources'],
+      localeCount: 6,
+      baseLocale: 'en',
+    });
+    spectator.detectComponentChanges();
   });
 
   it('splits the output path around the locale placeholder and adds a trailing slash', () => {

@@ -1,36 +1,45 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { TranslationItem } from './translation-item';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
-import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { TranslationItem } from './translation-item';
 
-async function configureTranslationItemTestBed(): Promise<{
+const createItem = createComponentFactory({
+  component: TranslationItem,
+  imports: [getTranslocoTestingModule()],
+  providers: [
+    provideHttpClient(),
+    provideHttpClientTesting(),
+    { provide: MatDialog, useValue: { open: vi.fn() } },
+    TranslationListStore,
+  ],
+  detectChanges: false,
+});
+
+function renderTranslationItem(): {
   fixture: ComponentFixture<TranslationItem>;
   component: TranslationItem;
   store: InstanceType<typeof BrowserStore>;
-}> {
+  spectator: Spectator<TranslationItem>;
+} {
   // View preferences persist per collection, so a compact locale picked by one
   // test would otherwise be restored by the next.
   localStorage.clear();
 
-  await TestBed.configureTestingModule({
-    imports: [TranslationItem, getTranslocoTestingModule()],
-    providers: [
-      provideHttpClient(),
-      provideHttpClientTesting(),
-      { provide: MatDialog, useValue: { open: vi.fn() } },
-      TranslationListStore,
-    ],
-  }).compileComponents();
-
-  const fixture = TestBed.createComponent(TranslationItem);
-  return { fixture, component: fixture.componentInstance, store: TestBed.inject(BrowserStore) };
+  const spectator = createItem();
+  return {
+    fixture: spectator.fixture,
+    component: spectator.component,
+    store: spectator.inject(BrowserStore),
+    spectator,
+  };
 }
 
 const mockTranslation: ResourceSummaryDto = {
@@ -51,8 +60,8 @@ describe('TranslationItem', () => {
   let fixture: ComponentFixture<TranslationItem>;
   let store: InstanceType<typeof BrowserStore>;
 
-  beforeEach(async () => {
-    ({ fixture, component, store } = await configureTranslationItemTestBed());
+  beforeEach(() => {
+    ({ fixture, component, store } = renderTranslationItem());
   });
 
   it('should create', () => {
@@ -255,8 +264,8 @@ describe('TranslationItem - Compact helpers', () => {
   let fixture: ComponentFixture<TranslationItem>;
   let store: InstanceType<typeof BrowserStore>;
 
-  beforeEach(async () => {
-    ({ fixture, component, store } = await configureTranslationItemTestBed());
+  beforeEach(() => {
+    ({ fixture, component, store } = renderTranslationItem());
   });
 
   it('should show the base locale in compact until a locale is picked', () => {
@@ -335,10 +344,11 @@ describe('TranslationItem - Compact helpers', () => {
 describe('TranslationItem - Full density expansion', () => {
   let component: TranslationItem;
   let fixture: ComponentFixture<TranslationItem>;
+  let spectator: Spectator<TranslationItem>;
   let store: InstanceType<typeof BrowserStore>;
 
-  beforeEach(async () => {
-    ({ fixture, component, store } = await configureTranslationItemTestBed());
+  beforeEach(() => {
+    ({ fixture, component, store, spectator } = renderTranslationItem());
 
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
     store.setDensityMode('full');
@@ -491,7 +501,7 @@ describe('TranslationItem - Full density expansion', () => {
       store.setDensityMode('compact');
       fixture.detectChanges();
       const editSpy = vi
-        .spyOn(TestBed.inject(TranslationListStore), 'editTranslation')
+        .spyOn(spectator.inject(TranslationListStore, true), 'editTranslation')
         .mockImplementation(() => undefined);
 
       dblclick(fixture.nativeElement.querySelector('.compact-value'));
@@ -503,7 +513,7 @@ describe('TranslationItem - Full density expansion', () => {
       store.setDensityMode('full');
       fixture.detectChanges();
       const editSpy = vi
-        .spyOn(TestBed.inject(TranslationListStore), 'editTranslation')
+        .spyOn(spectator.inject(TranslationListStore, true), 'editTranslation')
         .mockImplementation(() => undefined);
 
       dblclick(fixture.nativeElement.querySelector('.locale-value--base'));
@@ -516,7 +526,7 @@ describe('TranslationItem - Full density expansion', () => {
       store.setDensityMode('full');
       fixture.detectChanges();
       const editSpy = vi
-        .spyOn(TestBed.inject(TranslationListStore), 'editTranslation')
+        .spyOn(spectator.inject(TranslationListStore, true), 'editTranslation')
         .mockImplementation(() => undefined);
 
       dblclick(fixture.nativeElement.querySelector('.item-header'));
@@ -539,7 +549,7 @@ describe('TranslationItem - Full density expansion', () => {
       });
       fixture.detectChanges();
 
-      const listStore = TestBed.inject(TranslationListStore);
+      const listStore = spectator.inject(TranslationListStore, true);
       const deleteSpy = vi.spyOn(listStore, 'deleteTranslation');
 
       component.onKeyDown(new KeyboardEvent('keydown', { key: 'Delete' }));
@@ -551,7 +561,7 @@ describe('TranslationItem - Full density expansion', () => {
       store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
       fixture.detectChanges();
 
-      const listStore = TestBed.inject(TranslationListStore);
+      const listStore = spectator.inject(TranslationListStore, true);
       const deleteSpy = vi.spyOn(listStore, 'deleteTranslation').mockImplementation(() => undefined);
 
       component.onKeyDown(new KeyboardEvent('keydown', { key: 'Delete' }));

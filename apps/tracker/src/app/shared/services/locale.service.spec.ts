@@ -1,33 +1,37 @@
-import { TestBed } from '@angular/core/testing';
-import { PLATFORM_ID } from '@angular/core';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createEnvironmentInjector, EnvironmentInjector, PLATFORM_ID } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LocaleService } from './locale.service';
 
 describe('LocaleService', () => {
   let service: LocaleService;
+  let spectator: SpectatorService<LocaleService>;
   let mockLocalStorage: Record<string, string>;
   let mockTranslocoService: { setActiveLang: ReturnType<typeof vi.fn> };
+  let platformId: 'browser' | 'server' = 'browser';
 
   const buildMockTranslocoService = () => ({
     setActiveLang: vi.fn(),
   });
 
-  const recreateService = (platformId = 'browser'): void => {
-    TestBed.resetTestingModule();
-    TestBed.configureTestingModule({
-      providers: [
-        LocaleService,
-        { provide: PLATFORM_ID, useValue: platformId },
-        { provide: TranslocoService, useValue: mockTranslocoService },
-      ],
-    });
-    service = TestBed.inject(LocaleService);
+  const createService = createServiceFactory({
+    service: LocaleService,
+    providers: [
+      { provide: PLATFORM_ID, useFactory: () => platformId },
+      { provide: TranslocoService, useFactory: () => mockTranslocoService },
+    ],
+  });
+
+  const createSpectatorService = (): void => {
+    spectator = createService();
+    service = spectator.service;
   };
 
   beforeEach(() => {
     mockLocalStorage = {};
     mockTranslocoService = buildMockTranslocoService();
+    platformId = 'browser';
 
     const localStorageMock = {
       getItem: vi.fn((key: string) => mockLocalStorage[key] ?? null),
@@ -42,39 +46,34 @@ describe('LocaleService', () => {
       value: localStorageMock,
       writable: true,
     });
-
-    TestBed.configureTestingModule({
-      providers: [
-        LocaleService,
-        { provide: PLATFORM_ID, useValue: 'browser' },
-        { provide: TranslocoService, useValue: mockTranslocoService },
-      ],
-    });
-
-    service = TestBed.inject(LocaleService);
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   describe('Service Initialization', () => {
     it('should be created', () => {
+      createSpectatorService();
+
       expect(service).toBeTruthy();
     });
 
     it('should initialize with the "en" locale when localStorage is empty', () => {
+      createSpectatorService();
+
       expect(service.currentLocale()).toBe('en');
     });
 
     it('should call TranslocoService.setActiveLang with "en" on default initialization', () => {
+      createSpectatorService();
+
       expect(mockTranslocoService.setActiveLang).toHaveBeenCalledWith('en');
     });
 
     it('should restore a valid locale from localStorage on initialization', () => {
       mockLocalStorage['lingo-tracker-locale'] = 'es';
-
-      recreateService();
+      createSpectatorService();
 
       expect(service.currentLocale()).toBe('es');
       expect(mockTranslocoService.setActiveLang).toHaveBeenCalledWith('es');
@@ -82,8 +81,7 @@ describe('LocaleService', () => {
 
     it('should fall back to "en" when localStorage contains an unrecognized locale code', () => {
       mockLocalStorage['lingo-tracker-locale'] = 'xx';
-
-      recreateService();
+      createSpectatorService();
 
       expect(service.currentLocale()).toBe('en');
       expect(mockTranslocoService.setActiveLang).toHaveBeenCalledWith('en');
@@ -92,6 +90,7 @@ describe('LocaleService', () => {
 
   describe('availableLocales', () => {
     it('should expose the expected locale options', () => {
+      createSpectatorService();
       const codes = service.availableLocales.map((l) => l.code);
 
       expect(codes).toContain('en');
@@ -100,6 +99,7 @@ describe('LocaleService', () => {
     });
 
     it('should include display names for each locale', () => {
+      createSpectatorService();
       const english = service.availableLocales.find((l) => l.code === 'en');
       const spanish = service.availableLocales.find((l) => l.code === 'es');
       const frenchCanadian = service.availableLocales.find((l) => l.code === 'fr-ca');
@@ -112,6 +112,7 @@ describe('LocaleService', () => {
 
   describe('setLocale', () => {
     it('should update the currentLocale signal and call TranslocoService.setActiveLang', () => {
+      createSpectatorService();
       service.setLocale('fr-ca');
 
       expect(service.currentLocale()).toBe('fr-ca');
@@ -119,17 +120,26 @@ describe('LocaleService', () => {
     });
 
     it('should persist the new locale to localStorage', () => {
+      createSpectatorService();
       service.setLocale('fr-ca');
 
       expect(window.localStorage.setItem).toHaveBeenCalledWith('lingo-tracker-locale', 'fr-ca');
     });
 
     it('should persist the locale so a subsequent service instance restores it', () => {
+      createSpectatorService();
       service.setLocale('es');
 
-      recreateService();
+      const reloadInjector = createEnvironmentInjector(
+        [LocaleService],
+        spectator.inject(EnvironmentInjector),
+        'locale-service-reload',
+      );
+      const restoredService = reloadInjector.get(LocaleService);
 
-      expect(service.currentLocale()).toBe('es');
+      expect(restoredService.currentLocale()).toBe('es');
+      expect(mockTranslocoService.setActiveLang).toHaveBeenLastCalledWith('es');
+      reloadInjector.destroy();
     });
   });
 
@@ -139,13 +149,11 @@ describe('LocaleService', () => {
       window.localStorage.getItem = vi.fn(() => {
         throw new Error('Storage unavailable');
       });
-
-      recreateService();
+      createSpectatorService();
 
       expect(service.currentLocale()).toBe('en');
       expect(mockTranslocoService.setActiveLang).toHaveBeenCalledWith('en');
       expect(consoleErrorSpy).toHaveBeenCalled();
-      consoleErrorSpy.mockRestore();
     });
 
     it('should still update the in-memory signal and call setActiveLang when localStorage.setItem throws', () => {
@@ -153,34 +161,34 @@ describe('LocaleService', () => {
       window.localStorage.setItem = vi.fn(() => {
         throw new Error('Storage unavailable');
       });
+      createSpectatorService();
 
       service.setLocale('es');
 
       expect(service.currentLocale()).toBe('es');
       expect(mockTranslocoService.setActiveLang).toHaveBeenCalledWith('es');
       expect(consoleErrorSpy).toHaveBeenCalled();
-      consoleErrorSpy.mockRestore();
     });
   });
 
   describe('SSR platform', () => {
     it('should not access localStorage when running on the server', () => {
-      recreateService('server');
-      vi.clearAllMocks();
+      platformId = 'server';
+      createSpectatorService();
 
       expect(window.localStorage.getItem).not.toHaveBeenCalled();
     });
 
     it('should not call TranslocoService.setActiveLang during initialization on the server', () => {
-      // Rebuild mockTranslocoService fresh so its call count starts at zero after recreateService
-      mockTranslocoService = buildMockTranslocoService();
-      recreateService('server');
+      platformId = 'server';
+      createSpectatorService();
 
       expect(mockTranslocoService.setActiveLang).not.toHaveBeenCalled();
     });
 
     it('should initialize with the default "en" locale on the server', () => {
-      recreateService('server');
+      platformId = 'server';
+      createSpectatorService();
 
       expect(service.currentLocale()).toBe('en');
     });

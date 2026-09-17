@@ -1,17 +1,25 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
-import { LocaleFilter } from './locale-filter';
-import { BrowserStore } from '../../../store/browser.store';
+import type { ComponentFixture } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
+import { BrowserStore } from '../../../store/browser.store';
+import { LocaleFilter } from './locale-filter';
 
 describe('LocaleFilter', () => {
   let component: LocaleFilter;
   let fixture: ComponentFixture<LocaleFilter>;
+  let spectator: Spectator<LocaleFilter>;
   let mockStore: any;
 
-  beforeEach(async () => {
+  const createComponent = createComponentFactory({
+    component: LocaleFilter,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [{ provide: BrowserStore, useFactory: () => mockStore }],
+  });
+
+  beforeEach(() => {
     mockStore = {
       availableLocales: signal(['en', 'es', 'fr', 'de']),
       filterableLocales: signal(['es', 'fr', 'de']), // Excludes base locale 'en'
@@ -25,14 +33,9 @@ describe('LocaleFilter', () => {
       setSelectedLocales: vi.fn(),
     };
 
-    await TestBed.configureTestingModule({
-      imports: [LocaleFilter, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [{ provide: BrowserStore, useValue: mockStore }],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(LocaleFilter);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
   });
 
   describe('Component Initialization', () => {

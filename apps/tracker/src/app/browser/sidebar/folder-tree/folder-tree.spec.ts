@@ -1,22 +1,22 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { FolderTree } from './folder-tree';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import type { ComponentFixture } from '@angular/core/testing';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { FolderTree } from './folder-tree';
 
 describe('FolderTree', () => {
   let component: FolderTree;
   let fixture: ComponentFixture<FolderTree>;
+  let spectator: Spectator<FolderTree>;
   let httpMock: HttpTestingController;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [FolderTree, getTranslocoTestingModule()],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).compileComponents();
-
-    httpMock = TestBed.inject(HttpTestingController);
+  const createSpectator = createComponentFactory({
+    component: FolderTree,
+    imports: [getTranslocoTestingModule()],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+    detectChanges: false,
   });
 
   afterEach(() => {
@@ -24,10 +24,12 @@ describe('FolderTree', () => {
   });
 
   function createComponent(detectChanges = false): void {
-    fixture = TestBed.createComponent(FolderTree);
-    component = fixture.componentInstance;
+    spectator = createSpectator();
+    fixture = spectator.fixture;
+    component = spectator.component;
+    httpMock = spectator.inject(HttpTestingController);
     if (detectChanges) {
-      fixture.detectChanges();
+      spectator.detectComponentChanges();
     }
   }
 

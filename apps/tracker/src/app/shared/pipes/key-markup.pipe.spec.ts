@@ -1,11 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { TestBed } from '@angular/core/testing';
 import { DomSanitizer } from '@angular/platform-browser';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { KeyMarkupPipe } from './key-markup.pipe';
 
 describe('KeyMarkupPipe', () => {
   let pipe: KeyMarkupPipe;
+  let spectator: SpectatorService<KeyMarkupPipe>;
   let sanitizer: DomSanitizer;
+
+  const createPipe = createServiceFactory({ service: KeyMarkupPipe });
 
   const render = (key: string | null | undefined, searchTerm?: string): string => {
     const result = pipe.transform(key, searchTerm);
@@ -13,9 +16,9 @@ describe('KeyMarkupPipe', () => {
   };
 
   beforeEach(() => {
-    TestBed.configureTestingModule({});
-    pipe = TestBed.runInInjectionContext(() => new KeyMarkupPipe());
-    sanitizer = TestBed.inject(DomSanitizer);
+    spectator = createPipe();
+    pipe = spectator.service;
+    sanitizer = spectator.inject(DomSanitizer);
   });
 
   it('should add a break opportunity after every key separator', () => {

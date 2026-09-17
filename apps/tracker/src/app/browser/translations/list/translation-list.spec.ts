@@ -1,39 +1,39 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { NotificationService } from '../../../shared/notification';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { TranslationList } from './translation-list';
-import { BrowserStore } from '../../store/browser.store';
-import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import type { TranslationEditorResult } from '../../dialogs/translation-editor';
-import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
-import { of, throwError } from 'rxjs';
-import { BrowserApiService } from '../../services/browser-api.service';
 import { TranslocoService } from '@jsverse/transloco';
+import { createComponentFactory } from '@ngneat/spectator/vitest';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { of, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { NotificationService } from '../../../shared/notification';
+import type { TranslationEditorResult } from '../../dialogs/translation-editor';
+import { BrowserApiService } from '../../services/browser-api.service';
+import { BrowserStore } from '../../store/browser.store';
 import { TranslationListStore } from './store/translation-list.store';
+import { TranslationList } from './translation-list';
+
+const createList = createComponentFactory({
+  component: TranslationList,
+  imports: [getTranslocoTestingModule()],
+  providers: [provideHttpClient(), provideHttpClientTesting()],
+  detectChanges: false,
+});
+
+const renderList = (providers: unknown[] = []): ComponentFixture<TranslationList> => createList({ providers }).fixture;
 
 describe('TranslationList', () => {
   let component: TranslationList;
   let fixture: ComponentFixture<TranslationList>;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        {
-          provide: NotificationService,
-          useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
-        },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
+  beforeEach(() => {
+    fixture = renderList([
+      { provide: NotificationService, useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() } },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+    ]);
     component = fixture.componentInstance;
   });
 
@@ -67,7 +67,7 @@ describe('TranslationList - Copy to Clipboard', () => {
     error: ReturnType<typeof vi.fn>;
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     mockClipboard = {
       writeText: vi.fn(() => Promise.resolve()),
     };
@@ -79,17 +79,10 @@ describe('TranslationList - Copy to Clipboard', () => {
 
     notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
 
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: NotificationService, useValue: notificationsSpy },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
+    fixture = renderList([
+      { provide: NotificationService, useValue: notificationsSpy },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+    ]);
   });
 
   it('should copy key to clipboard and show success toast', async () => {
@@ -121,25 +114,15 @@ describe('TranslationList - Copy to Clipboard', () => {
 describe('TranslationList - Loading and Error States', () => {
   let fixture: ComponentFixture<TranslationList>;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        {
-          provide: NotificationService,
-          useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
-        },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
+  beforeEach(() => {
+    fixture = renderList([
+      { provide: NotificationService, useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() } },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+    ]);
   });
 
   it('should display loading spinner when loading', () => {
-    const store = TestBed.inject(BrowserStore);
+    const store = fixture.debugElement.injector.get(BrowserStore);
 
     // Set up collection first
     store.setSelectedCollection({
@@ -161,8 +144,8 @@ describe('TranslationList - Loading and Error States', () => {
   });
 
   it('should display error message when error occurs', async () => {
-    const store = TestBed.inject(BrowserStore);
-    const httpMock = TestBed.inject(HttpTestingController);
+    const store = fixture.debugElement.injector.get(BrowserStore);
+    const httpMock = fixture.debugElement.injector.get(HttpTestingController);
 
     fixture.componentRef.setInput('collectionName', 'test');
     fixture.detectChanges();
@@ -210,8 +193,8 @@ describe('TranslationList - Loading and Error States', () => {
   });
 
   it('should display "no translations found" empty state when folder is selected but empty', async () => {
-    const store = TestBed.inject(BrowserStore);
-    const httpMock = TestBed.inject(HttpTestingController);
+    const store = fixture.debugElement.injector.get(BrowserStore);
+    const httpMock = fixture.debugElement.injector.get(HttpTestingController);
 
     fixture.componentRef.setInput('collectionName', 'test');
     fixture.detectChanges();
@@ -248,27 +231,17 @@ describe('TranslationList - Virtual Scrolling', () => {
   let component: TranslationList;
   let fixture: ComponentFixture<TranslationList>;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        {
-          provide: NotificationService,
-          useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
-        },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
+  beforeEach(() => {
+    fixture = renderList([
+      { provide: NotificationService, useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() } },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+    ]);
     component = fixture.componentInstance;
   });
 
   it('should render translation items with virtual scroll', () => {
-    const httpMock = TestBed.inject(HttpTestingController);
-    const store = TestBed.inject(BrowserStore);
+    const httpMock = fixture.debugElement.injector.get(HttpTestingController);
+    const store = fixture.debugElement.injector.get(BrowserStore);
 
     fixture.componentRef.setInput('collectionName', 'test');
     fixture.detectChanges();
@@ -346,20 +319,10 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
     mockDialogRef = { afterClosed: vi.fn() };
     mockDialog = { open: vi.fn().mockReturnValue(mockDialogRef) };
 
-    // TranslationList imports MatDialogModule which provides MatDialog at module scope.
-    // overrideProvider ensures our mock supersedes the module-level MatDialog instance.
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: NotificationService, useValue: notificationsSpy },
-      ],
-    })
-      .overrideProvider(MatDialog, { useValue: mockDialog })
-      .compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
+    fixture = renderList([
+      { provide: NotificationService, useValue: notificationsSpy },
+      { provide: MatDialog, useValue: mockDialog },
+    ]);
     fixture.componentRef.setInput('collectionName', 'test-collection');
     fixture.detectChanges();
   });
@@ -385,7 +348,7 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
     listStore.editTranslation(mockResource, 'test-collection');
     await vi.advanceTimersByTimeAsync(2200);
 
-    const transloco = TestBed.inject(TranslocoService);
+    const transloco = fixture.debugElement.injector.get(TranslocoService);
     const expectedSkippedMessage = transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SKIPPEDLOCALESX, {
       locales: 'fr, de',
     });
@@ -429,7 +392,7 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
   });
 
   it('should update the store cache when the edit result contains skippedLocales', () => {
-    const store = TestBed.inject(BrowserStore);
+    const store = fixture.debugElement.injector.get(BrowserStore);
     const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
 
     const result: TranslationEditorResult = {
@@ -465,24 +428,16 @@ describe('TranslationList - handleEdit key rewrite', () => {
     mockDialogRef = { afterClosed: vi.fn() };
     mockDialog = { open: vi.fn().mockReturnValue(mockDialogRef) };
 
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: NotificationService, useValue: notificationsSpy },
-      ],
-    })
-      .overrideProvider(MatDialog, { useValue: mockDialog })
-      .compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
+    fixture = renderList([
+      { provide: NotificationService, useValue: notificationsSpy },
+      { provide: MatDialog, useValue: mockDialog },
+    ]);
     fixture.componentRef.setInput('collectionName', 'test-collection');
     fixture.detectChanges();
   });
 
   it('should rewrite key to the store key when calling updateTranslationInCache on edit success', () => {
-    const store = TestBed.inject(BrowserStore);
+    const store = fixture.debugElement.injector.get(BrowserStore);
     const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
 
     // Activate search mode so the store key contains the full path ("buttons.save")
@@ -528,22 +483,12 @@ describe('TranslationList - Locale Filtering', () => {
   let fixture: ComponentFixture<TranslationList>;
   let store: InstanceType<typeof BrowserStore>;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        {
-          provide: NotificationService,
-          useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
-        },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
-    store = TestBed.inject(BrowserStore);
+  beforeEach(() => {
+    fixture = renderList([
+      { provide: NotificationService, useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() } },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+    ]);
+    store = fixture.debugElement.injector.get(BrowserStore);
 
     store.setSelectedCollection({
       collectionName: 'test',
@@ -595,20 +540,12 @@ describe('TranslationList - deleteTranslation', () => {
     mockDialogRef = { afterClosed: vi.fn() };
     mockDialog = { open: vi.fn().mockReturnValue(mockDialogRef) };
 
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: NotificationService, useValue: notificationsSpy },
-        { provide: BrowserApiService, useValue: mockBrowserApi },
-      ],
-    })
-      .overrideProvider(MatDialog, { useValue: mockDialog })
-      .compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
-    store = TestBed.inject(BrowserStore);
+    fixture = renderList([
+      { provide: NotificationService, useValue: notificationsSpy },
+      { provide: MatDialog, useValue: mockDialog },
+      { provide: BrowserApiService, useValue: mockBrowserApi },
+    ]);
+    store = fixture.debugElement.injector.get(BrowserStore);
 
     store.setSelectedCollection({ collectionName: 'my-collection', locales: ['en', 'fr'] });
     fixture.componentRef.setInput('collectionName', 'my-collection');
@@ -688,19 +625,12 @@ describe('TranslationList - handleTranslate', () => {
       deleteResource: vi.fn(),
     };
 
-    await TestBed.configureTestingModule({
-      imports: [TranslationList, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: NotificationService, useValue: notificationsSpy },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-        { provide: BrowserApiService, useValue: mockBrowserApi },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TranslationList);
-    store = TestBed.inject(BrowserStore);
+    fixture = renderList([
+      { provide: NotificationService, useValue: notificationsSpy },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+      { provide: BrowserApiService, useValue: mockBrowserApi },
+    ]);
+    store = fixture.debugElement.injector.get(BrowserStore);
 
     store.setSelectedCollection({ collectionName: 'my-collection', locales: ['en', 'fr'] });
     fixture.componentRef.setInput('collectionName', 'my-collection');
@@ -763,7 +693,7 @@ describe('TranslationList - handleTranslate', () => {
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
     listStore.translateResource(mockResource, 'my-collection');
 
-    const transloco = TestBed.inject(TranslocoService);
+    const transloco = fixture.debugElement.injector.get(TranslocoService);
     const expectedSkippedMessage = transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SKIPPEDLOCALESX, {
       locales: 'fr, de',
     });

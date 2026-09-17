@@ -1,7 +1,8 @@
 import { signal } from '@angular/core';
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { createComponentFactory } from '@ngneat/spectator/vitest';
 import type { BundleDefinitionDto, BundleDryRunResultDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,7 +55,13 @@ interface Harness {
   api: { dryRunBundle: ReturnType<typeof vi.fn> };
 }
 
-const buildTestBed = async (data: BundleFormDialogData): Promise<Harness> => {
+const createComponent = createComponentFactory({
+  component: BundleFormDialog,
+  imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+  detectChanges: false,
+});
+
+const buildHarness = (data: BundleFormDialogData): Harness => {
   const dialogRef = { close: vi.fn() };
   const api = { dryRunBundle: vi.fn().mockReturnValue(of(dryRunResult)) };
   const store = {
@@ -65,18 +72,16 @@ const buildTestBed = async (data: BundleFormDialogData): Promise<Harness> => {
     bundleEntries: signal([{ name: 'tracker', definition: trackerBundle }]),
   };
 
-  await TestBed.configureTestingModule({
-    imports: [BundleFormDialog, NoopAnimationsModule, getTranslocoTestingModule()],
+  const spectator = createComponent({
     providers: [
       { provide: MAT_DIALOG_DATA, useValue: data },
       { provide: MatDialogRef, useValue: dialogRef },
       { provide: CollectionsApiService, useValue: api },
       { provide: CollectionsStore, useValue: store },
     ],
-  }).compileComponents();
-
-  const fixture = TestBed.createComponent(BundleFormDialog);
-  fixture.detectChanges();
+  });
+  spectator.detectChanges();
+  const fixture = spectator.fixture;
   return { fixture, component: fixture.componentInstance, dialogRef, api };
 };
 
@@ -91,8 +96,7 @@ describe('BundleFormDialog — create mode', () => {
   let component: BundleFormDialog;
 
   beforeEach(async () => {
-    TestBed.resetTestingModule();
-    harness = await buildTestBed({ mode: 'create' });
+    harness = buildHarness({ mode: 'create' });
     component = harness.component;
   });
 
@@ -106,16 +110,6 @@ describe('BundleFormDialog — create mode', () => {
     expect(component.form.controls.collections.at(0).controls.name.value).toBe('trackerResources');
     expect(component.activeSection()).toBe('coll:0');
     expect(component.activeKind()).toBe('collection');
-  });
-
-  it('should open the Collections pane when the bundle includes every collection', async () => {
-    TestBed.resetTestingModule();
-    const built = await buildTestBed({
-      mode: 'create',
-      bundle: { bundleName: '{locale}', dist: './dist', collections: 'All' },
-    });
-    expect(built.component.activeSection()).toBe('collections');
-    expect(built.component.form.controls.collections.length).toBe(0);
   });
 
   it('should keep the name editable', () => {
@@ -321,10 +315,21 @@ describe('BundleFormDialog — create mode', () => {
   });
 });
 
+describe('BundleFormDialog — all collections', () => {
+  it('should open the Collections pane when the bundle includes every collection', () => {
+    const { component } = buildHarness({
+      mode: 'create',
+      bundle: { bundleName: '{locale}', dist: './dist', collections: 'All' },
+    });
+
+    expect(component.activeSection()).toBe('collections');
+    expect(component.form.controls.collections.length).toBe(0);
+  });
+});
+
 describe('BundleFormDialog — dry run', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    TestBed.resetTestingModule();
   });
 
   afterEach(() => {
@@ -332,7 +337,7 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should debounce edits and call the API once with the current definition', async () => {
-    const { component, api } = await buildTestBed({ mode: 'create' });
+    const { component, api } = buildHarness({ mode: 'create' });
     fillOutput(component);
     component.form.controls.dist.setValue('./dist/i18n');
     expect(api.dryRunBundle).not.toHaveBeenCalled();
@@ -355,7 +360,7 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should not call the API until name, folder and pattern are all present', async () => {
-    const { component, api } = await buildTestBed({ mode: 'create' });
+    const { component, api } = buildHarness({ mode: 'create' });
     component.form.controls.name.setValue('admin');
     vi.advanceTimersByTime(300);
 
@@ -364,7 +369,7 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should fall back to the client-side tree when the dry run fails', async () => {
-    const { component, api } = await buildTestBed({ mode: 'create' });
+    const { component, api } = buildHarness({ mode: 'create' });
     api.dryRunBundle.mockReturnValue(throwError(() => new Error('boom')));
     fillOutput(component);
     component.form.controls.typesEnabled.setValue(true);
@@ -392,7 +397,7 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should split tree paths and names after separators so they wrap between segments', async () => {
-    const { component, api } = await buildTestBed({ mode: 'create' });
+    const { component, api } = buildHarness({ mode: 'create' });
     api.dryRunBundle.mockReturnValue(throwError(() => new Error('boom')));
     fillOutput(component);
     vi.advanceTimersByTime(300);
@@ -405,7 +410,7 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should split the example token path after separators', async () => {
-    const { component } = await buildTestBed({ mode: 'create' });
+    const { component } = buildHarness({ mode: 'create' });
     fillOutput(component);
     vi.advanceTimersByTime(300);
 
@@ -424,7 +429,7 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should surface hierarchical key collisions as an error in the preview', async () => {
-    const { component, fixture } = await buildTestBed({ mode: 'create' });
+    const { component, fixture } = buildHarness({ mode: 'create' });
     fillOutput(component);
     vi.advanceTimersByTime(300);
     fixture.detectChanges();
@@ -450,8 +455,7 @@ describe('BundleFormDialog — edit mode', () => {
   let component: BundleFormDialog;
 
   beforeEach(async () => {
-    TestBed.resetTestingModule();
-    harness = await buildTestBed({ mode: 'edit', name: 'tracker', bundle: trackerBundle });
+    harness = buildHarness({ mode: 'edit', name: 'tracker', bundle: trackerBundle });
     component = harness.component;
   });
 

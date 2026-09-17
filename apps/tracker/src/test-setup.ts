@@ -1,11 +1,11 @@
 import '@angular/compiler';
 import '@analogjs/vitest-angular/setup-zone';
 
-import { BrowserTestingModule, platformBrowserTesting } from '@angular/platform-browser/testing';
 import { getTestBed } from '@angular/core/testing';
+import { BrowserDynamicTestingModule, platformBrowserDynamicTesting } from '@angular/platform-browser-dynamic/testing';
 import { vi } from 'vitest';
 
-getTestBed().initTestEnvironment(BrowserTestingModule, platformBrowserTesting());
+getTestBed().initTestEnvironment(BrowserDynamicTestingModule, platformBrowserDynamicTesting());
 
 /**
  * Suppress Angular NG0912 warnings globally during tests.

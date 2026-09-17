@@ -1,30 +1,33 @@
-import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { firstValueFrom } from 'rxjs';
-import { BrowserApiService } from './browser-api.service';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type {
-  ResourceTreeDto,
-  SearchResultsDto,
   CreateResourceDto,
   CreateResourceResponseDto,
+  DeleteResourceResponseDto,
+  ResourceTreeDto,
+  SearchResultsDto,
   UpdateResourceDto,
   UpdateResourceResponseDto,
-  DeleteResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
+import { firstValueFrom } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { BrowserApiService } from './browser-api.service';
 
 describe('BrowserApiService', () => {
   let service: BrowserApiService;
+  let spectator: SpectatorService<BrowserApiService>;
   let httpMock: HttpTestingController;
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [BrowserApiService, provideHttpClient(), provideHttpClientTesting()],
-    });
+  const createService = createServiceFactory({
+    service: BrowserApiService,
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  });
 
-    service = TestBed.inject(BrowserApiService);
-    httpMock = TestBed.inject(HttpTestingController);
+  beforeEach(() => {
+    spectator = createService();
+    service = spectator.service;
+    httpMock = spectator.inject(HttpTestingController);
   });
 
   afterEach(() => {

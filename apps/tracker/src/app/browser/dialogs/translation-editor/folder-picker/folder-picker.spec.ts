@@ -1,15 +1,17 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { NotificationService } from '../../../../shared/notification';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { FolderPicker } from './folder-picker';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
-import { BrowserStore } from '../../../store/browser.store';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
+import { NotificationService } from '../../../../shared/notification';
+import { BrowserStore } from '../../../store/browser.store';
+import { FolderPicker } from './folder-picker';
 
 describe('FolderPicker', () => {
   let component: FolderPicker;
   let fixture: ComponentFixture<FolderPicker>;
+  let spectator: Spectator<FolderPicker>;
 
   const mockRootFolders: FolderNodeDto[] = [
     {
@@ -40,29 +42,26 @@ describe('FolderPicker', () => {
     selectedCollection: vi.fn(() => 'test-collection'),
   };
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [FolderPicker, BrowserAnimationsModule, getTranslocoTestingModule()],
-      providers: [
-        {
-          provide: NotificationService,
-          useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() },
-        },
-        {
-          provide: BrowserStore,
-          useValue: mockStore,
-        },
-      ],
-    }).compileComponents();
+  const createComponent = createComponentFactory({
+    component: FolderPicker,
+    imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
+    providers: [
+      { provide: NotificationService, useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() } },
+      { provide: BrowserStore, useValue: mockStore },
+    ],
+    detectChanges: true,
+  });
 
-    fixture = TestBed.createComponent(FolderPicker);
-    component = fixture.componentInstance;
+  beforeEach(() => {
+    spectator = createComponent({ detectChanges: false });
+    fixture = spectator.fixture;
+    component = spectator.component;
 
     // Set required inputs
     fixture.componentRef.setInput('currentPath', '');
     fixture.componentRef.setInput('rootFolders', mockRootFolders);
 
-    fixture.detectChanges();
+    spectator.detectChanges();
   });
 
   describe('Component Initialization', () => {
@@ -213,13 +212,12 @@ describe('FolderPicker', () => {
   describe('initiallyExpanded', () => {
     it('should auto-expand tree and set selectedPath when initiallyExpanded is true with currentPath', () => {
       // Create a fresh component with initiallyExpanded
-      const expandedFixture = TestBed.createComponent(FolderPicker);
-      expandedFixture.componentRef.setInput('currentPath', 'common.buttons');
-      expandedFixture.componentRef.setInput('rootFolders', mockRootFolders);
-      expandedFixture.componentRef.setInput('initiallyExpanded', true);
-      expandedFixture.detectChanges();
+      const expanded = createComponent({
+        props: { currentPath: 'common.buttons', rootFolders: mockRootFolders, initiallyExpanded: true },
+        detectChanges: true,
+      });
 
-      const expandedComponent = expandedFixture.componentInstance;
+      const expandedComponent = expanded.component;
       expect(expandedComponent.isExpanded()).toBe(true);
       expect(expandedComponent.selectedPath()).toBe('common.buttons');
       expect(expandedComponent.expandedPaths().has('common')).toBe(true);
@@ -227,13 +225,12 @@ describe('FolderPicker', () => {
     });
 
     it('should auto-expand tree without setting selectedPath when currentPath is empty', () => {
-      const expandedFixture = TestBed.createComponent(FolderPicker);
-      expandedFixture.componentRef.setInput('currentPath', '');
-      expandedFixture.componentRef.setInput('rootFolders', mockRootFolders);
-      expandedFixture.componentRef.setInput('initiallyExpanded', true);
-      expandedFixture.detectChanges();
+      const expanded = createComponent({
+        props: { currentPath: '', rootFolders: mockRootFolders, initiallyExpanded: true },
+        detectChanges: true,
+      });
 
-      const expandedComponent = expandedFixture.componentInstance;
+      const expandedComponent = expanded.component;
       expect(expandedComponent.isExpanded()).toBe(true);
       expect(expandedComponent.selectedPath()).toBeNull();
       expect(expandedComponent.expandedPaths().size).toBe(0);
@@ -245,13 +242,12 @@ describe('FolderPicker', () => {
     });
 
     it('should keep the tree expanded after folder selection when initiallyExpanded is true', () => {
-      const expandedFixture = TestBed.createComponent(FolderPicker);
-      expandedFixture.componentRef.setInput('currentPath', 'common');
-      expandedFixture.componentRef.setInput('rootFolders', mockRootFolders);
-      expandedFixture.componentRef.setInput('initiallyExpanded', true);
-      expandedFixture.detectChanges();
+      const expanded = createComponent({
+        props: { currentPath: 'common', rootFolders: mockRootFolders, initiallyExpanded: true },
+        detectChanges: true,
+      });
 
-      const expandedComponent = expandedFixture.componentInstance;
+      const expandedComponent = expanded.component;
       const emitSpy = vi.fn();
       expandedComponent.folderConfirmed.subscribe(emitSpy);
 
@@ -263,13 +259,12 @@ describe('FolderPicker', () => {
     });
 
     it('should not collapse the tree when toggleExpanded is called and initiallyExpanded is true', () => {
-      const expandedFixture = TestBed.createComponent(FolderPicker);
-      expandedFixture.componentRef.setInput('currentPath', 'common');
-      expandedFixture.componentRef.setInput('rootFolders', mockRootFolders);
-      expandedFixture.componentRef.setInput('initiallyExpanded', true);
-      expandedFixture.detectChanges();
+      const expanded = createComponent({
+        props: { currentPath: 'common', rootFolders: mockRootFolders, initiallyExpanded: true },
+        detectChanges: true,
+      });
 
-      const expandedComponent = expandedFixture.componentInstance;
+      const expandedComponent = expanded.component;
       expandedComponent.toggleExpanded();
 
       expect(expandedComponent.isExpanded()).toBe(true);

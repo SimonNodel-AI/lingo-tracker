@@ -1,36 +1,38 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { of } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { CollectionFormDialog } from './collection-form-dialog';
 import type { CollectionFormDialogData } from './collection-form-dialog-data';
-import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
-import { of } from 'rxjs';
 
-const buildTestBed = async (
+const createComponent = createComponentFactory({
+  component: CollectionFormDialog,
+  imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+  detectChanges: false,
+});
+
+const buildHarness = (
   data: CollectionFormDialogData,
   mockDialog: Partial<MatDialog> = { open: vi.fn() },
-): Promise<{
+): {
   fixture: ComponentFixture<CollectionFormDialog>;
+  spectator: Spectator<CollectionFormDialog>;
   mockDialogRef: { close: ReturnType<typeof vi.fn> };
   mockDialog: Partial<MatDialog>;
-}> => {
+} => {
   const mockDialogRef = { close: vi.fn() };
-
-  await TestBed.configureTestingModule({
-    imports: [CollectionFormDialog, NoopAnimationsModule, getTranslocoTestingModule()],
+  const spectator = createComponent({
     providers: [
       { provide: MAT_DIALOG_DATA, useValue: data },
       { provide: MatDialogRef, useValue: mockDialogRef },
       { provide: MatDialog, useValue: mockDialog },
     ],
-  }).compileComponents();
-
-  TestBed.overrideProvider(MatDialog, { useValue: mockDialog });
-
-  const fixture = TestBed.createComponent(CollectionFormDialog);
-  fixture.detectChanges();
-  return { fixture, mockDialogRef, mockDialog };
+  });
+  spectator.detectChanges();
+  return { fixture: spectator.fixture, spectator, mockDialogRef, mockDialog };
 };
 
 describe('CollectionFormDialog — create mode', () => {
@@ -39,8 +41,7 @@ describe('CollectionFormDialog — create mode', () => {
   let mockDialogRef: { close: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    TestBed.resetTestingModule();
-    ({ fixture, mockDialogRef } = await buildTestBed({ mode: 'create' }));
+    ({ fixture, mockDialogRef } = buildHarness({ mode: 'create' }));
     component = fixture.componentInstance;
   });
 
@@ -285,10 +286,9 @@ describe('CollectionFormDialog — edit mode', () => {
   };
 
   beforeEach(async () => {
-    TestBed.resetTestingModule();
     mockDialog = { open: vi.fn() };
 
-    ({ fixture, mockDialogRef, mockDialog } = await buildTestBed(editData, mockDialog));
+    ({ fixture, mockDialogRef, mockDialog } = buildHarness(editData, mockDialog));
     component = fixture.componentInstance;
   });
 
@@ -399,8 +399,7 @@ describe('CollectionFormDialog — edit mode with inherited base locale', () => 
   let mockDialogRef: { close: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    TestBed.resetTestingModule();
-    const built = await buildTestBed({
+    const built = buildHarness({
       mode: 'edit',
       name: 'inherits-base',
       config: { translationsFolder: './i18n', locales: ['en', 'de'] },

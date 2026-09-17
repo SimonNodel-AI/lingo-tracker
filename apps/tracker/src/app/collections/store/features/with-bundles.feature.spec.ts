@@ -1,15 +1,18 @@
-import { TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
-import { of, throwError } from 'rxjs';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CollectionsStore } from '../collections.store';
-import { CollectionsApiService } from '../../services/collections-api.service';
-import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
-import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from './with-bundles.feature';
+import { createEnvironmentInjector, EnvironmentInjector } from '@angular/core';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type { BundleDefinitionDto, BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
+import { of, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { CollectionsApiService } from '../../services/collections-api.service';
+import { CollectionsStore } from '../collections.store';
+import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from './with-bundles.feature';
 
 describe('withBundlesFeature', () => {
   let store: InstanceType<typeof CollectionsStore>;
+  let spectator: SpectatorService<CollectionsStore>;
+  let reloadInjector: EnvironmentInjector | undefined;
 
   const api = {
     getConfig: vi.fn(),
@@ -42,6 +45,12 @@ describe('withBundlesFeature', () => {
     bundles: { tracker: trackerBundle, main: mainBundle },
   };
 
+  const createStore = createServiceFactory({
+    service: CollectionsStore,
+    imports: [getTranslocoTestingModule()],
+    providers: [{ provide: CollectionsApiService, useValue: api }],
+  });
+
   const runningJob: BundleGenerateJobDto = {
     jobId: 'job-1',
     bundleName: 'tracker',
@@ -63,23 +72,36 @@ describe('withBundlesFeature', () => {
     completedAt: '2026-09-15T10:00:01.000Z',
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.resetAllMocks();
     // Runs are mirrored to session storage, which jsdom keeps between tests.
     sessionStorage.clear();
-    await TestBed.configureTestingModule({
-      imports: [getTranslocoTestingModule()],
-      providers: [CollectionsStore, { provide: CollectionsApiService, useValue: api }],
-    }).compileComponents();
-
-    store = TestBed.inject(CollectionsStore);
   });
 
+  const createStoreInstance = (): void => {
+    spectator = createStore();
+    store = spectator.service;
+  };
+
+  const reloadStore = (): void => {
+    reloadInjector = createEnvironmentInjector(
+      [CollectionsStore],
+      spectator.inject(EnvironmentInjector),
+      'collections-store-reload',
+    );
+    store = reloadInjector.get(CollectionsStore);
+    // Touch the lazy store so its initialization hook restores persisted runs.
+    store.bundleRuns();
+  };
+
   afterEach(() => {
+    reloadInjector?.destroy();
     vi.useRealTimers();
   });
 
   describe('computed', () => {
+    beforeEach(createStoreInstance);
+
     it('derives sorted bundle entries, counts and project name from config', () => {
       api.getConfig.mockReturnValue(of(config));
       store.loadCollections();
@@ -101,6 +123,8 @@ describe('withBundlesFeature', () => {
   });
 
   describe('definition mutations', () => {
+    beforeEach(createStoreInstance);
+
     it('createBundle posts the DTO and refetches config', () => {
       api.createBundle.mockReturnValue(of({ message: 'ok' }));
       api.getConfig.mockReturnValue(of(config));
@@ -166,6 +190,8 @@ describe('withBundlesFeature', () => {
   });
 
   describe('generateBundle', () => {
+    beforeEach(createStoreInstance);
+
     it('marks the run as running with zero progress before the job is accepted', () => {
       api.generateBundle.mockReturnValue(of(runningJob));
       api.getBundleJob.mockReturnValue(of(runningJob));
@@ -348,26 +374,12 @@ describe('withBundlesFeature', () => {
   });
 
   describe('session persistence', () => {
-    // Generating the tracker bundle rewrites the Tracker's own i18n assets, which makes
-    // the dev server reload the page mid-run. Without mirroring, the reload would wipe
-    // the result strip the instant it was earned.
-    const rebuildStore = async (): Promise<void> => {
-      TestBed.resetTestingModule();
-      await TestBed.configureTestingModule({
-        imports: [getTranslocoTestingModule()],
-        providers: [CollectionsStore, { provide: CollectionsApiService, useValue: api }],
-      }).compileComponents();
-      store = TestBed.inject(CollectionsStore);
-      // The store is lazy; touching it runs the init hook that restores the runs.
-      store.bundleRuns();
-    };
-
     it('restores a completed run after a reload', async () => {
+      createStoreInstance();
       api.generateBundle.mockReturnValue(of(completedJob));
       store.generateBundle('tracker');
-      expect(store.bundleRuns()['tracker']?.status).toBe('completed');
 
-      await rebuildStore();
+      reloadStore();
 
       const run = store.bundleRuns()['tracker'];
       expect(run?.status).toBe('completed');
@@ -376,14 +388,14 @@ describe('withBundlesFeature', () => {
 
     it('resumes polling a job that was still running when the page reloaded', async () => {
       vi.useFakeTimers();
+      createStoreInstance();
       api.generateBundle.mockReturnValue(of(runningJob));
       api.getBundleJob.mockReturnValue(of(runningJob));
       store.generateBundle('tracker');
-      expect(store.bundleRuns()['tracker']?.status).toBe('running');
 
-      // The reload drops the in-flight poller; only the persisted snapshot survives.
       api.getBundleJob.mockReturnValue(of(completedJob));
-      await rebuildStore();
+      reloadStore();
+      await Promise.resolve();
 
       expect(api.getBundleJob).toHaveBeenCalledWith('job-1');
       expect(store.bundleRuns()['tracker']?.status).toBe('completed');
@@ -391,31 +403,35 @@ describe('withBundlesFeature', () => {
     });
 
     it('drops a restored run whose job the API no longer knows about', async () => {
+      createStoreInstance();
       api.generateBundle.mockReturnValue(of(runningJob));
       api.getBundleJob.mockReturnValue(of(runningJob));
       store.generateBundle('tracker');
 
       api.getBundleJob.mockReturnValue(throwError(() => new Error('job not found')));
-      await rebuildStore();
+      reloadStore();
+      await Promise.resolve();
 
       // A stale "Generating" strip the user cannot act on is worse than no strip.
       expect(store.bundleRuns()['tracker']).toBeUndefined();
     });
 
     it('dismissing a run keeps it dismissed across a reload', async () => {
+      createStoreInstance();
       api.generateBundle.mockReturnValue(of(completedJob));
       store.generateBundle('tracker');
       store.clearBundleRun('tracker');
 
-      await rebuildStore();
+      reloadStore();
 
       expect(store.bundleRuns()['tracker']).toBeUndefined();
     });
 
     it('ignores corrupt persisted state', async () => {
+      createStoreInstance();
       sessionStorage.setItem(BUNDLE_RUNS_STORAGE_KEY, '{ not json');
 
-      await rebuildStore();
+      reloadStore();
 
       expect(store.bundleRuns()).toEqual({});
     });

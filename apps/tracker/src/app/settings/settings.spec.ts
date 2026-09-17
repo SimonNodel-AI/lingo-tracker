@@ -1,15 +1,17 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { signal } from '@angular/core';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Settings } from './settings';
-import { CollectionsStore } from '../collections/store/collections.store';
-import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
+import type { ComponentFixture } from '@angular/core/testing';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
+import { CollectionsStore } from '../collections/store/collections.store';
+import { Settings } from './settings';
 
 describe('Settings', () => {
   let fixture: ComponentFixture<Settings>;
   let component: Settings;
+  let spectator: Spectator<Settings>;
   const updateGlobalConfigMock = vi.fn();
 
   const baseConfig: LingoTrackerConfigDto = {
@@ -29,13 +31,25 @@ describe('Settings', () => {
     updateGlobalConfig: updateGlobalConfigMock,
   });
 
+  const createComponent = createComponentFactory({
+    component: Settings,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [{ provide: CollectionsStore, useFactory: () => buildStore(null) }],
+    detectChanges: false,
+  });
+
+  const renderStore = (store: ReturnType<typeof buildStore>): Settings => {
+    spectator = createComponent({ providers: [{ provide: CollectionsStore, useValue: store }] });
+    fixture = spectator.fixture;
+    component = spectator.component;
+    spectator.detectChanges();
+    spectator.flushEffects();
+    return component;
+  };
+
   /** Creates the component against a store, and returns it after a first render. */
   const render = (config: LingoTrackerConfigDto | null, error: string | null = null) => {
-    TestBed.overrideProvider(CollectionsStore, { useValue: buildStore(config, error) });
-    fixture = TestBed.createComponent(Settings);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
-    return component;
+    return renderStore(buildStore(config, error));
   };
 
   const termValues = () => component.entries().map((entry) => entry.value);
@@ -45,12 +59,8 @@ describe('Settings', () => {
     return entry;
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    await TestBed.configureTestingModule({
-      imports: [Settings, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [{ provide: CollectionsStore, useValue: buildStore(null) }],
-    }).compileComponents();
   });
 
   it('renders global protected terms seeded from the store config', () => {
@@ -341,12 +351,12 @@ describe('Settings', () => {
 
     it('does not clobber in-progress edits on a config refetch we did not ask for', () => {
       const config = signal(baseConfig);
-      TestBed.overrideProvider(CollectionsStore, {
-        useValue: { config, error: signal(null), isLoading: signal(false), updateGlobalConfig: updateGlobalConfigMock },
+      renderStore({
+        config,
+        error: signal(null),
+        isLoading: signal(false),
+        updateGlobalConfig: updateGlobalConfigMock,
       });
-      fixture = TestBed.createComponent(Settings);
-      component = fixture.componentInstance;
-      fixture.detectChanges();
 
       component.onAddDraftChange('C++');
       component.addTerm();
@@ -358,12 +368,12 @@ describe('Settings', () => {
 
     it('adopts the refetched config as the new baseline after a save', () => {
       const config = signal(baseConfig);
-      TestBed.overrideProvider(CollectionsStore, {
-        useValue: { config, error: signal(null), isLoading: signal(false), updateGlobalConfig: updateGlobalConfigMock },
+      renderStore({
+        config,
+        error: signal(null),
+        isLoading: signal(false),
+        updateGlobalConfig: updateGlobalConfigMock,
       });
-      fixture = TestBed.createComponent(Settings);
-      component = fixture.componentInstance;
-      fixture.detectChanges();
 
       component.onAddDraftChange('C++');
       component.addTerm();

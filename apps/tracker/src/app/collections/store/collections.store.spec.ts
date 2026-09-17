@@ -1,13 +1,14 @@
-import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { CollectionsStore } from './collections.store';
-import { CollectionsApiService } from '../services/collections-api.service';
-import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
+import { of, throwError } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { CollectionsApiService } from '../services/collections-api.service';
+import { CollectionsStore } from './collections.store';
 
 describe('CollectionsStore', () => {
   let store: InstanceType<typeof CollectionsStore>;
+  let spectator: SpectatorService<CollectionsStore>;
 
   const api = {
     getConfig: vi.fn(),
@@ -26,14 +27,16 @@ describe('CollectionsStore', () => {
     protectedTerms: ['iPhone', 'C++'],
   };
 
-  beforeEach(async () => {
-    vi.resetAllMocks();
-    await TestBed.configureTestingModule({
-      imports: [getTranslocoTestingModule()],
-      providers: [CollectionsStore, { provide: CollectionsApiService, useValue: api }],
-    }).compileComponents();
+  const createStore = createServiceFactory({
+    service: CollectionsStore,
+    imports: [getTranslocoTestingModule()],
+    providers: [{ provide: CollectionsApiService, useValue: api }],
+  });
 
-    store = TestBed.inject(CollectionsStore);
+  beforeEach(() => {
+    vi.resetAllMocks();
+    spectator = createStore();
+    store = spectator.service;
   });
 
   it('updateGlobalConfig calls the API with the DTO and refetches config', () => {
