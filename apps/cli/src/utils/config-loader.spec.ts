@@ -3,8 +3,30 @@ import { loadConfiguration } from './config-loader';
 import * as fs from 'fs';
 import * as path from 'path';
 
-vi.mock('fs');
-vi.mock('path');
+const fsMocks = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+}));
+const pathMocks = vi.hoisted(() => ({
+  join: vi.fn(),
+}));
+
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
+vi.mock('path', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('path')>();
+  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
+});
+vi.mock('node:path', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:path')>();
+  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
+});
 
 // Mock the core library imports
 vi.mock('@simoncodes-ca/core', () => ({
@@ -28,7 +50,9 @@ describe('config-loader', () => {
     vi.clearAllMocks();
 
     // Mock path.join to simply concatenate with '/'
-    vi.spyOn(path, 'join').mockImplementation((...segments) => segments.join('/'));
+    vi.mocked(path.join)
+      .mockReset()
+      .mockImplementation((...segments) => segments.join('/'));
 
     // Mock console methods
     vi.spyOn(console, 'error').mockImplementation(() => undefined);

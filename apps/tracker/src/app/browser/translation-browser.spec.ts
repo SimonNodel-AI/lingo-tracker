@@ -1,28 +1,33 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, it, expect, beforeEach } from 'vitest';
-import { TranslationBrowser } from './translation-browser';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
 import { HeaderContextService } from '../shared/services/header-context.service';
+import { TranslationBrowser } from './translation-browser';
 
 describe('TranslationBrowser - Integration', () => {
   let component: TranslationBrowser;
   let fixture: ComponentFixture<TranslationBrowser>;
+  let spectator: Spectator<TranslationBrowser>;
   let httpMock: HttpTestingController;
   let headerContext: HeaderContextService;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [TranslationBrowser, getTranslocoTestingModule()],
-      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
-    }).compileComponents();
+  const createComponent = createComponentFactory({
+    component: TranslationBrowser,
+    imports: [getTranslocoTestingModule()],
+    providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
+    detectChanges: false,
+  });
 
-    fixture = TestBed.createComponent(TranslationBrowser);
-    component = fixture.componentInstance;
-    httpMock = TestBed.inject(HttpTestingController);
-    headerContext = TestBed.inject(HeaderContextService);
+  beforeEach(() => {
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
+    httpMock = spectator.inject(HttpTestingController);
+    headerContext = spectator.inject(HeaderContextService);
   });
 
   it('should create', () => {

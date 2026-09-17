@@ -2,53 +2,24 @@
 <header class="page-header">
   <div class="header-content">
     <div class="header-text">
-      <h1 class="header-title">{{ TOKENS.COLLECTIONS.TITLE | transloco }}</h1>
+      @if (store.projectName(); as projectName) {
+        <h1 class="header-title">{{ projectName }}</h1>
+      } @else {
+        <h1 class="header-title">{{ TOKENS.COLLECTIONS.TITLE | transloco }}</h1>
+      }
       @if (store.hasCollections()) {
         <p class="header-count">
+          <code class="mono">.lingo-tracker.json</code>
+          <span class="sep" aria-hidden="true">·</span>
           {{ TOKENS.COLLECTIONS.SUBTITLEX | transloco: { count: store.collectionEntries().length } }}
+          <span class="sep" aria-hidden="true">·</span>
+          {{ TOKENS.COLLECTIONS.BUNDLESCOUNTX | transloco: { count: store.bundleCount() } }}
+          @if (baseLocale(); as locale) {
+            <span class="sep" aria-hidden="true">·</span>
+            {{ TOKENS.COLLECTIONS.CARD.BASELOCALELABEL | transloco }} <code class="mono">{{ locale }}</code>
+          }
         </p>
       }
-    </div>
-
-    <div class="header-tools">
-      @if (showFilter()) {
-        <div class="filter-field">
-          <mat-icon class="filter-icon" aria-hidden="true">search</mat-icon>
-          <input
-            class="filter-input"
-            type="search"
-            autocomplete="off"
-            [value]="filter()"
-            (input)="filter.set($any($event.target).value)"
-            [placeholder]="TOKENS.COLLECTIONS.FILTER.PLACEHOLDER | transloco"
-            [attr.aria-label]="TOKENS.COLLECTIONS.FILTER.PLACEHOLDER | transloco"
-          />
-          @if (isFiltering()) {
-            <button
-              mat-icon-button
-              type="button"
-              class="filter-clear"
-              (click)="clearFilter()"
-              [attr.aria-label]="TOKENS.COLLECTIONS.FILTER.CLEAR | transloco"
-              [matTooltip]="TOKENS.COLLECTIONS.FILTER.CLEAR | transloco"
-            >
-              <mat-icon>close</mat-icon>
-            </button>
-          }
-        </div>
-      }
-
-      <button
-        mat-flat-button
-        color="primary"
-        type="button"
-        class="add-btn"
-        (click)="openCreateDialog()"
-        [disabled]="store.isLoading()"
-      >
-        <mat-icon>add</mat-icon>
-        {{ TOKENS.COLLECTIONS.ADDBUTTON | transloco }}
-      </button>
     </div>
   </div>
   <div class="header-rule" aria-hidden="true"></div>
@@ -71,12 +42,7 @@
       <mat-icon>error_outline</mat-icon>
     </div>
     <p>{{ store.error() }}</p>
-    <button
-      mat-flat-button
-      color="primary"
-      type="button"
-      (click)="store.loadCollections()"
-    >
+    <button class="btn btn--primary" type="button" (click)="store.loadCollections()">
       {{ TOKENS.COMMON.ACTIONS.RETRY | transloco }}
     </button>
   </div>
@@ -94,124 +60,260 @@
       <mat-icon class="empty-icon">translate</mat-icon>
     </div>
     <p class="empty-message">{{ TOKENS.COLLECTIONS.EMPTYSTATE.MESSAGE | transloco }}</p>
-    <button
-      mat-flat-button
-      color="primary"
-      type="button"
-      class="add-btn"
-      (click)="openCreateDialog()"
-    >
+    <button class="btn btn--primary" type="button" (click)="openCreateDialog()">
       {{ TOKENS.COLLECTIONS.EMPTYSTATE.CTA | transloco }}
     </button>
   </div>
 }
 
-<!-- No Matches State -->
-@if (hasNoMatches() && !store.isLoading() && !store.error()) {
-  <div class="no-matches" role="status" aria-live="polite">
-    <mat-icon class="no-matches-icon" aria-hidden="true">search_off</mat-icon>
-    <p class="no-matches-message">
-      {{ TOKENS.COLLECTIONS.FILTER.NORESULTSX | transloco: { query: filter().trim() } }}
-    </p>
-    <button mat-stroked-button type="button" (click)="clearFilter()">
-      {{ TOKENS.COLLECTIONS.FILTER.CLEAR | transloco }}
-    </button>
-  </div>
-}
+<!-- Split view: collections on the left, sticky bundles column on the right -->
+@if (store.hasCollections() && !store.isLoading() && !store.error()) {
+  <div class="split">
+    <!-- Connector layer: drawn behind the cards so a line that crosses the inner column
+         passes under it and re-emerges, instead of scribbling over another card's content. -->
+    <svg class="link-layer" aria-hidden="true">
+      @for (link of bundleLinks(); track link.name) {
+        <path class="link-line" [attr.d]="link.path" pathLength="1" />
+        <circle class="link-node" [attr.cx]="link.x" [attr.cy]="link.y" r="3.5" />
+      }
+      @if (bundlePort(); as port) {
+        <circle class="link-port" [attr.cx]="port.x" [attr.cy]="port.y" r="4.5" />
+      }
+    </svg>
 
-<!-- Collections Grid -->
-@if (cards().length > 0 && !store.isLoading()) {
-  <div class="collections-grid">
-    @for (card of cards(); track card.name; let i = $index) {
-      <article
-        class="collection-card"
-        [class.collection-card--readonly]="card.readOnly"
-        [style.--card-index]="i"
-        tabindex="0"
-        role="link"
-        [attr.aria-label]="TOKENS.COLLECTIONS.CARD.OPENARIALABELX | transloco: { name: card.name }"
-        (click)="navigateToBrowser(card.name)"
-        (keydown.enter)="navigateToBrowser(card.name)"
-        (keydown.space)="navigateToBrowser(card.name)"
-      >
-        <div class="card-header">
-          <div class="card-icon-wrap" aria-hidden="true">
-            <mat-icon>{{ card.readOnly ? 'lock' : 'folder' }}</mat-icon>
-          </div>
+    <section class="collections-col" aria-labelledby="collections-heading">
+      <div class="section-head">
+        <div class="section-title">
+          <h2 id="collections-heading">{{ TOKENS.COLLECTIONS.TITLE | transloco }}</h2>
+          <span class="section-count num">{{ store.collectionEntries().length }}</span>
+        </div>
 
-          <div class="card-heading">
-            <h3 class="collection-name">{{ card.name }}</h3>
-            <p class="folder-path" [matTooltip]="card.translationsFolder" matTooltipPosition="below">
-              {{ card.translationsFolder }}
-            </p>
-          </div>
+        <div class="section-tools">
+          @if (showFilter()) {
+            <div class="filter-field">
+              <mat-icon class="filter-icon" aria-hidden="true">search</mat-icon>
+              <input
+                class="filter-input"
+                type="search"
+                autocomplete="off"
+                [value]="filter()"
+                (input)="filter.set($any($event.target).value)"
+                [placeholder]="TOKENS.COLLECTIONS.FILTER.PLACEHOLDER | transloco"
+                [attr.aria-label]="TOKENS.COLLECTIONS.FILTER.PLACEHOLDER | transloco"
+              />
+              @if (isFiltering()) {
+                <button
+                  mat-icon-button
+                  type="button"
+                  class="filter-clear"
+                  (click)="clearFilter()"
+                  [attr.aria-label]="TOKENS.COLLECTIONS.FILTER.CLEAR | transloco"
+                  [matTooltip]="TOKENS.COLLECTIONS.FILTER.CLEAR | transloco"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+              }
+            </div>
+          }
 
-          <div class="card-actions">
-            <button
-              mat-icon-button
-              type="button"
-              [matMenuTriggerFor]="menu"
-              [attr.aria-label]="TOKENS.COLLECTIONS.CARD.MOREACTIONSARIALABEL | transloco"
-              (click)="$event.stopPropagation()"
+          <button
+            class="btn btn--quiet btn--sm"
+            type="button"
+            (click)="openCreateDialog()"
+            [disabled]="store.isLoading()"
+          >
+            <mat-icon>add</mat-icon>
+            {{ TOKENS.COLLECTIONS.ADDBUTTON | transloco }}
+          </button>
+        </div>
+      </div>
+
+      <!-- No Matches State -->
+      @if (hasNoMatches()) {
+        <div class="no-matches" role="status" aria-live="polite">
+          <mat-icon class="no-matches-icon" aria-hidden="true">search_off</mat-icon>
+          <p class="no-matches-message">
+            {{ TOKENS.COLLECTIONS.FILTER.NORESULTSX | transloco: { query: filter().trim() } }}
+          </p>
+          <button mat-stroked-button type="button" (click)="clearFilter()">
+            {{ TOKENS.COLLECTIONS.FILTER.CLEAR | transloco }}
+          </button>
+        </div>
+      }
+
+      <!-- Collections Grid -->
+      @if (cards().length > 0) {
+        <div class="collections-grid">
+          @for (card of cards(); track card.name; let i = $index) {
+            <article
+              class="collection-card"
+              [class.collection-card--readonly]="card.readOnly"
+              [class.linked]="isCollectionLinked(card.name)"
+              [attr.data-collection]="card.name"
+              [style.--card-index]="i"
+              tabindex="0"
+              role="link"
+              [attr.aria-label]="TOKENS.COLLECTIONS.CARD.OPENARIALABELX | transloco: { name: card.name }"
+              (click)="navigateToBrowser(card.name)"
+              (keydown.enter)="navigateToBrowser(card.name)"
+              (keydown.space)="navigateToBrowser(card.name)"
             >
-              <mat-icon>more_vert</mat-icon>
+              <div class="card-header">
+                <div class="card-icon-wrap" aria-hidden="true">
+                  <mat-icon>{{ card.readOnly ? 'lock' : 'folder' }}</mat-icon>
+                </div>
+
+                <div class="card-heading">
+                  <h3 class="collection-name">{{ card.name }}</h3>
+                  <p class="folder-path" [matTooltip]="card.translationsFolder" matTooltipPosition="below">
+                    {{ card.translationsFolder }}
+                  </p>
+                </div>
+
+                <div class="card-actions">
+                  <button
+                    mat-icon-button
+                    type="button"
+                    [matMenuTriggerFor]="menu"
+                    [attr.aria-label]="TOKENS.COLLECTIONS.CARD.MOREACTIONSARIALABEL | transloco"
+                    (click)="$event.stopPropagation()"
+                  >
+                    <mat-icon>more_vert</mat-icon>
+                  </button>
+
+                  <mat-menu #menu="matMenu">
+                    <button mat-menu-item (click)="openEditDialog(card.name)">
+                      <mat-icon>edit</mat-icon>
+                      <span>{{ TOKENS.COMMON.ACTIONS.EDIT | transloco }}</span>
+                    </button>
+                    <button mat-menu-item (click)="openDeleteDialog(card.name)">
+                      <mat-icon>delete</mat-icon>
+                      <span>{{ TOKENS.COMMON.ACTIONS.DELETE | transloco }}</span>
+                    </button>
+                  </mat-menu>
+                </div>
+              </div>
+
+              @if (card.readOnly) {
+                <p class="readonly-note">
+                  <mat-icon class="readonly-note-icon" aria-hidden="true">lock</mat-icon>
+                  <span>{{ TOKENS.COLLECTIONS.CARD.READONLYTOOLTIP | transloco }}</span>
+                </p>
+              }
+
+              <div class="card-footer">
+                <ul class="locale-chips" [attr.aria-label]="TOKENS.COLLECTIONS.CARD.LOCALESARIALABEL | transloco">
+                  @for (locale of card.visibleLocales; track locale) {
+                    <li
+                      class="locale-chip"
+                      [class.locale-chip--base]="locale === card.baseLocale"
+                      [matTooltip]="
+                        locale === card.baseLocale
+                          ? (TOKENS.COLLECTIONS.CARD.BASELOCALETOOLTIPX | transloco: { locale: locale })
+                          : ''
+                      "
+                      matTooltipPosition="above"
+                    >
+                      <span class="locale-chip-code">{{ locale }}</span>
+                      @if (locale === card.baseLocale) {
+                        <span class="locale-chip-tag">{{ TOKENS.COLLECTIONS.CARD.BASELOCALELABEL | transloco }}</span>
+                      }
+                    </li>
+                  }
+                  @if (card.overflowLocales.length > 0) {
+                    <li
+                      class="locale-chip locale-chip--more"
+                      [matTooltip]="
+                        (TOKENS.COLLECTIONS.CARD.MORELOCALESTOOLTIP | transloco) + ': ' + card.overflowLocales.join(', ')
+                      "
+                      matTooltipPosition="above"
+                    >
+                      {{ TOKENS.COLLECTIONS.CARD.MORELOCALESX | transloco: { count: card.overflowLocales.length } }}
+                    </li>
+                  }
+                </ul>
+
+                <mat-icon class="card-arrow" aria-hidden="true">arrow_forward</mat-icon>
+              </div>
+            </article>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- Bundles column -->
+    <aside class="bundles-col" aria-labelledby="bundles-heading">
+      <div class="section-head section-head--bundles">
+        <div class="section-title">
+          <h2 id="bundles-heading">{{ TOKENS.BUNDLES.TITLE | transloco }}</h2>
+          <span class="section-count num">{{ store.bundleCount() }}</span>
+        </div>
+
+        @if (store.hasBundles()) {
+          <div class="section-tools">
+            <button
+              type="button"
+              class="btn btn--outline btn--sm"
+              data-testid="generate-all"
+              [class.btn--busy]="isGeneratingAll()"
+              [disabled]="store.isAnyBundleRunning()"
+              [attr.aria-disabled]="store.isAnyBundleRunning() ? 'true' : null"
+              (click)="generateAllBundles()"
+            >
+              @if (isGeneratingAll()) {
+                <span class="spinner" aria-hidden="true"></span>
+                <span class="num">
+                  {{ TOKENS.BUNDLES.GENERATINGPROGRESSX | transloco: { current: generateAllPosition(), total: store.bundleCount() } }}
+                </span>
+              } @else {
+                <mat-icon aria-hidden="true">play_arrow</mat-icon>
+                {{ TOKENS.BUNDLES.GENERATEALL | transloco }}
+              }
             </button>
 
-            <mat-menu #menu="matMenu">
-              <button mat-menu-item (click)="openEditDialog(card.name)">
-                <mat-icon>edit</mat-icon>
-                <span>{{ TOKENS.COMMON.ACTIONS.EDIT | transloco }}</span>
-              </button>
-              <button mat-menu-item (click)="openDeleteDialog(card.name)">
-                <mat-icon>delete</mat-icon>
-                <span>{{ TOKENS.COMMON.ACTIONS.DELETE | transloco }}</span>
-              </button>
-            </mat-menu>
+            <button type="button" class="btn btn--quiet btn--sm" (click)="openCreateBundleDialog()">
+              <mat-icon aria-hidden="true">add</mat-icon>
+              {{ TOKENS.BUNDLES.ADDBUTTON | transloco }}
+            </button>
           </div>
-        </div>
+        }
+      </div>
 
-        @if (card.readOnly) {
-          <p class="readonly-note">
-            <mat-icon class="readonly-note-icon" aria-hidden="true">lock</mat-icon>
-            <span>{{ TOKENS.COLLECTIONS.CARD.READONLYTOOLTIP | transloco }}</span>
-          </p>
+      <div class="bundles-stack">
+        @if (!store.hasBundles()) {
+          <div class="empty-bundles">
+            <div class="tile" aria-hidden="true">
+              <mat-icon>inventory_2</mat-icon>
+            </div>
+            <div class="empty-bundles-text">
+              <h3>{{ TOKENS.BUNDLES.EMPTY.TITLE | transloco }}</h3>
+              <p>{{ TOKENS.BUNDLES.EMPTY.MESSAGE | transloco }}</p>
+            </div>
+            <button type="button" class="btn btn--primary" (click)="openCreateBundleDialog()">
+              <mat-icon aria-hidden="true">add</mat-icon>
+              {{ TOKENS.BUNDLES.EMPTY.CTA | transloco }}
+            </button>
+          </div>
         }
 
-        <div class="card-footer">
-          <ul class="locale-chips" [attr.aria-label]="TOKENS.COLLECTIONS.CARD.LOCALESARIALABEL | transloco">
-            @for (locale of card.visibleLocales; track locale) {
-              <li
-                class="locale-chip"
-                [class.locale-chip--base]="locale === card.baseLocale"
-                [matTooltip]="
-                  locale === card.baseLocale
-                    ? (TOKENS.COLLECTIONS.CARD.BASELOCALETOOLTIPX | transloco: { locale: locale })
-                    : ''
-                "
-                matTooltipPosition="above"
-              >
-                <span class="locale-chip-code">{{ locale }}</span>
-                @if (locale === card.baseLocale) {
-                  <span class="locale-chip-tag">{{ TOKENS.COLLECTIONS.CARD.BASELOCALELABEL | transloco }}</span>
-                }
-              </li>
-            }
-            @if (card.overflowLocales.length > 0) {
-              <li
-                class="locale-chip locale-chip--more"
-                [matTooltip]="
-                  (TOKENS.COLLECTIONS.CARD.MORELOCALESTOOLTIP | transloco) + ': ' + card.overflowLocales.join(', ')
-                "
-                matTooltipPosition="above"
-              >
-                {{ TOKENS.COLLECTIONS.CARD.MORELOCALESX | transloco: { count: card.overflowLocales.length } }}
-              </li>
-            }
-          </ul>
-
-          <mat-icon class="card-arrow" aria-hidden="true">arrow_forward</mat-icon>
-        </div>
-      </article>
-    }
+        @for (card of bundleCards(); track card.entry.name) {
+          <app-bundle-card
+            [attr.data-bundle]="card.entry.name"
+            [entry]="card.entry"
+            [run]="store.bundleRuns()[card.entry.name]"
+            [linked]="hoveredBundle() === card.entry.name"
+            [collectionNames]="card.collectionNames"
+            [localeCount]="card.localeCount"
+            [baseLocale]="baseLocale()"
+            (hoverChange)="onBundleHover(card.entry.name, $event)"
+            (generate)="generateBundle(card.entry.name)"
+            (retry)="retryBundle(card.entry.name)"
+            (dismiss)="store.clearBundleRun(card.entry.name)"
+            (edit)="openEditBundleDialog(card.entry.name)"
+            (delete)="openDeleteBundleDialog(card.entry.name)"
+          />
+        }
+      </div>
+    </aside>
   </div>
 }

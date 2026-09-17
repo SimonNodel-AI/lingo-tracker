@@ -1,0 +1,697 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-16T05:03:32Z",
+  "title": "Design System: LingoTracker",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Coral / Vermillion",
+        "canonical": "#d4726a",
+        "dark": "#e8847c",
+        "tonalRamp": ["#b04a42", "#c25d55", "#d4726a", "#e8847c", "#f0a09a", "#f5bdb8", "#fadcd9", "#fdf2f1"]
+      },
+      "primary-text": {
+        "role": "primary",
+        "displayName": "Coral Text",
+        "canonical": "#a1443d",
+        "dark": "#e8847c",
+        "tonalRamp": ["#7a2f2a", "#a1443d", "#b04a42", "#c25d55", "#d4726a", "#e8847c", "#f0a09a", "#fdf2f1"]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Deep Sky Blue",
+        "canonical": "#4a7fb5",
+        "dark": "#7bafde",
+        "tonalRamp": ["#1f3f61", "#2d5888", "#3a6a9e", "#4a7fb5", "#5a8db8", "#7bafde", "#9dc4e8", "#eef5fb"]
+      },
+      "focus-ring": {
+        "role": "secondary",
+        "displayName": "Focus Sky",
+        "canonical": "#4a7fb5",
+        "dark": "#7bafde",
+        "tonalRamp": ["#1f3f61", "#2d5888", "#3a6a9e", "#4a7fb5", "#5a8db8", "#7bafde", "#9dc4e8", "#eef5fb"]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Amber Lock",
+        "canonical": "#d9a441",
+        "dark": "#e4b454",
+        "tonalRamp": ["#5c3d10", "#8a5a00", "#a87716", "#c7a86b", "#d9a441", "#e4b454", "#f0bc5e", "#fde8a0"]
+      },
+      "warning-text": {
+        "role": "tertiary",
+        "displayName": "Amber Text",
+        "canonical": "#8a5a00",
+        "dark": "#e4b454",
+        "tonalRamp": ["#5c3d10", "#745415", "#8a5a00", "#a87716", "#d9a441", "#e4b454", "#f0bc5e", "#fde8a0"]
+      },
+      "error": {
+        "role": "tertiary",
+        "displayName": "Warm Red",
+        "canonical": "#c95e5e",
+        "dark": "#d97878",
+        "tonalRamp": ["#7a3535", "#9a4747", "#c95e5e", "#d97878", "#e39a9a", "#eebcbc", "#f6dcdc", "#fbf0f0"]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Sage Success",
+        "canonical": "#6da67e",
+        "dark": "#7dbb8f",
+        "tonalRamp": ["#2f4f39", "#447353", "#4e8a63", "#6da67e", "#7dbb8f", "#8db580", "#a3c898", "#e9eae1"]
+      },
+      "info": {
+        "role": "tertiary",
+        "displayName": "Info Sky",
+        "canonical": "#5a8db8",
+        "dark": "#7bafde",
+        "tonalRamp": ["#1a2d40", "#2d5888", "#3f7aa8", "#5a8db8", "#7bafde", "#9dc4e8", "#c5dcef", "#e6f0f8"]
+      },
+      "parchment": {
+        "role": "neutral",
+        "displayName": "Parchment",
+        "canonical": "#faf8f5",
+        "dark": "#141210",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "parchment-subtle": {
+        "role": "neutral",
+        "displayName": "Parchment Subtle",
+        "canonical": "#f5f1eb",
+        "dark": "#1c1814",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "parchment-muted": {
+        "role": "neutral",
+        "displayName": "Parchment Muted",
+        "canonical": "#ede8e0",
+        "dark": "#2e2923",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Warm Ink",
+        "canonical": "#2e2923",
+        "dark": "#f3efe9",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "Ink Secondary",
+        "canonical": "#5a534a",
+        "dark": "#d4cdc3",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "ink-tertiary": {
+        "role": "neutral",
+        "displayName": "Ink Tertiary (decorative only)",
+        "canonical": "#a89f93",
+        "dark": "#7d7569",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "ink-placeholder": {
+        "role": "neutral",
+        "displayName": "Placeholder Ink",
+        "canonical": "#736b61",
+        "dark": "#8a8175",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#736b61",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "ink-on-primary": {
+        "role": "neutral",
+        "displayName": "Ink on Coral",
+        "canonical": "#2e2923",
+        "dark": "#2e2923",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e5dfd7",
+        "dark": "#433d36",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f0ebe4",
+          "#faf8f5"
+        ]
+      },
+      "border-subtle": {
+        "role": "neutral",
+        "displayName": "Hairline Subtle",
+        "canonical": "#f0ebe4",
+        "dark": "#2e2923",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f0ebe4",
+          "#faf8f5"
+        ]
+      },
+      "border-strong": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "canonical": "#d4cdc3",
+        "dark": "#5a534a",
+        "tonalRamp": [
+          "#1c1814",
+          "#2e2923",
+          "#433d36",
+          "#5a534a",
+          "#7d7569",
+          "#a89f93",
+          "#d4cdc3",
+          "#e5dfd7",
+          "#f3efe9",
+          "#faf8f5"
+        ]
+      },
+      "highlight": {
+        "role": "tertiary",
+        "displayName": "Search Highlight",
+        "canonical": "#fde8a0",
+        "dark": "#5c3d10",
+        "tonalRamp": ["#5c3d10", "#745415", "#8a5a00", "#a87716", "#c7a86b", "#e0cfae", "#f0bc5e", "#fde8a0"]
+      },
+      "status-new": {
+        "role": "tertiary",
+        "displayName": "Status: New",
+        "canonical": "#a87716",
+        "dark": "#e4b454",
+        "tonalRamp": ["#5b4927", "#745415", "#997a3c", "#a87716", "#c7a86b", "#e0cfae", "#e4b454", "#fde8a0"]
+      },
+      "status-stale": {
+        "role": "tertiary",
+        "displayName": "Status: Stale",
+        "canonical": "#b85c26",
+        "dark": "#e08a4e",
+        "tonalRamp": ["#493120", "#865533", "#884720", "#b85c26", "#d29a79", "#e08a4e", "#e6c9b7", "#fdf2f1"]
+      },
+      "status-translated": {
+        "role": "tertiary",
+        "displayName": "Status: Translated",
+        "canonical": "#3f7aa8",
+        "dark": "#7bafde",
+        "tonalRamp": ["#1e2225", "#374756", "#3a6d95", "#3f7aa8", "#7bafde", "#bbcbd6", "#e8e9e6", "#eef5fb"]
+      },
+      "status-verified": {
+        "role": "tertiary",
+        "displayName": "Status: Verified",
+        "canonical": "#4e8a63",
+        "dark": "#7dbb8f",
+        "tonalRamp": ["#1e231d", "#384b3b", "#447353", "#4e8a63", "#7dbb8f", "#c0d0bf", "#e9eae1", "#faf8f5"]
+      },
+      "wc-coral": {
+        "role": "tertiary",
+        "displayName": "Watercolor Coral",
+        "canonical": "#e8847c",
+        "dark": "#f0a09a",
+        "tonalRamp": ["#b04a42", "#c25d55", "#d4726a", "#e8847c", "#f0a09a", "#f5bdb8", "#fadcd9", "#fdf2f1"]
+      },
+      "wc-amber": {
+        "role": "tertiary",
+        "displayName": "Watercolor Amber",
+        "canonical": "#e8a838",
+        "dark": "#f0bc5e",
+        "tonalRamp": ["#5c3d10", "#8a5a00", "#a87716", "#d9a441", "#e8a838", "#f0bc5e", "#f6d68f", "#fde8a0"]
+      },
+      "wc-sky": {
+        "role": "tertiary",
+        "displayName": "Watercolor Sky",
+        "canonical": "#7bafde",
+        "dark": "#9dc4e8",
+        "tonalRamp": ["#1f3f61", "#2d5888", "#3a6a9e", "#4a7fb5", "#5a8db8", "#7bafde", "#9dc4e8", "#eef5fb"]
+      },
+      "wc-lavender": {
+        "role": "tertiary",
+        "displayName": "Watercolor Lavender",
+        "canonical": "#b892cc",
+        "dark": "#cbaade",
+        "tonalRamp": ["#4a3660", "#6b4f87", "#8c6ba8", "#a57fbd", "#b892cc", "#cbaade", "#ddc6ea", "#f2eaf7"]
+      },
+      "wc-sage": {
+        "role": "tertiary",
+        "displayName": "Watercolor Sage",
+        "canonical": "#8db580",
+        "dark": "#a3c898",
+        "tonalRamp": ["#2f4f39", "#447353", "#4e8a63", "#6da67e", "#8db580", "#a3c898", "#c0d0bf", "#e9eae1"]
+      }
+    },
+    "typographyMeta": {
+      "brand": {
+        "displayName": "Brand wordmark",
+        "purpose": "The LingoTracker wordmark in the app header only. Never used for headings or UI."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page titles such as Collections."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Dialog titles, shared by the translation editor and collection form."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Collection card names."
+      },
+      "group-title": {
+        "displayName": "Group title",
+        "purpose": "The h3 opening a labelled form group; always followed by a caption hint."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Field values and standard paragraphs."
+      },
+      "body-small": {
+        "displayName": "Body small",
+        "purpose": "Dialog subtitles."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels above inputs, disclosure titles, button text."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Group hints, field hints, errors, count summaries, switch descriptions."
+      },
+      "tag": {
+        "displayName": "Chip tag",
+        "purpose": "The uppercase BASE tag inside a locale chip; the only uppercase text in the system."
+      },
+      "mono-code": {
+        "displayName": "Mono code",
+        "purpose": "Locale codes in chips and mono input values."
+      },
+      "mono-path": {
+        "displayName": "Mono path",
+        "purpose": "Folder paths on cards, two lines reserved."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-sm",
+        "value": "0 1px 3px 0 rgb(44 36 28 / 0.06)",
+        "purpose": "Card at rest."
+      },
+      {
+        "name": "shadow-md",
+        "value": "0 4px 8px -1px rgb(44 36 28 / 0.08), 0 2px 4px -2px rgb(44 36 28 / 0.06)",
+        "purpose": "Card hover with 2px lift."
+      },
+      {
+        "name": "shadow-lg",
+        "value": "0 10px 20px -3px rgb(44 36 28 / 0.1), 0 4px 8px -4px rgb(44 36 28 / 0.08)",
+        "purpose": "Dialog panels."
+      },
+      {
+        "name": "shadow-xl",
+        "value": "0 20px 30px -5px rgb(44 36 28 / 0.12), 0 8px 12px -6px rgb(44 36 28 / 0.08)",
+        "purpose": "Defined in tokens; unused in shipped surfaces."
+      },
+      {
+        "name": "focus-glow",
+        "value": "0 0 0 3px color-mix(in srgb, var(--color-secondary) 22%, transparent)",
+        "purpose": "Focused text input and chip editor, with border-color: var(--color-secondary)."
+      },
+      {
+        "name": "error-glow",
+        "value": "0 0 0 3px color-mix(in srgb, var(--color-error) 18%, transparent)",
+        "purpose": "Invalid text input and chip editor."
+      },
+      {
+        "name": "accent-glow",
+        "value": "0 6px 16px -4px color-mix(in srgb, var(--color-primary) 45%, transparent)",
+        "purpose": "Hover on the page-level primary Add button."
+      }
+    ],
+    "motion": [
+      {
+        "name": "transition-fast",
+        "value": "150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Colour, border, and shadow state changes on controls."
+      },
+      {
+        "name": "transition-normal",
+        "value": "200ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Row ground changes, chevron rotation, disclosure reveal, card hover lift."
+      },
+      {
+        "name": "transition-slow",
+        "value": "300ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Determinate progress-bar width on a running bundle result strip."
+      },
+      {
+        "name": "card-enter",
+        "value": "0.45s cubic-bezier(0.16, 1, 0.3, 1), 50ms stagger per card",
+        "purpose": "Collection cards entering the grid; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "disclosure-reveal",
+        "value": "opacity 0->1, translateY(-4px)->0 over transition-normal",
+        "purpose": "Disclosure panel opening; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "spin",
+        "value": "0.9s linear infinite",
+        "purpose": "Busy-button spinner ring; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "details-reveal",
+        "value": "opacity 0->1, translateY(-4px)->0 over transition-normal",
+        "purpose": "Result-strip Details panel opening; disabled under prefers-reduced-motion."
+      },
+      {
+        "name": "ring-pulse",
+        "value": "3s ease-in-out infinite, 0.5s stagger per ring",
+        "purpose": "Watercolor rings behind the empty Collections state; disabled under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      },
+      {
+        "name": "xxl",
+        "value": "1536px"
+      },
+      {
+        "name": "bundle-rail-stack",
+        "value": "799px"
+      },
+      {
+        "name": "split-stack",
+        "value": "1100px"
+      },
+      {
+        "name": "bundle-preview-collapse",
+        "value": "1199px"
+      }
+    ],
+    "darkTheme": {
+      "selector": "[data-theme='dark'], or :root without data-theme under prefers-color-scheme: dark",
+      "note": "The neutral scale inverts (neutral-50 becomes #1c1814). Coral primary brightens to #e8847c and primary-text aliases it. Sky brightens to #7bafde. Backgrounds: #141210 page, #1c1814 subtle, #2e2923 muted. Dialog panel lifts to background-subtle while the field well stays on the page tone."
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Hand-rolled filled coral button; reserved for the one action on a page that has nothing else on it (the empty state, the error retry). Label is 700 and the glow is tightened to 0 4px 12px -5px at 34% coral — at 600 under a wide 45% halo the type dissolved into its own button. Replaces mat-flat-button, whose Material palette does not resolve to --color-primary.",
+      "html": "<button class=\"ds-btn-primary\">Create Bundle</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 700; letter-spacing: 0.01em; height: 40px; padding: 0 1.25rem; border: 1px solid var(--color-primary, #d4726a); border-radius: var(--border-radius-lg, 0.5rem); background: var(--color-primary, #d4726a); color: var(--color-text-on-primary, #2e2923); box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--color-primary, #d4726a) 34%, transparent); cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), border-color 150ms cubic-bezier(0.4,0,0.2,1), transform 200ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background: var(--color-primary-hover, #c25d55); border-color: var(--color-primary-hover, #c25d55); transform: translateY(-1px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.55; box-shadow: none; transform: none; cursor: default; }"
+    },
+    {
+      "name": "Text Button",
+      "kind": "button",
+      "refersTo": "button-text",
+      "description": "Material text button for Cancel and secondary actions; secondary ink that darkens on hover.",
+      "html": "<button class=\"ds-btn-text\">Cancel</button>",
+      "css": ".ds-btn-text { font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 500; line-height: 1; height: 36px; padding: 0 0.75rem; border: 0; border-radius: var(--border-radius-sm, 0.25rem); background: transparent; color: var(--color-text-secondary, #5a534a); cursor: pointer; transition: color 150ms cubic-bezier(0.4,0,0.2,1), background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-text:hover { color: var(--color-text-primary, #2e2923); background: color-mix(in srgb, var(--color-text-primary, #2e2923) 6%, transparent); } .ds-btn-text:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; }"
+    },
+    {
+      "name": "Labelled Text Input",
+      "kind": "input",
+      "refersTo": "text-input",
+      "description": "Label above a 40px well on the dialog ground; sky border and 22% glow on focus. Mono variant for paths.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\" for=\"ds-folder\">Translations folder</label><div class=\"ds-text-input ds-text-input--mono\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z\"/></svg><input id=\"ds-folder\" type=\"text\" value=\"apps/tracker/src/i18n\" /></div><p class=\"ds-field-hint\">Relative to the project root, next to <code>.lingo-tracker.json</code>.</p></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 0.25rem; font-family: 'Nunito', sans-serif; } .ds-field-label { font-size: 0.875rem; font-weight: 600; line-height: 1.5; color: var(--color-text-primary, #2e2923); } .ds-text-input { display: flex; align-items: center; gap: 0.5rem; height: 40px; padding: 0 0.75rem; border: 1px solid var(--color-border-strong, #d4cdc3); border-radius: var(--border-radius-md, 0.375rem); background: var(--color-background, #faf8f5); color: var(--color-text-primary, #2e2923); transition: border-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); } .ds-text-input svg { flex: none; color: var(--color-text-tertiary, #a89f93); } .ds-text-input input { flex: 1; min-width: 0; height: 100%; border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-size: 1rem; outline: none; } .ds-text-input input::placeholder { color: var(--color-text-placeholder, #736b61); } .ds-text-input:focus-within { border-color: var(--color-secondary, #4a7fb5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #4a7fb5) 22%, transparent); } .ds-text-input--mono input { font-family: 'IBM Plex Mono', monospace; font-size: 0.875rem; } .ds-text-input--invalid, .ds-text-input--invalid:focus-within { border-color: var(--color-error, #c95e5e); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error, #c95e5e) 18%, transparent); } .ds-field-hint { margin: 0; font-size: 0.75rem; line-height: 1.5; color: var(--color-text-secondary, #5a534a); } .ds-field-hint code { font-family: 'IBM Plex Mono', monospace; font-size: 0.95em; color: var(--color-text-primary, #2e2923); }"
+    },
+    {
+      "name": "Locale Chip Editor",
+      "kind": "chip",
+      "refersTo": "chip-editor",
+      "description": "Wrapping well holding locale pills (mono code, sky-tinted BASE chip) and an inline add input; same stroke and focus glow as a text input.",
+      "html": "<div class=\"ds-chip-editor\"><ul class=\"ds-chip-list\"><li class=\"ds-locale-chip ds-locale-chip--base\"><button class=\"ds-locale-chip-body\" aria-pressed=\"true\"><span class=\"ds-locale-chip-code\">en</span><span class=\"ds-locale-chip-tag\">Base</span></button></li><li class=\"ds-locale-chip\"><button class=\"ds-locale-chip-body\" aria-pressed=\"false\"><span class=\"ds-locale-chip-code\">fr-ca</span></button><button class=\"ds-locale-chip-remove\" aria-label=\"Remove fr-ca\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z\"/></svg></button></li></ul><div class=\"ds-chip-add\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z\"/></svg><input class=\"ds-chip-add-input\" type=\"text\" placeholder=\"Add locale, e.g. de or pt-br\" aria-label=\"Add locale\" /></div></div>",
+      "css": ".ds-chip-editor { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.5rem; border: 1px solid var(--color-border-strong, #d4cdc3); border-radius: var(--border-radius-md, 0.375rem); background: var(--color-background, #faf8f5); font-family: 'Nunito', sans-serif; transition: border-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); } .ds-chip-editor:focus-within { border-color: var(--color-secondary, #4a7fb5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #4a7fb5) 22%, transparent); } .ds-chip-editor--empty { border-style: dashed; } .ds-chip-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; } .ds-locale-chip { display: inline-flex; align-items: center; border-radius: 9999px; background: var(--color-background-muted, #ede8e0); border: 1px solid transparent; color: var(--color-text-secondary, #5a534a); transition: background 150ms, border-color 150ms, color 150ms; } .ds-locale-chip--base { background: color-mix(in srgb, var(--color-secondary, #4a7fb5) 16%, transparent); border-color: color-mix(in srgb, var(--color-secondary, #4a7fb5) 35%, transparent); color: color-mix(in srgb, var(--color-secondary, #4a7fb5) 45%, var(--color-text-primary, #2e2923)); } .ds-locale-chip-body { display: inline-flex; align-items: center; gap: 0.25rem; padding: 3px 0.5rem 3px 0.75rem; border: 0; border-radius: inherit; background: transparent; color: inherit; font: inherit; line-height: 1.5; cursor: pointer; } .ds-locale-chip-body:hover { color: var(--color-text-primary, #2e2923); } .ds-locale-chip:not(.ds-locale-chip--base) .ds-locale-chip-body:hover { background: color-mix(in srgb, var(--color-secondary, #4a7fb5) 10%, transparent); } .ds-locale-chip-body:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 1px; } .ds-locale-chip-code { font-family: 'IBM Plex Mono', monospace; font-size: 0.875rem; font-weight: 600; } .ds-locale-chip-tag { font-size: 0.625rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.9; } .ds-locale-chip-remove { display: grid; place-items: center; width: 24px; height: 24px; margin: 0 3px 0 -4px; padding: 0; border: 0; border-radius: 9999px; background: transparent; color: var(--color-text-tertiary, #a89f93); cursor: pointer; transition: color 150ms, background 150ms; } .ds-locale-chip-remove:hover { color: var(--color-error, #c95e5e); background: color-mix(in srgb, var(--color-error, #c95e5e) 12%, transparent); } .ds-locale-chip-remove:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 1px; } .ds-chip-add { display: flex; align-items: center; gap: 0.25rem; flex: 1 1 180px; min-width: 180px; min-height: 30px; padding: 0 0.25rem; color: var(--color-text-tertiary, #a89f93); } .ds-chip-add-input { flex: 1; min-width: 120px; height: 30px; border: 0; padding: 0 0.25rem; background: transparent; color: var(--color-text-primary, #2e2923); font: inherit; font-size: 0.875rem; outline: none; } .ds-chip-add-input::placeholder { color: var(--color-text-placeholder, #736b61); }"
+    },
+    {
+      "name": "Text Chip",
+      "kind": "chip",
+      "refersTo": "chip-text",
+      "description": "The same pill in its word voice: Nunito on the subtle tone with a hairline, for tags and protected terms.",
+      "html": "<span class=\"ds-text-chip\"><span class=\"ds-text-chip-body\">tracker</span><button class=\"ds-text-chip-remove\" aria-label=\"Remove tracker\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z\"/></svg></button></span>",
+      "css": ".ds-text-chip { display: inline-flex; align-items: center; border-radius: 9999px; background: var(--color-background-subtle, #f5f1eb); border: 1px solid var(--color-border, #e5dfd7); color: var(--color-text-primary, #2e2923); font-family: 'Nunito', sans-serif; } .ds-text-chip-body { padding: 3px 0.5rem 3px 0.75rem; font-size: 0.875rem; font-weight: 500; line-height: 1.5; } .ds-text-chip-remove { display: grid; place-items: center; width: 24px; height: 24px; margin: 0 3px 0 -4px; padding: 0; border: 0; border-radius: 9999px; background: transparent; color: var(--color-text-tertiary, #a89f93); cursor: pointer; transition: color 150ms, background 150ms; } .ds-text-chip-remove:hover { color: var(--color-error, #c95e5e); background: color-mix(in srgb, var(--color-error, #c95e5e) 12%, transparent); } .ds-text-chip-remove:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 1px; }"
+    },
+    {
+      "name": "Read-only Switch Row",
+      "kind": "custom",
+      "refersTo": "switch-row",
+      "description": "Subtle panel with an amber lock tile, bold label over a caption, and a toggle; the ground warms when on.",
+      "html": "<label class=\"ds-switch-row ds-switch-row--on\"><span class=\"ds-switch-tile\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"17\" height=\"17\"><path fill=\"currentColor\" d=\"M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zM9 8V6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9z\"/></svg></span><span class=\"ds-switch-text\"><span class=\"ds-switch-label\">Read-only collection</span><span class=\"ds-switch-description\">Read-only collections cannot have their resources modified.</span></span><input class=\"ds-switch-control\" type=\"checkbox\" checked /></label>",
+      "css": ".ds-switch-row { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-lg, 0.5rem); background: var(--color-background-subtle, #f5f1eb); font-family: 'Nunito', sans-serif; cursor: pointer; transition: border-color 200ms cubic-bezier(0.4,0,0.2,1), background 200ms cubic-bezier(0.4,0,0.2,1); } .ds-switch-row--on { border-color: color-mix(in srgb, var(--color-warning, #d9a441) 35%, var(--color-border, #e5dfd7)); background: color-mix(in srgb, var(--color-warning, #d9a441) 6%, var(--color-background-subtle, #f5f1eb)); } .ds-switch-tile { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: var(--border-radius-md, 0.375rem); background: color-mix(in srgb, var(--color-warning, #d9a441) 14%, transparent); color: var(--color-warning-text, #8a5a00); } .ds-switch-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; } .ds-switch-label { font-size: 0.875rem; font-weight: 700; line-height: 1.375; color: var(--color-text-primary, #2e2923); } .ds-switch-description { font-size: 0.75rem; line-height: 1.375; color: var(--color-text-secondary, #5a534a); } .ds-switch-control { flex: none; margin-top: 2px; width: 36px; height: 20px; accent-color: var(--color-primary, #d4726a); } .ds-switch-control:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; }"
+    },
+    {
+      "name": "Disclosure Row",
+      "kind": "custom",
+      "refersTo": "disclosure",
+      "description": "Hairline container with a full-width toggle: leading glyph, title, right-aligned count summary, rotating chevron.",
+      "html": "<div class=\"ds-disclosure\"><button class=\"ds-disclosure-toggle\" aria-expanded=\"false\"><svg class=\"ds-disclosure-icon\" viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58.55 0 1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z\"/></svg><span class=\"ds-disclosure-title\">Tags &amp; protected terms</span><span class=\"ds-disclosure-summary\">2 tags · 0 terms</span><svg class=\"ds-disclosure-chevron\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z\"/></svg></button></div>",
+      "css": ".ds-disclosure { border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-lg, 0.5rem); overflow: hidden; font-family: 'Nunito', sans-serif; } .ds-disclosure-toggle { display: flex; align-items: center; gap: 0.5rem; width: 100%; padding: 0.5rem 0.75rem 0.5rem 1rem; border: 0; background: transparent; color: var(--color-text-primary, #2e2923); font: inherit; text-align: left; cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-disclosure-toggle:hover { background: var(--color-background-subtle, #f5f1eb); } .ds-disclosure-toggle:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: -2px; } .ds-disclosure-icon { flex: none; color: var(--color-text-tertiary, #a89f93); } .ds-disclosure-title { font-size: 0.875rem; font-weight: 600; line-height: 1.5; } .ds-disclosure-summary { margin-left: auto; font-size: 0.75rem; color: var(--color-text-secondary, #5a534a); white-space: nowrap; } .ds-disclosure-chevron { flex: none; color: var(--color-text-tertiary, #a89f93); transition: transform 200ms cubic-bezier(0.4,0,0.2,1); } .ds-disclosure--open .ds-disclosure-chevron { transform: rotate(180deg); }"
+    },
+    {
+      "name": "Dialog Header",
+      "kind": "custom",
+      "refersTo": "dialog-header-tile",
+      "description": "The shared dialog anatomy: 3px coral top rule, 38px coral tile, headline title, one-line subtitle with inline code, close button, hairline below.",
+      "html": "<div class=\"ds-dialog\"><header class=\"ds-dialog-header\"><div class=\"ds-dialog-header-tile\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\"><path fill=\"currentColor\" d=\"M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z\"/></svg></div><div class=\"ds-dialog-header-text\"><h2 class=\"ds-dialog-title\">Edit Collection</h2><p class=\"ds-dialog-subtitle\">Changes are saved to <code>.lingo-tracker.json</code> in your working tree.</p></div><button class=\"ds-dialog-close\" aria-label=\"Close\"><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z\"/></svg></button></header><footer class=\"ds-dialog-footer\"><button class=\"ds-dialog-footer-cancel\">Cancel</button><button class=\"ds-dialog-footer-primary\">Save</button></footer></div>",
+      "css": ".ds-dialog { width: 100%; max-width: 540px; border-top: 3px solid var(--color-primary, #d4726a); border-radius: var(--border-radius-lg, 0.5rem); background: var(--color-background, #faf8f5); box-shadow: 0 10px 20px -3px rgb(44 36 28 / 0.1), 0 4px 8px -4px rgb(44 36 28 / 0.08); font-family: 'Nunito', sans-serif; overflow: hidden; } .ds-dialog-header { position: relative; display: flex; align-items: flex-start; gap: 0.75rem; padding: 1.25rem 1.5rem 1rem; border-bottom: 1px solid var(--color-border, #e5dfd7); } .ds-dialog-header-tile { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: var(--border-radius-lg, 0.5rem); background: color-mix(in srgb, var(--color-primary, #d4726a) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-primary, #d4726a) 25%, transparent); color: var(--color-primary, #d4726a); } .ds-dialog-header-text { flex: 1; min-width: 0; padding-right: 2rem; } .ds-dialog-title { margin: 0 0 0.25rem; font-size: 1.5rem; font-weight: 600; line-height: 1.25; letter-spacing: -0.01em; color: var(--color-text-primary, #2e2923); } .ds-dialog-subtitle { margin: 0; font-size: 0.875rem; line-height: 1.375; color: var(--color-text-secondary, #5a534a); } .ds-dialog-subtitle code { font-family: 'IBM Plex Mono', monospace; font-size: 0.95em; color: var(--color-text-primary, #2e2923); } .ds-dialog-close { position: absolute; top: 0.75rem; right: 0.75rem; display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 9999px; background: transparent; color: var(--color-text-secondary, #5a534a); cursor: pointer; transition: color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-dialog-close:hover { color: var(--color-text-primary, #2e2923); } .ds-dialog-close:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-dialog-footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 1rem 1.5rem 1.25rem; border-top: 1px solid var(--color-border, #e5dfd7); } .ds-dialog-footer-cancel { height: 36px; padding: 0 0.75rem; border: 0; border-radius: 0.25rem; background: transparent; color: var(--color-text-secondary, #5a534a); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; } .ds-dialog-footer-cancel:hover { color: var(--color-text-primary, #2e2923); } .ds-dialog-footer-primary { height: 36px; padding: 0 1rem; border: 0; border-radius: 0.25rem; background: var(--color-primary, #d4726a); color: var(--color-text-on-primary, #2e2923); font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; } .ds-dialog-footer-primary:hover { background: var(--color-primary-hover, #c25d55); }"
+    },
+    {
+      "name": "Collection Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "12px-radius parchment card with coral icon tile, bold name, two-line mono path, hairline footer of locale pills; lifts 2px on hover.",
+      "html": "<article class=\"ds-card\"><div class=\"ds-card-header\"><span class=\"ds-card-icon\" aria-hidden=\"true\"><svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\"><path fill=\"currentColor\" d=\"M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z\"/></svg></span><div class=\"ds-card-heading\"><h3 class=\"ds-card-name\">trackerResources</h3><p class=\"ds-card-path\">apps/tracker/src/i18n</p></div></div><footer class=\"ds-card-footer\"><ul class=\"ds-card-chips\"><li class=\"ds-card-chip ds-card-chip--base\">en <span class=\"ds-card-chip-tag\">Base</span></li><li class=\"ds-card-chip\">es</li><li class=\"ds-card-chip\">fr-ca</li><li class=\"ds-card-chip ds-card-chip--more\">+3</li></ul></footer></article>",
+      "css": ".ds-card { display: flex; flex-direction: column; width: 300px; padding: 1.25rem; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-xl, 0.75rem); background: var(--color-background, #faf8f5); box-shadow: 0 1px 3px 0 rgb(44 36 28 / 0.06); font-family: 'Nunito', sans-serif; cursor: pointer; transition: transform 200ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms cubic-bezier(0.4,0,0.2,1), background 200ms cubic-bezier(0.4,0,0.2,1); } .ds-card:hover { background: color-mix(in srgb, var(--color-primary, #d4726a) 3%, var(--color-background, #faf8f5)); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 40%, var(--color-border, #e5dfd7)); box-shadow: 0 4px 8px -1px rgb(44 36 28 / 0.08), 0 2px 4px -2px rgb(44 36 28 / 0.06); transform: translateY(-2px); } .ds-card:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 3px; } .ds-card-header { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem; align-items: start; } .ds-card-icon { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: var(--border-radius-lg, 0.5rem); background: color-mix(in srgb, var(--color-primary, #d4726a) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-primary, #d4726a) 25%, transparent); color: var(--color-primary, #d4726a); } .ds-card-name { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; color: var(--color-text-primary, #2e2923); overflow-wrap: anywhere; } .ds-card-path { margin: 0.25rem 0 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; line-height: 1.45; min-height: calc(2 * 1.45 * 0.75rem); color: var(--color-text-secondary, #5a534a); overflow-wrap: anywhere; } .ds-card-footer { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border-subtle, #f0ebe4); } .ds-card-chips { display: flex; gap: 0.25rem; margin: 0; padding: 0; list-style: none; } .ds-card-chip { display: inline-flex; align-items: baseline; gap: 0.25rem; padding: 1px 0.5rem; border-radius: 9999px; border: 1px solid transparent; background: var(--color-background-muted, #ede8e0); color: var(--color-text-secondary, #5a534a); font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; font-weight: 600; line-height: 1.5; } .ds-card-chip--base { background: color-mix(in srgb, var(--color-secondary, #4a7fb5) 16%, transparent); border-color: color-mix(in srgb, var(--color-secondary, #4a7fb5) 35%, transparent); color: color-mix(in srgb, var(--color-secondary, #4a7fb5) 45%, var(--color-text-primary, #2e2923)); } .ds-card-chip--more { background: none; border-color: var(--color-border-strong, #d4cdc3); border-style: dashed; } .ds-card-chip-tag { font-family: 'Nunito', sans-serif; font-size: 0.625rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Hairline button on the card surface; the card-level and repeat action (Generate, Retry). Shown here in the --sm step.",
+      "html": "<button class=\"ds-btn-outline ds-btn-outline--sm\">Generate</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 600; letter-spacing: 0.01em; height: 40px; padding: 0 1.25rem; border: 1px solid var(--color-border-strong, #d4cdc3); border-radius: var(--border-radius-lg, 0.5rem); background: var(--color-background, #faf8f5); color: var(--color-text-primary, #2e2923); cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), border-color 150ms cubic-bezier(0.4,0,0.2,1), color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-outline--sm { height: 34px; padding: 0 0.75rem; font-size: 0.75rem; border-radius: var(--border-radius-md, 0.375rem); } .ds-btn-outline:hover { background: var(--color-background-subtle, #f5f1eb); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, var(--color-border-strong, #d4cdc3)); } .ds-btn-outline:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Third rung of the button ladder, for actions a visitor takes rarely (Add collection, Add bundle). No ground at rest, a plain border hairline, secondary ink and a coral leading glyph, so the repeated Generate buttons outrank it without either of them shouting. Frequency sets prominence, not a control's place in the hierarchy of nouns.",
+      "html": "<button class=\"ds-btn-quiet\"><span class=\"ds-btn-quiet__glyph\">+</span>Add bundle</button>",
+      "css": ".ds-btn-quiet { display: inline-flex; align-items: center; gap: 0.25rem; font-family: 'Nunito', sans-serif; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.01em; height: 34px; padding: 0 0.75rem; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-md, 0.375rem); background: transparent; color: var(--color-text-secondary, #5a534a); cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), border-color 150ms cubic-bezier(0.4,0,0.2,1), color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-quiet__glyph { color: var(--color-primary, #d4726a); font-size: 16px; line-height: 1; } .ds-btn-quiet:hover { background: var(--color-background-subtle, #f5f1eb); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, var(--color-border-strong, #d4cdc3)); color: var(--color-text-primary, #2e2923); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-btn-quiet:disabled { opacity: 0.55; cursor: default; }"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "custom",
+      "refersTo": "segmented-control",
+      "description": "Hand-rolled exclusive choice of 2-4 options inside a dialog; the approved alternative to Material button toggles. Selected pill fills parchment-muted; the well takes the sky focus glow.",
+      "html": "<div class=\"ds-segmented\"><button class=\"ds-segment ds-segment--on\" aria-pressed=\"true\">Nested</button><button class=\"ds-segment\" aria-pressed=\"false\">Flat</button></div>",
+      "css": ".ds-segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--color-border-strong, #d4cdc3); border-radius: var(--border-radius-md, 0.375rem); background: var(--color-background, #faf8f5); transition: border-color 150ms cubic-bezier(0.4,0,0.2,1), box-shadow 150ms cubic-bezier(0.4,0,0.2,1); } .ds-segmented:focus-within { border-color: var(--color-secondary, #4a7fb5); box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary, #4a7fb5) 22%, transparent); } .ds-segment { display: inline-flex; align-items: center; gap: 0.25rem; padding: 5px 0.75rem; border: 0; border-radius: var(--border-radius-sm, 0.25rem); background: transparent; color: var(--color-text-secondary, #5a534a); font-family: 'Nunito', sans-serif; font-size: 0.875rem; font-weight: 500; line-height: 1.4; white-space: nowrap; cursor: pointer; transition: background 150ms cubic-bezier(0.4,0,0.2,1), color 150ms cubic-bezier(0.4,0,0.2,1); } .ds-segment:hover { color: var(--color-text-primary, #2e2923); } .ds-segment:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: -2px; } .ds-segment--on { background: var(--color-background-muted, #ede8e0); color: var(--color-text-primary, #2e2923); font-weight: 600; }"
+    },
+    {
+      "name": "Bundle Card",
+      "kind": "card",
+      "refersTo": "card-compact",
+      "description": "Compact card in the home page's bundles column: coral tile, mono output pattern with {locale} promoted to ink, labelled meta rows, and a success result strip above the footer.",
+      "html": "<article class=\"ds-bundle-card\"><div class=\"ds-bc-head\"><span class=\"ds-bc-tile\"><svg viewBox=\"0 0 24 24\" width=\"19\" height=\"19\" fill=\"currentColor\"><path d=\"M20 8h-3V4H3v13h2a3 3 0 0 0 6 0h4a3 3 0 0 0 6 0h2v-5l-3-4ZM8 18.5A1.5 1.5 0 1 1 9.5 17 1.5 1.5 0 0 1 8 18.5Zm10 0A1.5 1.5 0 1 1 19.5 17 1.5 1.5 0 0 1 18 18.5ZM17 12V9.5h2.5l1.96 2.5Z\"/></svg></span><div class=\"ds-bc-heading\"><h3 class=\"ds-bc-name\">App Shell</h3><p class=\"ds-bc-path\">./src/assets/i18n/<span class=\"ds-bc-var\">{locale}</span>.json</p></div></div><div class=\"ds-bc-meta\"><div class=\"ds-bc-row\"><span class=\"ds-bc-label\">Collections</span><ul class=\"ds-bc-chips\"><li class=\"ds-bc-chip\">common</li><li class=\"ds-bc-chip ds-bc-chip--linked\">apps</li></ul></div><div class=\"ds-bc-row\"><span class=\"ds-bc-label\">Types</span><span class=\"ds-bc-mono\">src/app/i18n-tokens.ts</span></div></div><div class=\"ds-bc-result\"><span class=\"ds-bc-result-text\"><b>Generated</b><span class=\"ds-bc-sep\">·</span>4 files<span class=\"ds-bc-sep\">·</span>312 keys per locale<span class=\"ds-bc-sep\">·</span>no warnings</span><button class=\"ds-bc-details\">Details</button></div><div class=\"ds-bc-footer\"><span class=\"ds-bc-count\">4 locales</span><button class=\"ds-btn-outline ds-btn-outline--sm\">Generate</button></div></article>",
+      "css": ".ds-bundle-card { display: flex; flex-direction: column; padding: 1rem; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-xl, 0.75rem); background: var(--color-background, #faf8f5); box-shadow: var(--shadow-sm, 0 1px 3px 0 rgb(44 36 28 / 0.06)); font-family: 'Nunito', sans-serif; color: var(--color-text-primary, #2e2923); transition: transform 200ms cubic-bezier(0.4,0,0.2,1), box-shadow 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms cubic-bezier(0.4,0,0.2,1), background 200ms cubic-bezier(0.4,0,0.2,1); } .ds-bundle-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md, 0 4px 8px -1px rgb(44 36 28 / 0.08), 0 2px 4px -2px rgb(44 36 28 / 0.06)); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 40%, var(--color-border, #e5dfd7)); background: color-mix(in srgb, var(--color-primary, #d4726a) 3%, var(--color-background, #faf8f5)); } .ds-bundle-card:hover .ds-bc-tile { background: color-mix(in srgb, var(--color-primary, #d4726a) 20%, transparent); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, transparent); } .ds-bc-head { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 0.75rem; align-items: start; } .ds-bc-tile { display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--border-radius-lg, 0.5rem); background: color-mix(in srgb, var(--color-primary, #d4726a) 12%, transparent); border: 1px solid color-mix(in srgb, var(--color-primary, #d4726a) 25%, transparent); color: var(--color-primary, #d4726a); transition: background 200ms cubic-bezier(0.4,0,0.2,1), border-color 200ms cubic-bezier(0.4,0,0.2,1); } .ds-bc-name { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; } .ds-bc-path { margin: 0.25rem 0 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; line-height: 1.45; color: var(--color-text-secondary, #5a534a); overflow-wrap: anywhere; } .ds-bc-var { color: var(--color-text-primary, #2e2923); font-weight: 600; } .ds-bc-meta { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; } .ds-bc-row { display: flex; align-items: center; gap: 0.5rem; min-width: 0; } .ds-bc-label { flex: none; width: 66px; font-size: 0.75rem; color: var(--color-text-secondary, #5a534a); } .ds-bc-mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; overflow-wrap: anywhere; } .ds-bc-chips { display: flex; flex-wrap: wrap; gap: 0.5rem 0.25rem; margin: 0; padding: 0; list-style: none; } .ds-bc-chip { display: inline-flex; align-items: center; padding: 1px 0.5rem 1px 6px; border: 1px solid var(--color-border, #e5dfd7); border-radius: var(--border-radius-full, 9999px); background: var(--color-background-subtle, #f5f1eb); font-size: 0.75rem; font-weight: 500; line-height: 1.5; white-space: nowrap; } .ds-bc-chip--linked { background: color-mix(in srgb, var(--color-primary, #d4726a) 8%, transparent); border-color: color-mix(in srgb, var(--color-primary, #d4726a) 45%, var(--color-border, #e5dfd7)); color: var(--color-primary-text, #a1443d); } .ds-bc-result { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 0.5rem 0.75rem; border: 1px solid color-mix(in srgb, var(--color-success, #6da67e) 30%, transparent); border-radius: var(--border-radius-md, 0.375rem); background: color-mix(in srgb, var(--color-success, #6da67e) 10%, transparent); color: color-mix(in srgb, var(--color-success, #6da67e) 55%, var(--color-text-primary, #2e2923)); font-size: 0.75rem; line-height: 1.45; } .ds-bc-result-text { flex: 1; min-width: 0; } .ds-bc-result b { font-weight: 700; } .ds-bc-sep { margin: 0 5px; opacity: 0.6; } .ds-bc-details { border: 0; padding: 0 2px; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; } .ds-bc-details:focus-visible { outline: 2px solid var(--focus-ring-color, #4a7fb5); outline-offset: 2px; } .ds-bc-footer { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--color-border-subtle, #f0ebe4); } .ds-bc-count { font-size: 0.75rem; color: var(--color-text-secondary, #5a534a); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Watercolor Ledger",
+    "overview": "LingoTracker is a workbench for translation files that live in a developer's own repository, and its surfaces look like warm paper with careful ink on it. The page is parchment with a faint fractal-noise grain fixed over everything; panels and cards sit one tonal step off the page rather than floating on heavy shadows. Two pigments carry all the meaning: a coral/vermillion primary for the brand mark, the primary action, and the single top rule on every dialog, and a deep sky blue that is reserved for the keyboard focus ring, the input focus glow, and the \"base locale\" tint. Everything else is a warm neutral.\n\nDensity is operational, not editorial. Labels sit above their fields, groups are introduced by a short bold heading and a one-line hint, hints are 12px secondary ink, and anything that is a code or a path (locale codes, folder paths, file names) is set in IBM Plex Mono so it reads as data. The world is built over Angular Material (M2 theme, density -1), but the visible surfaces override Material chrome: dialogs drop their container padding, inputs are hand-drawn wells rather than Material outline fields, chips are the project's own pills.\n\nConfirmed rejections from the shipped code: no hard offset shadows, no decorative gradients except the four-pigment header rule, no all-caps section headings, no Material outline fields inside the dialog family.",
+    "keyCharacteristics": [
+      "Parchment ground with a fixed paper-grain overlay in both themes.",
+      "One accent (coral) for identity and the primary action; one accent (sky) for focus and \"base\".",
+      "3px coral top rule on every dialog panel; hairline (1px --color-border) separations everywhere else.",
+      "Labels above fields; group heading + one-line hint introduces each section.",
+      "Codes and paths in IBM Plex Mono at the surrounding size; prose in Nunito.",
+      "Soft, warm-tinted shadows used only for lifted panels and hover; tonal steps convey depth at rest.",
+      "Light and dark themes share one token set; the dark scale is the light neutral scale inverted."
+    ],
+    "rules": [
+      {
+        "name": "The Two-Pigment Rule",
+        "body": "Coral means identity and the primary action; sky means focus and \"base\". A surface that uses coral for focus, or sky for a button, is off-world.",
+        "section": "colors"
+      },
+      {
+        "name": "The Text-Weight Rule",
+        "body": "Fill tones (primary, warning, ink-tertiary) never set type. Copy uses primary-text, warning-text, or ink-secondary and clears 4.5:1 on its own surface.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status-Spine Rule",
+        "body": "A status colour comes from the status-* tokens and never from a local hex; new and stale are never conflated.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono-Is-Data Rule",
+        "body": "Anything the file system or the config would spell out verbatim (locale code, folder path, file name, key) is set in IBM Plex Mono. Inside prose it is an inline <code> at 0.95em in ink, with no background, so the line height does not jump.",
+        "section": "typography"
+      },
+      {
+        "name": "The Label-Above Rule",
+        "body": "Form labels sit above their controls as 14px semibold Nunito. No floating labels, no placeholder-as-label.",
+        "section": "typography"
+      },
+      {
+        "name": "The Tonal-First Rule",
+        "body": "A surface at rest shows its depth by tone and hairline, not shadow. Shadows answer to state (hover, lifted overlay, focus).",
+        "section": "elevation"
+      },
+      {
+        "name": "The Top-Rule Rule",
+        "body": "Every dialog panel carries exactly one 3px solid --color-primary top border and zero container padding; the rule is the dialog's only decoration.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Separator-Break Rule",
+        "body": "A long mono identifier the user has to read back (an output pattern, a generated token path, a file tree entry) is split in the component after each `.`, `_`, `-`, or `/` and rejoined in the template with `<wbr />`, so it wraps between segments under `overflow-wrap: break-word`. `overflow-wrap: anywhere` stays the fallback for strings a template only ever receives whole (card paths, warning prose).",
+        "section": "typography"
+      },
+      {
+        "name": "The Hover-Link Rule",
+        "body": "Hovering or focusing a bundle card states the relationship instead of describing it: the bundle takes the card hover treatment (lift, `md`, 40% coral border, hover ground, tile to 20%/45% coral), each collection it consumes takes the same treatment via `.linked`, that bundle's own collection chips flip to the coral voice (8% coral ground, 45% coral border, `primary-text`), and every unrelated collection drops to `opacity: 0.5`. The dim is opacity only; nothing moves, and nothing recolours to say \"off\".",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do open every dialog with the 3px coral top rule, zero container padding, lg shadow, and the header / hairline / body / hairline / footer column.",
+      "Do put labels above controls at 14px/600 and hints below at 12px ink-secondary.",
+      "Do set locale codes, paths, and file names in IBM Plex Mono; inline them in prose as <code> at 0.95em in ink with no background.",
+      "Do use sky blue for focus (2px outline, or border plus 22% glow on wells) and for the base-locale tint; use coral for the primary action and identity.",
+      "Do mark locked and read-only states with the amber lock tile (14% amber fill, warning-text ink) so they are unmistakable.",
+      "Do reuse the locale pill for any locale, the text chip for any word-like tag, and the chip editor for any editable list.",
+      "Do place surfaces one neutral step off their parent and separate them with 1px hairlines before reaching for a shadow.",
+      "Do honour prefers-reduced-motion by disabling reveal animations and hover lifts.",
+      "Do build page- and section-level actions from the hand-rolled `.btn` recipes (`--primary` filled coral, `--outline` hairline, `--sm` for card-level repeats); Material's palette does not resolve to `--color-primary`.",
+      "Do split long mono identifiers after `.`, `_`, `-`, and `/` and emit `<wbr />` between the parts when the component owns the string.",
+      "Do keep an affirmative footer glyph tied to real form validity: `success` when valid, `ink-tertiary` while not.",
+      "Do state a relationship with the existing hover treatment plus a 0.5 dim on the unrelated, rather than inventing a highlight colour."
+    ],
+    "donts": [
+      "Don't set type in primary, warning, or ink-tertiary; use the text-weight tokens.",
+      "Don't use Material outline form fields inside the dialog family; the label-above well is the field.",
+      "Don't use uppercase or letterspaced text outside the BASE tag inside a chip.",
+      "Don't use Grechen Fuemen anywhere but the wordmark.",
+      "Don't add hard offset shadows, gradients on controls, or a second accent rule on a dialog.",
+      "Don't hard-code a status hue; read the status-* tokens.",
+      "Don't use Material button toggles for an exclusive choice inside a dialog; the segmented control is the form.",
+      "Don't let an in-card result strip grow without a ceiling: clamp prose warnings and put the full text behind `title`, not on the page."
+    ]
+  }
+}

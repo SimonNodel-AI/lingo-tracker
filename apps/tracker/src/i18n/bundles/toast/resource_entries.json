@@ -1,0 +1,42 @@
+{
+  "created": {
+    "source": "Bundle created successfully",
+    "comment": "Success toast after creating a bundle",
+    "tags": ["bundles"],
+    "es": "Bundle created successfully",
+    "fr-ca": "Bundle created successfully",
+    "ru": "Bundle created successfully",
+    "ja": "Bundle created successfully",
+    "de": "Bundle created successfully"
+  },
+  "updated": {
+    "source": "Bundle updated successfully",
+    "comment": "Success toast after editing a bundle",
+    "tags": ["bundles"],
+    "es": "Bundle updated successfully",
+    "fr-ca": "Bundle updated successfully",
+    "ru": "Bundle updated successfully",
+    "ja": "Bundle updated successfully",
+    "de": "Bundle updated successfully"
+  },
+  "deleted": {
+    "source": "Bundle deleted successfully",
+    "comment": "Success toast after deleting a bundle",
+    "tags": ["bundles"],
+    "es": "Bundle deleted successfully",
+    "fr-ca": "Bundle deleted successfully",
+    "ru": "Bundle deleted successfully",
+    "ja": "Bundle deleted successfully",
+    "de": "Bundle deleted successfully"
+  },
+  "error": {
+    "source": "Bundle not found. Reload the page and try again.",
+    "comment": "Error toast when an edited bundle is missing from the configuration",
+    "tags": ["bundles"],
+    "es": "Bundle not found. Reload the page and try again.",
+    "fr-ca": "Bundle not found. Reload the page and try again.",
+    "ru": "Bundle not found. Reload the page and try again.",
+    "ja": "Bundle not found. Reload the page and try again.",
+    "de": "Bundle not found. Reload the page and try again."
+  }
+}

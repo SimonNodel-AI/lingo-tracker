@@ -1,0 +1,172 @@
+{
+  "ariaLabel": {
+    "source": "Bundle preview",
+    "comment": "Accessible label for the preview column",
+    "tags": ["bundles"],
+    "es": "Bundle preview",
+    "fr-ca": "Bundle preview",
+    "ru": "Bundle preview",
+    "ja": "Bundle preview",
+    "de": "Bundle preview"
+  },
+  "willWrite": {
+    "source": "Will write",
+    "comment": "Preview heading: files the bundle will write",
+    "tags": ["bundles"],
+    "es": "Will write",
+    "fr-ca": "Will write",
+    "ru": "Will write",
+    "ja": "Will write",
+    "de": "Will write"
+  },
+  "new": {
+    "source": "new",
+    "comment": "Pill next to a file that does not exist yet",
+    "tags": ["bundles"],
+    "es": "new",
+    "fr-ca": "new",
+    "ru": "new",
+    "ja": "new",
+    "de": "new"
+  },
+  "dryRun": {
+    "source": "Dry run",
+    "comment": "Preview heading: computed counts",
+    "tags": ["bundles"],
+    "es": "Dry run",
+    "fr-ca": "Dry run",
+    "ru": "Dry run",
+    "ja": "Dry run",
+    "de": "Dry run"
+  },
+  "keysPerLocale": {
+    "source": "Keys per locale",
+    "comment": "Preview row label: number of keys per locale",
+    "tags": ["bundles"],
+    "es": "Keys per locale",
+    "fr-ca": "Keys per locale",
+    "ru": "Keys per locale",
+    "ja": "Keys per locale",
+    "de": "Keys per locale"
+  },
+  "conflicts": {
+    "source": "Conflicts",
+    "comment": "Preview row label: number of conflicting keys",
+    "tags": ["bundles"],
+    "es": "Conflicts",
+    "fr-ca": "Conflicts",
+    "ru": "Conflicts",
+    "ja": "Conflicts",
+    "de": "Conflicts"
+  },
+  "locales": {
+    "source": "Locales",
+    "comment": "Preview row label: number of locales",
+    "tags": ["bundles"],
+    "es": "Locales",
+    "fr-ca": "Locales",
+    "ru": "Locales",
+    "ja": "Locales",
+    "de": "Locales"
+  },
+  "resolvedByOverride": {
+    "source": "resolved by override",
+    "comment": "Preview note next to the conflict count when a collection overrides",
+    "tags": ["bundles"],
+    "es": "resolved by override",
+    "fr-ca": "resolved by override",
+    "ru": "resolved by override",
+    "ja": "resolved by override",
+    "de": "resolved by override"
+  },
+  "caption": {
+    "source": "Recomputed as you edit, from the resources on disk.",
+    "comment": "Caption under the dry run list",
+    "tags": ["bundles"],
+    "es": "Recomputed as you edit, from the resources on disk.",
+    "fr-ca": "Recomputed as you edit, from the resources on disk.",
+    "ru": "Recomputed as you edit, from the resources on disk.",
+    "ja": "Recomputed as you edit, from the resources on disk.",
+    "de": "Recomputed as you edit, from the resources on disk."
+  },
+  "countsUnavailable": {
+    "source": "Counts unavailable",
+    "comment": "Preview line shown when the dry run request failed",
+    "tags": ["bundles"],
+    "es": "Counts unavailable",
+    "fr-ca": "Counts unavailable",
+    "ru": "Counts unavailable",
+    "ja": "Counts unavailable",
+    "de": "Counts unavailable"
+  },
+  "waiting": {
+    "source": "Fill in the name, output folder and file name pattern to preview the files.",
+    "comment": "Preview line shown before the form is complete enough for a dry run",
+    "tags": ["bundles"],
+    "es": "Fill in the name, output folder and file name pattern to preview the files.",
+    "fr-ca": "Fill in the name, output folder and file name pattern to preview the files.",
+    "ru": "Fill in the name, output folder and file name pattern to preview the files.",
+    "ja": "Fill in the name, output folder and file name pattern to preview the files.",
+    "de": "Fill in the name, output folder and file name pattern to preview the files."
+  },
+  "exampleKey": {
+    "source": "Example key",
+    "comment": "Preview heading: one key traced through the bundle",
+    "tags": ["bundles"],
+    "es": "Example key",
+    "fr-ca": "Example key",
+    "ru": "Example key",
+    "ja": "Example key",
+    "de": "Example key"
+  },
+  "exampleFromX": {
+    "source": "from {collection}",
+    "comment": "Note next to the example source key naming its collection",
+    "tags": ["bundles"],
+    "es": "from {collection}",
+    "fr-ca": "from {collection}",
+    "ru": "from {collection}",
+    "ja": "from {collection}",
+    "de": "from {collection}"
+  },
+  "exampleUnchanged": {
+    "source": "unchanged",
+    "comment": "Note next to the example bundled key when no prefix applies",
+    "tags": ["bundles"],
+    "es": "unchanged",
+    "fr-ca": "unchanged",
+    "ru": "unchanged",
+    "ja": "unchanged",
+    "de": "unchanged"
+  },
+  "exampleNoExample": {
+    "source": "No entries match yet.",
+    "comment": "Preview line when the dry run found no example key",
+    "tags": ["bundles"],
+    "es": "No entries match yet.",
+    "fr-ca": "No entries match yet.",
+    "ru": "No entries match yet.",
+    "ja": "No entries match yet.",
+    "de": "No entries match yet."
+  },
+  "disclosureTitle": {
+    "source": "Preview",
+    "comment": "Disclosure title for the preview shown under the pane on narrow screens",
+    "tags": ["bundles"],
+    "es": "Preview",
+    "fr-ca": "Preview",
+    "ru": "Preview",
+    "ja": "Preview",
+    "de": "Preview"
+  },
+  "hierarchicalConflictsX": {
+    "source": "Generation would fail — these keys have both a value and child keys: {keys}",
+    "comment": "Preview error line naming bundled keys that are both a leaf and a parent; keys is a comma-separated list",
+    "tags": ["bundles"],
+    "es": "Generation would fail — these keys have both a value and child keys: {keys}",
+    "fr-ca": "Generation would fail — these keys have both a value and child keys: {keys}",
+    "ru": "Generation would fail — these keys have both a value and child keys: {keys}",
+    "ja": "Generation would fail — these keys have both a value and child keys: {keys}",
+    "de": "Generation would fail — these keys have both a value and child keys: {keys}"
+  }
+}

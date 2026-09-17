@@ -1,11 +1,11 @@
-import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { of, throwError } from 'rxjs';
-import { BrowserStore } from './browser.store';
-import { BrowserApiService } from '../services/browser-api.service';
-import type { ResourceTreeDto, CacheStatusDto } from '@simoncodes-ca/data-transfer';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
+import type { CacheStatusDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
+import { NEVER, of, throwError } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { BrowserApiService } from '../services/browser-api.service';
+import { BrowserStore } from './browser.store';
 
 /**
  * Helper to wait for async signal updates from rxMethod.
@@ -17,6 +17,7 @@ const waitForSignals = () => new Promise<void>((resolve) => setTimeout(resolve, 
 
 describe('BrowserStore', () => {
   let store: InstanceType<typeof BrowserStore>;
+  let spectator: SpectatorService<BrowserStore>;
   let apiService: BrowserApiService;
 
   const mockTreeRoot: ResourceTreeDto = {
@@ -81,14 +82,16 @@ describe('BrowserStore', () => {
     },
   };
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule, getTranslocoTestingModule()],
-      providers: [BrowserStore, BrowserApiService],
-    });
+  const createStore = createServiceFactory({
+    service: BrowserStore,
+    imports: [HttpClientTestingModule, getTranslocoTestingModule()],
+    providers: [BrowserApiService],
+  });
 
-    store = TestBed.inject(BrowserStore);
-    apiService = TestBed.inject(BrowserApiService);
+  beforeEach(() => {
+    spectator = createStore();
+    store = spectator.service;
+    apiService = spectator.inject(BrowserApiService);
   });
 
   describe('Initialization', () => {
@@ -108,6 +111,18 @@ describe('BrowserStore', () => {
   });
 
   describe('Collection Selection', () => {
+    it('should show indexing state while the initial cache status request is pending', () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(NEVER);
+
+      store.setSelectedCollection({
+        collectionName: 'app-translations',
+        locales: ['en', 'es'],
+      });
+
+      expect(store.cacheStatus()).toBe('not-started');
+      expect(store.isCacheIndexing()).toBe(true);
+    });
+
     it('should set selected collection and load root folders', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
@@ -742,7 +757,7 @@ describe('BrowserStore', () => {
         densityMode: 'full' as const,
         selectedLocales: ['es', 'fr'],
         showNestedResources: true,
-        compactLocale: null,
+        compactLocale: undefined,
         compactLocaleManuallyChanged: false,
         sortField: 'key' as const,
         sortDirection: 'asc' as const,
@@ -763,27 +778,50 @@ describe('BrowserStore', () => {
       expect(loaded).toEqual(prefs);
     });
 
-    it('should automatically reduce selectedLocales to first when switching to compact', async () => {
+    it('should start compact on the base locale regardless of the full-density filter', async () => {
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
 
-      // Setup available locales and initial selection
       store.setSelectedCollection({
         collectionName: 'c1',
         locales: ['en', 'es', 'fr'],
+        baseLocale: 'en',
       });
 
       await waitForSignals();
 
-      // multi-select
+      store.setDensityMode('full');
       store.setSelectedLocales(['es', 'fr']);
       expect(store.selectedLocales()).toEqual(['es', 'fr']);
 
       store.setDensityMode('compact');
 
-      // Should reduce to the first selected locale
-      expect(store.selectedLocales().length).toBe(1);
-      expect(store.selectedLocales()[0]).toBe('es');
+      // Compact shows one locale, and it is the base until the user picks another
+      expect(store.selectedLocales()).toEqual(['en']);
+      expect(store.compactDisplayLocale()).toBe('en');
       expect(store.densityMode()).toBe('compact');
+    });
+
+    it('should remember the compact locale as soon as it is picked', async () => {
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+
+      store.setSelectedCollection({
+        collectionName: 'c1',
+        locales: ['en', 'es', 'fr'],
+        baseLocale: 'en',
+      });
+
+      await waitForSignals();
+
+      store.setDensityMode('compact');
+      store.setSelectedLocales(['fr']);
+
+      expect(store.compactDisplayLocale()).toBe('fr');
+      expect(store.compactLocale()).toBe('fr');
+
+      // Round-trips through full density and back
+      store.setDensityMode('full');
+      store.setDensityMode('compact');
+      expect(store.compactDisplayLocale()).toBe('fr');
     });
 
     it('should load preferences when collection is selected', async () => {
@@ -841,7 +879,7 @@ describe('BrowserStore', () => {
         densityMode: 'compact' as const,
         selectedLocales: [],
         showNestedResources: true,
-        compactLocale: null,
+        compactLocale: undefined,
         compactLocaleManuallyChanged: false,
         sortField: 'key' as const,
         sortDirection: 'asc' as const,
@@ -1000,6 +1038,15 @@ describe('BrowserStore', () => {
       it('should return count when multiple selected', () => {
         store.setSelectedLocales(['en', 'es']);
         expect(store.localeFilterText()).toBe('2 locales');
+      });
+
+      it('should name the displayed locale in compact mode, never "All locales"', () => {
+        store.setBaseLocale('en');
+        store.setDensityMode('compact');
+        expect(store.localeFilterText()).toBe('en');
+
+        store.setSelectedLocales(['fr']);
+        expect(store.localeFilterText()).toBe('fr');
       });
     });
 

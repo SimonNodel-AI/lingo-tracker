@@ -1,129 +1,646 @@
+// The outer box (width, top rule, zero container padding) is owned by
+// `.collection-form-dialog-panel` in styles.scss, because the CDK appends the
+// overlay pane outside this component. Everything here is the inside.
 :host {
   display: block;
-  min-width: 420px;
-  max-width: 600px;
+  max-height: inherit;
+  // The panel is one step lighter than the page so the field wells read as set
+  // into it. Light: page and panel share the parchment; dark: the panel lifts
+  // to the subtle tone and the wells stay on the page black.
+  --dialog-surface: var(--color-background);
+  --dialog-well: var(--color-background);
+}
 
-  .mdc-dialog__content {
-    padding-top: var(--spacing-4);
+:host-context([data-theme='dark']) {
+  --dialog-surface: var(--color-background-subtle);
+}
+
+@media (prefers-color-scheme: dark) {
+  :host-context(:root:not([data-theme='light']):not([data-theme='dark'])) {
+    --dialog-surface: var(--color-background-subtle);
   }
 }
 
-mat-dialog-content {
-  padding: var(--spacing-6);
+.dialog-wrapper {
+  display: flex;
+  flex-direction: column;
+  max-height: inherit;
+  background: var(--dialog-surface);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Header
+// ─────────────────────────────────────────────────────────────────────────────
+
+.dialog-header {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-5) var(--spacing-6) var(--spacing-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dialog-header-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--border-radius-lg);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  color: var(--color-primary);
+
+  mat-icon {
+    font-size: 19px;
+    width: 19px;
+    height: 19px;
+  }
+}
+
+.dialog-header-text {
+  flex: 1;
+  min-width: 0;
+  // Reserve space so long titles never slide under the close button.
+  padding-right: var(--spacing-8);
+}
+
+.dialog-title {
+  margin: 0 0 var(--spacing-1);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  letter-spacing: -0.01em;
+  color: var(--color-text-primary);
+}
+
+.dialog-subtitle {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-snug);
+  color: var(--color-text-secondary);
+}
+
+// File names inside prose keep the mono voice the paths use elsewhere, at the
+// surrounding size so the line does not jump.
+.dialog-subtitle code,
+.field-hint code {
+  font-family: var(--font-family-mono);
+  font-size: 0.95em;
+  color: var(--color-text-primary);
+}
+
+.dialog-close {
+  position: absolute;
+  top: var(--spacing-3);
+  right: var(--spacing-3);
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+
+  &:hover {
+    color: var(--color-text-primary);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Body & groups
+// ─────────────────────────────────────────────────────────────────────────────
+
+.dialog-body {
+  // Material caps its content at 65vh; here the body takes whatever the panel
+  // leaves after the header and footer, so the whole create form sits above
+  // the fold on a laptop and only long edits scroll.
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  padding: var(--spacing-5) var(--spacing-6) var(--spacing-4);
 
   form {
     display: flex;
     flex-direction: column;
-    gap: var(--spacing-4);
-  }
-
-  .full-width {
-    width: 100%;
+    gap: var(--spacing-5);
   }
 }
 
-.locale-section {
+.group {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-2);
+  gap: var(--spacing-3);
 }
 
-.locale-section-label {
-  margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--mat-sys-on-surface-variant);
-  letter-spacing: 0.03em;
-}
-
-.locale-list {
+.group-head {
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--mat-sys-outline-variant);
-  border-radius: var(--border-radius-sm);
-  overflow: hidden;
-}
+  gap: 2px;
 
-.locale-row {
-  display: flex;
-  align-items: center;
-  padding: var(--spacing-1) var(--spacing-2) var(--spacing-1) var(--spacing-3);
-  border-bottom: 1px solid var(--mat-sys-outline-variant);
-
-  &:last-child {
-    border-bottom: none;
+  h3 {
+    margin: 0;
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-bold);
+    line-height: var(--line-height-snug);
+    color: var(--color-text-primary);
   }
 
-  .locale-radio {
-    flex: 1;
-  }
-
-  .locale-code {
-    font-family: var(--font-family-mono);
-    font-size: var(--font-size-sm);
-  }
-
-  .locale-remove-btn {
-    flex-shrink: 0;
-    width: var(--spacing-8);
-    height: var(--spacing-8);
-    color: var(--mat-sys-on-surface-variant);
-
-    mat-icon {
-      /* Material icon size override */
-      font-size: 18px;
-      width: 18px;
-      height: 18px;
-    }
-
-    &:hover {
-      color: var(--mat-sys-error);
-    }
-  }
-}
-
-.locale-empty-hint {
-  margin: 0;
-  padding: var(--spacing-3);
-  font-size: var(--font-size-sm);
-  color: var(--mat-sys-on-surface-variant);
-  font-style: italic;
-  border: 1px dashed var(--mat-sys-outline-variant);
-  border-radius: var(--border-radius-sm);
-  text-align: center;
-}
-
-.locale-add-row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-2);
-
-  .locale-add-field {
-    flex: 1;
-  }
-
-  .locale-add-btn {
-    margin-top: var(--spacing-1);
-  }
-}
-
-mat-dialog-actions {
-  padding: var(--spacing-4) var(--spacing-6);
-  gap: var(--spacing-2);
-}
-
-.readonly-section {
-  margin-top: var(--spacing-4);
-
-  .readonly-hint {
-    margin: var(--spacing-1) 0 0 var(--spacing-6);
-    font-size: var(--font-size-xs, 0.75rem);
+  p {
+    margin: 0;
+    font-size: var(--font-size-xs);
+    line-height: var(--line-height-snug);
     color: var(--color-text-secondary);
   }
 }
 
-.protected-terms-file {
-  margin: -8px 0 12px;
-  font-size: 12px;
-  opacity: 0.7;
-  word-break: break-all;
+// ─────────────────────────────────────────────────────────────────────────────
+// Fields
+// ─────────────────────────────────────────────────────────────────────────────
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.field-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+}
+
+.text-input {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  height: 40px;
+  padding: 0 var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--border-radius-md);
+  background: var(--dialog-well);
+  color: var(--color-text-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+
+  > mat-icon {
+    flex: none;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--color-text-tertiary);
+  }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: var(--font-size-base);
+    outline: none;
+
+    &::placeholder {
+      color: var(--color-text-placeholder);
+    }
+  }
+
+  &:focus-within {
+    border-color: var(--color-secondary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 22%, transparent);
+  }
+
+  &--mono input {
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-sm);
+  }
+
+  &--invalid,
+  &--invalid:focus-within {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error) 18%, transparent);
+  }
+
+  &--locked {
+    border-style: dashed;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-base);
+  }
+}
+
+.field-hint,
+.field-error {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+.field-hint {
+  color: var(--color-text-secondary);
+
+  &--icon {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-1);
+
+    mat-icon {
+      flex: none;
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+      margin-top: 2px;
+      color: var(--color-text-tertiary);
+    }
+  }
+
+  &--path span {
+    font-family: var(--font-family-mono);
+    overflow-wrap: anywhere;
+  }
+}
+
+.field-error {
+  color: var(--color-error);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Locale chip editor
+// ─────────────────────────────────────────────────────────────────────────────
+
+.chip-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--border-radius-md);
+  background: var(--dialog-well);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+
+  &:focus-within {
+    border-color: var(--color-secondary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-secondary) 22%, transparent);
+  }
+
+  &--empty {
+    border-style: dashed;
+  }
+
+  &--invalid,
+  &--invalid:focus-within {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error) 18%, transparent);
+  }
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+// Same pill as the Collections card, so a locale looks like a locale everywhere.
+.locale-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--border-radius-full);
+  background: var(--color-background-muted);
+  border: 1px solid transparent;
+  color: var(--color-text-secondary);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+
+  &--base {
+    background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
+    border-color: color-mix(in srgb, var(--color-secondary) 35%, transparent);
+    color: color-mix(in srgb, var(--color-secondary) 45%, var(--color-text-primary));
+  }
+}
+
+.locale-chip-body {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: 3px var(--spacing-2) 3px var(--spacing-3);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.5;
+
+  &--button {
+    cursor: pointer;
+
+    &:hover {
+      color: var(--color-text-primary);
+    }
+
+    .locale-chip:not(.locale-chip--base) &:hover {
+      background: color-mix(in srgb, var(--color-secondary) 10%, transparent);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-ring-color);
+      outline-offset: 1px;
+    }
+  }
+}
+
+.locale-chip-code {
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.locale-chip-tag {
+  font-size: 0.625rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.locale-chip-lock {
+  font-size: 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.locale-chip-remove {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: 0 3px 0 -4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--border-radius-full);
+  background: transparent;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  &:hover {
+    color: var(--color-error);
+    background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 1px;
+  }
+}
+
+.chip-add {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  flex: 1 1 180px;
+  min-width: 180px;
+  min-height: 30px;
+  padding: 0 var(--spacing-1);
+
+  > mat-icon {
+    flex: none;
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+    color: var(--color-text-tertiary);
+  }
+}
+
+.chip-add-input {
+  flex: 1;
+  min-width: 120px;
+  height: 30px;
+  border: 0;
+  padding: 0 var(--spacing-1);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  outline: none;
+
+  &::placeholder {
+    color: var(--color-text-placeholder);
+  }
+}
+
+.chip-add-button {
+  flex: none;
+  height: 28px;
+  padding: 0 var(--spacing-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--border-radius-full);
+  background: var(--color-background);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--color-secondary);
+    color: var(--color-secondary-active);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Read-only switch row
+// ─────────────────────────────────────────────────────────────────────────────
+
+.switch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  background: var(--color-background-subtle);
+  transition: border-color var(--transition-normal), background var(--transition-normal);
+
+  &--on {
+    border-color: color-mix(in srgb, var(--color-warning) 35%, var(--color-border));
+    background: color-mix(in srgb, var(--color-warning) 6%, var(--color-background-subtle));
+  }
+}
+
+.switch-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--border-radius-md);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  color: var(--color-warning-text);
+
+  mat-icon {
+    font-size: 17px;
+    width: 17px;
+    height: 17px;
+  }
+}
+
+.switch-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.switch-label {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--line-height-snug);
+  color: var(--color-text-primary);
+}
+
+.switch-description {
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-snug);
+  color: var(--color-text-secondary);
+}
+
+.switch-control {
+  flex: none;
+  margin-top: 2px;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tags & protected terms disclosure
+// ─────────────────────────────────────────────────────────────────────────────
+
+.disclosure {
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.disclosure-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  width: 100%;
+  padding: var(--spacing-2) var(--spacing-3) var(--spacing-2) var(--spacing-4);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+
+  &:hover {
+    background: var(--color-background-subtle);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: -2px;
+  }
+}
+
+.disclosure-icon {
+  flex: none;
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-tertiary);
+}
+
+.disclosure-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1.5;
+}
+
+.disclosure-summary {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.disclosure-chevron {
+  flex: none;
+  color: var(--color-text-tertiary);
+  transition: transform var(--transition-normal);
+
+  .disclosure--open & {
+    transform: rotate(180deg);
+  }
+}
+
+.disclosure-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-2) var(--spacing-4) var(--spacing-4);
+  border-top: 1px solid var(--color-border-subtle);
+  animation: disclosure-reveal var(--transition-normal) both;
+
+  .field-label {
+    font-size: var(--font-size-sm);
+  }
+}
+
+@keyframes disclosure-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+// Tags and protected terms are words, not codes: the same pill, set in Nunito
+// on the subtle tone, so the disclosure speaks the dialog's one chip language.
+.text-chip {
+  background: var(--color-background-subtle);
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+
+  .locale-chip-body {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Footer
+// ─────────────────────────────────────────────────────────────────────────────
+
+.dialog-footer {
+  flex-shrink: 0;
+  padding: var(--spacing-4) var(--spacing-6) var(--spacing-5);
+  border-top: 1px solid var(--color-border);
+  gap: var(--spacing-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disclosure-panel {
+    animation: none;
+  }
+
+  .disclosure-chevron {
+    transition: none;
+  }
 }

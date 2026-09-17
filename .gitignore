@@ -171,3 +171,5 @@ vitest.config.*.timestamp*
 # Impeccable design skill — machine-local state (config.json is committed)
 .impeccable/config.local.json
 .impeccable/live/
+.impeccable/mocks/
+.impeccable/review/

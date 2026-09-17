@@ -1,0 +1,62 @@
+{
+  "title": {
+    "source": "Output Bundles",
+    "comment": "Heading of the bundles column on the home page",
+    "tags": ["bundles"],
+    "es": "Bundles",
+    "fr-ca": "Bundles",
+    "ru": "Bundles",
+    "ja": "Bundles",
+    "de": "Bundles"
+  },
+  "generateAll": {
+    "source": "Generate all",
+    "comment": "Button that starts generation of every bundle",
+    "tags": ["bundles"],
+    "es": "Generate all",
+    "fr-ca": "Generate all",
+    "ru": "Generate all",
+    "ja": "Generate all",
+    "de": "Generate all"
+  },
+  "generatingProgressX": {
+    "source": "{current} of {total}…",
+    "comment": "Busy label on the Generate all button while bundles run, e.g. 1 of 2…",
+    "tags": ["bundles"],
+    "es": "{current} of {total}…",
+    "fr-ca": "{current} of {total}…",
+    "ru": "{current} of {total}…",
+    "ja": "{current} of {total}…",
+    "de": "{current} of {total}…"
+  },
+  "addButton": {
+    "source": "Add bundle",
+    "comment": "Button that opens the create bundle dialog",
+    "tags": ["bundles"],
+    "es": "Add bundle",
+    "fr-ca": "Add bundle",
+    "ru": "Add bundle",
+    "ja": "Add bundle",
+    "de": "Add bundle"
+  },
+  "deleteConfirmTitle": {
+    "source": "Delete Bundle",
+    "comment": "Confirmation dialog title when deleting a bundle definition",
+    "tags": ["bundles"],
+    "es": "Delete Bundle",
+    "fr-ca": "Delete Bundle",
+    "ru": "Delete Bundle",
+    "ja": "Delete Bundle",
+    "de": "Delete Bundle"
+  },
+  "deleteConfirmMessageX": {
+    "source": "Delete the bundle {name}? Files it already generated are kept.",
+    "comment": "Confirmation message when deleting a bundle definition",
+    "tags": ["bundles"],
+    "es": "Delete the bundle {name}? Files it already generated are kept.",
+    "fr-ca": "Delete the bundle {name}? Files it already generated are kept.",
+    "ru": "Delete the bundle {name}? Files it already generated are kept.",
+    "ja": "Delete the bundle {name}? Files it already generated are kept.",
+    "de": "Delete the bundle {name}? Files it already generated are kept."
+  }
+}

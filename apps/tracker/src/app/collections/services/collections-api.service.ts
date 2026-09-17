@@ -6,6 +6,12 @@ import type {
   CreateCollectionDto,
   UpdateCollectionDto,
   UpdateConfigDto,
+  CreateBundleDto,
+  UpdateBundleDto,
+  BundleDryRunRequestDto,
+  BundleDryRunResultDto,
+  GenerateBundleRequestDto,
+  BundleGenerateJobDto,
 } from '@simoncodes-ca/data-transfer';
 
 /**
@@ -54,5 +60,50 @@ export class CollectionsApiService {
    */
   updateConfig(dto: UpdateConfigDto): Observable<{ message: string }> {
     return this.http.put<{ message: string }>(`${this.apiBase}/config`, dto);
+  }
+
+  /**
+   * Creates a new bundle definition in the project config.
+   */
+  createBundle(data: CreateBundleDto): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiBase}/bundles`, data);
+  }
+
+  /**
+   * Updates an existing bundle definition (including renaming).
+   * @param name Current bundle name
+   * @param data Update payload with optional new name and bundle definition
+   */
+  updateBundle(name: string, data: UpdateBundleDto): Observable<{ message: string }> {
+    return this.http.put<{ message: string }>(`${this.apiBase}/bundles/${encodeURIComponent(name)}`, data);
+  }
+
+  /**
+   * Deletes a bundle definition by name.
+   */
+  deleteBundle(name: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(`${this.apiBase}/bundles/${encodeURIComponent(name)}`);
+  }
+
+  /**
+   * Plans a bundle without writing files. The definition does not need to be saved.
+   */
+  dryRunBundle(data: BundleDryRunRequestDto): Observable<BundleDryRunResultDto> {
+    return this.http.post<BundleDryRunResultDto>(`${this.apiBase}/bundles/dry-run`, data);
+  }
+
+  /**
+   * Starts a bundle generation job. Responds with 202 and the initial job snapshot.
+   * Poll {@link getBundleJob} for progress.
+   */
+  generateBundle(name: string, data: GenerateBundleRequestDto = {}): Observable<BundleGenerateJobDto> {
+    return this.http.post<BundleGenerateJobDto>(`${this.apiBase}/bundles/${encodeURIComponent(name)}/generate`, data);
+  }
+
+  /**
+   * Fetches a snapshot of a bundle generation job.
+   */
+  getBundleJob(jobId: string): Observable<BundleGenerateJobDto> {
+    return this.http.get<BundleGenerateJobDto>(`${this.apiBase}/bundles/jobs/${encodeURIComponent(jobId)}`);
   }
 }

@@ -1,14 +1,16 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { FolderNode } from './folder-node';
+import type { ComponentFixture } from '@angular/core/testing';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
+import { FolderNode } from './folder-node';
 
 describe('FolderNode', () => {
   let component: FolderNode;
   let fixture: ComponentFixture<FolderNode>;
+  let spectator: Spectator<FolderNode>;
 
   const folderWithChildren: FolderNodeDto = {
     name: 'common',
@@ -21,14 +23,17 @@ describe('FolderNode', () => {
     },
   };
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [FolderNode, getTranslocoTestingModule()],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
-    }).compileComponents();
+  const createComponent = createComponentFactory({
+    component: FolderNode,
+    imports: [getTranslocoTestingModule()],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+    detectChanges: false,
+  });
 
-    fixture = TestBed.createComponent(FolderNode);
-    component = fixture.componentInstance;
+  beforeEach(() => {
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
   });
 
   it('should create', () => {

@@ -1,82 +1,4 @@
-// ES2022 + TypeScript contextual keywords that cannot be used as bare identifiers in a const declaration.
-const JS_RESERVED_WORDS = new Set([
-  // ES2022 reserved words
-  'break',
-  'case',
-  'catch',
-  'class',
-  'const',
-  'continue',
-  'debugger',
-  'default',
-  'delete',
-  'do',
-  'else',
-  'export',
-  'extends',
-  'false',
-  'finally',
-  'for',
-  'function',
-  'if',
-  'import',
-  'in',
-  'instanceof',
-  'let',
-  'new',
-  'null',
-  'return',
-  'static',
-  'super',
-  'switch',
-  'this',
-  'throw',
-  'true',
-  'try',
-  'typeof',
-  'var',
-  'void',
-  'while',
-  'with',
-  'yield',
-  'enum',
-  'await',
-  'implements',
-  'interface',
-  'package',
-  'private',
-  'protected',
-  'public',
-  // TypeScript contextual keywords
-  'abstract',
-  'as',
-  'asserts',
-  'async',
-  'declare',
-  'from',
-  'global',
-  'infer',
-  'is',
-  'keyof',
-  'module',
-  'namespace',
-  'never',
-  'of',
-  'out',
-  'override',
-  'readonly',
-  'require',
-  'satisfies',
-  'symbol',
-  'type',
-  'unique',
-  'unknown',
-  'using',
-  // Globals that should not be shadowed
-  'undefined',
-  'Infinity',
-  'NaN',
-]);
+import { isJavaScriptReservedWord, JS_IDENTIFIER_PATTERN } from '@simoncodes-ca/domain';
 
 /**
  * Validates that a string is a legal JavaScript identifier.
@@ -101,11 +23,11 @@ export function validateJavaScriptIdentifier(name: string): string | undefined {
   }
 
   // Remaining characters: letters, digits, underscore, dollar sign
-  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) {
+  if (!JS_IDENTIFIER_PATTERN.test(name)) {
     return `"${name}" is not a valid JavaScript identifier: may only contain letters, digits, underscores, and dollar signs.`;
   }
 
-  if (JS_RESERVED_WORDS.has(name)) {
+  if (isJavaScriptReservedWord(name)) {
     return `"${name}" is a JavaScript reserved word and cannot be used as an identifier.`;
   }
 

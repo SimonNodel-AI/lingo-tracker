@@ -1,0 +1,52 @@
+{
+  "collectionsCountX": {
+    "source": "{ count, plural, =1 {1 collection} other {{count} collections} }",
+    "comment": "Footer summary: number of collections (ICU plural)",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 collection} other {{count} collections} }",
+    "fr-ca": "{ count, plural, =1 {1 collection} other {{count} collections} }",
+    "ru": "{ count, plural, =1 {1 collection} other {{count} collections} }",
+    "ja": "{ count, plural, =1 {1 collection} other {{count} collections} }",
+    "de": "{ count, plural, =1 {1 collection} other {{count} collections} }"
+  },
+  "filesCountX": {
+    "source": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "comment": "Footer summary: number of files (ICU plural)",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "fr-ca": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "ru": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "ja": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "de": "{ count, plural, =1 {1 file} other {{count} files} }"
+  },
+  "typesX": {
+    "source": "types {state}",
+    "comment": "Footer summary: whether types are on or off; state is on/off",
+    "tags": ["bundles"],
+    "es": "types {state}",
+    "fr-ca": "types {state}",
+    "ru": "types {state}",
+    "ja": "types {state}",
+    "de": "types {state}"
+  },
+  "create": {
+    "source": "Create bundle",
+    "comment": "Primary button creating the bundle",
+    "tags": ["bundles"],
+    "es": "Create bundle",
+    "fr-ca": "Create bundle",
+    "ru": "Create bundle",
+    "ja": "Create bundle",
+    "de": "Create bundle"
+  },
+  "saveChanges": {
+    "source": "Save changes",
+    "comment": "Primary button saving an edited bundle",
+    "tags": ["bundles"],
+    "es": "Save changes",
+    "fr-ca": "Save changes",
+    "ru": "Save changes",
+    "ja": "Save changes",
+    "de": "Save changes"
+  }
+}

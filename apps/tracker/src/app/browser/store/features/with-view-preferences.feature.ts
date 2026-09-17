@@ -40,7 +40,7 @@ export function withViewPreferencesFeature<_>() {
         selectedStatuses: TranslationStatus[];
         availableLocales: string[];
         baseLocale: string;
-        compactLocale: string | null;
+        compactLocale: string | undefined;
         compactLocaleManuallyChanged: boolean;
         nonCompactSelectedLocales: string[];
       }>(),

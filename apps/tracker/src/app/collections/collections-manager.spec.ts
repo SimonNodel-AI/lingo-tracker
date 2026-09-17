@@ -1,14 +1,16 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
+import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import type { BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { of } from 'rxjs';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
-import { CollectionsManager } from './collections-manager';
-import { CollectionsStore } from './store/collections.store';
-import { CollectionsApiService } from './services/collections-api.service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
+import { CollectionsManager } from './collections-manager';
+import { CollectionsApiService } from './services/collections-api.service';
+import { CollectionsStore } from './store/collections.store';
 
 const config: LingoTrackerConfigDto = {
   exportFolder: 'dist/export',
@@ -23,6 +25,15 @@ const config: LingoTrackerConfigDto = {
     },
     Bravo: { translationsFolder: 'vendor/bravo', locales: ['de', 'ja'], baseLocale: 'de', readOnly: true },
   },
+  projectName: 'lingo-tracker',
+  bundles: {
+    tracker: {
+      bundleName: '{locale}',
+      dist: './apps/tracker/src/assets/i18n',
+      collections: [{ name: 'alpha', entriesSelectionRules: 'All' }],
+    },
+    main: { bundleName: '{locale}', dist: './dist/i18n', collections: 'All' },
+  },
 };
 
 const api = {
@@ -31,33 +42,47 @@ const api = {
   createCollection: vi.fn(),
   updateCollection: vi.fn(),
   deleteCollection: vi.fn(),
+  createBundle: vi.fn(),
+  updateBundle: vi.fn(),
+  deleteBundle: vi.fn(),
+  generateBundle: vi.fn(),
+  getBundleJob: vi.fn(),
 };
+
+const text = (fixture: ComponentFixture<CollectionsManager>): string =>
+  (fixture.nativeElement as HTMLElement).textContent?.replace(/\s+/g, ' ') ?? '';
 
 describe('CollectionsManager', () => {
   let fixture: ComponentFixture<CollectionsManager>;
   let component: CollectionsManager;
+  let spectator: Spectator<CollectionsManager>;
   let store: InstanceType<typeof CollectionsStore>;
 
-  beforeEach(async () => {
+  const createComponent = createComponentFactory({
+    component: CollectionsManager,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [
+      provideTranslocoMessageformat(),
+      CollectionsStore,
+      { provide: CollectionsApiService, useValue: api },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+      { provide: Router, useValue: { navigate: vi.fn() } },
+    ],
+    detectChanges: false,
+  });
+
+  beforeEach(() => {
     vi.resetAllMocks();
+    // Runs are mirrored to session storage, which jsdom keeps between tests.
+    sessionStorage.clear();
     api.getConfig.mockReturnValue(of(config));
 
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [CollectionsManager, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [
-        CollectionsStore,
-        { provide: CollectionsApiService, useValue: api },
-        { provide: MatDialog, useValue: { open: vi.fn() } },
-        { provide: Router, useValue: { navigate: vi.fn() } },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(CollectionsManager);
-    component = fixture.componentInstance;
-    store = TestBed.inject(CollectionsStore);
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
+    store = spectator.inject(CollectionsStore);
     store.loadCollections();
-    fixture.detectChanges();
+    spectator.detectComponentChanges();
   });
 
   it('sorts collections by name, ignoring case', () => {
@@ -117,9 +142,158 @@ describe('CollectionsManager', () => {
   });
 
   it('navigates to the browser with the collection name encoded', () => {
-    const router = TestBed.inject(Router);
+    const router = spectator.inject(Router);
     component.navigateToBrowser('a b');
 
     expect(router.navigate).toHaveBeenCalledWith(['/browser', 'a%20b']);
+  });
+
+  it('titles the page with the project name and summarises collections, bundles and base locale', () => {
+    const page = text(fixture);
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('h1')?.textContent?.trim()).toBe('lingo-tracker');
+    expect(page).toContain('.lingo-tracker.json');
+    expect(page).toContain('3 collections');
+    expect(page).toContain('2 bundles');
+    expect(page).toContain('base en');
+  });
+
+  it('falls back to the Collections title when the project name is unknown', () => {
+    api.getConfig.mockReturnValue(of({ ...config, projectName: undefined }));
+    store.loadCollections();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('h1')?.textContent?.trim()).toBe('Collections');
+  });
+
+  it('resolves the collections each bundle consumes and the locale count from the global config', () => {
+    const cards = component.bundleCards();
+
+    expect(cards.map((c) => c.entry.name)).toEqual(['main', 'tracker']);
+    expect(cards.find((c) => c.entry.name === 'main')?.collectionNames).toEqual(['zulu', 'alpha', 'Bravo']);
+    expect(cards.find((c) => c.entry.name === 'tracker')?.collectionNames).toEqual(['alpha']);
+    expect(cards[0]?.localeCount).toBe(2);
+  });
+
+  it('renders one bundle card per bundle with the column header tools', () => {
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelectorAll('app-bundle-card').length).toBe(2);
+    expect(text(fixture)).toContain('Generate all');
+    expect(text(fixture)).toContain('Add bundle');
+    expect(host.querySelector('.empty-bundles')).toBeNull();
+  });
+
+  it('shows the dashed empty card and hides the tools when there are no bundles', () => {
+    api.getConfig.mockReturnValue(of({ ...config, bundles: {} }));
+    store.loadCollections();
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+
+    expect(host.querySelector('.empty-bundles')).not.toBeNull();
+    expect(text(fixture)).toContain('No bundles yet');
+    expect(text(fixture)).not.toContain('Generate all');
+    expect(text(fixture)).toContain('0 bundles');
+  });
+
+  it('wires the hovered bundle to the collections it consumes; "All" links every card', () => {
+    expect(component.isCollectionLinked('zulu')).toBe(false);
+
+    component.onBundleHover('tracker', true);
+    expect(component.isCollectionLinked('alpha')).toBe(true);
+    expect(component.isCollectionLinked('zulu')).toBe(false);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelectorAll('.collection-card.linked').length).toBe(1);
+    // The unconsumed collections keep their full presence: the connector line is what
+    // states the relation now, not a dim on everything it excludes.
+    expect(host.querySelectorAll('.collection-card')).toHaveLength(3);
+    expect(host.querySelector('[data-collection="alpha"]')).not.toBeNull();
+
+    component.onBundleHover('main', true);
+    expect(component.isCollectionLinked('zulu')).toBe(true);
+    expect(component.isCollectionLinked('Bravo')).toBe(true);
+
+    // A stale leave from another card must not clear the current hover.
+    component.onBundleHover('tracker', false);
+    expect(component.hoveredBundle()).toBe('main');
+
+    component.onBundleHover('main', false);
+    expect(component.hoveredBundle()).toBeNull();
+    expect(component.isCollectionLinked('zulu')).toBe(false);
+  });
+
+  it('draws no connector lines while the columns are stacked in the test layout', () => {
+    // jsdom gives every element a zero rect, so the bundles column never clears the
+    // collections column and the geometry path must decline rather than draw at 0,0.
+    component.onBundleHover('main', true);
+    fixture.detectChanges();
+
+    expect(component.bundleLinks()).toEqual([]);
+    expect(component.bundlePort()).toBeNull();
+  });
+
+  it('disables Generate all while a single bundle generates from its own card', () => {
+    const running: BundleGenerateJobDto = {
+      jobId: 'job-1',
+      bundleName: 'tracker',
+      status: 'running',
+      progress: { current: 0, total: 2 },
+    };
+    api.generateBundle.mockReturnValue(of(running));
+    api.getBundleJob.mockReturnValue(of(running));
+
+    // A single Generate keeps the plain label — the "n of N" count is batch-scoped.
+    component.generateBundle('tracker');
+    fixture.detectChanges();
+    expect(store.isAnyBundleRunning()).toBe(true);
+    expect(component.isGeneratingAll()).toBe(false);
+    expect(text(fixture)).toContain('Generate all');
+
+    // …but the button must look as inert as it behaves, or the click is a silent no-op.
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="generate-all"]',
+    );
+    expect(button).toBeTruthy();
+    expect(button?.disabled).toBe(true);
+    expect(button?.getAttribute('aria-disabled')).toBe('true');
+
+    // Ignored while something is already running.
+    component.generateAllBundles();
+    expect(api.generateBundle).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts the Generate all batch as "n of N" while it runs', () => {
+    const running = (bundleName: string): BundleGenerateJobDto => ({
+      jobId: `job-${bundleName}`,
+      bundleName,
+      status: 'running',
+      progress: { current: 0, total: 6 },
+    });
+    api.generateBundle.mockImplementation((name: string) => of(running(name)));
+    api.getBundleJob.mockImplementation((jobId: string) => of(running(jobId.replace('job-', ''))));
+
+    component.generateAllBundles();
+    fixture.detectChanges();
+
+    expect(component.isGeneratingAll()).toBe(true);
+    expect(component.generateAllPosition()).toBe(1);
+    expect(text(fixture)).toContain('1 of 2…');
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="generate-all"]',
+    );
+    expect(button?.disabled).toBe(true);
+  });
+
+  it('leaves Generate all enabled when nothing is running', () => {
+    fixture.detectChanges();
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>(
+      '[data-testid="generate-all"]',
+    );
+    expect(button).toBeTruthy();
+    expect(button?.disabled).toBe(false);
+    expect(button?.getAttribute('aria-disabled')).toBeNull();
   });
 });

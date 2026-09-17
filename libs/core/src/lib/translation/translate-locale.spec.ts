@@ -85,12 +85,13 @@ beforeEach(() => {
     getCapabilities: vi.fn(),
   });
 
-  vi.mocked(TranslationOrchestrator).mockImplementation(
-    () =>
-      ({
-        translateBatchForLocale: mockTranslateBatchForLocale,
-      }) as unknown as TranslationOrchestrator,
-  );
+  // Vitest 4 requires a constructable implementation for `new TranslationOrchestrator(...)`.
+  // biome-ignore lint/complexity/useArrowFunction: this mock must remain constructable
+  vi.mocked(TranslationOrchestrator).mockImplementation(function () {
+    return {
+      translateBatchForLocale: mockTranslateBatchForLocale,
+    } as unknown as TranslationOrchestrator;
+  });
 
   // Default mocks return generic entries so any entryKey resolves correctly.
   vi.mocked(readResourceEntries).mockReturnValue({

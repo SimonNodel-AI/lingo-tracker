@@ -184,6 +184,57 @@ describe('generateBundleTypes', () => {
     });
   });
 
+  describe('bundleDefinition parameter', () => {
+    it('should prefer the passed definition over the one in config', async () => {
+      vi.mocked(resourceLoader.loadCollectionResources).mockReturnValue([{ key: 'ok', value: 'OK' }]);
+
+      const result = await generateBundleTypes('main', mockConfig, 'upperCase', undefined, {
+        bundleName: 'main',
+        dist: 'dist/i18n',
+        typeDistFile: 'src/generated/other-tokens.ts',
+        tokenConstantName: 'PASSED_TOKENS',
+        collections: [{ name: 'common', entriesSelectionRules: 'All', bundledKeyPrefix: 'passed' }],
+      });
+
+      expect(result.fileGenerated).toBe(true);
+      expect(result.typeDistFile).toBe('/abs/src/generated/other-tokens.ts');
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        '/abs/src/generated/other-tokens.ts',
+        expect.stringContaining("OK: 'passed.ok'"),
+        'utf-8',
+      );
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.stringContaining('export const PASSED_TOKENS'),
+        'utf-8',
+      );
+      // Only the passed definition's single collection is loaded, not both from 'All'.
+      expect(resourceLoader.loadCollectionResources).toHaveBeenCalledTimes(1);
+    });
+
+    it('should generate for a bundle key that is absent from config when a definition is passed', async () => {
+      vi.mocked(resourceLoader.loadCollectionResources).mockReturnValue([{ key: 'ok', value: 'OK' }]);
+
+      const result = await generateBundleTypes('unsaved', mockConfig, 'upperCase', undefined, {
+        bundleName: 'unsaved',
+        dist: 'dist/i18n',
+        typeDistFile: 'src/generated/unsaved.ts',
+        collections: 'All',
+      });
+
+      expect(result.fileGenerated).toBe(true);
+      expect(result.keysCount).toBe(1);
+    });
+
+    it('should fall back to the config definition when none is passed', async () => {
+      vi.mocked(resourceLoader.loadCollectionResources).mockReturnValue([{ key: 'ok', value: 'OK' }]);
+
+      const result = await generateBundleTypes('main', mockConfig, 'upperCase', undefined, undefined);
+
+      expect(result.typeDistFile).toBe('/abs/src/generated/main-tokens.ts');
+    });
+  });
+
   describe('tokenConstantName', () => {
     it('should use the provided tokenConstantName parameter as the constant name', async () => {
       vi.mocked(resourceLoader.loadCollectionResources).mockReturnValue([{ key: 'buttons.ok', value: 'OK' }]);

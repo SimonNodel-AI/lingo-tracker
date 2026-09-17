@@ -1,24 +1,26 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { MatDialogRef, MAT_DIALOG_DATA, MatDialog } from '@angular/material/dialog';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import type { ComponentFixture } from '@angular/core/testing';
+import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { of, throwError } from 'rxjs';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { NotificationService } from '../../../shared/notification';
+import { BrowserApiService } from '../../services/browser-api.service';
 import {
   TranslationEditorDialog,
   type TranslationEditorDialogData,
   type TranslationEditorResult,
 } from './translation-editor-dialog';
-import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import { of, throwError } from 'rxjs';
-import { BrowserApiService } from '../../services/browser-api.service';
-import { NotificationService } from '../../../shared/notification';
-import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
-import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
 describe('TranslationEditorDialog', () => {
   let component: TranslationEditorDialog;
   let fixture: ComponentFixture<TranslationEditorDialog>;
+  let spectator: Spectator<TranslationEditorDialog>;
   let dialogRef: { close: Mock; afterOpened: Mock };
   let mockDialog: { open: Mock };
   let mockBrowserApi: {
@@ -37,33 +39,31 @@ describe('TranslationEditorDialog', () => {
     baseLocale: 'en',
   });
 
-  const setupTestBed = async (data: TranslationEditorDialogData) => {
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [TranslationEditorDialog, BrowserAnimationsModule, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: MatDialogRef, useValue: dialogRef },
-        { provide: MatDialog, useValue: mockDialog },
-        { provide: BrowserApiService, useValue: mockBrowserApi },
-        { provide: NotificationService, useValue: mockNotifications },
-        {
-          provide: MAT_DIALOG_DATA,
-          useValue: data,
-        },
-      ],
-    });
+  const dialogData = createMockData('create');
 
-    // Override the provider after configure to ensure our mock takes precedence
-    // over the one provided by MatDialogModule
-    TestBed.overrideProvider(MatDialog, { useValue: mockDialog });
+  const createDialog = createComponentFactory({
+    component: TranslationEditorDialog,
+    imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+    componentProviders: [
+      { provide: MatDialogRef, useFactory: () => dialogRef },
+      { provide: MatDialog, useFactory: () => mockDialog },
+      { provide: BrowserApiService, useFactory: () => mockBrowserApi },
+      { provide: NotificationService, useFactory: () => mockNotifications },
+      { provide: MAT_DIALOG_DATA, useValue: dialogData },
+    ],
+    detectChanges: false,
+  });
 
-    await TestBed.compileComponents();
-
-    fixture = TestBed.createComponent(TranslationEditorDialog);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+  const renderDialog = (data: TranslationEditorDialogData): void => {
+    dialogData.resource = undefined;
+    dialogData.folderPath = undefined;
+    dialogData.readOnly = undefined;
+    Object.assign(dialogData, data);
+    spectator = createDialog();
+    fixture = spectator.fixture;
+    component = spectator.component;
+    spectator.detectChanges();
   };
 
   beforeEach(async () => {
@@ -89,7 +89,7 @@ describe('TranslationEditorDialog', () => {
 
     mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
 
-    await setupTestBed(createMockData('create'));
+    renderDialog(createMockData('create'));
   });
 
   describe('Component Initialization', () => {
@@ -108,7 +108,7 @@ describe('TranslationEditorDialog', () => {
         translations: { en: 'Test Value' },
         status: {},
       });
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       expect(component.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE);
       expect(component.dialogSubtitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITSUBTITLE);
@@ -283,7 +283,7 @@ describe('TranslationEditorDialog', () => {
         translations: { en: 'Existing Value' },
         status: {},
       };
-      await setupTestBed(createMockData('edit', mockResource));
+      renderDialog(createMockData('edit', mockResource));
 
       component.form.controls.key.setValue('apps.common.ok');
 
@@ -392,7 +392,7 @@ describe('TranslationEditorDialog', () => {
         searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(dataWithoutFolder);
+      renderDialog(dataWithoutFolder);
 
       component.form.controls.key.setValue('test_key');
       component.form.controls.baseValue.setValue('Test Value');
@@ -546,7 +546,7 @@ describe('TranslationEditorDialog', () => {
         searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       const translationsArray = component.form.controls.translations;
       const frControl = translationsArray.controls.find((c) => c.value.locale === 'fr');
@@ -574,7 +574,7 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       expect(component.form.controls.key.value).toBe('existing_key');
       expect(component.form.controls.baseValue.value).toBe('Existing Value');
@@ -589,7 +589,7 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       expect(component.form.controls.baseValue.value).toBe('');
     });
@@ -602,7 +602,7 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       expect(component.form.controls.comment.value).toBe('');
     });
@@ -615,7 +615,7 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       expect(component.saveButtonLabel()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UPDATEBUTTON);
     });
@@ -639,7 +639,7 @@ describe('TranslationEditorDialog', () => {
       };
 
       const editData = createMockData('edit', mockResource);
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       const translationsArray = component.form.controls.translations;
       const frControl = translationsArray.controls.find((c) => c.value.locale === 'fr');
@@ -672,7 +672,7 @@ describe('TranslationEditorDialog', () => {
         searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(createMockData('create'));
+      renderDialog(createMockData('create'));
     });
 
     it('should save directly when comment is present', async () => {
@@ -902,7 +902,7 @@ describe('TranslationEditorDialog', () => {
         open: vi.fn().mockReturnValue({ afterClosed: () => of(true) }),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
       component.form.controls.comment.setValue('Updated comment');
@@ -940,7 +940,7 @@ describe('TranslationEditorDialog', () => {
         open: vi.fn().mockReturnValue({ afterClosed: () => of(true) }),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
       component.form.controls.comment.setValue('Updated comment');
@@ -980,7 +980,7 @@ describe('TranslationEditorDialog', () => {
         }),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
       component.form.controls.comment.setValue('Updated comment');
@@ -1024,7 +1024,7 @@ describe('TranslationEditorDialog', () => {
         }),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       const translationsArray = component.form.controls.translations;
       const frControl = translationsArray.controls.find((c) => c.value.locale === 'fr');
@@ -1077,7 +1077,7 @@ describe('TranslationEditorDialog', () => {
         }),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       await component.onSubmit();
 
@@ -1112,7 +1112,7 @@ describe('TranslationEditorDialog', () => {
         }),
       };
       mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      await setupTestBed(editData);
+      renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
 

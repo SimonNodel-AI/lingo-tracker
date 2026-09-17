@@ -1,0 +1,152 @@
+{
+  "collectionsCountX": {
+    "en": {
+      "checksum": "8c4d7b9e54cbc1e6049c46ddbf30c213"
+    },
+    "es": {
+      "checksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "baseChecksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "baseChecksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "baseChecksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "baseChecksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "baseChecksum": "8c4d7b9e54cbc1e6049c46ddbf30c213",
+      "status": "new"
+    }
+  },
+  "filesCountX": {
+    "en": {
+      "checksum": "f6c3ea0701a6c89506032fddd96fb8a9"
+    },
+    "es": {
+      "checksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "baseChecksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "baseChecksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "baseChecksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "baseChecksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "baseChecksum": "f6c3ea0701a6c89506032fddd96fb8a9",
+      "status": "new"
+    }
+  },
+  "typesX": {
+    "en": {
+      "checksum": "7136f6b3e03574146b7ab5111cd7d7e6"
+    },
+    "es": {
+      "checksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "baseChecksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "baseChecksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "baseChecksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "baseChecksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "baseChecksum": "7136f6b3e03574146b7ab5111cd7d7e6",
+      "status": "new"
+    }
+  },
+  "create": {
+    "en": {
+      "checksum": "42e4867ef1fd945a11f9f3bd332ea19e"
+    },
+    "es": {
+      "checksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "baseChecksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "baseChecksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "baseChecksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "baseChecksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "baseChecksum": "42e4867ef1fd945a11f9f3bd332ea19e",
+      "status": "new"
+    }
+  },
+  "saveChanges": {
+    "en": {
+      "checksum": "daa6b483e9f6ca081ec7e0b4a352f9e9"
+    },
+    "es": {
+      "checksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "baseChecksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "status": "new"
+    },
+    "fr-ca": {
+      "checksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "baseChecksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "status": "new"
+    },
+    "ru": {
+      "checksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "baseChecksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "status": "new"
+    },
+    "ja": {
+      "checksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "baseChecksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "status": "new"
+    },
+    "de": {
+      "checksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "baseChecksum": "daa6b483e9f6ca081ec7e0b4a352f9e9",
+      "status": "new"
+    }
+  }
+}

@@ -1,0 +1,201 @@
+<div class="card-header">
+  <div class="tile" aria-hidden="true">
+    <mat-icon>inventory_2</mat-icon>
+  </div>
+
+  <div class="card-heading">
+    <h3 class="bundle-name">{{ entry().name }}</h3>
+    <p class="output-path" [attr.aria-label]="TOKENS.BUNDLES.CARD.OUTPUTLABEL | transloco">
+      {{ outputPath().prefix }}@if (outputPath().placeholder) {<span class="var">{{ outputPath().placeholder }}</span>}{{ outputPath().suffix }}
+    </p>
+  </div>
+
+  <div class="card-actions">
+    <button
+      type="button"
+      class="icon-button"
+      [matMenuTriggerFor]="menu"
+      [attr.aria-label]="TOKENS.BUNDLES.CARD.MOREACTIONSARIALABEL | transloco"
+    >
+      <mat-icon>more_vert</mat-icon>
+    </button>
+
+    <mat-menu #menu="matMenu">
+      <button mat-menu-item type="button" (click)="edit.emit()">
+        <mat-icon>edit</mat-icon>
+        <span>{{ TOKENS.COMMON.ACTIONS.EDIT | transloco }}</span>
+      </button>
+      <button mat-menu-item type="button" (click)="delete.emit()">
+        <mat-icon>delete</mat-icon>
+        <span>{{ TOKENS.COMMON.ACTIONS.DELETE | transloco }}</span>
+      </button>
+    </mat-menu>
+  </div>
+</div>
+
+<!-- Collections consumed and the types file, as two labelled rows. -->
+<dl class="meta">
+  <div class="meta-row">
+    <mat-icon class="meta-icon" aria-hidden="true">folder_copy</mat-icon>
+    <dt class="meta-label">{{ TOKENS.BUNDLES.CARD.COLLECTIONSLABEL | transloco }}</dt>
+    <dd class="meta-value">
+      <ul class="chips">
+        @if (includesAllCollections()) {
+          <li class="chip" [class.chip--linked]="linked()">
+            <mat-icon aria-hidden="true">done_all</mat-icon>
+            <span>{{ TOKENS.BUNDLES.CARD.ALLCOLLECTIONSX | transloco: { count: collectionNames().length } }}</span>
+          </li>
+        } @else {
+          @for (name of collectionNames(); track name) {
+            <li class="chip" [class.chip--linked]="linked()">
+              <mat-icon aria-hidden="true">folder</mat-icon>
+              <span>{{ name }}</span>
+            </li>
+          }
+        }
+      </ul>
+    </dd>
+  </div>
+
+  <div class="meta-row">
+    <mat-icon class="meta-icon" aria-hidden="true">data_object</mat-icon>
+    <dt class="meta-label">{{ TOKENS.BUNDLES.CARD.TYPESLABEL | transloco }}</dt>
+    <dd class="meta-value">
+      @if (typeDistFile(); as file) {
+        <code class="mono">{{ file }}</code>
+      } @else {
+        <span class="muted">{{ TOKENS.BUNDLES.CARD.TYPESOFF | transloco }}</span>
+      }
+    </dd>
+  </div>
+</dl>
+
+<!-- Result strip: running, completed (with or without warnings) or failed. -->
+@if (isRunning()) {
+  <div class="result result--run" role="status" aria-live="polite">
+    <span class="spinner" aria-hidden="true"></span>
+    <span class="result-text">
+      <span class="fig"><b>{{ TOKENS.BUNDLES.RUN.GENERATING | transloco }}</b></span>
+      @if (currentFileName(); as file) {
+        <span class="fig">{{ TOKENS.BUNDLES.RUN.WRITING | transloco }} <code class="mono">{{ file }}</code></span>
+      }
+      @if (progress(); as p) {
+        @if (p.total > 0) {
+          <span class="fig num">{{ TOKENS.BUNDLES.RUN.LOCALESPROGRESSX | transloco: { current: p.current, total: p.total } }}</span>
+        }
+      }
+    </span>
+    <span class="bar" aria-hidden="true"><i [style.width.%]="progressPercent()"></i></span>
+  </div>
+} @else if (isCompleted()) {
+  <div class="result result--ok" [class.result--warn]="hasWarnings()" role="status" [class.result--open]="detailsOpen()">
+    <div class="result-line">
+      <mat-icon aria-hidden="true">{{ hasWarnings() ? 'warning' : 'check_circle' }}</mat-icon>
+      <!-- A clean run says so with its tint and glyph; only a real warning count earns a clause. -->
+      <span class="result-text">
+        <span class="fig"><b>{{ TOKENS.BUNDLES.RUN.GENERATED | transloco }}</b></span>
+        <span class="fig num">{{ TOKENS.BUNDLES.RUN.FILESX | transloco: { count: filesCount() } }}</span>
+        <span class="fig num">{{ TOKENS.BUNDLES.RUN.KEYSPERLOCALEX | transloco: { count: keysPerLocale() } }}</span>
+        @if (hasWarnings()) {
+          <span class="fig num">{{ TOKENS.BUNDLES.RUN.WARNINGSX | transloco: { count: warningsCount() } }}</span>
+        }
+      </span>
+
+      <!-- Details and dismiss travel together, pinned to the strip's top-right, so they
+           stay one cluster instead of two controls drifting apart when the copy wraps. -->
+      <div class="result-controls">
+        <button
+          type="button"
+          class="details-toggle"
+          (click)="toggleDetails()"
+          [attr.aria-expanded]="detailsOpen()"
+          [attr.aria-controls]="detailsId()"
+          [attr.aria-label]="TOKENS.BUNDLES.RUN.DETAILSARIALABELX | transloco: { name: entry().name }"
+        >
+          {{ TOKENS.BUNDLES.RUN.DETAILS | transloco }}
+          <mat-icon class="chevron" aria-hidden="true">expand_more</mat-icon>
+        </button>
+        <button
+          type="button"
+          class="dismiss"
+          (click)="dismiss.emit()"
+          [attr.aria-label]="TOKENS.BUNDLES.RUN.DISMISSARIALABELX | transloco: { name: entry().name }"
+        >
+          <mat-icon aria-hidden="true">close</mat-icon>
+        </button>
+      </div>
+    </div>
+
+    @if (detailsOpen()) {
+      <div class="result-details" [id]="detailsId()">
+        <h4 class="details-heading">{{ TOKENS.BUNDLES.RUN.FILESWRITTEN | transloco }}</h4>
+        <ul class="details-list">
+          @for (item of resultFiles(); track item.locale) {
+            <li>
+              <code class="mono">{{ item.file }}</code>
+              @if (item.keys !== undefined) {
+                <span class="num">{{ TOKENS.BUNDLES.RUN.KEYSX | transloco: { count: item.keys } }}</span>
+              }
+            </li>
+          }
+          @if (result()?.typeDistFile; as typesFile) {
+            <li>
+              <code class="mono">{{ typesFile }}</code>
+              @if (result()?.typesKeysCount; as typesKeys) {
+                <span class="num">{{ TOKENS.BUNDLES.RUN.KEYSX | transloco: { count: typesKeys } }}</span>
+              }
+            </li>
+          }
+        </ul>
+
+        @if (hasWarnings()) {
+          <h4 class="details-heading">{{ TOKENS.BUNDLES.RUN.WARNINGSHEADING | transloco }}</h4>
+          <ul class="details-list details-list--warnings">
+            @for (warning of result()?.warnings; track $index) {
+              <li><span [title]="warning">{{ warning }}</span></li>
+            }
+          </ul>
+        }
+      </div>
+    }
+  </div>
+} @else if (isFailed()) {
+  <div class="result result--failed" role="status">
+    <mat-icon aria-hidden="true">error</mat-icon>
+    <span class="result-text">
+      <span class="fig"><b>{{ TOKENS.BUNDLES.RUN.FAILED | transloco }}</b></span>
+      @if (run()?.error; as message) {
+        <span class="fig fig--prose">{{ message }}</span>
+      }
+    </span>
+    <button type="button" class="btn btn--outline btn--sm" (click)="retry.emit()">
+      {{ TOKENS.COMMON.ACTIONS.RETRY | transloco }}
+    </button>
+  </div>
+}
+
+<div class="card-footer">
+  <div class="footer-meta">
+    <span>
+      <mat-icon aria-hidden="true">translate</mat-icon>
+      <span class="num">{{ TOKENS.BUNDLES.CARD.LOCALESCOUNTX | transloco: { count: localeCount() } }}</span>
+    </span>
+  </div>
+
+  <button
+    type="button"
+    class="btn btn--outline btn--sm"
+    [class.btn--busy]="isRunning()"
+    [attr.aria-disabled]="isRunning() ? 'true' : null"
+    [attr.aria-label]="TOKENS.BUNDLES.CARD.GENERATEARIALABELX | transloco: { name: entry().name }"
+    (click)="onGenerateClick()"
+  >
+    @if (isRunning()) {
+      <span class="spinner" aria-hidden="true"></span>
+      {{ TOKENS.BUNDLES.CARD.GENERATING | transloco }}
+    } @else {
+      <mat-icon aria-hidden="true">play_arrow</mat-icon>
+      {{ TOKENS.BUNDLES.CARD.GENERATE | transloco }}
+    }
+  </button>
+</div>

@@ -1,22 +1,25 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { InlineFolderInput } from './inline-folder-input';
+import type { ComponentFixture } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
+import { InlineFolderInput } from './inline-folder-input';
 
 describe('InlineFolderInput', () => {
   let component: InlineFolderInput;
   let fixture: ComponentFixture<InlineFolderInput>;
+  let spectator: Spectator<InlineFolderInput>;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [InlineFolderInput, getTranslocoTestingModule()],
-      providers: [provideNoopAnimations()],
-    }).compileComponents();
+  const createComponent = createComponentFactory({
+    component: InlineFolderInput,
+    imports: [getTranslocoTestingModule()],
+    providers: [provideNoopAnimations()],
+  });
 
-    fixture = TestBed.createComponent(InlineFolderInput);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+  beforeEach(() => {
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
   });
 
   it('should create', () => {

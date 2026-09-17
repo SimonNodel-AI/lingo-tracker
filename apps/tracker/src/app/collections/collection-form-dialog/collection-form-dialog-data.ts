@@ -18,4 +18,11 @@ export interface CollectionFormDialogData {
    * Collection configuration (only present in edit mode).
    */
   config?: LingoTrackerCollectionDto;
+
+  /**
+   * The base locale the collection actually compares against (edit mode). Falls back to the
+   * global config when the collection does not set its own, so the dialog can mark and lock it
+   * without writing an explicit `baseLocale` into the collection.
+   */
+  effectiveBaseLocale?: string;
 }

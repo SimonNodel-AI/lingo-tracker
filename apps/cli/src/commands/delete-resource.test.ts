@@ -4,7 +4,19 @@ import { existsSync, readFileSync } from 'node:fs';
 import { deleteResourceCommand } from './delete-resource';
 import { deleteResource } from '@simoncodes-ca/core';
 
-vi.mock('node:fs');
+const fsMocks = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
 vi.mock('prompts');
 vi.mock('@simoncodes-ca/core', async () => {
   const actual = await vi.importActual('@simoncodes-ca/core');

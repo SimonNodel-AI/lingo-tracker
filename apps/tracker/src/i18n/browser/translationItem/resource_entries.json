@@ -178,25 +178,5 @@
     "ru": "{locale} идентичен исходному тексту",
     "ja": "{locale} はソーステキストと同一です",
     "de": "{locale} ist identisch mit dem Quelltext"
-  },
-  "defaultLocaleTag": {
-    "source": "default",
-    "comment": "Short marker on the compact row when the shown locale was picked automatically rather than chosen by the user",
-    "tags": ["browser"],
-    "es": "por defecto",
-    "fr-ca": "défaut",
-    "ru": "по умолчанию",
-    "ja": "デフォルト",
-    "de": "Standard"
-  },
-  "defaultLocaleTooltipX": {
-    "source": "This collection has no base locale, so {locale} is shown by default. Pick a different one with the locale filter.",
-    "comment": "Tooltip explaining why a locale was auto-selected for the compact row, and how to change it",
-    "tags": ["browser"],
-    "es": "Esta colección no tiene una configuración regional base, por lo que {locale} se muestra por defecto. Seleccione una diferente con el filtro de configuración regional.",
-    "fr-ca": "Cette collection n'a pas de langue de base ; donc, {locale} est affiché par défaut. Choisissez-en un autre à l'aide du filtre de langue.",
-    "ru": "В этой коллекции отсутствует базовая локаль, поэтому по умолчанию отображается {locale}. Выберите другую локаль с помощью фильтра локали.",
-    "ja": "このコレクションには基本ロケールが設定されていないため、デフォルトで{locale}が表示されます。ロケールフィルターを使用して別のロケールを選択してください。",
-    "de": "Diese Sammlung hat kein Basisgebietsschema, daher wird standardmäßig {locale} angezeigt. Wählen Sie mit dem Gebietsschemafilter ein anderes Gebietsschema aus."
   }
 }

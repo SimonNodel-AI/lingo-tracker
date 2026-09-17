@@ -3,7 +3,19 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { initCommand } from './init';
 
-vi.mock('node:fs');
+const fsMocks = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  writeFileSync: vi.fn(),
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    ...fsMocks,
+    default: { ...actual.default, ...fsMocks },
+  };
+});
 vi.mock('prompts');
 
 const mockExistsSync = vi.mocked(existsSync);
