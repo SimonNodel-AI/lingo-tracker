@@ -1,17 +1,19 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Component } from '@angular/core';
-import { Router, provideRouter } from '@angular/router';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { AppHeader } from './app-header';
-import { ThemeService } from '../shared/services/theme.service';
+import type { ComponentFixture } from '@angular/core/testing';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideRouter, Router } from '@angular/router';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
+import { ThemeService } from '../shared/services/theme.service';
+import { AppHeader } from './app-header';
 
 @Component({ standalone: true, template: '' })
 class BlankRoute {}
 
 describe('AppHeader', () => {
   let fixture: ComponentFixture<AppHeader>;
+  let spectator: Spectator<AppHeader>;
   let router: Router;
   let theme: ThemeService;
 
@@ -22,6 +24,17 @@ describe('AppHeader', () => {
   const themeButton = () => actions()[1];
   const iconOf = (button: HTMLElement | undefined) => button?.querySelector('mat-icon')?.textContent?.trim();
 
+  const createComponent = createComponentFactory({
+    component: AppHeader,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [
+      provideRouter([
+        { path: 'settings', component: BlankRoute },
+        { path: 'collections', component: BlankRoute },
+      ]),
+    ],
+  });
+
   const navigate = async (url: string) => {
     await router.navigateByUrl(url);
     fixture.detectChanges();
@@ -29,7 +42,7 @@ describe('AppHeader', () => {
     fixture.detectChanges();
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     // ThemeService reads prefers-color-scheme on construction and the CDK
     // BreakpointObserver subscribes through the legacy addListener API; jsdom
     // has no matchMedia at all, so the stub has to answer both.
@@ -47,20 +60,10 @@ describe('AppHeader', () => {
         }) as unknown as MediaQueryList,
     );
 
-    await TestBed.configureTestingModule({
-      imports: [AppHeader, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [
-        provideRouter([
-          { path: 'settings', component: BlankRoute },
-          { path: 'collections', component: BlankRoute },
-        ]),
-      ],
-    }).compileComponents();
-
-    router = TestBed.inject(Router);
-    theme = TestBed.inject(ThemeService);
-    fixture = TestBed.createComponent(AppHeader);
-    fixture.detectChanges();
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    router = spectator.inject(Router);
+    theme = spectator.inject(ThemeService);
   });
 
   describe('settings button', () => {

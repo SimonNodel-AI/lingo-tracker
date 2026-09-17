@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { LingoTrackerConfig } from '../../../config/lingo-tracker-config';
-import { hasTypeDistConfigured, type TokenCasing } from '../../../config/bundle-definition';
+import { type BundleDefinition, hasTypeDistConfigured, type TokenCasing } from '../../../config/bundle-definition';
 import { loadCollectionResources } from '../resource-loader';
 import { matchesPattern } from '../pattern-matcher';
 import { matchesTags } from '../tag-filter';
@@ -24,8 +24,11 @@ export async function generateBundleTypes(
   config: LingoTrackerConfig,
   tokenCasing: TokenCasing = 'upperCase',
   tokenConstantName?: string,
+  bundleDefinition?: BundleDefinition,
 ): Promise<GenerateTypesResult> {
-  const bundleDef = config.bundles?.[bundleKey];
+  // An explicitly passed definition wins over the one stored in config, so
+  // callers can generate types for an unsaved or renamed bundle.
+  const bundleDef = bundleDefinition ?? config.bundles?.[bundleKey];
 
   // Support deprecated 'typeDist' property — read the legacy value without mutating the config object
   const legacyTypeDist = (bundleDef as unknown as Record<string, unknown>)?.['typeDist'];

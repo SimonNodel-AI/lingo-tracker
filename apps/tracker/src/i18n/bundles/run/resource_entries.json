@@ -1,0 +1,152 @@
+{
+  "generating": {
+    "source": "Generating",
+    "comment": "Leading word of the running result strip on a bundle card",
+    "tags": ["bundles"],
+    "es": "Generating",
+    "fr-ca": "Generating",
+    "ru": "Generating",
+    "ja": "Generating",
+    "de": "Generating"
+  },
+  "writing": {
+    "source": "writing",
+    "comment": "Word before the file name currently being written in the running strip",
+    "tags": ["bundles"],
+    "es": "writing",
+    "fr-ca": "writing",
+    "ru": "writing",
+    "ja": "writing",
+    "de": "writing"
+  },
+  "localesProgressX": {
+    "source": "{current} of {total} locales",
+    "comment": "Progress in the running strip, e.g. 3 of 6 locales",
+    "tags": ["bundles"],
+    "es": "{current} of {total} locales",
+    "fr-ca": "{current} of {total} locales",
+    "ru": "{current} of {total} locales",
+    "ja": "{current} of {total} locales",
+    "de": "{current} of {total} locales"
+  },
+  "generated": {
+    "source": "Generated",
+    "comment": "Leading word of the success result strip on a bundle card",
+    "tags": ["bundles"],
+    "es": "Generated",
+    "fr-ca": "Generated",
+    "ru": "Generated",
+    "ja": "Generated",
+    "de": "Generated"
+  },
+  "filesX": {
+    "source": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "comment": "Number of files written, in the success result strip",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "fr-ca": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "ru": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "ja": "{ count, plural, =1 {1 file} other {{count} files} }",
+    "de": "{ count, plural, =1 {1 file} other {{count} files} }"
+  },
+  "keysPerLocaleX": {
+    "source": "{count} keys per locale",
+    "comment": "Keys per locale in the success result strip",
+    "tags": ["bundles"],
+    "es": "{count} keys per locale",
+    "fr-ca": "{count} keys per locale",
+    "ru": "{count} keys per locale",
+    "ja": "{count} keys per locale",
+    "de": "{count} keys per locale"
+  },
+  "warningsX": {
+    "source": "{ count, plural, =1 {1 warning} other {{count} warnings} }",
+    "comment": "Warning count in the success strip",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 warning} other {{count} warnings} }",
+    "fr-ca": "{ count, plural, =1 {1 warning} other {{count} warnings} }",
+    "ru": "{ count, plural, =1 {1 warning} other {{count} warnings} }",
+    "ja": "{ count, plural, =1 {1 warning} other {{count} warnings} }",
+    "de": "{ count, plural, =1 {1 warning} other {{count} warnings} }"
+  },
+  "details": {
+    "source": "Details",
+    "comment": "Disclosure toggle in the result strip that reveals files and warnings",
+    "tags": ["bundles"],
+    "es": "Details",
+    "fr-ca": "Details",
+    "ru": "Details",
+    "ja": "Details",
+    "de": "Details"
+  },
+  "detailsAriaLabelX": {
+    "source": "Details of the last run of bundle {name}",
+    "comment": "Accessible label for the result strip details toggle",
+    "tags": ["bundles"],
+    "es": "Details of the last run of bundle {name}",
+    "fr-ca": "Details of the last run of bundle {name}",
+    "ru": "Details of the last run of bundle {name}",
+    "ja": "Details of the last run of bundle {name}",
+    "de": "Details of the last run of bundle {name}"
+  },
+  "filesWritten": {
+    "source": "Files written",
+    "comment": "Heading of the files list inside the result details",
+    "tags": ["bundles"],
+    "es": "Files written",
+    "fr-ca": "Files written",
+    "ru": "Files written",
+    "ja": "Files written",
+    "de": "Files written"
+  },
+  "keysX": {
+    "source": "{ count, plural, =1 {1 key} other {{count} keys} }",
+    "comment": "Key count shown next to each written file in the result details",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 key} other {{count} keys} }",
+    "fr-ca": "{ count, plural, =1 {1 key} other {{count} keys} }",
+    "ru": "{ count, plural, =1 {1 key} other {{count} keys} }",
+    "ja": "{ count, plural, =1 {1 key} other {{count} keys} }",
+    "de": "{ count, plural, =1 {1 key} other {{count} keys} }"
+  },
+  "typesFile": {
+    "source": "Types file",
+    "comment": "Label for the generated types file row in the result details",
+    "tags": ["bundles"],
+    "es": "Types file",
+    "fr-ca": "Types file",
+    "ru": "Types file",
+    "ja": "Types file",
+    "de": "Types file"
+  },
+  "warningsHeading": {
+    "source": "Warnings",
+    "comment": "Heading of the warnings list inside the result details",
+    "tags": ["bundles"],
+    "es": "Warnings",
+    "fr-ca": "Warnings",
+    "ru": "Warnings",
+    "ja": "Warnings",
+    "de": "Warnings"
+  },
+  "failed": {
+    "source": "Generation failed",
+    "comment": "Leading word of the failed result strip on a bundle card",
+    "tags": ["bundles"],
+    "es": "Generation failed",
+    "fr-ca": "Generation failed",
+    "ru": "Generation failed",
+    "ja": "Generation failed",
+    "de": "Generation failed"
+  },
+  "dismissAriaLabelX": {
+    "source": "Dismiss the last run result for bundle {name}",
+    "comment": "Accessible label for the X button that dismisses a finished result strip on a bundle card",
+    "tags": ["bundles"],
+    "es": "Dismiss the last run result for bundle {name}",
+    "fr-ca": "Dismiss the last run result for bundle {name}",
+    "ru": "Dismiss the last run result for bundle {name}",
+    "ja": "Dismiss the last run result for bundle {name}",
+    "de": "Dismiss the last run result for bundle {name}"
+  }
+}

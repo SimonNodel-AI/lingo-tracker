@@ -1,0 +1,92 @@
+{
+  "description": {
+    "source": "Where the generated files go and how they are named.",
+    "comment": "Description under the Output pane title",
+    "tags": ["bundles"],
+    "es": "Where the generated files go and how they are named.",
+    "fr-ca": "Where the generated files go and how they are named.",
+    "ru": "Where the generated files go and how they are named.",
+    "ja": "Where the generated files go and how they are named.",
+    "de": "Where the generated files go and how they are named."
+  },
+  "nameLabel": {
+    "source": "Name",
+    "comment": "Label for the bundle name field",
+    "tags": ["bundles"],
+    "es": "Name",
+    "fr-ca": "Name",
+    "ru": "Name",
+    "ja": "Name",
+    "de": "Name"
+  },
+  "namePlaceholder": {
+    "source": "e.g., admin",
+    "comment": "Placeholder for the bundle name field",
+    "tags": ["bundles"],
+    "es": "e.g., admin",
+    "fr-ca": "e.g., admin",
+    "ru": "e.g., admin",
+    "ja": "e.g., admin",
+    "de": "e.g., admin"
+  },
+  "nameLockedX": {
+    "source": "The name is the key in {bundles} and can't be changed.",
+    "comment": "Hint under the locked bundle name in edit mode; bundles is the config key in code markup",
+    "tags": ["bundles"],
+    "es": "The name is the key in {bundles} and can't be changed.",
+    "fr-ca": "The name is the key in {bundles} and can't be changed.",
+    "ru": "The name is the key in {bundles} and can't be changed.",
+    "ja": "The name is the key in {bundles} and can't be changed.",
+    "de": "The name is the key in {bundles} and can't be changed."
+  },
+  "folderLabel": {
+    "source": "Output folder",
+    "comment": "Label for the bundle output folder field",
+    "tags": ["bundles"],
+    "es": "Output folder",
+    "fr-ca": "Output folder",
+    "ru": "Output folder",
+    "ja": "Output folder",
+    "de": "Output folder"
+  },
+  "folderPlaceholder": {
+    "source": "./dist/i18n",
+    "comment": "Placeholder for the bundle output folder field",
+    "tags": ["bundles"],
+    "es": "./dist/i18n",
+    "fr-ca": "./dist/i18n",
+    "ru": "./dist/i18n",
+    "ja": "./dist/i18n",
+    "de": "./dist/i18n"
+  },
+  "patternLabel": {
+    "source": "File name pattern",
+    "comment": "Label for the bundle file name pattern field",
+    "tags": ["bundles"],
+    "es": "File name pattern",
+    "fr-ca": "File name pattern",
+    "ru": "File name pattern",
+    "ja": "File name pattern",
+    "de": "File name pattern"
+  },
+  "patternPlaceholder": {
+    "source": "admin.{locale}",
+    "comment": "Placeholder for the bundle file name pattern field; {locale} is a literal placeholder token",
+    "tags": ["bundles"],
+    "es": "admin.{locale}",
+    "fr-ca": "admin.{locale}",
+    "ru": "admin.{locale}",
+    "ja": "admin.{locale}",
+    "de": "admin.{locale}"
+  },
+  "writesHintX": {
+    "source": "Writes {examples} … {count} files, one per locale.",
+    "comment": "Hint under the pattern field; examples is a list of file names in code markup, count the number of files",
+    "tags": ["bundles"],
+    "es": "Writes {examples} … {count} files, one per locale.",
+    "fr-ca": "Writes {examples} … {count} files, one per locale.",
+    "ru": "Writes {examples} … {count} files, one per locale.",
+    "ja": "Writes {examples} … {count} files, one per locale.",
+    "de": "Writes {examples} … {count} files, one per locale."
+  }
+}

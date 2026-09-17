@@ -1,19 +1,27 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { signal } from '@angular/core';
+import type { ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { TranslationSearch } from './translation-search';
-import { BrowserStore } from '../../../store/browser.store';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { SearchInput } from '../../../../shared/components/search-input';
+import { BrowserStore } from '../../../store/browser.store';
+import { TranslationSearch } from './translation-search';
 
 describe('TranslationSearch', () => {
   let component: TranslationSearch;
   let fixture: ComponentFixture<TranslationSearch>;
+  let spectator: Spectator<TranslationSearch>;
   let mockStore: any;
 
-  beforeEach(async () => {
+  const createComponent = createComponentFactory({
+    component: TranslationSearch,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [{ provide: BrowserStore, useFactory: () => mockStore }],
+  });
+
+  beforeEach(() => {
     mockStore = {
       searchQuery: signal(''),
       isSearchMode: signal(false),
@@ -23,14 +31,9 @@ describe('TranslationSearch', () => {
       searchTranslations: vi.fn(),
     };
 
-    await TestBed.configureTestingModule({
-      imports: [TranslationSearch, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [{ provide: BrowserStore, useValue: mockStore }],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(TranslationSearch);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
   });
 
   describe('Component Initialization', () => {

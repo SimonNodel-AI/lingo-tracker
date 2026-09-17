@@ -1,6 +1,6 @@
 import type { LingoTrackerConfig, ResolvedProtectedTerms } from '@simoncodes-ca/core';
-import { mapConfigToDto, mapDtoToConfigUpdate } from './config.mapper';
 import { mapCollectionToDto, mapDtoToCollection } from './collection.mapper';
+import { mapConfigToDto, mapDtoToConfigUpdate } from './config.mapper';
 
 describe('config.mapper', () => {
   describe('mapConfigToDto', () => {
@@ -65,6 +65,30 @@ describe('config.mapper', () => {
       expect(dto.protectedTerms).toBeUndefined();
       expect(dto.collections.app.protectedTerms).toBeUndefined();
       expect(dto.protectedTermsFilePath).toBe('/project/.lingo-tracker-protected-terms.json');
+    });
+
+    it('maps bundle definitions by name', () => {
+      const dto = mapConfigToDto({
+        ...config,
+        bundles: {
+          main: { bundleName: '{locale}', dist: './dist/i18n', collections: 'All', typeDistFile: './dist/main.ts' },
+        },
+      });
+
+      expect(dto.bundles).toEqual({
+        main: { bundleName: '{locale}', dist: './dist/i18n', collections: 'All', typeDistFile: './dist/main.ts' },
+      });
+    });
+
+    it('omits bundles when the config has none', () => {
+      const dto = mapConfigToDto(config);
+
+      expect('bundles' in dto).toBe(false);
+    });
+
+    it('exposes projectName only when provided', () => {
+      expect(mapConfigToDto(config, undefined, 'lingo-tracker').projectName).toBe('lingo-tracker');
+      expect('projectName' in mapConfigToDto(config)).toBe(false);
     });
   });
 

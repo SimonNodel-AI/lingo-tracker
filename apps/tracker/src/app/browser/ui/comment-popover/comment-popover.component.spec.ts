@@ -1,18 +1,19 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach } from 'vitest';
+import type { ComponentFixture } from '@angular/core/testing';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { CommentPopover } from './comment-popover.component';
 
 describe('CommentPopover', () => {
   let component: CommentPopover;
   let fixture: ComponentFixture<CommentPopover>;
+  let spectator: Spectator<CommentPopover>;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [CommentPopover],
-    }).compileComponents();
+  const createComponent = createComponentFactory({ component: CommentPopover, detectChanges: false });
 
-    fixture = TestBed.createComponent(CommentPopover);
-    component = fixture.componentInstance;
+  beforeEach(() => {
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
   });
 
   it('should create', () => {

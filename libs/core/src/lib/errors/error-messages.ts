@@ -32,4 +32,10 @@ export const ErrorMessages = {
   cannotModifyBaseLocale: (locale: string) => `Cannot add or remove the base locale "${locale}"`,
 
   invalidKey: (key: string, reason: string) => `Invalid resource key "${key}": ${reason}`,
+
+  bundleNotFound: (name: string) => `Bundle "${name}" not found`,
+
+  bundleAlreadyExists: (name: string) => `Bundle "${name}" already exists`,
+
+  invalidBundleDefinition: (errors: string[]) => `Invalid bundle definition: ${errors.join('; ')}`,
 } as const;

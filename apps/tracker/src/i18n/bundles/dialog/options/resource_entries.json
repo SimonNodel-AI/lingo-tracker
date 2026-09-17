@@ -1,0 +1,32 @@
+{
+  "description": {
+    "source": "Generation options that override the project defaults.",
+    "comment": "Description under the Options pane title",
+    "tags": ["bundles"],
+    "es": "Generation options that override the project defaults.",
+    "fr-ca": "Generation options that override the project defaults.",
+    "ru": "Generation options that override the project defaults.",
+    "ja": "Generation options that override the project defaults.",
+    "de": "Generation options that override the project defaults."
+  },
+  "icuLabel": {
+    "source": "Convert ICU to Transloco syntax",
+    "comment": "Switch row label for ICU-to-Transloco conversion",
+    "tags": ["bundles"],
+    "es": "Convert ICU to Transloco syntax",
+    "fr-ca": "Convert ICU to Transloco syntax",
+    "ru": "Convert ICU to Transloco syntax",
+    "ja": "Convert ICU to Transloco syntax",
+    "de": "Convert ICU to Transloco syntax"
+  },
+  "icuHintX": {
+    "source": "Rewrites {icu}-style placeholders to {transloco} in the generated files.",
+    "comment": "Switch row description; icu and transloco are placeholder examples in code markup",
+    "tags": ["bundles"],
+    "es": "Rewrites {icu}-style placeholders to {transloco} in the generated files.",
+    "fr-ca": "Rewrites {icu}-style placeholders to {transloco} in the generated files.",
+    "ru": "Rewrites {icu}-style placeholders to {transloco} in the generated files.",
+    "ja": "Rewrites {icu}-style placeholders to {transloco} in the generated files.",
+    "de": "Rewrites {icu}-style placeholders to {transloco} in the generated files."
+  }
+}

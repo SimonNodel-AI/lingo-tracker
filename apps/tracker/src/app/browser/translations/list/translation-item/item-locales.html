@@ -19,6 +19,7 @@
         [class.full]="densityMode() === 'full'"
         [class.expanded]="isExpanded()"
         [class.locale-value--empty]="!base.value"
+        data-selectable-text
         dir="auto"
         [innerHTML]="(base.value || '—') | highlight : searchQuery()"
       ></div>
@@ -72,6 +73,7 @@
         [class.full]="densityMode() === 'full'"
         [class.expanded]="isExpanded()"
         [class.locale-value--empty]="!lt.value"
+        data-selectable-text
         dir="auto"
         [innerHTML]="(lt.value || '—') | highlight : searchQuery()"
       >

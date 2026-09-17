@@ -38,7 +38,7 @@ interface RootState {
   error: string | null;
   currentFolderPath: string;
   densityMode: DensityMode;
-  compactLocale: string | null;
+  compactLocale: string | undefined;
   compactLocaleManuallyChanged: boolean;
   nonCompactSelectedLocales: string[];
 }
@@ -52,7 +52,7 @@ const initialRootState: RootState = {
   error: null,
   currentFolderPath: '',
   densityMode: 'compact',
-  compactLocale: null,
+  compactLocale: undefined,
   compactLocaleManuallyChanged: false,
   nonCompactSelectedLocales: [],
 };
@@ -146,7 +146,7 @@ export const BrowserStore = signalStore(
           isReadOnly: params.readOnly ?? false,
           selectedLocales: loaded?.selectedLocales || [],
           baseLocale,
-          cacheStatus: null,
+          cacheStatus: 'not-started',
           cacheError: null,
           collectionStats: null,
           currentFolderPath: '',
@@ -154,7 +154,7 @@ export const BrowserStore = signalStore(
           preFilterExpandedFolders: null,
           isRootExpanded: true,
           showNestedResources: loaded?.showNestedResources ?? true,
-          compactLocale: loaded?.compactLocale ?? null,
+          compactLocale: loaded?.compactLocale ?? undefined,
           compactLocaleManuallyChanged: loaded?.compactLocaleManuallyChanged ?? false,
           nonCompactSelectedLocales: [],
           sortField: loaded?.sortField ?? 'key',
@@ -169,7 +169,7 @@ export const BrowserStore = signalStore(
         if (loaded?.densityMode) {
           const mode: DensityMode = (loaded.densityMode as string) === 'medium' ? 'compact' : loaded.densityMode;
           if (mode === 'compact') {
-            const savedCompactLocale = loaded?.compactLocale ?? null;
+            const savedCompactLocale = loaded?.compactLocale ?? undefined;
             const savedSelectedLocales = loaded?.selectedLocales ?? [];
             const newSelected = resolveCompactLocale({
               savedCompactLocale,

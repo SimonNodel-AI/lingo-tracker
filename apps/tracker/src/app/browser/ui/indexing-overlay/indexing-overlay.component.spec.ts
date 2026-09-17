@@ -1,23 +1,28 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { By } from '@angular/platform-browser';
-import { IndexingOverlay } from './indexing-overlay.component';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatCardModule } from '@angular/material/card';
+import type { ComponentFixture } from '@angular/core/testing';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { By } from '@angular/platform-browser';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { IndexingOverlay } from './indexing-overlay.component';
 
 describe('IndexingOverlay', () => {
   let component: IndexingOverlay;
   let fixture: ComponentFixture<IndexingOverlay>;
+  let spectator: Spectator<IndexingOverlay>;
 
-  beforeEach(async () => {
-    await TestBed.configureTestingModule({
-      imports: [IndexingOverlay, MatProgressSpinnerModule, MatCardModule, MatButtonModule, getTranslocoTestingModule()],
-    }).compileComponents();
+  const createComponent = createComponentFactory({
+    component: IndexingOverlay,
+    imports: [MatProgressSpinnerModule, MatCardModule, MatButtonModule, getTranslocoTestingModule()],
+    detectChanges: false,
+  });
 
-    fixture = TestBed.createComponent(IndexingOverlay);
-    component = fixture.componentInstance;
+  beforeEach(() => {
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
   });
 
   it('should create', () => {

@@ -1,0 +1,122 @@
+{
+  "nameRequired": {
+    "source": "A name is required.",
+    "comment": "Validation message for an empty bundle name",
+    "tags": ["bundles"],
+    "es": "A name is required.",
+    "fr-ca": "A name is required.",
+    "ru": "A name is required.",
+    "ja": "A name is required.",
+    "de": "A name is required."
+  },
+  "nameExistsX": {
+    "source": "A bundle named {name} already exists.",
+    "comment": "Validation message when the bundle name collides with an existing bundle",
+    "tags": ["bundles"],
+    "es": "A bundle named {name} already exists.",
+    "fr-ca": "A bundle named {name} already exists.",
+    "ru": "A bundle named {name} already exists.",
+    "ja": "A bundle named {name} already exists.",
+    "de": "A bundle named {name} already exists."
+  },
+  "nameCharset": {
+    "source": "Use letters, numbers, hyphens and underscores.",
+    "comment": "Validation message for invalid characters in the bundle name",
+    "tags": ["bundles"],
+    "es": "Use letters, numbers, hyphens and underscores.",
+    "fr-ca": "Use letters, numbers, hyphens and underscores.",
+    "ru": "Use letters, numbers, hyphens and underscores.",
+    "ja": "Use letters, numbers, hyphens and underscores.",
+    "de": "Use letters, numbers, hyphens and underscores."
+  },
+  "distRequired": {
+    "source": "An output folder is required.",
+    "comment": "Validation message for an empty output folder",
+    "tags": ["bundles"],
+    "es": "An output folder is required.",
+    "fr-ca": "An output folder is required.",
+    "ru": "An output folder is required.",
+    "ja": "An output folder is required.",
+    "de": "An output folder is required."
+  },
+  "patternRequired": {
+    "source": "A file name pattern is required.",
+    "comment": "Validation message for an empty file name pattern",
+    "tags": ["bundles"],
+    "es": "A file name pattern is required.",
+    "fr-ca": "A file name pattern is required.",
+    "ru": "A file name pattern is required.",
+    "ja": "A file name pattern is required.",
+    "de": "A file name pattern is required."
+  },
+  "patternLocale": {
+    "source": "Include {locale} so each locale gets its own file.",
+    "comment": "Validation message when the file name pattern lacks the locale token; the locale argument is the literal placeholder token",
+    "tags": ["bundles"],
+    "es": "Include {locale} so each locale gets its own file.",
+    "fr-ca": "Include {locale} so each locale gets its own file.",
+    "ru": "Include {locale} so each locale gets its own file.",
+    "ja": "Include {locale} so each locale gets its own file.",
+    "de": "Include {locale} so each locale gets its own file."
+  },
+  "typeFileRequired": {
+    "source": "A type file is required.",
+    "comment": "Validation message when types are on but no file is set",
+    "tags": ["bundles"],
+    "es": "A type file is required.",
+    "fr-ca": "A type file is required.",
+    "ru": "A type file is required.",
+    "ja": "A type file is required.",
+    "de": "A type file is required."
+  },
+  "typeFileTs": {
+    "source": "The type file must end in .ts.",
+    "comment": "Validation message when the type file does not have a .ts extension",
+    "tags": ["bundles"],
+    "es": "The type file must end in .ts.",
+    "fr-ca": "The type file must end in .ts.",
+    "ru": "The type file must end in .ts.",
+    "ja": "The type file must end in .ts.",
+    "de": "The type file must end in .ts."
+  },
+  "constantName": {
+    "source": "Must be a valid JavaScript identifier.",
+    "comment": "Validation message for an invalid token constant name",
+    "tags": ["bundles"],
+    "es": "Must be a valid JavaScript identifier.",
+    "fr-ca": "Must be a valid JavaScript identifier.",
+    "ru": "Must be a valid JavaScript identifier.",
+    "ja": "Must be a valid JavaScript identifier.",
+    "de": "Must be a valid JavaScript identifier."
+  },
+  "collectionsEmpty": {
+    "source": "Add at least one collection or include every collection.",
+    "comment": "Validation message when the bundle has no collections",
+    "tags": ["bundles"],
+    "es": "Add at least one collection or include every collection.",
+    "fr-ca": "Add at least one collection or include every collection.",
+    "ru": "Add at least one collection or include every collection.",
+    "ja": "Add at least one collection or include every collection.",
+    "de": "Add at least one collection or include every collection."
+  },
+  "rulesEmpty": {
+    "source": "Add at least one rule or choose All entries.",
+    "comment": "Validation message when a collection filtered by rules has none",
+    "tags": ["bundles"],
+    "es": "Add at least one rule or choose All entries.",
+    "fr-ca": "Add at least one rule or choose All entries.",
+    "ru": "Add at least one rule or choose All entries.",
+    "ja": "Add at least one rule or choose All entries.",
+    "de": "Add at least one rule or choose All entries."
+  },
+  "rulePatternRequired": {
+    "source": "A key pattern is required.",
+    "comment": "Validation message for a rule without a key pattern",
+    "tags": ["bundles"],
+    "es": "A key pattern is required.",
+    "fr-ca": "A key pattern is required.",
+    "ru": "A key pattern is required.",
+    "ja": "A key pattern is required.",
+    "de": "A key pattern is required."
+  }
+}

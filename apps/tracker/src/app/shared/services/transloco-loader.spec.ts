@@ -1,23 +1,26 @@
-import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { firstValueFrom, finalize } from 'rxjs';
-import { TranslocoHttpLoader } from './transloco-loader';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import type { Translation } from '@jsverse/transloco';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
+import { finalize, firstValueFrom } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TranslocoHttpLoader } from './transloco-loader';
 
 describe('TranslocoHttpLoader', () => {
   let loader: TranslocoHttpLoader;
+  let spectator: SpectatorService<TranslocoHttpLoader>;
   let httpMock: HttpTestingController;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn> | undefined;
 
-  beforeEach(() => {
-    TestBed.configureTestingModule({
-      providers: [TranslocoHttpLoader, provideHttpClient(), provideHttpClientTesting()],
-    });
+  const createService = createServiceFactory({
+    service: TranslocoHttpLoader,
+    providers: [provideHttpClient(), provideHttpClientTesting()],
+  });
 
-    loader = TestBed.inject(TranslocoHttpLoader);
-    httpMock = TestBed.inject(HttpTestingController);
+  beforeEach(() => {
+    spectator = createService();
+    loader = spectator.service;
+    httpMock = spectator.inject(HttpTestingController);
   });
 
   afterEach(() => {

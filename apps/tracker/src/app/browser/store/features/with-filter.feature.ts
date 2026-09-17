@@ -16,6 +16,18 @@ const initialFilterState: FilterState = {
   sortDirection: 'asc',
 };
 
+/**
+ * The one locale a compact row shows: the single selection when there is one,
+ * otherwise the base locale, otherwise the collection's first locale. Compact
+ * never shows a pair, so this is also what the locale filter must report.
+ */
+function resolveCompactDisplayLocale(selected: string[], available: string[], base: string): string {
+  const picked = selected.find((locale) => available.includes(locale));
+  if (picked) return picked;
+  if (base && available.includes(base)) return base;
+  return available[0] ?? base;
+}
+
 export function withFilterFeature<_>() {
   return signalStoreFeature(
     {
@@ -23,11 +35,12 @@ export function withFilterFeature<_>() {
         availableLocales: string[];
         baseLocale: string;
         densityMode: string;
+        compactLocale: string | undefined;
         compactLocaleManuallyChanged: boolean;
       }>(),
     },
     withState(initialFilterState),
-    withComputed(({ selectedLocales, selectedStatuses, availableLocales, baseLocale }) => ({
+    withComputed(({ selectedLocales, selectedStatuses, availableLocales, baseLocale, densityMode }) => ({
       isShowingAllLocales: computed(() => {
         const selected = selectedLocales();
         const available = availableLocales();
@@ -37,6 +50,12 @@ export function withFilterFeature<_>() {
       localeFilterText: computed(() => {
         const selected = selectedLocales();
         const available = availableLocales();
+
+        // Compact shows exactly one locale, so "All locales" would be a lie about
+        // what is on screen. Name the locale the rows are actually showing.
+        if (densityMode() === 'compact') {
+          return resolveCompactDisplayLocale(selected, available, baseLocale());
+        }
 
         if (selected.length === 0 || selected.length === available.length) return 'All locales';
         if (selected.length === 1) return selected[0];
@@ -58,6 +77,19 @@ export function withFilterFeature<_>() {
         return result;
       }),
 
+      /**
+       * The single locale a compact row displays.
+       *
+       * Compact shows one value per row, never a pair. The selection is the
+       * single-select locale filter; when nothing is selected the row shows the
+       * base locale, because that is the string the developer wrote and arrived
+       * looking for. A collection with no base locale among its files falls back
+       * to its first locale so the row is never blank.
+       */
+      compactDisplayLocale: computed(() =>
+        resolveCompactDisplayLocale(selectedLocales(), availableLocales(), baseLocale()),
+      ),
+
       filterableLocales: computed(() => {
         const available = availableLocales();
         const base = baseLocale();
@@ -71,6 +103,10 @@ export function withFilterFeature<_>() {
         const isCompactMode = store.densityMode() === 'compact';
         patchState(store, {
           selectedLocales: locales,
+          // In compact the selection *is* the compact locale, so it is remembered
+          // as soon as it changes — not only when the user leaves compact. That is
+          // what lets a reload land on the locale they were looking at.
+          compactLocale: isCompactMode ? locales.at(0) : store.compactLocale(),
           compactLocaleManuallyChanged: isCompactMode ? true : store.compactLocaleManuallyChanged(),
         });
       },
@@ -82,6 +118,7 @@ export function withFilterFeature<_>() {
 
         patchState(store, {
           selectedLocales: newLocales,
+          compactLocale: isCompactMode ? newLocales.at(0) : store.compactLocale(),
           compactLocaleManuallyChanged: isCompactMode ? true : store.compactLocaleManuallyChanged(),
         });
       },

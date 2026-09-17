@@ -1,23 +1,30 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { signal, computed } from '@angular/core';
+import { computed, signal } from '@angular/core';
+import type { ComponentFixture } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
-import { StatusFilter } from './status-filter';
-import { BrowserStore } from '../../../store/browser.store';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
+import { BrowserStore } from '../../../store/browser.store';
+import { StatusFilter } from './status-filter';
 
 describe('StatusFilter', () => {
   let component: StatusFilter;
   let fixture: ComponentFixture<StatusFilter>;
+  let spectator: Spectator<StatusFilter>;
   let selectedStatuses: ReturnType<typeof signal<TranslationStatus[]>>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockStore: any;
 
   const toggleFor = (id: string): HTMLButtonElement | null =>
     fixture.nativeElement.querySelector(`[data-testid="status-toggle-${id}"]`);
 
-  beforeEach(async () => {
+  const createComponent = createComponentFactory({
+    component: StatusFilter,
+    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    providers: [{ provide: BrowserStore, useFactory: () => mockStore }],
+  });
+
+  beforeEach(() => {
     selectedStatuses = signal<TranslationStatus[]>([]);
 
     mockStore = {
@@ -30,14 +37,9 @@ describe('StatusFilter', () => {
       clearAllStatuses: vi.fn(),
     };
 
-    await TestBed.configureTestingModule({
-      imports: [StatusFilter, NoopAnimationsModule, getTranslocoTestingModule()],
-      providers: [{ provide: BrowserStore, useValue: mockStore }],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(StatusFilter);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    spectator = createComponent();
+    fixture = spectator.fixture;
+    component = spectator.component;
   });
 
   describe('Component Initialization', () => {

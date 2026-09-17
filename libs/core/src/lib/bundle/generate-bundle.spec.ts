@@ -547,7 +547,7 @@ describe('generate-bundle', () => {
 
       await generateBundle(params);
 
-      expect(generateBundleTypes).toHaveBeenCalledWith('main', mockConfig, 'upperCase', undefined);
+      expect(generateBundleTypes).toHaveBeenCalledWith('main', mockConfig, 'upperCase', undefined, bundleDefinition);
     });
 
     it('should not invoke type generation when typeDistFile is missing', async () => {
@@ -598,7 +598,7 @@ describe('generate-bundle', () => {
 
       await generateBundle(params);
 
-      expect(generateBundleTypes).toHaveBeenCalledWith('main', mockConfig, 'upperCase', undefined);
+      expect(generateBundleTypes).toHaveBeenCalledWith('main', mockConfig, 'upperCase', undefined, bundleDefinition);
     });
 
     it('should use typeDistFile and not emit a deprecation warning when both typeDist and typeDistFile are present', async () => {
@@ -630,7 +630,7 @@ describe('generate-bundle', () => {
 
       // generateBundleTypes is mocked here so no real deprecation logic runs.
       // The no-warn behaviour for the both-keys-present scenario is verified in generate-types.spec.ts.
-      expect(generateBundleTypes).toHaveBeenCalledWith('main', mockConfig, 'upperCase', undefined);
+      expect(generateBundleTypes).toHaveBeenCalledWith('main', mockConfig, 'upperCase', undefined, bundleDefinition);
     });
 
     it('should pass tokenConstantName through to generateBundleTypes', async () => {
@@ -659,7 +659,13 @@ describe('generate-bundle', () => {
 
       await generateBundle(params);
 
-      expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith('main', mockConfig, 'upperCase', 'CUSTOM_TOKENS');
+      expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith(
+        'main',
+        mockConfig,
+        'upperCase',
+        'CUSTOM_TOKENS',
+        bundleDefinition,
+      );
     });
 
     it('should capture type generation errors in warnings', async () => {
@@ -714,7 +720,13 @@ describe('generate-bundle', () => {
 
         await generateBundle(params);
 
-        expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith('main', mockConfig, 'camelCase', undefined);
+        expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith(
+          'main',
+          mockConfig,
+          'camelCase',
+          undefined,
+          bundleDefinition,
+        );
       });
 
       it('should use bundle-level tokenCasing when no CLI override is given', async () => {
@@ -732,7 +744,13 @@ describe('generate-bundle', () => {
 
         await generateBundle(params);
 
-        expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith('main', mockConfig, 'camelCase', undefined);
+        expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith(
+          'main',
+          mockConfig,
+          'camelCase',
+          undefined,
+          bundleDefWithCasing,
+        );
       });
 
       it('should use global config tokenCasing when no CLI or bundle-level override is given', async () => {
@@ -750,7 +768,104 @@ describe('generate-bundle', () => {
 
         await generateBundle(params);
 
-        expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith('main', configWithCasing, 'camelCase', undefined);
+        expect(vi.mocked(generateBundleTypes)).toHaveBeenCalledWith(
+          'main',
+          configWithCasing,
+          'camelCase',
+          undefined,
+          bundleDefinition,
+        );
+      });
+    });
+
+    describe('onProgress', () => {
+      const bundleDefinition: BundleDefinition = {
+        bundleName: 'main.{locale}',
+        dist: '/dist/bundles',
+        collections: 'All',
+      };
+
+      it('emits one event per locale, in order, with a 1-based index and the output file', async () => {
+        vi.spyOn(resourceLoader, 'loadCollectionResources').mockReturnValue([{ key: 'buttons.ok', value: 'OK' }]);
+        const onProgress = vi.fn();
+
+        await generateBundle({ bundleKey: 'main', bundleDefinition, config: mockConfig, onProgress });
+
+        expect(onProgress.mock.calls.map((call) => call[0])).toEqual([
+          { locale: 'en', index: 1, total: 3, file: path.join('/dist/bundles', 'main.en.json') },
+          { locale: 'fr', index: 2, total: 3, file: path.join('/dist/bundles', 'main.fr.json') },
+          { locale: 'es', index: 3, total: 3, file: path.join('/dist/bundles', 'main.es.json') },
+        ]);
+      });
+
+      it('counts the debug-keys locale in total and emits it last', async () => {
+        vi.spyOn(resourceLoader, 'loadCollectionResources').mockReturnValue([{ key: 'buttons.ok', value: 'OK' }]);
+        const onProgress = vi.fn();
+
+        await generateBundle({
+          bundleKey: 'main',
+          bundleDefinition,
+          config: mockConfig,
+          locales: ['en', 'fr'],
+          debugKeysLocale: '99',
+          onProgress,
+        });
+
+        expect(onProgress).toHaveBeenCalledTimes(3);
+        expect(onProgress.mock.calls.map((call) => call[0].total)).toEqual([3, 3, 3]);
+        expect(onProgress).toHaveBeenLastCalledWith({
+          locale: '99',
+          index: 3,
+          total: 3,
+          file: path.join('/dist/bundles', 'main.99.json'),
+        });
+      });
+
+      it('still emits for a locale whose bundle turns out empty', async () => {
+        vi.spyOn(resourceLoader, 'loadCollectionResources').mockReturnValue([]);
+        const onProgress = vi.fn();
+
+        await generateBundle({ bundleKey: 'main', bundleDefinition, config: mockConfig, locales: ['en'], onProgress });
+
+        expect(onProgress).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    describe('keysPerLocale', () => {
+      const bundleDefinition: BundleDefinition = {
+        bundleName: 'main.{locale}',
+        dist: '/dist/bundles',
+        collections: 'All',
+      };
+
+      it('reports the number of keys written for each processed locale', async () => {
+        // Two collections ('default' and 'admin') each return the same two keys,
+        // so the merged bundle holds two keys per locale.
+        vi.spyOn(resourceLoader, 'loadCollectionResources').mockReturnValue([
+          { key: 'buttons.ok', value: 'OK' },
+          { key: 'buttons.cancel', value: 'Cancel' },
+        ]);
+
+        const result = await generateBundle({ bundleKey: 'main', bundleDefinition, config: mockConfig });
+
+        expect(result.keysPerLocale).toEqual({ en: 2, fr: 2, es: 2 });
+      });
+
+      it('omits empty locales and includes the debug-keys locale', async () => {
+        vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation((_folder, locale) =>
+          locale === 'fr' ? [] : [{ key: 'buttons.ok', value: 'OK' }],
+        );
+
+        const result = await generateBundle({
+          bundleKey: 'main',
+          bundleDefinition,
+          config: mockConfig,
+          locales: ['en', 'fr'],
+          debugKeysLocale: '99',
+        });
+
+        expect(result.keysPerLocale).toEqual({ en: 1, '99': 1 });
+        expect(result.keysPerLocale).not.toHaveProperty('fr');
       });
     });
 

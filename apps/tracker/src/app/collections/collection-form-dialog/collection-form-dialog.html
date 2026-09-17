@@ -1,165 +1,346 @@
-<div role="dialog" [attr.aria-labelledby]="'dialog-title'">
-  <h2 id="dialog-title" mat-dialog-title>{{ dialogTitle | transloco }}</h2>
+<div class="dialog-wrapper" role="dialog" aria-labelledby="collection-dialog-title">
+  <!-- Header: what this dialog does, in one line, plus the close affordance the other dialogs share. -->
+  <header class="dialog-header">
+    <div class="dialog-header-tile" aria-hidden="true">
+      <mat-icon>{{ isEditMode ? 'folder' : 'create_new_folder' }}</mat-icon>
+    </div>
+    <div class="dialog-header-text">
+      <h2 id="collection-dialog-title" class="dialog-title">{{ dialogTitle | transloco }}</h2>
+      @if (isEditMode) {
+        <!-- The file name is app-supplied markup, never translator input, so innerHTML only carries our own <code>. -->
+        <p class="dialog-subtitle" [innerHTML]="TOKENS.COLLECTIONS.DIALOG.EDITSUBTITLEX | transloco : { file: configFileMarkup }"></p>
+      } @else {
+        <p class="dialog-subtitle">{{ TOKENS.COLLECTIONS.DIALOG.CREATESUBTITLE | transloco }}</p>
+      }
+    </div>
+    <button
+      mat-icon-button
+      type="button"
+      class="dialog-close"
+      (click)="onCancel()"
+      [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.CLOSEDIALOG | transloco"
+    >
+      <mat-icon>close</mat-icon>
+    </button>
+  </header>
 
-  <mat-dialog-content>
-    <form [formGroup]="form" (ngSubmit)="onSubmit()">
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>{{ TOKENS.COLLECTIONS.DIALOG.NAMELABEL | transloco }}</mat-label>
-        <input
-          matInput
-          formControlName="name"
-          [placeholder]="TOKENS.COLLECTIONS.DIALOG.NAMEPLACEHOLDER | transloco"
-          required
-        />
-        @if (form.controls.name.hasError('required')) {
-          <mat-error>{{ TOKENS.COLLECTIONS.DIALOG.NAMEREQUIRED | transloco }}</mat-error>
-        }
-      </mat-form-field>
+  <mat-dialog-content class="dialog-body">
+    <form id="collection-form" [formGroup]="form" (ngSubmit)="onSubmit()">
+      <!-- ───────────── Source ───────────── -->
+      <section class="group" aria-labelledby="group-source">
+        <div class="group-head">
+          <h3 id="group-source">{{ TOKENS.COLLECTIONS.DIALOG.SOURCETITLE | transloco }}</h3>
+          <p>{{ TOKENS.COLLECTIONS.DIALOG.SOURCEHINT | transloco }}</p>
+        </div>
 
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>{{ TOKENS.COLLECTIONS.DIALOG.FOLDERLABEL | transloco }}</mat-label>
-        <input
-          matInput
-          formControlName="translationsFolder"
-          [placeholder]="TOKENS.COLLECTIONS.DIALOG.FOLDERPLACEHOLDER | transloco"
-          required
-        />
-        @if (form.controls.translationsFolder.hasError('required')) {
-          <mat-error>{{ TOKENS.COLLECTIONS.DIALOG.FOLDERREQUIRED | transloco }}</mat-error>
-        }
-      </mat-form-field>
-
-      <section class="locale-section">
-        <p class="locale-section-label">{{ TOKENS.COLLECTIONS.DIALOG.LOCALESLABEL | transloco }}</p>
-
-        @if (form.controls.locales.length > 0) {
-          <mat-radio-group formControlName="baseLocale" class="locale-list">
-            @for (localeCtrl of form.controls.locales.controls; track $index) {
-              <div class="locale-row">
-                <mat-radio-button
-                  [value]="localeCtrl.value"
-                  [disabled]="isEditMode"
-                  [matTooltip]="isEditMode ? (TOKENS.COLLECTIONS.DIALOG.BASELOCALELOCKED | transloco) : ''"
-                  class="locale-radio"
-                >
-                  <span class="locale-code">{{ localeCtrl.value }}</span>
-                </mat-radio-button>
-                <button
-                  mat-icon-button
-                  type="button"
-                  (click)="removeLocale($index)"
-                  [disabled]="isEditMode && localeCtrl.value === form.controls.baseLocale.value"
-                  [attr.aria-label]="TOKENS.COLLECTIONS.DIALOG.REMOVEARIA | transloco : { locale: localeCtrl.value }"
-                  class="locale-remove-btn"
-                >
-                  <mat-icon>close</mat-icon>
-                </button>
-              </div>
+        <div class="field">
+          <label class="field-label" for="collection-name">{{ TOKENS.COLLECTIONS.FORM.NAME | transloco }}</label>
+          @if (isEditMode) {
+            <div class="text-input text-input--locked" id="collection-name">
+              <mat-icon aria-hidden="true">lock</mat-icon>
+              <span>{{ form.controls.name.value }}</span>
+            </div>
+            <p class="field-hint">{{ TOKENS.COLLECTIONS.DIALOG.NAMELOCKED | transloco }}</p>
+          } @else {
+            <div class="text-input" [class.text-input--invalid]="showNameError">
+              <input
+                id="collection-name"
+                type="text"
+                formControlName="name"
+                autocomplete="off"
+                required
+                [placeholder]="TOKENS.COLLECTIONS.DIALOG.NAMEPLACEHOLDER | transloco"
+                [attr.aria-invalid]="showNameError"
+                [attr.aria-describedby]="showNameError ? 'collection-name-error' : null"
+              />
+            </div>
+            @if (showNameError) {
+              <p id="collection-name-error" class="field-error" role="alert">
+                {{ TOKENS.COLLECTIONS.DIALOG.NAMEREQUIRED | transloco }}
+              </p>
             }
-          </mat-radio-group>
-        } @else {
-          <p class="locale-empty-hint">{{ TOKENS.COLLECTIONS.DIALOG.LOCALESEMPTY | transloco }}</p>
-        }
+          }
+        </div>
 
-        <div class="locale-add-row">
-          <mat-form-field appearance="outline" class="locale-add-field">
-            <mat-label>{{ TOKENS.COLLECTIONS.DIALOG.ADDLOCALELABEL | transloco }}</mat-label>
+        <div class="field">
+          <label class="field-label" for="collection-folder">{{ TOKENS.COLLECTIONS.FORM.TRANSLATIONSFOLDER | transloco }}</label>
+          <div class="text-input text-input--mono" [class.text-input--invalid]="showFolderError">
+            <mat-icon aria-hidden="true">folder</mat-icon>
             <input
-              matInput
-              [formControl]="addLocaleInput"
-              (keydown.enter)="$event.preventDefault(); addLocale()"
+              id="collection-folder"
+              type="text"
+              formControlName="translationsFolder"
+              autocomplete="off"
+              spellcheck="false"
+              required
+              [placeholder]="TOKENS.COLLECTIONS.DIALOG.FOLDERPLACEHOLDER | transloco"
+              [attr.aria-invalid]="showFolderError"
+              [attr.aria-describedby]="showFolderError ? 'collection-folder-error' : 'collection-folder-hint'"
             />
-            @if (addLocaleInput.hasError('invalidLocale')) {
-              <mat-error>{{ TOKENS.COLLECTIONS.DIALOG.INVALIDLOCALE | transloco }}</mat-error>
-            }
-            @if (addLocaleInput.hasError('duplicateLocale')) {
-              <mat-error>{{ TOKENS.COLLECTIONS.DIALOG.DUPLICATELOCALE | transloco }}</mat-error>
-            }
-          </mat-form-field>
-          <button mat-stroked-button type="button" (click)="addLocale()" class="locale-add-btn">
-            {{ TOKENS.COLLECTIONS.DIALOG.ADDBUTTON | transloco }}
-          </button>
+          </div>
+          @if (showFolderError) {
+            <p id="collection-folder-error" class="field-error" role="alert">
+              {{ TOKENS.COLLECTIONS.DIALOG.FOLDERREQUIRED | transloco }}
+            </p>
+          } @else {
+            <p
+              id="collection-folder-hint"
+              class="field-hint"
+              [innerHTML]="TOKENS.COLLECTIONS.DIALOG.FOLDERHINTX | transloco : { file: configFileMarkup }"
+            ></p>
+          }
         </div>
       </section>
 
-      <section class="readonly-section">
-        <mat-checkbox formControlName="readOnly" (change)="onReadOnlyToggle()">
-          {{ TOKENS.COLLECTIONS.DIALOG.READONLYLABEL | transloco }}
-        </mat-checkbox>
-        <p class="readonly-hint">
-          {{ (isNodeModulesPath ? TOKENS.COLLECTIONS.DIALOG.READONLYNODEMODULESHINT : TOKENS.COLLECTIONS.DIALOG.READONLYHINT) | transloco }}
-        </p>
+      <!-- ───────────── Locales ───────────── -->
+      <section class="group" aria-labelledby="group-locales">
+        <div class="group-head">
+          <h3 id="group-locales">{{ TOKENS.COLLECTIONS.FORM.LOCALES | transloco }}</h3>
+          <p>{{ TOKENS.COLLECTIONS.DIALOG.LOCALESDESCRIPTION | transloco }}</p>
+        </div>
+
+        <div
+          class="chip-editor"
+          [class.chip-editor--empty]="form.controls.locales.length === 0"
+          [class.chip-editor--invalid]="addLocaleInput.invalid && addLocaleInput.touched"
+        >
+          @if (form.controls.locales.length > 0) {
+            <ul class="chip-list" [attr.aria-label]="TOKENS.COLLECTIONS.FORM.LOCALES | transloco">
+              @for (localeCtrl of form.controls.locales.controls; track localeCtrl.value; let i = $index) {
+                <li class="locale-chip" [class.locale-chip--base]="isBaseLocale(localeCtrl.value)">
+                  @if (isEditMode) {
+                    <span class="locale-chip-body">
+                      @if (isBaseLocale(localeCtrl.value)) {
+                        <mat-icon
+                          class="locale-chip-lock"
+                          [matTooltip]="TOKENS.COLLECTIONS.DIALOG.BASELOCALELOCKED | transloco"
+                          matTooltipPosition="above"
+                          >lock</mat-icon
+                        >
+                      }
+                      <span class="locale-chip-code">{{ localeCtrl.value }}</span>
+                      @if (isBaseLocale(localeCtrl.value)) {
+                        <span class="locale-chip-tag">{{ TOKENS.COLLECTIONS.CARD.BASELOCALELABEL | transloco }}</span>
+                      }
+                    </span>
+                  } @else {
+                    <button
+                      type="button"
+                      class="locale-chip-body locale-chip-body--button"
+                      (click)="setBaseLocale(localeCtrl.value)"
+                      [attr.aria-pressed]="isBaseLocale(localeCtrl.value)"
+                      [attr.aria-label]="TOKENS.COLLECTIONS.DIALOG.MAKEBASEARIAX | transloco : { locale: localeCtrl.value }"
+                    >
+                      <span class="locale-chip-code">{{ localeCtrl.value }}</span>
+                      @if (isBaseLocale(localeCtrl.value)) {
+                        <span class="locale-chip-tag">{{ TOKENS.COLLECTIONS.CARD.BASELOCALELABEL | transloco }}</span>
+                      }
+                    </button>
+                  }
+                  <!-- The base has no remove control in either mode: pick another base first, then remove. -->
+                  @if (!isBaseLocale(localeCtrl.value)) {
+                    <button
+                      type="button"
+                      class="locale-chip-remove"
+                      (click)="removeLocale(i)"
+                      [attr.aria-label]="TOKENS.COLLECTIONS.DIALOG.REMOVEARIA | transloco : { locale: localeCtrl.value }"
+                    >
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+          }
+
+          <div class="chip-add">
+            <mat-icon aria-hidden="true">add</mat-icon>
+            <input
+              type="text"
+              class="chip-add-input"
+              [formControl]="addLocaleInput"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              (keydown.enter)="$event.preventDefault(); addLocale()"
+              (blur)="addLocaleIfPending()"
+              [placeholder]="TOKENS.COLLECTIONS.DIALOG.ADDLOCALEPLACEHOLDER | transloco"
+              [attr.aria-label]="TOKENS.COLLECTIONS.DIALOG.ADDLOCALELABEL | transloco"
+              [attr.aria-invalid]="addLocaleInput.invalid && addLocaleInput.touched"
+              aria-describedby="locales-hint"
+            />
+            @if (addLocaleInput.value.trim()) {
+              <button type="button" class="chip-add-button" (click)="addLocale()">
+                {{ TOKENS.COLLECTIONS.DIALOG.ADDBUTTON | transloco }}
+              </button>
+            }
+          </div>
+        </div>
+
+        @if (addLocaleInput.hasError('invalidLocale') && addLocaleInput.touched) {
+          <p id="locales-hint" class="field-error" role="alert">{{ TOKENS.COLLECTIONS.DIALOG.INVALIDLOCALE | transloco }}</p>
+        } @else if (addLocaleInput.hasError('duplicateLocale') && addLocaleInput.touched) {
+          <p id="locales-hint" class="field-error" role="alert">{{ TOKENS.COLLECTIONS.DIALOG.DUPLICATELOCALE | transloco }}</p>
+        } @else {
+          <p id="locales-hint" class="field-hint field-hint--icon">
+            <mat-icon aria-hidden="true">{{ isEditMode ? 'lock' : 'info' }}</mat-icon>
+            <span>{{ localesHintToken | transloco }}</span>
+          </p>
+        }
       </section>
 
-      <!-- Collection tags -->
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>{{ TOKENS.COLLECTIONS.DIALOG.TAGSLABEL | transloco }}</mat-label>
-        <mat-chip-grid #tagChipGrid>
-          @for (tag of tagsList(); track tag) {
-            <mat-chip-row (removed)="removeCollectionTag(tag)">
-              {{ tag }}
-              <button matChipRemove [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.REMOVETAGX | transloco : { tag }">
-                <mat-icon>cancel</mat-icon>
-              </button>
-            </mat-chip-row>
-          }
-        </mat-chip-grid>
-        <input
-          [placeholder]="TOKENS.COLLECTIONS.DIALOG.TAGSADDPLACEHOLDER | transloco"
-          [matChipInputFor]="tagChipGrid"
-          [matChipInputSeparatorKeyCodes]="tagSeparatorKeyCodes"
-          (matChipInputTokenEnd)="addCollectionTag($event)"
-          autocomplete="off"
-        />
-        <mat-hint>{{ TOKENS.COLLECTIONS.DIALOG.TAGSHINT | transloco }}</mat-hint>
-      </mat-form-field>
+      <!-- ───────────── Options ───────────── -->
+      <section class="group" aria-labelledby="group-options">
+        <div class="group-head">
+          <h3 id="group-options">{{ TOKENS.COLLECTIONS.DIALOG.OPTIONSTITLE | transloco }}</h3>
+        </div>
 
-      <!-- Protected terms. Editable only when the collection points at a terms file. -->
-      <mat-form-field appearance="outline" class="full-width">
-        <mat-label>{{ TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSLABEL | transloco }}</mat-label>
-        <mat-chip-grid #protectedTermChipGrid [disabled]="!canEditProtectedTerms()">
-          @for (term of protectedTermsList(); track term) {
-            <mat-chip-row (removed)="removeProtectedTerm(term)">
-              {{ term }}
-              <button matChipRemove [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.REMOVETAGX | transloco : { tag: term }">
-                <mat-icon>cancel</mat-icon>
-              </button>
-            </mat-chip-row>
-          }
-        </mat-chip-grid>
-        <input
-          [placeholder]="TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSADDPLACEHOLDER | transloco"
-          [matChipInputFor]="protectedTermChipGrid"
-          [matChipInputSeparatorKeyCodes]="tagSeparatorKeyCodes"
-          [disabled]="!canEditProtectedTerms()"
-          (matChipInputTokenEnd)="addProtectedTerm($event)"
-          autocomplete="off"
-        />
-        <mat-hint>{{ TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSHINT | transloco }}</mat-hint>
-      </mat-form-field>
+        <div class="switch-row" [class.switch-row--on]="form.controls.readOnly.value">
+          <div class="switch-tile" aria-hidden="true"><mat-icon>lock</mat-icon></div>
+          <div class="switch-text">
+            <span class="switch-label" id="readonly-label">{{ TOKENS.COLLECTIONS.DIALOG.READONLYLABEL | transloco }}</span>
+            <span class="switch-description" id="readonly-description">
+              {{ (isNodeModulesPath ? TOKENS.COLLECTIONS.DIALOG.READONLYNODEMODULESHINT : TOKENS.COLLECTIONS.DIALOG.READONLYHINT) | transloco }}
+            </span>
+          </div>
+          <mat-slide-toggle
+            class="switch-control"
+            formControlName="readOnly"
+            color="primary"
+            hideIcon
+            (change)="onReadOnlyToggle()"
+            aria-labelledby="readonly-label"
+            aria-describedby="readonly-description"
+          ></mat-slide-toggle>
+        </div>
 
-      @if (protectedTermsFilePath(); as filePath) {
-        <p class="protected-terms-file">
-          {{ TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSFILELABEL | transloco : { file: filePath } }}
-        </p>
-      } @else {
-        <p class="protected-terms-file">{{ TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSNOFILE | transloco }}</p>
-      }
+        <div class="disclosure" [class.disclosure--open]="advancedOpen()">
+          <button
+            type="button"
+            class="disclosure-toggle"
+            (click)="toggleAdvanced()"
+            [attr.aria-expanded]="advancedOpen()"
+            aria-controls="advanced-panel"
+          >
+            <mat-icon class="disclosure-icon" aria-hidden="true">sell</mat-icon>
+            <span class="disclosure-title">{{ TOKENS.COLLECTIONS.DIALOG.ADVANCEDTITLE | transloco }}</span>
+            <span class="disclosure-summary">
+              @if (tagsList().length === 0 && protectedTermsList().length === 0) {
+                {{ TOKENS.COLLECTIONS.DIALOG.ADVANCEDEMPTY | transloco }}
+              } @else {
+                {{ TOKENS.COLLECTIONS.DIALOG.TAGSCOUNTX | transloco : { count: tagsList().length } }}
+                ·
+                {{ TOKENS.COLLECTIONS.DIALOG.TERMSCOUNTX | transloco : { count: protectedTermsList().length } }}
+              }
+            </span>
+            <mat-icon class="disclosure-chevron" aria-hidden="true">expand_more</mat-icon>
+          </button>
+
+          @if (advancedOpen()) {
+            <div id="advanced-panel" class="disclosure-panel">
+              <!-- Collection tags: the same chip editor as the locales, in its word (not code) voice. -->
+              <div class="field">
+                <span class="field-label" id="tags-label">{{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.LABEL | transloco }}</span>
+                <div class="chip-editor" [class.chip-editor--empty]="tagsList().length === 0">
+                  @if (tagsList().length > 0) {
+                    <ul class="chip-list" aria-labelledby="tags-label">
+                      @for (tag of tagsList(); track tag) {
+                        <li class="locale-chip text-chip">
+                          <span class="locale-chip-body">{{ tag }}</span>
+                          <button
+                            type="button"
+                            class="locale-chip-remove"
+                            (click)="removeCollectionTag(tag)"
+                            [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.REMOVETAGX | transloco : { tag }"
+                          >
+                            <mat-icon>close</mat-icon>
+                          </button>
+                        </li>
+                      }
+                    </ul>
+                  }
+                  <div class="chip-add">
+                    <mat-icon aria-hidden="true">add</mat-icon>
+                    <input
+                      #tagInput
+                      type="text"
+                      class="chip-add-input"
+                      autocomplete="off"
+                      (keydown)="onChipInputKeydown($event, tagInput, 'tag')"
+                      (blur)="commitChipInput(tagInput, 'tag')"
+                      [placeholder]="TOKENS.COLLECTIONS.DIALOG.TAGSADDPLACEHOLDER | transloco"
+                      [attr.aria-label]="TOKENS.COLLECTIONS.DIALOG.TAGSADDPLACEHOLDER | transloco"
+                      aria-describedby="tags-hint"
+                    />
+                  </div>
+                </div>
+                <p id="tags-hint" class="field-hint">{{ TOKENS.COLLECTIONS.DIALOG.TAGSHINT | transloco }}</p>
+              </div>
+
+              <!-- Protected terms. Editable only when the collection points at a terms file. -->
+              <div class="field">
+                <span class="field-label" id="protected-terms-label">{{ TOKENS.SETTINGS.PROTECTEDTERMSLISTARIALABEL | transloco }}</span>
+                @if (canEditProtectedTerms()) {
+                  <div class="chip-editor" [class.chip-editor--empty]="protectedTermsList().length === 0">
+                    @if (protectedTermsList().length > 0) {
+                      <ul class="chip-list" aria-labelledby="protected-terms-label">
+                        @for (term of protectedTermsList(); track term) {
+                          <li class="locale-chip text-chip">
+                            <span class="locale-chip-body">{{ term }}</span>
+                            <button
+                              type="button"
+                              class="locale-chip-remove"
+                              (click)="removeProtectedTerm(term)"
+                              [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.REMOVETAGX | transloco : { tag: term }"
+                            >
+                              <mat-icon>close</mat-icon>
+                            </button>
+                          </li>
+                        }
+                      </ul>
+                    }
+                    <div class="chip-add">
+                      <mat-icon aria-hidden="true">add</mat-icon>
+                      <input
+                        #termInput
+                        type="text"
+                        class="chip-add-input"
+                        autocomplete="off"
+                        (keydown)="onChipInputKeydown($event, termInput, 'term')"
+                        (blur)="commitChipInput(termInput, 'term')"
+                        [placeholder]="TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSADDPLACEHOLDER | transloco"
+                        [attr.aria-label]="TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSADDPLACEHOLDER | transloco"
+                        aria-describedby="protected-terms-hint"
+                      />
+                    </div>
+                  </div>
+                  <p id="protected-terms-hint" class="field-hint">{{ TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSHINT | transloco }}</p>
+                  @if (protectedTermsFilePath(); as filePath) {
+                    <p class="field-hint field-hint--icon field-hint--path">
+                      <mat-icon aria-hidden="true">description</mat-icon>
+                      <span>{{ TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSFILELABEL | transloco : { file: filePath } }}</span>
+                    </p>
+                  }
+                } @else {
+                  <p class="field-hint field-hint--icon">
+                    <mat-icon aria-hidden="true">info</mat-icon>
+                    <span>{{ TOKENS.COLLECTIONS.DIALOG.PROTECTEDTERMSNOFILE | transloco }}</span>
+                  </p>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      </section>
     </form>
   </mat-dialog-content>
 
-  <mat-dialog-actions align="end">
+  <mat-dialog-actions class="dialog-footer" align="end">
     <button mat-button type="button" (click)="onCancel()">
       {{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}
     </button>
-    <button
-      mat-raised-button
-      color="primary"
-      type="button"
-      (click)="onSubmit()"
-      [disabled]="form.invalid"
-    >
-      {{ (isEditMode ? TOKENS.COMMON.ACTIONS.SAVE : TOKENS.COLLECTIONS.DIALOG.CREATEBUTTON) | transloco }}
+    <button mat-flat-button color="primary" type="button" (click)="onSubmit()" [disabled]="form.invalid">
+      {{ (isEditMode ? TOKENS.COMMON.ACTIONS.SAVE : TOKENS.COLLECTIONS.DIALOG.CREATE.TITLE) | transloco }}
     </button>
   </mat-dialog-actions>
 </div>

@@ -1,9 +1,10 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { basename } from 'node:path';
 import { HttpException } from '@nestjs/common';
-import { ConfigController } from './config.controller';
-import { ConfigService } from './config.service';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { resolveProtectedTermsForConfig, setGlobalProtectedTerms } from '@simoncodes-ca/core';
 import * as mapper from '../mappers/config.mapper';
+import { ConfigController } from './config.controller';
+import { ConfigService } from './config.service';
 
 jest.mock('@simoncodes-ca/core', () => ({
   setGlobalProtectedTerms: jest.fn(),
@@ -59,7 +60,7 @@ describe('ConfigController', () => {
       const mapSpy = jest.spyOn(mapper, 'mapConfigToDto');
       controller.getConfig();
 
-      expect(mapSpy).toHaveBeenCalledWith(baseConfig, resolved);
+      expect(mapSpy).toHaveBeenCalledWith(baseConfig, resolved, basename(process.cwd()));
     });
 
     it('exposes the resolved terms and their file path on the DTO', () => {
@@ -73,6 +74,12 @@ describe('ConfigController', () => {
 
       expect(dto.protectedTerms).toEqual(['iPhone']);
       expect(dto.protectedTermsFilePath).toBe('/project/.lingo-tracker-protected-terms.json');
+    });
+
+    it('exposes the served workspace folder name as projectName', () => {
+      const dto = controller.getConfig();
+
+      expect(dto.projectName).toBe(basename(process.cwd()));
     });
   });
 

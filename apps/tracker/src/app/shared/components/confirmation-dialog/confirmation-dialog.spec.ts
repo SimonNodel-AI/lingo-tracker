@@ -1,13 +1,13 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmationDialog } from './confirmation-dialog';
 import type { ConfirmationDialogData } from './confirmation-dialog-data';
 
 describe('ConfirmationDialog', () => {
   let component: ConfirmationDialog;
-  let fixture: ComponentFixture<ConfirmationDialog>;
+  let spectator: Spectator<ConfirmationDialog>;
   let mockDialogRef: Partial<MatDialogRef<ConfirmationDialog>>;
   let mockTransloco: Partial<TranslocoService>;
 
@@ -16,22 +16,29 @@ describe('ConfirmationDialog', () => {
     message: 'Test Message',
   };
 
-  const reconfigureTestBedWithData = async (data: ConfirmationDialogData): Promise<void> => {
-    TestBed.resetTestingModule();
-    await TestBed.configureTestingModule({
-      imports: [ConfirmationDialog],
-      providers: [
-        { provide: MAT_DIALOG_DATA, useValue: data },
-        { provide: MatDialogRef, useValue: mockDialogRef },
-        { provide: TranslocoService, useValue: mockTransloco },
-      ],
-    }).compileComponents();
-    fixture = TestBed.createComponent(ConfirmationDialog);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+  const dialogData: ConfirmationDialogData = { ...defaultData };
+
+  const createComponent = createComponentFactory({
+    component: ConfirmationDialog,
+    componentProviders: [
+      { provide: MAT_DIALOG_DATA, useValue: dialogData },
+      { provide: MatDialogRef, useFactory: () => mockDialogRef },
+      { provide: TranslocoService, useFactory: () => mockTransloco },
+    ],
+    detectChanges: false,
+  });
+
+  const render = (data: ConfirmationDialogData): void => {
+    dialogData.confirmButtonText = undefined;
+    dialogData.cancelButtonText = undefined;
+    dialogData.actionType = undefined;
+    Object.assign(dialogData, data);
+    spectator = createComponent();
+    component = spectator.component;
+    spectator.detectChanges();
   };
 
-  beforeEach(async () => {
+  beforeEach(() => {
     mockDialogRef = {
       close: vi.fn(),
     };
@@ -48,18 +55,7 @@ describe('ConfirmationDialog', () => {
       translate: translateFn,
     };
 
-    await TestBed.configureTestingModule({
-      imports: [ConfirmationDialog],
-      providers: [
-        { provide: MAT_DIALOG_DATA, useValue: defaultData },
-        { provide: MatDialogRef, useValue: mockDialogRef },
-        { provide: TranslocoService, useValue: mockTransloco },
-      ],
-    }).compileComponents();
-
-    fixture = TestBed.createComponent(ConfirmationDialog);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
+    render(defaultData);
   });
 
   describe('Component Initialization', () => {
@@ -82,7 +78,7 @@ describe('ConfirmationDialog', () => {
         ...defaultData,
         confirmButtonText: 'Custom Confirm',
       };
-      await reconfigureTestBedWithData(customData);
+      render(customData);
 
       expect(component.confirmButtonText).toBe('Custom Confirm');
     });
@@ -97,7 +93,7 @@ describe('ConfirmationDialog', () => {
         ...defaultData,
         cancelButtonText: 'Custom Cancel',
       };
-      await reconfigureTestBedWithData(customData);
+      render(customData);
 
       expect(component.cancelButtonText).toBe('Custom Cancel');
     });
@@ -114,7 +110,7 @@ describe('ConfirmationDialog', () => {
         ...defaultData,
         actionType: 'destructive',
       };
-      await reconfigureTestBedWithData(destructiveData);
+      render(destructiveData);
 
       expect(component.isDestructive).toBe(true);
     });
@@ -124,7 +120,7 @@ describe('ConfirmationDialog', () => {
         ...defaultData,
         actionType: 'standard',
       };
-      await reconfigureTestBedWithData(standardData);
+      render(standardData);
 
       expect(component.isDestructive).toBe(false);
     });

@@ -19,7 +19,7 @@
 // Page header
 // ---------------------------------------------------------------------------
 .page-header {
-  margin-bottom: var(--spacing-6);
+  margin-bottom: var(--spacing-8);
   position: relative;
   z-index: 1;
 }
@@ -54,13 +54,355 @@
   font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   margin: 0;
+
+  .sep {
+    color: var(--color-text-tertiary);
+    margin: 0 6px;
+  }
 }
 
-.header-tools {
+// Inline code in prose: mono at the surrounding size, ink, no background.
+.mono {
+  background: none;
+  color: var(--color-text-primary);
+  font-family: var(--font-family-mono);
+  font-size: 0.95em;
+  padding: 0;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+// ---------------------------------------------------------------------------
+// Split view + section headers
+// ---------------------------------------------------------------------------
+.split {
+  align-items: start;
+  display: grid;
+  gap: var(--spacing-10);
+  grid-template-columns: minmax(0, 1fr) 420px;
+  position: relative;
+  z-index: 1;
+}
+
+.collections-col {
+  min-width: 0;
+}
+
+.bundles-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  min-width: 0;
+  position: sticky;
+  top: var(--spacing-6);
+  // Cap the sticky column so an expanded result strip can never push a card
+  // (or its Generate button) below the fold with no way to reach it.
+  max-height: calc(100vh - var(--spacing-6) * 2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+  z-index: 1;
+}
+
+// ---------------------------------------------------------------------------
+// Bundle connector lines
+// ---------------------------------------------------------------------------
+// Spans the whole split at z-index 0. Cards sit at 1 and carry an opaque ground, so a
+// line crossing the inner column of collection cards runs behind it and re-emerges in
+// the gutter rather than scribbling across another card's content.
+.link-layer {
+  height: 100%;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 0;
+}
+
+// `pathLength="1"` normalises every curve, so one dash length draws them all regardless
+// of how far the card is from the bundle.
+.link-line {
+  // Literal duration: the shared transition tokens bundle their own easing, and this
+  // wants the exponential ease-out the cards enter with.
+  animation: link-draw 340ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-primary) 85%, transparent);
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+@keyframes link-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+// Solid plug at the collection end, hollow socket at the bundle end: the direction of
+// the relationship is legible even where the line itself runs behind a card.
+.link-node,
+.link-port {
+  animation: link-fade 200ms ease-out backwards;
+}
+
+.link-node {
+  fill: var(--color-primary);
+}
+
+.link-port {
+  fill: var(--card-surface);
+  stroke: var(--color-primary);
+  stroke-width: 2;
+}
+
+@keyframes link-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+.section-head {
+  align-items: flex-end;
+  display: flex;
+  position: relative;
+  z-index: 1;
+  flex-wrap: wrap;
+  gap: var(--spacing-4);
+  justify-content: space-between;
+  margin-bottom: var(--spacing-5);
+
+  // The column's own flex gap already supplies --spacing-4; this tops it up to the
+  // --spacing-5 the collections grid sits at, so both stacks start on the same line.
+  &--bundles {
+    margin-bottom: var(--spacing-1);
+  }
+}
+
+.section-title {
+  align-items: baseline;
+  display: flex;
+  gap: var(--spacing-3);
+  min-width: 0;
+
+  h2 {
+    color: var(--color-text-primary);
+    font-family: var(--font-family-body);
+    font-size: var(--font-size-2xl);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: -0.01em;
+    line-height: var(--line-height-tight);
+    margin: 0;
+  }
+}
+
+.section-count {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+// Controls take a row of their own under the heading in both columns. The 420px bundles
+// column cannot hold its heading and two buttons on one line in any locale, and letting
+// only that head wrap would start the two card stacks at different heights and put the
+// two h2s on different lines. Giving both heads the same two-row shape settles both.
+.section-tools {
   align-items: center;
   display: flex;
+  flex-basis: 100%;
   flex-wrap: wrap;
   gap: var(--spacing-3);
+  justify-content: flex-end;
+}
+
+
+.bundles-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+// Hand-rolled buttons for the bundles column (the comp's .btn recipes), real <button>s.
+.btn {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-lg);
+  cursor: pointer;
+  display: inline-flex;
+  flex: none;
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-sm);
+  // Bold, not semibold: a 14px label on a saturated coral fill loses too much of its
+  // stroke to the surrounding glow at 600, and the same weight keeps the quieter
+  // variants legible once their ground drops away.
+  font-weight: var(--font-weight-bold);
+  gap: var(--spacing-1);
+  height: 40px;
+  letter-spacing: 0.01em;
+  padding: 0 var(--spacing-5);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-normal),
+    transform var(--transition-normal);
+  white-space: nowrap;
+
+  mat-icon {
+    font-size: 18px;
+    height: 18px;
+    width: 18px;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--focus-ring-color);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    box-shadow: none;
+    cursor: default;
+    opacity: 0.55;
+    transform: none;
+  }
+
+  &--sm {
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-xs);
+    height: 34px;
+    padding: 0 var(--spacing-3);
+
+    mat-icon {
+      font-size: 16px;
+      height: 16px;
+      width: 16px;
+    }
+  }
+
+  &--primary {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    // Tightened from a 16px/45% bloom: the wide halo washed into the label's own
+    // counters. This still reads as a lit surface without eating the type.
+    box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--color-primary) 34%, transparent);
+    color: var(--color-text-on-primary);
+
+    &:hover {
+      background: var(--color-primary-hover);
+      border-color: var(--color-primary-hover);
+      transform: translateY(-1px);
+    }
+  }
+
+  &--outline {
+    background: var(--card-surface);
+    border-color: var(--color-border-strong);
+    color: var(--color-text-primary);
+
+    &:hover:not(.btn--busy) {
+      background: var(--color-background-subtle);
+      border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border-strong));
+    }
+  }
+
+  // The third step of the ladder, for actions a visitor takes rarely (Add collection,
+  // Add bundle). No ground of its own at rest, so the frequent Generate buttons outrank
+  // it without either of them having to shout.
+  &--quiet {
+    background: transparent;
+    border-color: var(--color-border);
+    color: var(--color-text-secondary);
+
+    &:hover {
+      background: var(--color-background-subtle);
+      border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-border-strong));
+      color: var(--color-text-primary);
+    }
+
+    mat-icon {
+      color: var(--color-primary);
+    }
+  }
+
+  &--busy {
+    background: var(--color-background-subtle);
+    border-color: var(--color-border);
+    box-shadow: none;
+    color: var(--color-text-secondary);
+    cursor: default;
+  }
+}
+
+.spinner {
+  animation: spin 0.9s linear infinite;
+  border: 2px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+  border-radius: var(--border-radius-full);
+  border-top-color: var(--color-primary);
+  flex: none;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Empty bundles card
+// ---------------------------------------------------------------------------
+.empty-bundles {
+  align-items: flex-start;
+  background: color-mix(in srgb, var(--card-surface) 60%, transparent);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--border-radius-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+  padding: var(--spacing-5) var(--spacing-6);
+
+  .tile {
+    align-items: center;
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 25%, transparent);
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+
+    mat-icon {
+      color: var(--color-primary);
+      font-size: 22px;
+      height: 22px;
+      width: 22px;
+    }
+  }
+
+  h3 {
+    color: var(--color-text-primary);
+    font-family: var(--font-family-body);
+    font-size: var(--font-size-base);
+    font-weight: var(--font-weight-bold);
+    margin: 0 0 2px;
+  }
+
+  p {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-sm);
+    margin: 0;
+    max-width: 62ch;
+  }
+}
+
+.empty-bundles-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .header-rule {
@@ -142,26 +484,6 @@
     font-size: 18px;
     height: 18px;
     width: 18px;
-  }
-}
-
-.add-btn {
-  border-radius: var(--border-radius-lg) !important;
-  flex: none;
-  font-weight: var(--font-weight-semibold) !important;
-  letter-spacing: 0.01em;
-  padding: var(--spacing-2) var(--spacing-5) !important;
-  transition: box-shadow var(--transition-normal), transform var(--transition-normal) !important;
-
-  mat-icon,
-  .mat-icon {
-    margin-right: var(--spacing-1);
-    color: currentColor !important;
-  }
-
-  &:hover:not([disabled]) {
-    box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--color-primary) 45%, transparent) !important;
-    transform: translateY(-1px);
   }
 }
 
@@ -355,10 +677,14 @@
 // Collections grid
 // ---------------------------------------------------------------------------
 .collections-grid {
-  align-items: start;
   display: grid;
   gap: var(--spacing-5);
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  // Every row the same height, with a floor: a collection card is an identity, not a
+  // measurement, so one having a longer name or a read-only note is no reason for it to
+  // be a different object than the one beside it. The 340px track lands on two columns
+  // next to the bundles column and opens to three only when there is genuinely room.
+  grid-auto-rows: minmax(180px, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   position: relative;
   z-index: 1;
 }
@@ -378,6 +704,8 @@
   flex-direction: column;
   outline-offset: 3px;
   padding: var(--spacing-5);
+  row-gap: var(--spacing-4);
+  z-index: 1;
   position: relative;
   transition:
     transform var(--transition-normal),
@@ -396,6 +724,19 @@
       opacity: 1;
       transform: translateX(0);
     }
+
+    .card-icon-wrap {
+      background: color-mix(in srgb, var(--color-primary) 20%, transparent);
+      border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+    }
+  }
+
+  // Wired to the hovered bundle. Deliberately does not lift: a card that moves drags the
+  // end of its own connector line with it, and the line is now what states the relation.
+  // The tint only has to confirm which end of the wire this is.
+  &.linked {
+    background: var(--card-surface-hover);
+    border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-border));
 
     .card-icon-wrap {
       background: color-mix(in srgb, var(--color-primary) 20%, transparent);
@@ -509,7 +850,7 @@
   font-size: var(--font-size-xs);
   gap: var(--spacing-2);
   line-height: var(--line-height-snug);
-  margin: var(--spacing-4) 0 0;
+  margin: 0;
   padding: var(--spacing-2) var(--spacing-3);
 }
 
@@ -526,13 +867,15 @@
   display: flex;
   gap: var(--spacing-3);
   justify-content: space-between;
-  margin-top: var(--spacing-4);
+  // Pushed to the card's floor so the chip rows across a row of cards line up with
+  // each other whatever happens above them. The card's own row-gap keeps the minimum
+  // separation; this auto margin only absorbs what is left over.
+  margin-top: auto;
   padding-top: var(--spacing-3);
 }
 
 .locale-chips {
   display: flex;
-  flex-wrap: wrap;
   flex-wrap: nowrap;
   gap: var(--spacing-1);
   list-style: none;
@@ -595,6 +938,29 @@
 // ---------------------------------------------------------------------------
 // Narrow screens
 // ---------------------------------------------------------------------------
+@media (max-width: 1100px) {
+  .split {
+    gap: var(--spacing-12);
+    grid-template-columns: 1fr;
+  }
+
+  .bundles-col {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .bundles-stack {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+  }
+
+
+  .empty-bundles {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 600px) {
   :host {
     padding: var(--spacing-6) var(--spacing-4);
@@ -605,7 +971,13 @@
     flex-direction: column;
   }
 
-  .header-tools {
+  .section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .section-tools {
+    flex-basis: auto;
     flex-wrap: nowrap;
   }
 
@@ -623,7 +995,7 @@
 // Dark theme adjustments
 // ---------------------------------------------------------------------------
 @mixin collections-dark {
-  --card-surface: color-mix(in srgb, var(--color-text-primary) 5%, var(--color-background-subtle));
+  --card-surface: color-mix(in srgb, var(--color-text-primary) 3%, var(--color-background-subtle));
   --card-surface-hover: color-mix(in srgb, var(--color-primary) 8%, var(--color-background-subtle));
 }
 
@@ -646,12 +1018,25 @@
   .collection-card {
     animation: none;
 
-    &:hover {
+    &:hover,
+    &.linked {
       transform: none;
     }
   }
 
   .card-arrow {
     transform: none;
+  }
+
+  .spinner {
+    animation: none;
+  }
+
+  .btn--primary:hover {
+    transform: none;
+  }
+
+  .link-line {
+    animation-name: link-fade;
   }
 }

@@ -1,0 +1,92 @@
+{
+  "createTitle": {
+    "source": "New bundle",
+    "comment": "Dialog title when creating a bundle",
+    "tags": ["bundles"],
+    "es": "New bundle",
+    "fr-ca": "New bundle",
+    "ru": "New bundle",
+    "ja": "New bundle",
+    "de": "New bundle"
+  },
+  "editTitle": {
+    "source": "Edit bundle",
+    "comment": "Dialog title when editing a bundle",
+    "tags": ["bundles"],
+    "es": "Edit bundle",
+    "fr-ca": "Edit bundle",
+    "ru": "Edit bundle",
+    "ja": "Edit bundle",
+    "de": "Edit bundle"
+  },
+  "createSubtitle": {
+    "source": "Combine collections into the per-locale JSON files your app loads, with optional typed keys.",
+    "comment": "Subtitle under the create-bundle dialog title",
+    "tags": ["bundles"],
+    "es": "Combine collections into the per-locale JSON files your app loads, with optional typed keys.",
+    "fr-ca": "Combine collections into the per-locale JSON files your app loads, with optional typed keys.",
+    "ru": "Combine collections into the per-locale JSON files your app loads, with optional typed keys.",
+    "ja": "Combine collections into the per-locale JSON files your app loads, with optional typed keys.",
+    "de": "Combine collections into the per-locale JSON files your app loads, with optional typed keys."
+  },
+  "editSubtitleX": {
+    "source": "Changes are saved to {file}. Generate again to refresh the files.",
+    "comment": "Subtitle under the edit-bundle dialog title; file is the config file name in code markup",
+    "tags": ["bundles"],
+    "es": "Changes are saved to {file}. Generate again to refresh the files.",
+    "fr-ca": "Changes are saved to {file}. Generate again to refresh the files.",
+    "ru": "Changes are saved to {file}. Generate again to refresh the files.",
+    "ja": "Changes are saved to {file}. Generate again to refresh the files.",
+    "de": "Changes are saved to {file}. Generate again to refresh the files."
+  },
+  "optional": {
+    "source": "optional",
+    "comment": "Small tag next to a field label marking it as optional",
+    "tags": ["bundles"],
+    "es": "optional",
+    "fr-ca": "optional",
+    "ru": "optional",
+    "ja": "optional",
+    "de": "optional"
+  },
+  "on": {
+    "source": "on",
+    "comment": "Short state word: a feature is enabled",
+    "tags": ["bundles"],
+    "es": "on",
+    "fr-ca": "on",
+    "ru": "on",
+    "ja": "on",
+    "de": "on"
+  },
+  "off": {
+    "source": "off",
+    "comment": "Short state word: a feature is disabled",
+    "tags": ["bundles"],
+    "es": "off",
+    "fr-ca": "off",
+    "ru": "off",
+    "ja": "off",
+    "de": "off"
+  },
+  "inheritHint": {
+    "source": "Project default. Change in Settings to affect every bundle.",
+    "comment": "Hint shown under a control that inherits the project-wide setting",
+    "tags": ["bundles"],
+    "es": "Project default. Change in Settings to affect every bundle.",
+    "fr-ca": "Project default. Change in Settings to affect every bundle.",
+    "ru": "Project default. Change in Settings to affect every bundle.",
+    "ja": "Project default. Change in Settings to affect every bundle.",
+    "de": "Project default. Change in Settings to affect every bundle."
+  },
+  "overrideHintX": {
+    "source": "Overrides the project default ({value}).",
+    "comment": "Hint shown under a control that overrides the project-wide setting; value is the project default",
+    "tags": ["bundles"],
+    "es": "Overrides the project default ({value}).",
+    "fr-ca": "Overrides the project default ({value}).",
+    "ru": "Overrides the project default ({value}).",
+    "ja": "Overrides the project default ({value}).",
+    "de": "Overrides the project default ({value})."
+  }
+}

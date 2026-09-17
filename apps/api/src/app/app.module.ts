@@ -1,13 +1,15 @@
 import { Logger, Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ConfigService } from './config/config.service';
-import { ConfigController } from './config/config.controller';
+import { BundleJobService } from './bundles/bundle-job.service';
+import { BundlesController } from './bundles/bundles.controller';
+import { CollectionCacheService } from './cache/collection-cache.service';
 import { CollectionsController } from './collections/collections.controller';
-import { ResourcesController } from './collections/resources/resources.controller';
 import { FoldersController } from './collections/folders/folders.controller';
 import { LocalesController } from './collections/locales/locales.controller';
-import { CollectionCacheService } from './cache/collection-cache.service';
+import { ResourcesController } from './collections/resources/resources.controller';
+import { ConfigController } from './config/config.controller';
+import { ConfigService } from './config/config.service';
 import { TranslationJobService } from './translation-job/translation-job.service';
 
 @Module({
@@ -19,8 +21,9 @@ import { TranslationJobService } from './translation-job/translation-job.service
     ResourcesController,
     FoldersController,
     LocalesController,
+    BundlesController,
   ],
-  providers: [AppService, ConfigService, CollectionCacheService, TranslationJobService, Logger],
+  providers: [AppService, ConfigService, CollectionCacheService, TranslationJobService, BundleJobService, Logger],
 })
 export class AppModule {
   constructor() {

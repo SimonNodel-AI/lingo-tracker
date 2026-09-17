@@ -5,7 +5,7 @@ export interface ViewPreferences {
   densityMode: DensityMode;
   selectedLocales: string[];
   showNestedResources: boolean;
-  compactLocale: string | null;
+  compactLocale: string | undefined;
   compactLocaleManuallyChanged: boolean;
   sortField: 'key' | 'status';
   sortDirection: 'asc' | 'desc';

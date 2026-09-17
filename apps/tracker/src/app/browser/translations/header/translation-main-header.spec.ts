@@ -1,19 +1,19 @@
-import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { NotificationService } from '../../../shared/notification';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { of } from 'rxjs';
-import { TranslationMainHeader } from './translation-main-header';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { NotificationService } from '../../../shared/notification';
 import type { TranslationEditorResult } from '../../dialogs/translation-editor';
 import { BrowserStore } from '../../store/browser.store';
-import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { TranslationMainHeader } from './translation-main-header';
 
 describe('TranslationMainHeader', () => {
   let component: TranslationMainHeader;
-  let fixture: ComponentFixture<TranslationMainHeader>;
+  let spectator: Spectator<TranslationMainHeader>;
   let notificationsSpy: {
     success: ReturnType<typeof vi.fn>;
     info: ReturnType<typeof vi.fn>;
@@ -23,26 +23,26 @@ describe('TranslationMainHeader', () => {
   let mockDialogRef: { afterClosed: ReturnType<typeof vi.fn> };
   let mockDialog: { open: ReturnType<typeof vi.fn> };
 
-  beforeEach(async () => {
+  const createComponent = createComponentFactory({
+    component: TranslationMainHeader,
+    imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
+    providers: [
+      provideHttpClient(),
+      provideHttpClientTesting(),
+      { provide: NotificationService, useFactory: () => notificationsSpy },
+      { provide: MatDialog, useFactory: () => mockDialog },
+    ],
+  });
+
+  beforeEach(() => {
     notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
     mockDialogRef = { afterClosed: vi.fn() };
     mockDialog = { open: vi.fn().mockReturnValue(mockDialogRef) };
 
-    await TestBed.configureTestingModule({
-      imports: [TranslationMainHeader, BrowserAnimationsModule, getTranslocoTestingModule()],
-      providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
-        { provide: NotificationService, useValue: notificationsSpy },
-        { provide: MatDialog, useValue: mockDialog },
-      ],
-    }).compileComponents();
+    spectator = createComponent();
+    component = spectator.component;
 
-    fixture = TestBed.createComponent(TranslationMainHeader);
-    component = fixture.componentInstance;
-    fixture.detectChanges();
-
-    // Enable fake timers AFTER TestBed async setup completes
+    // Enable fake timers after Spectator setup completes.
     vi.useFakeTimers();
   });
 
@@ -155,7 +155,7 @@ describe('TranslationMainHeader', () => {
     });
 
     it('should reload the current folder before showing snackbars', async () => {
-      const store = TestBed.inject(BrowserStore);
+      const store = spectator.inject(BrowserStore);
       const selectFolderSpy = vi.spyOn(store, 'selectFolder');
 
       const result: TranslationEditorResult = {
@@ -182,7 +182,7 @@ describe('TranslationMainHeader', () => {
     });
 
     it('should call store.setDensityMode with the opposite mode at the 125ms midpoint', async () => {
-      const store = TestBed.inject(BrowserStore);
+      const store = spectator.inject(BrowserStore);
       const setDensityModeSpy = vi.spyOn(store, 'setDensityMode');
 
       // Initial density mode defaults to 'compact', so next mode should be 'full'
@@ -204,7 +204,7 @@ describe('TranslationMainHeader', () => {
     });
 
     it('should pass only the second call value to the store on rapid double-click', async () => {
-      const store = TestBed.inject(BrowserStore);
+      const store = spectator.inject(BrowserStore);
       const setDensityModeSpy = vi.spyOn(store, 'setDensityMode');
 
       // First call (compact → full), cancelled before midpoint

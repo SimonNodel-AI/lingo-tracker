@@ -1,0 +1,102 @@
+{
+  "collectionsLabel": {
+    "source": "Collections",
+    "comment": "Row label on a bundle card listing the collections it consumes",
+    "tags": ["bundles"],
+    "es": "Collections",
+    "fr-ca": "Collections",
+    "ru": "Collections",
+    "ja": "Collections",
+    "de": "Collections"
+  },
+  "allCollectionsX": {
+    "source": "All collections ({count})",
+    "comment": "Chip on a bundle card when the bundle includes every collection",
+    "tags": ["bundles"],
+    "es": "All collections ({count})",
+    "fr-ca": "All collections ({count})",
+    "ru": "All collections ({count})",
+    "ja": "All collections ({count})",
+    "de": "All collections ({count})"
+  },
+  "typesLabel": {
+    "source": "Types",
+    "comment": "Row label on a bundle card for the generated TypeScript types file",
+    "tags": ["bundles"],
+    "es": "Types",
+    "fr-ca": "Types",
+    "ru": "Types",
+    "ja": "Types",
+    "de": "Types"
+  },
+  "typesOff": {
+    "source": "off",
+    "comment": "Value shown on a bundle card when no types file is configured",
+    "tags": ["bundles"],
+    "es": "off",
+    "fr-ca": "off",
+    "ru": "off",
+    "ja": "off",
+    "de": "off"
+  },
+  "localesCountX": {
+    "source": "{ count, plural, =1 {1 locale} other {{count} locales} }",
+    "comment": "Locale count in the bundle card footer",
+    "tags": ["bundles"],
+    "es": "{ count, plural, =1 {1 locale} other {{count} locales} }",
+    "fr-ca": "{ count, plural, =1 {1 locale} other {{count} locales} }",
+    "ru": "{ count, plural, =1 {1 locale} other {{count} locales} }",
+    "ja": "{ count, plural, =1 {1 locale} other {{count} locales} }",
+    "de": "{ count, plural, =1 {1 locale} other {{count} locales} }"
+  },
+  "generate": {
+    "source": "Generate",
+    "comment": "Button on a bundle card that starts generation",
+    "tags": ["bundles"],
+    "es": "Generate",
+    "fr-ca": "Generate",
+    "ru": "Generate",
+    "ja": "Generate",
+    "de": "Generate"
+  },
+  "generating": {
+    "source": "Generating…",
+    "comment": "Busy label of the bundle card generate button while running",
+    "tags": ["bundles"],
+    "es": "Generating…",
+    "fr-ca": "Generating…",
+    "ru": "Generating…",
+    "ja": "Generating…",
+    "de": "Generating…"
+  },
+  "generateAriaLabelX": {
+    "source": "Generate bundle {name}",
+    "comment": "Accessible label for the generate button of a bundle card",
+    "tags": ["bundles"],
+    "es": "Generate bundle {name}",
+    "fr-ca": "Generate bundle {name}",
+    "ru": "Generate bundle {name}",
+    "ja": "Generate bundle {name}",
+    "de": "Generate bundle {name}"
+  },
+  "moreActionsAriaLabel": {
+    "source": "More actions for bundle",
+    "comment": "Aria label for the more actions menu button on a bundle card",
+    "tags": ["bundles"],
+    "es": "More actions for bundle",
+    "fr-ca": "More actions for bundle",
+    "ru": "More actions for bundle",
+    "ja": "More actions for bundle",
+    "de": "More actions for bundle"
+  },
+  "outputLabel": {
+    "source": "Output",
+    "comment": "Accessible label for the output path shown under a bundle name",
+    "tags": ["bundles"],
+    "es": "Output",
+    "fr-ca": "Output",
+    "ru": "Output",
+    "ja": "Output",
+    "de": "Output"
+  }
+}

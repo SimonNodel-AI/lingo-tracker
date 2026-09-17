@@ -71,8 +71,16 @@ export class LocaleFilter {
 
   /**
    * Checks if a locale is currently selected.
+   *
+   * In single-select mode the checked radio is the locale the compact rows are
+   * showing, which is the base locale until the user picks one. Reading the raw
+   * selection would leave every radio unchecked on first load while the list
+   * plainly shows a locale.
    */
   isLocaleSelected(locale: string): boolean {
+    if (!this.multiSelect()) {
+      return this.store.compactDisplayLocale() === locale;
+    }
     return this.store.selectedLocales().includes(locale);
   }
 

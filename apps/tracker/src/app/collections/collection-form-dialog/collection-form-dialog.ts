@@ -3,15 +3,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormGroup, FormControl, FormArray, Validators } from '@angular/forms';
 import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA, MatDialog } from '@angular/material/dialog';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatIconModule } from '@angular/material/icon';
-import { MatRadioModule } from '@angular/material/radio';
+import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatChipsModule, type MatChipInputEvent } from '@angular/material/chips';
-import { COMMA, ENTER } from '@angular/cdk/keycodes';
+import type { MatChipInputEvent } from '@angular/material/chips';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
 import { firstValueFrom } from 'rxjs';
 import { isUnderNodeModules, normalizeProtectedTerms, normalizeTag, validateLocale } from '@simoncodes-ca/domain';
@@ -34,14 +30,10 @@ export interface CollectionFormResult {
     CommonModule,
     ReactiveFormsModule,
     MatDialogModule,
-    MatFormFieldModule,
-    MatInputModule,
     MatButtonModule,
-    MatCheckboxModule,
     MatIconModule,
-    MatRadioModule,
+    MatSlideToggleModule,
     MatTooltipModule,
-    MatChipsModule,
     TranslocoModule,
   ],
   templateUrl: './collection-form-dialog.html',
@@ -71,15 +63,21 @@ export class CollectionFormDialog implements OnInit {
   });
 
   readonly addLocaleInput = new FormControl<string>('', { nonNullable: true });
-  readonly tagSeparatorKeyCodes = [ENTER, COMMA] as const;
+  /** The config file name, wrapped in our own `<code>` so hints can set it in mono inside translated prose. */
+  readonly configFileMarkup = '<code>.lingo-tracker.json</code>';
   readonly tagsList = signal<string[]>([]);
   readonly protectedTermsList = signal<string[]>([]);
   /** The collection's `protectedTermsFile` pointer, preserved across an edit but not editable here. */
   readonly protectedTermsFile = signal<string | undefined>(undefined);
   /** Resolved path of that file, shown read-only so the source of a diff is obvious. */
   readonly protectedTermsFilePath = signal<string | undefined>(undefined);
-  /** Terms live in a file, so without a pointer there is nowhere to save them — the chips stay disabled. */
+  /** Terms live in a file, so without a pointer there is nowhere to save them — the editor stays hidden. */
   readonly canEditProtectedTerms = computed(() => this.protectedTermsFile() !== undefined);
+  /**
+   * Tags and protected terms are the rarely-touched part of a collection, so they sit behind a
+   * disclosure. It opens by itself when there is already something in it to look at.
+   */
+  readonly advancedOpen = signal(false);
 
   #originalLocales: string[] = [];
   /** Tracks whether the user manually toggled read-only, so auto-detection stops overriding it. */
@@ -93,6 +91,29 @@ export class CollectionFormDialog implements OnInit {
     return this.isEditMode
       ? TRACKER_TOKENS.COLLECTIONS.DIALOG.EDIT.TITLE
       : TRACKER_TOKENS.COLLECTIONS.DIALOG.CREATE.TITLE;
+  }
+
+  /** Whether the entered folder is under node_modules (drives the read-only hint). */
+  get isNodeModulesPath(): boolean {
+    return isUnderNodeModules(this.form.controls.translationsFolder.value);
+  }
+
+  get showNameError(): boolean {
+    const control = this.form.controls.name;
+    return control.hasError('required') && control.touched;
+  }
+
+  get showFolderError(): boolean {
+    const control = this.form.controls.translationsFolder;
+    return control.hasError('required') && control.touched;
+  }
+
+  /** The one line under the locale chips: what clicking does, what is locked, or what empty means. */
+  get localesHintToken(): string {
+    if (this.isEditMode) return TRACKER_TOKENS.COLLECTIONS.DIALOG.BASEHINTEDIT;
+    return this.form.controls.locales.length > 0
+      ? TRACKER_TOKENS.COLLECTIONS.DIALOG.BASEHINTCREATE
+      : TRACKER_TOKENS.COLLECTIONS.DIALOG.LOCALESINHERITHINT;
   }
 
   ngOnInit(): void {
@@ -111,6 +132,7 @@ export class CollectionFormDialog implements OnInit {
       this.protectedTermsList.set(this.#data.config.protectedTerms ?? []);
       this.protectedTermsFile.set(this.#data.config.protectedTermsFile);
       this.protectedTermsFilePath.set(this.#data.config.protectedTermsFilePath);
+      this.advancedOpen.set(this.tagsList().length > 0 || this.protectedTermsList().length > 0);
       // An existing read-only flag is the user's prior choice — don't let auto-detection override it.
       this.#readOnlyTouchedByUser = this.#data.config.readOnly !== undefined;
 
@@ -136,9 +158,35 @@ export class CollectionFormDialog implements OnInit {
     this.#readOnlyTouchedByUser = true;
   }
 
-  /** Whether the entered folder is under node_modules (drives the read-only hint). */
-  get isNodeModulesPath(): boolean {
-    return isUnderNodeModules(this.form.controls.translationsFolder.value);
+  toggleAdvanced(): void {
+    this.advancedOpen.update((open) => !open);
+  }
+
+  /**
+   * The locale shown as BASE. In edit mode a collection without its own `baseLocale` inherits the
+   * global one, so the inherited value is what gets marked and locked; only an explicit choice
+   * is ever written back.
+   */
+  get displayedBaseLocale(): string {
+    const own = this.form.controls.baseLocale.value;
+    if (own) return own;
+    return this.isEditMode ? (this.#data.effectiveBaseLocale ?? '') : '';
+  }
+
+  isBaseLocale(locale: string): boolean {
+    return this.displayedBaseLocale === locale;
+  }
+
+  /** The base locale is a create-time decision; after that it anchors every checksum and is locked. */
+  setBaseLocale(locale: string): void {
+    if (this.isEditMode) return;
+    if (!this.form.controls.locales.getRawValue().includes(locale)) return;
+    this.form.controls.baseLocale.setValue(locale);
+  }
+
+  canRemoveLocale(index: number): boolean {
+    const locale = this.form.controls.locales.at(index)?.value;
+    return !(this.isEditMode && locale === this.displayedBaseLocale);
   }
 
   addLocale(): void {
@@ -170,11 +218,42 @@ export class CollectionFormDialog implements OnInit {
     this.addLocaleInput.setValue('');
   }
 
-  addCollectionTag(event: MatChipInputEvent): void {
-    const normalized = normalizeTag(event.value);
+  /** Leaving the input with a locale typed but not confirmed should not silently drop it. */
+  addLocaleIfPending(): void {
+    if (this.addLocaleInput.value.trim()) {
+      this.addLocale();
+    }
+  }
+
+  /** Enter or comma commits the typed tag or term, like the Material chip input it replaces. */
+  onChipInputKeydown(event: KeyboardEvent, input: HTMLInputElement, kind: 'tag' | 'term'): void {
+    if (event.key !== 'Enter' && event.key !== ',') return;
+    event.preventDefault();
+    this.commitChipInput(input, kind);
+  }
+
+  commitChipInput(input: HTMLInputElement, kind: 'tag' | 'term'): void {
+    if (!input.value.trim()) {
+      input.value = '';
+      return;
+    }
+    if (kind === 'tag') {
+      this.addTagValue(input.value);
+    } else {
+      this.addProtectedTermValue(input.value);
+    }
+    input.value = '';
+  }
+
+  addTagValue(value: string): void {
+    const normalized = normalizeTag(value);
     if (normalized && !this.tagsList().includes(normalized)) {
       this.tagsList.update((tags) => [...tags, normalized]);
     }
+  }
+
+  addCollectionTag(event: MatChipInputEvent): void {
+    this.addTagValue(event.value);
     event.chipInput?.clear();
   }
 
@@ -186,11 +265,15 @@ export class CollectionFormDialog implements OnInit {
    * Adds a protected term, trimming and deduping case-sensitively while preserving
    * the entered casing and punctuation (`iPhone`, `Node.js`, `C++` stay verbatim).
    */
-  addProtectedTerm(event: MatChipInputEvent): void {
-    const [term] = normalizeProtectedTerms([event.value]);
+  addProtectedTermValue(value: string): void {
+    const [term] = normalizeProtectedTerms([value]);
     if (term && !this.protectedTermsList().includes(term)) {
       this.protectedTermsList.update((terms) => [...terms, term]);
     }
+  }
+
+  addProtectedTerm(event: MatChipInputEvent): void {
+    this.addProtectedTermValue(event.value);
     event.chipInput?.clear();
   }
 
@@ -199,7 +282,7 @@ export class CollectionFormDialog implements OnInit {
   }
 
   removeLocale(index: number): void {
-    if (this.isEditMode && this.form.controls.locales.at(index).value === this.form.controls.baseLocale.value) {
+    if (!this.canRemoveLocale(index)) {
       return;
     }
 
@@ -217,7 +300,10 @@ export class CollectionFormDialog implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
-    if (this.form.invalid) return;
+    if (this.form.invalid) {
+      this.form.markAllAsTouched();
+      return;
+    }
 
     if (this.isEditMode) {
       const localesArray = this.form.controls.locales.getRawValue();

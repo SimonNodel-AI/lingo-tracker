@@ -57,7 +57,10 @@ Each cell shows whether the operation is supported (`Yes`), not supported (`—`
 | Filter by status | — | — | Yes (status filter dropdown) |
 | Filter by locale | — | — | Yes (locale filter dropdown) |
 | **Bundle / Export / Import** | | | |
-| Generate bundle (locale JSON + optional TS types) | Yes (`bundle`) | — | — |
+| Define bundles (create / edit / delete) | — (edit `.lingo-tracker.json`) | Yes (`POST /bundles`, `PUT /bundles/:name`, `DELETE /bundles/:name`) | Yes (bundle form dialog on the home page) |
+| Preview a bundle without writing (dry run) | — | Yes (`POST /bundles/dry-run`) | Yes (live preview column in the bundle dialog) |
+| Generate bundle (locale JSON + optional TS types) | Yes (`bundle`) | Yes (`POST /bundles/:name/generate`, async job) | Yes (Generate / Generate all on the home page) |
+| Poll bundle generation job status | — | Yes (`GET /bundles/jobs/:jobId`) | Yes (inline progress on the bundle card) |
 | Export resources (XLIFF or JSON) | Yes (`export`) | — | — |
 | Import translations (XLIFF or JSON) | Yes (`import`) | — | — |
 | **[Protected Terms](glossary.md#protected-term)** | | | |
@@ -79,6 +82,7 @@ Each cell shows whether the operation is supported (`Yes`), not supported (`—`
 
 - **In-memory collection cache** — `CollectionCacheService` is an API-only system. It holds a single-slot, incrementally-updated in-memory tree of the active collection, making browsing fast for the Tracker UI. The CLI bypasses the cache entirely and reads files directly on every invocation. See [`api.md — Collection Cache`](api.md#collection-cache).
 - **Async translation jobs** — The `TranslationJobService` (fire-and-forget job map with UUID-based polling) is API-only. The CLI's `translate-locale` command runs synchronously in-process and prints progress inline.
+- **Async bundle jobs** — `BundleJobService` runs bundle generation through a sequential job queue with UUID-based polling. The CLI's `bundle` command runs synchronously in-process. See [`bundle-generation.md`](bundle-generation.md) for the shared pipeline.
 - **Batch resource creation** — The `POST /collections/:name/resources` endpoint accepts an array of `CreateResourceDto` objects. The CLI's `add-resource` and the UI's editor dialog only create one resource at a time.
 - **Rename collection** — Renaming exists only on the API and UI. The CLI's `edit-collection` command manages collection-level tags only; renaming a collection requires editing `.lingo-tracker.json` manually or using the UI. The `PUT` endpoint (and therefore the UI edit dialog) also handles adding and removing locales — it diffs the submitted locale list against the existing config and internally calls `addLocaleToCollection` / `removeLocaleFromCollection` as needed.
 
@@ -86,7 +90,6 @@ Each cell shows whether the operation is supported (`Yes`), not supported (`—`
 
 - **`init`** — Project bootstrapping (creating `.lingo-tracker.json`) is a CLI-only operation. The API and UI require a config file to already exist before they can start.
 - **`install-skill`** — Generates a `.claude/` AI skill file templated to the current repository. No equivalent in the API or UI.
-- **`bundle`** — Generating deployment locale JSON files and TypeScript token constants is a CLI-only pipeline. See [`bundle-generation.md`](bundle-generation.md).
 - **`export` / `import`** — XLIFF and JSON import/export workflows for integration with external translation agencies are CLI-only.
 - **`validate`** — The CI validation gate (exit code 1 on failures) is CLI-only. The UI shows per-resource status visually but does not produce a machine-readable validation report.
 - **`normalize`** — Repair of checksum drift, backfilling of missing locale entries, and cleanup of empty folders is CLI-only.
