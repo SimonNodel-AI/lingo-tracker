@@ -4,7 +4,20 @@ import * as fs from 'node:fs';
 import prompts from 'prompts';
 import * as utils from '../utils';
 
-vi.mock('node:fs');
+const fsMocks = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
 vi.mock('prompts');
 
 vi.mock('@simoncodes-ca/core', async () => {

@@ -3,8 +3,32 @@ import { importCommand, type ImportCommandOptions } from './import-cmd';
 import * as path from 'path';
 import * as fs from 'fs';
 
-vi.mock('fs');
-vi.mock('path');
+const fsMocks = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+  writeFileSync: vi.fn(),
+}));
+const pathMocks = vi.hoisted(() => ({
+  join: vi.fn(),
+  resolve: vi.fn(),
+}));
+
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
+vi.mock('path', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('path')>();
+  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
+});
+vi.mock('node:path', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:path')>();
+  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
+});
 vi.mock('prompts', () => ({
   default: vi.fn(),
 }));
@@ -85,8 +109,12 @@ describe('import-cmd', () => {
     vi.clearAllMocks();
 
     // Mock path functions
-    vi.spyOn(path, 'join').mockImplementation((...segments) => segments.join('/'));
-    vi.spyOn(path, 'resolve').mockImplementation((...segments) => segments.join('/'));
+    vi.mocked(path.join)
+      .mockReset()
+      .mockImplementation((...segments) => segments.join('/'));
+    vi.mocked(path.resolve)
+      .mockReset()
+      .mockImplementation((...segments) => segments.join('/'));
 
     // Mock process.cwd
     vi.spyOn(process, 'cwd').mockReturnValue('/test/project');

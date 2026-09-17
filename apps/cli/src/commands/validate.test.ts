@@ -3,7 +3,19 @@ import { join } from 'node:path';
 import { validateCommand } from './validate';
 import * as fs from 'node:fs';
 
-vi.mock('node:fs');
+const fsMocks = vi.hoisted(() => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn(),
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs')>();
+  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+});
 
 vi.mock('@simoncodes-ca/core', () => ({
   CONFIG_FILENAME: '.lingo-tracker.json',
