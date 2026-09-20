@@ -434,7 +434,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     const nodes: ContextTreeNode[] = [];
 
     if (segments.length === 0) {
-      roots.forEach((folder) => nodes.push({ kind: 'folder', name: folder.name, path: folder.fullPath, depth: 0 }));
+      roots.forEach((folder) => {
+        nodes.push({ kind: 'folder', name: folder.name, path: folder.fullPath, depth: 0 });
+      });
       nodes.push(...this.#entryNodes(targetPath, 0));
       return nodes;
     }
