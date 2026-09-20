@@ -219,23 +219,35 @@ function handleUnchangedTargetLocaleValue(
     };
   }
 
+  // Translation-service and verification imports re-confirm unchanged values.
+  // Keep the update/migration strategies' existing metadata behavior intact,
+  // while bringing the target locale's base checksum back in sync with the
+  // current base locale metadata during re-confirmation.
+  const shouldRefreshBaseChecksum = options.strategy === 'translation-service' || options.strategy === 'verification';
+  const currentBaseChecksum = entryMeta?.[baseLocale]?.checksum ?? calculateChecksum(entry.source);
+  const baseChecksumChanged = shouldRefreshBaseChecksum && entryMeta?.[locale]?.baseChecksum !== currentBaseChecksum;
   const resolvedStatus: TranslationStatus = shouldUseSourceStatus(options, resource)
     ? resource.status
     : options.strategy === 'verification'
       ? 'verified'
-      : (oldStatus ?? 'translated');
+      : options.strategy === 'translation-service' && (oldStatus === 'stale' || baseChecksumChanged)
+        ? 'translated'
+        : (oldStatus ?? 'translated');
 
-  if (resolvedStatus !== oldStatus) {
+  if (resolvedStatus !== oldStatus || baseChecksumChanged) {
     ensureEntryMeta(trackerMeta, entryKey);
 
     if (!trackerMeta[entryKey][locale]) {
       trackerMeta[entryKey][locale] = {
         checksum: entryMeta?.[locale]?.checksum ?? calculateChecksum(oldValue),
-        baseChecksum: entryMeta?.[baseLocale]?.checksum ?? calculateChecksum(entry.source),
+        baseChecksum: currentBaseChecksum,
         status: resolvedStatus,
       };
     } else {
       trackerMeta[entryKey][locale].status = resolvedStatus;
+      if (shouldRefreshBaseChecksum) {
+        trackerMeta[entryKey][locale].baseChecksum = currentBaseChecksum;
+      }
     }
     ctx.dataModified = true;
   }

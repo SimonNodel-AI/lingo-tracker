@@ -254,6 +254,48 @@ describe('process-resource-group', () => {
       expect(changes[0].newStatus).toBe('translated');
     });
 
+    it('should not downgrade a current verified value for translation-service', () => {
+      const currentBaseChecksum = calculateChecksum('OK');
+      mkdirSync(folderPath, { recursive: true });
+      writeFileSync(entryResourcePath, JSON.stringify({ ok: { source: 'OK', es: 'Bien' } }));
+      writeFileSync(
+        entryMetaPath,
+        JSON.stringify({
+          ok: {
+            en: { checksum: currentBaseChecksum },
+            es: {
+              checksum: calculateChecksum('Bien'),
+              baseChecksum: currentBaseChecksum,
+              status: 'verified',
+            },
+          },
+        }),
+      );
+
+      const filesModified = new Set<string>();
+      const warnings: string[] = [];
+      const changes = processResourceGroup(
+        {
+          folderPath,
+          entryResourcePath,
+          entryMetaPath,
+          resources: [{ resource: { key: 'common.buttons.ok', value: 'Bien' }, entryKey: 'ok' }],
+        },
+        'es',
+        'en',
+        { source: 'test.json', locale: 'es', strategy: 'translation-service' },
+        false,
+        false,
+        filesModified,
+        warnings,
+      );
+
+      expect(changes[0]?.oldStatus).toBe('verified');
+      expect(changes[0]?.newStatus).toBe('verified');
+      expect(JSON.parse(readFileSync(entryMetaPath, 'utf8')).ok.es.status).toBe('verified');
+      expect(filesModified.size).toBe(0);
+    });
+
     it('should preserve existing status when value does not change with update strategy', () => {
       const group: ResourceGroup = {
         folderPath,
@@ -288,6 +330,113 @@ describe('process-resource-group', () => {
       expect(changes[0].type).toBe('updated');
       expect(changes[0].newStatus).toBe('translated');
       expect(filesModified.size).toBe(0);
+    });
+
+    describe('reconfirming unchanged values with stale metadata', () => {
+      beforeEach(() => {
+        writeFileSync(
+          entryMetaPath,
+          JSON.stringify({
+            ok: {
+              en: { checksum: calculateChecksum('OK') },
+              es: {
+                checksum: calculateChecksum('Bien'),
+                baseChecksum: calculateChecksum('Old source'),
+                status: 'stale',
+              },
+            },
+          }),
+        );
+      });
+
+      function createUnchangedValueGroup(): ResourceGroup {
+        return {
+          folderPath,
+          entryResourcePath,
+          entryMetaPath,
+          resources: [
+            {
+              resource: {
+                key: 'common.buttons.ok',
+                value: 'Bien',
+              },
+              entryKey: 'ok',
+            },
+          ],
+        };
+      }
+
+      it('should refresh the base checksum and set stale values to translated for translation-service', () => {
+        const filesModified = new Set<string>();
+        const warnings: string[] = [];
+
+        const changes = processResourceGroup(
+          createUnchangedValueGroup(),
+          'es',
+          'en',
+          { source: 'test.json', locale: 'es', strategy: 'translation-service' },
+          false,
+          false,
+          filesModified,
+          warnings,
+        );
+
+        expect(changes[0]?.oldStatus).toBe('stale');
+        expect(changes[0]?.newStatus).toBe('translated');
+
+        const meta = JSON.parse(readFileSync(entryMetaPath, 'utf8'));
+        expect(meta.ok.es.status).toBe('translated');
+        expect(meta.ok.es.baseChecksum).toBe(calculateChecksum('OK'));
+        expect(filesModified.has(entryMetaPath)).toBe(true);
+      });
+
+      it('should refresh the base checksum and set stale values to verified for verification', () => {
+        const filesModified = new Set<string>();
+        const warnings: string[] = [];
+
+        const changes = processResourceGroup(
+          createUnchangedValueGroup(),
+          'es',
+          'en',
+          { source: 'test.json', locale: 'es', strategy: 'verification' },
+          false,
+          false,
+          filesModified,
+          warnings,
+        );
+
+        expect(changes[0]?.oldStatus).toBe('stale');
+        expect(changes[0]?.newStatus).toBe('verified');
+
+        const meta = JSON.parse(readFileSync(entryMetaPath, 'utf8'));
+        expect(meta.ok.es.status).toBe('verified');
+        expect(meta.ok.es.baseChecksum).toBe(calculateChecksum('OK'));
+        expect(filesModified.has(entryMetaPath)).toBe(true);
+      });
+
+      it('should leave stale metadata unchanged for update', () => {
+        const filesModified = new Set<string>();
+        const warnings: string[] = [];
+
+        const changes = processResourceGroup(
+          createUnchangedValueGroup(),
+          'es',
+          'en',
+          { source: 'test.json', locale: 'es', strategy: 'update' },
+          false,
+          false,
+          filesModified,
+          warnings,
+        );
+
+        expect(changes[0]?.oldStatus).toBe('stale');
+        expect(changes[0]?.newStatus).toBe('stale');
+
+        const meta = JSON.parse(readFileSync(entryMetaPath, 'utf8'));
+        expect(meta.ok.es.status).toBe('stale');
+        expect(meta.ok.es.baseChecksum).toBe(calculateChecksum('Old source'));
+        expect(filesModified.size).toBe(0);
+      });
     });
 
     it('should set status to verified for verification strategy', () => {
