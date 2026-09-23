@@ -3,7 +3,6 @@ import { extractFromXliff, importFromXliff } from './import-from-xliff';
 import type { ImportOptions } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as configFileOperations from '../config/config-file-operations';
 
 vi.mock('fs');
 vi.mock('path');
@@ -19,18 +18,6 @@ describe('import-from-xliff', () => {
       const parts = String(p).split('/');
       parts.pop();
       return parts.join('/');
-    });
-
-    vi.spyOn(configFileOperations, 'createConfigFileOperations').mockReturnValue({
-      read: () => ({
-        exportFolder: 'dist/lingo-export',
-        importFolder: 'dist/lingo-import',
-        baseLocale: 'en',
-        locales: ['en', 'es'],
-        collections: {},
-      }),
-      write: vi.fn(),
-      update: vi.fn(),
     });
   });
 
@@ -165,6 +152,7 @@ describe('import-from-xliff', () => {
       const options: ImportOptions = {
         source: '/import/test.xliff',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = await importFromXliff('/translations/common/buttons', options);
@@ -220,6 +208,7 @@ describe('import-from-xliff', () => {
       const options: ImportOptions = {
         source: '/import/test.xliff',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = await importFromXliff('/translations/common', options);
@@ -263,6 +252,7 @@ describe('import-from-xliff', () => {
       const options: ImportOptions = {
         source: '/import/test.xliff',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -319,6 +309,7 @@ describe('import-from-xliff', () => {
       const options: ImportOptions = {
         source: '/import/test.xliff',
         locale: 'es',
+        baseLocale: 'en',
         updateComments: true,
       };
 
@@ -375,6 +366,7 @@ describe('import-from-xliff', () => {
       const options: ImportOptions = {
         source: '/import/test.xliff',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'verification',
       };
 
@@ -394,6 +386,7 @@ describe('import-from-xliff', () => {
       const options: ImportOptions = {
         source: '/import/missing.xliff',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       await expect(importFromXliff('/translations/common', options)).rejects.toThrow('Source file not found');
@@ -403,6 +396,7 @@ describe('import-from-xliff', () => {
       const options: ImportOptions = {
         source: '/import/test.xliff',
         locale: 'en',
+        baseLocale: 'en',
       };
 
       await expect(importFromXliff('/translations/common', options)).rejects.toThrow('Cannot import into base locale');

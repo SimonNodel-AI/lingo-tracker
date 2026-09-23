@@ -1,5 +1,6 @@
+import { resolve } from 'node:path';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { HttpException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
 import { FoldersController } from './folders.controller';
 import { ConfigService } from '../../config/config.service';
 import { CollectionCacheService } from '../../cache/collection-cache.service';
@@ -91,7 +92,7 @@ describe('FoldersController', () => {
 
       const result = await foldersController.move('test-collection', moveFolderDto);
 
-      expect(core.moveFolder).toHaveBeenCalledWith('./translations/test', {
+      expect(core.moveFolder).toHaveBeenCalledWith(resolve('./translations/test'), {
         sourceFolderPath: 'apps.common.buttons',
         destinationFolderPath: 'apps.shared',
         override: undefined,
@@ -131,7 +132,7 @@ describe('FoldersController', () => {
 
       const result = await foldersController.move('test-collection', moveFolderDto);
 
-      expect(core.moveFolder).toHaveBeenCalledWith('./translations/test', {
+      expect(core.moveFolder).toHaveBeenCalledWith(resolve('./translations/test'), {
         sourceFolderPath: 'apps.buttons',
         destinationFolderPath: 'apps.actions',
         override: true,
@@ -161,12 +162,12 @@ describe('FoldersController', () => {
 
       const result = await foldersController.move('test-collection', moveFolderDto);
 
-      expect(core.moveFolder).toHaveBeenCalledWith('./translations/test', {
+      expect(core.moveFolder).toHaveBeenCalledWith(resolve('./translations/test'), {
         sourceFolderPath: 'apps.buttons',
         destinationFolderPath: 'shared.buttons',
         override: undefined,
         nestUnderDestination: undefined,
-        destinationTranslationsFolder: './translations/another',
+        destinationTranslationsFolder: resolve('./translations/another'),
       });
 
       expect(result.movedCount).toBe(2);
@@ -191,6 +192,27 @@ describe('FoldersController', () => {
       };
 
       await expect(foldersController.move('test-collection', moveFolderDto)).rejects.toThrow(NotFoundException);
+
+      expect(core.moveFolder).not.toHaveBeenCalled();
+    });
+
+    it('should throw ForbiddenException when destination collection is read-only', async () => {
+      jest.spyOn(_configService, 'getConfig').mockReturnValue({
+        ...mockConfig,
+        collections: {
+          ...mockConfig.collections,
+          vendor: { translationsFolder: './translations/vendor', readOnly: true },
+        },
+      });
+      const moveFolderDto = {
+        sourceFolderPath: 'apps.buttons',
+        destinationFolderPath: 'apps.actions',
+        toCollection: 'vendor',
+      };
+
+      const move = foldersController.move('test-collection', moveFolderDto);
+      await expect(move).rejects.toThrow(ForbiddenException);
+      await expect(move).rejects.toThrow('Collection "vendor" is read-only. Its resources cannot be modified.');
 
       expect(core.moveFolder).not.toHaveBeenCalled();
     });
@@ -308,7 +330,7 @@ describe('FoldersController', () => {
 
       await foldersController.move('test%2Dcollection', moveFolderDto);
 
-      expect(core.moveFolder).toHaveBeenCalledWith('./translations/test', expect.any(Object));
+      expect(core.moveFolder).toHaveBeenCalledWith(resolve('./translations/test'), expect.any(Object));
     });
   });
 
@@ -328,7 +350,7 @@ describe('FoldersController', () => {
 
       const result = await foldersController.create('test-collection', createFolderDto);
 
-      expect(core.createFolder).toHaveBeenCalledWith('./translations/test', {
+      expect(core.createFolder).toHaveBeenCalledWith(resolve('./translations/test'), {
         folderName: 'buttons',
         parentPath: 'apps.common',
       });
@@ -356,7 +378,7 @@ describe('FoldersController', () => {
 
       const result = await foldersController.delete('test-collection', deleteFolderDto);
 
-      expect(core.deleteFolder).toHaveBeenCalledWith('./translations/test', {
+      expect(core.deleteFolder).toHaveBeenCalledWith(resolve('./translations/test'), {
         folderPath: 'apps.common.buttons',
       });
 

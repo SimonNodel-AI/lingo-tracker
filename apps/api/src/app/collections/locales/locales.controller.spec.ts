@@ -126,6 +126,16 @@ describe('LocalesController', () => {
       expect((error as HttpException).getStatus()).toBe(500);
     });
 
+    it('returns 403 when core refuses a read-only collection', async () => {
+      (core.addLocaleToCollection as jest.Mock).mockRejectedValue(new core.ReadOnlyCollectionError('test-collection'));
+
+      const error = await localesController
+        .addLocale('test-collection', { locale: 'de' })
+        .catch((e: HttpException) => e);
+
+      expect((error as HttpException).getStatus()).toBe(403);
+    });
+
     it('does not clear cache when collection lookup fails before core is called', async () => {
       await localesController.addLocale('nonexistent-collection', { locale: 'de' }).catch(() => undefined);
 
@@ -187,6 +197,16 @@ describe('LocalesController', () => {
       const error = await localesController.removeLocale('test-collection', 'fr').catch((e: HttpException) => e);
 
       expect((error as HttpException).getStatus()).toBe(500);
+    });
+
+    it('returns 403 when core refuses a read-only collection', async () => {
+      (core.removeLocaleFromCollection as jest.Mock).mockRejectedValue(
+        new core.ReadOnlyCollectionError('test-collection'),
+      );
+
+      const error = await localesController.removeLocale('test-collection', 'fr').catch((e: HttpException) => e);
+
+      expect((error as HttpException).getStatus()).toBe(403);
     });
 
     it('does not clear cache when collection lookup fails before core is called', async () => {

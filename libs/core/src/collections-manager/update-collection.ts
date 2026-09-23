@@ -1,6 +1,7 @@
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { createConfigFileOperations, updateConfig } from '../lib/config/config-file-operations';
+import { openCollection } from '../lib/config/open-collection';
 import { ErrorMessages } from '../lib/errors/error-messages';
 import { addLocaleToCollection } from './add-locale-to-collection';
 import { removeLocaleFromCollection } from './remove-locale-from-collection';
@@ -36,15 +37,8 @@ export async function updateCollection(
   // An empty/undefined list means "inherit from global" — no translation files are touched.
   if (newLocales !== undefined && newLocales.length > 0) {
     // Read config here only to diff existing vs new locales; updateConfig below will re-read the already-mutated file.
-    const config = createConfigFileOperations({ cwd }).read();
-    const existingCollection = config.collections?.[collectionName];
-
-    if (!existingCollection) {
-      throw new Error(ErrorMessages.collectionNotFound(collectionName));
-    }
-
-    const existingLocales = existingCollection.locales ?? config.locales ?? [];
-    const baseLocale = existingCollection.baseLocale ?? config.baseLocale;
+    const existing = openCollection(createConfigFileOperations({ cwd }).read(), collectionName, { cwd });
+    const { locales: existingLocales, baseLocale } = existing;
 
     const addedLocales = newLocales.filter((l) => !existingLocales.includes(l));
     // Never try to remove the base locale — it can only be set at create time.

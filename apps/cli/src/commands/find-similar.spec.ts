@@ -1,9 +1,19 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { findSimilarCommand } from './find-similar';
 
-vi.mock('@simoncodes-ca/core', () => ({
-  searchTranslations: vi.fn(),
-}));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Config loading and collection resolution run for real against the mocked config.
+    loadConfig: actual.loadConfig,
+    openCollection: actual.openCollection,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    searchTranslations: vi.fn(),
+  };
+});
 
 vi.mock('../utils', () => ({
   loadConfiguration: vi.fn(),

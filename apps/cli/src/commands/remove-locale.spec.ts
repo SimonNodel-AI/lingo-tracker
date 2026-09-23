@@ -20,7 +20,7 @@ vi.mock('prompts', () => ({
   default: vi.fn(),
 }));
 
-import { removeLocaleFromCollection } from '@simoncodes-ca/core';
+import { type Collection, removeLocaleFromCollection } from '@simoncodes-ca/core';
 import { loadConfiguration, promptForCollection, resolveWritableCollection, ConsoleFormatter } from '../utils';
 
 const BASE_CONFIG = {
@@ -37,10 +37,16 @@ const LOADED_CONFIG = {
   cwd: '/project',
 };
 
-const RESOLVED_COLLECTION = {
+const RESOLVED_COLLECTION: Collection = {
   name: 'main',
+  translationsFolder: '/project/src/i18n',
+  baseLocale: 'en',
+  locales: ['en', 'fr', 'de'],
+  targetLocales: ['fr', 'de'],
+  translationConfig: undefined,
+  tags: [],
+  readOnly: false,
   config: { translationsFolder: 'src/i18n', locales: ['en', 'fr', 'de'] },
-  translationsFolderPath: '/project/src/i18n',
 };
 
 describe('removeLocaleCommand', () => {

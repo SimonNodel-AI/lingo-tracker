@@ -7,7 +7,7 @@ import { openResourceFolder, type ResourceFolder } from '../resource/resource-fo
 export interface NormalizeParams {
   readonly translationsFolder: string;
   readonly baseLocale: string;
-  readonly locales: string[];
+  readonly locales: readonly string[];
   readonly dryRun?: boolean;
 }
 
@@ -46,7 +46,7 @@ function openFolderOrWarn(folderPath: string, baseLocale: string): ResourceFolde
 interface NormalizeFolderParams {
   readonly folderPath: string;
   readonly baseLocale: string;
-  readonly locales: string[];
+  readonly locales: readonly string[];
   readonly dryRun: boolean;
   readonly counters: NormalizationCounters;
 }
@@ -100,7 +100,7 @@ function normalizeFolderResources(params: NormalizeFolderParams): void {
 interface NormalizeAllFoldersParams {
   readonly rootPath: string;
   readonly baseLocale: string;
-  readonly locales: string[];
+  readonly locales: readonly string[];
   readonly dryRun: boolean;
   readonly counters: NormalizationCounters;
 }

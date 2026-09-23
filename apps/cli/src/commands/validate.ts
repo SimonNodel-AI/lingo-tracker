@@ -1,5 +1,9 @@
-import { generateValidationSummary, loadPreferredTerminology, validateResources } from '@simoncodes-ca/core';
-import * as path from 'path';
+import {
+  generateValidationSummary,
+  loadPreferredTerminology,
+  openCollection,
+  validateResources,
+} from '@simoncodes-ca/core';
 import { loadConfiguration } from '../utils';
 
 /**
@@ -146,10 +150,8 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
   if (!loaded) return;
   const { config, cwd } = loaded;
 
-  const allCollections = Object.entries(config.collections || {}).map(([name, collectionConfig]) => ({
-    name,
-    path: path.resolve(cwd, collectionConfig.translationsFolder),
-  }));
+  const collections = Object.keys(config.collections || {}).map((name) => openCollection(config, name, { cwd }));
+  const allCollections = collections.map(({ name, translationsFolder }) => ({ name, path: translationsFolder }));
 
   if (allCollections.length === 0) {
     console.error('❌ No collections found in configuration.');
@@ -193,12 +195,7 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
   if (preferredTerminology.warning) {
     console.warn(`⚠️  ${preferredTerminology.warning}`);
   }
-  const baseLocaleByCollection = Object.fromEntries(
-    Object.entries(config.collections || {}).map(([name, collectionConfig]) => [
-      name,
-      collectionConfig.baseLocale ?? config.baseLocale,
-    ]),
-  );
+  const baseLocaleByCollection = Object.fromEntries(collections.map(({ name, baseLocale }) => [name, baseLocale]));
 
   const compileValues = !options.skipIcu;
   const requirePortablePlurals = options.requirePortablePlurals ?? false;

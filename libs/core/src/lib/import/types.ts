@@ -41,8 +41,11 @@ export interface ImportOptions {
   verbose?: boolean;
   /** Create backup before importing (.bak files) */
   backup?: boolean;
-  /** Base locale code (e.g., 'en'). Defaults to 'en' when not specified. */
-  baseLocale?: string;
+  /**
+   * The collection's base locale (e.g. 'en'), normally `openCollection(...).baseLocale`.
+   * Decides whether the import writes base values and which locale stays untouched.
+   */
+  baseLocale: string;
   /**
    * Protected terms (union of global + collection) that must survive translation
    * verbatim. On import, an entry whose source contains such a term but whose

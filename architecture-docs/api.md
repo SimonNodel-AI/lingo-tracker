@@ -111,7 +111,7 @@ graph TD
         end
 
         subgraph services["Services / Infrastructure"]
-            CONFIGS["ConfigService\nReads .lingo-tracker.json\non every request"]
+            CONFIGS["ConfigService\ncore loadConfig() on every request\n(errors → 404 / 500)"]
             CACHE["CollectionCacheService\nSingle-collection in-memory\nResourceTreeNode cache"]
             JOBS["TranslationJobService\nIn-memory job map\nUUID → TranslationJob"]
         end
@@ -166,9 +166,9 @@ graph TD
     style core fill:#d4edda,stroke:#28a745,color:#000
 ```
 
-Controllers are the only layer that knows HTTP. They resolve collection config from `ConfigService`, delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and update `CollectionCacheService` incrementally after successful writes.
+Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and update `CollectionCacheService` incrementally after successful writes.
 
-**Read-only enforcement.** `WritableCollectionGuard` (`collections/guards/writable-collection.guard.ts`) is applied at the class level to the `Resources`, `Locales`, and `Folders` controllers. For any non-`GET` request it reads the `:collectionName` route param, looks up the collection in `ConfigService`, and throws `403 Forbidden` when the collection is `readOnly`. This is the single API choke-point for read-only enforcement. The `Collections` controller is intentionally **not** guarded: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even for read-only collections, since the lock protects resources, not the registration. On create, the controller defaults `readOnly` to `true` for `node_modules` paths (via the `isUnderNodeModules` domain helper) when the DTO omits it.
+**Read-only enforcement.** `WritableCollectionGuard` (`collections/guards/writable-collection.guard.ts`) is applied at the class level to the `Resources`, `Locales`, and `Folders` controllers. For any non-`GET` request it reads the `:collectionName` route param, opens the collection with core `openCollection(config, name, { writable: true })`, and maps `ReadOnlyCollectionError` to `403 Forbidden` (unknown collections pass through so the controller returns its 404). This is the single API choke-point for read-only enforcement. The `Collections` controller is intentionally **not** guarded: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even for read-only collections, since the lock protects resources, not the registration. On create, the controller defaults `readOnly` to `true` for `node_modules` paths (via the `isUnderNodeModules` domain helper) when the DTO omits it.
 
 ---
 

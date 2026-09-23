@@ -22,6 +22,7 @@ import type {
 import { ConfigService } from '../../config/config.service';
 import { CollectionCacheService } from '../../cache/collection-cache.service';
 import { WritableCollectionGuard } from '../guards/writable-collection.guard';
+import { openDestinationCollection, openRouteCollection } from '../open-route-collection';
 
 @UseGuards(WritableCollectionGuard)
 @Controller('collections/:collectionName/folders')
@@ -37,15 +38,10 @@ export class FoldersController {
     @Body() createFolderDto: CreateFolderDto,
   ): Promise<CreateFolderResponseDto> {
     try {
-      const decodedCollectionName = decodeURIComponent(collectionName);
-      const config = this.configService.getConfig();
-
-      if (!config.collections || !config.collections[decodedCollectionName]) {
-        throw new NotFoundException(`Collection "${decodedCollectionName}" not found`);
-      }
-
-      const collection = config.collections[decodedCollectionName];
-      const translationsFolder = collection.translationsFolder;
+      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(
+        this.configService.getConfig(),
+        collectionName,
+      );
 
       const result = createFolder(translationsFolder, {
         folderName: createFolderDto.folderName,
@@ -108,15 +104,10 @@ export class FoldersController {
     @Body() deleteFolderDto: DeleteFolderDto,
   ): Promise<DeleteFolderResponseDto> {
     try {
-      const decodedCollectionName = decodeURIComponent(collectionName);
-      const config = this.configService.getConfig();
-
-      if (!config.collections || !config.collections[decodedCollectionName]) {
-        throw new NotFoundException(`Collection "${decodedCollectionName}" not found`);
-      }
-
-      const collection = config.collections[decodedCollectionName];
-      const translationsFolder = collection.translationsFolder;
+      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(
+        this.configService.getConfig(),
+        collectionName,
+      );
 
       const result = deleteFolder(translationsFolder, {
         folderPath: deleteFolderDto.folderPath,
@@ -159,15 +150,8 @@ export class FoldersController {
     @Body() moveFolderDto: MoveFolderDto,
   ): Promise<MoveFolderResponseDto> {
     try {
-      const decodedCollectionName = decodeURIComponent(collectionName);
       const config = this.configService.getConfig();
-
-      if (!config.collections || !config.collections[decodedCollectionName]) {
-        throw new NotFoundException(`Collection "${decodedCollectionName}" not found`);
-      }
-
-      const collection = config.collections[decodedCollectionName];
-      const translationsFolder = collection.translationsFolder;
+      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(config, collectionName);
 
       if (
         !moveFolderDto.sourceFolderPath ||
@@ -184,11 +168,9 @@ export class FoldersController {
       let destinationTranslationsFolder: string | undefined;
       let destinationCollectionName: string | undefined;
       if (moveFolderDto.toCollection) {
-        destinationCollectionName = decodeURIComponent(moveFolderDto.toCollection);
-        if (!config.collections || !config.collections[destinationCollectionName]) {
-          throw new NotFoundException(`Destination collection "${destinationCollectionName}" not found`);
-        }
-        destinationTranslationsFolder = config.collections[destinationCollectionName].translationsFolder;
+        const destination = openDestinationCollection(config, moveFolderDto.toCollection);
+        destinationCollectionName = destination.name;
+        destinationTranslationsFolder = destination.translationsFolder;
       }
 
       // Perform the move

@@ -59,19 +59,14 @@ export async function translateLocaleCommand(options: TranslateLocaleOptions): P
   // Validate translation is enabled
   // -------------------------------------------------------------------------
 
-  const translationEnabled = collection.config.translation?.enabled ?? config.translation?.enabled ?? false;
-  if (!translationEnabled) {
+  const { translationConfig, baseLocale, locales: allLocales, targetLocales: nonBaseLocales } = collection;
+  if (!translationConfig?.enabled) {
     ConsoleFormatter.error(
       `Auto-translation is not enabled for collection "${collectionName}". ` +
         `Set translation.enabled = true in your configuration.`,
     );
     return;
   }
-
-  const baseLocale = collection.config.baseLocale ?? config.baseLocale ?? 'en';
-  const allLocales = collection.config.locales ?? config.locales ?? [];
-
-  const nonBaseLocales = allLocales.filter((locale) => locale !== baseLocale);
 
   if (nonBaseLocales.length === 0) {
     ConsoleFormatter.error(`No target locales configured. Add locales other than the base locale "${baseLocale}".`);
@@ -114,20 +109,10 @@ export async function translateLocaleCommand(options: TranslateLocaleOptions): P
   }
 
   // -------------------------------------------------------------------------
-  // Resolve translation config
-  // -------------------------------------------------------------------------
-
-  const translationConfig = collection.config.translation ?? config.translation;
-  if (!translationConfig) {
-    ConsoleFormatter.error('Translation configuration is missing. Check your .lingo-tracker.json.');
-    return;
-  }
-
-  // -------------------------------------------------------------------------
   // Run translation
   // -------------------------------------------------------------------------
 
-  const translationsFolder = collection.config.translationsFolder;
+  const { translationsFolder } = collection;
 
   console.log('');
   ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);

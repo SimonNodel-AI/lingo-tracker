@@ -22,6 +22,8 @@ export const ErrorMessages = {
 
   collectionNotFound: (name: string) => `Collection "${name}" not found`,
 
+  collectionReadOnly: (name: string) => `Collection "${name}" is read-only. Its resources cannot be modified.`,
+
   collectionAlreadyExists: (name: string) => `Collection "${name}" already exists`,
 
   localeAlreadyExists: (locale: string, collection: string) =>

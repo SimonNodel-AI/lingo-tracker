@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { HttpException, NotFoundException } from '@nestjs/common';
 import { TranslationError } from '@simoncodes-ca/core';
@@ -174,7 +175,7 @@ describe('ResourcesController', () => {
         created: true,
       });
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           key: 'app.button.ok',
           baseValue: 'OK',
@@ -275,7 +276,7 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           baseLocale: 'fr-ca',
         }),
@@ -298,7 +299,7 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           baseLocale: 'es',
         }),
@@ -329,7 +330,7 @@ describe('ResourcesController', () => {
 
       await resourcesController.createResources('My%20Collection', dto);
 
-      expect(addResource).toHaveBeenCalledWith('./translations/my-collection', expect.any(Object));
+      expect(addResource).toHaveBeenCalledWith(resolve('./translations/my-collection'), expect.any(Object));
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
@@ -434,7 +435,7 @@ describe('ResourcesController', () => {
         created: true,
       });
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           key: 'cancel',
           baseValue: 'Cancel',
@@ -472,7 +473,7 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           translations: [
             { locale: 'fr-ca', value: "D'accord", status: 'translated' },
@@ -504,7 +505,7 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           key: 'app.button.ok',
           baseValue: 'OK',
@@ -551,7 +552,7 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           translations: [
             { locale: 'fr-ca', value: 'OK', status: 'new' },
@@ -593,7 +594,7 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           translations: undefined,
         }),
@@ -619,7 +620,7 @@ describe('ResourcesController', () => {
         entriesDeleted: 1,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith('./translations/test', {
+      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/test'), {
         keys: ['app.button.ok'],
       });
     });
@@ -641,7 +642,7 @@ describe('ResourcesController', () => {
         entriesDeleted: 3,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith('./translations/test', {
+      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/test'), {
         keys: ['app.button.ok', 'app.button.cancel', 'app.button.save'],
       });
     });
@@ -696,7 +697,7 @@ describe('ResourcesController', () => {
 
       await resourcesController.delete('My%20Collection', dto);
 
-      expect(deleteResource).toHaveBeenCalledWith('./translations/my-collection', { keys: ['app.button.ok'] });
+      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/my-collection'), { keys: ['app.button.ok'] });
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
@@ -776,7 +777,7 @@ describe('ResourcesController', () => {
         entriesDeleted: 1,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith('./translations/test', {
+      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/test'), {
         keys: ['apps.common.buttons.ok'],
       });
     });
@@ -803,7 +804,7 @@ describe('ResourcesController', () => {
         errors: [],
       });
       expect(moveResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
@@ -832,7 +833,7 @@ describe('ResourcesController', () => {
       await resourcesController.move('test-collection', dto);
 
       expect(moveResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
@@ -907,11 +908,11 @@ describe('ResourcesController', () => {
 
       expect(result.movedCount).toBe(1);
       expect(moveResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
-          destinationTranslationsFolder: './translations/other',
+          destinationTranslationsFolder: resolve('./translations/other'),
         }),
       );
     });
@@ -932,6 +933,26 @@ describe('ResourcesController', () => {
 
       expect(result.movedCount).toBe(0);
       expect(result.errors).toContain('Destination collection "non-existent" not found');
+      expect(moveResource).not.toHaveBeenCalled();
+    });
+
+    it('should report error if destination collection is read-only', async () => {
+      const moveResource = core.moveResource as jest.Mock;
+      jest.spyOn(configService, 'getConfig').mockReturnValue({
+        ...mockConfig,
+        collections: {
+          ...mockConfig.collections,
+          vendor: { translationsFolder: './translations/vendor', readOnly: true },
+        },
+      });
+
+      const dto = {
+        moves: [{ source: 'app.button.ok', destination: 'app.actions.ok', toCollection: 'vendor' }],
+      };
+      const result = await resourcesController.move('test-collection', dto);
+
+      expect(result.movedCount).toBe(0);
+      expect(result.errors).toContain('Collection "vendor" is read-only. Its resources cannot be modified.');
       expect(moveResource).not.toHaveBeenCalled();
     });
   });
@@ -957,7 +978,7 @@ describe('ResourcesController', () => {
         message: undefined,
       });
       expect(editResource).toHaveBeenCalledWith(
-        './translations/test',
+        resolve('./translations/test'),
         expect.objectContaining({
           key: 'app.button.ok',
           baseValue: 'OK Updated',
@@ -1134,7 +1155,7 @@ describe('ResourcesController', () => {
 
       await resourcesController.getTree('test-collection', '', mockResponse as any);
 
-      expect(indexCollection).toHaveBeenCalledWith('test-collection', './translations/test', 3);
+      expect(indexCollection).toHaveBeenCalledWith('test-collection', resolve('./translations/test'), 3);
       expect(mockResponse.status).toHaveBeenCalledWith(202);
       expect(mockResponse.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1179,7 +1200,7 @@ describe('ResourcesController', () => {
 
       await resourcesController.getTree('test-collection', '', mockResponse as any);
 
-      expect(indexCollection).toHaveBeenCalledWith('test-collection', './translations/test', 3);
+      expect(indexCollection).toHaveBeenCalledWith('test-collection', resolve('./translations/test'), 3);
       expect(mockResponse.status).toHaveBeenCalledWith(202);
       expect(mockResponse.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1300,7 +1321,7 @@ describe('ResourcesController', () => {
         status: 'not-started',
         collectionName: 'test-collection',
       });
-      expect(indexCollection).toHaveBeenCalledWith('test-collection', './translations/test', 3);
+      expect(indexCollection).toHaveBeenCalledWith('test-collection', resolve('./translations/test'), 3);
     });
 
     it('should return 404 for non-existent collection', async () => {
@@ -1373,7 +1394,7 @@ describe('ResourcesController', () => {
 
       expect(searchTranslations).toHaveBeenCalledWith(
         expect.objectContaining({
-          translationsFolder: './translations/test',
+          translationsFolder: resolve('./translations/test'),
           query: 'lingo',
         }),
       );

@@ -7,6 +7,7 @@ import type { ResourceEntries } from '../resource/resource-entry';
 import type { TrackerMetadata } from '../resource/tracker-metadata';
 import type { SafeAny } from '../constants';
 import { setupMockFs, makeBaseConfig } from './locale-spec-helpers';
+import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
 
 vi.mock('fs');
 
@@ -172,6 +173,23 @@ describe('addLocaleToCollection', () => {
     await expect(addLocaleToCollection('nonexistent', 'de', { cwd: CWD })).rejects.toThrow(
       'Collection "nonexistent" not found',
     );
+  });
+
+  it('throws ReadOnlyCollectionError and writes nothing for a read-only collection', async () => {
+    const config = makeConfig({
+      collections: { main: { translationsFolder: 'src/i18n', readOnly: true } },
+    });
+    setupMockFs({
+      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(config) },
+      [TRANSLATIONS_FOLDER]: { type: 'directory', children: ['resource_entries.json', 'tracker_meta.json'] },
+      [path.join(TRANSLATIONS_FOLDER, 'resource_entries.json')]: { type: 'file', content: '{}' },
+      [path.join(TRANSLATIONS_FOLDER, 'tracker_meta.json')]: { type: 'file', content: '{}' },
+    });
+
+    await expect(addLocaleToCollection('main', 'de', { cwd: CWD })).rejects.toThrow(ReadOnlyCollectionError);
+
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(fs.mkdirSync).not.toHaveBeenCalled();
   });
 
   it('throws when locale format is invalid', async () => {

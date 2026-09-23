@@ -45,7 +45,7 @@ describe('collection-resolver', () => {
     it('should resolve translations folder path correctly', () => {
       const result = resolveCollection('main', mockConfig, '/project');
 
-      expect(result?.translationsFolderPath).toBe(path.resolve('/project', 'src/i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve('/project', 'src/i18n'));
     });
 
     it('should handle different collection names', () => {
@@ -63,13 +63,13 @@ describe('collection-resolver', () => {
       const baseDir = '/Users/developer/projects/myapp';
       const result = resolveCollection('main', mockConfig, baseDir);
 
-      expect(result?.translationsFolderPath).toBe(path.resolve(baseDir, 'src/i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve(baseDir, 'src/i18n'));
     });
 
     it('should resolve relative paths correctly', () => {
       const result = resolveCollection('shared', mockConfig, '/project');
 
-      expect(result?.translationsFolderPath).toBe(path.resolve('/project', '../shared/i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve('/project', '../shared/i18n'));
     });
 
     it('should handle Windows-style paths', () => {
@@ -84,7 +84,7 @@ describe('collection-resolver', () => {
 
       const result = resolveCollection('windows', windowsConfig, 'C:\\Projects\\App');
 
-      expect(result?.translationsFolderPath).toBe(path.resolve('C:\\Projects\\App', 'src\\translations\\i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve('C:\\Projects\\App', 'src\\translations\\i18n'));
     });
   });
 
@@ -135,20 +135,20 @@ describe('collection-resolver', () => {
       baseDirs.forEach((baseDir) => {
         const result = resolveCollection('main', mockConfig, baseDir);
 
-        expect(result?.translationsFolderPath).toBe(path.resolve(baseDir, 'src/i18n'));
+        expect(result?.translationsFolder).toBe(path.resolve(baseDir, 'src/i18n'));
       });
     });
 
     it('should handle base directory with trailing slash', () => {
       const result = resolveCollection('main', mockConfig, '/project/');
 
-      expect(result?.translationsFolderPath).toBe(path.resolve('/project/', 'src/i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve('/project/', 'src/i18n'));
     });
 
     it('should handle empty base directory', () => {
       const result = resolveCollection('main', mockConfig, '');
 
-      expect(result?.translationsFolderPath).toBe(path.resolve('', 'src/i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve('', 'src/i18n'));
     });
   });
 
@@ -238,7 +238,7 @@ describe('collection-resolver', () => {
 
       const result = resolveCollection('dotted', dotConfig, '/project');
 
-      expect(result?.translationsFolderPath).toBe(path.resolve('/project', './src/./i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve('/project', './src/./i18n'));
     });
 
     it('should handle translation folder paths starting with slash', () => {
@@ -253,7 +253,7 @@ describe('collection-resolver', () => {
 
       const result = resolveCollection('absolute', slashConfig, '/project');
 
-      expect(result?.translationsFolderPath).toBe(path.resolve('/project', '/absolute/path/i18n'));
+      expect(result?.translationsFolder).toBe(path.resolve('/project', '/absolute/path/i18n'));
     });
 
     it('should not modify the original config object', () => {

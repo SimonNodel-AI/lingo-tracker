@@ -1,8 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-vi.mock('@simoncodes-ca/core', () => ({
-  loadResourcesFromCollections: vi.fn(),
-}));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Config loading and collection resolution run for real against the mocked config.
+    loadConfig: actual.loadConfig,
+    openCollection: actual.openCollection,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    loadResourcesFromCollections: vi.fn(),
+  };
+});
 
 vi.mock('../utils', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../utils')>();
@@ -30,7 +40,7 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 import * as fs from 'fs';
-import { loadResourcesFromCollections } from '@simoncodes-ca/core';
+import { type LingoTrackerConfig, loadResourcesFromCollections, openCollection } from '@simoncodes-ca/core';
 import { loadConfiguration, resolveCollection } from '../utils';
 import { glossaryCommand } from './glossary';
 
@@ -149,11 +159,9 @@ describe('glossaryCommand', () => {
   });
 
   it('resolves a single collection with --collection', async () => {
-    vi.mocked(resolveCollection).mockReturnValue({
-      name: 'app',
-      config: { translationsFolder: 'i18n' },
-      translationsFolderPath: '/project/i18n',
-    } as never);
+    vi.mocked(resolveCollection).mockReturnValue(
+      openCollection(LOADED_CONFIG.config as LingoTrackerConfig, 'app', { cwd: '/project' }),
+    );
     await glossaryCommand({ text: 'Save', collection: 'app' });
     expect(resolveCollection).toHaveBeenCalledWith('app', expect.anything(), '/project');
   });

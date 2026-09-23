@@ -34,7 +34,7 @@ export interface AddResourceParams {
    * All configured locales. Required when using auto-translation so the
    * orchestrator knows which target locales to translate into.
    */
-  allLocales?: string[];
+  allLocales?: readonly string[];
 }
 
 /**

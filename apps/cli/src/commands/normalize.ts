@@ -74,7 +74,7 @@ export async function normalizeCommand(options: NormalizeOptions): Promise<void>
 
     // Read-only collections cannot be normalized (it rewrites resource files).
     // In a bulk `--all` run, skip them without failing; when one is explicitly targeted, fail.
-    if (collection.config.readOnly) {
+    if (collection.readOnly) {
       if (answers.all) {
         if (!options.json) {
           console.log('');
@@ -89,9 +89,7 @@ export async function normalizeCommand(options: NormalizeOptions): Promise<void>
       continue;
     }
 
-    const translationsFolder = collection.translationsFolderPath;
-    const baseLocale = collection.config.baseLocale ?? config.baseLocale;
-    const locales = collection.config.locales ?? config.locales;
+    const { translationsFolder, baseLocale, locales } = collection;
 
     if (!options.json) {
       console.log('');

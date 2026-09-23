@@ -6,7 +6,7 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import type { ResourceTreeNode, ResourceTreeEntry } from '@simoncodes-ca/core';
 
-export function mapResourceTreeToDto(node: ResourceTreeNode, collectionTags?: string[]): ResourceTreeDto {
+export function mapResourceTreeToDto(node: ResourceTreeNode, collectionTags?: readonly string[]): ResourceTreeDto {
   return {
     path: node.folderPathSegments.join('.'),
     resources: node.resources.map((e) => mapResourceEntryToSummary(e, collectionTags)),
@@ -14,7 +14,10 @@ export function mapResourceTreeToDto(node: ResourceTreeNode, collectionTags?: st
   };
 }
 
-export function mapResourceEntryToSummary(entry: ResourceTreeEntry, collectionTags?: string[]): ResourceSummaryDto {
+export function mapResourceEntryToSummary(
+  entry: ResourceTreeEntry,
+  collectionTags?: readonly string[],
+): ResourceSummaryDto {
   // Find base locale (the one without status/baseChecksum in metadata)
   let baseLocale: string | undefined;
   for (const [locale, meta] of Object.entries(entry.metadata)) {
@@ -42,7 +45,7 @@ export function mapResourceEntryToSummary(entry: ResourceTreeEntry, collectionTa
     status,
     comment: entry.comment,
     tags: entry.tags,
-    inheritedTags: collectionTags && collectionTags.length > 0 ? collectionTags : undefined,
+    inheritedTags: collectionTags && collectionTags.length > 0 ? [...collectionTags] : undefined,
   };
 }
 
@@ -53,7 +56,7 @@ function mapFolderChildToDto(
     loaded: boolean;
     tree?: ResourceTreeNode;
   },
-  collectionTags?: string[],
+  collectionTags?: readonly string[],
 ): FolderNodeDto {
   return {
     name: child.name,

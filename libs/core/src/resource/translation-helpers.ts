@@ -9,7 +9,7 @@ import type { TranslationStatus } from '@simoncodes-ca/domain';
  * @returns Array of translation objects with 'new' status, or undefined if no non-base locales exist
  */
 export function createDefaultTranslations(
-  locales: string[],
+  locales: readonly string[],
   baseLocale: string,
   baseValue: string,
 ): Array<{ locale: string; value: string; status: TranslationStatus }> | undefined {

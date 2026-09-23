@@ -824,6 +824,7 @@ describe('process-resource-group', () => {
           {
             source: 'test.json',
             locale: 'es',
+            baseLocale: 'en',
             strategy: 'migration',
             createMissing: true,
             preserveStatus: false,
@@ -1231,6 +1232,7 @@ describe('process-resource-group', () => {
         {
           source: 'test.json',
           locale: 'en',
+          baseLocale: 'en',
           strategy: 'migration',
           createMissing: true,
           updateComments: true,
@@ -1436,6 +1438,7 @@ describe('process-resource-group', () => {
         {
           source: 'test.json',
           locale: 'en',
+          baseLocale: 'en',
           strategy: 'migration',
           updateComments: true,
           updateTags: true,
@@ -1498,6 +1501,7 @@ describe('process-resource-group', () => {
         {
           source: 'test.json',
           locale: 'en',
+          baseLocale: 'en',
           strategy: 'migration',
           updateComments: true,
           updateTags: true,

@@ -1,6 +1,5 @@
-import path from 'path';
 import { loadConfiguration } from '../utils';
-import { searchTranslations } from '@simoncodes-ca/core';
+import { type Collection, CollectionNotFoundError, openCollection, searchTranslations } from '@simoncodes-ca/core';
 import { normalizedLevenshtein } from '@simoncodes-ca/domain';
 
 /**
@@ -35,14 +34,16 @@ export async function findSimilarCommand(options: FindSimilarOptions): Promise<v
     process.exit(1);
   }
 
-  const collectionConfig = config.collections?.[options.collection];
-  if (!collectionConfig) {
+  let collection: Collection;
+  try {
+    collection = openCollection(config, options.collection, { cwd });
+  } catch (error) {
+    if (!(error instanceof CollectionNotFoundError)) throw error;
     console.error(`Error: Collection "${options.collection}" not found`);
     process.exit(1);
   }
 
-  const translationsFolder = path.resolve(cwd, collectionConfig.translationsFolder);
-  const baseLocale = collectionConfig.baseLocale || config.baseLocale || 'en';
+  const { translationsFolder, baseLocale } = collection;
   const query = options.value.trim();
   const displayLimit = options.maxResults ?? 5;
 

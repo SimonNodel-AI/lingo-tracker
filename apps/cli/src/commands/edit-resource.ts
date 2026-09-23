@@ -50,7 +50,7 @@ export async function editResourceCommand(options: EditResourceOptions): Promise
   } = {
     key: answers.key,
     cwd: resolve(cwd),
-    baseLocale: collection.config.baseLocale,
+    baseLocale: collection.baseLocale,
   };
 
   if (options.targetFolder) {
@@ -77,14 +77,11 @@ export async function editResourceCommand(options: EditResourceOptions): Promise
     ConsoleFormatter.warning('Both --locale and --localeValue must be provided to update a translation.');
   }
 
-  const translationConfig = collection.config.translation ?? config.translation;
-  const allLocales = collection.config.locales ?? config.locales ?? [];
-
   try {
-    const result = await editResource(collection.translationsFolderPath, {
+    const result = await editResource(collection.translationsFolder, {
       ...editOptions,
-      translationConfig,
-      allLocales,
+      translationConfig: collection.translationConfig,
+      allLocales: collection.locales,
     });
 
     if (result.updated) {

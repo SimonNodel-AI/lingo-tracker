@@ -1,11 +1,10 @@
 import type prompts from 'prompts';
-import { moveResource } from '@simoncodes-ca/core';
+import { type Collection, moveResource } from '@simoncodes-ca/core';
 import {
   loadConfiguration,
   promptForCollection,
   resolveWritableCollection,
   executePromptsWithFallback,
-  type ResolvedCollection,
 } from '../utils';
 
 export interface MoveResourceOptions {
@@ -34,18 +33,18 @@ export async function moveResourceCommand(options: MoveResourceOptions): Promise
   const answers = await promptForMissing(options);
 
   // Handle optional destination collection
-  let destCollection: ResolvedCollection | undefined;
+  let destCollection: Collection | undefined;
   if (answers.destCollection) {
     destCollection = resolveWritableCollection(answers.destCollection, config, cwd);
     if (!destCollection) return;
   }
 
   try {
-    const result = await moveResource(sourceCollection.translationsFolderPath, {
+    const result = await moveResource(sourceCollection.translationsFolder, {
       source: answers.source,
       destination: answers.dest,
       override: options.override,
-      destinationTranslationsFolder: destCollection?.translationsFolderPath,
+      destinationTranslationsFolder: destCollection?.translationsFolder,
     });
 
     if (result.movedCount > 0) {

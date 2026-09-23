@@ -51,7 +51,9 @@ Collections may declare a `tags?: string[]` array. These are **collection-level 
 
 Example collections from the project's own config: `trackerResources` (the Tracker UI's own strings), `TestDataPlayground`, and `mockDesignSystem`.
 
-Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`cli.md`](cli.md)
+**Collection (resolved).** Code outside the config module never reads a collection's raw entry to get its settings. `openCollection(config, name)` in `@simoncodes-ca/core` returns a `Collection` with the effective values: `baseLocale` (collection, else global, else `en`), `locales` (collection, else global, else none), `targetLocales` (the locales without the base locale), `translationConfig` (collection, else global; the two are not merged), the absolute `translationsFolder`, normalized `tags`, and `readOnly`. It throws `CollectionNotFoundError` for an unknown name, and `ReadOnlyCollectionError` when `{ writable: true }` is set on a read-only collection. The CLI and the API both open collections this way.
+
+Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`cli.md`](cli.md), [`core-library.md`](core-library.md#config-and-collection-resolution)
 
 ---
 

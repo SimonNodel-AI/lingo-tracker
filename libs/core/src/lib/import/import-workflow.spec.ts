@@ -1,24 +1,11 @@
-import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CONFIG_FILENAME } from '../../constants';
 import { setupImportWorkflow, buildImportResult } from './import-workflow';
 import type { ImportOptions } from './types';
-import * as configFileOperations from '../config/config-file-operations';
+import * as loadConfigModule from '../config/load-config';
 
 describe('import-workflow', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(configFileOperations, 'createConfigFileOperations').mockReturnValue({
-      read: () => ({
-        exportFolder: 'dist/lingo-export',
-        importFolder: 'dist/lingo-import',
-        baseLocale: 'en',
-        locales: ['en', 'es'],
-        collections: {},
-      }),
-      write: vi.fn(),
-      update: vi.fn(),
-    });
   });
 
   describe('setupImportWorkflow', () => {
@@ -26,6 +13,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'translation-service',
       };
 
@@ -42,6 +30,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'fr',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -56,6 +45,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'de',
+        baseLocale: 'en',
         strategy: 'verification',
       };
 
@@ -70,6 +60,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'it',
+        baseLocale: 'en',
         strategy: 'update',
       };
 
@@ -84,6 +75,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'translation-service',
         createMissing: true, // Override default (false)
         updateComments: true, // Override default (false)
@@ -100,6 +92,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const config = setupImportWorkflow(options);
@@ -112,6 +105,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'en', // Base locale
+        baseLocale: 'en',
         strategy: 'translation-service',
       };
 
@@ -124,6 +118,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'en', // Base locale
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -141,6 +136,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -155,6 +151,7 @@ describe('import-workflow', () => {
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const config = setupImportWorkflow(options);
@@ -162,8 +159,8 @@ describe('import-workflow', () => {
       expect(config.cwd).toBe(process.cwd());
     });
 
-    it('should use explicitly provided baseLocale without reading config', () => {
-      const createConfigSpy = vi.mocked(configFileOperations.createConfigFileOperations);
+    it('should use the caller-supplied baseLocale without reading the config file', () => {
+      const loadConfigSpy = vi.spyOn(loadConfigModule, 'loadConfig');
       const options: ImportOptions = {
         source: 'test.json',
         locale: 'fr',
@@ -174,45 +171,26 @@ describe('import-workflow', () => {
       const config = setupImportWorkflow(options);
 
       expect(config.baseLocale).toBe('fr');
-      expect(createConfigSpy).not.toHaveBeenCalled();
+      expect(config.isBaseLocaleImport).toBe(true);
+      expect(loadConfigSpy).not.toHaveBeenCalled();
     });
 
-    it('should fall back to en when config is readable but baseLocale is absent', () => {
-      vi.spyOn(configFileOperations, 'createConfigFileOperations').mockReturnValue({
-        read: () =>
-          ({
-            exportFolder: 'dist/lingo-export',
-            importFolder: 'dist/lingo-import',
-            locales: ['en', 'es'],
-            collections: {},
-          }) as unknown as ReturnType<ReturnType<typeof configFileOperations.createConfigFileOperations>['read']>,
-        write: vi.fn(),
-        update: vi.fn(),
-      });
-
-      const config = setupImportWorkflow({
-        source: 'test.json',
-        locale: 'es',
-      });
-
-      expect(config.baseLocale).toBe('en');
-    });
-
-    it('should throw with config path when config read fails', () => {
-      vi.spyOn(configFileOperations, 'createConfigFileOperations').mockReturnValue({
-        read: () => {
-          throw new Error('Failed to read or parse configuration file');
-        },
-        write: vi.fn(),
-        update: vi.fn(),
-      });
-
+    it('should treat a collection base locale other than en as the base', () => {
       expect(() =>
         setupImportWorkflow({
           source: 'test.json',
-          locale: 'es',
+          locale: 'de',
+          baseLocale: 'de',
         }),
-      ).toThrow(`Failed to read configuration file at "${resolve(process.cwd(), CONFIG_FILENAME)}"`);
+      ).toThrow('Cannot import into base locale "de" with strategy "translation-service"');
+    });
+
+    it('should throw when baseLocale is missing or blank', () => {
+      const missing = { source: 'test.json', locale: 'es' } as ImportOptions;
+      expect(() => setupImportWorkflow(missing)).toThrow('ImportOptions.baseLocale is required');
+      expect(() => setupImportWorkflow({ source: 'test.json', locale: 'es', baseLocale: '  ' })).toThrow(
+        'ImportOptions.baseLocale is required',
+      );
     });
   });
 
@@ -223,6 +201,7 @@ describe('import-workflow', () => {
         options: {
           source: 'test.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'translation-service',
           collection: 'my-collection',
           dryRun: false,
@@ -276,6 +255,7 @@ describe('import-workflow', () => {
         options: {
           source: 'test.xlf',
           locale: 'fr',
+          baseLocale: 'en',
           strategy: 'verification',
         },
         statistics: {
@@ -308,6 +288,7 @@ describe('import-workflow', () => {
         options: {
           source: 'test.json',
           locale: 'es',
+          baseLocale: 'en',
           dryRun: true,
         },
         statistics: {
@@ -332,6 +313,7 @@ describe('import-workflow', () => {
         options: {
           source: 'test.json',
           locale: 'es',
+          baseLocale: 'en',
         },
         statistics: {
           resourcesCreated: 0,
@@ -357,6 +339,7 @@ describe('import-workflow', () => {
         options: {
           source: 'test.json',
           locale: 'es',
+          baseLocale: 'en',
         },
         statistics: {
           resourcesCreated: 0,

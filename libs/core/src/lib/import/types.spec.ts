@@ -35,6 +35,7 @@ describe('import types', () => {
       const options: ImportOptions = {
         source: '/path/to/file.xliff',
         locale: 'es',
+        baseLocale: 'en',
       };
       expect(options.source).toBe('/path/to/file.xliff');
       expect(options.locale).toBe('es');
@@ -45,6 +46,7 @@ describe('import types', () => {
         format: 'xliff',
         source: '/path/to/file.xliff',
         locale: 'es',
+        baseLocale: 'en',
         collection: 'TestCollection',
         strategy: 'translation-service',
         updateComments: false,

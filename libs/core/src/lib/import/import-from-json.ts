@@ -271,6 +271,7 @@ export function extractFromHierarchical(data: Record<string, unknown>, prefix = 
  * const result = importFromJson('/project/src/translations', {
  *   source: 'translated-es.json',
  *   locale: 'es',
+ *   baseLocale: 'en',
  *   strategy: 'translation-service',
  *   dryRun: false
  * });
@@ -280,6 +281,7 @@ export function extractFromHierarchical(data: Record<string, unknown>, prefix = 
  * const result = importFromJson('/project/src/translations', {
  *   source: 'old-system-fr.json',
  *   locale: 'fr',
+ *   baseLocale: 'en',
  *   strategy: 'migration',
  *   createMissing: true,
  *   updateComments: true,
@@ -292,6 +294,7 @@ export function extractFromHierarchical(data: Record<string, unknown>, prefix = 
  * const preview = importFromJson('/project/src/translations', {
  *   source: 'new-translations.json',
  *   locale: 'de',
+ *   baseLocale: 'en',
  *   strategy: 'translation-service',
  *   dryRun: true
  * });

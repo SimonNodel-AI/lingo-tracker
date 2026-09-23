@@ -51,7 +51,7 @@ export async function deleteResourceCommand(options: DeleteResourceOptions): Pro
   }
 
   try {
-    const result = deleteResource(collection.translationsFolderPath, { keys });
+    const result = deleteResource(collection.translationsFolder, { keys });
 
     if (result.entriesDeleted === 0) {
       ConsoleFormatter.warning('No resources were deleted.');

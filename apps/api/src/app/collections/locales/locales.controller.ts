@@ -6,14 +6,16 @@ import {
   Body,
   HttpException,
   HttpStatus,
+  ForbiddenException,
   NotFoundException,
   UseGuards,
 } from '@nestjs/common';
-import { addLocaleToCollection, removeLocaleFromCollection } from '@simoncodes-ca/core';
+import { addLocaleToCollection, ReadOnlyCollectionError, removeLocaleFromCollection } from '@simoncodes-ca/core';
 import type { AddLocaleDto, AddLocaleResponseDto, RemoveLocaleResponseDto } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
 import { CollectionCacheService } from '../../cache/collection-cache.service';
 import { WritableCollectionGuard } from '../guards/writable-collection.guard';
+import { openRouteCollection } from '../open-route-collection';
 
 @UseGuards(WritableCollectionGuard)
 @Controller('collections/:collectionName/locales')
@@ -32,20 +34,21 @@ export class LocalesController {
     @Body() body: AddLocaleDto,
   ): Promise<AddLocaleResponseDto> {
     try {
-      const config = this.#configService.getConfig();
+      const { name } = openRouteCollection(this.#configService.getConfig(), collectionName);
 
-      if (!config.collections || !config.collections[collectionName]) {
-        throw new NotFoundException(`Collection "${collectionName}" not found`);
-      }
+      const result = await addLocaleToCollection(name, body.locale);
 
-      const result = await addLocaleToCollection(collectionName, body.locale);
-
-      this.#cacheService.clearCache(collectionName);
+      this.#cacheService.clearCache(name);
 
       return result;
     } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof HttpException) {
         throw error;
+      }
+
+      // WritableCollectionGuard normally refuses these first; core enforces it too.
+      if (error instanceof ReadOnlyCollectionError) {
+        throw new ForbiddenException(error.message);
       }
 
       const errorMessage = error instanceof Error ? error.message : 'Error adding locale';
@@ -72,20 +75,21 @@ export class LocalesController {
     @Param('locale') locale: string,
   ): Promise<RemoveLocaleResponseDto> {
     try {
-      const config = this.#configService.getConfig();
+      const { name } = openRouteCollection(this.#configService.getConfig(), collectionName);
 
-      if (!config.collections || !config.collections[collectionName]) {
-        throw new NotFoundException(`Collection "${collectionName}" not found`);
-      }
+      const result = await removeLocaleFromCollection(name, locale);
 
-      const result = await removeLocaleFromCollection(collectionName, locale);
-
-      this.#cacheService.clearCache(collectionName);
+      this.#cacheService.clearCache(name);
 
       return result;
     } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof HttpException) {
         throw error;
+      }
+
+      // WritableCollectionGuard normally refuses these first; core enforces it too.
+      if (error instanceof ReadOnlyCollectionError) {
+        throw new ForbiddenException(error.message);
       }
 
       const errorMessage = error instanceof Error ? error.message : 'Error removing locale';

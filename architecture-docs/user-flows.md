@@ -146,10 +146,10 @@ sequenceDiagram
     participant FS as Filesystem
 
     Translator->>CLI: import --locale fr --file ./exports/fr.json --strategy translation-service
-    CLI->>Core: importFromJson(options)
+    CLI->>FS: read .lingo-tracker.json → openCollection() → baseLocale = "en"
+    CLI->>Core: importFromJson(options with baseLocale)
 
-    Note over Core: setupImportWorkflow(options)
-    Core->>FS: read .lingo-tracker.json → baseLocale = "en"
+    Note over Core: setupImportWorkflow(options)<br/>uses options.baseLocale, reads no config
     Core->>Core: getStrategyDefaults("translation-service")<br/>createMissing=false, updateComments=false
 
     Note over Core: Parse source file

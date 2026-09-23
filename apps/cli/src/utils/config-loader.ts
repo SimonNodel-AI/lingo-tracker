@@ -1,6 +1,11 @@
-import * as fs from 'fs';
 import * as path from 'path';
-import { CONFIG_FILENAME, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import {
+  CONFIG_FILENAME,
+  ConfigNotFoundError,
+  ConfigParseError,
+  type LingoTrackerConfig,
+  loadConfig,
+} from '@simoncodes-ca/core';
 
 /**
  * Gets the current working directory, respecting INIT_CWD for pnpm compatibility.
@@ -54,10 +59,10 @@ export interface ConfigLoadOptions {
 }
 
 /**
- * Loads and parses the LingoTracker configuration file (.lingo-tracker.json).
+ * Loads the LingoTracker configuration file (.lingo-tracker.json) for a CLI command.
  *
- * This utility centralizes configuration loading logic used across CLI commands,
- * eliminating duplication and ensuring consistent error handling and messaging.
+ * Reading and parsing is done by core `loadConfig`, the single config reader. This
+ * wrapper only picks the directory and turns failures into CLI output.
  *
  * **Directory Resolution:**
  * - Respects INIT_CWD environment variable (pnpm compatibility)
@@ -65,7 +70,7 @@ export interface ConfigLoadOptions {
  *
  * **Error Handling:**
  * - File not found: Displays helpful message suggesting to run `lingo-tracker init`
- * - Parse errors: Shows specific JSON parsing error message
+ * - Parse or read errors: Shows the specific error message
  * - Behavior controlled by `exitOnError` option (default: exit process)
  *
  * @param options - Configuration loading options
@@ -92,36 +97,23 @@ export interface ConfigLoadOptions {
  */
 export function loadConfiguration(options?: ConfigLoadOptions): ConfigLoadResult | null {
   const exitOnError = options?.exitOnError ?? true;
-
   const cwd = getCwd();
-  const configPath = path.join(cwd, CONFIG_FILENAME);
 
-  let config: LingoTrackerConfig;
   try {
-    if (fs.existsSync(configPath)) {
-      const fileContent = fs.readFileSync(configPath, 'utf8');
-      config = JSON.parse(fileContent);
-    } else {
+    return { config: loadConfig({ cwd }), configPath: path.join(cwd, CONFIG_FILENAME), cwd };
+  } catch (error) {
+    if (error instanceof ConfigNotFoundError) {
       console.error(`❌ Configuration file ${CONFIG_FILENAME} not found.`);
       console.error('Run "lingo-tracker init" to initialize a project.');
-
-      if (exitOnError) {
-        process.exit(1);
-      }
-      return null;
+    } else {
+      const reason =
+        error instanceof ConfigParseError ? error.reason : error instanceof Error ? error.message : String(error);
+      console.error(`❌ Failed to parse configuration file: ${reason}`);
     }
-  } catch (error) {
-    console.error(`❌ Failed to parse configuration file: ${(error as Error).message}`);
 
     if (exitOnError) {
       process.exit(1);
     }
     return null;
   }
-
-  return {
-    config,
-    configPath,
-    cwd,
-  };
 }

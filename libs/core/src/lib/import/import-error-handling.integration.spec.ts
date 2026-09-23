@@ -4,7 +4,6 @@ import { importFromXliff } from './import-from-xliff';
 import type { ImportOptions } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as configFileOperations from '../config/config-file-operations';
 
 vi.mock('fs');
 vi.mock('path');
@@ -21,18 +20,6 @@ describe('import error handling integration', () => {
       parts.pop();
       return parts.join('/');
     });
-
-    vi.spyOn(configFileOperations, 'createConfigFileOperations').mockReturnValue({
-      read: () => ({
-        exportFolder: 'dist/lingo-export',
-        importFolder: 'dist/lingo-import',
-        baseLocale: 'en',
-        locales: ['en', 'es'],
-        collections: {},
-      }),
-      write: vi.fn(),
-      update: vi.fn(),
-    });
   });
 
   describe('Fatal errors', () => {
@@ -42,6 +29,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/missing.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       expect(() => importFromJson('/translations', options)).toThrow('Source file not found');
@@ -54,6 +42,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'en', // base locale
+        baseLocale: 'en',
       };
 
       expect(() => importFromJson('/translations', options)).toThrow('Cannot import into base locale');
@@ -66,6 +55,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/malformed.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       expect(() => importFromJson('/translations', options)).toThrow('Failed to parse JSON file');
@@ -77,6 +67,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/missing.xliff',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       await expect(importFromXliff('/translations', options)).rejects.toThrow('Source file not found');
@@ -89,6 +80,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/malformed.xliff',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       await expect(importFromXliff('/translations', options)).rejects.toThrow('Failed to parse XLIFF content');
@@ -115,6 +107,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -145,6 +138,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -173,6 +167,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -205,6 +200,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -248,6 +244,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/common', options);
@@ -273,6 +270,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'translation-service', // Does not allow creation
       };
 
@@ -302,6 +300,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -332,6 +331,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -385,6 +385,7 @@ describe('import error handling integration', () => {
       const options: ImportOptions = {
         source: '/import/test.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/common', options);

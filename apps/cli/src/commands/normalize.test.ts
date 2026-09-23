@@ -1,15 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { normalizeCommand } from './normalize';
-import { normalize } from '@simoncodes-ca/core';
+import { type Collection, normalize } from '@simoncodes-ca/core';
 import { loadConfiguration, resolveCollection, ConsoleFormatter } from '../utils';
 
 vi.mock('prompts', () => ({
   default: vi.fn(),
 }));
 
-vi.mock('@simoncodes-ca/core', () => ({
-  normalize: vi.fn(),
-}));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Config loading and collection resolution run for real against the mocked config.
+    loadConfig: actual.loadConfig,
+    openCollection: actual.openCollection,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    normalize: vi.fn(),
+  };
+});
 
 vi.mock('../utils', () => ({
   loadConfiguration: vi.fn(),
@@ -37,11 +47,17 @@ const LOADED_CONFIG = {
   cwd: '/p',
 };
 
-function resolved(name: string, readOnly: boolean) {
+function resolved(name: string, readOnly: boolean): Collection {
   return {
     name,
+    translationsFolder: `/p/path/${name}`,
+    baseLocale: 'en',
+    locales: ['en', 'fr'],
+    targetLocales: ['fr'],
+    translationConfig: undefined,
+    tags: [],
+    readOnly,
     config: { translationsFolder: `path/${name}`, ...(readOnly ? { readOnly: true } : {}) },
-    translationsFolderPath: `/p/path/${name}`,
   };
 }
 

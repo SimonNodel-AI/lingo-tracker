@@ -35,18 +35,28 @@ vi.mock('prompts', () => ({
 }));
 
 // Mock the core library imports
-vi.mock('@simoncodes-ca/core', () => ({
-  CONFIG_FILENAME: '.lingo-tracker.json',
-  importFromJson: vi.fn(),
-  importFromXliff: vi.fn(),
-  detectImportFormat: vi.fn(),
-  generateImportSummary: vi.fn(() => '# Import Summary\n\nTest summary'),
-  readEffectiveProtectedTerms: vi.fn(() => []),
-  loadPreferredTerminology: vi.fn(() => ({
-    rules: [],
-    filePath: '/test/project/.lingo-tracker-preferred-terminology.json',
-  })),
-}));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Config loading and collection resolution run for real against the mocked config.
+    loadConfig: actual.loadConfig,
+    openCollection: actual.openCollection,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    CONFIG_FILENAME: '.lingo-tracker.json',
+    importFromJson: vi.fn(),
+    importFromXliff: vi.fn(),
+    detectImportFormat: vi.fn(),
+    generateImportSummary: vi.fn(() => '# Import Summary\n\nTest summary'),
+    readEffectiveProtectedTerms: vi.fn(() => []),
+    loadPreferredTerminology: vi.fn(() => ({
+      rules: [],
+      filePath: '/test/project/.lingo-tracker-preferred-terminology.json',
+    })),
+  };
+});
 
 // Mock utilities
 vi.mock('../utils', () => ({
@@ -81,7 +91,15 @@ vi.mock('../utils', () => ({
 }));
 
 // Import the mocked functions
-import { detectImportFormat, importFromJson, importFromXliff, loadPreferredTerminology } from '@simoncodes-ca/core';
+import {
+  type Collection,
+  detectImportFormat,
+  importFromJson,
+  importFromXliff,
+  type LingoTrackerCollection,
+  loadPreferredTerminology,
+  openCollection,
+} from '@simoncodes-ca/core';
 import {
   ConsoleFormatter,
   isInteractiveTerminal,
@@ -102,6 +120,10 @@ describe('import-cmd', () => {
       },
     },
   };
+
+  /** What `resolveWritableCollection` resolves for this collection entry under `baseConfig`. */
+  const collectionOf = (name: string, entry: LingoTrackerCollection): Collection =>
+    openCollection({ ...baseConfig, collections: { [name]: entry } }, name, { cwd: '/test/project' });
 
   const baseImportResult = {
     resourcesImported: 10,
@@ -143,11 +165,9 @@ describe('import-cmd', () => {
 
     // Default collection mocks — most tests use a single 'default' collection
     vi.mocked(promptForCollection).mockResolvedValue('default');
-    vi.mocked(resolveWritableCollection).mockReturnValue({
-      name: 'default',
-      config: { translationsFolder: 'src/translations' },
-      translationsFolderPath: '/test/project/src/translations',
-    });
+    vi.mocked(resolveWritableCollection).mockReturnValue(
+      collectionOf('default', { translationsFolder: 'src/translations' }),
+    );
   });
 
   describe('Configuration Loading', () => {
@@ -416,11 +436,9 @@ describe('import-cmd', () => {
         cwd: '/test/project',
       });
       vi.mocked(promptForCollection).mockResolvedValue('admin');
-      vi.mocked(resolveWritableCollection).mockReturnValue({
-        name: 'admin',
-        config: { translationsFolder: 'src/admin-translations' },
-        translationsFolderPath: '/test/project/src/admin-translations',
-      });
+      vi.mocked(resolveWritableCollection).mockReturnValue(
+        collectionOf('admin', { translationsFolder: 'src/admin-translations' }),
+      );
       vi.mocked(importFromJson).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
@@ -520,11 +538,9 @@ describe('import-cmd', () => {
 
     it("offers the collection's own locales, minus its base locale", async () => {
       vi.mocked(promptForCollection).mockResolvedValue('docs');
-      vi.mocked(resolveWritableCollection).mockReturnValue({
-        name: 'docs',
-        config: { translationsFolder: 'src/docs-translations', baseLocale: 'fr', locales: ['fr', 'de'] },
-        translationsFolderPath: '/test/project/src/docs-translations',
-      });
+      vi.mocked(resolveWritableCollection).mockReturnValue(
+        collectionOf('docs', { translationsFolder: 'src/docs-translations', baseLocale: 'fr', locales: ['fr', 'de'] }),
+      );
 
       await importCommand({ source: '/test/import.json', format: 'json', strategy: 'translation-service' });
 
@@ -599,11 +615,9 @@ describe('import-cmd', () => {
     describe('collection with its own base locale', () => {
       beforeEach(() => {
         vi.mocked(promptForCollection).mockResolvedValue('docs');
-        vi.mocked(resolveWritableCollection).mockReturnValue({
-          name: 'docs',
-          config: { translationsFolder: 'src/docs-translations', baseLocale: 'fr' },
-          translationsFolderPath: '/test/project/src/docs-translations',
-        });
+        vi.mocked(resolveWritableCollection).mockReturnValue(
+          collectionOf('docs', { translationsFolder: 'src/docs-translations', baseLocale: 'fr' }),
+        );
         vi.spyOn(console, 'log').mockImplementation(() => undefined);
       });
 

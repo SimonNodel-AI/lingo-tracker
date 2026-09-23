@@ -20,7 +20,7 @@ export interface EditResourceOptions {
    * All configured locales. Required when using auto-translation after a base
    * value change so the orchestrator knows which target locales to update.
    */
-  allLocales?: string[];
+  allLocales?: readonly string[];
 }
 
 export interface EditResourceResult {
@@ -160,7 +160,7 @@ interface ApplyAutoTranslationsParams {
   readonly key: string;
   readonly baseValue: string;
   readonly baseLocale: string;
-  readonly allLocales: string[] | undefined;
+  readonly allLocales: readonly string[] | undefined;
   readonly translationConfig: TranslationConfig | undefined;
 }
 

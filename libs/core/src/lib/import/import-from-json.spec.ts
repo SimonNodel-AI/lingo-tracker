@@ -3,7 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { detectJsonStructure, extractFromFlat, extractFromHierarchical, importFromJson } from './import-from-json';
 import type { ImportOptions } from './types';
-import * as configFileOperations from '../config/config-file-operations';
 
 // Mock fs module
 vi.mock('fs');
@@ -18,18 +17,6 @@ describe('import-from-json', () => {
 
     // Mock path.join to return predictable paths
     vi.spyOn(path, 'join').mockImplementation((...segments) => segments.join('/'));
-
-    vi.spyOn(configFileOperations, 'createConfigFileOperations').mockReturnValue({
-      read: () => ({
-        exportFolder: 'dist/lingo-export',
-        importFolder: 'dist/lingo-import',
-        baseLocale: 'en',
-        locales: ['en', 'es'],
-        collections: {},
-      }),
-      write: vi.fn(),
-      update: vi.fn(),
-    });
   });
 
   afterEach(() => {
@@ -235,6 +222,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/missing.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       expect(() => importFromJson('/translations', options)).toThrow('Source file not found');
@@ -247,6 +235,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/invalid.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       expect(() => importFromJson('/translations', options)).toThrow('Failed to parse JSON file');
@@ -259,6 +248,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'en', // base locale
+        baseLocale: 'en',
       };
 
       expect(() => importFromJson('/translations', options)).toThrow('Cannot import into base locale "en"');
@@ -284,6 +274,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations', options);
@@ -304,6 +295,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations', options);
@@ -334,6 +326,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations', options);
@@ -353,6 +346,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations', options);
@@ -373,6 +367,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations', options);
@@ -412,6 +407,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
         dryRun: true,
       };
 
@@ -437,6 +433,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
         onProgress: (msg) => progressMessages.push(msg),
       };
 
@@ -464,6 +461,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/path/to/file.json',
         locale: 'es',
+        baseLocale: 'en',
         verbose: true,
         onProgress: (msg) => progressMessages.push(msg),
       };
@@ -641,6 +639,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           updateComments: true,
         };
 
@@ -694,6 +693,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           updateComments: false,
         };
 
@@ -749,6 +749,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           updateTags: true,
         };
 
@@ -802,6 +803,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           updateTags: false,
         };
 
@@ -858,6 +860,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           validateBase: true,
         };
 
@@ -906,6 +909,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           validateBase: false,
         };
 
@@ -953,6 +957,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           preserveStatus: true,
         };
 
@@ -1004,6 +1009,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/path/to/file.json',
           locale: 'es',
+          baseLocale: 'en',
           preserveStatus: false,
         };
 
@@ -1086,6 +1092,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'translation-service',
           // Don't specify updateComments/updateTags - should use strategy defaults (false)
         };
@@ -1139,6 +1146,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'verification',
         };
 
@@ -1190,6 +1198,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'verification',
         };
 
@@ -1239,6 +1248,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'migration',
           // Don't specify updateComments/updateTags - should use strategy defaults (true)
         };
@@ -1283,6 +1293,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'migration',
         };
 
@@ -1332,6 +1343,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'update',
         };
 
@@ -1375,6 +1387,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'update',
         };
 
@@ -1419,6 +1432,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'update',
           // Don't specify updateComments/updateTags - should use strategy defaults (false)
         };
@@ -1475,6 +1489,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'translation-service',
         };
 
@@ -1519,6 +1534,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'verification',
         };
 
@@ -1562,6 +1578,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           createMissing: true,
         };
 
@@ -1620,6 +1637,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           createMissing: true,
         };
 
@@ -1656,6 +1674,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           createMissing: false,
         };
 
@@ -1703,6 +1722,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           createMissing: true,
         };
 
@@ -1762,6 +1782,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           createMissing: true,
         };
 
@@ -1814,6 +1835,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           createMissing: true,
         };
 
@@ -1853,6 +1875,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'migration',
         };
 
@@ -1894,6 +1917,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'migration',
         };
 
@@ -1933,6 +1957,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'migration',
         };
 
@@ -1971,6 +1996,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'migration',
         };
 
@@ -2012,6 +2038,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'migration',
         };
 
@@ -2053,6 +2080,7 @@ describe('import-from-json', () => {
         const options: ImportOptions = {
           source: '/import/import.json',
           locale: 'es',
+          baseLocale: 'en',
           strategy: 'translation-service',
         };
 
@@ -2097,6 +2125,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
         createMissing: true,
       };
 
@@ -2153,6 +2182,7 @@ describe('import-from-json', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations', options);
@@ -2211,6 +2241,7 @@ describe('import-from-json', () => {
       const result = importFromJson('/translations', {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
         protectedTerms: ['iPhone'],
       });
 
@@ -2237,6 +2268,7 @@ describe('import-from-json', () => {
       const result = importFromJson('/translations', {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
         protectedTerms: ['iPhone'],
       });
 

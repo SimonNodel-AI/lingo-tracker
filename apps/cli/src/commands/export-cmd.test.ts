@@ -28,18 +28,28 @@ vi.mock('fs', async (importOriginal) => {
 });
 vi.mock('prompts');
 
-vi.mock('@simoncodes-ca/core', () => ({
-  CONFIG_FILENAME: '.lingo-tracker.json',
-  loadResourcesFromCollections: vi.fn(),
-  filterResources: vi.fn(),
-  validateOutputDirectory: vi.fn(),
-  validateBasePropertyName: vi.fn(),
-  exportToJson: vi.fn(),
-  exportToXliff: vi.fn(),
-  generateExportSummary: vi.fn(),
-  readGlobalProtectedTerms: vi.fn(() => []),
-  readCollectionProtectedTerms: vi.fn(() => []),
-}));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Config loading and collection resolution run for real against the mocked config.
+    loadConfig: actual.loadConfig,
+    openCollection: actual.openCollection,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    CONFIG_FILENAME: '.lingo-tracker.json',
+    loadResourcesFromCollections: vi.fn(),
+    filterResources: vi.fn(),
+    validateOutputDirectory: vi.fn(),
+    validateBasePropertyName: vi.fn(),
+    exportToJson: vi.fn(),
+    exportToXliff: vi.fn(),
+    generateExportSummary: vi.fn(),
+    readGlobalProtectedTerms: vi.fn(() => []),
+    readCollectionProtectedTerms: vi.fn(() => []),
+  };
+});
 
 import * as core from '@simoncodes-ca/core';
 const mockLoadResourcesFromCollections = vi.mocked(core.loadResourcesFromCollections);

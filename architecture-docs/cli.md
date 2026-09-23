@@ -126,7 +126,7 @@ flowchart TD
     PROMPT_COLLECTION --> VALIDATE_COLLECTION
     AUTO_SELECT --> VALIDATE_COLLECTION
 
-    VALIDATE_COLLECTION["resolveCollection()\nVerify collection exists in config\nCompute translationsFolderPath"]
+    VALIDATE_COLLECTION["resolveCollection()\ncore openCollection():\neffective locales + absolute folder"]
     VALIDATE_COLLECTION --> COLLECTION_OK{"Collection\nfound?"}
     COLLECTION_OK -- No --> EXIT_RESOLVE(["Exit\n❌ Collection not found"])
     COLLECTION_OK -- Yes --> CHECK_FLAGS
@@ -167,13 +167,13 @@ flowchart TD
 
 ### Config Loading
 
-`loadConfiguration()` in `apps/cli/src/utils/config-loader.ts` is called at the top of nearly every command. It centralizes `.lingo-tracker.json` discovery and parse error handling so no command duplicates that logic.
+`loadConfiguration()` in `apps/cli/src/utils/config-loader.ts` is called at the top of nearly every command. It picks the directory and turns failures into CLI output; reading and parsing is done by core `loadConfig({ cwd })`, the single config reader shared with the API (see [core-library.md — Config and Collection Resolution](core-library.md#config-and-collection-resolution)).
 
 Key behaviors:
 
 - **Directory resolution** — reads `process.env.INIT_CWD` first, falling back to `process.cwd()`. `INIT_CWD` is set by pnpm and points to the user's project root even when pnpm changes directory to the package location during script execution. The `getCwd()` helper centralizes this logic and is used wherever an absolute path is needed.
 - **File not found** — logs `❌ Configuration file .lingo-tracker.json not found. Run "lingo-tracker init" to initialize a project.` then exits with code 1 (or returns `null` when `exitOnError: false`).
-- **Parse error** — logs the raw JSON parse error message and exits or returns `null`.
+- **Parse or read error** — logs `❌ Failed to parse configuration file: <reason>` (the JSON parser's message, or the I/O error) and exits or returns `null`.
 - **Return type** — `ConfigLoadResult` carries `{ config, configPath, cwd }` so callers never repeat path resolution.
 
 The `exitOnError` option (default `true`) allows commands like `add-resource` to do their own error handling without the process terminating mid-operation.
@@ -189,9 +189,9 @@ After loading config, most commands call `promptForCollection()` followed by `re
 3. If multiple collections exist and `process.stdout.isTTY` is false, throw `Missing required option: --collection`.
 4. If multiple collections exist and TTY is true, show an interactive `select` prompt.
 
-`resolveCollection()` in `collection-resolver.ts` then validates the selected name against `config.collections`, logs `❌ Collection "name" not found.` if absent, and computes the absolute `translationsFolderPath` by joining `baseDirectory` with `collectionConfig.translationsFolder`.
+`resolveCollection()` in `collection-resolver.ts` then opens the selected name with core `openCollection(config, name, { cwd })`, and logs `❌ Collection "name" not found.` (returning `null`) if it is absent. The result is the core `Collection`: the absolute `translationsFolder` and the effective `baseLocale`, `locales`, `targetLocales`, and `translationConfig`. Commands read those fields; none of them applies the collection-then-global fallback itself.
 
-**Read-only enforcement.** Commands that mutate resources call `resolveWritableCollection()` instead of `resolveCollection()`. It wraps `resolveCollection()` and, if the collection's config has `readOnly: true`, prints `❌ Collection "name" is read-only...`, sets `process.exitCode = 1` (so CI fails), and returns `null`. This is the single CLI choke-point for read-only enforcement — no per-command checks. Read-only commands (`bundle`, `export`, `validate`, `find-similar`, `glossary`) and `delete-collection` keep using plain `resolveCollection()`, since they either don't mutate resources or operate on the collection's registration rather than its contents.
+**Read-only enforcement.** Commands that mutate resources call `resolveWritableCollection()` instead of `resolveCollection()`. It opens the collection with `{ writable: true }` and, when core throws `ReadOnlyCollectionError`, prints `❌ Collection "name" is read-only...`, sets `process.exitCode = 1` (so CI fails), and returns `null`. This is the single CLI choke-point for read-only enforcement — no per-command checks. Read-only commands (`bundle`, `export`, `validate`, `find-similar`, `glossary`) and `delete-collection` keep using plain `resolveCollection()`, since they either don't mutate resources or operate on the collection's registration rather than its contents.
 
 ### Resolution Flowchart
 
@@ -202,11 +202,11 @@ flowchart LR
     GETCONFIG --> PROMPT["promptForCollection(config, options.collection)"]
     PROMPT --> NAME["collectionName: string"]
     NAME --> RESOLVE["resolveCollection(collectionName, config, cwd)"]
-    RESOLVE --> RESOLVED["ResolvedCollection\n{ name, config, translationsFolderPath }"]
-    RESOLVED --> CORE["@simoncodes-ca/core function\ne.g. addResource(translationsFolderPath, params)"]
+    RESOLVE --> RESOLVED["Collection (core)\n{ name, translationsFolder, baseLocale,\nlocales, targetLocales, translationConfig, ... }"]
+    RESOLVED --> CORE["@simoncodes-ca/core function\ne.g. addResource(collection.translationsFolder, params)"]
 ```
 
-The `translationsFolderPath` from `ResolvedCollection` is the first argument passed to every core resource operation. This means commands never construct filesystem paths themselves — path construction is fully delegated to `config-loader.ts` and `collection-resolver.ts`.
+The `translationsFolder` from the `Collection` is the first argument passed to every core resource operation, and its `baseLocale` / `locales` / `translationConfig` fill the remaining parameters. Commands never construct filesystem paths or effective settings themselves.
 
 ---
 
@@ -270,7 +270,7 @@ ErrorMessages.RESOURCE_NOT_FOUND(key)     // factory → "❌ Resource key "key"
 
 ### Collection Resolver (`collection-resolver.ts`)
 
-`resolveCollection(collectionName, config, baseDirectory)` — validates existence of the named [collection](glossary.md#collection) in `config.collections` and returns a `ResolvedCollection` with the computed absolute `translationsFolderPath`. Returns `null` (after logging an error) if the collection is not found, so callers use a `if (!collection) return;` guard pattern.
+`resolveCollection(collectionName, config, baseDirectory)` — thin wrapper over core `openCollection()`. Returns the resolved [collection](glossary.md#collection) (`Collection` from `@simoncodes-ca/core`), or `null` (after logging an error) if the collection is not found, so callers use a `if (!collection) return;` guard pattern. `resolveWritableCollection()` is the same with `{ writable: true }`.
 
 ### String Parsers (`string-parsers.ts`)
 

@@ -10,7 +10,7 @@ export interface NormalizeEntryParams {
   readonly resourceEntry: ResourceEntry;
   readonly metadata: ResourceEntryMetadata;
   readonly baseLocale: string;
-  readonly locales: string[];
+  readonly locales: readonly string[];
 }
 
 export interface NormalizeEntryResult {
@@ -26,7 +26,7 @@ export interface NormalizeEntryResult {
 }
 
 interface ProcessAllLocalesParams {
-  readonly locales: string[];
+  readonly locales: readonly string[];
   readonly baseLocale: string;
   readonly baseValue: string;
   readonly currentBaseChecksum: string;

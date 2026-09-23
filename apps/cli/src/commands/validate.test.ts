@@ -17,15 +17,25 @@ vi.mock('fs', async (importOriginal) => {
   return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
 });
 
-vi.mock('@simoncodes-ca/core', () => ({
-  CONFIG_FILENAME: '.lingo-tracker.json',
-  validateResources: vi.fn(),
-  generateValidationSummary: vi.fn(),
-  loadPreferredTerminology: vi.fn(() => ({
-    rules: [],
-    filePath: '/project/.lingo-tracker-preferred-terminology.json',
-  })),
-}));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Config loading and collection resolution run for real against the mocked config.
+    loadConfig: actual.loadConfig,
+    openCollection: actual.openCollection,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    CONFIG_FILENAME: '.lingo-tracker.json',
+    validateResources: vi.fn(),
+    generateValidationSummary: vi.fn(),
+    loadPreferredTerminology: vi.fn(() => ({
+      rules: [],
+      filePath: '/project/.lingo-tracker-preferred-terminology.json',
+    })),
+  };
+});
 
 import * as core from '@simoncodes-ca/core';
 

@@ -1,37 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfiguration } from './config-loader';
-import * as fs from 'fs';
-import * as path from 'path';
-
-const fsMocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-}));
-const pathMocks = vi.hoisted(() => ({
-  join: vi.fn(),
-}));
-
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-vi.mock('path', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('path')>();
-  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
-});
-vi.mock('node:path', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:path')>();
-  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
-});
-
-// Mock the core library imports
-vi.mock('@simoncodes-ca/core', () => ({
-  CONFIG_FILENAME: '.lingo-tracker.json',
-}));
 
 describe('config-loader', () => {
   const mockConfig = {
@@ -46,13 +17,16 @@ describe('config-loader', () => {
     },
   };
 
+  let projectDir: string;
+
+  function writeConfig(content: string, dir = projectDir): void {
+    writeFileSync(join(dir, '.lingo-tracker.json'), content, 'utf8');
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
-
-    // Mock path.join to simply concatenate with '/'
-    vi.mocked(path.join)
-      .mockReset()
-      .mockImplementation((...segments) => segments.join('/'));
+    projectDir = mkdtempSync(join(tmpdir(), 'lingo-config-loader-'));
+    vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
 
     // Mock console methods
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -64,22 +38,25 @@ describe('config-loader', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    rmSync(projectDir, { recursive: true, force: true });
   });
+
+  function mockExit(): void {
+    vi.spyOn(process, 'exit').mockImplementation((code) => {
+      throw new Error(`Process exit: ${code}`);
+    });
+  }
 
   describe('Happy Path', () => {
     it('should successfully load valid configuration', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(mockConfig));
+      writeConfig(JSON.stringify(mockConfig));
 
       const result = loadConfiguration();
 
       expect(result).not.toBeNull();
       expect(result?.config).toEqual(mockConfig);
-      expect(result?.configPath).toBe('/test/project/.lingo-tracker.json');
-      expect(result?.cwd).toBe('/test/project');
-      expect(fs.existsSync).toHaveBeenCalledWith('/test/project/.lingo-tracker.json');
-      expect(fs.readFileSync).toHaveBeenCalledWith('/test/project/.lingo-tracker.json', 'utf8');
+      expect(result?.configPath).toBe(join(projectDir, '.lingo-tracker.json'));
+      expect(result?.cwd).toBe(projectDir);
     });
 
     it('should parse complex configuration with bundles', () => {
@@ -92,10 +69,7 @@ describe('config-loader', () => {
           },
         },
       };
-
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(complexConfig));
+      writeConfig(JSON.stringify(complexConfig));
 
       const result = loadConfiguration();
 
@@ -106,11 +80,7 @@ describe('config-loader', () => {
 
   describe('File Not Found', () => {
     it('should exit with code 1 when config file not found (exitOnError: true)', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-      vi.spyOn(process, 'exit').mockImplementation((code) => {
-        throw new Error(`Process exit: ${code}`);
-      });
+      mockExit();
 
       expect(() => loadConfiguration()).toThrow('Process exit: 1');
       expect(console.error).toHaveBeenCalledWith('❌ Configuration file .lingo-tracker.json not found.');
@@ -119,11 +89,7 @@ describe('config-loader', () => {
     });
 
     it('should return null when config file not found (exitOnError: false)', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-      vi.spyOn(process, 'exit').mockImplementation((code) => {
-        throw new Error(`Process exit: ${code}`);
-      });
+      mockExit();
 
       const result = loadConfiguration({ exitOnError: false });
 
@@ -136,12 +102,8 @@ describe('config-loader', () => {
 
   describe('Invalid JSON', () => {
     it('should exit with code 1 when config file has invalid JSON (exitOnError: true)', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue('{ invalid json');
-      vi.spyOn(process, 'exit').mockImplementation((code) => {
-        throw new Error(`Process exit: ${code}`);
-      });
+      writeConfig('{ invalid json');
+      mockExit();
 
       expect(() => loadConfiguration()).toThrow('Process exit: 1');
       expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/^❌ Failed to parse configuration file:/));
@@ -149,12 +111,8 @@ describe('config-loader', () => {
     });
 
     it('should return null when config file has invalid JSON (exitOnError: false)', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue('{ invalid json');
-      vi.spyOn(process, 'exit').mockImplementation((code) => {
-        throw new Error(`Process exit: ${code}`);
-      });
+      writeConfig('{ invalid json');
+      mockExit();
 
       const result = loadConfiguration({ exitOnError: false });
 
@@ -164,9 +122,7 @@ describe('config-loader', () => {
     });
 
     it('should include specific parse error message', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue('{ invalid json');
+      writeConfig('{ invalid json');
 
       const result = loadConfiguration({ exitOnError: false });
 
@@ -180,38 +136,34 @@ describe('config-loader', () => {
 
   describe('INIT_CWD Handling', () => {
     it('should use INIT_CWD environment variable when set (pnpm compatibility)', () => {
-      process.env.INIT_CWD = '/pnpm/workspace/project';
-      vi.spyOn(process, 'cwd').mockReturnValue('/different/directory');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(mockConfig));
+      const pnpmDir = mkdtempSync(join(tmpdir(), 'lingo-config-loader-init-cwd-'));
+      try {
+        writeConfig(JSON.stringify(mockConfig), pnpmDir);
+        process.env.INIT_CWD = pnpmDir;
 
-      const result = loadConfiguration();
+        const result = loadConfiguration();
 
-      expect(result).not.toBeNull();
-      expect(result?.cwd).toBe('/pnpm/workspace/project');
-      expect(result?.configPath).toBe('/pnpm/workspace/project/.lingo-tracker.json');
-      expect(fs.existsSync).toHaveBeenCalledWith('/pnpm/workspace/project/.lingo-tracker.json');
+        expect(result).not.toBeNull();
+        expect(result?.cwd).toBe(pnpmDir);
+        expect(result?.configPath).toBe(join(pnpmDir, '.lingo-tracker.json'));
+      } finally {
+        rmSync(pnpmDir, { recursive: true, force: true });
+      }
     });
 
     it('should fall back to process.cwd() when INIT_CWD not set', () => {
-      delete process.env.INIT_CWD;
-      vi.spyOn(process, 'cwd').mockReturnValue('/standard/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(mockConfig));
+      writeConfig(JSON.stringify(mockConfig));
 
       const result = loadConfiguration();
 
       expect(result).not.toBeNull();
-      expect(result?.cwd).toBe('/standard/project');
-      expect(result?.configPath).toBe('/standard/project/.lingo-tracker.json');
+      expect(result?.cwd).toBe(projectDir);
+      expect(result?.configPath).toBe(join(projectDir, '.lingo-tracker.json'));
     });
   });
 
   describe('Error Messages', () => {
     it('should display exact error message for file not found', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-
       loadConfiguration({ exitOnError: false });
 
       expect(console.error).toHaveBeenCalledWith('❌ Configuration file .lingo-tracker.json not found.');
@@ -220,9 +172,7 @@ describe('config-loader', () => {
     });
 
     it('should display exact error message format for parse failure', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue('{ invalid json');
+      writeConfig('{ invalid json');
 
       loadConfiguration({ exitOnError: false });
 
@@ -234,9 +184,7 @@ describe('config-loader', () => {
 
   describe('Edge Cases', () => {
     it('should handle empty configuration file', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue('{}');
+      writeConfig('{}');
 
       const result = loadConfiguration();
 
@@ -250,10 +198,7 @@ describe('config-loader', () => {
         locales: ['en'],
         collections: {},
       };
-
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockReturnValue(JSON.stringify(minimalConfig));
+      writeConfig(JSON.stringify(minimalConfig));
 
       const result = loadConfiguration();
 
@@ -262,16 +207,15 @@ describe('config-loader', () => {
     });
 
     it('should handle file read errors other than not found', () => {
-      vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockImplementation(() => {
-        throw new Error('Permission denied');
-      });
+      // A directory in place of the file: it exists, but reading it fails (EISDIR).
+      mkdirSync(join(projectDir, '.lingo-tracker.json'));
 
       const result = loadConfiguration({ exitOnError: false });
 
       expect(result).toBeNull();
-      expect(console.error).toHaveBeenCalledWith('❌ Failed to parse configuration file: Permission denied');
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringMatching(/^❌ Failed to parse configuration file: .*EISDIR/),
+      );
     });
   });
 });

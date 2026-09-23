@@ -33,6 +33,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'translation-service',
         validateBase: true,
         dryRun: false,
@@ -79,6 +80,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.xliff',
         locale: 'fr',
+        baseLocale: 'en',
         strategy: 'verification',
         dryRun: true,
       };
@@ -113,6 +115,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -146,6 +149,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'translation-service',
       };
 
@@ -198,6 +202,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
         createMissing: true,
       };
@@ -250,6 +255,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'translation-service',
       };
 
@@ -294,6 +300,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'translation-service',
       };
 
@@ -338,6 +345,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -375,6 +383,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -419,6 +428,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
       };
 
@@ -451,6 +461,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
         updateComments: true,
         updateTags: true,
@@ -493,6 +504,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'update',
       };
 
@@ -524,6 +536,7 @@ describe('import-summary', () => {
       const options: ImportOptions = {
         source: '/test/import.json',
         locale: 'es',
+        baseLocale: 'en',
         strategy: 'migration',
         createMissing: true,
       };

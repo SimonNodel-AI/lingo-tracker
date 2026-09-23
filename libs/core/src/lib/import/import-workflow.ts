@@ -1,8 +1,5 @@
 import type { ImportOptions, ImportResult, StatusTransition, ImportChange, ICUAutoFix, ICUAutoFixError } from './types';
-import { resolve } from 'node:path';
 import { getStrategyDefaults } from './import-common';
-import { createConfigFileOperations } from '../config/config-file-operations';
-import { CONFIG_FILENAME } from '../../constants';
 
 /**
  * Configuration returned after setting up an import operation.
@@ -24,26 +21,11 @@ export interface ImportWorkflowConfig {
 }
 
 /**
- * Resolves the base locale from the project config file.
- * Falls back to 'en' only when the config is readable but omits baseLocale.
- */
-function resolveBaseLocaleFromConfig(cwd: string): string {
-  const configPath = resolve(cwd, CONFIG_FILENAME);
-
-  try {
-    return createConfigFileOperations({ cwd, validate: false }).read().baseLocale ?? 'en';
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read configuration file at "${configPath}": ${message}`);
-  }
-}
-
-/**
  * Sets up and validates the import workflow configuration.
  *
  * This function performs common setup steps required by all import formats:
  * 1. Applies strategy-specific defaults for flags (createMissing, updateComments, updateTags)
- * 2. Determines the base locale from configuration
+ * 2. Takes the base locale from the options (the caller resolves it from the collection)
  * 3. Validates that the target locale is not the base locale (except for migration strategy)
  * 4. Returns merged configuration ready for use
  *
@@ -56,6 +38,7 @@ function resolveBaseLocaleFromConfig(cwd: string): string {
  * @param options - Raw import options from user or CLI
  * @returns Validated configuration with merged options and derived values
  *
+ * @throws {Error} If `baseLocale` is missing or blank
  * @throws {Error} If attempting to import into the base locale with non-migration strategy
  *
  * @example
@@ -63,6 +46,7 @@ function resolveBaseLocaleFromConfig(cwd: string): string {
  * const config = setupImportWorkflow({
  *   source: 'translations-es.json',
  *   locale: 'es',
+ *   baseLocale: 'en',
  *   strategy: 'translation-service'
  * });
  *
@@ -95,7 +79,11 @@ export function setupImportWorkflow(options: ImportOptions): ImportWorkflowConfi
   };
 
   const cwd = process.cwd();
-  const baseLocale = options.baseLocale ?? resolveBaseLocaleFromConfig(cwd);
+  const { baseLocale } = options;
+  // Required by the type, but JS callers and loosely-typed adapters can still omit it.
+  if (typeof baseLocale !== 'string' || baseLocale.trim() === '') {
+    throw new Error('ImportOptions.baseLocale is required');
+  }
 
   const isBaseLocaleImport = locale === baseLocale;
 
@@ -137,7 +125,7 @@ export function setupImportWorkflow(options: ImportOptions): ImportWorkflowConfi
  * ```typescript
  * const result = buildImportResult({
  *   format: 'json',
- *   options: { source: 'file.json', locale: 'es', strategy: 'translation-service' },
+ *   options: { source: 'file.json', locale: 'es', baseLocale: 'en', strategy: 'translation-service' },
  *   statistics: { resourcesCreated: 0, resourcesUpdated: 10, resourcesSkipped: 2, resourcesFailed: 0 },
  *   statusTransitions: [{ from: 'new', to: 'translated', count: 10 }],
  *   changes: [...],

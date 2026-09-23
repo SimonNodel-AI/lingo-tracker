@@ -52,8 +52,7 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
   if (!collection) return;
 
   // The collection's own base locale decides which import writes `source` values.
-  const baseLocale = collection.config.baseLocale ?? config.baseLocale ?? 'en';
-  const locales = collection.config.locales ?? config.locales ?? [];
+  const { baseLocale, locales } = collection;
 
   let answers: Partial<ImportCommandOptions>;
   try {
@@ -130,7 +129,7 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
     }
   }
 
-  const translationsFolderPath = collection.translationsFolderPath;
+  const translationsFolderPath = collection.translationsFolder;
 
   // Display import summary
   console.log('');

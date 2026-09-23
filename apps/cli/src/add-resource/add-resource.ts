@@ -1,4 +1,4 @@
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { Collection } from '@simoncodes-ca/core';
 import { addResource, createDefaultTranslations, openResourceFolder, resolveResourcePaths } from '@simoncodes-ca/core';
 import { type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
 import prompts from 'prompts';
@@ -37,13 +37,13 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
   const collection = resolveWritableCollection(collectionName, config, cwd);
   if (!collection) return;
 
-  const answers = await promptForMissing(options, config, collectionName);
+  const answers = await promptForMissing(options, collection);
 
   try {
     // Check if resource already exists
     const { resolvedKey, folderPath, entryKey } = resolveResourcePaths({
       key: answers.key,
-      translationsFolder: collection.config.translationsFolder,
+      translationsFolder: collection.translationsFolder,
       targetFolder: answers.targetFolder || undefined,
       cwd,
     });
@@ -67,9 +67,7 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
     }
 
     const tagsArray = parseCommaSeparatedList(answers.tags) || [];
-    const baseLocale = collection.config.baseLocale || config.baseLocale;
-    const locales = collection.config.locales || config.locales || [];
-    const translationConfig = collection.config.translation ?? config.translation;
+    const { baseLocale, locales, translationConfig } = collection;
 
     // Build translations: use provided translations or create entries for all non-base locales with base value.
     // When auto-translation is configured, skip building default translations here — addResource will handle it.
@@ -81,7 +79,7 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
           : createDefaultTranslations(locales, baseLocale, answers.value);
 
     const result = await addResource(
-      collection.translationsFolderPath,
+      collection.translationsFolder,
       {
         key: answers.key,
         baseValue: answers.value,
@@ -110,8 +108,7 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
 
 async function promptForMissing(
   options: AddResourceOptions,
-  config: LingoTrackerConfig,
-  collectionName: string,
+  collection: Collection,
 ): Promise<{
   key: string;
   value: string;
@@ -196,11 +193,7 @@ async function promptForMissing(
   // Handle translations in interactive mode
   let translations: Array<{ locale: string; value: string; status: TranslationStatus }> | undefined;
   if (!options.translations && process.stdout.isTTY) {
-    const collectionConfig = config.collections?.[collectionName];
-    const baseLocale = collectionConfig?.baseLocale || config.baseLocale;
-    const locales = collectionConfig?.locales || config.locales || [];
-
-    const nonBaseLocales = locales.filter((locale) => locale !== baseLocale);
+    const nonBaseLocales = collection.targetLocales;
 
     if (nonBaseLocales.length > 0) {
       const shouldAddTranslations = await prompts({

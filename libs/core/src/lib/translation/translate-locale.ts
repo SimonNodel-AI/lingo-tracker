@@ -31,7 +31,7 @@ export interface TranslateLocaleParams {
   readonly translationConfig: TranslationConfig;
   readonly targetLocale: string;
   readonly baseLocale: string;
-  readonly allLocales: string[];
+  readonly allLocales: readonly string[];
   readonly cwd?: string;
   readonly onProgress?: (progress: TranslateLocaleProgress) => void;
 }

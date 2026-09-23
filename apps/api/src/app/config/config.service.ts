@@ -1,32 +1,24 @@
 import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { CONFIG_FILENAME } from '@simoncodes-ca/core';
+import { ConfigNotFoundError, ConfigParseError, type LingoTrackerConfig, loadConfig } from '@simoncodes-ca/core';
 
 @Injectable()
 export class ConfigService {
-  private isNodeError(error: unknown): error is NodeJS.ErrnoException {
-    return error instanceof Error && 'code' in error;
-  }
-
+  /**
+   * Reads `.lingo-tracker.json` from the server's working directory on every call (the
+   * file can change between requests), via core `loadConfig`, and maps its failures to
+   * HTTP errors.
+   */
   getConfig(): LingoTrackerConfig {
-    const configPath = join(process.cwd(), CONFIG_FILENAME);
-    let configContent: string;
-
     try {
-      configContent = readFileSync(configPath, 'utf8');
+      return loadConfig({ cwd: process.cwd() });
     } catch (error: unknown) {
-      if (this.isNodeError(error) && error.code === 'ENOENT') {
+      if (error instanceof ConfigNotFoundError) {
         throw new NotFoundException('Configuration file not found');
       }
+      if (error instanceof ConfigParseError) {
+        throw new InternalServerErrorException('Invalid configuration file format');
+      }
       throw new InternalServerErrorException('Failed to read configuration file');
-    }
-
-    try {
-      return JSON.parse(configContent) as LingoTrackerConfig;
-    } catch {
-      throw new InternalServerErrorException('Invalid configuration file format');
     }
   }
 }

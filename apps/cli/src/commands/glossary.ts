@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadResourcesFromCollections } from '@simoncodes-ca/core';
-import type { LingoTrackerCollection, LingoTrackerConfig } from '@simoncodes-ca/core';
+import { loadResourcesFromCollections, openCollection } from '@simoncodes-ca/core';
+import type { Collection, LingoTrackerConfig } from '@simoncodes-ca/core';
 import { ConsoleFormatter, loadConfiguration, parseCommaSeparatedList, resolveCollection } from '../utils';
 import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
 import { matchGlossary, type FlatEntry } from './glossary-matcher';
@@ -64,24 +64,21 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
  * Returns null if a named collection cannot be resolved.
  */
 function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): FlatEntry[] | null {
-  const globalBase = config.baseLocale;
-
-  let targets: { name: string; collection: LingoTrackerCollection }[];
+  let targets: Collection[];
   if (options.collection) {
     const resolved = resolveCollection(options.collection, config, cwd);
     if (!resolved) return null;
-    targets = [{ name: resolved.name, collection: resolved.config }];
+    targets = [resolved];
   } else {
-    targets = Object.entries(config.collections ?? {}).map(([name, collection]) => ({ name, collection }));
+    targets = Object.keys(config.collections ?? {}).map((name) => openCollection(config, name, { cwd }));
   }
 
   const entries: FlatEntry[] = [];
-  for (const { name, collection } of targets) {
-    const base = collection.baseLocale ?? globalBase;
-    const loaded = loadResourcesFromCollections([{ name, path: path.resolve(cwd, collection.translationsFolder) }]);
+  for (const { name, translationsFolder, baseLocale } of targets) {
+    const loaded = loadResourcesFromCollections([{ name, path: translationsFolder }]);
     for (const resource of loaded) {
       const translations = { ...resource.translations };
-      if (base) delete translations[base];
+      delete translations[baseLocale];
       entries.push({
         key: resource.fullKey,
         collection: resource.collection,

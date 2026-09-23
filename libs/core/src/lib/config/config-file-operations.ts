@@ -2,7 +2,8 @@ import { resolve } from 'node:path';
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
-import { readLingoConfig, writeJsonFile } from '../file-io/json-file-operations';
+import { writeJsonFile } from '../file-io/json-file-operations';
+import { loadConfig } from './load-config';
 
 export interface ConfigFileOperations {
   /** Read the configuration file */
@@ -34,7 +35,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
       let config: LingoTrackerConfig;
 
       try {
-        config = readLingoConfig(configPath);
+        config = loadConfig({ cwd });
       } catch (_error) {
         throw new Error('Failed to read or parse configuration file');
       }

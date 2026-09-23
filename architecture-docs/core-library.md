@@ -9,6 +9,7 @@ Return to [architecture README](README.md).
 ## Table of Contents
 
 - [Module Map](#module-map)
+- [Config and Collection Resolution](#config-and-collection-resolution)
 - [Resource CRUD Flows](#resource-crud-flows)
   - [add-resource](#add-resource)
   - [edit-resource](#edit-resource)
@@ -64,8 +65,10 @@ libs/core/src/
     │   ├── tag-filter.ts         # matchesTags(): AND/OR tag filter logic
     │   └── type-generation/      # TypeScript type file generation from bundle keys
     │
-    ├── config/                   # Config file I/O
-    │   ├── config-file-operations.ts # read/write/update .lingo-tracker.json
+    ├── config/                   # Config file I/O and collection resolution
+    │   ├── load-config.ts        # loadConfig(): the only reader of .lingo-tracker.json
+    │   ├── open-collection.ts    # openCollection(): a collection's effective settings (Collection)
+    │   ├── config-file-operations.ts # read/write/update .lingo-tracker.json (reads via loadConfig)
     │   └── protected-terms-file.ts   # Resolve, read, and write protected-terms JSON files (cached per path)
     │
     ├── export/                   # Export pipelines (JSON and XLIFF)
@@ -121,11 +124,9 @@ libs/core/src/
     │   ├── json-file-operations.ts  # readJsonFile(), writeJsonFile(), typed helpers
     │   └── directory-operations.ts  # ensureDirectoryExists()
     │
-    ├── config/                   # Config file operations (reads/writes .lingo-tracker.json)
-    │   └── config-file-operations.ts # createConfigFileOperations()
-    │
-    └── errors/                   # Typed error messages
-        └── error-messages.ts     # ErrorMessages: static error string builders
+    └── errors/                   # Error messages and typed errors
+        ├── error-messages.ts     # ErrorMessages: static error string builders
+        └── lingo-tracker-error.ts # LingoTrackerError and its subclasses (config / collection errors)
 ```
 
 <!-- Module relationship graph within @simoncodes-ca/core -->
@@ -152,7 +153,7 @@ graph TD
         TRANSLATION["translation/\nautoTranslateResource\ntranslateExistingResource"]
         FOLDER["folder/\ncreateFolder · deleteFolder\nmoveFolder"]
         FILEIO["file-io/\nreadJsonFile · writeJsonFile\nensureDirectoryExists"]
-        CONFIG_LIB["config/\ncreateConfigFileOperations"]
+        CONFIG_LIB["config/\nloadConfig · openCollection\ncreateConfigFileOperations"]
         ERRORS["errors/\nErrorMessages"]
         RESOURCE_LIB["resource/\nresource-folder\nresource-file-paths\nload-resource-tree"]
     end
@@ -223,6 +224,17 @@ graph TD
 ```
 
 For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that these modules read and write, see [domain-and-data-model.md](domain-and-data-model.md).
+
+---
+
+## Config and Collection Resolution
+
+Core owns the config file and the rule that turns a collection's config entry into its effective settings. The adapters (CLI, API) call two functions in `lib/config/` once per command or request, then pass the results to the per-resource operations.
+
+- **`loadConfig({ cwd? })`** is the only reader of `.lingo-tracker.json`. It returns the file as written, with no validation and no fallbacks. It throws `ConfigNotFoundError` when the file does not exist and `ConfigParseError` when the file is not a JSON object; other I/O errors pass through. The CLI passes its `INIT_CWD`-aware directory, the API passes `process.cwd()`, and `createConfigFileOperations().read()` (used by the config writers) reads through it too.
+- **`openCollection(config, name, { cwd?, writable? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (collection, else global, else `[]`), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `readOnly`, and the raw entry as `config`. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
+
+The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. Import takes the base locale from its caller (`ImportOptions.baseLocale` is required) and never reads the config file. Per-resource operations keep their `(translationsFolder, …, baseLocale, allLocales, translationConfig)` parameters; callers fill them from the `Collection`. The typed errors extend `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`), so an adapter maps them with `instanceof` instead of matching message text.
 
 ---
 
@@ -408,7 +420,7 @@ The [ICU format](glossary.md#icu-format) classification determines safety: `plai
 
 The import pipeline ingests an external translation file for a single locale and reconciles it with the existing resource tree. Steps common to both formats:
 
-1. **Setup workflow** — `setupImportWorkflow(options)` resolves the base locale from `.lingo-tracker.json`, applies strategy-specific defaults for `createMissing`, `updateComments`, and `updateTags`, and guards against importing into the base locale with a non-`migration` strategy.
+1. **Setup workflow** — `setupImportWorkflow(options)` takes the base locale from `options.baseLocale` (the caller passes the collection's effective base locale; the config file is not read), applies strategy-specific defaults for `createMissing`, `updateComments`, and `updateTags`, and guards against importing into the base locale with a non-`migration` strategy.
 2. **Parse source file** — format-specific logic extracts a flat list of `ImportedResource` objects (`key`, `value`, optional `baseValue`, `comment`, `tags`, `status`). JSON import additionally detects whether the source is flat (`{"common.ok": "OK"}`) or hierarchical (`{common: {ok: "OK"}}`) via `detectJsonStructure()`, then flattens hierarchical structures.
 3. **Normalize syntax** — `normalizeTranslocoSyntaxInResources()` converts any Transloco `{{ varName }}` in imported values to ICU `{varName}` before further processing.
 4. **ICU auto-fix** — `applyICUAutoFixToResources()` repairs malformed ICU placeholder syntax (e.g. wrong brace styles from translation services) using `icuAutoFixer` from `@simoncodes-ca/domain`. Fixes and errors are recorded separately in the result.

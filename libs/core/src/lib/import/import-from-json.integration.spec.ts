@@ -3,7 +3,6 @@ import { importFromJson } from './import-from-json';
 import type { ImportOptions } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as configFileOperations from '../config/config-file-operations';
 
 vi.mock('fs');
 vi.mock('path');
@@ -15,18 +14,6 @@ describe('importFromJson - integration tests', () => {
     // Mock path functions
     vi.spyOn(path, 'resolve').mockImplementation((...segments) => segments.join('/'));
     vi.spyOn(path, 'join').mockImplementation((...segments) => segments.join('/'));
-
-    vi.spyOn(configFileOperations, 'createConfigFileOperations').mockReturnValue({
-      read: () => ({
-        exportFolder: 'dist/lingo-export',
-        importFolder: 'dist/lingo-import',
-        baseLocale: 'en',
-        locales: ['en', 'es'],
-        collections: {},
-      }),
-      write: vi.fn(),
-      update: vi.fn(),
-    });
   });
 
   describe('flat JSON import', () => {
@@ -92,6 +79,7 @@ describe('importFromJson - integration tests', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
         collection: 'TestCollection',
       };
 
@@ -156,6 +144,7 @@ describe('importFromJson - integration tests', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/common/buttons', options);
@@ -204,6 +193,7 @@ describe('importFromJson - integration tests', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/common', options);
@@ -255,6 +245,7 @@ describe('importFromJson - integration tests', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/common/buttons', options);
@@ -307,6 +298,7 @@ describe('importFromJson - integration tests', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/apps/dashboard/widgets/chart', options);
@@ -351,6 +343,7 @@ describe('importFromJson - integration tests', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/common', options);
@@ -397,6 +390,7 @@ describe('importFromJson - integration tests', () => {
       const options: ImportOptions = {
         source: '/import/import.json',
         locale: 'es',
+        baseLocale: 'en',
       };
 
       const result = importFromJson('/translations/common/buttons', options);

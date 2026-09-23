@@ -1,46 +1,33 @@
-import { resolve } from 'node:path';
-import type { LingoTrackerConfig, LingoTrackerCollection } from '@simoncodes-ca/core';
+import {
+  type Collection,
+  CollectionNotFoundError,
+  type LingoTrackerConfig,
+  openCollection,
+  ReadOnlyCollectionError,
+} from '@simoncodes-ca/core';
 import { ErrorMessages } from './error-messages';
 
 /**
- * Resolved collection data with computed paths
- */
-export interface ResolvedCollection {
-  name: string;
-  config: LingoTrackerCollection;
-  translationsFolderPath: string;
-}
-
-/**
- * Validates and resolves a collection from configuration.
+ * Opens a collection for a CLI command: core `openCollection` resolves it (effective base
+ * locale, locales, translation config, absolute translations folder); this wrapper turns
+ * a missing collection into CLI output.
  *
  * @param collectionName - Name of collection to resolve
  * @param config - LingoTracker configuration
- * @param baseDirectory - Base directory for resolving paths
- * @returns Resolved collection data, or null if not found
+ * @param baseDirectory - Directory the translations folder resolves against
+ * @returns The resolved collection, or null (after printing an error) if not found
  *
  * @example
  * const collection = resolveCollection('main', config, cwd);
  * if (!collection) return;
- * // Use: collection.translationsFolderPath
+ * // Use: collection.translationsFolder, collection.baseLocale, collection.locales
  */
 export function resolveCollection(
   collectionName: string,
   config: LingoTrackerConfig,
   baseDirectory: string,
-): ResolvedCollection | null {
-  const collectionConfig = config.collections?.[collectionName];
-
-  if (!collectionConfig) {
-    console.log(`❌ Collection "${collectionName}" not found.`);
-    return null;
-  }
-
-  return {
-    name: collectionName,
-    config: collectionConfig,
-    translationsFolderPath: resolve(baseDirectory, collectionConfig.translationsFolder),
-  };
+): Collection | null {
+  return open(collectionName, config, baseDirectory, false);
 }
 
 /**
@@ -60,15 +47,28 @@ export function resolveWritableCollection(
   collectionName: string,
   config: LingoTrackerConfig,
   baseDirectory: string,
-): ResolvedCollection | null {
-  const resolved = resolveCollection(collectionName, config, baseDirectory);
-  if (!resolved) return null;
+): Collection | null {
+  return open(collectionName, config, baseDirectory, true);
+}
 
-  if (resolved.config.readOnly) {
-    console.log(ErrorMessages.COLLECTION_READ_ONLY(resolved.name));
-    process.exitCode = 1;
-    return null;
+function open(
+  collectionName: string,
+  config: LingoTrackerConfig,
+  baseDirectory: string,
+  writable: boolean,
+): Collection | null {
+  try {
+    return openCollection(config, collectionName, { cwd: baseDirectory, writable });
+  } catch (error) {
+    if (error instanceof CollectionNotFoundError) {
+      console.log(ErrorMessages.COLLECTION_NOT_FOUND(collectionName));
+      return null;
+    }
+    if (error instanceof ReadOnlyCollectionError) {
+      console.log(ErrorMessages.COLLECTION_READ_ONLY(collectionName));
+      process.exitCode = 1;
+      return null;
+    }
+    throw error;
   }
-
-  return resolved;
 }

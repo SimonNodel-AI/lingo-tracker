@@ -149,6 +149,7 @@ export async function extractFromXliff(xliffContent: string): Promise<ImportedRe
  * const result = await importFromXliff('/project/src/translations', {
  *   source: 'translations-es.xlf',
  *   locale: 'es',
+ *   baseLocale: 'en',
  *   strategy: 'translation-service',
  *   validateBase: true,
  *   dryRun: false
@@ -159,6 +160,7 @@ export async function extractFromXliff(xliffContent: string): Promise<ImportedRe
  * const result = await importFromXliff('/project/src/translations', {
  *   source: 'verified-fr.xlf',
  *   locale: 'fr',
+ *   baseLocale: 'en',
  *   strategy: 'verification',
  *   verbose: true,
  *   onProgress: (msg) => console.log(msg)
@@ -168,6 +170,7 @@ export async function extractFromXliff(xliffContent: string): Promise<ImportedRe
  * const preview = await importFromXliff('/project/src/translations', {
  *   source: 'new-de.xlf',
  *   locale: 'de',
+ *   baseLocale: 'en',
  *   strategy: 'translation-service',
  *   dryRun: true
  * });

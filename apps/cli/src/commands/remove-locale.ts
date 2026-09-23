@@ -18,10 +18,7 @@ export async function removeLocaleCommand(options: RemoveLocaleOptions): Promise
   const collection = resolveWritableCollection(collectionName, config, cwd);
   if (!collection) return;
 
-  const baseLocale = collection.config.baseLocale ?? config.baseLocale;
-  const effectiveLocales = (collection.config.locales ?? config.locales ?? []).filter(
-    (l) => baseLocale === undefined || l !== baseLocale,
-  );
+  const effectiveLocales = collection.targetLocales;
 
   let locale = options.locale;
 

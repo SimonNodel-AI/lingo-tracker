@@ -186,11 +186,9 @@ describe('addResourceCommand', () => {
     vi.mocked(utils.promptForCollection).mockResolvedValue('TestCollection');
 
     // Mock resolveWritableCollection to return collection data
-    vi.mocked(utils.resolveWritableCollection).mockReturnValue({
-      name: 'TestCollection',
-      config: config.collections.TestCollection,
-      translationsFolderPath: '/test/translations',
-    });
+    vi.mocked(utils.resolveWritableCollection).mockReturnValue(
+      core.openCollection(config, 'TestCollection', { cwd: '/test' }),
+    );
 
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
@@ -247,11 +245,9 @@ describe('addResourceCommand', () => {
     vi.mocked(utils.promptForCollection).mockResolvedValue('TestCollection');
 
     // Mock resolveWritableCollection to return collection data
-    vi.mocked(utils.resolveWritableCollection).mockReturnValue({
-      name: 'TestCollection',
-      config: config.collections.TestCollection,
-      translationsFolderPath: '/test/translations',
-    });
+    vi.mocked(utils.resolveWritableCollection).mockReturnValue(
+      core.openCollection(config, 'TestCollection', { cwd: '/test' }),
+    );
 
     vi.mocked(fs.readFileSync).mockImplementation((path: string) => {
       if (path.includes('resource_entries.json')) {
@@ -319,11 +315,9 @@ describe('addResourceCommand', () => {
     vi.mocked(utils.promptForCollection).mockResolvedValue('TestCollection');
 
     // Mock resolveWritableCollection to return collection data
-    vi.mocked(utils.resolveWritableCollection).mockReturnValue({
-      name: 'TestCollection',
-      config: config.collections.TestCollection,
-      translationsFolderPath: '/test/translations',
-    });
+    vi.mocked(utils.resolveWritableCollection).mockReturnValue(
+      core.openCollection(config, 'TestCollection', { cwd: '/test' }),
+    );
 
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
@@ -381,11 +375,9 @@ describe('addResourceCommand', () => {
         cwd: '/test',
       });
       vi.mocked(utils.promptForCollection).mockResolvedValue('TestCollection');
-      vi.mocked(utils.resolveWritableCollection).mockReturnValue({
-        name: 'TestCollection',
-        config: config.collections.TestCollection,
-        translationsFolderPath: '/test/translations',
-      });
+      vi.mocked(utils.resolveWritableCollection).mockReturnValue(
+        core.openCollection(config, 'TestCollection', { cwd: '/test' }),
+      );
       originalIsTTY = process.stdout.isTTY;
       Object.defineProperty(process.stdout, 'isTTY', { value: false, writable: true });
       logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);

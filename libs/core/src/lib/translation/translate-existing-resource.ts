@@ -9,7 +9,7 @@ export interface TranslateExistingResourceOptions {
   readonly key: string;
   readonly translationsFolder: string;
   readonly translationConfig: TranslationConfig;
-  readonly allLocales: string[];
+  readonly allLocales: readonly string[];
   readonly baseLocale: string;
   readonly cwd?: string;
 }

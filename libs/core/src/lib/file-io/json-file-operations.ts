@@ -2,7 +2,6 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ResourceEntries } from '../../resource/resource-entry';
 import type { TrackerMetadata } from '../../resource/tracker-metadata';
-import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { ErrorMessages } from '../errors/error-messages';
 
 export interface JsonFileReadOptions<T> {
@@ -123,15 +122,5 @@ export function readTrackerMetadata(filePath: string, defaultValue?: TrackerMeta
     filePath,
     defaultValue,
     errorContext: 'Reading tracker metadata',
-  });
-}
-
-/**
- * Type-safe helper for reading configuration files.
- */
-export function readLingoConfig(filePath: string): LingoTrackerConfig {
-  return readJsonFile<LingoTrackerConfig>({
-    filePath,
-    errorContext: 'Reading LingoTracker configuration',
   });
 }
