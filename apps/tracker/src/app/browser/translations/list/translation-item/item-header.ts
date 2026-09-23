@@ -10,7 +10,7 @@ import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { KeyMarkupPipe, hasKeyLeaf } from '../../../../shared/pipes/key-markup.pipe';
 import { TagList } from '../../../../shared/tag-list/tag-list.component';
 import { TranslationRollup, type LocaleState } from './translation-rollup';
-import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
 
@@ -83,17 +83,12 @@ export class TranslationItemHeader {
 
   readonly TOKENS = TRACKER_TOKENS;
 
-  /** Locale states for the rollup component — derived from the translation status map */
+  /** Non-base locales that carry a status — the rollup's input, derived from the translation status map. */
   readonly localeStates = computed<LocaleState[]>(() => {
     const statusMap = this.translation().status || {};
     const base = this.#browserStore.baseLocale();
 
-    return Object.entries(statusMap)
-      .filter(([locale, status]) => locale !== base && status)
-      .map(([locale, status]) => ({
-        code: locale,
-        status: status as TranslationStatus,
-      }));
+    return Object.entries(statusMap).flatMap(([code, status]) => (code !== base && status ? [{ code, status }] : []));
   });
 
   /** Base locale code from the browser store */
@@ -163,11 +158,7 @@ export class TranslationItemHeader {
    * indicating there is work for the auto-translator to do.
    */
   readonly hasTranslatableLocales = computed(() => {
-    const statusMap = this.translation().status || {};
-    const base = this.#browserStore.baseLocale();
-    return Object.entries(statusMap)
-      .filter(([locale]) => locale !== base)
-      .some(([, status]) => status === 'new' || status === 'stale');
+    return this.localeStates().some(({ status }) => status === 'new' || status === 'stale');
   });
 
   /** Whether the translate action is disabled */

@@ -2,15 +2,20 @@ import { Component, ChangeDetectionStrategy, input, output, computed, effect, in
 import { MatIconModule } from '@angular/material/icon';
 import { CdkDrag, CdkDragPlaceholder } from '@angular/cdk/drag-drop';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { countByStatus, STATUS_PRECEDENCE, type TranslationStatus } from '@simoncodes-ca/domain';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { TranslationItemHeader } from './item-header';
-import { TranslationItemLocales, statusIconFor, statusLabelTokenFor, type BaseTranslation } from './item-locales';
+import { TranslationItemLocales, type BaseTranslation } from './item-locales';
 import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import type { DragData } from '../../../types/drag-data';
 import { TranslationListStore } from '../store/translation-list.store';
 import { injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
+import {
+  statusIconFor,
+  statusLabelTokenFor,
+} from '../../../../shared/translation-status/translation-status-presentation';
 
 const EXPAND_THRESHOLD = 200;
 
@@ -35,13 +40,11 @@ function isIdenticalToBase(value: string, baseValue: string): boolean {
   return trimmed.length > 0 && trimmed === baseValue.trim();
 }
 
-const STATUS_SORT_PRIORITY: Record<string, number> = {
-  stale: 0,
-  new: 1,
-  translated: 2,
-  verified: 3,
-  missing: 4,
-};
+/** Locale row order: worst status first; a row with no known status goes last. */
+function statusRank(status: TranslationStatus | undefined): number {
+  const rank = status ? STATUS_PRECEDENCE.indexOf(status) : -1;
+  return rank === -1 ? STATUS_PRECEDENCE.length : rank;
+}
 
 /**
  * Displays a single translation entry with key, base value, locale translations,
@@ -153,9 +156,8 @@ export class TranslationItem {
         };
       })
       .sort((a, b) => {
-        const priorityA = a.status ? (STATUS_SORT_PRIORITY[a.status] ?? 4) : 4;
-        const priorityB = b.status ? (STATUS_SORT_PRIORITY[b.status] ?? 4) : 4;
-        if (priorityA !== priorityB) return priorityA - priorityB;
+        const rankDiff = statusRank(a.status) - statusRank(b.status);
+        if (rankDiff !== 0) return rankDiff;
         return a.locale.localeCompare(b.locale);
       });
   });
@@ -352,30 +354,15 @@ export class TranslationItem {
     }
   }
 
-  /**
-   * Computes counts of each status and total known statuses.
-   * Used by rollupStatus and statusBreakdown to avoid duplicated logic.
-   */
+  /** Status counts across every non-base locale of the entry, whatever the locale filter shows. */
   readonly #statusCounts = computed(() => {
     const statusMap = this.translation().status || {};
-
-    const counts: Record<'stale' | 'new' | 'translated' | 'verified', number> = {
-      stale: 0,
-      new: 0,
-      translated: 0,
-      verified: 0,
-    };
-
-    const total = Object.values(statusMap).reduce((acc, s) => {
-      if (!s) return acc;
-      if (s in counts) {
-        counts[s as keyof typeof counts] += 1;
-        return acc + 1;
-      }
-      return acc;
-    }, 0);
-
-    return { counts, total } as const;
+    const base = this.#store.baseLocale();
+    return countByStatus(
+      Object.entries(statusMap)
+        .filter(([locale]) => locale !== base)
+        .map(([, status]) => status),
+    );
   });
 
   constructor() {
@@ -410,26 +397,7 @@ export class TranslationItem {
    * Localized breakdown of statuses across all locales, announced to screen
    * readers. Example: "2 stale, 3 verified, 1 new".
    */
-  readonly statusBreakdown = injectStatusBreakdown(computed(() => this.#statusCounts().counts));
-
-  /**
-   * Roll-up status across ALL locales. Priority (worst first): stale > new > translated > verified
-   * Returns tuple: [status, count]
-   */
-  readonly rollupStatus = computed(() => {
-    const { counts, total } = this.#statusCounts();
-
-    if (total === 0) return ['new', 0] as const;
-
-    const priority: Array<keyof typeof counts> = ['stale', 'new', 'translated', 'verified'];
-
-    for (const p of priority) {
-      const c = counts[p];
-      if (c > 0) return [p, c] as const;
-    }
-
-    return ['new', 0] as const;
-  });
+  readonly statusBreakdown = injectStatusBreakdown(this.#statusCounts);
 
   /**
    * Handles drag started event.

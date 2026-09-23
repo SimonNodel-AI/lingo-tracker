@@ -1,5 +1,6 @@
 export * from './lib/escape-regexp';
 export * from './lib/translation-status';
+export * from './lib/translation-status-summary';
 export * from './lib/locale-metadata';
 export * from './lib/resource-key';
 export * from './lib/staleness';

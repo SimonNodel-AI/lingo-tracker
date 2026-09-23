@@ -224,22 +224,6 @@ describe('TranslationItem', () => {
     });
   });
 
-  it('rollupStatus should reflect all verified state as verified', () => {
-    const t: ResourceSummaryDto = {
-      key: 'k-all-verified',
-      translations: { en: 'a', es: 'b' },
-      status: { en: 'verified', es: 'verified' },
-    } as any;
-
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
-    fixture.componentRef.setInput('translation', t);
-    fixture.detectChanges();
-
-    const roll = component.rollupStatus();
-    expect(roll[0]).toBe('verified');
-    expect(roll[1]).toBe(2);
-  });
-
   it('should use filteredLocales from store (replaces locales input)', () => {
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
     store.setDensityMode('full');
@@ -293,24 +277,6 @@ describe('TranslationItem - Compact helpers', () => {
     store.setSelectedLocales(['en']);
     fixture.detectChanges();
     expect(component.compactDisplay().value).toBe('Save');
-  });
-
-  it('rollupStatus should calculate worst status across all locales', () => {
-    const t: ResourceSummaryDto = {
-      key: 'k',
-      translations: { en: 'a', es: 'b', fr: 'c' },
-      status: { en: 'verified', es: 'translated', fr: 'stale' },
-    };
-
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
-    store.setDensityMode('full');
-    store.clearAllLocales();
-    fixture.componentRef.setInput('translation', t);
-    fixture.detectChanges();
-
-    const roll = component.rollupStatus();
-    expect(roll[0]).toBe('stale');
-    expect(roll[1]).toBe(1);
   });
 
   it('statusBreakdown should return human readable counts in priority order', () => {

@@ -5,7 +5,8 @@ import { pipe, tap, switchMap, catchError, of } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { sortTranslations } from '../../translations/utils/sort-translations';
-import type { ResourceSummaryDto, SearchResultDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
+import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
+import { countByStatus, STATUS_PRECEDENCE, type TranslationStatus } from '@simoncodes-ca/domain';
 import { toErrorMessage } from '../async-error.utils';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
@@ -21,7 +22,6 @@ const initialTranslationsState: TranslationsState = {
   showNestedResources: true,
 };
 
-const ALL_STATUSES: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
 const NEEDS_WORK_STATUSES: readonly TranslationStatus[] = ['new', 'stale'];
 
 /**
@@ -36,10 +36,8 @@ function matchesAnyStatus(
   locales: readonly string[],
   statuses: readonly TranslationStatus[],
 ): boolean {
-  return locales.some((locale) => {
-    const localeStatus = item.status?.[locale];
-    return !!localeStatus && statuses.includes(localeStatus);
-  });
+  const counts = countByStatus(locales.map((locale) => item.status?.[locale]));
+  return statuses.some((status) => counts[status] > 0);
 }
 
 export function withTranslationsFeature<_>() {
@@ -113,7 +111,7 @@ export function withTranslationsFeature<_>() {
 
           const counts: Record<TranslationStatus, number> = { new: 0, stale: 0, translated: 0, verified: 0 };
           for (const item of items) {
-            for (const status of ALL_STATUSES) {
+            for (const status of STATUS_PRECEDENCE) {
               if (matchesAnyStatus(item, locales, [status])) counts[status]++;
             }
           }

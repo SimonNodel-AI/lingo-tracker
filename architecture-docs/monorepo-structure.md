@@ -45,6 +45,7 @@ lingo-tracker/                         # Nx workspace root
 │   ├── domain/                        # Browser-safe pure logic (zero Node.js deps)
 │   │   └── src/lib/
 │   │       ├── translation-status.ts  # TranslationStatus type
+│   │       ├── translation-status-summary.ts # Status counts and worst-status precedence
 │   │       ├── locale-metadata.ts     # LocaleMetadata interface
 │   │       ├── resource-key.ts        # Key validation, resolve, split
 │   │       ├── staleness.ts           # Staleness rule and status transitions
@@ -140,6 +141,7 @@ graph TD
 | Module | What it does |
 |---|---|
 | `translation-status.ts` | Defines the `TranslationStatus` union type (`'new' \| 'translated' \| 'stale' \| 'verified'`) |
+| `translation-status-summary.ts` | The [translation status summary](glossary.md#translation-status-summary): `countByStatus`, `worstStatus`, and `STATUS_PRECEDENCE` (worst first) |
 | `locale-metadata.ts` | Defines the `LocaleMetadata` interface (checksum, baseChecksum, status) |
 | `resource-key.ts` | Validates, resolves (`resolveResourceKey`), and splits (`splitResolvedKey`) dot-delimited keys |
 | `staleness.ts` | The staleness rule and status transitions (`applyBaseChange`, `recordTranslation`, `needsTranslation`, `resolveImportStatus`) |

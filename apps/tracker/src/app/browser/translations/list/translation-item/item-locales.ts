@@ -3,22 +3,19 @@ import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import { TranslocoPipe } from '@jsverse/transloco';
-import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { countByStatus, STATUS_PRECEDENCE, type StatusCounts, type TranslationStatus } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { injectStatusBreakdown, type StatusCounts } from '../../../../shared/i18n/status-breakdown';
+import { injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
+import {
+  statusIconFor,
+  statusLabelTokenFor,
+} from '../../../../shared/translation-status/translation-status-presentation';
 import type { DensityMode } from '../../../types/density-mode';
-
-/** The statuses a locale row can carry, as a runtime guard over the string field. */
-const TRANSLATION_STATUSES: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
-
-function asTranslationStatus(status: string | undefined): TranslationStatus | undefined {
-  return TRANSLATION_STATUSES.find((s) => s === status);
-}
 
 export type LocaleTranslation = {
   locale: string;
   value: string;
-  status?: string;
+  status?: TranslationStatus;
   /**
    * The stored value is byte-identical to the base locale's. The status metadata
    * still says `translated` — a checksum cannot tell a deliberate loanword from a
@@ -40,38 +37,6 @@ export type BaseTranslation = {
   locale: string;
   value: string;
 };
-
-/** Material icon name for a translation status. Shared with the compact item row. */
-export function statusIconFor(status: string | undefined): string {
-  switch (status) {
-    case 'verified':
-      return 'check_circle';
-    case 'translated':
-      return 'language';
-    case 'stale':
-      return 'warning';
-    case 'new':
-      return 'add_circle';
-    default:
-      return 'help_outline';
-  }
-}
-
-/** Transloco token for a translation status label. Shared with the compact item row. */
-export function statusLabelTokenFor(status: string | undefined): string {
-  switch (status) {
-    case 'verified':
-      return TRACKER_TOKENS.BROWSER.STATUS.VERIFIED;
-    case 'translated':
-      return TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED;
-    case 'stale':
-      return TRACKER_TOKENS.BROWSER.STATUS.STALE;
-    case 'new':
-      return TRACKER_TOKENS.BROWSER.STATUS.NEW;
-    default:
-      return '';
-  }
-}
 
 /**
  * Displays locale translations in a grid layout.
@@ -110,14 +75,9 @@ export class TranslationItemLocales {
   readonly TOKENS = TRACKER_TOKENS;
 
   /** Locale rows per status, over the rows actually rendered. */
-  private readonly statusCounts = computed<StatusCounts>(() => {
-    const counts: StatusCounts = { new: 0, stale: 0, translated: 0, verified: 0 };
-    for (const lt of this.localeTranslations()) {
-      const status = asTranslationStatus(lt.status);
-      if (status) counts[status]++;
-    }
-    return counts;
-  });
+  private readonly statusCounts = computed<StatusCounts>(() =>
+    countByStatus(this.localeTranslations().map((lt) => lt.status)),
+  );
 
   /** Localized "{n} translated" for the rendered rows. */
   private readonly breakdown = injectStatusBreakdown(this.statusCounts);
@@ -132,13 +92,11 @@ export class TranslationItemLocales {
    * which is the case where the column is worth reading.
    */
   readonly uniformStatus = computed<TranslationStatus | undefined>(() => {
-    const rows = this.localeTranslations();
-    if (rows.length < 2) return undefined;
+    const rowCount = this.localeTranslations().length;
+    if (rowCount < 2) return undefined;
 
-    const first = asTranslationStatus(rows[0].status);
-    if (!first) return undefined;
-
-    return rows.every((lt) => lt.status === first) ? first : undefined;
+    const counts = this.statusCounts();
+    return STATUS_PRECEDENCE.find((status) => counts[status] === rowCount);
   });
 
   /** The collapsed chip: the shared status, labelled with its count. */
@@ -147,11 +105,11 @@ export class TranslationItemLocales {
     return status ? { status, label: this.breakdown() } : undefined;
   });
 
-  getStatusIcon(status: string | undefined): string {
+  getStatusIcon(status: TranslationStatus | undefined): string {
     return statusIconFor(status);
   }
 
-  getStatusLabel(status: string | undefined): string {
+  getStatusLabel(status: TranslationStatus | undefined): string {
     return statusLabelTokenFor(status);
   }
 }

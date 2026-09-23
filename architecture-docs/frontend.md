@@ -24,6 +24,7 @@ Return to [architecture README](README.md).
   - [Drag-and-Drop — Move Resource and Folder](#drag-and-drop--move-resource-and-folder)
   - [Lazy-Loaded Dialogs](#lazy-loaded-dialogs)
   - [Translation Editor and the Resource Entry Draft](#translation-editor-and-the-resource-entry-draft)
+  - [Translation Status Summary](#translation-status-summary)
   - [Writing a Resource Entry](#writing-a-resource-entry)
 - [Theming System](#theming-system)
 - [i18n — Transloco Integration](#i18n--transloco-integration)
@@ -317,6 +318,10 @@ The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autoc
 The key field validator is `segmentValidator` (`shared/validators/segment.validator.ts`). It uses the domain `isValidSegment` rule and reports under the `pattern` error key. The bundle name and the inline new-folder name use the same validator. The folder filter in the location popover uses `filterFolderTree` from `browser/store/folder-tree.utils.ts`, the same function as `BrowserStore.filteredFolders`.
 
 The dialog reads two things directly from `BrowserApiService`: `searchTranslations` for similar values, and `getResourceTree` for the entries of a folder picked in the popover. Both are dialog-local reads. The store's `selectFolder` would move the browser list behind the dialog, so the dialog does not use it.
+
+### Translation Status Summary
+
+Each status roll-up in the browser uses the domain [translation status summary](glossary.md#translation-status-summary) (`countByStatus`, `worstStatus`, `STATUS_PRECEDENCE`). These roll-ups are the `TranslationRollup` ring and its accessible name, the item's screen-reader breakdown, the locale column's single-status chip, the `StatusFilter` counts and `matchesAnyStatus`, and sort by status. The components only render the result. The Tracker keeps the presentation in one table, `shared/translation-status/translation-status-presentation.ts`. `STATUS_PRESENTATION` gives the chip icon, the ring-centre glyph, the label token and the count token for each status. `rollupCenter(counts)` gives the ring centre: the worst status, or `mixed` when `new` and `stale` are both present. The module also has `STATUS_DISPLAY_ORDER` (`new`, `stale`, `translated`, `verified`), which the filter rail, the rollup tooltip rows and sort by status use. The ring draws its arcs in the reverse of this order. The breakdown text and a card's locale rows use the worst-first `STATUS_PRECEDENCE` instead. A per-folder roll-up can use the same functions if `FolderNodeDto` gets status data in the future.
 
 ### Writing a Resource Entry
 
