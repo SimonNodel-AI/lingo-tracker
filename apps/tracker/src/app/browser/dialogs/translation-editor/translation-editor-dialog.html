@@ -391,13 +391,13 @@
                   [disabled]="isReadOnly()"
                   [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.STATUS | transloco"
                 >
-                  {{ statusLabels[localeStatus] | transloco }}
+                  {{ statusLabelToken(localeStatus) | transloco }}
                   <mat-icon class="st-chev" aria-hidden="true">expand_more</mat-icon>
                 </button>
                 <mat-menu #statusMenu="matMenu">
                   @for (statusOption of translationStatusOptions; track statusOption) {
                     <button mat-menu-item type="button" (click)="setLocaleStatus(i, statusOption)">
-                      <span [class]="'st st--' + statusOption">{{ statusLabels[statusOption] | transloco }}</span>
+                      <span [class]="'st st--' + statusOption">{{ statusLabelToken(statusOption) | transloco }}</span>
                     </button>
                   }
                 </mat-menu>
@@ -594,7 +594,6 @@
         [results]="similarResources()"
         [isLoading]="isSearchingSimilar()"
         [hasSearchQuery]="hasSearchQuery()"
-        [baseLocale]="data.baseLocale"
         [exactKey]="exactMatchKey()"
         (resourceClicked)="onSimilarResourceClick($event)"
       />
@@ -627,7 +626,7 @@
             }
             <span
               [class]="'dot dot--' + locale.status"
-              [matTooltip]="statusLabels[locale.status] | transloco"
+              [matTooltip]="statusLabelToken(locale.status) | transloco"
             ></span>
           </div>
         } @empty {

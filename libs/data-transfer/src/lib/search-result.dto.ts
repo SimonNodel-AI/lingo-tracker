@@ -6,9 +6,7 @@ import type { ResourceSummaryDto } from './resource-tree.dto';
 export type MatchType = 'exact-key' | 'partial-key' | 'exact-value' | 'partial-value';
 
 /**
- * DTO for a single search result.
- * Extends ResourceSummaryDto to maintain compatibility with translation display.
- * The key field contains the full dot-delimited path for search results.
+ * DTO for a single search result: a Resource Summary plus how it matched.
  */
 export interface SearchResultDto extends ResourceSummaryDto {
   /** Type of match found */

@@ -12,22 +12,15 @@ import {
 } from '../dialogs/translation-editor';
 import { BrowserApiService } from './browser-api.service';
 import { BrowserStore } from '../store/browser.store';
-import { splitKey } from '../translations/list/store/key-resolution';
+import { splitResolvedKey } from '@simoncodes-ca/domain';
 
 /** What the caller knows about the entry it wants opened in the editor. */
 export interface OpenEditorParams {
-  /** The resource as the dialog wants it: `key` is the entry name inside `folderPath`. */
+  /** The resource; its explicit address (`fullKey`, `folderPath`, `entryKey`) says where it lives. */
   resource: ResourceSummaryDto;
   collectionName: string;
-  /** Dot-delimited folder the entry lives in; '' for the collection root. */
-  folderPath: string;
-  /**
-   * The key the list renders this resource under — relative in folder mode, full
-   * in search mode — handed back through `onUpdated` for the row's flash.
-   */
-  storeKey: string;
-  /** Called with the store key after an in-place update, for the row's flash. */
-  onUpdated?: (storeKey: string) => void;
+  /** Called with the resource's full key after an in-place update, for the row's flash. */
+  onUpdated?: (fullKey: string) => void;
 }
 
 /**
@@ -49,7 +42,8 @@ export class TranslationEditorLauncher {
 
   /** Opens the editor for a resource the caller already holds. */
   openEditor(params: OpenEditorParams): void {
-    const { resource, collectionName, folderPath, storeKey, onUpdated } = params;
+    const { resource, collectionName, onUpdated } = params;
+    const { folderPath } = resource;
 
     const dialogData: TranslationEditorDialogData = {
       mode: 'edit',
@@ -83,7 +77,7 @@ export class TranslationEditorLauncher {
       // Saved into another folder: the entry has left this list, so there is no row to flash.
       if (result.folderPath !== folderPath) return;
 
-      onUpdated?.(storeKey);
+      onUpdated?.(resource.fullKey);
       this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.TRANSLATIONUPDATED));
 
       if (result.skippedLocales?.length) {
@@ -104,12 +98,12 @@ export class TranslationEditorLauncher {
    * The browser is moved to the entry's folder first, so the dialog closes onto the
    * list the entry is actually in rather than back onto an unrelated folder.
    */
-  openByFullKey(fullKey: string, collectionName: string, onUpdated?: (storeKey: string) => void): void {
-    const { folderPath, entryKey } = splitKey(fullKey);
+  openByFullKey(fullKey: string, collectionName: string, onUpdated?: (fullKey: string) => void): void {
+    const folderPath = splitResolvedKey(fullKey).folderPath.join('.');
 
     this.#api.getResourceTree(collectionName, folderPath, false).subscribe({
       next: (tree) => {
-        const resource = 'resources' in tree ? tree.resources.find((item) => item.key === entryKey) : undefined;
+        const resource = tree.resources.find((item) => item.fullKey === fullKey);
         if (!resource) {
           this.#notifyNotFound();
           return;
@@ -122,7 +116,7 @@ export class TranslationEditorLauncher {
         }
         this.#browserStore.selectFolder(folderPath);
 
-        this.openEditor({ resource, collectionName, folderPath, storeKey: entryKey, onUpdated });
+        this.openEditor({ resource, collectionName, onUpdated });
       },
       error: () => this.#notifyNotFound(),
     });

@@ -1,5 +1,6 @@
 import { signalStoreFeature, withState, withMethods, withHooks, patchState } from '@ngrx/signals';
 
+/** Row UI state, keyed by each resource's full key. */
 interface ItemUiState {
   translatingKeys: Set<string>;
   recentlyUpdatedKey: string | undefined;

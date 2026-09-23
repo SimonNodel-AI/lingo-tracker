@@ -10,7 +10,6 @@ import { TranslationEditorLauncher } from '../../../services/translation-editor-
 import { ConfirmationDialog } from '../../../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import type { ResourceSummaryDto, TranslateResourceResponseDto } from '@simoncodes-ca/data-transfer';
-import { resolveFullKey, resolveEffectiveFolderPath, resolveResourceForDialog } from './key-resolution';
 
 export function withItemActions() {
   return signalStoreFeature(
@@ -43,23 +42,10 @@ export function withItemActions() {
         },
 
         editTranslation(translation: ResourceSummaryDto, collectionName: string): void {
-          const folderPath = resolveEffectiveFolderPath(
-            translation.key,
-            browserStore.isSearchMode(),
-            browserStore.showNestedResources(),
-            browserStore.currentFolderPath(),
-          );
-
           launcher.openEditor({
-            resource: resolveResourceForDialog(
-              translation,
-              browserStore.isSearchMode(),
-              browserStore.showNestedResources(),
-            ),
+            resource: translation,
             collectionName,
-            folderPath,
-            storeKey: translation.key,
-            onUpdated: (key) => store.flashRecentlyUpdated(key),
+            onUpdated: (fullKey) => store.flashRecentlyUpdated(fullKey),
           });
         },
 
@@ -79,11 +65,7 @@ export function withItemActions() {
           // deletion the API will refuse is a promise the UI cannot keep.
           if (browserStore.isReadOnly()) return;
 
-          const fullKey = resolveFullKey(
-            translation.key,
-            browserStore.isSearchMode(),
-            browserStore.currentFolderPath(),
-          );
+          const { fullKey } = translation;
 
           const dialogData: ConfirmationDialogData = {
             title: transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETERESOURCE.TITLE),
@@ -127,20 +109,16 @@ export function withItemActions() {
         },
 
         translateResource(translation: ResourceSummaryDto, collectionName: string): void {
-          const fullKey = resolveFullKey(
-            translation.key,
-            browserStore.isSearchMode(),
-            browserStore.currentFolderPath(),
-          );
-          store.addTranslatingKey(translation.key);
+          const { fullKey } = translation;
+          store.addTranslatingKey(fullKey);
 
           browserStore
             .translateResource(collectionName, fullKey)
             .pipe(takeUntilDestroyed(destroyRef))
             .subscribe({
               next: (response: TranslateResourceResponseDto) => {
-                store.removeTranslatingKey(translation.key);
-                store.flashRecentlyUpdated(translation.key);
+                store.removeTranslatingKey(fullKey);
+                store.flashRecentlyUpdated(fullKey);
 
                 const { translatedCount, skippedLocales } = response;
                 if (translatedCount > 0) {
@@ -163,7 +141,7 @@ export function withItemActions() {
                 }
               },
               error: (error: unknown) => {
-                store.removeTranslatingKey(translation.key);
+                store.removeTranslatingKey(fullKey);
                 const message =
                   error instanceof Error
                     ? error.message

@@ -210,7 +210,7 @@ export const BrowserStore = signalStore(
             const destinationKey = destinationFolderPath ? `${destinationFolderPath}.${entryName}` : entryName;
 
             const currentTranslations = store.translations();
-            const optimisticTranslations = currentTranslations.filter((r) => r.key !== sourceKey);
+            const optimisticTranslations = currentTranslations.filter((r) => r.fullKey !== sourceKey);
             patchState(store, { translations: optimisticTranslations });
 
             return api.moveResource(collection, sourceKey, destinationKey).pipe(

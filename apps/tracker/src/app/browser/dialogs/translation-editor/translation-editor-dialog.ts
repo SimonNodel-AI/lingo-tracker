@@ -37,6 +37,7 @@ import {
   findPreferredTermFindings,
   type PreferredTermRule,
   resolveResourceKey,
+  summaryTarget,
 } from '@simoncodes-ca/domain';
 import { of, Subject } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap, takeUntil, tap } from 'rxjs/operators';
@@ -45,6 +46,7 @@ import { CollectionsStore } from '../../../collections/store/collections.store';
 import { ConfirmationDialog } from '../../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import { NotificationService } from '../../../shared/notification';
+import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
 import { segmentValidator } from '../../../shared/validators/segment.validator';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../../store/browser.store';
@@ -62,7 +64,6 @@ import {
   hasUnsavedChanges,
   type KnownEntries,
   type LocaleDraft,
-  type OriginalEntry,
   removeTag,
   type ResourceEntryDraft,
   toCreateDto,
@@ -312,7 +313,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * The entry being edited, by its own key. Edit mode locks the key, so the
    * draft module never lets it collide with itself and marks it `editing`.
    */
-  readonly #ownKey = this.data.mode === 'edit' ? this.data.resource?.key : undefined;
+  readonly #ownKey = this.data.mode === 'edit' ? this.data.resource?.entryKey : undefined;
 
   /** Everything the draft module needs to know which entries a folder holds. */
   readonly #knownEntries = computed<KnownEntries>(() => ({
@@ -346,13 +347,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     return this.form.controls.baseValue.invalid && (this.form.controls.baseValue.touched || this.submitAttempted());
   });
 
-  /** Localized label for a translation status, so the spine never shows raw enum text. */
-  readonly statusLabels: Record<TranslationStatus, string> = {
-    new: TRACKER_TOKENS.BROWSER.STATUS.NEW,
-    translated: TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED,
-    stale: TRACKER_TOKENS.BROWSER.STATUS.STALE,
-    verified: TRACKER_TOKENS.BROWSER.STATUS.VERIFIED,
-  };
+  /** Transloco token for a status label, from the shared status presentation, so the spine never shows raw enum text. */
+  readonly statusLabelToken = statusLabelTokenFor;
 
   /** Explains a disabled Other locales row instead of leaving it silently grey. */
   readonly otherLocalesDisabledTooltip = computed(() =>
@@ -430,13 +426,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     if (!typed) {
       return undefined;
     }
-    return this.similarResources().find(
-      (result) => (result.translations[this.data.baseLocale] ?? '').trim().toLowerCase() === typed,
-    );
+    return this.similarResources().find((result) => result.base.value.trim().toLowerCase() === typed);
   });
 
   /** The key carrying the exact same text, or '' when no hit matches verbatim. */
-  readonly exactMatchKey = computed(() => this.exactMatch()?.key ?? '');
+  readonly exactMatchKey = computed(() => this.exactMatch()?.fullKey ?? '');
 
   /** The one-line summary the narrow "Context" disclosure carries. */
   readonly contextSummary = computed(() => {
@@ -486,7 +480,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly allTagSuggestions = computed(() => {
     const seen = new Set<string>();
     for (const resource of this.browserStore.translations()) {
-      for (const tag of resource.tags ?? []) {
+      for (const tag of resource.tags) {
         seen.add(tag);
       }
     }
@@ -505,16 +499,16 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.#initializeOtherLocaleFormControls();
 
     if (this.isEditMode() && this.data.resource) {
-      const baseValue = this.data.resource.translations[this.data.baseLocale] || '';
+      const baseValue = this.data.resource.base.value;
       const comment = this.data.resource.comment || '';
 
       this.form.patchValue({
-        key: this.data.resource.key,
+        key: this.data.resource.entryKey,
         baseValue,
         comment,
       });
 
-      this.tagsList.set(this.data.resource.tags ?? []);
+      this.tagsList.set([...this.data.resource.tags]);
 
       this.#populateOtherLocaleTranslations();
     }
@@ -583,10 +577,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   /** The entry an edit started from, or undefined in create mode. */
-  #originalEntry(): OriginalEntry | undefined {
-    return this.isEditMode() && this.data.resource
-      ? { resource: this.data.resource, folderPath: this.data.folderPath || '' }
-      : undefined;
+  #originalEntry(): ResourceSummaryDto | undefined {
+    return this.isEditMode() ? this.data.resource : undefined;
   }
 
   ngOnDestroy(): void {
@@ -635,8 +627,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       if (!locale) {
         return;
       }
-      const value = this.data.resource?.translations[locale] || '';
-      const status = this.data.resource?.status[locale] || 'new';
+      const target = this.data.resource ? summaryTarget(this.data.resource, locale) : undefined;
+      const value = target?.value ?? '';
+      const status = target?.status ?? 'new';
 
       control.patchValue({ value, status });
     });
@@ -691,17 +684,14 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       .subscribe((searchResults) => {
         // Filter out current resource in edit mode
         const original = this.#originalEntry();
-        const ownFullKey = original ? resolveResourceKey(original.resource.key, original.folderPath) : undefined;
-        const withoutSelf = ownFullKey
-          ? searchResults.results.filter((r) => r.key !== ownFullKey)
+        const withoutSelf = original
+          ? searchResults.results.filter((r) => r.fullKey !== original.fullKey)
           : searchResults.results;
 
         // The API matches keys too, and reports a key match ahead of a value one.
         // Everything downstream — the count, the exact-duplicate caption, what
         // stays pinned — reads this signal, so the key-only hits go before it.
-        this.similarResources.set(
-          filterSimilarByValue(withoutSelf, searchResults.query || this.baseValueText(), this.data.baseLocale),
-        );
+        this.similarResources.set(filterSimilarByValue(withoutSelf, searchResults.query || this.baseValueText()));
       });
   }
 
@@ -840,10 +830,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (tree) => {
-          if ('resources' in tree) {
-            const keys = tree.resources.map((resource) => resource.key);
-            this.#loadedFolderEntries.update((entries) => new Map(entries).set(folderPath, keys));
-          }
+          const keys = tree.resources.map((resource) => resource.entryKey);
+          this.#loadedFolderEntries.update((entries) => new Map(entries).set(folderPath, keys));
           this.#finishFolderLoad(folderPath);
         },
         // A folder we cannot read claims nothing. The save path still guards.
@@ -1075,8 +1063,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   onSimilarResourceClick(result: SearchResultDto): void {
-    const fullKey = result.key;
-    this.#copyToClipboard(fullKey, this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYCOPIED));
+    this.#copyToClipboard(result.fullKey, this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYCOPIED));
   }
 
   /**
@@ -1185,7 +1172,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
     // The key control is readonly in edit mode (`html`), so `draft.key` can only
     // ever equal the original; renaming is a move, handled by the CLI.
-    const edited = editedLocales(draft, original.resource);
+    const edited = editedLocales(draft, original);
 
     this.browserStore.updateResource(this.data.collectionName, toUpdateDto(draft, original)).subscribe({
       next: (response: UpdateResourceResponseDto) => {

@@ -13,14 +13,25 @@ import {
   type KeyAbsorption,
   type KnownEntries,
   type LocaleDraft,
-  type OriginalEntry,
   type ResourceEntryDraft,
   removeTag,
   toCreateDto,
   toUpdateDto,
 } from './resource-entry-draft';
 
-const entry = (key: string): ResourceSummaryDto => ({ key, translations: { en: key }, status: {} });
+const entry = (fullKey: string): ResourceSummaryDto => {
+  const segments = fullKey.split('.');
+  const entryKey = segments.pop() ?? '';
+  return {
+    fullKey,
+    folderPath: segments.join('.'),
+    entryKey,
+    base: { locale: 'en', value: entryKey },
+    targets: [],
+    tags: [],
+    inheritedTags: [],
+  };
+};
 
 const folder = (fullPath: string, tree?: FolderNodeDto['tree']): FolderNodeDto => ({
   name: fullPath.split('.').at(-1) ?? fullPath,
@@ -106,7 +117,7 @@ describe('folderEntryKeys', () => {
   it('should leave out the nested resources a folder listing folds in', () => {
     const keys = folderEntryKeys(
       'common',
-      known({ browserFolderPath: 'common', browserEntries: [entry('ok'), entry('dialog.title')] }),
+      known({ browserFolderPath: 'common', browserEntries: [entry('common.ok'), entry('common.dialog.title')] }),
     );
     expect(keys && [...keys]).toEqual(['ok']);
   });
@@ -115,9 +126,9 @@ describe('folderEntryKeys', () => {
     const keys = folderEntryKeys(
       'common',
       known({
-        rootFolders: [folder('common', { path: 'common', resources: [entry('fromTree')], children: [] })],
+        rootFolders: [folder('common', { path: 'common', resources: [entry('common.fromTree')], children: [] })],
         browserFolderPath: 'common',
-        browserEntries: [entry('fromList')],
+        browserEntries: [entry('common.fromList')],
       }),
     );
     expect(keys && [...keys]).toEqual(['fromTree']);
@@ -129,11 +140,13 @@ describe('collisionFor', () => {
     folder('common', {
       path: 'common',
       resources: [],
-      children: [folder('common.buttons', { path: 'common.buttons', resources: [entry('save')], children: [] })],
+      children: [
+        folder('common.buttons', { path: 'common.buttons', resources: [entry('common.buttons.save')], children: [] }),
+      ],
     }),
   ];
   const listing = (path: string, ...keys: string[]): KnownEntries =>
-    known({ browserFolderPath: path, browserEntries: keys.map(entry) });
+    known({ browserFolderPath: path, browserEntries: keys.map((key) => entry(path ? `${path}.${key}` : key)) });
   const buttons = listing('common.buttons', 'ok');
 
   it.each<[string, string, string, KnownEntries, string | undefined, boolean]>([
@@ -253,7 +266,7 @@ describe('contextTree', () => {
         input({
           known: known({
             browserFolderPath: 'common.buttons',
-            browserEntries: [entry('ok'), entry('confirm.dialog.title')],
+            browserEntries: [entry('common.buttons.ok'), entry('common.buttons.confirm.dialog.title')],
           }),
         }),
         moreLabel,
@@ -264,7 +277,10 @@ describe('contextTree', () => {
   });
 
   describe('marks', () => {
-    const holdingOk = known({ browserFolderPath: 'common.buttons', browserEntries: [entry('ok'), entry('cancel')] });
+    const holdingOk = known({
+      browserFolderPath: 'common.buttons',
+      browserEntries: [entry('common.buttons.ok'), entry('common.buttons.cancel')],
+    });
 
     it.each<[string, Partial<ContextTreeInput>, 'new' | 'exists' | 'editing' | undefined]>([
       ['a free key is new', { key: 'save', known: holdingOk }, 'new'],
@@ -284,7 +300,7 @@ describe('contextTree', () => {
 
   describe(`the ${CONTEXT_TREE_ENTRY_LIMIT}-entry window`, () => {
     // k01 … k20, already sorted.
-    const twenty = Array.from({ length: 20 }, (_, i) => entry(`k${String(i + 1).padStart(2, '0')}`));
+    const twenty = Array.from({ length: 20 }, (_, i) => entry(`common.buttons.k${String(i + 1).padStart(2, '0')}`));
     const full = known({ browserFolderPath: 'common.buttons', browserEntries: twenty });
     const range = (from: number, to: number): string[] =>
       Array.from({ length: to - from + 1 }, (_, i) => `k${String(from + i).padStart(2, '0')}`);
@@ -375,13 +391,17 @@ describe('toCreateDto', () => {
 });
 
 describe('toUpdateDto and editedLocales', () => {
-  const original: OriginalEntry = {
-    resource: {
-      key: 'ok',
-      translations: { en: 'OK', fr: 'Oui', de: 'Ja' },
-      status: { fr: 'translated', de: 'verified' },
-    },
+  const original: ResourceSummaryDto = {
+    fullKey: 'common.buttons.ok',
     folderPath: 'common.buttons',
+    entryKey: 'ok',
+    base: { locale: 'en', value: 'OK' },
+    targets: [
+      { locale: 'fr', value: 'Oui', status: 'translated', needsWork: false, sameAsBase: false },
+      { locale: 'de', value: 'Ja', status: 'verified', needsWork: false, sameAsBase: false },
+    ],
+    tags: [],
+    inheritedTags: [],
   };
 
   const locales = (fr: [string, TranslationStatus], de: [string, TranslationStatus]): LocaleDraft[] => [
@@ -417,7 +437,7 @@ describe('toUpdateDto and editedLocales', () => {
     const edited = draft({ translations });
 
     expect(toUpdateDto(edited, original).locales).toEqual(expected);
-    expect(editedLocales(edited, original.resource).map((t) => t.locale)).toEqual(Object.keys(expected ?? {}));
+    expect(editedLocales(edited, original).map((t) => t.locale)).toEqual(Object.keys(expected ?? {}));
   });
 
   it('should name the entry by its original full key and always send the tags', () => {
@@ -428,7 +448,7 @@ describe('toUpdateDto and editedLocales', () => {
   });
 
   it('should keep a root-level entry on its bare key', () => {
-    expect(toUpdateDto(draft({ folderPath: '' }), { ...original, folderPath: '' }).key).toBe('ok');
+    expect(toUpdateDto(draft({ folderPath: '' }), entry('ok')).key).toBe('ok');
   });
 
   it('should send a move to another folder as moveTo, with the full original key', () => {
@@ -443,7 +463,7 @@ describe('toUpdateDto and editedLocales', () => {
   });
 
   it('should send a move out of the collection root', () => {
-    const dto = toUpdateDto(draft({ folderPath: 'common' }), { ...original, folderPath: '' });
+    const dto = toUpdateDto(draft({ folderPath: 'common' }), entry('ok'));
 
     expect(dto.key).toBe('ok');
     expect(dto.moveTo).toBe('common');

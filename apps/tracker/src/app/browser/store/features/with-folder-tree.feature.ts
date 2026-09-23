@@ -1,11 +1,11 @@
 import { computed, inject } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, tap, switchMap, catchError, of, from, retry, timer } from 'rxjs';
+import { pipe, tap, switchMap, catchError, of, from } from 'rxjs';
 import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../shared/notification';
-import { BrowserApiService } from '../../services/browser-api.service';
+import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/browser-api.service';
 import { extractFolderNameFromPath, extractParentFolderPath } from '../../utils/folder-path.utils';
 import {
   insertFolderIntoTree,
@@ -110,6 +110,19 @@ export function withFolderTreeFeature<_>() {
     withMethods((store) => {
       const api = inject(BrowserApiService);
       const transloco = inject(TranslocoService);
+      const notifications = inject(NotificationService);
+
+      /**
+       * The index can go not-ready mid-session (reindex, outside change, eviction). When a tree read
+       * gives up for that reason and a tree is already on screen, keep it and toast: the `error`
+       * state would replace the tree. Returns false (not handled) for other errors and on first load.
+       */
+      function keepTreeOnNotReady(error: unknown, message: string): boolean {
+        if (!(error instanceof CollectionIndexNotReadyError) || store.rootFolders().length === 0) return false;
+        patchState(store, { isFolderTreeLoading: false });
+        notifications.error(message);
+        return true;
+      }
 
       function scheduleNewFolderClear(folderFullPath: string): void {
         setTimeout(() => {
@@ -198,24 +211,23 @@ export function withFolderTreeFeature<_>() {
               }
 
               return api.getResourceTree(collection, '', includeNested).pipe(
-                tap((treeData) => {
-                  if ('resources' in treeData) {
-                    patchState(store, {
-                      rootFolders: treeData.children,
-                      translations: treeData.resources,
-                      currentFolderPath: '',
-                      isFolderTreeLoading: false,
-                      error: null,
-                    });
-                  } else {
-                    patchState(store, { isFolderTreeLoading: false });
-                  }
-                }),
-                catchError((error: unknown) => {
+                tap((treeData) =>
                   patchState(store, {
+                    rootFolders: treeData.children,
+                    translations: treeData.resources,
+                    currentFolderPath: '',
                     isFolderTreeLoading: false,
-                    error: toErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERSFAILED)),
-                  });
+                    error: null,
+                  }),
+                ),
+                catchError((error: unknown) => {
+                  const message = toErrorMessage(
+                    error,
+                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERSFAILED),
+                  );
+                  if (!keepTreeOnNotReady(error, message)) {
+                    patchState(store, { isFolderTreeLoading: false, error: message });
+                  }
                   return of(null);
                 }),
               );
@@ -236,7 +248,6 @@ export function withFolderTreeFeature<_>() {
 
               return api.getResourceTree(collection, folderPath, includeNested).pipe(
                 tap((treeData) => {
-                  if (!('resources' in treeData)) return;
                   const updateFolder = (folders: FolderNodeDto[]): FolderNodeDto[] =>
                     folders.map((folder) => {
                       if (folder.fullPath === folderPath) {
@@ -258,13 +269,13 @@ export function withFolderTreeFeature<_>() {
                   });
                 }),
                 catchError((error: unknown) => {
-                  patchState(store, {
-                    isFolderTreeLoading: false,
-                    error: toErrorMessage(
-                      error,
-                      transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERCHILDRENFAILED),
-                    ),
-                  });
+                  const message = toErrorMessage(
+                    error,
+                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERCHILDRENFAILED),
+                  );
+                  if (!keepTreeOnNotReady(error, message)) {
+                    patchState(store, { isFolderTreeLoading: false, error: message });
+                  }
                   return of(null);
                 }),
               );
@@ -490,17 +501,12 @@ export function withFolderTreeFeature<_>() {
 
                       return api.getResourceTree(collection, movedFolderPath, includeNested).pipe(
                         tap((tree) => {
-                          if ('resources' in tree) {
-                            patchState(store, {
-                              translations: tree.resources,
-                              error: null,
-                            });
-                            store.setTranslationsLoading(false);
-                          } else {
-                            throw new Error('cache-not-ready');
-                          }
+                          patchState(store, {
+                            translations: tree.resources,
+                            error: null,
+                          });
+                          store.setTranslationsLoading(false);
                         }),
-                        retry({ count: 5, delay: () => timer(1000) }),
                         catchError(() => {
                           store.setTranslationsLoading(false);
                           return of(null);

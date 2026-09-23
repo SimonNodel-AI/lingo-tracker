@@ -23,8 +23,8 @@ export class TagList {
   readonly TOKENS = TRACKER_TOKENS;
 
   /** Array of explicit (per-resource) tag strings to display */
-  tags = input.required<string[]>();
+  tags = input.required<readonly string[]>();
 
   /** Tags inherited from the parent collection; shown with a distinct style and tooltip */
-  inheritedTags = input<string[]>([]);
+  inheritedTags = input<readonly string[]>([]);
 }

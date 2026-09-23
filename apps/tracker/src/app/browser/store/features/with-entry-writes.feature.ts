@@ -14,19 +14,6 @@ import { type Observable, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
 
 /**
- * The key the folder list files an entry under: relative to the folder the list
- * shows (nested entries keep their sub-path), or undefined when the entry lies
- * outside that folder and so cannot be in the list.
- */
-export function listKeyFor(fullKey: string, listFolderPath: string): string | undefined {
-  if (!listFolderPath) {
-    return fullKey;
-  }
-  const prefix = `${listFolderPath}.`;
-  return fullKey.startsWith(prefix) ? fullKey.slice(prefix.length) : undefined;
-}
-
-/**
  * How a Resource entry is written from the UI.
  *
  * Every method takes the entry's full dot-delimited key (or a DTO carrying it)
@@ -34,16 +21,14 @@ export function listKeyFor(fullKey: string, listFolderPath: string): string | un
  * the editor's 409 conflict dialog, a failure toast. On success the store brings
  * its caches in line before the caller hears back.
  *
- * The caches are keyed by what they render: the folder list by the key relative
- * to its folder, search results by the full key. Callers never rewrite keys;
- * that happens here, once.
+ * Both caches (the folder list and the search results) are keyed by each
+ * entry's full key, so an entry is found the same way in either.
  */
 export function withEntryWritesFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{
         currentFolderPath: string;
-        isSearchMode: boolean;
         translations: ResourceSummaryDto[];
         searchResults: SearchResultDto[];
       }>(),
@@ -53,36 +38,26 @@ export function withEntryWritesFeature<_>() {
     withMethods((store) => {
       const api = inject(BrowserApiService);
 
-      /** Replaces the cached entry with what the server now holds, in both caches. */
+      /** Replaces the cached entry with what the server now holds, in both caches. A cache without it is left as is. */
       function patchEntry(fullKey: string, resource: ResourceSummaryDto): void {
-        const listKey = listKeyFor(fullKey, store.currentFolderPath());
-        if (listKey !== undefined) {
-          patchState(store, {
-            translations: store
-              .translations()
-              .map((entry) => (entry.key === listKey ? { ...resource, key: listKey } : entry)),
-          });
-        }
-
-        if (store.isSearchMode()) {
-          patchState(store, {
-            searchResults: store
-              .searchResults()
-              .map((result) => (result.key === fullKey ? { ...result, ...resource, key: fullKey } : result)),
-          });
-        }
+        const translations = store.translations();
+        const searchResults = store.searchResults();
+        patchState(store, {
+          translations: translations.some((entry) => entry.fullKey === fullKey)
+            ? translations.map((entry) => (entry.fullKey === fullKey ? resource : entry))
+            : translations,
+          searchResults: searchResults.some((result) => result.fullKey === fullKey)
+            ? searchResults.map((result) => (result.fullKey === fullKey ? { ...result, ...resource } : result))
+            : searchResults,
+        });
       }
 
       /** Drops an entry that no longer lives where the caches show it. */
       function dropEntry(fullKey: string): void {
-        const listKey = listKeyFor(fullKey, store.currentFolderPath());
-        if (listKey !== undefined) {
-          patchState(store, { translations: store.translations().filter((entry) => entry.key !== listKey) });
-        }
-
-        if (store.isSearchMode()) {
-          patchState(store, { searchResults: store.searchResults().filter((result) => result.key !== fullKey) });
-        }
+        patchState(store, {
+          translations: store.translations().filter((entry) => entry.fullKey !== fullKey),
+          searchResults: store.searchResults().filter((result) => result.fullKey !== fullKey),
+        });
       }
 
       return {

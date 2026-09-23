@@ -38,7 +38,6 @@ export class SimilarTranslations {
   results = input.required<SearchResultDto[]>();
   isLoading = input<boolean>(false);
   hasSearchQuery = input<boolean>(false);
-  baseLocale = input.required<string>();
   /**
    * The key of the hit whose base value is the typed value verbatim, if any.
    * That row is not just similar — it is the same string already spoken for.
@@ -68,13 +67,10 @@ export class SimilarTranslations {
 
   readonly displayedRows = computed<SimilarRow[]>(() =>
     this.displayedResults().map((result) => {
-      const segments = result.key.split('.').filter((segment) => segment.length > 0);
-      const leafSegment = segments.length > 0 ? segments[segments.length - 1] : result.key;
-
       return {
         result,
-        parentSegments: segments.slice(0, -1),
-        leafSegment,
+        parentSegments: result.folderPath.split('.').filter((segment) => segment.length > 0),
+        leafSegment: result.entryKey,
         value: this.getTranslationValue(result),
         isExact: this.isExactMatch(result),
       };
@@ -98,11 +94,11 @@ export class SimilarTranslations {
   }
 
   isExactMatch(result: SearchResultDto): boolean {
-    return this.exactKey() !== '' && result.key === this.exactKey();
+    return this.exactKey() !== '' && result.fullKey === this.exactKey();
   }
 
+  /** The base value, or the first target value when the base value is empty. */
   getTranslationValue(result: SearchResultDto): string {
-    const locale = this.baseLocale();
-    return result.translations[locale] || Object.values(result.translations)[0] || '';
+    return result.base.value || result.targets.find((target) => target.value)?.value || '';
   }
 }

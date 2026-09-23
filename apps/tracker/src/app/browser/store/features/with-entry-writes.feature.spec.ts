@@ -6,23 +6,25 @@ import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-tr
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { BrowserStore } from '../browser.store';
-import { listKeyFor } from './with-entry-writes.feature';
 
 const RESOURCES_URL = '/api/collections/my-collection/resources';
 
-const entry = (key: string, en = key): ResourceSummaryDto => ({ key, translations: { en }, status: {} });
-const hit = (key: string, en = key): SearchResultDto => ({ ...entry(key, en), matchType: 'value' });
-
-describe('listKeyFor', () => {
-  it.each<[string, string, string | undefined]>([
-    ['common.save', '', 'common.save'],
-    ['common.save', 'common', 'save'],
-    ['common.dialog.title', 'common', 'dialog.title'],
-    ['commonly.save', 'common', undefined],
-    ['errors.save', 'common', undefined],
-  ])('%s in the list of "%s" is %s', (fullKey, listFolderPath, expected) => {
-    expect(listKeyFor(fullKey, listFolderPath)).toBe(expected);
-  });
+const entry = (fullKey: string, en = fullKey, fr?: string): ResourceSummaryDto => {
+  const segments = fullKey.split('.');
+  const entryKey = segments.pop() ?? '';
+  return {
+    fullKey,
+    folderPath: segments.join('.'),
+    entryKey,
+    base: { locale: 'en', value: en },
+    targets: fr === undefined ? [] : [{ locale: 'fr', value: fr, needsWork: true, sameAsBase: fr === en }],
+    tags: [],
+    inheritedTags: [],
+  };
+};
+const hit = (fullKey: string, en = fullKey): SearchResultDto => ({
+  ...entry(fullKey, en),
+  matchType: 'partial-value',
 });
 
 describe('BrowserStore entry writes', () => {
@@ -34,7 +36,7 @@ describe('BrowserStore entry writes', () => {
     patchState(store, {
       selectedCollection: 'my-collection',
       currentFolderPath: 'common',
-      translations: [entry('save', 'Save'), entry('dialog.title', 'Title')],
+      translations: [entry('common.save', 'Save'), entry('common.dialog.title', 'Title')],
     });
   };
 
@@ -48,8 +50,8 @@ describe('BrowserStore entry writes', () => {
     });
   };
 
-  const englishOf = (items: readonly ResourceSummaryDto[], key: string): string | undefined =>
-    items.find((item) => item.key === key)?.translations['en'];
+  const englishOf = (items: readonly ResourceSummaryDto[], fullKey: string): string | undefined =>
+    items.find((item) => item.fullKey === fullKey)?.base.value;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -77,10 +79,10 @@ describe('BrowserStore entry writes', () => {
 
       const reload = http.expectOne((req) => req.url === `${RESOURCES_URL}/tree`);
       expect(reload.request.params.get('path')).toBe('common');
-      reload.flush({ path: 'common', resources: [entry('ok'), entry('save')], children: [] });
+      reload.flush({ path: 'common', resources: [entry('common.ok'), entry('common.save')], children: [] });
 
       expect(next).toHaveBeenCalledWith({ entriesCreated: 1, created: true });
-      expect(store.translations().map((item) => item.key)).toEqual(['ok', 'save']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.ok', 'common.save']);
     });
 
     it('should cancel a folder load already in flight, so only the reload lands', () => {
@@ -93,9 +95,9 @@ describe('BrowserStore entry writes', () => {
 
       const [stale, reload] = treeRequests();
       expect(stale.cancelled).toBe(true);
-      reload.flush({ path: 'common', resources: [entry('ok'), entry('save')], children: [] });
+      reload.flush({ path: 'common', resources: [entry('common.ok'), entry('common.save')], children: [] });
 
-      expect(store.translations().map((item) => item.key)).toEqual(['ok', 'save']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.ok', 'common.save']);
     });
 
     it('should hand a failure to the caller without reloading', () => {
@@ -122,44 +124,44 @@ describe('BrowserStore entry writes', () => {
       patch.flush(response);
     };
 
-    it('should patch the folder list under the key relative to its folder', () => {
+    it('should patch the folder list under its full key', () => {
       folderMode();
 
-      update('common.save', { resolvedKey: 'common.save', updated: true, resource: entry('save', 'Save now') });
+      update('common.save', { resolvedKey: 'common.save', updated: true, resource: entry('common.save', 'Save now') });
 
-      expect(englishOf(store.translations(), 'save')).toBe('Save now');
-      expect(store.translations().map((item) => item.key)).toEqual(['save', 'dialog.title']);
+      expect(englishOf(store.translations(), 'common.save')).toBe('Save now');
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.save', 'common.dialog.title']);
     });
 
-    it('should keep the sub-path of a nested entry, which the API reports by its bare key', () => {
+    it('should patch a nested entry by its full key', () => {
       folderMode();
 
       update('common.dialog.title', {
         resolvedKey: 'common.dialog.title',
         updated: true,
-        resource: entry('title', 'New'),
+        resource: entry('common.dialog.title', 'New'),
       });
 
-      expect(englishOf(store.translations(), 'dialog.title')).toBe('New');
+      expect(englishOf(store.translations(), 'common.dialog.title')).toBe('New');
     });
 
-    it('should patch a search result under its full key and the folder list under its relative key', () => {
+    it('should patch both caches under the same full key', () => {
       searchMode();
 
-      update('common.save', { resolvedKey: 'common.save', updated: true, resource: entry('save', 'Save now') });
+      update('common.save', { resolvedKey: 'common.save', updated: true, resource: entry('common.save', 'Save now') });
 
-      const result = store.searchResults().find((item) => item.key === 'common.save');
-      expect(result?.translations['en']).toBe('Save now');
-      expect(result?.matchType).toBe('value');
+      const result = store.searchResults().find((item) => item.fullKey === 'common.save');
+      expect(result?.base.value).toBe('Save now');
+      expect(result?.matchType).toBe('partial-value');
       expect(englishOf(store.searchResults(), 'errors.save')).toBe('Save');
-      expect(englishOf(store.translations(), 'save')).toBe('Save now');
+      expect(englishOf(store.translations(), 'common.save')).toBe('Save now');
     });
 
     it('should patch a search result outside the folder list without touching the list', () => {
       searchMode();
       const listBefore = store.translations();
 
-      update('errors.save', { resolvedKey: 'errors.save', updated: true, resource: entry('save', 'Retry') });
+      update('errors.save', { resolvedKey: 'errors.save', updated: true, resource: entry('errors.save', 'Retry') });
 
       expect(englishOf(store.searchResults(), 'errors.save')).toBe('Retry');
       expect(store.translations()).toBe(listBefore);
@@ -168,10 +170,10 @@ describe('BrowserStore entry writes', () => {
     it('should drop an entry sent to another folder from both caches', () => {
       searchMode();
 
-      update('common.save', { resolvedKey: 'other.save', updated: true, resource: entry('save') }, 'other');
+      update('common.save', { resolvedKey: 'other.save', updated: true, resource: entry('other.save') }, 'other');
 
-      expect(store.translations().map((item) => item.key)).toEqual(['dialog.title']);
-      expect(store.searchResults().map((item) => item.key)).toEqual(['errors.save']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.dialog.title']);
+      expect(store.searchResults().map((item) => item.fullKey)).toEqual(['errors.save']);
     });
 
     it('should patch in place when the DTO carries no moveTo', () => {
@@ -180,10 +182,10 @@ describe('BrowserStore entry writes', () => {
       store.updateResource('my-collection', { key: 'common.save', baseValue: 'Save now' }).subscribe();
       const patch = http.expectOne({ method: 'PATCH', url: RESOURCES_URL });
       expect('moveTo' in patch.request.body).toBe(false);
-      patch.flush({ resolvedKey: 'common.save', updated: true, resource: entry('save', 'Save now') });
+      patch.flush({ resolvedKey: 'common.save', updated: true, resource: entry('common.save', 'Save now') });
 
-      expect(store.translations().map((item) => item.key)).toEqual(['save', 'dialog.title']);
-      expect(englishOf(store.translations(), 'save')).toBe('Save now');
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.save', 'common.dialog.title']);
+      expect(englishOf(store.translations(), 'common.save')).toBe('Save now');
     });
 
     it('should drop an entry moved to the collection root (an empty moveTo)', () => {
@@ -191,7 +193,7 @@ describe('BrowserStore entry writes', () => {
 
       update('common.save', { resolvedKey: 'save', updated: true, resource: entry('save') }, '');
 
-      expect(store.translations().map((item) => item.key)).toEqual(['dialog.title']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.dialog.title']);
     });
 
     it('should leave the caches alone when the response carries no resource', () => {
@@ -226,12 +228,12 @@ describe('BrowserStore entry writes', () => {
       request.flush({ entriesDeleted });
     };
 
-    it('should drop the entry from the folder list under its relative key', () => {
+    it('should drop the entry from the folder list under its full key', () => {
       folderMode();
 
       remove('common.dialog.title', 1);
 
-      expect(store.translations().map((item) => item.key)).toEqual(['save']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.save']);
     });
 
     it('should drop a search result under its full key, and the folder row with it', () => {
@@ -239,8 +241,8 @@ describe('BrowserStore entry writes', () => {
 
       remove('common.save', 1);
 
-      expect(store.searchResults().map((item) => item.key)).toEqual(['errors.save']);
-      expect(store.translations().map((item) => item.key)).toEqual(['dialog.title']);
+      expect(store.searchResults().map((item) => item.fullKey)).toEqual(['errors.save']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.dialog.title']);
     });
 
     it('should keep everything when the server deleted nothing', () => {
@@ -248,7 +250,7 @@ describe('BrowserStore entry writes', () => {
 
       remove('common.save', 0);
 
-      expect(store.translations().map((item) => item.key)).toEqual(['save', 'dialog.title']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.save', 'common.dialog.title']);
     });
 
     it('should ignore a key that is not cached', () => {
@@ -256,7 +258,7 @@ describe('BrowserStore entry writes', () => {
 
       remove('common.missing', 1);
 
-      expect(store.translations().map((item) => item.key)).toEqual(['save', 'dialog.title']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.save', 'common.dialog.title']);
     });
   });
 
@@ -268,22 +270,32 @@ describe('BrowserStore entry writes', () => {
       request.flush({ resource, translatedCount: 1, skippedLocales: [] });
     };
 
-    it('should patch the folder list, rewriting the bare API key to the relative one', () => {
+    it('should patch a nested folder row by its full key', () => {
       folderMode();
 
-      translate('common.dialog.title', { key: 'title', translations: { en: 'Title', fr: 'Titre' }, status: {} });
+      translate('common.dialog.title', entry('common.dialog.title', 'Title', 'Titre'));
 
-      const row = store.translations().find((item) => item.key === 'dialog.title');
-      expect(row?.translations['fr']).toBe('Titre');
+      const row = store.translations().find((item) => item.fullKey === 'common.dialog.title');
+      expect(row?.targets.find((target) => target.locale === 'fr')?.value).toBe('Titre');
     });
 
     it('should patch a search result under its full key', () => {
       searchMode();
 
-      translate('common.save', { key: 'save', translations: { en: 'Save', fr: 'Enregistrer' }, status: {} });
+      translate('common.save', entry('common.save', 'Save', 'Enregistrer'));
 
-      expect(store.searchResults().find((item) => item.key === 'common.save')?.translations['fr']).toBe('Enregistrer');
-      expect(store.translations().find((item) => item.key === 'save')?.translations['fr']).toBe('Enregistrer');
+      expect(
+        store
+          .searchResults()
+          .find((item) => item.fullKey === 'common.save')
+          ?.targets.find((target) => target.locale === 'fr')?.value,
+      ).toBe('Enregistrer');
+      expect(
+        store
+          .translations()
+          .find((item) => item.fullKey === 'common.save')
+          ?.targets.find((target) => target.locale === 'fr')?.value,
+      ).toBe('Enregistrer');
     });
   });
 });

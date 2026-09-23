@@ -1,10 +1,11 @@
 import { resolve } from 'node:path';
 import { HttpException, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import type { Response } from 'express';
 import * as core from '@simoncodes-ca/core';
 import { TranslationError } from '@simoncodes-ca/core';
 import type { ResourceTreeDto } from '@simoncodes-ca/data-transfer';
-import type { LocaleMetadata, TranslationStatus } from '@simoncodes-ca/domain';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { ConfigService } from '../../config/config.service';
 import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
@@ -31,61 +32,6 @@ jest.mock('@simoncodes-ca/core', () => {
     extractResourcesRecursively: jest.fn(),
   };
 });
-
-// Mock the resource tree mapper
-jest.mock('../../mappers/resource-tree.mapper', () => ({
-  mapResourceEntryToSummary: jest.fn((entry) => ({
-    key: entry.key,
-    translations: { en: entry.source, ...entry.translations },
-    status: Object.fromEntries(
-      Object.entries(entry.metadata).map(([locale, meta]: [string, any]) => [locale, meta.status]),
-    ),
-    comment: entry.comment,
-    tags: entry.tags,
-  })),
-  mapResourceTreeToDto: jest.fn((treeNode) => {
-    // Simple pass-through mapper for tests that mimics the real mapper
-    return {
-      path: treeNode.folderPathSegments.join('.'),
-      resources: treeNode.resources.map((r: any) => {
-        // Find base locale
-        let baseLocale: string | undefined;
-        for (const [locale, meta] of Object.entries<LocaleMetadata>(r.metadata)) {
-          if (meta.status === undefined && meta.baseChecksum === undefined) {
-            baseLocale = locale;
-            break;
-          }
-        }
-
-        // Combine source and translations
-        const translations: Record<string, string> = { ...r.translations };
-        if (baseLocale) {
-          translations[baseLocale] = r.source;
-        }
-
-        // Extract status
-        const status: Record<string, any> = {};
-        for (const [locale, meta] of Object.entries<LocaleMetadata>(r.metadata)) {
-          status[locale] = meta.status;
-        }
-
-        return {
-          key: r.key,
-          translations,
-          status,
-          comment: r.comment,
-          tags: r.tags,
-        };
-      }),
-      children: treeNode.children.map((c: any) => ({
-        name: c.name,
-        fullPath: c.fullPathSegments.join('.'),
-        loaded: c.loaded,
-        tree: c.tree ? { path: c.fullPathSegments.join('.'), resources: [], children: [] } : undefined,
-      })),
-    };
-  }),
-}));
 
 describe('ResourcesController', () => {
   let resourcesModule: TestingModule;
@@ -838,6 +784,24 @@ describe('ResourcesController', () => {
       );
     });
 
+    it('should return the updated resource addressed at its resolved key', async () => {
+      const editResource = core.editResource as jest.Mock;
+      editResource.mockReturnValue({
+        resolvedKey: 'shared.ok',
+        updated: true,
+        entry: { key: 'ok', source: 'OK', translations: {}, metadata: { en: { checksum: 'a' } } },
+      });
+
+      const result = await resourcesController.update('test-collection', { key: 'app.button.ok', moveTo: 'shared' });
+
+      expect(result.resource).toMatchObject({
+        fullKey: 'shared.ok',
+        folderPath: 'shared',
+        entryKey: 'ok',
+        base: { locale: 'en', value: 'OK' },
+      });
+    });
+
     it('should pass moveTo through to core', async () => {
       const editResource = core.editResource as jest.Mock;
       editResource.mockReturnValue({ resolvedKey: 'shared.ok', updated: true });
@@ -950,7 +914,20 @@ describe('ResourcesController', () => {
       )) as ResourceTreeDto;
 
       expect(tree.path).toBe('');
-      expect(tree.resources.map((r) => r.key)).toEqual(['title']);
+      expect(tree.resources).toEqual([
+        {
+          fullKey: 'title',
+          folderPath: '',
+          entryKey: 'title',
+          base: { locale: 'en', value: 'Title' },
+          targets: [
+            { locale: 'fr-ca', value: undefined, status: undefined, needsWork: true, sameAsBase: false },
+            { locale: 'es', value: 'Título', status: 'new', needsWork: true, sameAsBase: false },
+          ],
+          tags: [],
+          inheritedTags: [],
+        },
+      ]);
       expect(mockIndex.tree).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), '');
       expect(response.status).not.toHaveBeenCalled();
     });
@@ -966,6 +943,9 @@ describe('ResourcesController', () => {
       )) as ResourceTreeDto;
 
       expect(tree.path).toBe('apps');
+      expect(tree.resources.map((r) => [r.fullKey, r.folderPath, r.entryKey])).toEqual([
+        ['apps.title', 'apps', 'title'],
+      ]);
       expect(mockIndex.tree).toHaveBeenCalledWith(expect.anything(), 'apps');
     });
 
@@ -975,7 +955,7 @@ describe('ResourcesController', () => {
       extractResourcesRecursively.mockReturnValue([
         ...mockTreeNode.resources,
         {
-          key: 'save',
+          key: 'dialog.save',
           source: 'Save',
           translations: { es: 'Guardar' },
           metadata: {
@@ -993,7 +973,29 @@ describe('ResourcesController', () => {
       )) as ResourceTreeDto;
 
       expect(extractResourcesRecursively).toHaveBeenCalledWith(mockTreeNode);
-      expect(tree.resources.map((r) => r.key)).toEqual(['title', 'save']);
+      expect(tree.resources.map((r) => r.fullKey)).toEqual(['title', 'dialog.save']);
+    });
+
+    it('should give nested resources their full address below a non-root path', async () => {
+      const extractResourcesRecursively = core.extractResourcesRecursively as jest.Mock;
+      const appsNode = { ...mockTreeNode, folderPathSegments: ['apps'] };
+      mockIndex.tree.mockReturnValue({ status: 'ready', tree: appsNode });
+      extractResourcesRecursively.mockReturnValue([
+        ...appsNode.resources,
+        { key: 'dialog.save', source: 'Save', translations: {}, metadata: { en: { checksum: 'b' } } },
+      ]);
+
+      const tree = (await resourcesController.getTree(
+        'test-collection',
+        'apps',
+        'true',
+        mockResponse() as unknown as Response,
+      )) as ResourceTreeDto;
+
+      expect(tree.resources.map((r) => [r.fullKey, r.folderPath, r.entryKey])).toEqual([
+        ['apps.title', 'apps', 'title'],
+        ['apps.dialog.save', 'apps.dialog', 'save'],
+      ]);
     });
 
     it.each([
@@ -1080,7 +1082,12 @@ describe('ResourcesController', () => {
       const result = await resourcesController.search('test-collection', { query: 'lingo' });
 
       expect(result.query).toBe('lingo');
-      expect(result.results.map((r) => r.key)).toEqual(['app.title']);
+      expect(result.results.map((r) => [r.fullKey, r.folderPath, r.entryKey])).toEqual([['app.title', 'app', 'title']]);
+      expect(result.results[0].base).toEqual({ locale: 'en', value: 'LingoTracker' });
+      expect(result.results[0].targets.map((t) => [t.locale, t.status, t.sameAsBase])).toEqual([
+        ['fr-ca', undefined, false],
+        ['es', 'translated', true],
+      ]);
       expect(result.limited).toBe(false);
       expect(mockIndex.search).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), 'lingo', 101);
     });
@@ -1185,7 +1192,8 @@ describe('ResourcesController', () => {
 
       expect(result.translatedCount).toBe(2);
       expect(result.skippedLocales).toEqual([]);
-      expect(result.resource.key).toBe('save');
+      expect(result.resource).toMatchObject({ fullKey: 'buttons.save', folderPath: 'buttons', entryKey: 'save' });
+      expect(result.resource.targets.map((t) => t.status)).toEqual(['translated', 'translated']);
     });
 
     it('should pass the opened collection and resource key to core', async () => {

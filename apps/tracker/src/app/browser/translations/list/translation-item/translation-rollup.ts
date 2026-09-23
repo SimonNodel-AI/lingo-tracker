@@ -17,6 +17,7 @@ import { TemplatePortal, PortalModule } from '@angular/cdk/portal';
 import { ViewContainerRef, type TemplateRef } from '@angular/core';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { countByStatus, type TranslationStatus } from '@simoncodes-ca/domain';
+import type { RollupLocale } from './row-view';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectActiveLang, injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
 import {
@@ -24,12 +25,6 @@ import {
   STATUS_DISPLAY_ORDER,
   STATUS_PRESENTATION,
 } from '../../../../shared/translation-status/translation-status-presentation';
-
-/** Locale state for rollup display */
-export interface LocaleState {
-  code: string;
-  status: TranslationStatus;
-}
 
 /** Close delay in ms */
 const CLOSE_DELAY = 120;
@@ -324,11 +319,8 @@ const RING_ORDER: readonly TranslationStatus[] = [...STATUS_DISPLAY_ORDER].rever
   },
 })
 export class TranslationRollup implements OnDestroy {
-  /** Locale states to display */
-  locales = input.required<LocaleState[]>();
-
-  /** Base locale code (excluded from display) */
-  baseLocale = input<string>('en');
+  /** Target locales that carry a status (the base locale is never among them). */
+  locales = input.required<readonly RollupLocale[]>();
 
   /** Renders at the smaller size compact's single-line row can afford. */
   compact = input<boolean>(false);
@@ -354,17 +346,11 @@ export class TranslationRollup implements OnDestroy {
     this.close();
   }
 
-  /** Effective locales (excluding base locale) */
-  private readonly effectiveLocales = computed(() => {
-    const base = this.baseLocale().toLowerCase();
-    return (this.locales() ?? []).filter((l) => (l?.code ?? '').toLowerCase() !== base);
-  });
-
   /** Status counts */
-  readonly counts = computed(() => countByStatus(this.effectiveLocales().map((l) => l.status)));
+  readonly counts = computed(() => countByStatus(this.locales().map((l) => l.status)));
 
-  /** Total non-base locales */
-  readonly total = computed(() => this.effectiveLocales().length);
+  /** Total target locales with a status */
+  readonly total = computed(() => this.locales().length);
 
   /** What the centre reports: state and glyph, from `rollupCenter`. */
   private readonly center = computed(() => rollupCenter(this.counts()));
@@ -430,7 +416,7 @@ export class TranslationRollup implements OnDestroy {
   readonly tooltipLocaleRows = computed(() => {
     const orderIndex = (s: TranslationStatus) => STATUS_DISPLAY_ORDER.indexOf(s);
 
-    return this.effectiveLocales()
+    return this.locales()
       .map((l) => ({
         code: l.code,
         status: l.status,

@@ -26,7 +26,6 @@ export const SIMILAR_DISPLAY_LIMIT = 10;
 export function filterSimilarByValue(
   results: readonly SearchResultDto[],
   typedValue: string,
-  baseLocale: string,
   limit: number = SIMILAR_DISPLAY_LIMIT,
 ): SearchResultDto[] {
   const typed = typedValue.trim().toLowerCase();
@@ -35,7 +34,7 @@ export function filterSimilarByValue(
   }
 
   const kept = results.filter((result) => {
-    const baseValue = (result.translations[baseLocale] ?? '').trim().toLowerCase();
+    const baseValue = result.base.value.trim().toLowerCase();
     if (!baseValue) {
       return false;
     }

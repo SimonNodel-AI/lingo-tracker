@@ -292,7 +292,7 @@ sequenceDiagram
     API-->>BS: UpdateResourceResponseDto { resource: ResourceSummaryDto }
 
     Note over BS: F. Cache patch (no re-fetch)
-    BS->>BS: patch translations[] (relative key) and searchResults[] (full key)
+    BS->>BS: patch translations[] and searchResults[] (both by fullKey)
     Note right of BS: Uses the API response payload.<br/>No second HTTP request.
     BS-->>Dialog: response
     Dialog-->>TLS: afterClosed() → { success: true, resource, folderPath }
@@ -409,8 +409,8 @@ sequenceDiagram
     BS->>API: POST /api/collections/{name}/folders/move
     API-->>BS: MoveFolderResponseDto
     BS->>BS: rebaseFolderPaths(sourceNode, destinationFolderPath)<br/>insertFolderIntoTree(rootFolders, rebasedFolder, dest)
-    BS->>BS: retry GET /tree for movedFolderPath (up to 5×, 1 s delay)
-    Note right of BS: Folder move clears API cache;<br/>retry waits for READY before loading translations.
+    BS->>BS: GET /tree for movedFolderPath via BrowserApiService
+    Note right of BS: Folder move clears API cache;<br/>BrowserApiService retries a 202 (up to 5×, 1 s delay)<br/>before handing the tree over.
     alt API call fails
         API-->>BS: HTTP error
         BS->>BS: patchState({ rootFolders: snapshotFolders })<br/>isDisabled=false, isDeletingFolder=false
@@ -465,7 +465,7 @@ flowchart TD
 
     TREE_RESPONSE -- "ResourceTreeDto\n(200 OK, cache READY)" --> POPULATE["patchState({\n  rootFolders: treeData.children,\n  translations: treeData.resources,\n  currentFolderPath: ''\n})\nIndexingOverlay hidden"]
 
-    TREE_RESPONSE -- "TreeStatusResponseDto\n(202, not ready yet)" --> LOAD_TREE_RETRY["No-op — status still 'indexing'\nNext interval tick will retry"]
+    TREE_RESPONSE -- "TreeStatusResponseDto\n(202, not ready yet)" --> LOAD_TREE_RETRY["BrowserApiService.getResourceTree\nasks again (up to 5×, 1 s apart);\nthe store only ever receives a tree"]
 
     LOAD_TREE_RETRY --> POLL_START
 

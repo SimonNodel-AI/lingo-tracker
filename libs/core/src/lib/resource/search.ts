@@ -1,6 +1,7 @@
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { openResourceFolder, translationLocales } from './resource-folder';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
+import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
 import type { ResourceTreeNode } from './load-resource-tree';
 
 /**
@@ -20,11 +21,17 @@ export interface SearchResult {
   /** Full dot-delimited key path */
   key: string;
 
+  /** Base locale value (the entry's `source`) */
+  source: string;
+
   /** Translation values for all locales */
   translations: Record<string, string>;
 
   /** Translation status for each locale */
   status: Record<string, TranslationStatus | undefined>;
+
+  /** The entry's stored metadata, keyed by locale (read by the Resource Summary builder) */
+  metadata: ResourceEntryMetadata;
 
   /** Type of match found */
   matchType: MatchType;
@@ -157,8 +164,10 @@ export function searchTranslations(params: SearchParams): SearchResult[] {
 
           results.push({
             key: fullKey,
+            source: entry.source,
             translations,
             status,
+            metadata: meta,
             matchType,
             matchedLocales: matchedLocales.length > 0 ? matchedLocales : undefined,
             comment: entry.comment,
@@ -322,8 +331,10 @@ export function searchResourceTree(params: SearchTreeParams): SearchResult[] {
 
         results.push({
           key: fullKey,
+          source: entry.source,
           translations,
           status,
+          metadata: entry.metadata,
           matchType,
           matchedLocales: matchedLocales.length > 0 ? matchedLocales : undefined,
           comment: entry.comment,

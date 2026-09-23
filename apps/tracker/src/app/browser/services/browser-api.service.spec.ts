@@ -11,8 +11,13 @@ import type {
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 import { firstValueFrom } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { BrowserApiService } from './browser-api.service';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  BrowserApiService,
+  CollectionIndexNotReadyError,
+  TREE_NOT_READY_RETRIES,
+  TREE_NOT_READY_RETRY_DELAY_MS,
+} from './browser-api.service';
 
 describe('BrowserApiService', () => {
   let service: BrowserApiService;
@@ -83,6 +88,62 @@ describe('BrowserApiService', () => {
       const data = await firstValueFrom(result$);
       expect(data).toEqual(mockResponse);
     });
+
+    describe('while the collection is being indexed', () => {
+      const url = '/api/collections/c/resources/tree?path=&includeNested=false';
+      const notReady = { status: 'indexing', message: 'Collection is currently being indexed.' };
+      const tree: ResourceTreeDto = { path: '', resources: [], children: [] };
+
+      beforeEach(() => vi.useFakeTimers());
+      afterEach(() => vi.useRealTimers());
+
+      it('asks again after a pause and hands the caller only the tree', () => {
+        const received: ResourceTreeDto[] = [];
+        service.getResourceTree('c').subscribe((value) => received.push(value));
+
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        httpMock.expectNone(url);
+
+        vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
+        httpMock.expectOne(url).flush(tree);
+
+        expect(received).toEqual([tree]);
+      });
+
+      it('gives up with CollectionIndexNotReadyError once the retries are spent', () => {
+        let failure: unknown;
+        service.getResourceTree('c').subscribe({
+          error: (error: unknown) => {
+            failure = error;
+          },
+        });
+
+        for (let attempt = 0; attempt <= TREE_NOT_READY_RETRIES; attempt++) {
+          httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+          vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
+        }
+
+        httpMock.expectNone(url);
+        expect(failure).toBeInstanceOf(CollectionIndexNotReadyError);
+        expect((failure as Error).message).toBe(notReady.message);
+      });
+
+      it('does not retry an HTTP error', () => {
+        let failure: unknown;
+        service.getResourceTree('c').subscribe({
+          error: (error: unknown) => {
+            failure = error;
+          },
+        });
+
+        httpMock.expectOne(url).flush('boom', { status: 500, statusText: 'Server Error' });
+        vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
+
+        httpMock.expectNone(url);
+        expect(failure).toBeDefined();
+        expect(failure).not.toBeInstanceOf(CollectionIndexNotReadyError);
+      });
+    });
   });
 
   describe('searchTranslations', () => {
@@ -95,9 +156,13 @@ describe('BrowserApiService', () => {
         query: 'button',
         results: [
           {
-            key: 'common.buttons.save',
-            translations: { en: 'Save', es: 'Guardar' },
-            status: { en: 'verified', es: 'verified' },
+            fullKey: 'common.buttons.save',
+            folderPath: 'common.buttons',
+            entryKey: 'save',
+            base: { locale: 'en', value: 'Save' },
+            targets: [{ locale: 'es', value: 'Guardar', status: 'verified', needsWork: false, sameAsBase: false }],
+            tags: [],
+            inheritedTags: [],
             matchType: 'partial-key',
           },
         ],

@@ -1,29 +1,17 @@
-import type { SearchResult } from '@simoncodes-ca/core';
+import type { Collection, SearchResult } from '@simoncodes-ca/core';
 import type { SearchResultDto } from '@simoncodes-ca/data-transfer';
+import { buildResourceSummary } from '@simoncodes-ca/domain';
 
-/**
- * Maps a SearchResult from the core domain model to SearchResultDto for API responses.
- * The types are structurally identical, but we create explicit DTOs for API boundary clarity.
- */
-export function mapSearchResultToDto(searchResult: SearchResult, collectionTags?: readonly string[]): SearchResultDto {
+/** Maps a search hit to its DTO: the entry's Resource Summary plus how it matched. */
+export function mapSearchResultToDto(searchResult: SearchResult, collection: Collection): SearchResultDto {
   return {
-    key: searchResult.key,
-    translations: searchResult.translations,
-    status: searchResult.status,
+    ...buildResourceSummary(searchResult.key, searchResult, collection),
     matchType: searchResult.matchType,
     matchedLocales: searchResult.matchedLocales,
-    comment: searchResult.comment,
-    tags: searchResult.tags,
-    inheritedTags: collectionTags && collectionTags.length > 0 ? [...collectionTags] : undefined,
   };
 }
 
-/**
- * Maps an array of SearchResults to SearchResultDto array.
- */
-export function mapSearchResultsToDto(
-  searchResults: SearchResult[],
-  collectionTags?: readonly string[],
-): SearchResultDto[] {
-  return searchResults.map((r) => mapSearchResultToDto(r, collectionTags));
+/** Maps search hits to DTOs, keeping their order. */
+export function mapSearchResultsToDto(searchResults: SearchResult[], collection: Collection): SearchResultDto[] {
+  return searchResults.map((result) => mapSearchResultToDto(result, collection));
 }

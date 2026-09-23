@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { countByStatus, STATUS_PRECEDENCE, type StatusCounts, type TranslationStatus } from '@simoncodes-ca/domain';
+import { countByStatus, type StatusCounts, type TranslationStatus } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
 import {
@@ -11,32 +11,7 @@ import {
   statusLabelTokenFor,
 } from '../../../../shared/translation-status/translation-status-presentation';
 import type { DensityMode } from '../../../types/density-mode';
-
-export type LocaleTranslation = {
-  locale: string;
-  value: string;
-  status?: TranslationStatus;
-  /**
-   * The stored value is byte-identical to the base locale's. The status metadata
-   * still says `translated` — a checksum cannot tell a deliberate loanword from a
-   * string nobody touched — so the row says it out loud instead of letting the
-   * status chip pass source text off as finished work.
-   */
-  isSameAsBase?: boolean;
-};
-
-/**
- * The source string a translator judges every locale row against.
- *
- * It renders as the first row of the same grid rather than as a heading above it.
- * A translation can only be judged against the source when the two sit on one
- * baseline, in one measure, at one type size — a bold full-bleed heading and a
- * second-column body value are two separate readings of the same sentence.
- */
-export type BaseTranslation = {
-  locale: string;
-  value: string;
-};
+import { type BaseRow, type LocaleRow, sharedStatus } from './row-view';
 
 /**
  * Displays locale translations in a grid layout.
@@ -54,14 +29,19 @@ export type BaseTranslation = {
   },
 })
 export class TranslationItemLocales {
-  /** Array of locale translations to display */
-  localeTranslations = input.required<LocaleTranslation[]>();
+  /**
+   * Locale rows to display. A row flagged `isSameAsBase` holds the base value
+   * verbatim: the status may still say `translated` — a checksum cannot tell a
+   * deliberate loanword from a string nobody touched — so the row says it out loud.
+   */
+  localeTranslations = input.required<readonly LocaleRow[]>();
 
   /**
-   * The source row, rendered first and in the same grid as the locales. Absent in
-   * a collection with no base locale, where there is nothing to compare against.
+   * The source row, rendered first and in the same grid as the locales: a
+   * translation can only be judged against the source when both share one
+   * baseline. Absent when there is no base value to compare against.
    */
-  baseRow = input<BaseTranslation | undefined>(undefined);
+  baseRow = input<BaseRow | undefined>(undefined);
 
   /** Density mode affects styling */
   densityMode = input<DensityMode>('full');
@@ -82,22 +62,8 @@ export class TranslationItemLocales {
   /** Localized "{n} translated" for the rendered rows. */
   private readonly breakdown = injectStatusBreakdown(this.statusCounts);
 
-  /**
-   * The status every rendered row shares, if they share one.
-   *
-   * Eleven locales in the same state drew eleven identical chips, which is a
-   * pattern with nothing to find in it. One chip carrying the count says the same
-   * thing once. Two or more rows are needed before collapsing wins anything, and
-   * a row with no status is not a match — so a mixed card keeps its per-row chips,
-   * which is the case where the column is worth reading.
-   */
-  readonly uniformStatus = computed<TranslationStatus | undefined>(() => {
-    const rowCount = this.localeTranslations().length;
-    if (rowCount < 2) return undefined;
-
-    const counts = this.statusCounts();
-    return STATUS_PRECEDENCE.find((status) => counts[status] === rowCount);
-  });
+  /** The status every rendered row shares, if they share one (see `sharedStatus`); a mixed card keeps per-row chips. */
+  readonly uniformStatus = computed<TranslationStatus | undefined>(() => sharedStatus(this.localeTranslations()));
 
   /** The collapsed chip: the shared status, labelled with its count. */
   readonly uniformSummary = computed(() => {

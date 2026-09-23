@@ -5,7 +5,7 @@ import type {
   TranslationStatus,
   UpdateResourceDto,
 } from '@simoncodes-ca/data-transfer';
-import { isValidSegment, normalizeTag, resolveResourceKey } from '@simoncodes-ca/domain';
+import { isValidSegment, normalizeTag, resolveResourceKey, summaryTarget } from '@simoncodes-ca/domain';
 import { findFolderInTree } from '../../store/folder-tree.utils';
 
 /*
@@ -35,13 +35,6 @@ export interface ResourceEntryDraft {
   tags: readonly string[];
   /** Every non-base locale, in the editor's order. */
   translations: readonly LocaleDraft[];
-}
-
-/** The entry an edit started from. */
-export interface OriginalEntry {
-  resource: ResourceSummaryDto;
-  /** The folder it lives in; '' for the collection root. */
-  folderPath: string;
 }
 
 // ── Dotted-key absorption ────────────────────────────────────────────────────
@@ -110,15 +103,16 @@ export interface KnownEntries {
  * Three sources, cheapest first: a folder already expanded in the tree, the folder
  * the browser is showing, then anything the editor fetched.
  *
- * An entry key is a single segment. The browser lists a folder with its nested
- * resources folded in, under keys relative to the folder (`dialog.title`, not
- * `title`). Those live in another folder, so they are left out.
+ * The browser lists a folder with its nested resources folded in. Those live in
+ * another folder, so only resources whose `folderPath` is this folder count.
  */
 export function folderEntryKeys(folderPath: string, known: KnownEntries): ReadonlySet<string> | undefined {
   const expanded = folderPath ? findFolderInTree(known.rootFolders, folderPath)?.tree?.resources : undefined;
   const listed = expanded ?? (known.browserFolderPath === folderPath ? known.browserEntries : undefined);
-  const keys = listed?.map((resource) => resource.key) ?? known.fetched.get(folderPath);
-  return keys ? new Set(keys.filter((key) => !key.includes('.'))) : undefined;
+  const keys =
+    listed?.filter((resource) => resource.folderPath === folderPath).map((resource) => resource.entryKey) ??
+    known.fetched.get(folderPath);
+  return keys ? new Set(keys) : undefined;
 }
 
 /**
@@ -317,20 +311,20 @@ export function toCreateDto(draft: ResourceEntryDraft): CreateResourceDto {
 export function editedLocales(draft: ResourceEntryDraft, original: ResourceSummaryDto): LocaleDraft[] {
   return draft.translations.filter((translation) => {
     const hasValue = translation.value.trim().length > 0;
-    const statusChanged = translation.status !== (original.status[translation.locale] ?? 'new');
+    const statusChanged = translation.status !== (summaryTarget(original, translation.locale)?.status ?? 'new');
     return hasValue || statusChanged;
   });
 }
 
 /**
- * The update request. The key is the entry's full key where it lives now. A
- * change of folder, the collection root included, travels as `moveTo` (the
- * destination folder; '' for the root). Tags are always sent, so removing the
- * last one clears them.
+ * The update request. The key is the entry's full key where it lives now (the
+ * `original` it started from). A change of folder, the collection root included,
+ * travels as `moveTo` (the destination folder; '' for the root). Tags are always
+ * sent, so removing the last one clears them.
  */
-export function toUpdateDto(draft: ResourceEntryDraft, original: OriginalEntry): UpdateResourceDto {
+export function toUpdateDto(draft: ResourceEntryDraft, original: ResourceSummaryDto): UpdateResourceDto {
   const dto: UpdateResourceDto = {
-    key: resolveResourceKey(original.resource.key, original.folderPath),
+    key: original.fullKey,
     baseValue: draft.baseValue,
     comment: draft.comment.trim() || undefined,
     tags: [...draft.tags],
@@ -340,7 +334,7 @@ export function toUpdateDto(draft: ResourceEntryDraft, original: OriginalEntry):
     dto.moveTo = draft.folderPath;
   }
 
-  const locales = editedLocales(draft, original.resource);
+  const locales = editedLocales(draft, original);
   if (locales.length > 0) {
     dto.locales = Object.fromEntries(
       locales.map((translation) => [translation.locale, { value: translation.value, status: translation.status }]),

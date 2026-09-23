@@ -34,7 +34,7 @@
       }
       @case ('results') {
         <div class="results-list">
-          @for (row of displayedRows(); track row.result.key) {
+          @for (row of displayedRows(); track row.result.fullKey) {
             <button
               type="button"
               class="result-item"

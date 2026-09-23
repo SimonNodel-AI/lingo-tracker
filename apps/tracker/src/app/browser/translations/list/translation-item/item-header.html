@@ -74,10 +74,9 @@
       </button>
     }
 
-    @if (localeStates().length) {
+    @if (rollupLocales().length) {
       <app-translation-rollup
-        [locales]="localeStates()"
-        [baseLocale]="baseLocale()"
+        [locales]="rollupLocales()"
         [compact]="layout() === 'inline'"
       />
     }

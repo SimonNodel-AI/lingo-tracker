@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import type { Observable } from 'rxjs';
+import { map, type Observable, retry, throwError, timer } from 'rxjs';
 import type {
   ResourceTreeDto,
   TreeStatusResponseDto,
@@ -24,6 +24,23 @@ import type {
   TranslateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 
+/** How many times a tree read is asked again while the collection is still being indexed. */
+export const TREE_NOT_READY_RETRIES = 5;
+
+/** Pause between those attempts, in milliseconds. */
+export const TREE_NOT_READY_RETRY_DELAY_MS = 1000;
+
+/**
+ * The collection's index was still not ready after every retry (the tree endpoint kept
+ * answering HTTP 202 with a {@link TreeStatusResponseDto}).
+ */
+export class CollectionIndexNotReadyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CollectionIndexNotReadyError';
+  }
+}
+
 /**
  * API service for browser-related operations.
  */
@@ -46,26 +63,38 @@ export class BrowserApiService {
   }
 
   /**
-   * Gets the resource tree for a collection.
-   * The API now returns the full tree or subtree without depth limits.
+   * Gets the resource tree (or the subtree at `path`) for a collection.
+   *
+   * While the collection is still being indexed the endpoint answers HTTP 202 with a
+   * status body instead of a tree. That wait is handled here: the read is asked again
+   * up to {@link TREE_NOT_READY_RETRIES} times, {@link TREE_NOT_READY_RETRY_DELAY_MS}
+   * apart, so callers only ever receive a tree. When the index is still not ready after
+   * that, the observable errors with {@link CollectionIndexNotReadyError}.
    *
    * @param collectionName - Name of the collection
    * @param path - Folder path (empty string for root)
    * @param includeNested - Whether to include nested resources in the resources array
-   * @returns Observable of ResourceTreeDto
    */
-  getResourceTree(
-    collectionName: string,
-    path = '',
-    includeNested = false,
-  ): Observable<ResourceTreeDto | TreeStatusResponseDto> {
+  getResourceTree(collectionName: string, path = '', includeNested = false): Observable<ResourceTreeDto> {
     const encodedName = encodeURIComponent(collectionName);
     const encodedPath = encodeURIComponent(path);
     const params = new HttpParams().set('path', encodedPath).set('includeNested', includeNested.toString());
 
-    return this.#http.get<ResourceTreeDto | TreeStatusResponseDto>(`${this.#baseUrl}/${encodedName}/resources/tree`, {
-      params,
-    });
+    return this.#http
+      .get<ResourceTreeDto | TreeStatusResponseDto>(`${this.#baseUrl}/${encodedName}/resources/tree`, { params })
+      .pipe(
+        map((body) => {
+          if ('resources' in body) return body;
+          throw new CollectionIndexNotReadyError(body.message);
+        }),
+        retry({
+          count: TREE_NOT_READY_RETRIES,
+          delay: (error: unknown) =>
+            error instanceof CollectionIndexNotReadyError
+              ? timer(TREE_NOT_READY_RETRY_DELAY_MS)
+              : throwError(() => error),
+        }),
+      );
   }
 
   /**

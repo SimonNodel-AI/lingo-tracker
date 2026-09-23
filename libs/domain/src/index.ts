@@ -29,6 +29,16 @@ export {
   resolveImportStatus,
 } from './lib/staleness';
 
+// Resource Summary: one entry with an explicit address and per-target verdicts
+export {
+  buildResourceSummary,
+  type ResourceSummary,
+  type ResourceSummaryCollection,
+  type ResourceSummaryEntry,
+  type ResourceSummaryTarget,
+  summaryTarget,
+} from './lib/resource-summary';
+
 // Status summary: roll-ups over many statuses
 export { countByStatus, STATUS_PRECEDENCE, type StatusCounts, worstStatus } from './lib/translation-status-summary';
 

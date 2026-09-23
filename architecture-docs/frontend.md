@@ -25,6 +25,7 @@ Return to [architecture README](README.md).
   - [Lazy-Loaded Dialogs](#lazy-loaded-dialogs)
   - [Translation Editor and the Resource Entry Draft](#translation-editor-and-the-resource-entry-draft)
   - [Translation Status Summary](#translation-status-summary)
+  - [Translation Rows and the Row View](#translation-rows-and-the-row-view)
   - [Writing a Resource Entry](#writing-a-resource-entry)
 - [Theming System](#theming-system)
 - [i18n — Transloco Integration](#i18n--transloco-integration)
@@ -178,7 +179,7 @@ Root-level methods on `BrowserStore` (not in a feature):
 | Method | Purpose |
 |---|---|
 | `setSelectedCollection` | Switches active collection, restores view preferences from `localStorage`, triggers cache polling |
-| `moveResource` | Optimistic remove from `translations` → API call → re-fetch on success, rollback on error |
+| `moveResource` | Optimistic remove from `translations` (matched by `fullKey`, so it works for rows in any folder) → API call → re-fetch on success, rollback on error |
 | `reset` | Clears all state slices back to initial values |
 | `setBaseLocale`, `setDisabled`, `clearError` | Simple `patchState` helpers |
 
@@ -188,8 +189,8 @@ Root-level methods on `BrowserStore` (not in a feature):
 
 `TranslationListStore` is a lightweight store provided at the `TranslationList` component level (not root). It composes two features:
 
-- **`withItemUiState`** — tracks `translatingKeys: Set<string>` (in-progress auto-translate calls) and `recentlyUpdatedKey: string | undefined` (drives the 1.5 s flash highlight after a save). Exposes `addTranslatingKey`, `removeTranslatingKey`, `flashRecentlyUpdated`, `isTranslating(key)`, `isRecentlyUpdated(key)`. Cleans up the flash timer `onDestroy`.
-- **`withItemActions`** — exposes `editTranslation`, `deleteTranslation`, `translateResource`, `copyKey`. Edit goes through `TranslationEditorLauncher`; delete opens `ConfirmationDialog`. Delete and translate resolve the row's full key and call `BrowserStore.deleteResource` / `BrowserStore.translateResource`, which update the caches. The feature keeps the per-row feedback: the translating spinner, the flash, and the toasts.
+- **`withItemUiState`** — tracks `translatingKeys: Set<string>` (in-progress auto-translate calls) and `recentlyUpdatedKey: string | undefined` (drives the 1.5 s flash highlight after a save). Both are keyed by each resource's `fullKey`. Exposes `addTranslatingKey`, `removeTranslatingKey`, `flashRecentlyUpdated`, `isTranslating(key)`, `isRecentlyUpdated(key)`. Cleans up the flash timer `onDestroy`.
+- **`withItemActions`** — exposes `editTranslation`, `deleteTranslation`, `translateResource`, `copyKey`. Edit goes through `TranslationEditorLauncher`; delete opens `ConfirmationDialog`. Delete and translate take the row's `fullKey` and call `BrowserStore.deleteResource` / `BrowserStore.translateResource`, which update the caches. The feature keeps the per-row feedback: the translating spinner, the flash, and the toasts.
 
 Because `TranslationListStore` is component-provided, each `TranslationList` instance gets its own store. `TranslationItem` injects it via `inject(TranslationListStore)` — no prop drilling needed.
 
@@ -308,20 +309,41 @@ The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autoc
 | Function | Rule |
 |---|---|
 | `absorbDottedKey(rawKey, currentFolder, folderFromKey)` | A dotted key typed in the key field moves its prefix to the folder and keeps the leaf. The next dotted key extends the folder only while the folder is still the one the last absorption set. |
-| `folderEntryKeys(folderPath, known)` / `collisionFor(key, folderPath, known, ownKey?)` | Which entry keys a folder holds, from three sources in order: the expanded folder tree, the folder the browser shows, then folders the dialog fetched. Nested keys (with a dot) are not entries of the folder. The match is exact and case-sensitive, the same as `addResource`. The entry being edited never collides with itself. |
+| `folderEntryKeys(folderPath, known)` / `collisionFor(key, folderPath, known, ownKey?)` | Which entry keys a folder holds, from three sources in order: the expanded folder tree, the folder the browser shows, then folders the dialog fetched. Only resources whose `folderPath` is the folder count (nested resources the list folds in do not). The match is exact and case-sensitive, the same as `addResource`. The entry being edited never collides with itself. |
 | `contextTree(input, moreLabel)` | The "Where it lands" tree: the target folder among its siblings, and an 8-entry window of its entries around the key. The remaining entries are one "more" row. |
 | `addTag` / `removeTag` | Tag list operations. Tags are normalized with `normalizeTag`. Inherited tags cannot be removed. |
 | `toCreateDto(draft)` | The create request. Every typed translation is sent with status `new`. Locales left empty are not sent; the server seeds them by the collection's rule ([locale seeding](glossary.md#locale-seeding)). The request has no base locale: the collection's applies. |
-| `toUpdateDto(draft, original)` / `editedLocales` | The update request. `key` is the entry's full key where it lives now. A change of folder (the collection root included) is sent as `moveTo`, the destination folder. A locale is sent when it has a value or when its status changed. |
+| `toUpdateDto(draft, original)` / `editedLocales` | The update request. `original` is the Resource Summary the edit started from; `key` is its `fullKey`. A change of folder (the collection root included) is sent as `moveTo`, the destination folder. A locale is sent when it has a value or when its status changed. |
 | `hasUnsavedChanges(draft, initial, fieldsEdited)` | Closing loses work when a form field was edited, the folder moved, or the tags changed. |
 
 The key field validator is `segmentValidator` (`shared/validators/segment.validator.ts`). It uses the domain `isValidSegment` rule and reports under the `pattern` error key. The bundle name and the inline new-folder name use the same validator. The folder filter in the location popover uses `filterFolderTree` from `browser/store/folder-tree.utils.ts`, the same function as `BrowserStore.filteredFolders`.
 
 The dialog reads two things directly from `BrowserApiService`: `searchTranslations` for similar values, and `getResourceTree` for the entries of a folder picked in the popover. Both are dialog-local reads. The store's `selectFolder` would move the browser list behind the dialog, so the dialog does not use it.
 
+Status labels in the editor (the status pill, its menu and the context column dots) come from `statusLabelTokenFor` in the shared translation-status presentation module, the same tokens the rows use.
+
 ### Translation Status Summary
 
 Each status roll-up in the browser uses the domain [translation status summary](glossary.md#translation-status-summary) (`countByStatus`, `worstStatus`, `STATUS_PRECEDENCE`). These roll-ups are the `TranslationRollup` ring and its accessible name, the item's screen-reader breakdown, the locale column's single-status chip, the `StatusFilter` counts and `matchesAnyStatus`, and sort by status. The components only render the result. The Tracker keeps the presentation in one table, `shared/translation-status/translation-status-presentation.ts`. `STATUS_PRESENTATION` gives the chip icon, the ring-centre glyph, the label token and the count token for each status. `rollupCenter(counts)` gives the ring centre: the worst status, or `mixed` when `new` and `stale` are both present. The module also has `STATUS_DISPLAY_ORDER` (`new`, `stale`, `translated`, `verified`), which the filter rail, the rollup tooltip rows and sort by status use. The ring draws its arcs in the reverse of this order. The breakdown text and a card's locale rows use the worst-first `STATUS_PRECEDENCE` instead. A per-folder roll-up can use the same functions if `FolderNodeDto` gets status data in the future.
+
+### Translation Rows and the Row View
+
+Every row in the list shows one [Resource Summary](glossary.md#resource-summary) (`ResourceSummaryDto`). The summary already carries the explicit address (`fullKey`, `folderPath`, `entryKey`), the base locale and value, and one target row per collection locale with `needsWork` and `sameAsBase`. So no row module works out a key, filters out the base locale, or re-implements "new or stale".
+
+The pure module `browser/translations/list/translation-item/row-view.ts` (no Angular imports, like the Resource Entry Draft) turns a summary and the list's selection (`visibleLocales` from `filteredLocales`, `compactLocale` from `compactDisplayLocale`) into a `RowView`:
+
+| Field | Rule |
+|---|---|
+| `baseRow` | The source row for full density; absent when the base value is blank. |
+| `localeRows` | The visible target locales, worst status first (`STATUS_PRECEDENCE`), then by locale code. A missing value is `''`. |
+| `compact` | The single compact line: the base value, or the chosen locale's value in its place. `needsAttention` (the status chip) is set when the locale needs work and has a status; `isSameAsBase` is set only when there is no chip, so a row has at most one marker. |
+| `rollupLocales` / `statusCounts` | Every target locale with a status, whatever the filter shows, and their `countByStatus`. The rollup ring, its tooltip and the screen-reader breakdown read these. |
+| `canTranslate` | Some target `needsWork`: the same test `translateExistingResource` uses, so the translate action is enabled exactly when the server has work to do. |
+| `hasLongValue` | The base or a visible locale value is longer than `LONG_VALUE_THRESHOLD` (200) and is clipped. |
+
+`sharedStatus(rows)` gives the locale grid's single chip when every rendered row shares one status. `TranslationItem` computes the view once and passes it to `TranslationItemHeader`; `TranslationItemLocales` and `TranslationRollup` receive rows. The components keep only the DOM parts: expansion, overlays, drag, touch and keyboard handling. The rules are tested in `row-view.spec.ts` as pure functions.
+
+`BrowserApiService.getResourceTree` hides the collection index's "not ready" answer (HTTP 202): it retries and gives the stores only a tree, so `selectFolder`, `loadRootFolders`, `loadFolderChildren`, `moveFolder`, the launcher and the editor have no retry or shape check of their own.
 
 ### Writing a Resource Entry
 
@@ -338,7 +360,7 @@ Each method takes the full dot-delimited key and returns the API `Observable`. T
 
 `toUpdateDto` includes `moveTo` only when the entry changes folder, and `''` means the collection root. The server edits the entry, then moves it there (core `editResource` with `moveTo`), so the store drops the row. The store rule and the DTO rule use the same test: the `moveTo` property is present or absent.
 
-The two caches use different keys. `translations` uses the key relative to `currentFolderPath`, so a nested entry keeps its sub-path (`dialog.title`). `searchResults` uses the full key. The store converts the key with `listKeyFor` in one place. The API returns a bare entry key, so the store also replaces the key of the returned resource. Callers do not convert keys.
+Both caches (`translations` and `searchResults`) are keyed by each resource's `fullKey`, in folder mode, nested mode and search mode alike. The API returns the updated resource with its own full address, so the store swaps it in by `fullKey`; there is no key conversion anywhere. A drag carries the row's `fullKey` and its real `folderPath`, also for nested rows.
 
 `TranslationEditorLauncher` and `TranslationMainHeader` only give feedback after the dialog closes: the row flash and the toasts.
 

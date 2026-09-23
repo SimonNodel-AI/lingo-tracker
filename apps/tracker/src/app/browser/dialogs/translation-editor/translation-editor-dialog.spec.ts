@@ -6,7 +6,12 @@ import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dial
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
-import type { LingoTrackerConfigDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import type {
+  LingoTrackerConfigDto,
+  ResourceSummaryDto,
+  SearchResultDto,
+  TranslationStatus,
+} from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
@@ -28,7 +33,13 @@ describe('TranslationEditorDialog', () => {
   let component: TranslationEditorDialog;
   let fixture: ComponentFixture<TranslationEditorDialog>;
   let spectator: Spectator<TranslationEditorDialog>;
-  let dialogRef: { close: Mock; afterOpened: Mock };
+  let dialogRef: {
+    close: Mock;
+    afterOpened: Mock;
+    keydownEvents: Mock;
+    backdropClick: Mock;
+    disableClose: boolean;
+  };
   let mockDialog: { open: Mock };
   let mockBrowserApi: {
     createResource: Mock;
@@ -38,6 +49,32 @@ describe('TranslationEditorDialog', () => {
   };
   let mockNotifications: { success: Mock; info: Mock; warning: Mock; error: Mock };
   let mockConfig: WritableSignal<LingoTrackerConfigDto | null>;
+
+  const summary = (
+    fullKey: string,
+    baseValue: string,
+    targets: Record<string, [string | undefined, TranslationStatus | undefined]> = {},
+    extra: Partial<ResourceSummaryDto> = {},
+  ): ResourceSummaryDto => {
+    const segments = fullKey.split('.');
+    const entryKey = segments.pop() ?? '';
+    return {
+      fullKey,
+      folderPath: segments.join('.'),
+      entryKey,
+      base: { locale: 'en', value: baseValue },
+      targets: Object.entries(targets).map(([locale, [value, status]]) => ({
+        locale,
+        value,
+        status,
+        needsWork: status === undefined || status === 'new' || status === 'stale',
+        sameAsBase: (value?.trim() ?? '').length > 0 && value?.trim() === baseValue.trim(),
+      })),
+      tags: [],
+      inheritedTags: [],
+      ...extra,
+    };
+  };
 
   const createMockData = (mode: 'create' | 'edit', resource?: ResourceSummaryDto): TranslationEditorDialogData => ({
     mode,
@@ -130,11 +167,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should display edit mode title and subtitle', async () => {
-      const editData = createMockData('edit', {
-        key: 'test_key',
-        translations: { en: 'Test Value' },
-        status: {},
-      });
+      const editData = createMockData('edit', summary('common.buttons.test_key', 'Test Value'));
       renderDialog(editData);
 
       expect(component.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE);
@@ -217,11 +250,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should not absorb dots in edit mode, where the key is readonly', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
       renderDialog(createMockData('edit', mockResource));
 
       component.form.controls.key.setValue('apps.common.ok');
@@ -409,12 +438,12 @@ describe('TranslationEditorDialog', () => {
 
   describe('Edit Mode', () => {
     it('should pre-populate form with resource data', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: {},
-        comment: 'Existing comment',
-      };
+      const mockResource = summary(
+        'common.buttons.existing_key',
+        'Existing Value',
+        { fr: ['Valeur existante', undefined] },
+        { comment: 'Existing comment' },
+      );
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -425,11 +454,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should handle missing base locale translation', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { fr: 'Valeur' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', '', { fr: ['Valeur', undefined] });
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -438,11 +463,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should handle missing comment', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -451,11 +472,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should display correct save button label in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -468,18 +485,10 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should pre-populate other locale translations in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: {
-          en: 'Existing Value',
-          fr: 'Valeur existante',
-          de: 'Vorhandener Wert',
-        },
-        status: {
-          fr: 'translated',
-          de: 'verified',
-        },
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {
+        fr: ['Valeur existante', 'translated'],
+        de: ['Vorhandener Wert', 'verified'],
+      });
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -607,12 +616,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should focus the comment field in edit mode when user clicks "Add Comment"', async () => {
       renderDialog(
-        createMockData('edit', {
-          key: 'test_key',
-          translations: { en: 'Test Value' },
-          status: {},
-          comment: 'Existing comment',
-        }),
+        createMockData('edit', summary('common.buttons.test_key', 'Test Value', {}, { comment: 'Existing comment' })),
       );
       mockDialog.open.mockReturnValue({ afterClosed: vi.fn().mockReturnValue(of(false)) });
 
@@ -751,12 +755,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should include skippedLocales in update result when API returns them', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-        comment: 'A comment',
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(
@@ -774,12 +773,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should omit skippedLocales from update result when API returns empty array', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-        comment: 'A comment',
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(
@@ -935,7 +929,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should highlight the row of the entry being edited', () => {
-      renderDialog(createMockData('edit', { key: 'ok', translations: { en: 'OK' }, status: {} }));
+      renderDialog(createMockData('edit', summary('common.buttons.ok', 'OK')));
       spectator.detectChanges();
 
       const rows = spectator.queryAll('[data-testid="context-tree"] .ftree-n--target');
@@ -955,11 +949,13 @@ describe('TranslationEditorDialog', () => {
 
     it('should list only the locales that are new or stale', () => {
       renderDialog(
-        createMockData('edit', {
-          key: 'ok',
-          translations: { en: 'OK', fr: 'Oui', de: 'Ja' },
-          status: { fr: 'stale', de: 'verified' },
-        }),
+        createMockData(
+          'edit',
+          summary('common.buttons.ok', 'OK', {
+            fr: ['Oui', 'stale'],
+            de: ['Ja', 'verified'],
+          }),
+        ),
       );
 
       expect(component.localesNeedingWork().map((locale) => locale.locale)).toEqual(['fr']);
@@ -971,11 +967,13 @@ describe('TranslationEditorDialog', () => {
 
     it('should show the caught-up line instead of an empty list', () => {
       renderDialog(
-        createMockData('edit', {
-          key: 'ok',
-          translations: { en: 'OK', fr: 'Oui', de: 'Ja' },
-          status: { fr: 'translated', de: 'verified' },
-        }),
+        createMockData(
+          'edit',
+          summary('common.buttons.ok', 'OK', {
+            fr: ['Oui', 'translated'],
+            de: ['Ja', 'verified'],
+          }),
+        ),
       );
 
       expect(component.localesNeedingWork()).toHaveLength(0);
@@ -985,12 +983,15 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Key collision', () => {
-    const entry = (key: string): ResourceSummaryDto => ({ key, translations: { en: key }, status: {} });
+    const entry = (fullKey: string): ResourceSummaryDto => summary(fullKey, fullKey.split('.').at(-1) ?? fullKey);
 
     /** Puts entries in the folder the browser is showing, the cheapest source. */
     const seedBrowserFolder = (folderPath: string, keys: string[]): void => {
       const store = spectator.inject(BrowserStore);
-      patchState(store, { currentFolderPath: folderPath, translations: keys.map(entry) });
+      patchState(store, {
+        currentFolderPath: folderPath,
+        translations: keys.map((key) => entry(folderPath ? `${folderPath}.${key}` : key)),
+      });
     };
 
     it('should detect a collision against the entries the browser already holds', () => {
@@ -1132,7 +1133,10 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Sticky similar values', () => {
-    const hit = (key: string, value: string) => ({ key, translations: { en: value }, status: {} });
+    const hit = (fullKey: string, value: string): SearchResultDto => ({
+      ...summary(fullKey, value),
+      matchType: 'partial-value',
+    });
 
     const searchReturns = (results: ReturnType<typeof hit>[]): void => {
       mockBrowserApi.searchTranslations.mockReturnValue(
@@ -1202,9 +1206,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should show nothing in edit mode until the value differs, and clear again on revert', () => {
       vi.useRealTimers();
-      renderDialog(
-        createMockData('edit', { key: 'saveShortcutHint', translations: { en: 'Press Ctrl + Enter' }, status: {} }),
-      );
+      renderDialog(createMockData('edit', summary('common.buttons.saveShortcutHint', 'Press Ctrl + Enter')));
       vi.useFakeTimers();
       searchReturns([hit('common.actions.save', 'Press Ctrl + Enter')]);
 
@@ -1253,7 +1255,7 @@ describe('TranslationEditorDialog', () => {
       ]);
       typeAndSettle('Save draft');
 
-      expect(component.similarResources().map((result) => result.key)).toEqual(['common.actions.save']);
+      expect(component.similarResources().map((result) => result.fullKey)).toEqual(['common.actions.save']);
       expect(component.similarCount()).toBe(1);
     });
 
@@ -1274,7 +1276,7 @@ describe('TranslationEditorDialog', () => {
       typeAndSettle('Save');
 
       expect(component.similarCount()).toBe(2);
-      expect(component.similarResources().map((result) => result.key)).toEqual([
+      expect(component.similarResources().map((result) => result.fullKey)).toEqual([
         'browser.translationEditor.saveAnyway',
         'common.actions.save',
       ]);
@@ -1352,12 +1354,12 @@ describe('TranslationEditorDialog', () => {
 
   describe('Edit Mode API Integration', () => {
     it('should call updateResource API when submitting in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: { fr: 'translated' },
-        comment: 'Existing comment',
-      };
+      const mockResource = summary(
+        'common.buttons.existing_key',
+        'Existing Value',
+        { fr: ['Valeur existante', 'translated'] },
+        { comment: 'Existing comment' },
+      );
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
@@ -1380,11 +1382,9 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should include translations in update API call', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: { fr: 'translated' },
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {
+        fr: ['Valeur existante', 'translated'],
+      });
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
@@ -1407,11 +1407,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should handle update API errors', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(
@@ -1433,12 +1429,12 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should close dialog with success result on successful update', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: { fr: 'translated' },
-        comment: 'Existing comment',
-      };
+      const mockResource = summary(
+        'common.buttons.existing_key',
+        'Existing Value',
+        { fr: ['Valeur existante', 'translated'] },
+        { comment: 'Existing comment' },
+      );
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
@@ -1496,7 +1492,7 @@ describe('TranslationEditorDialog', () => {
       const store = spectator.inject(BrowserStore);
       patchState(store, {
         currentFolderPath: 'common.buttons',
-        translations: [{ key: 'ok', translations: { en: 'OK' }, status: {} }],
+        translations: [summary('common.buttons.ok', 'OK')],
       });
       spectator.detectChanges();
 
@@ -1526,7 +1522,7 @@ describe('TranslationEditorDialog', () => {
       spectator.query<HTMLTextAreaElement>('#translation-editor-base-value');
 
     const openEditing = (baseValue: string): void => {
-      renderDialog(createMockData('edit', { key: 'label', translations: { en: baseValue }, status: {} }));
+      renderDialog(createMockData('edit', summary('common.buttons.label', baseValue)));
     };
 
     const type = (value: string, settle = true): void => {
@@ -1715,7 +1711,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should advise without offering Use when read-only', () => {
       renderDialog({
-        ...createMockData('edit', { key: 'label', translations: { en: 'Expenditure' }, status: {} }),
+        ...createMockData('edit', summary('common.buttons.label', 'Expenditure')),
         readOnly: true,
       });
 

@@ -248,6 +248,31 @@ erDiagram
 
 `ResourceEntries` and `TrackerMetadata` are always paired: one `resource_entries.json` and one `tracker_meta.json` per folder, never one without the other. The relationship between `ResourceEntry` and `ResourceEntryMetadata` is by shared entry key; the relationship between a locale value in `ResourceEntry` and a `LocaleMetadata` object is by shared locale code.
 
+### Read model: Resource Summary
+
+Readers outside core do not see the stored pair. They see a [Resource Summary](glossary.md#resource-summary) (`libs/domain/src/lib/resource-summary.ts`), built from one entry and its opened `Collection`:
+
+```typescript
+interface ResourceSummary {
+  fullKey: string;      // "apps.common.buttons.ok"
+  folderPath: string;   // "apps.common.buttons" ('' at the root)
+  entryKey: string;     // "ok"
+  base: { locale: string; value: string };      // the collection's base locale and `source`
+  targets: Array<{                               // every collection target locale, in collection order
+    locale: string;
+    value?: string;                              // absent when the entry has no value
+    status?: TranslationStatus;                  // absent when there is no metadata
+    needsWork: boolean;                          // needsTranslation(meta): no metadata, new or stale
+    sameAsBase: boolean;                         // isUntranslatedCopy on trimmed, non-empty values
+  }>;
+  comment?: string;
+  tags: string[];          // the resource's own tags
+  inheritedTags: string[]; // the collection's tags
+}
+```
+
+A target locale without a value still has a row. Values for locales the collection does not have are not shown.
+
 ---
 
 ## ICU vs Transloco Format

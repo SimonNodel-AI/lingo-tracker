@@ -119,10 +119,10 @@ graph TD
         end
 
         subgraph mappers["Mappers"]
-            TREEMP["resource-tree.mapper\nResourceTreeNode → ResourceTreeDto\nResourceTreeEntry → ResourceSummaryDto"]
+            TREEMP["resource-tree.mapper\nResourceTreeNode → ResourceTreeDto\nResourceTreeEntry + Collection → ResourceSummaryDto"]
             COLMAP["collection.mapper\nLingoTrackerCollectionDto ↔ LingoTrackerCollection"]
             CFGMAP["config.mapper\nLingoTrackerConfig → LingoTrackerConfigDto"]
-            SRCHMAP["search-result.mapper\nSearchResult → SearchResultDto"]
+            SRCHMAP["search-result.mapper\nSearchResult + Collection → SearchResultDto"]
         end
 
         STATIC["Express static middleware\nServes Angular SPA from\ndist/tracker/browser/"]
@@ -318,12 +318,14 @@ sequenceDiagram
 
     alt Ready
         Index-->>API: { status: "ready", tree }
-        API->>API: mapResourceTreeToDto(tree)
+        API->>API: mapResourceTreeToDto(tree, collection)
         API-->>UI: 200 OK ResourceTreeDto (404 when the path is not in the tree)
     end
 ```
 
-A 202 Accepted response always means "retry shortly". A 200 OK carries the full or partial tree. The route uses `@Res({ passthrough: true })` only to set the 202 status; Nest serializes the returned DTO. The frontend owns the retry loop; there is no server-sent event or WebSocket.
+A 202 Accepted response always means "retry shortly". A 200 OK carries the full or partial tree. The route uses `@Res({ passthrough: true })` only to set the 202 status; Nest serializes the returned DTO. The frontend owns the retry loop, in one place: `BrowserApiService.getResourceTree` asks again (5 times, 1 s apart) and hands its callers only a tree, or a `CollectionIndexNotReadyError` when the index is still not ready. There is no server-sent event or WebSocket.
+
+Every resource in the tree, in a search result, and in the translate and update responses is a [Resource Summary](glossary.md#resource-summary) (`ResourceSummaryDto`): an explicit address (`fullKey`, `folderPath`, `entryKey`), `base: { locale, value }`, and one `targets` row per target locale of the collection with `value`, `status`, `needsWork` and `sameAsBase`. With `includeNested=true`, `resources` also lists every resource below the folder, each with its own full address.
 
 ---
 
@@ -376,12 +378,12 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 
 | Mapper file | Direction | Key transformation |
 |-------------|-----------|-------------------|
-| `resource-tree.mapper.ts` | `ResourceTreeNode` → `ResourceTreeDto` | Flattens `folderPathSegments[]` array to a dot-delimited `path` string; merges `source` (base locale value) into the `translations` record keyed by the base locale string; extracts per-locale `status` from the `metadata` record |
-| `resource-tree.mapper.ts` | `ResourceTreeEntry` → `ResourceSummaryDto` | Identifies the base locale by the absence of `status` and `baseChecksum` in the metadata entry; produces a flat `{ key, translations, status, comment, tags, inheritedTags }` shape. The `inheritedTags` field carries the parent collection's `tags` so the UI can render them distinctly without re-reading the config. |
+| `resource-tree.mapper.ts` | `ResourceTreeNode` + `Collection` → `ResourceTreeDto` | Flattens `folderPathSegments[]` array to a dot-delimited `path` string; turns every resource into a Resource Summary |
+| `resource-tree.mapper.ts` | `ResourceTreeEntry` + folder path + `Collection` → `ResourceSummaryDto` | Resolves the entry's full key against the folder it is relative to and calls the domain `buildResourceSummary`. The base locale, the target locales and the `inheritedTags` come from the opened `Collection`; nothing is guessed from the metadata. The translate and update handlers call `buildResourceSummary` directly with the key they already hold. |
 | `collection.mapper.ts` | `LingoTrackerCollectionDto` ↔ `LingoTrackerCollection` | Bidirectional; shallow clone of `locales[]` and `tags[]` arrays to prevent aliasing. Carries the `protectedTermsFile` setting in both directions. Drops resolved `protectedTerms` on the way back to config, because terms live in a file and the controller writes them there separately. |
 | `config.mapper.ts` | `LingoTrackerConfig` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper` and bundle mapping to `bundle.mapper`; shallow clone of `locales[]`. Takes an optional `ResolvedProtectedTerms` and `projectName` (basename of the API's working directory) from the controller, so the mapper itself reads no files. |
 | `bundle.mapper.ts` | `BundleDefinitionDto` ↔ `BundleDefinition`; `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | Bidirectional definition mapping trims strings and drops empty optionals so nothing spurious is written to the config. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper rebuilds written file paths from `localesProcessed` plus the types file. |
-| `search-result.mapper.ts` | `SearchResult` → `SearchResultDto` | Structurally identical types; mapper exists for explicit API boundary documentation |
+| `search-result.mapper.ts` | `SearchResult` + `Collection` → `SearchResultDto` | The hit's Resource Summary (from its `key`, `source`, `translations` and `metadata`) plus `matchType` and `matchedLocales` |
 
 **Why does `config.mapper.ts` take resolved terms as an argument?** Protected terms live in JSON files outside `.lingo-tracker.json`. Building the DTO therefore requires reading the filesystem.
 
@@ -389,4 +391,4 @@ The mapper keeps no file access. Instead `ConfigController.getConfig()` calls `r
 
 The resolved terms and their file paths then reach the UI as read-only DTO fields, `protectedTerms` and `protectedTermsFilePath`. The writable `protectedTermsFile` setting travels alongside them.
 
-**Why the base locale detection logic in `resource-tree.mapper.ts`?** The `ResourceTreeEntry` domain model stores the base locale value in a dedicated `source` field and tracks its metadata in the same `metadata` record as translations — distinguished by the absence of `status` and `baseChecksum` fields (the base locale has a checksum but no `baseChecksum` to compare against, and no `status` since it is never `new` or `stale` relative to itself). The DTO flattens this into a single `translations` map for simpler frontend consumption. The mapper performs this denormalization at the API boundary so the domain model stays clean.
+**Why is `ResourceSummaryDto` declared in domain?** The summary is JSON-shaped and its rules (`needsWork` is the [staleness rule](glossary.md#staleness-rule)'s `needsTranslation`; `sameAsBase` is `isUntranslatedCopy` on trimmed values) must be the same wherever an entry is shown. So `libs/domain/src/lib/resource-summary.ts` owns the type and the builder, and `data-transfer` re-exports the type as the DTO, like `TranslationStatus`. The mapper only supplies the full key and the `Collection`. The old mapper found the base locale by looking for the metadata entry without `status` and `baseChecksum`; any other locale with that shape was mistaken for it.

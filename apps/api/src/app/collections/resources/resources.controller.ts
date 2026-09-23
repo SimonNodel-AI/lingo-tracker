@@ -24,6 +24,7 @@ import {
   extractResourcesRecursively,
   type Collection,
 } from '@simoncodes-ca/core';
+import { buildResourceSummary } from '@simoncodes-ca/domain';
 import type {
   CreateResourceDto,
   CreateResourceResponseDto,
@@ -76,7 +77,7 @@ export class ResourcesController {
     this.#index.apply(result.mutations);
 
     return {
-      resource: mapResourceEntryToSummary(result.entry, collection.tags),
+      resource: buildResourceSummary(dto.key, result.entry, collection),
       skippedLocales: result.skippedLocales,
       translatedCount: result.translatedCount,
     };
@@ -220,7 +221,7 @@ export class ResourcesController {
 
     this.#index.apply(result.mutations);
     const resourceDto: ResourceSummaryDto | undefined =
-      result.updated && result.entry ? mapResourceEntryToSummary(result.entry, collection.tags) : undefined;
+      result.updated && result.entry ? buildResourceSummary(result.resolvedKey, result.entry, collection) : undefined;
 
     return {
       resolvedKey: result.resolvedKey,
@@ -261,11 +262,12 @@ export class ResourcesController {
     // An empty path addresses the collection root, which the artificial root node in the
     // Tracker sidebar selects. It is a folder like any other here, so it honours
     // includeNested too and can list every resource in the collection.
-    const treeDto = mapResourceTreeToDto(read.tree, collection.tags);
+    const treeDto = mapResourceTreeToDto(read.tree, collection);
 
     if (includeNested === 'true') {
+      // Nested entries carry keys relative to the requested folder, so they resolve against it.
       treeDto.resources = extractResourcesRecursively(read.tree).map((res) =>
-        mapResourceEntryToSummary(res, collection.tags),
+        mapResourceEntryToSummary(res, treeDto.path, collection),
       );
     }
 
@@ -303,7 +305,7 @@ export class ResourcesController {
     // Check if results were limited
     const limited = searchResults.length > maxResults;
     const coreResults = limited ? searchResults.slice(0, maxResults) : searchResults;
-    const results = mapSearchResultsToDto(coreResults, collection.tags);
+    const results = mapSearchResultsToDto(coreResults, collection);
 
     return {
       query: dto.query,
