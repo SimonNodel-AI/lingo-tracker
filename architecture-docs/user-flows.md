@@ -84,7 +84,7 @@ sequenceDiagram
     Note over Dev,FS: 5. Bundle
     Dev->>CLI: bundle
     CLI->>Core: generateBundle(params)
-    Core->>FS: loadCollectionResources() — reads resource_entries.json per folder
+    Core->>FS: loadCollectionResources() — readCollection(): entries + metadata per folder, once per collection
     Core->>Domain: icuToTransloco(value) — per entry
     Core->>Core: buildHierarchy() — dot-keys → nested object
     Core->>FS: writeBundleFile(dist/i18n/en.json, dist/i18n/fr.json, ...)
@@ -118,8 +118,8 @@ sequenceDiagram
     CLI->>Core: validateOutputDirectory(outputDir)
     CLI->>Core: exportTargetLocales(collections, ["fr"]) → print the plan
     CLI->>Core: runExport(collections, options + protected terms)
-    Core->>Core: loadResourcesFromCollections()
-    Note right of Core: walkFolders() traverses each translationsFolder<br/>reads resource_entries.json + tracker_meta.json per folder
+    Core->>Core: loadResources(collection) for each collection
+    Note right of Core: readCollection() (Collection Reader) walks each translationsFolder<br/>and opens every folder through ResourceFolder
     Core->>FS: read resource_entries.json + tracker_meta.json (per folder)
     loop For each target locale
         Core->>Core: filterResources() — collections with this target locale,<br/>status and tag filters, protected-term annotation

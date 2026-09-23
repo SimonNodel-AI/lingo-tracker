@@ -10,7 +10,7 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     ConfigParseError: actual.ConfigParseError,
     CollectionNotFoundError: actual.CollectionNotFoundError,
     ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
-    loadResourcesFromCollections: vi.fn(),
+    readCollection: vi.fn(),
   };
 });
 
@@ -40,28 +40,44 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 import * as fs from 'fs';
-import { type LingoTrackerConfig, loadResourcesFromCollections, openCollection } from '@simoncodes-ca/core';
+import {
+  type CollectionRead,
+  type LingoTrackerConfig,
+  openCollection,
+  readCollection,
+  type StoredResource,
+} from '@simoncodes-ca/core';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { loadConfiguration, resolveCollection } from '../utils';
 import { glossaryCommand } from './glossary';
 
-const LOADED = [
-  {
-    key: 'save',
-    fullKey: 'save',
-    source: 'Save',
-    translations: { fr: 'Enregistrer' },
-    status: { fr: 'verified' },
-    collection: 'app',
-  },
-  {
-    key: 'settings',
-    fullKey: 'settings',
-    source: 'Settings',
-    translations: { fr: 'Paramètres' },
-    status: { fr: 'translated' },
-    collection: 'app',
-  },
-];
+/** A root-level stored resource with one status per translated locale. */
+function stored(
+  key: string,
+  source: string,
+  translations: Record<string, string>,
+  status: Record<string, TranslationStatus>,
+): StoredResource {
+  const metadata = Object.fromEntries(
+    Object.entries(status).map(([locale, localeStatus]) => [locale, { checksum: 'x', status: localeStatus }]),
+  );
+  return {
+    fullKey: key,
+    folderPath: '',
+    entryKey: key,
+    entry: { key, source, translations, metadata },
+    effectiveTags: [],
+  };
+}
+
+function read(...resources: StoredResource[]): CollectionRead {
+  return { resources, problems: [] };
+}
+
+const LOADED = read(
+  stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'verified' }),
+  stored('settings', 'Settings', { fr: 'Paramètres' }, { fr: 'translated' }),
+);
 
 const LOADED_CONFIG = {
   config: {
@@ -89,13 +105,13 @@ describe('glossaryCommand', () => {
     });
     (process.stdin as unknown as { isTTY: boolean }).isTTY = true;
     vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG as never);
-    vi.mocked(loadResourcesFromCollections).mockReturnValue(LOADED as never);
+    vi.mocked(readCollection).mockReturnValue(LOADED);
   });
 
   it('returns early when configuration is missing', async () => {
     vi.mocked(loadConfiguration).mockReturnValue(null);
     await glossaryCommand({ text: 'Save' });
-    expect(loadResourcesFromCollections).not.toHaveBeenCalled();
+    expect(readCollection).not.toHaveBeenCalled();
   });
 
   it('exits when no input is provided', async () => {
@@ -179,16 +195,7 @@ describe('glossaryCommand', () => {
   });
 
   it('excludes stale/new entries by default but includes them with --include-all', async () => {
-    vi.mocked(loadResourcesFromCollections).mockReturnValue([
-      {
-        key: 'save',
-        fullKey: 'save',
-        source: 'Save',
-        translations: { fr: 'Enregistrer' },
-        status: { fr: 'stale' },
-        collection: 'app',
-      },
-    ] as never);
+    vi.mocked(readCollection).mockReturnValue(read(stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'stale' })));
 
     await glossaryCommand({ text: 'Save' });
     expect(JSON.parse(writtenContent()).matchCount).toBe(0);
@@ -207,21 +214,39 @@ describe('glossaryCommand', () => {
       configPath: '/p/.lingo-tracker.json',
       cwd: '/p',
     } as never);
-    vi.mocked(loadResourcesFromCollections).mockReturnValue([
-      {
-        key: 'save',
-        fullKey: 'save',
-        source: 'Enregistrer',
-        translations: { fr: 'Enregistrer', es: 'Guardar' },
-        status: { fr: 'verified', es: 'verified' },
-        collection: 'app',
-      },
-    ] as never);
+    vi.mocked(readCollection).mockReturnValue(
+      read(stored('save', 'Enregistrer', { fr: 'Enregistrer', es: 'Guardar' }, { fr: 'verified', es: 'verified' })),
+    );
 
     await glossaryCommand({ text: 'Enregistrer' });
     const out = JSON.parse(writtenContent());
     // Collection base 'fr' stripped; only non-base target locale 'es' remains.
     expect(out.terms[0].translations).toEqual({ es: 'Guardar' });
+  });
+
+  it('reports an unreadable folder on stderr and keeps the readable entries', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.mocked(readCollection).mockReturnValue({
+      resources: LOADED.resources,
+      problems: [{ folderPath: 'bad', absolutePath: '/project/i18n/bad', message: 'Failed to parse JSON file x' }],
+    });
+
+    await glossaryCommand({ text: 'Save', stdout: true });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Collection 'app': skipped unreadable folder"));
+    const printed = vi.mocked(process.stdout.write).mock.calls[0][0] as string;
+    expect(JSON.parse(printed).matchCount).toBe(1);
+  });
+
+  it('reads a null locale metadata record as no status instead of crashing', async () => {
+    const entry = stored('save', 'Save', { fr: 'Enregistrer' }, {});
+    // A hand-edited tracker_meta.json can hold `"fr": null`.
+    const withNullMeta: StoredResource = { ...entry, entry: { ...entry.entry, metadata: JSON.parse('{"fr": null}') } };
+    vi.mocked(readCollection).mockReturnValue(read(withNullMeta));
+
+    await glossaryCommand({ text: 'Save', includeAll: true });
+
+    expect(JSON.parse(writtenContent()).matchCount).toBe(1);
   });
 
   it('exits with a clear error for the unimplemented ai extractor', async () => {

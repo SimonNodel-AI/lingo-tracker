@@ -45,7 +45,6 @@ export {
 
 // Operations: export
 export {
-  loadResourcesFromCollections,
   validateBasePropertyName,
   validateOutputDirectory,
 } from './lib/export/export-common';
@@ -88,6 +87,15 @@ export {
   type ResourceFolderEntry,
   type ResourceFolderSaveResult,
   resolveResourcePaths,
+} from './lib/resource';
+
+// Collection Reader: every entry of a collection, read through ResourceFolder
+export {
+  type CollectionRead,
+  type CollectionReadProblem,
+  type CollectionReadTarget,
+  readCollection,
+  type StoredResource,
 } from './lib/resource';
 
 // Read models: the resource tree, search and fingerprints behind the API's CollectionIndex
@@ -160,7 +168,6 @@ export type {
   UpdateBundleDefinitionOptions,
 } from './lib/bundle';
 export type { LoadConfigOptions, OpenCollectionOptions } from './lib/config';
-export type { LoadedResource } from './lib/export/export-common';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 export type { ExportFormat, ExportResult } from './lib/export/types';
 export type {

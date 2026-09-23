@@ -30,7 +30,10 @@ export interface ResourceFolder {
   get(key: string): ResourceFolderEntry | undefined;
   keys(): string[];
   isEmpty(): boolean;
-  /** The entry as the API/UI sees it. `undefined` when the entry or its metadata is missing. */
+  /**
+   * The entry as the API/UI sees it. `undefined` when the entry is missing.
+   * An entry without a metadata record gets `metadata: {}` (no locale has a status).
+   */
   treeEntry(key: string): ResourceTreeEntry | undefined;
 
   /**
@@ -170,7 +173,7 @@ class FileResourceFolder implements ResourceFolder {
 
   treeEntry(key: string): ResourceTreeEntry | undefined {
     const stored = this.get(key);
-    if (!stored?.meta) return undefined;
+    if (!stored) return undefined;
     const { entry, meta } = stored;
 
     const translations: Record<string, string> = {};
@@ -182,9 +185,10 @@ class FileResourceFolder implements ResourceFolder {
       key,
       source: entry.source,
       translations,
-      metadata: meta,
+      metadata: meta ?? {},
       ...(entry.comment !== undefined && { comment: entry.comment }),
-      ...(entry.tags !== undefined && entry.tags.length > 0 && { tags: entry.tags }),
+      // A hand-edited non-array `tags` reads as no tags, so one bad value does not make the folder unreadable.
+      ...(Array.isArray(entry.tags) && entry.tags.length > 0 && { tags: entry.tags }),
     };
   }
 

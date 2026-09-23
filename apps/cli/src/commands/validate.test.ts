@@ -1,5 +1,4 @@
 import * as fs from 'node:fs';
-import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateCommand } from './validate';
 
@@ -134,7 +133,9 @@ describe('validateCommand', () => {
       await expect(validateCommand({})).rejects.toThrow('process.exit called with code 1');
 
       expect(console.error).toHaveBeenCalledWith('❌ No target locales found in configuration.');
-      expect(console.error).toHaveBeenCalledWith('Target locales are all configured locales except the base locale.');
+      expect(console.error).toHaveBeenCalledWith(
+        "Target locales are each collection's locales except its base locale.",
+      );
     });
   });
 
@@ -200,30 +201,32 @@ describe('validateCommand', () => {
 
       expect(mockValidateResources).toHaveBeenCalledWith(
         [
-          {
+          expect.objectContaining({
             name: 'common',
-            path: expect.stringContaining(join('translations', 'common')),
-          },
-          {
+            baseLocale: 'en',
+            targetLocales: ['fr', 'es', 'de'],
+          }),
+          expect.objectContaining({
             name: 'admin',
-            path: expect.stringContaining(join('translations', 'admin')),
-          },
+            baseLocale: 'en',
+            targetLocales: ['fr', 'es', 'de'],
+          }),
         ],
-        ['fr', 'es', 'de'],
         {
           allowTranslated: false,
           skippedLocales: [],
-          icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-          placeholders: { baseLocale: 'en' },
+          icu: { compileValues: true, requirePortablePlurals: false },
+          placeholders: true,
         },
       );
 
       expect(mockGenerateValidationSummary).toHaveBeenCalledWith(successResult, {
         allowTranslated: false,
         skippedLocales: [],
-        icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-        placeholders: { baseLocale: 'en' },
+        icu: { compileValues: true, requirePortablePlurals: false },
+        placeholders: true,
       });
+      expect(mockGenerateValidationSummary.mock.calls[0]?.[1]).toBe(mockValidateResources.mock.calls[0]?.[1]);
 
       expect(console.log).toHaveBeenCalledWith('Validation summary output');
       expect(process.exit).not.toHaveBeenCalled();
@@ -272,10 +275,12 @@ describe('validateCommand', () => {
       await validateCommand({});
 
       const validateCall = mockValidateResources.mock.calls[0];
-      const targetLocales = validateCall[1];
+      const collections = validateCall[0];
 
-      expect(targetLocales).toEqual(['fr', 'es', 'de']);
-      expect(targetLocales).not.toContain('en'); // Base locale should be excluded
+      expect(collections).toHaveLength(2);
+      expect(collections[0]?.targetLocales).toEqual(['fr', 'es', 'de']);
+      expect(collections[1]?.targetLocales).toEqual(['fr', 'es', 'de']);
+      expect(collections[0]?.targetLocales).not.toContain('en'); // Base locale should be excluded
     });
   });
 
@@ -328,8 +333,8 @@ describe('validateCommand', () => {
       expect(mockGenerateValidationSummary).toHaveBeenCalledWith(failureResult, {
         allowTranslated: false,
         skippedLocales: [],
-        icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-        placeholders: { baseLocale: 'en' },
+        icu: { compileValues: true, requirePortablePlurals: false },
+        placeholders: true,
       });
     });
 
@@ -381,8 +386,8 @@ describe('validateCommand', () => {
       expect(mockGenerateValidationSummary).toHaveBeenCalledWith(failureResult, {
         allowTranslated: false,
         skippedLocales: [],
-        icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-        placeholders: { baseLocale: 'en' },
+        icu: { compileValues: true, requirePortablePlurals: false },
+        placeholders: true,
       });
     });
 
@@ -430,11 +435,11 @@ describe('validateCommand', () => {
 
       await expect(validateCommand({})).rejects.toThrow('process.exit called with code 1');
 
-      expect(mockValidateResources).toHaveBeenCalledWith(expect.any(Array), expect.any(Array), {
+      expect(mockValidateResources).toHaveBeenCalledWith(expect.any(Array), {
         allowTranslated: false,
         skippedLocales: [],
-        icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-        placeholders: { baseLocale: 'en' },
+        icu: { compileValues: true, requirePortablePlurals: false },
+        placeholders: true,
       });
     });
 
@@ -690,18 +695,18 @@ describe('validateCommand', () => {
 
       await validateCommand({ allowTranslated: true });
 
-      expect(mockValidateResources).toHaveBeenCalledWith(expect.any(Array), expect.any(Array), {
+      expect(mockValidateResources).toHaveBeenCalledWith(expect.any(Array), {
         allowTranslated: true,
         skippedLocales: [],
-        icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-        placeholders: { baseLocale: 'en' },
+        icu: { compileValues: true, requirePortablePlurals: false },
+        placeholders: true,
       });
 
       expect(mockGenerateValidationSummary).toHaveBeenCalledWith(warningResult, {
         allowTranslated: true,
         skippedLocales: [],
-        icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-        placeholders: { baseLocale: 'en' },
+        icu: { compileValues: true, requirePortablePlurals: false },
+        placeholders: true,
       });
 
       expect(console.log).toHaveBeenCalledWith('Validation summary output');
@@ -788,11 +793,11 @@ describe('validateCommand', () => {
 
       await validateCommand({});
 
-      expect(mockValidateResources).toHaveBeenCalledWith(expect.any(Array), expect.any(Array), {
+      expect(mockValidateResources).toHaveBeenCalledWith(expect.any(Array), {
         allowTranslated: false,
         skippedLocales: [],
-        icu: { baseLocale: 'en', compileValues: true, requirePortablePlurals: false },
-        placeholders: { baseLocale: 'en' },
+        icu: { compileValues: true, requirePortablePlurals: false },
+        placeholders: true,
       });
     });
   });
@@ -817,8 +822,7 @@ describe('validateCommand', () => {
 
       expect(mockValidateResources).toHaveBeenCalledWith(
         expect.any(Array),
-        expect.any(Array),
-        expect.objectContaining({ placeholders: { baseLocale: 'en' } }),
+        expect.objectContaining({ placeholders: true }),
       );
     });
 
@@ -829,8 +833,7 @@ describe('validateCommand', () => {
 
       expect(mockValidateResources).toHaveBeenCalledWith(
         expect.any(Array),
-        expect.any(Array),
-        expect.objectContaining({ placeholders: undefined }),
+        expect.objectContaining({ placeholders: false }),
       );
     });
 
@@ -843,8 +846,7 @@ describe('validateCommand', () => {
 
       expect(mockValidateResources).toHaveBeenCalledWith(
         expect.any(Array),
-        expect.any(Array),
-        expect.objectContaining({ placeholders: { baseLocale: 'en' } }),
+        expect.objectContaining({ placeholders: true }),
       );
     });
   });
@@ -1074,11 +1076,13 @@ describe('validateCommand', () => {
 
       await validateCommand({ skipLocales: ['fr'] });
 
-      // fr is excluded from the locales passed to validateResources
-      const localeArg = mockValidateResources.mock.calls[0][1];
-      expect(localeArg).not.toContain('fr');
-      expect(localeArg).toContain('es');
-      expect(localeArg).toContain('de');
+      const validationOptions = mockValidateResources.mock.calls[0]?.[1];
+      expect(validationOptions).toBeDefined();
+      expect(validationOptions?.skippedLocales).toEqual(['fr']);
+
+      const collections = mockValidateResources.mock.calls[0]?.[0];
+      expect(collections?.[0]?.targetLocales).toEqual(['fr', 'es', 'de']);
+      expect(collections?.[1]?.targetLocales).toEqual(['fr', 'es', 'de']);
 
       // skippedLocales is forwarded to generateValidationSummary
       expect(mockGenerateValidationSummary).toHaveBeenCalledWith(
@@ -1094,9 +1098,7 @@ describe('validateCommand', () => {
 
       expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Skipping unknown locale 'xx'"));
 
-      // All original target locales are still validated
-      const localeArg = mockValidateResources.mock.calls[0][1];
-      expect(localeArg).toEqual(['fr', 'es', 'de']);
+      expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual([]);
 
       // skippedLocales in summary is empty (unknown locale was not effectively skipped)
       expect(mockGenerateValidationSummary).toHaveBeenCalledWith(
@@ -1113,9 +1115,31 @@ describe('validateCommand', () => {
       // No warning logged
       expect(console.warn).not.toHaveBeenCalled();
 
-      // All target locales still validated (base locale was never a target)
-      const localeArg = mockValidateResources.mock.calls[0][1];
-      expect(localeArg).toEqual(['fr', 'es', 'de']);
+      expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual([]);
+    });
+
+    it('should accept a locale from a collection override without an unknown-locale warning', async () => {
+      vi.mocked(fs.readFileSync).mockReturnValue(
+        JSON.stringify({
+          ...mockConfig,
+          collections: {
+            ...mockConfig.collections,
+            admin: { translationsFolder: 'translations/admin', locales: ['en', 'ja'] },
+          },
+        }),
+      );
+      mockValidateResources.mockReturnValue(successResult);
+
+      await validateCommand({ skipLocales: ['ja'] });
+
+      expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("Skipping unknown locale 'ja'"));
+      expect(mockValidateResources).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({ name: 'common', targetLocales: ['fr', 'es', 'de'] }),
+          expect.objectContaining({ name: 'admin', targetLocales: ['ja'] }),
+        ],
+        expect.objectContaining({ skippedLocales: ['ja'] }),
+      );
     });
 
     it('should exit with code 1 when all target locales are skipped', async () => {
@@ -1270,11 +1294,11 @@ describe('validateCommand', () => {
         expect.any(String),
       );
       expect(mockValidateResources).toHaveBeenCalledWith(
-        expect.any(Array),
-        expect.any(Array),
-        expect.objectContaining({
-          terminology: { rules, loadError: undefined, baseLocaleByCollection: { common: 'en', legacy: 'en-GB' } },
-        }),
+        [
+          expect.objectContaining({ name: 'common', baseLocale: 'en' }),
+          expect.objectContaining({ name: 'legacy', baseLocale: 'en-GB' }),
+        ],
+        expect.objectContaining({ terminology: { rules, loadError: undefined } }),
       );
     });
 
@@ -1314,7 +1338,6 @@ describe('validateCommand', () => {
 
       expect(mockValidateResources).toHaveBeenCalledWith(
         expect.any(Array),
-        expect.any(Array),
         expect.objectContaining({
           terminology: expect.objectContaining({ rules: [], loadError: 'not valid JSON' }),
         }),
@@ -1335,7 +1358,7 @@ describe('validateCommand', () => {
       expect(console.warn).toHaveBeenCalledWith(
         '⚠️  Preferred terminology file not found: /project/terms.json. Treating as an empty list.',
       );
-      expect(mockValidateResources.mock.calls[0]?.[2].terminology).toBeUndefined();
+      expect(mockValidateResources.mock.calls[0]?.[1].terminology).toBeUndefined();
       expect(process.exit).not.toHaveBeenCalled();
     });
 
@@ -1344,7 +1367,7 @@ describe('validateCommand', () => {
 
       await validateCommand({});
 
-      expect(mockValidateResources.mock.calls[0]?.[2].terminology).toBeUndefined();
+      expect(mockValidateResources.mock.calls[0]?.[1].terminology).toBeUndefined();
     });
   });
 });

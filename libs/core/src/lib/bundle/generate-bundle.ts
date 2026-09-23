@@ -4,13 +4,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {
-  effectiveTags,
-  hasUnbundlableBranchBody,
-  icuToTransloco,
-  type TokenCasing,
-  validateICUSyntax,
-} from '@simoncodes-ca/domain';
+import { hasUnbundlableBranchBody, icuToTransloco, type TokenCasing, validateICUSyntax } from '@simoncodes-ca/domain';
 import {
   type BundleDefinition,
   type CollectionBundleDefinition,
@@ -18,10 +12,16 @@ import {
   hasTypeDistConfigured,
 } from '../../config/bundle-definition';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import type { ResourceEntries } from '../../resource/resource-entry';
+import { type Collection, openCollection } from '../config/open-collection';
 import { buildHierarchy } from './hierarchy-builder';
 import { matchesPattern } from './pattern-matcher';
-import { type FlatResource, loadCollectionResources } from './resource-loader';
+import {
+  type BundleLocale,
+  COLLECTION_BASE_LOCALE,
+  type CollectionReadCache,
+  type FlatResource,
+  loadCollectionResources,
+} from './resource-loader';
 import { matchesTags } from './tag-filter';
 import { type GenerateTypesResult, generateBundleTypes } from './type-generation/generate-types';
 
@@ -129,7 +129,7 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
 
   const targetLocales = locales ?? config.locales;
   let filesGenerated = 0;
-  const resourceCache = new Map<string, ResourceEntries>();
+  const resourceCache: CollectionReadCache = new Map();
   const totalFiles = targetLocales.length + (debugKeysLocale ? 1 : 0);
   let progressIndex = 0;
 
@@ -175,10 +175,11 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
       file: getBundleOutputPath(bundleDefinition, debugKeysLocale),
     });
 
+    // Every collection's base values, so a collection with its own base locale is not left out.
     const debugBaseData = collectBundleData(
       bundleDefinition,
       config,
-      config.baseLocale,
+      COLLECTION_BASE_LOCALE,
       warnings,
       false,
       resourceCache,
@@ -244,54 +245,46 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
 export function collectBundleData(
   bundleDefinition: BundleDefinition,
   config: LingoTrackerConfig,
-  locale: string,
+  locale: BundleLocale,
   warnings: string[],
   transformICUToTransloco: boolean,
-  cache: Map<string, ResourceEntries>,
+  cache: CollectionReadCache,
   trace?: BundleKeyTrace,
 ): Record<string, string> {
   const bundleData: Record<string, string> = {};
 
-  const baseLocale = config.baseLocale;
-
   if (bundleDefinition.collections === 'All') {
-    for (const [collectionName, collectionConfig] of Object.entries(config.collections)) {
+    for (const collectionName of Object.keys(config.collections)) {
       const collectionBundleDef: CollectionBundleDefinition = {
         name: collectionName,
         entriesSelectionRules: 'All',
       };
       processCollection(
         collectionBundleDef,
-        collectionConfig.translationsFolder,
+        openCollection(config, collectionName),
         locale,
-        baseLocale,
         bundleData,
         transformICUToTransloco,
         warnings,
         cache,
-        collectionConfig.tags,
         trace,
       );
     }
   } else {
     for (const collectionBundleDef of bundleDefinition.collections) {
-      const collectionConfig = config.collections[collectionBundleDef.name];
-
-      if (!collectionConfig) {
+      if (!Object.keys(config.collections).includes(collectionBundleDef.name)) {
         warnings.push(`Collection '${collectionBundleDef.name}' not found in config`);
         continue;
       }
 
       processCollection(
         collectionBundleDef,
-        collectionConfig.translationsFolder,
+        openCollection(config, collectionBundleDef.name),
         locale,
-        baseLocale,
         bundleData,
         transformICUToTransloco,
         warnings,
         cache,
-        collectionConfig.tags,
         trace,
       );
     }
@@ -301,21 +294,20 @@ export function collectBundleData(
 }
 
 /**
- * Processes a single collection and adds its entries to bundle data
+ * Processes a single collection and adds its entries to bundle data.
+ * The collection's own base locale decides whether `locale` reads the base value or a translation.
  */
 function processCollection(
   collectionDef: CollectionBundleDefinition,
-  translationsFolder: string,
-  locale: string,
-  baseLocale: string,
+  collection: Collection,
+  locale: BundleLocale,
   bundleData: Record<string, string>,
   transformICUToTransloco: boolean,
   warnings: string[],
-  cache: Map<string, ResourceEntries>,
-  collectionTags?: string[],
+  cache: CollectionReadCache,
   trace?: BundleKeyTrace,
 ): void {
-  const resources = loadCollectionResources(translationsFolder, locale, baseLocale, cache, collectionTags);
+  const resources = loadCollectionResources(collection, locale, cache, warnings);
   const filteredResources = filterResources(resources, collectionDef);
   const mergeStrategy = collectionDef.mergeStrategy ?? 'merge';
 
@@ -375,10 +367,14 @@ function filterResources(resources: FlatResource[], collectionDef: CollectionBun
  * Checks if resource matches any of the selection rules
  */
 function matchesAnyRule(resource: FlatResource, rules: EntrySelectionRule[]): boolean {
-  const tags = effectiveTags(resource.collectionTags, resource.tags);
+  const tags = resource.tags;
   return rules.some((rule) => {
     const patternMatch = matchesPattern(resource.key, rule.matchingPattern);
-    const tagMatch = matchesTags(tags.length > 0 ? tags : undefined, rule.matchingTags, rule.matchingTagOperator);
+    const tagMatch = matchesTags(
+      tags && tags.length > 0 ? tags : undefined,
+      rule.matchingTags,
+      rule.matchingTagOperator,
+    );
     return patternMatch && tagMatch;
   });
 }

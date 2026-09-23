@@ -42,7 +42,7 @@ Bundle generation is a sub-module of `@simoncodes-ca/core`. The entry point is `
 ```
 libs/core/src/lib/bundle/
 ├── generate-bundle.ts          # generateBundle(): main entry point, GenerateBundleParams, GenerateBundleResult
-├── resource-loader.ts          # loadCollectionResources(): flat FlatResource list per locale
+├── resource-loader.ts          # loadCollectionResources(): one collection's FlatResource list per locale, via readCollection()
 ├── hierarchy-builder.ts        # buildHierarchy(): dot-keys → nested JSON object
 ├── pattern-matcher.ts          # matchesPattern(): glob-style key filtering
 ├── tag-filter.ts               # matchesTags(): AND/OR tag filter logic
@@ -200,7 +200,7 @@ flowchart TD
 
     FOR_EACH_COLLECTION --> LOAD_RESOURCES
 
-    LOAD_RESOURCES["loadCollectionResources()\nWalk translationsFolder via walkFolders()\nFor each resource_entries.json:\n  → base locale: read entry.source\n  → other locales: read entry[locale]\n  → fall back to base if translation absent\nReturns FlatResource[]\n  { key, value, tags }"]
+    LOAD_RESOURCES["loadCollectionResources(collection, locale)\nreadCollection() once per run (cached)\nFor each StoredResource:\n  → collection's base locale: entry.source\n  → other locales: entry.translations[locale]\n  → no value: left out\nUnreadable folder → warning\nReturns FlatResource[]\n  { key, value, tags, collectionTags }"]
 
     LOAD_RESOURCES --> RULES_ALL{"entriesSelectionRules\n=== 'All'?"}
 
@@ -390,7 +390,9 @@ Output nested JSON (`en.json`):
 }
 ```
 
-**Locale fallback**: if a [resource entry](glossary.md#resource-entry) has no translation for the target locale, `loadCollectionResources()` omits that key from `FlatResource[]` — it does not silently fall back to the base locale value. The base locale value is read from `entry.source`; all other locale values are read from `entry[locale]`. An entry without a value for the requested locale simply does not appear in the bundle.
+**Locale fallback**: if a [resource entry](glossary.md#resource-entry) has no translation for the target locale, `loadCollectionResources()` omits that key from `FlatResource[]` — it does not silently fall back to the base locale value. For the collection's own base locale (each collection is opened with `openCollection()`, so a collection can override the global `baseLocale`) the value is `entry.source`; all other locale values are the stored translations. An entry without a value for the requested locale simply does not appear in the bundle. The debug-keys bundle and the dry-run plan's key set (conflicts, example key, types count) read each collection's own base values instead (`COLLECTION_BASE_LOCALE`), so a collection with its own base locale is never left out of them.
+
+**Reading**: the entries come from the [Collection Reader](glossary.md#collection-reader) (`readCollection()`), read once per collection per run. Its rules apply: entries without metadata are bundled, hidden folders are skipped, and a folder that cannot be read is left out and reported in the bundle result's `warnings`. Selection rules match against the reader's effective tags (collection tags united with the entry's own).
 
 ### Debug Key Bundle
 

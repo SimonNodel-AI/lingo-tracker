@@ -2,10 +2,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { LingoTrackerConfig } from '../../../config/lingo-tracker-config';
 import { type BundleDefinition, hasTypeDistConfigured } from '../../../config/bundle-definition';
+import { openCollection } from '../../config/open-collection';
 import { loadCollectionResources } from '../resource-loader';
 import { matchesPattern } from '../pattern-matcher';
 import { matchesTags } from '../tag-filter';
-import { effectiveTags, type TokenCasing } from '@simoncodes-ca/domain';
+import type { TokenCasing } from '@simoncodes-ca/domain';
 import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
 import { generateFileHeader } from './file-header';
 import { bundleKeyToConstantName, validateJavaScriptIdentifier } from './key-transformer';
@@ -90,21 +91,14 @@ export async function generateBundleTypes(
       : bundleDef.collections;
 
   for (const collectionDef of collections) {
-    const collectionConfig = config.collections[collectionDef.name];
-
-    if (!collectionConfig) {
+    if (!Object.keys(config.collections).includes(collectionDef.name)) {
       console.warn(`Collection '${collectionDef.name}' not found in configuration`);
       continue;
     }
 
-    // Load resources (using base locale as source of truth for keys)
-    const resources = loadCollectionResources(
-      collectionConfig.translationsFolder,
-      config.baseLocale,
-      config.baseLocale,
-      undefined,
-      collectionConfig.tags,
-    );
+    // Load resources (the collection's base values are the source of truth for keys)
+    const collection = openCollection(config, collectionDef.name);
+    const resources = loadCollectionResources(collection, collection.baseLocale);
 
     for (const resource of resources) {
       // Apply filters
@@ -113,11 +107,11 @@ export async function generateBundleTypes(
       if (collectionDef.entriesSelectionRules === 'All') {
         isMatch = true;
       } else {
-        const tags = effectiveTags(resource.collectionTags, resource.tags);
+        const tags = resource.tags;
         for (const rule of collectionDef.entriesSelectionRules) {
           if (
             matchesPattern(resource.key, rule.matchingPattern) &&
-            matchesTags(tags.length > 0 ? tags : undefined, rule.matchingTags, rule.matchingTagOperator)
+            matchesTags(tags && tags.length > 0 ? tags : undefined, rule.matchingTags, rule.matchingTagOperator)
           ) {
             isMatch = true;
             break;

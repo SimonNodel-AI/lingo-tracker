@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -268,6 +268,59 @@ describe('runExport', () => {
 
     expect(result.omittedResources).toEqual(['k.missing']);
     expect(result.malformedFiles).toEqual(['k/resource_entries.json']);
+  });
+
+  it('lists an unreadable folder under malformed files and exports the rest', async () => {
+    const common = open('common');
+    seed(common, 'good', { ok: { source: 'OK', translations: { fr: 'Bien' } } });
+    mkdirSync(join(common.translationsFolder, 'bad'), { recursive: true });
+    writeFileSync(join(common.translationsFolder, 'bad', 'resource_entries.json'), '{ nope');
+
+    const result = await runExport([common], {
+      format: 'json',
+      outputDirectory,
+      jsonStructure: 'flat',
+      locales: ['fr'],
+    });
+
+    expect(readJson('fr.json')).toEqual({ 'good.ok': 'Bien' });
+    expect(result.malformedFiles).toHaveLength(1);
+    expect(result.malformedFiles[0]).toContain(join('bad', 'resource_entries.json'));
+    expect(result.summary).toContain('### Malformed Files');
+  });
+
+  it('warns about a collection whose translations folder does not exist', async () => {
+    const common = open('common');
+    seed(common, 'k', { ok: { source: 'OK' } });
+    const missing = { ...open('frOnly'), translationsFolder: join(projectDir, 'translations', 'typo') };
+
+    const result = await runExport([common, missing], { format: 'json', outputDirectory, locales: ['fr'] });
+
+    expect(result.warnings).toContain(
+      `Collection 'frOnly': translations folder not found: ${join(projectDir, 'translations', 'typo')}`,
+    );
+    expect(result.summary).toContain('translations folder not found');
+    expect(result.resourcesExported).toBe(1);
+  });
+
+  it('exports an entry without metadata as new', async () => {
+    const common = open('common');
+    mkdirSync(join(common.translationsFolder, 'loose'), { recursive: true });
+    writeFileSync(
+      join(common.translationsFolder, 'loose', 'resource_entries.json'),
+      JSON.stringify({ x: { source: 'X' } }),
+    );
+
+    const result = await runExport([common], {
+      format: 'json',
+      outputDirectory,
+      jsonStructure: 'flat',
+      locales: ['fr'],
+      status: ['new'],
+    });
+
+    expect(result.resourcesExported).toBe(1);
+    expect(readJson('fr.json')).toEqual({ 'loose.x': '' });
   });
 
   it('passes each locale and the shared base locale to the exporter', async () => {

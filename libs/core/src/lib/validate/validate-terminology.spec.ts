@@ -10,6 +10,7 @@ const resource = (overrides: Partial<LoadedResource> = {}): LoadedResource => ({
   translations: { fr: 'Dépenses en capital', de: 'Investitionsausgaben' },
   status: { fr: 'verified', de: 'verified' },
   collection: 'main',
+  effectiveTags: [],
   ...overrides,
 });
 

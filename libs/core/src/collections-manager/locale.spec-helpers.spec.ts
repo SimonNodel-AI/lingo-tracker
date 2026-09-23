@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { makeBaseConfig } from './locale-spec-helpers';
+import { makeBaseConfig } from './locale.spec-helpers';
 
-describe('locale-spec-helpers', () => {
+describe('locale.spec-helpers', () => {
   it('makeBaseConfig returns the expected shape', () => {
     const config = makeBaseConfig();
     expect(config).toMatchObject({

@@ -70,6 +70,7 @@ describe('CollectionIndex', () => {
   function expectIndexMatchesDisk(target: Collection = collection()): void {
     const fromDisk = loadResourceTree({
       translationsFolder: target.translationsFolder,
+      baseLocale: target.baseLocale,
       depth: Number.POSITIVE_INFINITY,
     });
     expect(normalized(readyTree(target))).toEqual(normalized(fromDisk));

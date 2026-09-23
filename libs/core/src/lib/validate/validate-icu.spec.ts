@@ -10,6 +10,7 @@ function resource(overrides: Partial<LoadedResource> = {}): LoadedResource {
     translations: {},
     status: {},
     collection: 'main',
+    effectiveTags: [],
     ...overrides,
   };
 }

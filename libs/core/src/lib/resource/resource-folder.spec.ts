@@ -262,9 +262,19 @@ describe('ResourceFolder', () => {
       });
     });
 
-    it('returns undefined when metadata is missing', () => {
+    it('returns the entry with empty metadata when its metadata record is missing', () => {
+      writePair({ ok: { source: 'OK', fr: 'Bien' } }, {});
+      expect(openResourceFolder(folderPath).treeEntry('ok')).toEqual({
+        key: 'ok',
+        source: 'OK',
+        translations: { fr: 'Bien' },
+        metadata: {},
+      });
+    });
+
+    it('returns undefined when the entry is missing', () => {
       writePair({ ok: { source: 'OK' } }, {});
-      expect(openResourceFolder(folderPath).treeEntry('ok')).toBeUndefined();
+      expect(openResourceFolder(folderPath).treeEntry('missing')).toBeUndefined();
     });
   });
 

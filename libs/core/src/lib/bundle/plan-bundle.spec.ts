@@ -41,7 +41,9 @@ describe('planBundle', () => {
 
   /** Returns resources keyed by translations folder so each collection has distinct content. */
   function mockResourcesByFolder(byFolder: Record<string, FlatResource[]>): void {
-    vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation((folder) => byFolder[folder] ?? []);
+    vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation(
+      (collection) => byFolder[collection.translationsFolder] ?? [],
+    );
   }
 
   const definition: BundleDefinition = {

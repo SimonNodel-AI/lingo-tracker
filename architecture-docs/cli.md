@@ -49,9 +49,9 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `bundle` | `--name`, `--locale`, `--verbose`, `--token-casing`, `--token-constant-name`, `--no-transform-icu-to-transloco`, `--debug-keys` | `generateBundle()` |
 | `export` | `-f/--format`, `-c/--collection`, `-l/--locale`, `-s/--status`, `-t/--tags`, `-o/--output`, `--structure`, `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name`, `--filename`, `--no-protect-notes`, `--dry-run`, `--verbose` | `runExport()` |
 | `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `parseJsonImport()` / `parseXliffImport()` → `importResources()` |
-| `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--require-portable-plurals` | `validateResources()`, `generateValidationSummary()` |
+| `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | `openCollection()` for each collection → `validateResources()`, `generateValidationSummary()` |
 | `find-similar` | `--collection`, `--value`, `--max-results` | `searchTranslations()` |
-| `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `loadResourcesFromCollections()` (matching/extraction done in the command, not core) |
+| `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `readCollection()` (matching/extraction done in the command, not core) |
 | `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `setGlobalProtectedTerms()` / `setCollectionProtectedTerms()` / `setGlobalProtectedTermsFile()` / `setCollectionProtectedTermsFile()`, reading via `readGlobalProtectedTerms()` / `readCollectionProtectedTerms()` |
 | `install-skill` | `--collection <spec>` (repeatable), `--dir`, `--token-casing` | No core call — generates a `.claude/` skill file by template |
 
@@ -68,13 +68,21 @@ Both scopes read through the same core helpers. The command itself parses no ter
 
 The core layer raises errors for a malformed file, for a collection with no file, and for a missing parent directory. The command catches each one and calls `exitWithError` (prints `❌ <message>`, exits 1). It writes no partial result.
 
+### `validate` locales
+
+`validate` opens every collection with `openCollection()` and hands the collections to `validateResources()`. Each collection is validated with its own base locale and target locales (its `locales`, else the global `locales`, without its base locale). The command reads no global `baseLocale` or `locales` itself. When no collection has a target locale, the command exits 1.
+
+`--skip-locales` removes locales from every collection. A locale that is some collection's target locale is skipped. A locale that is only a base locale is ignored without a message. Any other locale gets an `unknown locale` warning. When every target locale is skipped, the command exits 1.
+
+A folder whose files cannot be read fails validation. The summary lists it under `Unreadable Folders`.
+
 ### `glossary` pipeline
 
-The `glossary` command is intentionally CLI-only (no new core API surface) but reuses the core loader `loadResourcesFromCollections()` (the same flat loader used by `export` and `validate`). Its logic lives in three sibling modules under `apps/cli/src/commands/`:
+The `glossary` command is intentionally CLI-only (no new core API surface) but reads resources through the core [Collection Reader](glossary.md#collection-reader), `readCollection()` (the same reader that `export`, `validate` and `bundle` use). Its logic lives in three sibling modules under `apps/cli/src/commands/`:
 
 - `glossary-extractor.ts` — the **extraction seam**. `CandidateExtractor = (block) => Candidate[]`, with a deterministic stopword + unigram/bigram default (`ngramExtractor`). `resolveExtractor(mode)` selects the implementation; `ai` is reserved and throws a clear not-implemented error today. This boundary lets an AI-based extractor replace the n-gram one without touching matching/output.
 - `glossary-matcher.ts` — matches candidates (over `FlatEntry[]`) against base-locale values only, scores (exact > whole-word containment), keeps top-1 per candidate, dedupes across candidates, and applies the per-locale status filter.
-- `glossary.ts` — orchestration: resolve input (`--text` → `--input` → stdin), load each collection's resources via `loadResourcesFromCollections()` (stripping each collection's base locale from `translations`), run extractor → matcher, serialize the header + term-array schema, write to a file or stdout.
+- `glossary.ts` — orchestration: resolve input (`--text` → `--input` → stdin), read each collection with `readCollection()` (stripping each collection's base locale from `translations`; an unreadable folder is a warning on stderr, so `--stdout` output stays valid JSON), run extractor → matcher, serialize the header + term-array schema, write to a file or stdout.
 
 For the full description of what each core function does internally, see [core-library.md](core-library.md).
 

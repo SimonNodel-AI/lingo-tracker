@@ -235,6 +235,7 @@ export class CollectionIndex {
       entry.fingerprint = computeTreeFingerprint({ translationsFolder: collection.translationsFolder });
       entry.tree = loadResourceTree({
         translationsFolder: collection.translationsFolder,
+        baseLocale: collection.baseLocale,
         path: '',
         depth: Number.POSITIVE_INFINITY,
       });

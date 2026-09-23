@@ -1,5 +1,6 @@
+import { existsSync } from 'node:fs';
 import type { Collection } from '../config/open-collection';
-import { filterResources, loadResourcesFromCollections } from './export-common';
+import { filterResources, loadResources } from './export-common';
 import { generateExportSummary } from './export-summary';
 import { exportToJson } from './export-to-json';
 import { exportToXliff } from './export-to-xliff';
@@ -79,19 +80,21 @@ export async function runExport(
   const localeResults: ExportLocaleResult[] = [];
 
   if (targetLocales.length > 0) {
-    // Loaded per collection so a key shared by two collections survives in each one's own locales.
+    // Read per collection so a key shared by two collections survives in each one's own locales.
     const resourcesByCollection = new Map(
-      collections.map((collection) => [
-        collection.name,
-        loadResourcesFromCollections([
-          {
-            name: collection.name,
-            path: collection.translationsFolder,
-            tags: [...collection.tags],
-            protectedTerms: protectedTerms?.collections?.[collection.name],
-          },
-        ]),
-      ]),
+      collections.map((collection) => {
+        // The reader reads a missing folder as an empty collection; say so, since a mistyped
+        // translationsFolder would otherwise export nothing without a word.
+        if (!existsSync(collection.translationsFolder)) {
+          totals.warnings.push(
+            `Collection '${collection.name}': translations folder not found: ${collection.translationsFolder}`,
+          );
+        }
+        const { resources, problems } = loadResources(collection, protectedTerms?.collections?.[collection.name]);
+        // A folder the reader could not read is left out of every locale file; the summary lists it.
+        totals.malformedFiles.push(...problems.map((problem) => problem.message));
+        return [collection.name, resources];
+      }),
     );
 
     for (const locale of targetLocales) {

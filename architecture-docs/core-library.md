@@ -19,6 +19,7 @@ Return to [architecture README](README.md).
   - [edit-resource](#edit-resource)
   - [delete-resource](#delete-resource)
   - [move-resource](#move-resource)
+- [Collection Reader](#collection-reader)
 - [Normalization Pipeline](#normalization-pipeline)
 - [Auto-Translation Pipeline](#auto-translation-pipeline)
   - [Provider abstraction](#provider-abstraction)
@@ -64,7 +65,7 @@ libs/core/src/
 └── lib/                          # Deeper sub-modules
     ├── bundle/                   # Bundle generation pipeline
     │   ├── generate-bundle.ts    # generateBundle(): main entry point
-    │   ├── resource-loader.ts    # loadCollectionResources(): flat resource list per locale
+    │   ├── resource-loader.ts    # loadCollectionResources(): one collection's values for one locale, via readCollection()
     │   ├── hierarchy-builder.ts  # buildHierarchy(): dot-keys → nested JSON object
     │   ├── pattern-matcher.ts    # matchesPattern(): glob-style key filtering
     │   ├── tag-filter.ts         # matchesTags(): AND/OR tag filter logic
@@ -78,7 +79,7 @@ libs/core/src/
     │
     ├── export/                   # The Export run
     │   ├── run-export.ts         # runExport(): the Export run; exportTargetLocales()
-    │   ├── export-common.ts      # loadResourcesFromCollections(): shared resource walker; filterResources(); validateBasePropertyName()
+    │   ├── export-common.ts      # loadResources(): one collection via readCollection(), flattened; filterResources(); validateBasePropertyName()
     │   ├── export-to-json.ts     # JSON exporter (internal to runExport)
     │   ├── export-to-xliff.ts    # XLIFF 1.2 exporter (internal to runExport)
     │   ├── export-summary.ts     # Markdown export summary (internal to runExport)
@@ -101,7 +102,7 @@ libs/core/src/
     │   └── types.ts              # ImportRunOptions, ImportResult, ImportedResource, etc.
     │
     ├── validate/                 # CI/CD validation pipeline
-    │   ├── validate-resources.ts # validateResources(): full cross-collection status check
+    │   ├── validate-resources.ts # validateResources(): status check per collection, with its own locales
     │   ├── validate-icu.ts       # validateIcuValues(): compiles each value under its own locale
     │   └── generate-validation-summary.ts # Human-readable validation result summary
     │
@@ -120,6 +121,14 @@ libs/core/src/
     │   ├── translate-existing-resource.ts # translateExistingResource(): translate new/stale entries
     │   ├── placeholder-protector.ts      # protectPlaceholders() / restorePlaceholders()
     │   └── translation-orchestrator.ts   # Wraps provider call with placeholder protection
+    │
+    ├── resource/                 # One folder's files, and the read models built on them
+    │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
+    │   ├── read-collection.ts    # readCollection(), readCollectionFolders(): the Collection Reader
+    │   ├── load-resource-tree.ts # loadResourceTree(): the API's resource tree (built on readCollectionFolders)
+    │   ├── search.ts             # searchTranslations() (disk), searchResourceTree() (in memory)
+    │   ├── resource-mutation.ts  # ResourceMutation: what a write changed
+    │   └── tree-fingerprint.ts   # computeTreeFingerprint(): stat-only change detection
     │
     ├── folder/                   # Folder-level filesystem operations
     │   ├── create-folder.ts      # createFolder(): mkdir with segment validation
@@ -161,7 +170,7 @@ graph TD
         FILEIO["file-io/\nreadJsonFile · writeJsonFile\nensureDirectoryExists"]
         CONFIG_LIB["config/\nloadConfig · openCollection\ncreateConfigFileOperations"]
         ERRORS["errors/\nErrorMessages"]
-        RESOURCE_LIB["resource/\nresource-folder\nresource-file-paths\nload-resource-tree"]
+        RESOURCE_LIB["resource/\nresource-folder · read-collection\nresource-file-paths\nload-resource-tree · search"]
     end
 
     subgraph domain["@simoncodes-ca/domain (peer)"]
@@ -200,7 +209,7 @@ graph TD
     IMPORT --> DOMAIN
 
     EXPORT --> FILEIO
-    EXPORT --> NORMALIZE
+    EXPORT --> RESOURCE_LIB
     EXPORT --> DOMAIN
 
     VALIDATE --> EXPORT
@@ -235,18 +244,19 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 ## Public Surface
 
-`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 172 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
+`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 175 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
 
 | Group | What it holds |
 |---|---|
-| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition`, `validateBundleKey`, `validateBundleDefinition`, `getBundleOutputPath`, `hasTypeDistConfigured`. Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks, `loadResourcesFromCollections`. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
+| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition`, `validateBundleKey`, `validateBundleDefinition`, `getBundleOutputPath`, `hasTypeDistConfigured`. Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
 | Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `BundleDefinition`, ...), and the protected-terms and preferred-terminology file readers and writers. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder` and the types in its methods, `resolveResourcePaths`. |
+| Collection Reader | `readCollection`, `StoredResource`, `CollectionRead`, `CollectionReadProblem`, `CollectionReadTarget`. See [Collection Reader](#collection-reader). |
 | Read models | `loadResourceTree`, `extractSubtree`, `extractResourcesRecursively`, `searchTranslations`, `searchResourceTree`, `computeTreeFingerprint`, `treeFingerprintsMatch`, `reindexMutation` and their types. The API's [Collection Index](glossary.md#collection-index) is built from these. A `ResourceTreeEntry` and a `SearchResult` (which carries the entry's `source` and `metadata`) both fit the domain `buildResourceSummary` input, which the API uses to answer with a [Resource Summary](glossary.md#resource-summary). |
 | Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
 | Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
 
-Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the translation provider classes, the bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers such as `setupMockFs` (`collections-manager/locale-spec-helpers.ts`) are not in any barrel.
+Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the translation provider classes, the bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
 
 ---
 
@@ -301,7 +311,7 @@ Rules:
 
 Resource CRUD is implemented across four functions in `libs/core/src/resource/`, each bound to an opened `Collection`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
 
-**All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. Readers (tree loading, search, folder move/delete, folder cleanup) use it too, and `resolveResourcePaths()` is the only function that maps a key to its folder.
+**All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. Readers use it too: every whole-collection read goes through the [Collection Reader](#collection-reader), folder move/delete and cleanup open folders directly, and `resolveResourcePaths()` is the only function that maps a key to its folder.
 
 **Writes return what changed.** Every write (add, edit, delete, move, translate-existing-resource, folder create/delete/move, add/remove-locale) returns `mutations: ResourceMutation[]` (`lib/resource/resource-mutation.ts`) next to its other results: an `upsert` with the stored entry as `ResourceFolder.treeEntry()` reads it, a `remove`, an `add-folder` / `remove-folder`, or a `reindex` when the change is too broad to describe. Each mutation carries the absolute translations folder it applies to. A move returns an `upsert` at the destination and a `remove` at the source for each moved key, and a folder move adds a `remove-folder` for the deleted source. The API's [Collection Index](glossary.md#collection-index) uses them to follow the disk without reading it again; the CLI ignores them. See [Resource Mutation](glossary.md#resource-mutation).
 
@@ -383,6 +393,43 @@ Two modes:
 
 - **Single key move** (`moveSingleResource`) — validates source and destination keys, checks for collision at destination (returns warning unless `override` is set), copies the entry and its metadata to the destination with `setEntry()` (lossless: values, comment, tags, checksums, and statuses such as `verified` and `stale` are kept; no auto-translation), then calls `deleteResource()` at the source. `moveFolder()` moves each resource this way.
 - **Wildcard pattern move** (`moveResourcesByPattern`) — patterns ending with `*` are expanded by `walkFolders()` to enumerate all keys under the prefix, then each key is moved individually using `moveSingleResource()`.
+
+---
+
+## Collection Reader
+
+**Entry point:** `readCollection(collection)` in `lib/resource/read-collection.ts`
+
+The [Collection Reader](glossary.md#collection-reader) is the read side of the [Resource Folder](glossary.md#resource-folder). It walks a collection's `translationsFolder` and opens each folder with `openResourceFolder(folderPath, { baseLocale: collection.baseLocale })`. It returns `{ resources: StoredResource[], problems: CollectionReadProblem[] }`. It takes a `Collection`, or any object with `translationsFolder`, `baseLocale` and `tags` (`CollectionReadTarget`).
+
+A `StoredResource` holds:
+
+- the address: `fullKey` (`apps.common.buttons.ok`), `folderPath` (`apps.common.buttons`, `''` at the root) and `entryKey` (`ok`);
+- `entry`: the `ResourceTreeEntry` that `ResourceFolder.treeEntry()` returns. It has `source`, `translations`, `metadata` per locale, `comment` and `tags`. `translations` holds every locale property stored besides `source`: normally the target locales, but a hand-written base-locale key is kept as stored. A `tags` value that is not an array reads as no tags;
+- `effectiveTags`: the collection tags united with the entry tags ([Tags](glossary.md#tags)). The reader is the one place this union is made: export filtering, bundle selection rules and type generation read `effectiveTags` and do not compute it again.
+
+`readCollectionFolders(collection, { startPath, maxDepth })` is the same walk, one folder at a time and lazily. `loadResourceTree` builds the tree from it, and `searchTranslations` uses it so that it can stop at `maxResults`.
+
+The reader applies these rules for every caller:
+
+| Case | Rule |
+|---|---|
+| Base locale | Each folder is opened with the collection's base locale. |
+| Hidden folder (name starts with `.`) | Skipped. A key segment cannot start with `.`. |
+| Missing `translationsFolder` | An empty collection. It is not a problem for the reader. `runExport` adds a `translations folder not found` warning, so a mistyped folder is visible. |
+| Folder that exists but cannot be listed (permission denied, or the `translationsFolder` is a file) | Returned as a `CollectionReadProblem`. `walkFolders` reports it through its `onUnlistable` callback. `loadResourceTree` throws when its start folder is a file. |
+| Entry without a `tracker_meta.json` record, or folder without the file | Read with `metadata: {}`. Each locale then has no status, and callers treat that as `new`. This is the domain rule (`needsTranslation(undefined)` is true) applied the same way everywhere: `translateLocale` now also machine-translates such entries, which `loadResourceTree` used to leave out. |
+| Malformed folder: a file is not valid JSON, or an entry is not an object | None of the folder's entries are read. The folder is returned as a `CollectionReadProblem` (`folderPath`, `absolutePath`, and a `message` that names the file). The walk continues. |
+
+The caller decides what a problem means:
+
+| Caller | What it does with a problem |
+|---|---|
+| `validateResources` | Lists it in `unreadableFolders`, and validation fails. |
+| `runExport` | Lists it under `malformedFiles` in the result and the summary. The other resources are exported. |
+| Bundle and type generation (`loadCollectionResources`) | Adds a warning to the bundle result, once for each collection. Type generation logs it. |
+| `glossary` (CLI) | Writes a warning to stderr. |
+| `loadResourceTree`, `searchTranslations` | Log it. The tree keeps the folder, with no resources. |
 
 ---
 
@@ -541,7 +588,7 @@ For the full sequence diagram of an import operation, see [user-flows.md — Imp
 Export writes the resources of one or more collections to one file per target locale. `runExport` is the only entry point; the JSON and XLIFF exporters, the resource filter, and the summary are its internals. The CLI keeps the prompts, the output-directory and `--base-property-name` checks, the console rendering, and the write of the summary file (or, in a dry run, printing it).
 
 1. **Choose the locales** — `exportTargetLocales(collections, options.locales)` lists every collection's target locales (a `Collection`'s `targetLocales`: its locales without its base locale) in order of first appearance, narrowed to the requested ones. The CLI calls it too, to print the plan before the run. The collections must share one base locale, because an export file has one source language; otherwise `runExport` throws.
-2. **Load resources** — `loadResourcesFromCollections()` in `export-common.ts` walks each translations folder via `walkFolders()` and reads every `resource_entries.json` with its `tracker_meta.json`. Each entry becomes a `LoadedResource` with `source`, `translations`, `status`, `tags`, `collectionTags`, `collectionProtectedTerms`, and `comment`.
+2. **Load resources** — `loadResources(collection, protectedTerms)` in `export-common.ts` reads each collection through the [Collection Reader](#collection-reader). It flattens each `StoredResource` into a `LoadedResource` with `source`, `translations`, `status`, `tags`, `collectionTags`, `collectionProtectedTerms`, and `comment`. An entry without metadata is exported as `new`. A folder that cannot be read goes into `malformedFiles`.
 3. **Filter per locale** — for each locale, only the collections that have that locale as a target contribute. `filterResources()` keeps the resources whose status (missing counts as `new`) matches `options.status` and whose effective tags (`effectiveTags(collectionTags, resourceTags)` from `libs/domain/src/lib/effective-tags.ts`) match `options.tags`. A locale with no match is skipped, and `onProgress` reports it.
 4. **Annotate protected terms** — `filterResources()` calls `findProtectedTerms(source, effectiveProtectedTerms(global, collection))` on each row and stores the matches on `FilteredResource.protectedTermsFound`. The caller reads the term lists from disk and passes them as `options.protectedTerms` (`global`, and `collections` by name), so the run reads no config. `augmentProtectedTerms: false` (the `--no-protect-notes` flag) leaves the field `undefined`.
 5. **Serialize** — the JSON exporter writes a flat or hierarchical file (hierarchical key conflicts are reported separately); the XLIFF exporter writes an XLIFF 1.2 document with `<trans-unit>` elements and `<note>` elements for comments. `protectedTermsFound` becomes a `doNotTranslate` array in rich JSON and a `Do not translate: …` note in XLIFF. An exporter that throws fails only its locale; the run continues.
@@ -591,7 +638,7 @@ The pointer-setting functions call `assertWritableProtectedTermsPath()` *before*
 Key steps:
 
 1. **Resolve configuration** — token casing, ICU-to-Transloco transformation flag, and target locales are resolved via a three-level priority chain: CLI override → bundle config → global config → default.
-2. **Load resources** — `loadCollectionResources()` reads flat `{key: value}` pairs for the target locale and base locale, falling back to the base locale value when a translation is absent.
+2. **Load resources** — each collection is opened with `openCollection(config, name)`. `loadCollectionResources(collection, locale, cache, warnings)` reads it through the [Collection Reader](#collection-reader) once per run (the cache holds each collection's read). It returns one `{ key, value, tags }` for each entry that has a value for the locale, with the reader's effective tags. The value is `source` when the locale is the collection's own base locale, and the stored translation otherwise. An entry with no value for the locale is left out. A folder that cannot be read becomes a warning. The base data of a run — the debug-keys bundle, and the plan's key set, conflicts and types count — passes `COLLECTION_BASE_LOCALE` instead of a locale, so each collection gives its own base values even when it overrides the global base locale.
 3. **Filter entries** — `EntrySelectionRule` objects in the `BundleDefinition` combine pattern matching (`matchesPattern()`) and tag filtering (`matchesTags()`) to include only the relevant subset of resources. Collections set to `'All'` skip filtering.
 4. **ICU conversion** — when `transformICUToTransloco` is `true` (the default), `icuToTransloco()` from `@simoncodes-ca/domain` is called on each value. Values with malformed ICU syntax are passed through with a warning.
 5. **Build hierarchy** — `buildHierarchy()` converts the flat `{dotKey: value}` map into a nested object matching the Angular Transloco expected structure.
@@ -604,9 +651,9 @@ For a deep-dive into `BundleDefinition` configuration and the type generation su
 
 ## Validation for CI/CD
 
-**Entry point:** `validateResources(collections, targetLocales, options)` in `lib/validate/validate-resources.ts`
+**Entry point:** `validateResources(collections, options)` in `lib/validate/validate-resources.ts`
 
-The validation pipeline is designed for headless CI/CD use. It loads all resources from all specified collections via `loadResourcesFromCollections()` (the same shared walker used by the export pipeline), then checks every resource key in every target locale against its stored [translation status](glossary.md#translation-status).
+The validation pipeline is designed for headless CI/CD use. It takes the opened collections (`openCollection`) and validates them one by one. It reads each collection through the [Collection Reader](#collection-reader). Then it checks every resource in each of that collection's target locales (its `targetLocales` minus `options.skippedLocales`) against its stored [translation status](glossary.md#translation-status). Nothing is deduplicated across collections: a key in two collections is validated in both. The ICU pass compiles each collection's base values under that collection's base locale. The placeholder pass compares translations with that collection's base value. Terminology findings are reported under the collection's base locale.
 
 Categorization rules:
 
@@ -619,16 +666,17 @@ Categorization rules:
 
 The function never stops at the first failure — it validates all resources and returns a complete `ResourceValidationResult` so the team has full visibility. The result includes:
 
-- `passed: boolean` — `true` only when `failures.length === 0`
+- `passed: boolean` — `true` only when there are no status failures, no unreadable folders, no ICU or placeholder failures, and the terminology file loaded
 - `failures`, `warnings`, `successes` — `ResourceValidationDetail[]` objects with `key`, `locale`, `collection`, and `status`
+- `unreadableFolders` — folders the reader could not read (`collection`, `folderPath`, `message`); their resources were not validated
 - `statusCounts` — aggregate counts per status type
-- `totalResourcesValidated`, `totalUniqueKeys`, `localesValidated`, `collectionsValidated`
+- `totalResourcesValidated`, `totalUniqueKeys` (resources checked; a key in two collections counts twice), `localesValidated` (distinct locales across collections), `collectionsValidated`
 
 `generateValidationSummary()` in `generate-validation-summary.ts` converts this result into a human-readable string for CLI output.
 
 The CLI's `validate` command exits with a non-zero code when `passed` is `false`, making it suitable for use as a blocking step in CI pipelines. The `--allow-translated` flag maps directly to `options.allowTranslated`.
 
-`ValidationOptions` also accepts an optional `skippedLocales: readonly string[]` field. This is **reporting-only** — it does not filter resources inside `validateResources()`. The CLI performs locale filtering before calling the function (removing skipped locales from `targetLocales`) and then passes the skipped list so `generateValidationSummary()` can include a `Skipped Locales: <list> (<count>)` line in the output between "Locales Validated" and "Collections Validated".
+`ValidationOptions.skippedLocales` removes locales from every collection's target locales. `generateValidationSummary()` also prints them as a `Skipped Locales: <list> (<count>)` line between "Locales Validated" and "Collections Validated". The other options are `icu` (`{ compileValues, requirePortablePlurals }`), `placeholders` (a boolean) and `terminology` (`{ rules, loadError }`). None of them names a locale: the locales come from the collections.
 
 For the [staleness](glossary.md#staleness) detection mechanism that produces `stale` status entries in the first place, see [domain-and-data-model.md — Checksum-Driven Staleness Detection](domain-and-data-model.md#checksum-driven-staleness-detection).
 

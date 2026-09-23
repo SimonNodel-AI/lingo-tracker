@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { searchTranslations, searchResourceTree, type SearchParams } from './search';
 import type { ResourceTreeNode } from './load-resource-tree';
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
@@ -438,6 +438,38 @@ describe('searchTranslations', () => {
       });
 
       expect(results).toEqual([]);
+    });
+  });
+
+  describe('Collection Reader rules', () => {
+    it('skips an unreadable folder, logs it, and searches the others', () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      createTestResource('good', { save: { source: 'Save' } }, { save: { en: { checksum: 'a' } } });
+      mkdirSync(join(testDir, 'bad'), { recursive: true });
+      writeFileSync(join(testDir, 'bad', 'resource_entries.json'), '{ nope');
+
+      const results = searchTranslations({ translationsFolder: testDir, query: 'save', baseLocale: 'en' });
+
+      expect(results.map((result) => result.key)).toEqual(['good.save']);
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('resource_entries.json'));
+      error.mockRestore();
+    });
+
+    it('finds an entry without metadata, with empty metadata', () => {
+      mkdirSync(join(testDir, 'loose'), { recursive: true });
+      writeFileSync(join(testDir, 'loose', 'resource_entries.json'), JSON.stringify({ save: { source: 'Save' } }));
+
+      const results = searchTranslations({ translationsFolder: testDir, query: 'save', baseLocale: 'en' });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]?.metadata).toEqual({});
+    });
+
+    it('skips hidden folders', () => {
+      mkdirSync(join(testDir, '.hidden'), { recursive: true });
+      writeFileSync(join(testDir, '.hidden', 'resource_entries.json'), JSON.stringify({ save: { source: 'Save' } }));
+
+      expect(searchTranslations({ translationsFolder: testDir, query: 'save', baseLocale: 'en' })).toEqual([]);
     });
   });
 });

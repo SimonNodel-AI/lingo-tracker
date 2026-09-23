@@ -1,6 +1,6 @@
-import { walkFolders } from '../normalize/iterative-folder-walker';
-import { openResourceFolder, translationLocales } from './resource-folder';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
+import { DEFAULT_CONFIG } from '../../constants';
+import { readCollectionFolders } from './read-collection';
 import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
 import type { ResourceTreeNode } from './load-resource-tree';
 
@@ -95,93 +95,93 @@ export function searchTranslations(params: SearchParams): SearchResult[] {
   const normalizedQuery = query.toLowerCase().trim();
   const results: SearchResult[] = [];
 
-  for (const visit of walkFolders(translationsFolder, { skipHidden: false })) {
-    try {
-      const folder = openResourceFolder(visit.absolutePath);
+  // Folders are read through the Collection Reader; the base locale only matters for writes,
+  // so the default stands in when the caller does not name one.
+  const folders = readCollectionFolders({
+    translationsFolder,
+    baseLocale: baseLocale ?? DEFAULT_CONFIG.baseLocale,
+    tags: [],
+  });
 
-      // Search each entry
-      for (const entryKey of folder.keys()) {
-        const stored = folder.get(entryKey);
-        if (!stored) continue;
-        const { entry } = stored;
-        const fullKey = visit.keyPrefix ? `${visit.keyPrefix}.${entryKey}` : entryKey;
-        const normalizedKey = fullKey.toLowerCase();
+  for (const folder of folders) {
+    if (folder.problem) {
+      // Skip folders that cannot be read
+      console.error(`Error reading resources in ${folder.absolutePath}: ${folder.problem.message}`);
+      continue;
+    }
 
-        // Check key matches
-        let matchType: MatchType | null = null;
-        const matchedLocales: string[] = [];
+    for (const { fullKey, entry } of folder.resources) {
+      const normalizedKey = fullKey.toLowerCase();
 
-        if (normalizedKey === normalizedQuery) {
-          matchType = 'exact-key';
-        } else if (normalizedKey.includes(normalizedQuery)) {
-          matchType = 'partial-key';
+      // Check key matches
+      let matchType: MatchType | null = null;
+      const matchedLocales: string[] = [];
+
+      if (normalizedKey === normalizedQuery) {
+        matchType = 'exact-key';
+      } else if (normalizedKey.includes(normalizedQuery)) {
+        matchType = 'partial-key';
+      }
+
+      // Check value matches if no key match
+      if (!matchType) {
+        // Search source field if baseLocale is provided
+        if (baseLocale && entry.source && typeof entry.source === 'string') {
+          const normalizedValue = entry.source.toLowerCase();
+          if (normalizedValue === normalizedQuery) {
+            matchType = 'exact-value';
+            matchedLocales.push(baseLocale);
+          } else if (normalizedValue.includes(normalizedQuery)) {
+            matchType = 'partial-value';
+            matchedLocales.push(baseLocale);
+          }
         }
 
-        // Check value matches if no key match
-        if (!matchType) {
-          // Search source field if baseLocale is provided
-          if (baseLocale && entry.source && typeof entry.source === 'string') {
-            const normalizedValue = entry.source.toLowerCase();
-            if (normalizedValue === normalizedQuery) {
-              matchType = 'exact-value';
-              matchedLocales.push(baseLocale);
-            } else if (normalizedValue.includes(normalizedQuery)) {
+        // Search all other locale translations
+        for (const [locale, value] of Object.entries(entry.translations)) {
+          const normalizedValue = value.toLowerCase();
+          if (normalizedValue === normalizedQuery) {
+            matchType = 'exact-value';
+            matchedLocales.push(locale);
+          } else if (normalizedValue.includes(normalizedQuery)) {
+            if (matchType !== 'exact-value') {
               matchType = 'partial-value';
-              matchedLocales.push(baseLocale);
             }
-          }
-
-          // Search all other locale translations
-          for (const locale of translationLocales(entry)) {
-            const normalizedValue = (entry[locale] as string).toLowerCase();
-            if (normalizedValue === normalizedQuery) {
-              matchType = 'exact-value';
-              matchedLocales.push(locale);
-            } else if (normalizedValue.includes(normalizedQuery)) {
-              if (matchType !== 'exact-value') {
-                matchType = 'partial-value';
-              }
-              matchedLocales.push(locale);
-            }
-          }
-        }
-
-        // Add to results if match found
-        if (matchType) {
-          const meta = stored.meta ?? {};
-          const status: Record<string, TranslationStatus | undefined> = {};
-          const translations: Record<string, string> = {};
-
-          for (const locale of translationLocales(entry)) {
-            translations[locale] = entry[locale] as string;
-            status[locale] = meta[locale]?.status;
-          }
-
-          // Include base locale value from source field
-          if (baseLocale && entry.source) {
-            translations[baseLocale] = entry.source;
-          }
-
-          results.push({
-            key: fullKey,
-            source: entry.source,
-            translations,
-            status,
-            metadata: meta,
-            matchType,
-            matchedLocales: matchedLocales.length > 0 ? matchedLocales : undefined,
-            comment: entry.comment,
-            tags: entry.tags,
-          });
-
-          if (results.length >= maxResults) {
-            break;
+            matchedLocales.push(locale);
           }
         }
       }
-    } catch (error) {
-      // Skip folders with invalid JSON
-      console.error(`Error reading resources in ${visit.absolutePath}:`, error);
+
+      // Add to results if match found
+      if (matchType) {
+        const status: Record<string, TranslationStatus | undefined> = {};
+        const translations: Record<string, string> = { ...entry.translations };
+
+        for (const locale of Object.keys(entry.translations)) {
+          status[locale] = entry.metadata[locale]?.status;
+        }
+
+        // Include base locale value from source field
+        if (baseLocale && entry.source) {
+          translations[baseLocale] = entry.source;
+        }
+
+        results.push({
+          key: fullKey,
+          source: entry.source,
+          translations,
+          status,
+          metadata: entry.metadata,
+          matchType,
+          matchedLocales: matchedLocales.length > 0 ? matchedLocales : undefined,
+          comment: entry.comment,
+          tags: entry.tags,
+        });
+
+        if (results.length >= maxResults) {
+          break;
+        }
+      }
     }
 
     if (results.length >= maxResults) {
@@ -242,7 +242,7 @@ export interface SearchTreeParams {
  * @returns Array of search results sorted by relevance
  *
  * @example
- * const tree = loadResourceTree({ translationsFolder: './translations', depth: Infinity });
+ * const tree = loadResourceTree({ translationsFolder: './translations', baseLocale: 'en', depth: Infinity });
  * const results = searchResourceTree({
  *   tree,
  *   query: 'button',

@@ -8,6 +8,11 @@ export interface WalkFoldersOptions {
   maxDepth?: number;
   /** When provided, realpath of each directory is checked against this set for cycle detection. */
   visitedPaths?: Set<string>;
+  /**
+   * Called for a directory (the root included) that exists but cannot be listed — permission
+   * denied, or a file where a directory was expected. The directory is skipped either way.
+   */
+  onUnlistable?: (absolutePath: string, error: unknown) => void;
 }
 
 export interface FolderVisit {
@@ -85,8 +90,9 @@ export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Ge
     let dirEntries: fs.Dirent[];
     try {
       dirEntries = fs.readdirSync(current.absolutePath, { withFileTypes: true });
-    } catch {
-      // Directory became inaccessible between existence check and read — skip
+    } catch (error) {
+      // Cannot be listed (permission denied, not a directory, or gone since the check) — skip
+      options?.onUnlistable?.(current.absolutePath, error);
       continue;
     }
 

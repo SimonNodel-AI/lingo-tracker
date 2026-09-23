@@ -49,7 +49,7 @@ const CONFIG = {
 
 /** The ICU options `validateResources` was called with. */
 function icuOptions() {
-  return mockValidateResources.mock.calls[0]?.[2].icu;
+  return mockValidateResources.mock.calls[0]?.[1].icu;
 }
 
 describe('validateCommand ICU options', () => {
@@ -89,10 +89,11 @@ describe('validateCommand ICU options', () => {
     expect(icuOptions()).toBeDefined();
   });
 
-  it('includes the base locale, whose value is copied into every translation slot', async () => {
+  it('leaves base-locale compilation to each collection in core', async () => {
     await validateCommand({});
 
-    expect(icuOptions()?.baseLocale).toBe('en');
+    // Core compiles each collection's base values under that collection's own base locale.
+    expect(icuOptions()).not.toHaveProperty('baseLocale');
   });
 
   it('leaves the portability rule off unless asked', async () => {
@@ -131,13 +132,14 @@ describe('validateCommand ICU options', () => {
     // the ICU pass still covers the source value every translation copies.
     await validateCommand({ skipLocales: ['en'] });
 
-    expect(icuOptions()?.baseLocale).toBe('en');
-    expect(mockValidateResources.mock.calls[0]?.[1]).toEqual(['fr', 'es']);
+    expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual([]);
+    expect(mockValidateResources.mock.calls[0]?.[0]?.[0]?.targetLocales).toEqual(['fr', 'es']);
   });
 
   it('does not check a skipped target locale', async () => {
     await validateCommand({ skipLocales: ['es'] });
 
-    expect(mockValidateResources.mock.calls[0]?.[1]).toEqual(['fr']);
+    expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual(['es']);
+    expect(mockValidateResources.mock.calls[0]?.[0]?.[0]?.targetLocales).toEqual(['fr', 'es']);
   });
 });

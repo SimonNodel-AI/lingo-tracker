@@ -6,7 +6,7 @@ import { calculateChecksum } from '../resource/checksum';
 import type { ResourceEntries } from '../resource/resource-entry';
 import type { TrackerMetadata } from '../resource/tracker-metadata';
 import type { SafeAny } from '../constants';
-import { setupMockFs, makeBaseConfig } from './locale-spec-helpers';
+import { setupMockFs, makeBaseConfig } from './locale.spec-helpers';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
 
 vi.mock('fs');

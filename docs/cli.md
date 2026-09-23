@@ -1308,15 +1308,15 @@ lingo-tracker validate [options]
 **Options:**
 
 - `--allow-translated` - Treat 'translated' status as warning instead of failure (default: false)
-- `--skip-locales <locales>` - Comma-separated list of target locales to exclude from validation (e.g. `fr` or `fr,de`). Useful when a locale has been added to the config but its translations are still in progress. Unknown locales (not in `config.locales`) emit a warning and are ignored. The base locale is silently ignored, and is still compiled by the ICU check. If all target locales are skipped, the command exits with code `1`.
+- `--skip-locales <locales>` - Comma-separated list of target locales to exclude from validation (e.g. `fr` or `fr,de`). Useful when a locale has been added to the config but its translations are still in progress. Locales that are no collection's target locale emit a warning and are ignored. A collection's base locale is silently ignored, and is still compiled by the ICU check. If all target locales are skipped, the command exits with code `1`.
 - `--skip-icu` - Do not compile values as ICU for their own locale (default: false). Does not disable `--require-portable-plurals`, which parses rather than compiles.
 - `--require-portable-plurals` - Warn when a base-locale plural selects a branch by category (`one`, `few`, …) instead of an exact `=N` match (default: false). Warnings never fail the run.
 
 **What Validate Does:**
 
 1. **Loads all resources** from all configured collections
-2. **Checks translation status** for every resource in every target locale
-3. **Compiles every value as ICU** under the locale it is stored under, including the base locale (unless `--skip-icu`)
+2. **Checks translation status** for every resource in every target locale of its collection. Each collection uses its own `baseLocale` and `locales` when it overrides them. A key that two collections share is checked in both.
+3. **Compiles every value as ICU** under the locale it is stored under, including each collection's base locale (unless `--skip-icu`)
 4. **Collects all validation results** (does not stop at first error)
 5. **Categorizes findings** into failures, warnings, and successes
 6. **Reports comprehensive results** grouped by locale
@@ -1335,7 +1335,9 @@ A value that does not compile as ICU for its own locale is a failure whatever it
 **Exit Codes:**
 
 - `0` - All validations passed (all resources verified)
-- `1` - Validation failures found (new/stale resources, translated without `--allow-translated`, or values that fail to compile as ICU), or the preferred terminology file exists but cannot be loaded
+- `1` - Validation failures found (new/stale resources, translated without `--allow-translated`, values that fail to compile as ICU, or a resource folder whose files are not valid JSON), or the preferred terminology file exists but cannot be loaded
+
+A resource without metadata counts as `new`. A folder whose `resource_entries.json` or `tracker_meta.json` is not valid JSON is listed under **Unreadable Folders**. Its resources are not checked, and validation fails.
 
 [Preferred terminology](./features/preferred-terminology.md) findings in base-locale values are warnings. They never change the exit code.
 
@@ -1739,13 +1741,13 @@ Every export generates an `export-summary.md` file in the output directory conta
 - **Status filtering** is per-locale: a resource is included in a locale if it matches the filter for that locale
 - **Tag filtering** uses OR logic: resource must have at least one of the specified tags
 - **Base locale** is never exported (only target locales)
-- Resources without metadata are omitted and logged in errors
+- Resources without metadata are exported as `new`
 - Empty export results don't create files (warning logged)
 
 **Error Handling:**
 
-- Malformed files: Skipped with detailed warning, export continues
-- Missing metadata: Resource omitted, logged in errors
+- Malformed files: the folder is skipped and listed under "Malformed Files" in the summary; export continues
+- Missing metadata: the resource is exported with status `new`
 - Hierarchical conflicts: Logged when a key is both a parent and leaf value (JSON hierarchical only)
 - Non-writable output directory: Fails with clear error message
 - Empty results: No files created, warning shown

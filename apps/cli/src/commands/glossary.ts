@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadResourcesFromCollections, openCollection } from '@simoncodes-ca/core';
+import { openCollection, readCollection } from '@simoncodes-ca/core';
 import type { Collection, LingoTrackerConfig } from '@simoncodes-ca/core';
 import { ConsoleFormatter, loadConfiguration, parseCommaSeparatedList, resolveCollection } from '../utils';
 import { exitWithError } from '../utils/report-error';
@@ -59,9 +59,9 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
 }
 
 /**
- * Loads entries from the requested collection(s) via the shared core loader,
- * mapping each `LoadedResource` to the matcher's `FlatEntry`. Each collection's
- * effective base locale is stripped from `translations` (it lives in `source`).
+ * Loads entries from the requested collection(s) through the core Collection Reader,
+ * mapping each stored resource to the matcher's `FlatEntry`. A folder that cannot be read
+ * is reported as a warning and its entries are left out.
  * Returns null if a named collection cannot be resolved.
  */
 function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): FlatEntry[] | null {
@@ -75,18 +75,20 @@ function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig
   }
 
   const entries: FlatEntry[] = [];
-  for (const { name, translationsFolder, baseLocale } of targets) {
-    const loaded = loadResourcesFromCollections([{ name, path: translationsFolder }]);
-    for (const resource of loaded) {
-      const translations = { ...resource.translations };
-      delete translations[baseLocale];
-      entries.push({
-        key: resource.fullKey,
-        collection: resource.collection,
-        source: resource.source,
-        translations,
-        status: resource.status,
-      });
+  for (const collection of targets) {
+    const { resources, problems } = readCollection(collection);
+    // stderr, so --stdout output stays valid JSON.
+    for (const problem of problems) {
+      console.warn(`⚠️  Collection '${collection.name}': skipped unreadable folder: ${problem.message}`);
+    }
+    for (const { fullKey, entry } of resources) {
+      const translations = { ...entry.translations };
+      delete translations[collection.baseLocale];
+      const status: FlatEntry['status'] = {};
+      for (const [locale, meta] of Object.entries(entry.metadata)) {
+        if (meta?.status) status[locale] = meta.status;
+      }
+      entries.push({ key: fullKey, collection: collection.name, source: entry.source, translations, status });
     }
   }
   return entries;

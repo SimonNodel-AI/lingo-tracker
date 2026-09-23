@@ -150,7 +150,7 @@ export async function translateLocale(params: TranslateLocaleParams): Promise<Tr
   const absoluteFolder = path.resolve(cwd, params.translationsFolder);
 
   // Load the entire resource tree.
-  const tree = loadResourceTree({ translationsFolder: absoluteFolder, depth: 999, cwd });
+  const tree = loadResourceTree({ translationsFolder: absoluteFolder, baseLocale, depth: 999, cwd });
   const allResources = extractResourcesRecursively(tree);
 
   // Filter to only those that need translating for the target locale.

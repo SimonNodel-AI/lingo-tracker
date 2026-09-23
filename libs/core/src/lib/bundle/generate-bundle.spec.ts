@@ -161,8 +161,18 @@ describe('generate-bundle', () => {
 
       await generateBundle(params);
 
-      expect(loadSpy).toHaveBeenCalledWith('/translations/default', 'en', 'en', expect.any(Map), undefined);
-      expect(loadSpy).toHaveBeenCalledWith('/translations/admin', 'en', 'en', expect.any(Map), undefined);
+      expect(loadSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'default', translationsFolder: '/translations/default', baseLocale: 'en' }),
+        'en',
+        expect.any(Map),
+        expect.any(Array),
+      );
+      expect(loadSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'admin', translationsFolder: '/translations/admin', baseLocale: 'en' }),
+        'en',
+        expect.any(Map),
+        expect.any(Array),
+      );
     });
 
     it('should process specific collections with selection rules', async () => {
@@ -272,7 +282,7 @@ describe('generate-bundle', () => {
         ],
       };
 
-      vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation((folder) => {
+      vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation(({ translationsFolder: folder }) => {
         if (folder === '/translations/default') {
           return [{ key: 'shared.title', value: 'Default Title' }];
         }
@@ -314,7 +324,7 @@ describe('generate-bundle', () => {
         ],
       };
 
-      vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation((folder) => {
+      vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation(({ translationsFolder: folder }) => {
         if (folder === '/translations/default') {
           return [{ key: 'shared.title', value: 'Default Title' }];
         }
@@ -1466,11 +1476,18 @@ describe('generate-bundle', () => {
           importFolder: 'dist/import',
           baseLocale: rawConfig.baseLocale,
           locales: fixtureLocales,
-          collections: collection ? { [FIXTURE_COLLECTION]: collection } : {},
+          collections: collection
+            ? {
+                [FIXTURE_COLLECTION]: {
+                  ...collection,
+                  translationsFolder: path.resolve(REPO_ROOT, collection.translationsFolder),
+                },
+              }
+            : {},
         };
 
         vi.spyOn(resourceLoader, 'loadCollectionResources').mockImplementation(
-          (translationsFolder, locale, baseLocale) => loadFixtureResources(translationsFolder, locale, baseLocale),
+          ({ translationsFolder, baseLocale }, locale) => loadFixtureResources(translationsFolder, locale, baseLocale),
         );
       });
 

@@ -143,4 +143,37 @@ describe('walkFolders (real filesystem)', () => {
     expect(keyPrefixByPath[path.join(tempDir, 'apps', 'common')]).toBe('apps.common');
     expect(keyPrefixByPath[path.join(tempDir, 'apps', 'common', 'buttons')]).toBe('apps.common.buttons');
   });
+
+  it('reports a root that is a file through onUnlistable and yields nothing', () => {
+    const file = path.join(tempDir, 'file');
+    fs.writeFileSync(file, '');
+    const unlistable: string[] = [];
+
+    const visits = [...walkFolders(file, { onUnlistable: (absolutePath) => unlistable.push(absolutePath) })];
+
+    expect(visits).toEqual([]);
+    expect(unlistable).toEqual([file]);
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports a subdirectory it cannot list through onUnlistable and keeps walking',
+    () => {
+      const locked = path.join(tempDir, 'locked');
+      fs.mkdirSync(locked);
+      fs.mkdirSync(path.join(tempDir, 'open'));
+      fs.chmodSync(locked, 0o000);
+      const unlistable: string[] = [];
+
+      try {
+        const visited = [
+          ...walkFolders(tempDir, { onUnlistable: (absolutePath) => unlistable.push(absolutePath) }),
+        ].map((visit) => visit.keyPrefix);
+
+        expect(visited.sort()).toEqual(['', 'open']);
+        expect(unlistable).toEqual([locked]);
+      } finally {
+        fs.chmodSync(locked, 0o700);
+      }
+    },
+  );
 });

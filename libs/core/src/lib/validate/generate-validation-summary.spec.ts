@@ -12,6 +12,38 @@ describe('generateValidationSummary', () => {
     allowTranslated: false,
   };
 
+  describe('unreadable folders', () => {
+    it('lists each unreadable folder with its message and counts them in the summary', () => {
+      const result: ResourceValidationResult = {
+        totalResourcesValidated: 0,
+        totalUniqueKeys: 0,
+        localesValidated: 1,
+        collectionsValidated: 1,
+        statusCounts: { new: 0, translated: 0, stale: 0, verified: 0 },
+        failures: [],
+        warnings: [],
+        successes: [],
+        unreadableFolders: [
+          {
+            collection: 'main',
+            folderPath: 'apps.bad',
+            message: 'Failed to parse JSON file /t/apps/bad/tracker_meta.json',
+          },
+          { collection: 'main', folderPath: '', message: 'Failed to parse JSON file /t/resource_entries.json' },
+        ],
+        passed: false,
+      };
+
+      const summary = generateValidationSummary(result, defaultOptions);
+
+      expect(summary).toContain('❌ Unreadable Folders (2):');
+      expect(summary).toContain('  [main] apps.bad\n    Failed to parse JSON file /t/apps/bad/tracker_meta.json');
+      expect(summary).toContain('  [main] (root)');
+      expect(summary).toContain('Unreadable Folders: 2');
+      expect(summary).toContain('❌ Validation failed.');
+    });
+  });
+
   describe('successful validation', () => {
     it('should generate summary for all verified resources', () => {
       const result: ResourceValidationResult = {

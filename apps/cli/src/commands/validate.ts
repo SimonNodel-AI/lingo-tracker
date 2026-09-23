@@ -2,6 +2,7 @@ import {
   generateValidationSummary,
   loadPreferredTerminology,
   openCollection,
+  type ValidationOptions,
   validateResources,
 } from '@simoncodes-ca/core';
 import { loadConfiguration } from '../utils';
@@ -20,9 +21,9 @@ export interface ValidateCommandOptions {
   allowTranslated?: boolean;
 
   /**
-   * Locales to exclude from validation. Values that are unknown (not in config.locales)
-   * emit a warning. The base locale is silently ignored. If all target locales are skipped,
-   * the command exits with code 1.
+   * Locales to exclude from validation. Values that are no collection's target locale emit a
+   * warning, unless they are a collection's base locale (silently ignored). If all target
+   * locales are skipped, the command exits with code 1.
    */
   skipLocales?: readonly string[];
 
@@ -68,8 +69,8 @@ export interface ValidateCommandOptions {
  *
  * **Validation Process:**
  * 1. Loads configuration from .lingo-tracker.json
- * 2. Identifies all collections and target locales
- * 3. Validates EVERY resource in EVERY locale (comprehensive check)
+ * 2. Opens every collection with its own base locale and target locales
+ * 3. Validates EVERY resource of each collection in EVERY one of its target locales
  * 4. Collects ALL failures and warnings
  * 5. Displays complete validation summary
  * 6. Exits with code 1 if any failures found, 0 if all passed
@@ -80,6 +81,7 @@ export interface ValidateCommandOptions {
  * - 'translated' status → FAILURE (default) or WARNING (with --allow-translated)
  * - 'verified' status → SUCCESS (translation reviewed and approved)
  * - Missing metadata → treated as 'new' (FAILURE)
+ * - Folder whose files cannot be read (malformed JSON) → FAILURE (its resources are not validated)
  * - Value does not compile as ICU for its own locale → FAILURE (unless --skip-icu)
  * - Translation interpolates different placeholders than its base value → FAILURE (unless --skip-placeholders)
  * - Base-locale value uses a discouraged term from the preferred-terminology file → WARNING (never fails)
@@ -151,40 +153,38 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
   const { config, cwd } = loaded;
 
   const collections = Object.keys(config.collections || {}).map((name) => openCollection(config, name, { cwd }));
-  const allCollections = collections.map(({ name, translationsFolder }) => ({ name, path: translationsFolder }));
 
-  if (allCollections.length === 0) {
+  if (collections.length === 0) {
     console.error('❌ No collections found in configuration.');
     process.exit(1);
   }
 
-  const targetLocales = (config.locales || []).filter((locale: string) => locale !== config.baseLocale);
+  // Each collection is validated against its own target locales (its locales without its base locale).
+  const targetLocales = [...new Set(collections.flatMap((collection) => collection.targetLocales))];
 
   if (targetLocales.length === 0) {
     console.error('❌ No target locales found in configuration.');
-    console.error('Target locales are all configured locales except the base locale.');
+    console.error("Target locales are each collection's locales except its base locale.");
     process.exit(1);
   }
 
-  const configuredLocales = new Set(config.locales || []);
+  const baseLocales = new Set(collections.map((collection) => collection.baseLocale));
   const requestedSkip = options.skipLocales ?? [];
   const effectiveSkipped: string[] = [];
 
   for (const locale of requestedSkip) {
-    if (locale === config.baseLocale) {
-      // Base locale is already excluded from targetLocales — silently ignore
+    if (targetLocales.includes(locale)) {
+      effectiveSkipped.push(locale);
       continue;
     }
-    if (!configuredLocales.has(locale)) {
-      console.warn(`⚠️  Skipping unknown locale '${locale}' — not in configured locales`);
+    if (baseLocales.has(locale)) {
+      // A base locale is never a target, so there is nothing to skip — silently ignore
       continue;
     }
-    effectiveSkipped.push(locale);
+    console.warn(`⚠️  Skipping unknown locale '${locale}' — not in configured locales`);
   }
 
-  const localesToValidate = targetLocales.filter((l: string) => !effectiveSkipped.includes(l));
-
-  if (localesToValidate.length === 0) {
+  if (targetLocales.every((locale) => effectiveSkipped.includes(locale))) {
     console.error('❌ All target locales were skipped; nothing to validate.');
     process.exit(1);
   }
@@ -195,42 +195,30 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
   if (preferredTerminology.warning) {
     console.warn(`⚠️  ${preferredTerminology.warning}`);
   }
-  const baseLocaleByCollection = Object.fromEntries(collections.map(({ name, baseLocale }) => [name, baseLocale]));
 
   const compileValues = !options.skipIcu;
   const requirePortablePlurals = options.requirePortablePlurals ?? false;
 
-  const validationOptions = {
+  const validationOptions: ValidationOptions = {
     allowTranslated: options.allowTranslated ?? false,
     skippedLocales: effectiveSkipped,
     // The portability rule is a static parse, not a compilation, so an explicit
-    // request for it is honoured even alongside --skip-icu.
-    icu:
-      compileValues || requirePortablePlurals
-        ? {
-            // The base locale carries the source value copied into every
-            // translation slot, so ICU checks it alongside the targets.
-            baseLocale: config.baseLocale,
-            compileValues,
-            requirePortablePlurals,
-          }
-        : undefined,
+    // request for it is honoured even alongside --skip-icu. Each collection's
+    // base values are checked alongside its targets: they are copied into every
+    // translation slot.
+    icu: compileValues || requirePortablePlurals ? { compileValues, requirePortablePlurals } : undefined,
     // A renamed placeholder renders as empty text instead of raising, so the
     // ICU pass above cannot see it and the status gate has no opinion on it.
-    placeholders: options.skipPlaceholders ? undefined : { baseLocale: config.baseLocale },
+    placeholders: !options.skipPlaceholders,
     // Omitted when there is nothing to check, so a project without rules sees
     // no terminology output at all.
     terminology:
       preferredTerminology.rules.length > 0 || preferredTerminology.error !== undefined
-        ? {
-            rules: preferredTerminology.rules,
-            loadError: preferredTerminology.error,
-            baseLocaleByCollection,
-          }
+        ? { rules: preferredTerminology.rules, loadError: preferredTerminology.error }
         : undefined,
   };
 
-  const validationResult = validateResources(allCollections, localesToValidate, validationOptions);
+  const validationResult = validateResources(collections, validationOptions);
 
   const summary = generateValidationSummary(validationResult, validationOptions);
 

@@ -9,6 +9,13 @@ export {
   type ResourceTreeNode,
 } from './load-resource-tree';
 export {
+  type CollectionRead,
+  type CollectionReadProblem,
+  type CollectionReadTarget,
+  readCollection,
+  type StoredResource,
+} from './read-collection';
+export {
   type ResolvedResourcePaths,
   type ResourcePathResolutionParams,
   resolveResourcePaths,

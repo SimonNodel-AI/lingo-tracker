@@ -12,8 +12,8 @@ import * as path from 'node:path';
 import { detectHierarchicalConflicts, type TokenCasing } from '@simoncodes-ca/domain';
 import { type BundleDefinition, hasTypeDistConfigured } from '../../config/bundle-definition';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import type { ResourceEntries } from '../../resource/resource-entry';
 import { type BundleKeyTrace, collectBundleData, getBundleOutputPath } from './generate-bundle';
+import { COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
 import {
   bundleKeyToConstantName,
   segmentToPropertyName,
@@ -108,15 +108,9 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
   const warnings: string[] = [];
   const keysPerLocale: Record<string, number> = {};
   const files: BundlePlanFile[] = [];
-  const resourceCache = new Map<string, ResourceEntries>();
-
-  // Trace only the base locale: conflicts are a property of the key set, which
-  // is identical across locales, so tracing every locale would duplicate work.
-  const trace: BundleKeyTrace = { conflicts: new Set(), origins: new Map() };
-  let baseLocaleData: Record<string, string> | undefined;
+  const resourceCache: CollectionReadCache = new Map();
 
   for (const locale of targetLocales) {
-    const isBaseLocale = locale === config.baseLocale;
     const bundleData = collectBundleData(
       bundleDefinition,
       config,
@@ -124,12 +118,7 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
       warnings,
       resolvedTransformICUToTransloco,
       resourceCache,
-      isBaseLocale ? trace : undefined,
     );
-
-    if (isBaseLocale) {
-      baseLocaleData = bundleData;
-    }
 
     const keysCount = Object.keys(bundleData).length;
     keysPerLocale[locale] = keysCount;
@@ -142,19 +131,20 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
     files.push(describeFile(outputPath, 'bundle', keysCount, cwd, locale));
   }
 
-  // The base locale drives conflict detection and the example key. When it is
-  // not among the target locales, collect it once without recording a file.
-  if (!baseLocaleData) {
-    baseLocaleData = collectBundleData(
-      bundleDefinition,
-      config,
-      config.baseLocale,
-      warnings,
-      resolvedTransformICUToTransloco,
-      resourceCache,
-      trace,
-    );
-  }
+  // The key set drives conflict detection, the example key and the types count. It is read
+  // once, from every collection's own base values (a collection may override the base locale),
+  // and traced only here: conflicts are a property of the key set, not of a locale. Its
+  // warnings were already reported by the locale passes, so they are dropped unless there were none.
+  const trace: BundleKeyTrace = { conflicts: new Set(), origins: new Map() };
+  const baseLocaleData = collectBundleData(
+    bundleDefinition,
+    config,
+    COLLECTION_BASE_LOCALE,
+    targetLocales.length > 0 ? [] : warnings,
+    resolvedTransformICUToTransloco,
+    resourceCache,
+    trace,
+  );
 
   const typesConfigured = hasTypeDistConfigured(bundleDefinition);
   const baseKeysCount = Object.keys(baseLocaleData).length;
