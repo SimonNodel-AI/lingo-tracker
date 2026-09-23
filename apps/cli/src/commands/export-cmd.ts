@@ -1,30 +1,28 @@
-import * as path from 'path';
-import * as fs from 'fs';
-import prompts from 'prompts';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
 import {
-  type LingoTrackerConfig,
-  type ExportOptions,
+  type Collection,
   type ExportFormat,
-  loadResourcesFromCollections,
-  filterResources,
-  validateOutputDirectory,
-  validateBasePropertyName,
-  exportToJson,
-  exportToXliff,
-  generateExportSummary,
-  type ExportResult,
+  type ExportRunResult,
+  exportTargetLocales,
+  type LingoTrackerConfig,
+  openCollection,
   readCollectionProtectedTerms,
   readGlobalProtectedTerms,
+  runExport,
+  validateBasePropertyName,
+  validateOutputDirectory,
 } from '@simoncodes-ca/core';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
+import * as fs from 'fs';
+import * as path from 'path';
+import prompts from 'prompts';
 import {
-  loadConfiguration,
-  parseCommaSeparatedList,
-  processMultiselectWithAll,
-  multiselectResultToString,
+  buildSummaryPath,
   ConsoleFormatter,
   ErrorMessages,
-  buildSummaryPath,
+  loadConfiguration,
+  multiselectResultToString,
+  parseCommaSeparatedList,
+  processMultiselectWithAll,
 } from '../utils';
 
 export interface ExportCommandOptions {
@@ -53,9 +51,11 @@ export async function exportCommand(options: ExportCommandOptions): Promise<void
   if (!loaded) return;
   const { config, cwd } = loaded;
 
+  const allCollections = Object.keys(config.collections || {}).map((name) => openCollection(config, name, { cwd }));
+
   let answers: Partial<ExportCommandOptions>;
   try {
-    answers = await promptForMissing(options, config);
+    answers = await promptForMissing(options, config, exportTargetLocales(allCollections));
   } catch (error) {
     if ((error as Error).message === 'Export cancelled') {
       ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Export'));
@@ -114,174 +114,107 @@ export async function exportCommand(options: ExportCommandOptions): Promise<void
     process.exit(1);
   }
 
-  // Resolve collections
   const collectionNames = parseCommaSeparatedList(options.collection);
-
-  const globalProtectedTerms = readGlobalProtectedTerms(config, cwd);
-
-  const allCollections = Object.entries(config.collections || {}).map(([name, col]) => ({
-    name,
-    path: col.translationsFolder,
-    tags: col.tags,
-    protectedTerms: readCollectionProtectedTerms(col, cwd),
-  }));
-
-  const collectionsToProcess = allCollections.filter((c) => !collectionNames || collectionNames.includes(c.name));
-
-  if (collectionsToProcess.length === 0) {
+  const collections = allCollections.filter((c) => !collectionNames || collectionNames.includes(c.name));
+  if (collections.length === 0) {
     ConsoleFormatter.warning('No matching collections found.');
     return;
   }
 
-  // Resolve locales
-  const localeNames = parseCommaSeparatedList(options.locale);
-  const targetLocales = (config.locales || []).filter(
-    (l: string) => l !== config.baseLocale && (!localeNames || localeNames.includes(l)),
-  );
-
+  const targetLocales = exportTargetLocales(collections, parseCommaSeparatedList(options.locale));
   if (targetLocales.length === 0) {
     ConsoleFormatter.warning('No target locales selected.');
     return;
   }
 
-  // Resolve status and tags
-  const statusFilter = parseCommaSeparatedList(options.status)?.map((s) => s as TranslationStatus);
-  const tagFilter = parseCommaSeparatedList(options.tags);
-
   ConsoleFormatter.progress(`Exporting to ${options.format.toUpperCase()}...`);
-  ConsoleFormatter.indent(`Collections: ${collectionsToProcess.map((c) => c.name).join(', ')}`);
+  ConsoleFormatter.indent(`Collections: ${collections.map((c) => c.name).join(', ')}`);
   ConsoleFormatter.indent(`Locales: ${targetLocales.join(', ')}`);
   ConsoleFormatter.indent(`Output: ${outputDir}`);
   if (options.dryRun) ConsoleFormatter.indent('[DRY RUN]');
 
-  // Load resources
-  const allResources = loadResourcesFromCollections(
-    collectionsToProcess.map((c) => ({
-      name: c.name,
-      path: path.resolve(cwd, c.path),
-      tags: c.tags,
-      protectedTerms: c.protectedTerms,
-    })),
-  );
-
-  const exportOptions: ExportOptions = {
-    format: options.format,
-    outputDirectory: outputDir,
-    collections: collectionsToProcess.map((c) => c.name),
-    locales: targetLocales,
-    status: statusFilter,
-    tags: tagFilter,
-    filenamePattern: options.filename,
-    dryRun: options.dryRun,
-    verbose: options.verbose,
-    jsonStructure: options.structure,
-    richJson: options.rich,
-    includeBase: options.includeBase,
-    includeStatus: options.includeStatus,
-    includeComment: options.includeComment,
-    includeTags: options.includeTags,
-    basePropertyName: options.basePropertyName,
-    augmentProtectedTerms: options.protectNotes !== false,
-    onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
-  };
-
-  const totalFiles = 0;
-  let totalResources = 0;
-  const allWarnings: string[] = [];
-  const allErrors: string[] = [];
-  const allFilesCreated: string[] = [];
-
-  for (const locale of targetLocales) {
-    const filtered = filterResources(allResources, locale, statusFilter, tagFilter, {
-      globalProtectedTerms,
+  let result: ExportRunResult;
+  try {
+    result = await runExport(collections, {
+      format: options.format,
+      outputDirectory: outputDir,
+      locales: targetLocales,
+      status: parseCommaSeparatedList(options.status)?.map((s) => s as TranslationStatus),
+      tags: parseCommaSeparatedList(options.tags),
+      filenamePattern: options.filename,
+      dryRun: options.dryRun,
+      verbose: options.verbose,
+      jsonStructure: options.structure,
+      richJson: options.rich,
+      includeBase: options.includeBase,
+      includeStatus: options.includeStatus,
+      includeComment: options.includeComment,
+      includeTags: options.includeTags,
+      basePropertyName: options.basePropertyName,
       augmentProtectedTerms: options.protectNotes !== false,
-      baseLocale: config.baseLocale,
+      protectedTerms: readProtectedTerms(config, collections, cwd),
+      onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
     });
+  } catch (error) {
+    ConsoleFormatter.error((error as Error).message);
+    process.exit(1);
+  }
 
-    if (filtered.length === 0) {
-      if (options.verbose) console.log(`   Skipping ${locale}: No matching resources.`);
-      continue;
-    }
+  displayResults(result);
 
-    try {
-      let result: ExportResult;
-      if (options.format === 'xliff') {
-        result = await exportToXliff(filtered, { ...exportOptions, locales: [locale] }, config.baseLocale);
-      } else {
-        result = exportToJson(filtered, { ...exportOptions, locales: [locale] }, config.baseLocale);
-      }
+  const summaryPath = buildSummaryPath('export');
+  if (!options.dryRun) {
+    fs.writeFileSync(summaryPath, result.summary);
+    console.log(`\n📄 Summary written to: ${summaryPath}`);
+  } else {
+    console.log('\n📄 Summary (Dry Run):');
+    console.log(result.summary);
+  }
+  if (result.errors.length + result.hierarchicalConflicts.length > 0 && !options.dryRun) process.exitCode = 1;
+}
 
-      totalResources += result.resourcesExported;
-      allWarnings.push(...result.warnings);
-      allErrors.push(...result.errors);
-      allErrors.push(...result.hierarchicalConflicts);
-      allFilesCreated.push(...result.filesCreated);
+function readProtectedTerms(config: LingoTrackerConfig, collections: readonly Collection[], cwd: string) {
+  return {
+    global: readGlobalProtectedTerms(config, cwd),
+    collections: Object.fromEntries(collections.map((c) => [c.name, readCollectionProtectedTerms(c.config, cwd)])),
+  };
+}
 
-      if (result.filesCreated.length > 0) {
-        ConsoleFormatter.indent(
-          `✅ ${locale}: Exported ${result.resourcesExported} resources to ${result.filesCreated.join(', ')}`,
-        );
-      } else if (result.errors.length > 0) {
-        ConsoleFormatter.indent(`❌ ${locale}: Failed`);
-      }
-    } catch (error) {
-      ConsoleFormatter.indent(`❌ ${locale}: Export failed - ${(error as Error).message}`);
-      allErrors.push(`Export for locale ${locale} failed: ${(error as Error).message}`);
+function displayResults(result: ExportRunResult): void {
+  for (const { locale, outcome, resourcesExported, filesCreated, error } of result.localeResults) {
+    if (outcome === 'exported') {
+      ConsoleFormatter.indent(`✅ ${locale}: Exported ${resourcesExported} resources to ${filesCreated.join(', ')}`);
+    } else if (outcome === 'failed') {
+      ConsoleFormatter.indent(error ? `❌ ${locale}: Export failed - ${error}` : `❌ ${locale}: Failed`);
     }
   }
 
   ConsoleFormatter.section('Export Summary');
-  ConsoleFormatter.keyValue('Files Created', totalFiles);
-  ConsoleFormatter.keyValue('Resources Exported', totalResources);
+  ConsoleFormatter.keyValue('Files Created', result.filesCreated.length);
+  ConsoleFormatter.keyValue('Resources Exported', result.resourcesExported);
 
-  if (allWarnings.length > 0) {
+  if (result.warnings.length > 0) {
     console.log('');
-    ConsoleFormatter.warning(`Warnings (${allWarnings.length}):`);
-    allWarnings.forEach((w) => {
+    ConsoleFormatter.warning(`Warnings (${result.warnings.length}):`);
+    result.warnings.forEach((w) => {
       ConsoleFormatter.indent(`- ${w}`);
     });
   }
 
-  if (allErrors.length > 0) {
+  const errors = [...result.errors, ...result.hierarchicalConflicts];
+  if (errors.length > 0) {
     console.log('');
-    ConsoleFormatter.error(`Errors (${allErrors.length}):`);
-    allErrors.forEach((e) => {
+    ConsoleFormatter.error(`Errors (${errors.length}):`);
+    errors.forEach((e) => {
       ConsoleFormatter.indent(`- ${e}`);
     });
-    if (!options.dryRun) process.exitCode = 1;
-  }
-
-  // Generate and write summary
-  const summary = generateExportSummary(
-    {
-      format: options.format,
-      filesCreated: allFilesCreated,
-      resourcesExported: totalResources,
-      warnings: allWarnings,
-      errors: allErrors.filter((e) => !e.includes('Conflict')),
-      collections: collectionsToProcess.map((c) => c.name),
-      locales: targetLocales,
-      outputDirectory: outputDir,
-      omittedResources: [],
-      malformedFiles: [],
-      hierarchicalConflicts: allErrors.filter((e) => e.includes('Conflict')),
-    },
-    exportOptions,
-  );
-
-  const summaryPath = buildSummaryPath('export');
-  if (!options.dryRun) {
-    fs.writeFileSync(summaryPath, summary);
-    console.log(`\n📄 Summary written to: ${summaryPath}`);
-  } else {
-    console.log('\n📄 Summary (Dry Run):');
-    console.log(summary);
   }
 }
 
 async function promptForMissing(
   options: ExportCommandOptions,
   config: LingoTrackerConfig,
+  targetLocales: string[],
 ): Promise<{
   format?: ExportFormat;
   collection?: string;
@@ -320,7 +253,6 @@ async function promptForMissing(
   }> = {};
 
   const collectionNames = Object.keys(config.collections || {});
-  const targetLocales = (config.locales || []).filter((l: string) => l !== config.baseLocale);
 
   const questions: prompts.PromptObject[] = [];
 

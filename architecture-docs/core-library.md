@@ -71,28 +71,29 @@ libs/core/src/
     │   ├── config-file-operations.ts # read/write/update .lingo-tracker.json (reads via loadConfig)
     │   └── protected-terms-file.ts   # Resolve, read, and write protected-terms JSON files (cached per path)
     │
-    ├── export/                   # Export pipelines (JSON and XLIFF)
-    │   ├── export-common.ts      # loadResourcesFromCollections(): shared resource walker; validateBasePropertyName(): checks reserved keys
-    │   ├── export-to-json.ts     # JSON export
-    │   ├── export-to-xliff.ts    # XLIFF 1.2 export
-    │   ├── export-summary.ts     # Human-readable export result summary
-    │   └── types.ts              # ExportOptions, FilteredResource, etc.
+    ├── export/                   # The Export run
+    │   ├── run-export.ts         # runExport(): the Export run; exportTargetLocales()
+    │   ├── export-common.ts      # loadResourcesFromCollections(): shared resource walker; filterResources(); validateBasePropertyName()
+    │   ├── export-to-json.ts     # JSON exporter (internal to runExport)
+    │   ├── export-to-xliff.ts    # XLIFF 1.2 exporter (internal to runExport)
+    │   ├── export-summary.ts     # Markdown export summary (internal to runExport)
+    │   └── types.ts              # ExportOptions, ExportResult, FilteredResource, etc.
     │
-    ├── import/                   # Import pipeline (JSON and XLIFF)
-    │   ├── import-workflow.ts    # setupImportWorkflow(), buildImportResult()
-    │   ├── import-from-json.ts   # JSON import: flat / hierarchical / rich object detection
-    │   ├── import-from-xliff.ts  # XLIFF 1.2 import
-    │   ├── process-resource-group.ts # Per-folder write logic with status determination
+    ├── import/                   # The Import run; barrel exports only the public interface
+    │   ├── import-resources.ts   # importResources(): the Import run over one collection
+    │   ├── parse-json-import.ts  # parseJsonImport(): JSON adapter (flat / hierarchical / rich objects)
+    │   ├── parse-xliff-import.ts # parseXliffImport(): XLIFF 1.2 adapter
+    │   ├── import-session.ts     # ImportSession: settings + accumulated changes, warnings, errors, files
+    │   ├── process-resource-group.ts # Applies one folder's resources (internal)
     │   ├── resource-grouping.ts  # groupResourcesByFolder(): batches resources by target path
-    │   ├── determine-status.ts   # Determines TranslationStatus for each imported value
+    │   ├── determine-status.ts   # Which source status an import honours
     │   ├── apply-icu-auto-fix.ts # applyICUAutoFixToResources(): repairs malformed placeholders
     │   ├── normalize-transloco-syntax.ts # {{ x }} → {x} before storage
-    │   ├── load-base-locale-values.ts    # Reads current base locale for comparison
-    │   ├── reference-resolver.ts # Resolves $ref pointers in XLIFF
+    │   ├── load-base-locale-values.ts    # Reads current base values for the auto-fix
     │   ├── import-statistics.ts  # Counts created / updated / skipped / failed
-    │   ├── import-summary.ts     # Human-readable import result summary
+    │   ├── import-summary.ts     # generateImportSummary(): Markdown import summary
     │   ├── import-validation.ts  # Validates imported resources before write
-    │   └── types.ts              # ImportOptions, ImportResult, ImportStrategy, etc.
+    │   └── types.ts              # ImportRunOptions, ImportResult, ImportedResource, etc.
     │
     ├── validate/                 # CI/CD validation pipeline
     │   ├── validate-resources.ts # validateResources(): full cross-collection status check
@@ -146,8 +147,8 @@ graph TD
 
     subgraph lib["core/lib/ (internal sub-modules)"]
         BUNDLE["bundle/\ngenerateBundle"]
-        EXPORT["export/\nexportToJson · exportToXliff"]
-        IMPORT["import/\nimportFromJson · importFromXliff"]
+        EXPORT["export/\nrunExport"]
+        IMPORT["import/\nparseJsonImport · parseXliffImport\nimportResources"]
         VALIDATE["validate/\nvalidateResources"]
         NORMALIZE["normalize/\nnormalize"]
         TRANSLATION["translation/\nautoTranslateResource\ntranslateExistingResource"]
@@ -234,7 +235,7 @@ Core owns the config file and the rule that turns a collection's config entry in
 - **`loadConfig({ cwd? })`** is the only reader of `.lingo-tracker.json`. It returns the file as written, with no validation and no fallbacks. It throws `ConfigNotFoundError` when the file does not exist and `ConfigParseError` when the file is not a JSON object; other I/O errors pass through. The CLI passes its `INIT_CWD`-aware directory, the API passes `process.cwd()`, and `createConfigFileOperations().read()` (used by the config writers) reads through it too.
 - **`openCollection(config, name, { cwd?, writable? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (collection, else global, else `[]`), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `readOnly`, and the raw entry as `config`. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
 
-The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. Import takes the base locale from its caller (`ImportOptions.baseLocale` is required) and never reads the config file. Per-resource operations keep their `(translationsFolder, …, baseLocale, allLocales, translationConfig)` parameters; callers fill them from the `Collection`. The typed errors extend `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`), so an adapter maps them with `instanceof` instead of matching message text.
+The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. Per-resource operations keep their `(translationsFolder, …, baseLocale, allLocales, translationConfig)` parameters; callers fill them from the `Collection`. The typed errors extend `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`), so an adapter maps them with `instanceof` instead of matching message text.
 
 ---
 
@@ -416,18 +417,22 @@ The [ICU format](glossary.md#icu-format) classification determines safety: `plai
 
 ## Import Pipeline
 
-**Entry points:** `importFromJson(options)` and `importFromXliff(options)` in `lib/import/`.
+**Entry points:** `parseJsonImport(filePath)` / `parseXliffImport(filePath)` (format adapters) and `importResources(collection, resources, options)` (the [Import run](glossary.md#import-run)), in `lib/import/`.
 
-The import pipeline ingests an external translation file for a single locale and reconciles it with the existing resource tree. Steps common to both formats:
+An import has two parts. A **format adapter** reads one file and returns `ImportedResource[]` (`key`, `value`, optional `baseValue`, `comment`, `tags`, `status`). `parseJsonImport` detects a flat (`{"common.ok": "OK"}`) or hierarchical (`{common: {ok: "OK"}}`) structure with `detectJsonStructure()` and accepts rich objects; `parseXliffImport` (async) turns each trans-unit with a target into a resource. Adapters throw when the file is missing or malformed, and they know nothing about collections.
 
-1. **Setup workflow** — `setupImportWorkflow(options)` takes the base locale from `options.baseLocale` (the caller passes the collection's effective base locale; the config file is not read), applies strategy-specific defaults for `createMissing`, `updateComments`, and `updateTags`, and guards against importing into the base locale with a non-`migration` strategy.
-2. **Parse source file** — format-specific logic extracts a flat list of `ImportedResource` objects (`key`, `value`, optional `baseValue`, `comment`, `tags`, `status`). JSON import additionally detects whether the source is flat (`{"common.ok": "OK"}`) or hierarchical (`{common: {ok: "OK"}}`) via `detectJsonStructure()`, then flattens hierarchical structures.
-3. **Normalize syntax** — `normalizeTranslocoSyntaxInResources()` converts any Transloco `{{ varName }}` in imported values to ICU `{varName}` before further processing.
-4. **ICU auto-fix** — `applyICUAutoFixToResources()` repairs malformed ICU placeholder syntax (e.g. wrong brace styles from translation services) using `icuAutoFixer` from `@simoncodes-ca/domain`. Fixes and errors are recorded separately in the result.
-5. **Validate** — `validateImportResources()` checks for duplicate keys and other structural problems before any writes.
-6. **Group by folder** — `groupResourcesByFolder()` batches resources by their target `resource_entries.json` path, so each file is read and written once.
-7. **Process each group** — `processResourceGroup()` reads the existing entries and metadata. It applies the imported values according to the chosen [import strategy](glossary.md#import-strategy). It calls `determineStatus()` to assign each entry the correct `TranslationStatus`, then writes both JSON files. Before it accepts a target-locale value, it runs `findProtectedTermViolations(storedSource, incomingValue, terms)`. A term that appears in the stored source and is missing from the incoming translation fails that entry with `Protected term(s) altered: …`. The rest of the group is unaffected. The caller reads `options.protectedTerms` from disk, so the pipeline itself reads no config.
-8. **Build result** — `buildImportResult()` assembles counts, status transitions, file lists, warnings, errors, ICU fix records, and the `dryRun` flag into an `ImportResult`.
+`importResources(collection, resources, options)` then applies the resources to one locale of the collection. It is synchronous, and the only entry point for the steps below. The CLI does `detectImportFormat` → adapter → `importResources` → `generateImportSummary`.
+
+1. **Open the session** — `openImportSession(collection, options)` applies the strategy defaults for `createMissing`, `updateComments`, and `updateTags` (explicit options win) and refuses an import into `collection.baseLocale` unless the strategy is `migration`. The `ImportSession` holds the resolved options and collects `changes`, `warnings`, `errors`, `filesModified`, and the ICU fix records; each later step appends to it.
+2. **Resolve references** (`migration` only) — `resolveAllReferences()` from `@simoncodes-ca/domain` inlines Transloco key references (`{{t('key')}}`, `{{key}}`) between the imported values. Missing and circular references stay literal and add a warning.
+3. **Normalize syntax** — `normalizeTranslocoSyntaxInResources()` converts Transloco `{{ varName }}` to ICU `{varName}`.
+4. **ICU auto-fix** — `applyICUAutoFixToResources()` repairs placeholders that differ from the stored base value (for example, a translated placeholder name), using `icuAutoFixer` from `@simoncodes-ca/domain`. Fixes and failures are recorded separately in the result.
+5. **Validate** — `validateImportResources()` fails invalid keys and hierarchical conflicts, skips empty values, and warns on duplicate and very long keys, before any write.
+6. **Group by folder** — `groupResourcesByFolder()` batches resources by their [resource folder](glossary.md#resource-folder), so each folder is read and written once.
+7. **Process each group** — `processResourceGroup(session, group)` opens the folder with `openResourceFolder()` and applies each resource according to the [import strategy](glossary.md#import-strategy). A missing resource is skipped unless `createMissing` is set; a target-locale creation needs a `baseValue`. A base-locale import writes base values, and `ResourceFolder.setBase()` applies the [staleness rule](glossary.md#staleness-rule); on those imports every written value is checked against the preferred terminology (advisory warnings). A target-locale import warns on a `baseValue` mismatch, then runs `findProtectedTermViolations(storedSource, incomingValue, terms)`: a term that appears in the stored source and is missing from the incoming translation fails that entry with `Protected term(s) altered: …`, and the rest of the group is unaffected. Otherwise `resolveImportStatus()` (domain) decides the status. The folder is saved once, only when it changed and never in a dry run.
+8. **Build the result** — `sessionResult()` derives the counts and status transitions from the session's changes and returns the `ImportResult`.
+
+The caller passes `options.protectedTerms` and `options.preferredTerminology` (read from disk by the adapter layer), so the run itself reads no config. `generateImportSummary(result, { ...options, format, source })` renders the Markdown summary; the format and file path come from the caller because the run does not know where the resources came from.
 
 Import strategies control how the merge behaves:
 
@@ -444,14 +449,16 @@ For the full sequence diagram of an import operation, see [user-flows.md — Imp
 
 ## Export Pipeline
 
-**Entry points:** `exportToJson(options)` and `exportToXliff(options)` in `lib/export/`.
+**Entry point:** `runExport(collections, options)` in `lib/export/run-export.ts` (the [Export run](glossary.md#export-run)).
 
-Export serializes the current resource tree for one locale into an external file format. The pipeline shares a common resource-loading step:
+Export writes the resources of one or more collections to one file per target locale. `runExport` is the only entry point; the JSON and XLIFF exporters, the resource filter, and the summary are its internals. The CLI keeps the prompts, the output-directory and `--base-property-name` checks, the console rendering, and the write of the summary file (or, in a dry run, printing it).
 
-1. **Load resources** — `loadResourcesFromCollections()` in `export-common.ts` walks the translation folder tree via `walkFolders()`, reading every `resource_entries.json` and its paired `tracker_meta.json`. Each entry becomes a `LoadedResource` object carrying `source`, `translations`, `status`, `tags`, `collectionTags`, and `comment`. Collection-level tags are passed in from the caller and stored on each `LoadedResource` for use in tag filtering.
-2. **Filter** — callers may restrict the export by tag or key pattern. Tag filtering uses `effectiveTags(collectionTags, resourceTags)` (from `libs/domain/src/lib/effective-tags.ts`) so resources whose collection has an inherited tag are correctly matched even when they have no per-resource tags.
-3. **Annotate protected terms** — `filterResources()` calls `findProtectedTerms(source, effectiveProtectedTerms(global, collection))` on each row. It stores the matches on `FilteredResource.protectedTermsFound`. The caller reads both term lists from disk and passes them in, so the export pipeline itself reads no files. Two cases skip this step and leave the field `undefined`: base-locale rows, and runs with `augmentProtectedTerms: false` (the `--no-protect-notes` flag).
-4. **Serialize** — JSON export writes a flat or hierarchical JSON file. XLIFF export writes an XLIFF 1.2 document with `<trans-unit>` elements, plus optional `<note>` elements for comments. `protectedTermsFound` becomes a `doNotTranslate` array in rich JSON, and a `Do not translate: …` note in XLIFF.
+1. **Choose the locales** — `exportTargetLocales(collections, options.locales)` lists every collection's target locales (a `Collection`'s `targetLocales`: its locales without its base locale) in order of first appearance, narrowed to the requested ones. The CLI calls it too, to print the plan before the run. The collections must share one base locale, because an export file has one source language; otherwise `runExport` throws.
+2. **Load resources** — `loadResourcesFromCollections()` in `export-common.ts` walks each translations folder via `walkFolders()` and reads every `resource_entries.json` with its `tracker_meta.json`. Each entry becomes a `LoadedResource` with `source`, `translations`, `status`, `tags`, `collectionTags`, `collectionProtectedTerms`, and `comment`.
+3. **Filter per locale** — for each locale, only the collections that have that locale as a target contribute. `filterResources()` keeps the resources whose status (missing counts as `new`) matches `options.status` and whose effective tags (`effectiveTags(collectionTags, resourceTags)` from `libs/domain/src/lib/effective-tags.ts`) match `options.tags`. A locale with no match is skipped, and `onProgress` reports it.
+4. **Annotate protected terms** — `filterResources()` calls `findProtectedTerms(source, effectiveProtectedTerms(global, collection))` on each row and stores the matches on `FilteredResource.protectedTermsFound`. The caller reads the term lists from disk and passes them as `options.protectedTerms` (`global`, and `collections` by name), so the run reads no config. `augmentProtectedTerms: false` (the `--no-protect-notes` flag) leaves the field `undefined`.
+5. **Serialize** — the JSON exporter writes a flat or hierarchical file (hierarchical key conflicts are reported separately); the XLIFF exporter writes an XLIFF 1.2 document with `<trans-unit>` elements and `<note>` elements for comments. `protectedTermsFound` becomes a `doNotTranslate` array in rich JSON and a `Do not translate: …` note in XLIFF. An exporter that throws fails only its locale; the run continues.
+6. **Report** — `ExportRunResult` is the totals over all locales (`ExportResult`: files, resource count, warnings, errors, hierarchical conflicts), one `localeResults` entry per locale (`exported`, `skipped`, or `failed`, with the exception message when an exporter threw), and the Markdown `summary`.
 
 For the full sequence diagram, see [user-flows.md — Import / Export Flow](user-flows.md#2-import--export-flow).
 

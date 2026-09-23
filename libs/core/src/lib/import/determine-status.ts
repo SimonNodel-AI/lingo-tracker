@@ -1,5 +1,5 @@
-import type { ImportOptions, ImportedResource } from './types';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
+import type { ImportedResource, ImportRunOptions } from './types';
 
 /**
  * Returns true when the imported resource's status field should be used as the resulting
@@ -14,7 +14,7 @@ import type { TranslationStatus } from '@simoncodes-ca/domain';
  * carries a status value — missing status fields fall through to strategy defaults.
  */
 export function shouldUseSourceStatus(
-  options: ImportOptions,
+  options: ImportRunOptions,
   resource: ImportedResource,
 ): resource is ImportedResource & { status: TranslationStatus } {
   if (!resource.status) {
@@ -39,7 +39,7 @@ export function shouldUseSourceStatus(
  * @param resource - The imported resource being created
  * @returns The translation status to assign, or `undefined` for base locale entries
  */
-export function determineNewResourceStatus(options: ImportOptions, resource: ImportedResource): TranslationStatus {
+export function determineNewResourceStatus(options: ImportRunOptions, resource: ImportedResource): TranslationStatus {
   return shouldUseSourceStatus(options, resource) ? resource.status : 'translated';
 }
 
@@ -48,7 +48,7 @@ export function determineNewResourceStatus(options: ImportOptions, resource: Imp
  * otherwise `undefined` so the strategy decides (see `resolveImportStatus` in domain).
  */
 export function honouredSourceStatus(
-  options: ImportOptions,
+  options: ImportRunOptions,
   resource: ImportedResource,
 ): TranslationStatus | undefined {
   return shouldUseSourceStatus(options, resource) ? resource.status : undefined;

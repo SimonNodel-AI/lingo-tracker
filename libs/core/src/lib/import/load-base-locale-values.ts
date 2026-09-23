@@ -1,6 +1,6 @@
-import type { ImportedResource } from './types';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
+import type { ImportedResource } from './types';
 
 /**
  * Loads base locale values for all imported resources from existing resource files.
@@ -9,22 +9,17 @@ import { openResourceFolder } from '../resource/resource-folder';
  * for ICU auto-fixing during import operations.
  *
  * @param resources - Array of imported resources to load base values for
- * @param translationsFolder - Path to the translations directory
- * @param cwd - Current working directory for resolving absolute paths
+ * @param translationsFolder - Absolute path of the translations folder
  * @returns Map of resource keys to their base locale values
  */
-export function loadBaseLocaleValues(
-  resources: ImportedResource[],
-  translationsFolder: string,
-  cwd: string,
-): Map<string, string> {
+export function loadBaseLocaleValues(resources: ImportedResource[], translationsFolder: string): Map<string, string> {
   const baseValues = new Map<string, string>();
 
   // Group by folder to minimize file reads
   const folderToKeys = new Map<string, Array<{ key: string; entryKey: string }>>();
 
   for (const resource of resources) {
-    const { folderPath, entryKey } = resolveResourcePaths({ key: resource.key, translationsFolder, cwd });
+    const { folderPath, entryKey } = resolveResourcePaths({ key: resource.key, translationsFolder });
 
     let folderKeys = folderToKeys.get(folderPath);
     if (!folderKeys) {

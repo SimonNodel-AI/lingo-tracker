@@ -1,4 +1,8 @@
-import type { ImportedResource } from './types';
+/** Anything with a dot-delimited key and a translation value, such as an imported resource. */
+export interface KeyedValue {
+  key: string;
+  value: string;
+}
 
 /**
  * Detects whether a string contains Transloco-style reference patterns.
@@ -243,7 +247,7 @@ export function resolveReferences(
  *
  * @example
  * ```typescript
- * const resources: ImportedResource[] = [
+ * const resources: KeyedValue[] = [
  *   { key: 'common.ok', value: 'OK' },
  *   { key: 'common.cancel', value: 'Cancel' },
  *   { key: 'dialog.message', value: 'Click {{t("common.ok")}}' },
@@ -260,7 +264,7 @@ export function resolveReferences(
  * // ]
  *
  * // Circular reference detection
- * const circular: ImportedResource[] = [
+ * const circular: KeyedValue[] = [
  *   { key: 'a', value: '{{b}}' },
  *   { key: 'b', value: '{{a}}' }
  * ];
@@ -273,11 +277,11 @@ export function resolveReferences(
  * // Returns original resources unchanged (applyResolution = false)
  * ```
  */
-export function resolveAllReferences(
-  resources: ImportedResource[],
+export function resolveAllReferences<T extends KeyedValue>(
+  resources: T[],
   applyResolution: boolean,
   warnings: string[],
-): ImportedResource[] {
+): T[] {
   if (!applyResolution) {
     return resources;
   }
@@ -292,7 +296,7 @@ export function resolveAllReferences(
   }
 
   // Resolve references in each resource
-  const resolved: ImportedResource[] = [];
+  const resolved: T[] = [];
 
   for (const resource of resources) {
     if (hasReferences(resource.value)) {

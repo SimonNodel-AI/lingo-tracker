@@ -102,9 +102,9 @@ sequenceDiagram
 
 ### Export
 
-Export serializes the current resource tree for one locale to a JSON or XLIFF file for offline translator work. Core functions are documented in [core-library.md — Export Pipeline](core-library.md#export-pipeline).
+Export writes the resources of the chosen collections to one JSON or XLIFF file per target locale, for offline translator work. The CLI opens the collections and calls one core function, `runExport`. Core functions are documented in [core-library.md — Export Pipeline](core-library.md#export-pipeline).
 
-<!-- Export: filter resources → serialize → write file -->
+<!-- Export: open collections → runExport (load → filter per locale → serialize) → render → write summary -->
 
 ```mermaid
 sequenceDiagram
@@ -113,29 +113,30 @@ sequenceDiagram
     participant Core as @simoncodes-ca/core
     participant FS as Filesystem
 
-    Dev->>CLI: export --locale fr --format json --output ./exports/fr.json
-    CLI->>Core: exportToJson(options)
+    Dev->>CLI: export --locale fr --format json --output ./exports
+    CLI->>FS: read .lingo-tracker.json → openCollection() per collection
+    CLI->>Core: validateOutputDirectory(outputDir)
+    CLI->>Core: exportTargetLocales(collections, ["fr"]) → print the plan
+    CLI->>Core: runExport(collections, options + protected terms)
     Core->>Core: loadResourcesFromCollections()
-    Note right of Core: walkFolders() traverses translationsFolder<br/>reads resource_entries.json + tracker_meta.json per folder
-    Core->>FS: read resource_entries.json (per folder)
-    Core->>FS: read tracker_meta.json (per folder)
-    FS-->>Core: LoadedResource[] — key, source, translations, status, tags, comment
-    Core->>Core: filter by tag / key pattern [if options.filter]
-    Core->>Core: serialize: flat {key: value} map for locale "fr"
-    Note right of Core: Falls back to base locale value<br/>when translation is absent
-    Core->>FS: validateOutputDirectory(outputDir)
-    Core->>FS: write fr.json
-    Core-->>CLI: ExportResult { resourcesExported, outputPath }
-    CLI-->>Dev: Export summary
+    Note right of Core: walkFolders() traverses each translationsFolder<br/>reads resource_entries.json + tracker_meta.json per folder
+    Core->>FS: read resource_entries.json + tracker_meta.json (per folder)
+    loop For each target locale
+        Core->>Core: filterResources() — collections with this target locale,<br/>status and tag filters, protected-term annotation
+        Core->>FS: write fr.json (JSON or XLIFF exporter; skipped in a dry run)
+    end
+    Core-->>CLI: ExportRunResult { totals, localeResults, summary }
+    CLI-->>Dev: Per-locale lines + export summary
+    CLI->>FS: write the summary file (printed instead in a dry run)
 ```
 
 ---
 
 ### Import
 
-Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
+Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). A format adapter parses the file; `importResources` does the rest. Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
 
-<!-- Import: parse file → ICU auto-fix → merge per strategy → write files → report status transitions -->
+<!-- Import: parse file → resolve / normalize / auto-fix → validate → merge per strategy per folder → report -->
 
 ```mermaid
 sequenceDiagram
@@ -145,40 +146,37 @@ sequenceDiagram
     participant Domain as @simoncodes-ca/domain
     participant FS as Filesystem
 
-    Translator->>CLI: import --locale fr --file ./exports/fr.json --strategy translation-service
-    CLI->>FS: read .lingo-tracker.json → openCollection() → baseLocale = "en"
-    CLI->>Core: importFromJson(options with baseLocale)
+    Translator->>CLI: import --locale fr --source ./exports/fr.json --strategy translation-service
+    CLI->>FS: read .lingo-tracker.json → openCollection() → Collection (baseLocale "en")
+    CLI->>Core: detectImportFormat("./exports/fr.json") → json
 
-    Note over Core: setupImportWorkflow(options)<br/>uses options.baseLocale, reads no config
-    Core->>Core: getStrategyDefaults("translation-service")<br/>createMissing=false, updateComments=false
-
-    Note over Core: Parse source file
+    Note over Core: Format adapter
+    CLI->>Core: parseJsonImport(path)
     Core->>FS: read fr.json
-    Core->>Core: detectJsonStructure() — flat vs hierarchical
-    Core->>Core: flatten hierarchical keys if needed
+    Core->>Core: detectJsonStructure() — flat vs hierarchical, flatten
+    Core-->>CLI: ImportedResource[]
 
-    Note over Core: Normalize and auto-fix
+    CLI->>Core: importResources(collection, resources, options)
+    Note over Core: openImportSession() — strategy defaults,<br/>base-locale guard, reads no config
+    Core->>Domain: resolveAllReferences() [migration only]
     Core->>Core: normalizeTranslocoSyntaxInResources()<br/>{{ x }} → {x} in imported values
-    Core->>Domain: applyICUAutoFixToResources()<br/>repairs malformed placeholder syntax
+    Core->>Domain: applyICUAutoFixToResources()<br/>repairs placeholders against the stored base value
     Domain-->>Core: fixed resources + ICUAutoFix[] records
-
-    Note over Core: Validate
-    Core->>Core: validateImportResources() — duplicate key check
+    Core->>Core: validateImportResources() — keys, conflicts, empty values, duplicates
 
     Note over Core: Group and write per folder
-    Core->>Core: groupResourcesByFolder() — batch by resource_entries.json path
-    loop For each folder batch
-        Core->>FS: readResourceEntries() + readTrackerMetadata()
-        Core->>Core: determineUpdatedResourceStatus(strategy, resource, oldStatus)
+    Core->>Core: groupResourcesByFolder() — batch by resource folder
+    loop For each folder batch: processResourceGroup(session, group)
+        Core->>FS: openResourceFolder() — read both files
+        Core->>Domain: resolveImportStatus(strategy, oldStatus, …)
         Note right of Core: translation-service → "translated"<br/>verification → "verified"<br/>migration → preserves source status<br/>update → preserves old status
-        Core->>Core: recompute checksums (MD5)
-        Core->>FS: writeJsonFile(resource_entries.json)
-        Core->>FS: writeJsonFile(tracker_meta.json)
+        Core->>FS: folder.save() — both files, once, if changed (not in a dry run)
     end
 
-    Core->>Core: buildImportResult() — consolidate counts, transitions, warnings
+    Core->>Core: sessionResult() — counts, transitions, warnings, errors
     Core-->>CLI: ImportResult
     CLI-->>Translator: Import summary (created / updated / skipped / failed, ICU fixes applied)
+    CLI->>FS: write generateImportSummary(result, { format, source, … })
 ```
 
 ---

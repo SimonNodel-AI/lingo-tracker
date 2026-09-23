@@ -20,3 +20,4 @@ export * from './lib/portable-plural-categories';
 export * from './lib/icu-arguments';
 export * from './lib/js-identifier';
 export * from './lib/preferred-terminology';
+export * from './lib/reference-resolver';

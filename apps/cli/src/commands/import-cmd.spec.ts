@@ -46,8 +46,9 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CollectionNotFoundError: actual.CollectionNotFoundError,
     ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
     CONFIG_FILENAME: '.lingo-tracker.json',
-    importFromJson: vi.fn(),
-    importFromXliff: vi.fn(),
+    parseJsonImport: vi.fn(() => []),
+    parseXliffImport: vi.fn(async () => []),
+    importResources: vi.fn(),
     detectImportFormat: vi.fn(),
     generateImportSummary: vi.fn(() => '# Import Summary\n\nTest summary'),
     readEffectiveProtectedTerms: vi.fn(() => []),
@@ -94,11 +95,13 @@ vi.mock('../utils', () => ({
 import {
   type Collection,
   detectImportFormat,
-  importFromJson,
-  importFromXliff,
+  generateImportSummary,
+  importResources,
   type LingoTrackerCollection,
   loadPreferredTerminology,
   openCollection,
+  parseJsonImport,
+  parseXliffImport,
 } from '@simoncodes-ca/core';
 import {
   ConsoleFormatter,
@@ -172,7 +175,7 @@ describe('import-cmd', () => {
 
   describe('Configuration Loading', () => {
     it('should load configuration from .lingo-tracker.json', async () => {
-      vi.mocked(importFromJson).mockReturnValue(baseImportResult);
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
 
       const options: ImportCommandOptions = {
         source: '/test/import.json',
@@ -196,14 +199,14 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(importFromJson).not.toHaveBeenCalled();
+      expect(importResources).not.toHaveBeenCalled();
     });
   });
 
   describe('Format Auto-Detection', () => {
     it('should auto-detect XLIFF format from .xliff extension', async () => {
       vi.mocked(detectImportFormat).mockReturnValue('xliff');
-      vi.mocked(importFromXliff).mockResolvedValue({
+      vi.mocked(importResources).mockReturnValue({
         ...baseImportResult,
         resourcesImported: 5,
         resourcesUpdated: 5,
@@ -224,7 +227,7 @@ describe('import-cmd', () => {
 
     it('should auto-detect JSON format from .json extension', async () => {
       vi.mocked(detectImportFormat).mockReturnValue('json');
-      vi.mocked(importFromJson).mockReturnValue({
+      vi.mocked(importResources).mockReturnValue({
         ...baseImportResult,
         resourcesImported: 5,
         resourcesUpdated: 5,
@@ -256,13 +259,13 @@ describe('import-cmd', () => {
       await importCommand(options);
 
       expect(ConsoleFormatter.error).toHaveBeenCalledWith('Cannot auto-detect format from .txt extension');
-      expect(importFromJson).not.toHaveBeenCalled();
+      expect(importResources).not.toHaveBeenCalled();
     });
   });
 
   describe('Import Execution', () => {
-    it('should call importFromJson for JSON format', async () => {
-      vi.mocked(importFromJson).mockReturnValue(baseImportResult);
+    it('should parse a JSON file and import its resources', async () => {
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       const options: ImportCommandOptions = {
@@ -273,18 +276,34 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(importFromJson).toHaveBeenCalledWith(
-        '/test/project/src/translations',
-        expect.objectContaining({
-          source: '/test/import.json',
-          locale: 'es',
-          format: 'json',
-        }),
+      expect(parseJsonImport).toHaveBeenCalledWith('/test/import.json', expect.any(Object));
+      expect(parseXliffImport).not.toHaveBeenCalled();
+      expect(importResources).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'default', translationsFolder: '/test/project/src/translations' }),
+        [],
+        expect.objectContaining({ locale: 'es', strategy: 'translation-service', validateBase: true }),
       );
     });
 
-    it('should call importFromXliff for XLIFF format', async () => {
-      vi.mocked(importFromXliff).mockResolvedValue(baseImportResult);
+    it('should write the summary with the file format and source', async () => {
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
+      vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+      await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
+
+      expect(generateImportSummary).toHaveBeenCalledWith(
+        baseImportResult,
+        expect.objectContaining({ format: 'json', source: '/test/import.json', locale: 'es' }),
+      );
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        '/tmp/lingo-tracker-import-summary-test.md',
+        '# Import Summary\n\nTest summary',
+        'utf8',
+      );
+    });
+
+    it('should parse an XLIFF file and import its resources', async () => {
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       const options: ImportCommandOptions = {
@@ -295,18 +314,16 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(importFromXliff).toHaveBeenCalledWith(
-        '/test/project/src/translations',
-        expect.objectContaining({
-          source: '/test/import.xliff',
-          locale: 'es',
-          format: 'xliff',
-        }),
+      expect(parseXliffImport).toHaveBeenCalledWith('/test/import.xliff', expect.any(Object));
+      expect(importResources).toHaveBeenCalledWith(
+        expect.objectContaining({ translationsFolder: '/test/project/src/translations' }),
+        [],
+        expect.objectContaining({ locale: 'es' }),
       );
     });
 
-    it('should return early with error if import fails', async () => {
-      vi.mocked(importFromJson).mockImplementation(() => {
+    it('should return early with error if parsing fails', async () => {
+      vi.mocked(parseJsonImport).mockImplementationOnce(() => {
         throw new Error('Source file not found');
       });
 
@@ -319,12 +336,26 @@ describe('import-cmd', () => {
       await importCommand(options);
 
       expect(ConsoleFormatter.error).toHaveBeenCalledWith('Import failed: Source file not found');
+      expect(importResources).not.toHaveBeenCalled();
+    });
+
+    it('should return early with error if the import refuses to run', async () => {
+      vi.mocked(importResources).mockImplementationOnce(() => {
+        throw new Error('Cannot import into base locale "en" with strategy "translation-service".');
+      });
+
+      await importCommand({ source: '/test/import.json', locale: 'en', format: 'json' });
+
+      expect(ConsoleFormatter.error).toHaveBeenCalledWith(
+        'Import failed: Cannot import into base locale "en" with strategy "translation-service".',
+      );
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
     });
   });
 
   describe('Result Display', () => {
     it('should display success message for successful import', async () => {
-      vi.mocked(importFromJson).mockReturnValue({
+      vi.mocked(importResources).mockReturnValue({
         ...baseImportResult,
         filesModified: ['file1.json', 'file2.json'],
       });
@@ -342,7 +373,7 @@ describe('import-cmd', () => {
     });
 
     it('should display warnings for import with warnings', async () => {
-      vi.mocked(importFromJson).mockReturnValue({
+      vi.mocked(importResources).mockReturnValue({
         ...baseImportResult,
         warnings: ['Warning 1', 'Warning 2'],
       });
@@ -361,7 +392,7 @@ describe('import-cmd', () => {
     });
 
     it('should exit with code 1 for import with errors', async () => {
-      vi.mocked(importFromJson).mockReturnValue({
+      vi.mocked(importResources).mockReturnValue({
         ...baseImportResult,
         resourcesUpdated: 8,
         resourcesFailed: 2,
@@ -383,7 +414,7 @@ describe('import-cmd', () => {
     });
 
     it('should exit with code 1 when only errors array is non-empty', async () => {
-      vi.mocked(importFromJson).mockReturnValue({
+      vi.mocked(importResources).mockReturnValue({
         ...baseImportResult,
         resourcesFailed: 0,
         errors: ['some error'],
@@ -403,7 +434,7 @@ describe('import-cmd', () => {
     });
 
     it('should display dry-run message', async () => {
-      vi.mocked(importFromJson).mockReturnValue(baseImportResult);
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       const options: ImportCommandOptions = {
@@ -439,7 +470,7 @@ describe('import-cmd', () => {
       vi.mocked(resolveWritableCollection).mockReturnValue(
         collectionOf('admin', { translationsFolder: 'src/admin-translations' }),
       );
-      vi.mocked(importFromJson).mockReturnValue(baseImportResult);
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       const options: ImportCommandOptions = {
@@ -451,11 +482,15 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(importFromJson).toHaveBeenCalledWith('/test/project/src/admin-translations', expect.any(Object));
+      expect(importResources).toHaveBeenCalledWith(
+        expect.objectContaining({ translationsFolder: '/test/project/src/admin-translations' }),
+        [],
+        expect.any(Object),
+      );
     });
 
     it('should use the auto-selected collection translations folder when no collection option is given', async () => {
-      vi.mocked(importFromJson).mockReturnValue(baseImportResult);
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       const options: ImportCommandOptions = {
@@ -466,7 +501,11 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(importFromJson).toHaveBeenCalledWith('/test/project/src/translations', expect.any(Object));
+      expect(importResources).toHaveBeenCalledWith(
+        expect.objectContaining({ translationsFolder: '/test/project/src/translations' }),
+        [],
+        expect.any(Object),
+      );
     });
 
     it('should propagate errors thrown by promptForCollection', async () => {
@@ -475,7 +514,7 @@ describe('import-cmd', () => {
       await expect(importCommand({ source: '/test/import.json', locale: 'es', format: 'json' })).rejects.toThrow(
         'Missing required option: --collection',
       );
-      expect(importFromJson).not.toHaveBeenCalled();
+      expect(importResources).not.toHaveBeenCalled();
     });
 
     it('should return early without error when promptForCollection returns null', async () => {
@@ -483,7 +522,7 @@ describe('import-cmd', () => {
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
-      expect(importFromJson).not.toHaveBeenCalled();
+      expect(importResources).not.toHaveBeenCalled();
     });
 
     it('should return early when resolveWritableCollection returns null', async () => {
@@ -491,7 +530,7 @@ describe('import-cmd', () => {
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
-      expect(importFromJson).not.toHaveBeenCalled();
+      expect(importResources).not.toHaveBeenCalled();
     });
   });
 
@@ -502,7 +541,7 @@ describe('import-cmd', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         'Source file is required. Use --source or run in interactive mode.',
       );
-      expect(importFromJson).not.toHaveBeenCalled();
+      expect(importResources).not.toHaveBeenCalled();
     });
 
     it('should call ConsoleFormatter.error and not import when --locale is missing in non-TTY mode', async () => {
@@ -511,7 +550,7 @@ describe('import-cmd', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         'Target locale is required. Use --locale or run in interactive mode.',
       );
-      expect(importFromJson).not.toHaveBeenCalled();
+      expect(importResources).not.toHaveBeenCalled();
     });
   });
 
@@ -519,7 +558,7 @@ describe('import-cmd', () => {
     beforeEach(() => {
       vi.mocked(isInteractiveTerminal).mockReturnValue(true);
       vi.mocked(prompts).mockResolvedValue({ locale: 'de' });
-      vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'de', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'de', warnings: [] } as never);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
     });
 
@@ -545,7 +584,7 @@ describe('import-cmd', () => {
       await importCommand({ source: '/test/import.json', format: 'json', strategy: 'translation-service' });
 
       expect(offeredLocales()).toEqual([{ title: 'de', value: 'de' }]);
-      expect(importFromJson).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ locale: 'de' }));
+      expect(importResources).toHaveBeenCalledWith(expect.any(Object), [], expect.objectContaining({ locale: 'de' }));
     });
 
     it('offers the project locales for a collection without its own', async () => {
@@ -564,27 +603,29 @@ describe('import-cmd', () => {
 
     it('passes the loaded rules to the import', async () => {
       vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules, filePath });
-      vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'en', format: 'json', strategy: 'migration' });
 
       expect(loadPreferredTerminology).toHaveBeenCalledWith(baseConfig, '/test/project');
-      expect(importFromJson).toHaveBeenCalledWith(
-        expect.any(String),
+      expect(importResources).toHaveBeenCalledWith(
+        expect.any(Object),
+        [],
         expect.objectContaining({ preferredTerminology: rules }),
       );
     });
 
     it('adds one config warning on a base-locale import when the rule file is broken', async () => {
       vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-      vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'en', format: 'json', strategy: 'migration' });
 
-      expect(importFromJson).toHaveBeenCalledWith(
-        expect.any(String),
+      expect(importResources).toHaveBeenCalledWith(
+        expect.any(Object),
+        [],
         expect.objectContaining({ preferredTerminology: [] }),
       );
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warnings (1)'));
@@ -595,7 +636,7 @@ describe('import-cmd', () => {
 
     it('says nothing about a broken rule file on a target-locale import', async () => {
       vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-      vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] } as never);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
@@ -604,12 +645,16 @@ describe('import-cmd', () => {
     });
 
     it('passes the project base locale for a collection without its own', async () => {
-      vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] } as never);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
-      expect(importFromJson).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ baseLocale: 'en' }));
+      expect(importResources).toHaveBeenCalledWith(
+        expect.objectContaining({ baseLocale: 'en' }),
+        [],
+        expect.any(Object),
+      );
     });
 
     describe('collection with its own base locale', () => {
@@ -623,7 +668,7 @@ describe('import-cmd', () => {
 
       it("treats an import into the collection's base locale as a base-locale import", async () => {
         vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules, filePath });
-        vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] } as never);
+        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] } as never);
 
         await importCommand({
           source: '/test/import.json',
@@ -633,15 +678,16 @@ describe('import-cmd', () => {
           strategy: 'migration',
         });
 
-        expect(importFromJson).toHaveBeenCalledWith(
-          '/test/project/src/docs-translations',
-          expect.objectContaining({ locale: 'fr', baseLocale: 'fr', preferredTerminology: rules }),
+        expect(importResources).toHaveBeenCalledWith(
+          expect.objectContaining({ translationsFolder: '/test/project/src/docs-translations', baseLocale: 'fr' }),
+          [],
+          expect.objectContaining({ locale: 'fr', preferredTerminology: rules }),
         );
       });
 
       it("adds the config warning on an import into the collection's base locale", async () => {
         vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-        vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] } as never);
+        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] } as never);
 
         await importCommand({
           source: '/test/import.json',
@@ -658,13 +704,14 @@ describe('import-cmd', () => {
 
       it('treats the project base locale as a target locale and adds no config warning', async () => {
         vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-        vi.mocked(importFromJson).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
+        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
 
         await importCommand({ source: '/test/import.json', locale: 'en', format: 'json', collection: 'docs' });
 
-        expect(importFromJson).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({ locale: 'en', baseLocale: 'fr' }),
+        expect(importResources).toHaveBeenCalledWith(
+          expect.objectContaining({ baseLocale: 'fr' }),
+          [],
+          expect.objectContaining({ locale: 'en' }),
         );
         expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Preferred terminology'));
       });

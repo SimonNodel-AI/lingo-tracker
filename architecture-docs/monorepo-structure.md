@@ -55,6 +55,7 @@ lingo-tracker/                         # Nx workspace root
 │   │       ├── icu-locale-validation.ts # compiles a value under its own locale
 │   │       ├── portable-plural-categories.ts # locale-dependent plural cases
 │   │       ├── normalize-transloco-syntax.ts  # {{ x }} → {x} normalizer
+│   │       ├── reference-resolver.ts  # Inlines Transloco key references ({{t('key')}}, {{key}})
 │   │       └── validation-utils.ts    # Locale code, key length, conflict checks
 │   ├── core/                          # Node.js business logic (file I/O, crypto)
 │   │   └── src/
@@ -63,8 +64,8 @@ lingo-tracker/                         # Nx workspace root
 │   │       ├── resource/              # add, edit, delete, move resource; checksums
 │   │       └── lib/
 │   │           ├── bundle/            # Bundle generation, tag filter, hierarchy
-│   │           ├── export/            # JSON and XLIFF export pipelines
-│   │           ├── import/            # Import pipeline, ICU auto-fix, status determination
+│   │           ├── export/            # Export run (runExport) and the JSON / XLIFF exporters
+│   │           ├── import/            # Import run (importResources), JSON / XLIFF parse adapters
 │   │           ├── folder/            # create-folder, delete-folder, move-folder
 │   │           ├── normalize/         # Cleanup empty folders, normalize entries
 │   │           ├── translate/         # Auto-translation, Google Translate provider
@@ -148,6 +149,7 @@ graph TD
 | `icu-locale-validation.ts` | Compiles a value under the locale it is stored under; reports why it failed |
 | `portable-plural-categories.ts` | Finds plural branches selected by locale-dependent category rather than `=N` |
 | `icu-auto-fixer.ts` | Repairs malformed ICU quote escaping |
+| `reference-resolver.ts` | Inlines Transloco key references (`{{t('key')}}`, `{{key}}`) between imported values; warns on missing and circular references |
 | `validation-utils.ts` | Locale code format checks, key length limits, hierarchical conflict detection |
 
 **Why zero Node.js dependencies?** The Tracker UI (Angular SPA) imports `@simoncodes-ca/domain` directly in the browser. Any Node.js built-in (`fs`, `path`, `crypto`, `node:*`) would break the Angular build. The zero-dependency constraint is enforced by the Nx project configuration: `domain` declares no Node.js peer dependencies and the dependency graph rules prohibit it from importing `core`.

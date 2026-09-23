@@ -9,8 +9,9 @@ import { calculateChecksum } from '../../resource/checksum';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { describePreferredTermRule } from '../validate/validate-terminology';
 import { determineNewResourceStatus, honouredSourceStatus } from './determine-status';
+import type { ImportSession, ResolvedImportOptions } from './import-session';
 import type { ResourceGroup } from './resource-grouping';
-import type { ImportChange, ImportedResource, ImportOptions } from './types';
+import type { ImportChange, ImportedResource } from './types';
 
 // ---------------------------------------------------------------------------
 // Internal context shared across all handlers in one processResourceGroup call
@@ -19,7 +20,7 @@ import type { ImportChange, ImportedResource, ImportOptions } from './types';
 interface GroupContext {
   readonly locale: string;
   readonly baseLocale: string;
-  readonly options: ImportOptions;
+  readonly options: ResolvedImportOptions;
   readonly folder: ResourceFolder;
   dataModified: boolean;
 }
@@ -226,7 +227,7 @@ function handleUnchangedTargetLocaleValue(
  * Adds one warning per discouraged term in a base value this import wrote, or would
  * write in a dry run. Advisory: the value is imported regardless.
  */
-function warnAboutPreferredTerminology(change: ImportChange, options: ImportOptions, warnings: string[]): void {
+function warnAboutPreferredTerminology(change: ImportChange, options: ResolvedImportOptions, warnings: string[]): void {
   const rules = options.preferredTerminology ?? [];
   if (rules.length === 0 || change.newValue === undefined) return;
   if (change.type === 'failed' || change.type === 'skipped') return;
@@ -238,58 +239,29 @@ function warnAboutPreferredTerminology(change: ImportChange, options: ImportOpti
 }
 
 // ---------------------------------------------------------------------------
-// Public entry point
+// Entry point (internal to the import module)
 // ---------------------------------------------------------------------------
 
 /**
- * Processes a group of resources that belong to the same folder.
+ * Applies the resources of one folder to that folder, and records the outcome in the session.
  *
- * This function is the core of the import operation. It handles batch processing of resources
- * that share the same resource_entries.json and tracker_meta.json files, minimizing file I/O
- * by loading and saving files once per folder instead of per resource.
+ * The folder's `resource_entries.json` and `tracker_meta.json` are loaded once and saved once
+ * (only when something changed, and never in a dry run). For each resource:
+ * 1. **Missing resource**: skipped unless `createMissing`; a target-locale creation needs a
+ *    `baseValue`.
+ * 2. **Base-locale import** (migration only): writes the base value; the Staleness rule updates
+ *    every translation. Values written are checked against the preferred terminology.
+ * 3. **Target-locale import**: warns on a `baseValue` mismatch (unless `validateBase` is false),
+ *    fails an entry whose value dropped a protected term of its source, and otherwise writes the
+ *    value with the status from `resolveImportStatus` (strategy, old status, source status).
+ * 4. **Comment and tags**: updated when `updateComments` / `updateTags` are set.
  *
- * The function performs these operations for each resource in the group:
- * 1. **Resource Creation**: Creates new resources when `createMissing` is enabled and resource
- *    doesn't exist. Requires baseValue to be present (or value for base locale imports).
- * 2. **Base Value Validation**: Compares imported baseValue against existing source values
- *    and warns on mismatches (when validateBase is enabled).
- * 3. **Value Change Detection**: Determines if translation value has changed.
- * 4. **Strategy-Specific Status Handling**:
- *    - `verification`: Sets status to 'verified' (even for unchanged values)
- *    - `update`: Preserves existing status
- *    - `translation-service`: Sets status to 'translated'
- *    - `migration`: Uses source status when present and `preserveStatus` is not `false`,
- *      otherwise defaults to 'translated'
- * 5. **Metadata Updates**: Updates comment and tags when corresponding flags are enabled.
- * 6. **Checksum Calculation**: Computes checksums for change tracking and stale detection.
- * 7. **File Writing**: Atomically writes both resource_entries.json and tracker_meta.json
- *    when changes are detected (unless in dry-run mode).
- *
- * @param group - The resource group containing all resources in the same folder with their
- *                file paths and entry keys
- * @param locale - Target locale code (e.g., 'es', 'fr', 'de') or base locale for migration imports
- * @param baseLocale - Source locale code (typically 'en')
- * @param options - Import configuration including strategy, flags, and validation settings
- * @param dryRun - When true, performs all operations except file writes
- * @param isBaseLocaleImport - Whether this is a base locale import (migration strategy only)
- * @param filesModified - Set that accumulates paths of all modified files (for summary reporting)
- * @param warnings - Array that accumulates non-fatal warnings (e.g., base value mismatches, and
- *                   preferred-terminology findings on base-locale imports)
- * @param errors - Optional array that accumulates fatal error messages (e.g., protected-term violations)
- * @returns Array of ImportChange objects describing all changes made to resources in this group
+ * Appends one change per resource to `session.changes`; warnings, errors (protected-term
+ * violations) and written files go to the session too.
  */
-export function processResourceGroup(
-  group: ResourceGroup,
-  locale: string,
-  baseLocale: string,
-  options: ImportOptions,
-  dryRun: boolean,
-  isBaseLocaleImport: boolean,
-  filesModified: Set<string>,
-  warnings: string[],
-  errors?: string[],
-): ImportChange[] {
-  const changes: ImportChange[] = [];
+export function processResourceGroup(session: ImportSession, group: ResourceGroup): void {
+  const { options, isBaseLocaleImport, changes, warnings, errors } = session;
+  const { baseLocale } = session.collection;
 
   let folder: ResourceFolder;
   try {
@@ -298,10 +270,10 @@ export function processResourceGroup(
     for (const { resource } of group.resources) {
       changes.push({ key: resource.key, type: 'failed', reason: `Failed to read resource files: ${error}` });
     }
-    return changes;
+    return;
   }
 
-  const ctx: GroupContext = { locale, baseLocale, options, folder, dataModified: false };
+  const ctx: GroupContext = { locale: options.locale, baseLocale, options, folder, dataModified: false };
 
   for (const { resource, entryKey } of group.resources) {
     const stored = folder.get(entryKey);
@@ -347,7 +319,7 @@ export function processResourceGroup(
       const violations = findProtectedTermViolations(storedSource, resource.value, terms);
       if (violations.length > 0) {
         const reason = `Protected term(s) altered: ${violations.join(', ')}`;
-        errors?.push(`"${resource.key}" ${reason}`);
+        errors.push(`"${resource.key}" ${reason}`);
         changes.push({ key: resource.key, type: 'failed', reason });
         continue;
       }
@@ -359,11 +331,9 @@ export function processResourceGroup(
   // Write files once for the entire group, but only when in-memory state was actually mutated.
   // Logging an 'updated' change (e.g. update strategy with unchanged value) does not imply a
   // disk write is needed — `dataModified` is the authoritative signal for that.
-  if (!dryRun && ctx.dataModified) {
+  if (!options.dryRun && ctx.dataModified) {
     for (const filePath of folder.save().written) {
-      filesModified.add(filePath);
+      session.filesModified.add(filePath);
     }
   }
-
-  return changes;
 }

@@ -1,6 +1,11 @@
-import { describe, it, expect } from 'vitest';
-import { hasReferences, extractReferences, resolveReferences, resolveAllReferences } from './reference-resolver';
-import type { ImportedResource } from './types';
+import { describe, expect, it } from 'vitest';
+import {
+  extractReferences,
+  hasReferences,
+  type KeyedValue,
+  resolveAllReferences,
+  resolveReferences,
+} from './reference-resolver';
 
 describe('reference-resolver', () => {
   describe('hasReferences', () => {
@@ -179,7 +184,7 @@ describe('reference-resolver', () => {
 
   describe('resolveAllReferences', () => {
     it('should resolve references in all resources when enabled', () => {
-      const resources: ImportedResource[] = [
+      const resources: KeyedValue[] = [
         { key: 'greeting', value: 'Hello' },
         { key: 'message', value: '{{greeting}} World' },
       ];
@@ -194,7 +199,7 @@ describe('reference-resolver', () => {
     });
 
     it('should not resolve when disabled', () => {
-      const resources: ImportedResource[] = [
+      const resources: KeyedValue[] = [
         { key: 'greeting', value: 'Hello' },
         { key: 'message', value: '{{greeting}} World' },
       ];
@@ -209,7 +214,7 @@ describe('reference-resolver', () => {
     });
 
     it('should handle complex nested references', () => {
-      const resources: ImportedResource[] = [
+      const resources: KeyedValue[] = [
         { key: 'name', value: 'World' },
         { key: 'target', value: '{{name}}' },
         { key: 'greeting', value: 'Hello {{target}}' },
@@ -223,7 +228,7 @@ describe('reference-resolver', () => {
     });
 
     it('should warn on circular references', () => {
-      const resources: ImportedResource[] = [
+      const resources: KeyedValue[] = [
         { key: 'a', value: '{{b}}' },
         { key: 'b', value: '{{a}}' },
       ];
@@ -238,7 +243,7 @@ describe('reference-resolver', () => {
     });
 
     it('should warn on missing references', () => {
-      const resources: ImportedResource[] = [{ key: 'greeting', value: 'Hello {{missing}}' }];
+      const resources: KeyedValue[] = [{ key: 'greeting', value: 'Hello {{missing}}' }];
 
       const warnings: string[] = [];
       const result = resolveAllReferences(resources, true, warnings);
@@ -249,7 +254,7 @@ describe('reference-resolver', () => {
     });
 
     it('should preserve resources without references', () => {
-      const resources: ImportedResource[] = [
+      const resources: KeyedValue[] = [
         { key: 'simple', value: 'No references' },
         { key: 'greeting', value: 'Hello World' },
       ];
@@ -262,7 +267,7 @@ describe('reference-resolver', () => {
     });
 
     it('should handle {{t()}} patterns', () => {
-      const resources: ImportedResource[] = [
+      const resources: KeyedValue[] = [
         { key: 'greeting', value: 'Hello' },
         { key: 'message', value: "{{t('greeting')}} World" },
       ];
@@ -274,7 +279,7 @@ describe('reference-resolver', () => {
     });
 
     it('should preserve other resource properties', () => {
-      const resources: ImportedResource[] = [
+      const resources: Array<KeyedValue & { comment?: string; tags?: string[]; baseValue?: string }> = [
         {
           key: 'greeting',
           value: 'Hello',

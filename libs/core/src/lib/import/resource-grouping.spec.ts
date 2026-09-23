@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { groupResourcesByFolder } from './resource-grouping';
 import type { ImportedResource } from './types';
 
@@ -11,7 +11,7 @@ describe('groupResourcesByFolder', () => {
       { key: 'errors.notFound', value: 'Not Found' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(2);
     expect(groups.has(resolve('/project', 'src/translations/common'))).toBe(true);
@@ -35,7 +35,7 @@ describe('groupResourcesByFolder', () => {
       { key: 'goodbye', value: 'Goodbye' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(1);
     expect(groups.has(resolve('/project', 'src/translations'))).toBe(true);
@@ -54,7 +54,7 @@ describe('groupResourcesByFolder', () => {
       { key: 'apps.admin.settings.general.title', value: 'General Settings' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(2);
     expect(groups.has(resolve('/project', 'src/translations/apps/admin/users/list'))).toBe(true);
@@ -70,7 +70,7 @@ describe('groupResourcesByFolder', () => {
   it('should create correct file paths', () => {
     const resources: ImportedResource[] = [{ key: 'common.ok', value: 'OK' }];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     const commonGroup = groups.get(resolve('/project', 'src/translations/common'));
     expect(commonGroup).toBeDefined();
@@ -88,7 +88,7 @@ describe('groupResourcesByFolder', () => {
       { key: 'apps.admin.title', value: 'Admin' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(3);
     expect(groups.has(resolve('/project', 'src/translations'))).toBe(true);
@@ -108,7 +108,7 @@ describe('groupResourcesByFolder', () => {
       },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     const commonGroup = groups.get(resolve('/project', 'src/translations/common'));
     expect(commonGroup).toBeDefined();

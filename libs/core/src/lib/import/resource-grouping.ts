@@ -1,5 +1,5 @@
-import type { ImportedResource } from './types';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
+import type { ImportedResource } from './types';
 
 /**
  * Represents a group of resources that belong to the same folder path.
@@ -47,8 +47,7 @@ export interface ResourceGroup {
  * - Maintains data consistency by processing related resources together
  *
  * @param resources - Array of resources to group by folder path
- * @param translationsFolder - Base translations folder path (e.g., 'src/translations')
- * @param cwd - Current working directory for resolving absolute paths
+ * @param translationsFolder - Absolute path of the translations folder
  * @returns Map of absolute folder paths to ResourceGroup objects containing grouped resources
  *
  * @example
@@ -59,11 +58,7 @@ export interface ResourceGroup {
  *   { key: 'errors.notFound', value: 'Not Found' }
  * ];
  *
- * const groups = groupResourcesByFolder(
- *   resources,
- *   'src/translations',
- *   '/project'
- * );
+ * const groups = groupResourcesByFolder(resources, '/project/src/translations');
  *
  * // Returns:
  * // Map {
@@ -90,12 +85,11 @@ export interface ResourceGroup {
 export function groupResourcesByFolder(
   resources: ImportedResource[],
   translationsFolder: string,
-  cwd: string,
 ): Map<string, ResourceGroup> {
   const groups = new Map<string, ResourceGroup>();
 
   for (const resource of resources) {
-    const paths = resolveResourcePaths({ key: resource.key, translationsFolder, cwd });
+    const paths = resolveResourcePaths({ key: resource.key, translationsFolder });
 
     let group = groups.get(paths.folderPath);
     if (!group) {

@@ -2,12 +2,13 @@ import {
   detectImportFormat,
   generateImportSummary,
   type ImportFormat,
-  type ImportOptions,
   type ImportResult,
+  type ImportRunOptions,
   type ImportStrategy,
-  importFromJson,
-  importFromXliff,
+  importResources,
   loadPreferredTerminology,
+  parseJsonImport,
+  parseXliffImport,
   readEffectiveProtectedTerms,
 } from '@simoncodes-ca/core';
 import * as fs from 'fs';
@@ -93,14 +94,9 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
   }
 
   const preferredTerminology = loadPreferredTerminology(config, cwd);
-
-  // Update options with answers
-  const finalOptions: ImportOptions = {
-    source: answers.source,
+  const source = answers.source;
+  const runOptions: ImportRunOptions = {
     locale: answers.locale,
-    collection: collectionName,
-    baseLocale,
-    format: answers.format,
     strategy: answers.strategy || 'translation-service',
     updateComments: answers.updateComments,
     updateTags: answers.updateTags,
@@ -117,11 +113,12 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
   };
 
   // Auto-detect format if not specified
-  if (!finalOptions.format) {
+  let format = answers.format;
+  if (!format) {
     try {
-      finalOptions.format = detectImportFormat(finalOptions.source);
-      if (finalOptions.verbose) {
-        console.log(`Detected format: ${finalOptions.format}`);
+      format = detectImportFormat(source);
+      if (runOptions.verbose) {
+        console.log(`Detected format: ${format}`);
       }
     } catch (error) {
       ConsoleFormatter.error((error as Error).message);
@@ -129,34 +126,31 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
     }
   }
 
-  const translationsFolderPath = collection.translationsFolder;
-
   // Display import summary
   console.log('');
   ConsoleFormatter.progress('Starting import...');
-  ConsoleFormatter.indent(`Format: ${finalOptions.format}`);
-  ConsoleFormatter.indent(`Source: ${finalOptions.source}`);
-  ConsoleFormatter.indent(`Locale: ${finalOptions.locale}`);
-  ConsoleFormatter.indent(`Strategy: ${finalOptions.strategy}`);
-  ConsoleFormatter.indent(`Collection: ${finalOptions.collection}`);
-  if (finalOptions.dryRun) {
+  ConsoleFormatter.indent(`Format: ${format}`);
+  ConsoleFormatter.indent(`Source: ${source}`);
+  ConsoleFormatter.indent(`Locale: ${runOptions.locale}`);
+  ConsoleFormatter.indent(`Strategy: ${runOptions.strategy}`);
+  ConsoleFormatter.indent(`Collection: ${collectionName}`);
+  if (runOptions.dryRun) {
     ConsoleFormatter.indent('Mode: DRY RUN (no changes will be made)');
   }
   console.log('');
 
   // Performance logging for verbose mode
-  const startTime = finalOptions.verbose ? Date.now() : 0;
-  if (finalOptions.verbose) {
+  const startTime = runOptions.verbose ? Date.now() : 0;
+  if (runOptions.verbose) {
     console.log(`Started at: ${new Date(startTime).toLocaleTimeString()}`);
   }
 
   let result: ImportResult;
   try {
-    if (finalOptions.format === 'json') {
-      result = importFromJson(translationsFolderPath, finalOptions);
-    } else {
-      result = await importFromXliff(translationsFolderPath, finalOptions);
-    }
+    const parseOptions = { onProgress: runOptions.onProgress };
+    const resources =
+      format === 'json' ? parseJsonImport(source, parseOptions) : await parseXliffImport(source, parseOptions);
+    result = importResources(collection, resources, runOptions);
   } catch (error) {
     ConsoleFormatter.error(`Import failed: ${(error as Error).message}`);
     return;
@@ -172,7 +166,7 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
   }
 
   // Log elapsed time in verbose mode
-  if (finalOptions.verbose) {
+  if (runOptions.verbose) {
     const endTime = Date.now();
     const elapsedMilliseconds = endTime - startTime;
     const elapsedSeconds = (elapsedMilliseconds / 1000).toFixed(2);
@@ -181,13 +175,13 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
   }
 
   // Display results
-  displayResults(result, finalOptions);
+  displayResults(result, runOptions);
 
   // Generate and write summary
   const summaryPath = buildSummaryPath('import');
-  if (!finalOptions.dryRun) {
+  if (!runOptions.dryRun) {
     try {
-      const summary = generateImportSummary(result, finalOptions);
+      const summary = generateImportSummary(result, { ...runOptions, format, source });
       fs.writeFileSync(summaryPath, summary, 'utf8');
       console.log('');
       console.log(`Import summary written to: ${summaryPath}`);
@@ -406,7 +400,7 @@ async function promptForMissing(
   return answers;
 }
 
-function displayResults(result: ImportResult, options: ImportOptions): void {
+function displayResults(result: ImportResult, options: ImportRunOptions): void {
   ConsoleFormatter.section('Import Results');
 
   if (options.dryRun) {

@@ -1,5 +1,12 @@
-import type { ImportOptions, ImportResult, ImportChange, StatusTransition, ICUAutoFix, ICUAutoFixError } from './types';
-import { formatMarkdownList, capitalize, formatISODate } from '../summary-utils';
+import { capitalize, formatISODate, formatMarkdownList } from '../summary-utils';
+import type {
+  ICUAutoFix,
+  ICUAutoFixError,
+  ImportChange,
+  ImportResult,
+  ImportSummaryOptions,
+  StatusTransition,
+} from './types';
 
 /**
  * Generates a comprehensive markdown summary of the import operation.
@@ -13,7 +20,7 @@ import { formatMarkdownList, capitalize, formatISODate } from '../summary-utils'
  * - Detailed changes by category (created, updated, skipped, failed)
  *
  * @param result - The import result containing all statistics and changes
- * @param options - The import options used for the operation
+ * @param options - The import options used for the operation, with the file's format and path
  * @returns A markdown-formatted string ready to be written to a file
  *
  * @example
@@ -22,7 +29,7 @@ import { formatMarkdownList, capitalize, formatISODate } from '../summary-utils'
  * fs.writeFileSync('import-summary.md', summary);
  * ```
  */
-export function generateImportSummary(result: ImportResult, options: ImportOptions): string {
+export function generateImportSummary(result: ImportResult, options: ImportSummaryOptions): string {
   const isDryRun = result.dryRun;
   const title = isDryRun ? '# Import Summary (DRY RUN)' : '# Import Summary';
   const date = formatISODate();
@@ -30,8 +37,8 @@ export function generateImportSummary(result: ImportResult, options: ImportOptio
   let summary = `${title}
 
 **Date**: ${date}
-**Format**: ${result.format.toUpperCase()}
-**Source File**: ${result.sourceFile}
+**Format**: ${options.format.toUpperCase()}
+**Source File**: ${options.source}
 **Target Locale**: ${result.locale}
 **Collection**: ${result.collection || '(default)'}
 **Strategy**: ${result.strategy}
@@ -126,7 +133,7 @@ ${formatDetailedChanges(result.changes, isDryRun)}
  * @returns Formatted string like "--update-comments=true, --create-missing=false" or "None"
  * @internal
  */
-function formatFlags(options: ImportOptions): string {
+function formatFlags(options: ImportSummaryOptions): string {
   const flags: string[] = [];
 
   if (options.updateComments !== undefined) {

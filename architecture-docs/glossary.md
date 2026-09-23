@@ -57,6 +57,16 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+## E
+
+### Export Run
+
+One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it chooses the locales (every collection's target locales, narrowed to the requested ones), filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, and the Markdown summary. The collections must share one [base locale](#base-locale).
+
+Explained in context: [`core-library.md`](core-library.md#export-pipeline)
+
+---
+
 ## I
 
 ### ICU Format
@@ -66,6 +76,14 @@ The [ICU MessageFormat](https://unicode-org.github.io/icu/userguide/format_parse
 During [bundle](#bundle) generation, simple `{varName}` placeholders are converted to Transloco's `{{ varName }}` syntax. Complex ICU constructs are passed through as-is because Transloco's messageformat pipe handles them natively.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`bundle-generation.md`](bundle-generation.md)
+
+---
+
+### Import Run
+
+One import of a set of resources into one locale of one [collection](#collection). A format adapter (`parseJsonImport`, `parseXliffImport`) turns a file into resources; `importResources(collection, resources, options)` in `libs/core/src/lib/import/import-resources.ts` does the rest: strategy defaults, Transloco reference resolution (migration only), placeholder normalization and auto-fix, validation, and the per-[folder](#resource-folder) merge. The state of one run (settings, changes, warnings, errors, written files) lives in an `ImportSession`.
+
+Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 
 ---
 
