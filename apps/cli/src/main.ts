@@ -442,10 +442,13 @@ Validation Rules:
   ✏️  translated Has translation but not verified → FAILURE (default)
                                                   → WARNING (--allow-translated)
   ✅ verified   Translation reviewed and approved → SUCCESS
+  ⚠️  terminology Base value uses a discouraged term → WARNING (never fails)
 
 Exit Codes:
-  0  All validations passed (all resources verified)
-  1  Validation failures found (new/stale/translated resources)
+  0  All validations passed (all resources verified); preferred terminology
+     warnings do not change the exit code
+  1  Validation failures found (new/stale/translated resources), or the
+     preferred terminology file exists but cannot be loaded
 
 Notes:
   - Compiles every stored value under its own locale; values that fail are failures
@@ -457,6 +460,10 @@ Notes:
     value; a renamed one ('{name}' translated to '{nombre}') renders as empty
     text rather than raising, so no other check sees it. Use --skip-placeholders
     to turn this off
+  - Scans each collection's base-locale values for discouraged terms from the
+    preferred terminology file (.lingo-tracker-preferred-terminology.json, or
+    preferredTerminologyFile in .lingo-tracker.json). Findings are warnings,
+    reported once per key and rule; a broken file is a failure. No opt-out flag
   - --skip-locales excludes target locales only; the base locale is always
     compiled, since its value is copied into every translation slot
   - Validates ALL collections and ALL target locales (no filtering) by default
@@ -532,6 +539,42 @@ program
   .action(async (options) => {
     const { protectedTermsCommand } = await import('./commands/protected-terms');
     await protectedTermsCommand(options);
+  });
+
+program
+  .command('preferred-terminology')
+  .description(
+    'Manage preferred terminology rules. A base-locale value using a discouraged term gets a warning suggesting the preferred term.',
+  )
+  .option('--list', 'List the rules and the file that holds them')
+  .option('--add <discouraged>', 'Add a rule for a discouraged term, or replace the existing one (case-insensitive)')
+  .option('--preferred <preferred>', 'Preferred term for --add (required with --add)')
+  .option('--reason <reason>', 'Optional reason shown with the suggestion (used with --add)')
+  .option('--remove <discouraged>', 'Remove the rule for a discouraged term (case-insensitive)')
+  .addHelpText(
+    'after',
+    `
+Examples:
+  # List rules
+  $ lingo-tracker preferred-terminology --list
+
+  # Add a rule (the file is created if absent)
+  $ lingo-tracker preferred-terminology --add "Expenditure" --preferred "Investment" --reason "Brand voice"
+
+  # Update a rule: --add on an existing discouraged term replaces the whole rule,
+  # so omitting --reason clears any previous reason
+  $ lingo-tracker preferred-terminology --add "expenditure" --preferred "Spending"
+
+  # Remove a rule
+  $ lingo-tracker preferred-terminology --remove "Expenditure"
+
+Rules live in .lingo-tracker-preferred-terminology.json beside .lingo-tracker.json,
+or in the file named by "preferredTerminologyFile" in .lingo-tracker.json.
+`,
+  )
+  .action(async (options) => {
+    const { preferredTerminologyCommand } = await import('./commands/preferred-terminology');
+    await preferredTerminologyCommand(options);
   });
 
 program
