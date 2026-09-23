@@ -153,6 +153,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 ---
 
+### Resource Folder
+
+One folder of the translation hierarchy, seen as a unit: its `resource_entries.json` ([resource entries](#resource-entry)) and `tracker_meta.json` ([tracker metadata](#tracker-metadata)) are always read and written together. In code, `openResourceFolder()` returns a `ResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), and every core operation that changes resources goes through it. It computes checksums and applies the [staleness rule](#staleness-rule).
+
+Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
+
+---
+
 ### Resource Key
 
 A dot-delimited string that uniquely identifies a [resource entry](#resource-entry) within a [collection](#collection). Segments may contain only alphanumeric characters, underscores, and hyphens (`[A-Za-z0-9_-]`).
@@ -186,6 +194,14 @@ The condition where a translation's `baseChecksum` no longer matches the [base l
 Staleness is detected automatically during resource reads — no explicit re-scan is required.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`core-library.md`](core-library.md)
+
+---
+
+### Staleness Rule
+
+The one rule for what happens to translations when the [base locale](#base-locale) value changes (`applyBaseChange` in `libs/domain/src/lib/staleness.ts`): the base checksum is updated, every other locale's `baseChecksum` is set to the new base checksum, and its status becomes `stale` — or `new` when the translation is identical to the new base value (an untranslated copy). Edit, import, and normalize all use this rule. The same module holds `recordTranslation`, `needsTranslation`, and `resolveImportStatus`.
+
+Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ---
 

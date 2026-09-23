@@ -1,12 +1,11 @@
 import * as path from 'node:path';
-import * as fs from 'node:fs';
+import { existsSync } from 'node:fs';
 import { validateLocale } from '@simoncodes-ca/domain';
 import { updateConfig } from '../lib/config/config-file-operations';
 import { walkFolders } from '../lib/normalize/iterative-folder-walker';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../lib/file-io/json-file-operations';
-import { calculateChecksum } from '../resource/checksum';
+import { openResourceFolder } from '../lib/resource/resource-folder';
 import { ErrorMessages } from '../lib/errors/error-messages';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 
 export interface AddLocaleToCollectionOptions {
   readonly cwd?: string;
@@ -66,52 +65,18 @@ export async function addLocaleToCollection(
   let filesUpdated = 0;
 
   for (const visit of walkFolders(translationsFolderPath)) {
-    const resourceEntriesPath = path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME);
-    const trackerMetaPath = path.join(visit.absolutePath, TRACKER_META_FILENAME);
+    if (!existsSync(path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME))) continue;
 
-    if (!fs.existsSync(resourceEntriesPath)) continue;
+    const folder = openResourceFolder(visit.absolutePath, {
+      baseLocale: collection.baseLocale ?? updatedConfig.baseLocale,
+    });
 
-    const resourceEntries = readResourceEntries(resourceEntriesPath);
-
-    const trackerMetadata = readTrackerMetadata(trackerMetaPath, {});
-
-    let folderModified = false;
-
-    for (const entryKey of Object.keys(resourceEntries)) {
-      const entry = resourceEntries[entryKey];
-
-      if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') {
-        continue;
-      }
-
-      if (typeof entry[locale] === 'string') {
-        continue;
-      }
-
-      // Seed the new locale with the base (source) value and status 'new' —
-      // this matches the convention used by normalizeEntry/ensureLocaleEntryExists,
-      // which also seeds missing locales with baseValue and marks them 'new'.
-      const baseValue = entry.source;
-      const checksum = calculateChecksum(baseValue);
-
-      entry[locale] = baseValue;
-
-      if (!trackerMetadata[entryKey]) {
-        trackerMetadata[entryKey] = {};
-      }
-      trackerMetadata[entryKey][locale] = {
-        checksum,
-        baseChecksum: checksum,
-        status: 'new',
-      };
-
-      entriesBackfilled++;
-      folderModified = true;
-    }
-
-    if (folderModified) {
-      writeJsonFile({ filePath: resourceEntriesPath, data: resourceEntries });
-      writeJsonFile({ filePath: trackerMetaPath, data: trackerMetadata });
+    // Seed the new locale with the base (source) value and status 'new' — the same
+    // convention normalize uses for missing locales.
+    const seeded = folder.seedLocale(locale);
+    if (seeded > 0) {
+      folder.save();
+      entriesBackfilled += seeded;
       filesUpdated++;
     }
   }

@@ -117,6 +117,21 @@ describe('addLocaleToCollection', () => {
     expect(result.filesUpdated).toBe(0);
   });
 
+  it('ignores a folder that has only a (malformed) tracker_meta.json', async () => {
+    setupMockFs({
+      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
+      [TRANSLATIONS_FOLDER]: { type: 'directory', children: ['tracker_meta.json'] },
+      [path.join(TRANSLATIONS_FOLDER, 'tracker_meta.json')]: { type: 'file', content: '{ not json' },
+    });
+
+    const result = await addLocaleToCollection('main', 'de', { cwd: CWD });
+
+    expect(result.entriesBackfilled).toBe(0);
+    expect(result.filesUpdated).toBe(0);
+    // Only the config file is written
+    expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalledTimes(1);
+  });
+
   it('handles non-existent translations folder gracefully', async () => {
     setupMockFs({
       [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },

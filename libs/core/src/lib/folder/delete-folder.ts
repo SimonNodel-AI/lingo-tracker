@@ -1,8 +1,8 @@
-import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, rmSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
-import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
+import { openResourceFolder } from '../resource/resource-folder';
 
 export interface DeleteFolderParams {
   /** The folder path to delete (dot-delimited path like "apps.common.buttons") */
@@ -118,13 +118,8 @@ function countResourcesInFolder(folderPath: string): number {
   let totalResources = 0;
 
   for (const visit of walkFolders(folderPath, { skipHidden: false })) {
-    const entriesPath = join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME);
-    if (!existsSync(entriesPath)) continue;
-
     try {
-      const entriesContent = readFileSync(entriesPath, 'utf8');
-      const entries = JSON.parse(entriesContent);
-      totalResources += Object.keys(entries).length;
+      totalResources += openResourceFolder(visit.absolutePath).keys().length;
     } catch {
       // Malformed JSON or read error, skip counting
     }

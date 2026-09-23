@@ -1,8 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
-import type { ResourceEntry } from '../../resource/resource-entry';
-import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
+import { openResourceFolder, translationLocales } from './resource-folder';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type { ResourceTreeNode } from './load-resource-tree';
 
@@ -92,25 +89,14 @@ export function searchTranslations(params: SearchParams): SearchResult[] {
   const results: SearchResult[] = [];
 
   for (const visit of walkFolders(translationsFolder, { skipHidden: false })) {
-    const entriesFile = join(visit.absolutePath, 'resource_entries.json');
-    const metaFile = join(visit.absolutePath, 'tracker_meta.json');
-
-    if (!existsSync(entriesFile)) {
-      continue;
-    }
-
     try {
-      const entriesData = readFileSync(entriesFile, 'utf-8');
-      const entries: Record<string, ResourceEntry> = JSON.parse(entriesData);
-
-      let metadata: Record<string, ResourceEntryMetadata> = {};
-      if (existsSync(metaFile)) {
-        const metaData = readFileSync(metaFile, 'utf-8');
-        metadata = JSON.parse(metaData);
-      }
+      const folder = openResourceFolder(visit.absolutePath);
 
       // Search each entry
-      for (const [entryKey, entry] of Object.entries(entries)) {
+      for (const entryKey of folder.keys()) {
+        const stored = folder.get(entryKey);
+        if (!stored) continue;
+        const { entry } = stored;
         const fullKey = visit.keyPrefix ? `${visit.keyPrefix}.${entryKey}` : entryKey;
         const normalizedKey = fullKey.toLowerCase();
 
@@ -139,44 +125,29 @@ export function searchTranslations(params: SearchParams): SearchResult[] {
           }
 
           // Search all other locale translations
-          for (const [locale, value] of Object.entries(entry)) {
-            // Skip non-string properties (comment, tags, source)
-            if (locale === 'comment' || locale === 'tags' || locale === 'source') {
-              continue;
-            }
-
-            if (typeof value === 'string') {
-              const normalizedValue = value.toLowerCase();
-              if (normalizedValue === normalizedQuery) {
-                matchType = 'exact-value';
-                matchedLocales.push(locale);
-              } else if (normalizedValue.includes(normalizedQuery)) {
-                if (matchType !== 'exact-value') {
-                  matchType = 'partial-value';
-                }
-                matchedLocales.push(locale);
+          for (const locale of translationLocales(entry)) {
+            const normalizedValue = (entry[locale] as string).toLowerCase();
+            if (normalizedValue === normalizedQuery) {
+              matchType = 'exact-value';
+              matchedLocales.push(locale);
+            } else if (normalizedValue.includes(normalizedQuery)) {
+              if (matchType !== 'exact-value') {
+                matchType = 'partial-value';
               }
+              matchedLocales.push(locale);
             }
           }
         }
 
         // Add to results if match found
         if (matchType) {
-          const meta = metadata[entryKey] || {};
+          const meta = stored.meta ?? {};
           const status: Record<string, TranslationStatus | undefined> = {};
           const translations: Record<string, string> = {};
 
-          // Extract all locale translations (excluding special fields)
-          for (const locale in entry) {
-            if (locale === 'comment' || locale === 'tags' || locale === 'source') {
-              continue;
-            }
-
-            const value = entry[locale];
-            if (typeof value === 'string') {
-              translations[locale] = value;
-              status[locale] = meta[locale]?.status;
-            }
+          for (const locale of translationLocales(entry)) {
+            translations[locale] = entry[locale] as string;
+            status[locale] = meta[locale]?.status;
           }
 
           // Include base locale value from source field

@@ -180,6 +180,30 @@ describe('Normalize', () => {
       );
     });
 
+    it('should leave a folder with empty entries and no tracker_meta.json untouched', async () => {
+      const testDir = '/test-root';
+      const entriesPath = path.join(testDir, 'resource_entries.json');
+
+      const mockFs: MockFileSystem = {
+        [testDir]: { type: 'directory', children: ['resource_entries.json'] },
+        [entriesPath]: { type: 'file', content: '{}' },
+      };
+
+      setupMockFileSystem(mockFs);
+
+      vi.spyOn(cleanupModule, 'cleanupEmptyFolders').mockReturnValue({
+        foldersRemoved: 0,
+        removedPaths: [],
+      });
+
+      const result = await normalize({ translationsFolder: testDir, baseLocale, locales });
+
+      expect(result.filesCreated).toBe(0);
+      expect(result.filesUpdated).toBe(0);
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+      expect(fs.unlinkSync).not.toHaveBeenCalled();
+    });
+
     it('should add missing locale entries across all resources', async () => {
       const testDir = '/test-root';
       const entriesPath = path.join(testDir, 'resource_entries.json');

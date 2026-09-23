@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { walkFolders } from './iterative-folder-walker';
+import { openResourceFolder } from '../resource/resource-folder';
 
 /**
  * Recursively traverses a directory tree and returns all folder paths
@@ -51,23 +52,9 @@ export function isFolderEmpty(folderPath: string): boolean {
     return false;
   }
 
-  // Check for resource_entries.json with actual entries
-  const resourceEntriesPath = path.join(folderPath, 'resource_entries.json');
-
-  if (!fs.existsSync(resourceEntriesPath)) {
-    // No resource_entries.json means empty
-    return true;
-  }
-
+  // Empty unless resource_entries.json has entries (a missing file counts as empty)
   try {
-    const fileContent = fs.readFileSync(resourceEntriesPath, 'utf8');
-    const resourceEntries = JSON.parse(fileContent);
-
-    // Check if resource_entries.json has any keys
-    const hasEntries = Object.keys(resourceEntries).length > 0;
-
-    // Empty if no entries in resource_entries.json
-    return !hasEntries;
+    return openResourceFolder(folderPath).isEmpty();
   } catch {
     // If we can't parse the file, consider it NOT empty to prevent deletion
     // This preserves corrupted files so they can be manually fixed

@@ -1,11 +1,10 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
 import { moveResource, type MoveResourceResult } from '../../resource/move-resource';
 import { deleteFolder, type DeleteFolderResult } from './delete-folder';
-import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
-import type { ResourceEntries } from '../../resource/resource-entry';
+import { openResourceFolder } from '../resource/resource-folder';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -148,7 +147,16 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
     }
 
     // Extract all resource keys from the source folder tree
-    const resourceKeys = extractAllResourceKeysFromFolder(absoluteSourcePath, sourceFolderPath);
+    const { keys: resourceKeys, errors: enumerationErrors } = extractAllResourceKeysFromFolder(
+      absoluteSourcePath,
+      sourceFolderPath,
+    );
+
+    // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
+    if (enumerationErrors.length > 0) {
+      result.errors.push(...enumerationErrors);
+      return result;
+    }
 
     if (resourceKeys.length === 0) {
       result.warnings.push('No resources found in source folder. Nothing to move.');
@@ -243,10 +251,14 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
  *
  * @param absoluteFolderPath - Absolute filesystem path to the folder
  * @param folderKeyPrefix - Dot-delimited key prefix for this folder
- * @returns Array of full resource keys found in the folder tree
+ * @returns Full resource keys found in the folder tree, and one error per folder that could not be read
  */
-function extractAllResourceKeysFromFolder(absoluteFolderPath: string, folderKeyPrefix: string): string[] {
-  const resourceKeys: string[] = [];
+function extractAllResourceKeysFromFolder(
+  absoluteFolderPath: string,
+  folderKeyPrefix: string,
+): { keys: string[]; errors: string[] } {
+  const keys: string[] = [];
+  const errors: string[] = [];
 
   for (const visit of walkFolders(absoluteFolderPath, { skipHidden: false })) {
     const currentKeyPrefix = visit.keyPrefix
@@ -255,21 +267,15 @@ function extractAllResourceKeysFromFolder(absoluteFolderPath: string, folderKeyP
         : visit.keyPrefix
       : folderKeyPrefix;
 
-    const entriesPath = join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME);
-    if (!existsSync(entriesPath)) continue;
-
     try {
-      const entriesContent = readFileSync(entriesPath, 'utf8');
-      const entries: ResourceEntries = JSON.parse(entriesContent);
-
-      for (const entryKey of Object.keys(entries)) {
-        const fullKey = currentKeyPrefix ? `${currentKeyPrefix}.${entryKey}` : entryKey;
-        resourceKeys.push(fullKey);
+      for (const entryKey of openResourceFolder(visit.absolutePath).keys()) {
+        keys.push(currentKeyPrefix ? `${currentKeyPrefix}.${entryKey}` : entryKey);
       }
-    } catch {
-      // Malformed JSON or read error, skip this folder
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      errors.push(`Failed to read resources in "${currentKeyPrefix || '.'}": ${reason}`);
     }
   }
 
-  return resourceKeys;
+  return { keys, errors };
 }

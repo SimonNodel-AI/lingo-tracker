@@ -1,14 +1,9 @@
-import { existsSync } from 'node:fs';
-import { calculateChecksum } from './checksum';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../lib/file-io/json-file-operations';
-import { updateMetadataForBaseValueChange } from '../lib/resource/metadata-operations';
+import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
 import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
 import type { TranslationConfig } from '../config/translation-config';
 import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
-import type { ResourceEntry } from './resource-entry';
-import type { ResourceEntryMetadata } from './resource-entry-metadata';
 import { translocoToICU, normalizeTags } from '@simoncodes-ca/domain';
 
 export interface EditResourceOptions {
@@ -61,92 +56,55 @@ export async function editResource(
     cwd,
   });
 
-  if (!existsSync(paths.resourceEntriesPath) || !existsSync(paths.trackerMetaPath)) {
+  const folder = openResourceFolder(paths.folderPath, { baseLocale });
+  const current = folder.get(paths.entryKey);
+
+  if (!current?.meta) {
     throw new Error(`Resource not found: ${paths.resolvedKey}`);
   }
 
-  const resourceEntries = readResourceEntries(paths.resourceEntriesPath);
-  const trackerMeta = readTrackerMetadata(paths.trackerMetaPath);
-
-  if (!resourceEntries[paths.entryKey] || !trackerMeta[paths.entryKey]) {
-    throw new Error(`Resource not found: ${paths.resolvedKey}`);
-  }
-
-  const resourceEntry = resourceEntries[paths.entryKey];
-  let metaEntry = trackerMeta[paths.entryKey];
+  const key = paths.entryKey;
+  // Live view of the stored entry: it reflects every change made through `folder`.
+  const { entry } = current;
   let hasChanges = false;
-  let baseValueDidChange = false;
 
-  // 1. Update Base Value — normalize to ICU format before comparing and storing
+  // 1. Update Base Value — normalize to ICU format before comparing and storing.
+  // setBase applies the Staleness rule to every translation.
   const normalizedBaseValue = options.baseValue !== undefined ? translocoToICU(options.baseValue) : undefined;
+  const baseValueDidChange = normalizedBaseValue !== undefined && normalizedBaseValue !== entry.source;
 
-  if (normalizedBaseValue !== undefined && normalizedBaseValue !== resourceEntry.source) {
-    resourceEntry.source = normalizedBaseValue;
-
-    metaEntry = updateMetadataForBaseValueChange({
-      metadata: metaEntry,
-      newBaseValue: normalizedBaseValue,
-      baseLocale,
-    });
-
-    trackerMeta[paths.entryKey] = metaEntry;
+  if (baseValueDidChange) {
+    folder.setBase(key, normalizedBaseValue);
     hasChanges = true;
-    baseValueDidChange = true;
   }
 
   // 2. Update Comment
-  if (options.comment !== undefined && options.comment !== resourceEntry.comment) {
-    resourceEntry.comment = options.comment;
+  if (options.comment !== undefined && folder.setDetails(key, { comment: options.comment })) {
     hasChanges = true;
   }
 
   // 3. Update Tags
-  if (options.tags !== undefined) {
-    const currentTags = resourceEntry.tags || [];
-    const newTags = normalizeTags(options.tags);
-    const isDifferent =
-      currentTags.length !== newTags.length || !currentTags.every((tag, index) => tag === newTags[index]);
-
-    if (isDifferent) {
-      resourceEntry.tags = newTags.length > 0 ? newTags : undefined;
-      hasChanges = true;
-    }
+  if (options.tags !== undefined && folder.setDetails(key, { tags: normalizeTags(options.tags) })) {
+    hasChanges = true;
   }
 
   // 4. Update Locales
   if (options.locales) {
-    const currentBaseChecksum = metaEntry[baseLocale]?.checksum;
-
-    Object.entries(options.locales).forEach(([locale, { value, status }]) => {
-      if (locale === baseLocale) return; // Base value handled separately
+    for (const [locale, { value, status }] of Object.entries(options.locales)) {
+      if (locale === baseLocale) continue; // Base value handled separately
 
       const normalizedLocaleValue = translocoToICU(value);
-      const currentValue = resourceEntry[locale];
       const resolvedStatus = status ?? 'translated';
-      const valueChanged = normalizedLocaleValue !== currentValue;
-      const statusChanged = metaEntry[locale]?.status !== resolvedStatus;
+      const localeMeta = folder.get(key)?.meta?.[locale];
 
-      if (valueChanged) {
-        resourceEntry[locale] = normalizedLocaleValue;
-        const newChecksum = calculateChecksum(normalizedLocaleValue);
-
-        if (!metaEntry[locale]) {
-          metaEntry[locale] = {
-            checksum: newChecksum,
-            baseChecksum: currentBaseChecksum,
-            status: resolvedStatus,
-          };
-        } else {
-          metaEntry[locale].checksum = newChecksum;
-          metaEntry[locale].baseChecksum = currentBaseChecksum;
-          metaEntry[locale].status = resolvedStatus;
-        }
+      if (normalizedLocaleValue !== entry[locale]) {
+        folder.setTranslation(key, locale, normalizedLocaleValue, resolvedStatus);
         hasChanges = true;
-      } else if (statusChanged && metaEntry[locale]) {
-        metaEntry[locale].status = resolvedStatus;
+      } else if (localeMeta && localeMeta.status !== resolvedStatus) {
+        folder.setStatus(key, locale, resolvedStatus);
         hasChanges = true;
       }
-    });
+    }
   }
 
   if (!hasChanges) {
@@ -157,64 +115,49 @@ export async function editResource(
     };
   }
 
-  // Persist the changes before attempting auto-translation. This ensures the
+  // Two-phase write: persist the edit before attempting auto-translation, so the
   // base value update is durable even if the translation API call fails.
-  writeJsonFile({ filePath: paths.resourceEntriesPath, data: resourceEntries });
-  writeJsonFile({ filePath: paths.trackerMetaPath, data: trackerMeta });
+  folder.save();
 
   // 5. Auto-translate when base value changed and translation is configured
   let autoTranslateSkippedLocales: string[] | undefined;
 
-  if (baseValueDidChange && normalizedBaseValue !== undefined) {
-    const updatedEntry = await applyAutoTranslationsAfterBaseValueChange({
-      resourceEntry,
-      metaEntry,
+  if (baseValueDidChange) {
+    const autoTranslateResult = await applyAutoTranslationsAfterBaseValueChange({
+      folder,
+      key,
       baseValue: normalizedBaseValue,
       baseLocale,
       allLocales: options.allLocales,
       translationConfig: options.translationConfig,
     });
 
-    if (updatedEntry.skippedLocales.length > 0) {
-      autoTranslateSkippedLocales = updatedEntry.skippedLocales;
+    if (autoTranslateResult.skippedLocales.length > 0) {
+      autoTranslateSkippedLocales = autoTranslateResult.skippedLocales;
     }
 
-    if (updatedEntry.didTranslate) {
-      // Persist translated values
-      resourceEntries[paths.entryKey] = resourceEntry;
-      trackerMeta[paths.entryKey] = metaEntry;
-      writeJsonFile({ filePath: paths.resourceEntriesPath, data: resourceEntries });
-      writeJsonFile({ filePath: paths.trackerMetaPath, data: trackerMeta });
+    if (autoTranslateResult.didTranslate) {
+      // Second phase: persist the translated values.
+      folder.save();
     }
   }
 
-  const translations: Record<string, string> = {};
-  for (const [prop, value] of Object.entries(resourceEntry)) {
-    if (prop !== 'source' && prop !== 'tags' && prop !== 'comment' && typeof value === 'string') {
-      translations[prop] = value;
-    }
+  const updatedEntry = folder.treeEntry(key);
+  if (!updatedEntry) {
+    throw new Error(`Resource not found: ${paths.resolvedKey}`);
   }
-
-  const entry: ResourceTreeEntry = {
-    key: paths.entryKey,
-    source: resourceEntry.source,
-    translations,
-    metadata: metaEntry,
-    ...(resourceEntry.comment !== undefined && { comment: resourceEntry.comment }),
-    ...(resourceEntry.tags !== undefined && resourceEntry.tags.length > 0 && { tags: resourceEntry.tags }),
-  };
 
   return {
     resolvedKey: paths.resolvedKey,
     updated: true,
-    entry,
+    entry: updatedEntry,
     ...(autoTranslateSkippedLocales !== undefined && { skippedLocales: autoTranslateSkippedLocales }),
   };
 }
 
 interface ApplyAutoTranslationsParams {
-  resourceEntry: ResourceEntry;
-  metaEntry: ResourceEntryMetadata;
+  readonly folder: ResourceFolder;
+  readonly key: string;
   readonly baseValue: string;
   readonly baseLocale: string;
   readonly allLocales: string[] | undefined;
@@ -227,8 +170,8 @@ interface ApplyAutoTranslationsResult {
 }
 
 /**
- * Translates the updated base value to all non-base locales and mutates
- * `resourceEntry` and `metaEntry` in place with the results.
+ * Translates the updated base value to all non-base locales and records the
+ * results in `folder` (not saved).
  *
  * Returns `{ didTranslate: false, skippedLocales: [] }` when auto-translation is
  * not configured, disabled, or when no target locales are available.
@@ -236,7 +179,7 @@ interface ApplyAutoTranslationsResult {
 async function applyAutoTranslationsAfterBaseValueChange(
   params: ApplyAutoTranslationsParams,
 ): Promise<ApplyAutoTranslationsResult> {
-  const { resourceEntry, metaEntry, baseValue, baseLocale, allLocales, translationConfig } = params;
+  const { folder, key, baseValue, baseLocale, allLocales, translationConfig } = params;
 
   if (!translationConfig?.enabled || !allLocales || allLocales.length === 0) {
     return { didTranslate: false, skippedLocales: [] };
@@ -258,19 +201,8 @@ async function applyAutoTranslationsAfterBaseValueChange(
     return { didTranslate: false, skippedLocales: autoTranslateResult.skippedLocales };
   }
 
-  const newBaseChecksum = calculateChecksum(baseValue);
-
   for (const { locale, value } of autoTranslateResult.translations) {
-    const normalizedValue = translocoToICU(value);
-    resourceEntry[locale] = normalizedValue;
-    const translationChecksum = calculateChecksum(normalizedValue);
-
-    metaEntry[locale] = {
-      ...metaEntry[locale],
-      checksum: translationChecksum,
-      baseChecksum: newBaseChecksum,
-      status: 'translated',
-    };
+    folder.setTranslation(key, locale, translocoToICU(value), 'translated');
   }
 
   return { didTranslate: true, skippedLocales: autoTranslateResult.skippedLocales };

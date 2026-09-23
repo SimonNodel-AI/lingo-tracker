@@ -1,7 +1,5 @@
-import { resolve, join } from 'node:path';
 import type { ImportedResource } from './types';
-import { splitResolvedKey } from '@simoncodes-ca/domain';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import { resolveResourcePaths } from '../resource/resource-file-paths';
 
 /**
  * Represents a group of resources that belong to the same folder path.
@@ -16,7 +14,7 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
  * - Better performance for bulk imports
  */
 export interface ResourceGroup {
-  /** The full folder path where these resources are stored */
+  /** Absolute path of the folder where these resources are stored */
   folderPath: string;
   /** Absolute path to the resource_entries.json file for this folder */
   entryResourcePath: string;
@@ -51,7 +49,7 @@ export interface ResourceGroup {
  * @param resources - Array of resources to group by folder path
  * @param translationsFolder - Base translations folder path (e.g., 'src/translations')
  * @param cwd - Current working directory for resolving absolute paths
- * @returns Map of folder paths to ResourceGroup objects containing grouped resources
+ * @returns Map of absolute folder paths to ResourceGroup objects containing grouped resources
  *
  * @example
  * ```typescript
@@ -69,8 +67,8 @@ export interface ResourceGroup {
  *
  * // Returns:
  * // Map {
- * //   'src/translations/common' => {
- * //     folderPath: 'src/translations/common',
+ * //   '/project/src/translations/common' => {
+ * //     folderPath: '/project/src/translations/common',
  * //     entryResourcePath: '/project/src/translations/common/resource_entries.json',
  * //     entryMetaPath: '/project/src/translations/common/tracker_meta.json',
  * //     resources: [
@@ -78,8 +76,8 @@ export interface ResourceGroup {
  * //       { resource: { key: 'common.cancel', value: 'Cancel' }, entryKey: 'cancel' }
  * //     ]
  * //   },
- * //   'src/translations/errors' => {
- * //     folderPath: 'src/translations/errors',
+ * //   '/project/src/translations/errors' => {
+ * //     folderPath: '/project/src/translations/errors',
  * //     entryResourcePath: '/project/src/translations/errors/resource_entries.json',
  * //     entryMetaPath: '/project/src/translations/errors/tracker_meta.json',
  * //     resources: [
@@ -97,29 +95,20 @@ export function groupResourcesByFolder(
   const groups = new Map<string, ResourceGroup>();
 
   for (const resource of resources) {
-    const { folderPath: pathSegments, entryKey } = splitResolvedKey(resource.key);
+    const paths = resolveResourcePaths({ key: resource.key, translationsFolder, cwd });
 
-    const fullFolderPath = pathSegments.length ? join(translationsFolder, ...pathSegments) : translationsFolder;
-
-    const entryResourcePath = resolve(cwd, fullFolderPath, RESOURCE_ENTRIES_FILENAME);
-    const entryMetaPath = resolve(cwd, fullFolderPath, TRACKER_META_FILENAME);
-
-    if (!groups.has(fullFolderPath)) {
-      groups.set(fullFolderPath, {
-        folderPath: fullFolderPath,
-        entryResourcePath,
-        entryMetaPath,
+    let group = groups.get(paths.folderPath);
+    if (!group) {
+      group = {
+        folderPath: paths.folderPath,
+        entryResourcePath: paths.resourceEntriesPath,
+        entryMetaPath: paths.trackerMetaPath,
         resources: [],
-      });
+      };
+      groups.set(paths.folderPath, group);
     }
 
-    const group = groups.get(fullFolderPath);
-    if (group) {
-      group.resources.push({
-        resource,
-        entryKey,
-      });
-    }
+    group.resources.push({ resource, entryKey: paths.entryKey });
   }
 
   return groups;

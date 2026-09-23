@@ -1,9 +1,8 @@
-import { existsSync } from 'node:fs';
+import { needsTranslation } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
-import { calculateChecksum } from '../../resource/checksum';
+import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { autoTranslateResource } from './auto-translate-resources';
 
 export interface TranslateExistingResourceOptions {
@@ -44,91 +43,50 @@ export async function translateExistingResource(
 
   const paths = validateAndResolvePaths({ key, translationsFolder, cwd });
 
-  if (!existsSync(paths.resourceEntriesPath) || !existsSync(paths.trackerMetaPath)) {
+  const folder = openResourceFolder(paths.folderPath, { baseLocale });
+  const current = folder.get(paths.entryKey);
+
+  if (!current?.meta) {
     throw new Error(`Resource not found: ${paths.resolvedKey}`);
   }
 
-  const resourceEntries = readResourceEntries(paths.resourceEntriesPath);
-  const trackerMeta = readTrackerMetadata(paths.trackerMetaPath);
-
-  if (!resourceEntries[paths.entryKey] || !trackerMeta[paths.entryKey]) {
-    throw new Error(`Resource not found: ${paths.resolvedKey}`);
-  }
-
-  const resourceEntry = resourceEntries[paths.entryKey];
-  const metaEntry = trackerMeta[paths.entryKey];
-  const baseValue = resourceEntry.source;
-
-  const targetLocales = allLocales.filter((locale) => {
-    if (locale === baseLocale) return false;
-    const localeMeta = metaEntry[locale];
-    return !localeMeta || localeMeta.status === 'new' || localeMeta.status === 'stale';
-  });
+  const { entry, meta } = current;
+  const targetLocales = allLocales.filter((locale) => locale !== baseLocale && needsTranslation(meta[locale]));
 
   if (targetLocales.length === 0) {
-    const translations: Record<string, string> = {};
-    for (const [prop, value] of Object.entries(resourceEntry)) {
-      if (prop !== 'source' && prop !== 'tags' && prop !== 'comment' && typeof value === 'string') {
-        translations[prop] = value;
-      }
-    }
-
     return {
       translatedCount: 0,
       skippedLocales: [],
-      entry: {
-        key: paths.entryKey,
-        source: baseValue,
-        translations,
-        metadata: metaEntry,
-        ...(resourceEntry.comment !== undefined && { comment: resourceEntry.comment }),
-        ...(resourceEntry.tags !== undefined && resourceEntry.tags.length > 0 && { tags: resourceEntry.tags }),
-      },
+      entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
     };
   }
 
   const { translations: translatedEntries, skippedLocales } = await autoTranslateResource({
-    baseValue,
+    baseValue: entry.source,
     baseLocale,
     targetLocales,
     translationConfig,
   });
 
-  const baseChecksum = metaEntry[baseLocale]?.checksum ?? calculateChecksum(baseValue);
-
   for (const { locale, value } of translatedEntries) {
-    resourceEntry[locale] = value;
-
-    const newChecksum = calculateChecksum(value);
-    metaEntry[locale] = {
-      checksum: newChecksum,
-      baseChecksum,
-      status: 'translated',
-    };
+    folder.setTranslation(paths.entryKey, locale, value, 'translated');
   }
 
   if (translatedEntries.length > 0) {
-    writeJsonFile({ filePath: paths.resourceEntriesPath, data: resourceEntries });
-    writeJsonFile({ filePath: paths.trackerMetaPath, data: trackerMeta });
-  }
-
-  const finalTranslations: Record<string, string> = {};
-  for (const [prop, value] of Object.entries(resourceEntry)) {
-    if (prop !== 'source' && prop !== 'tags' && prop !== 'comment' && typeof value === 'string') {
-      finalTranslations[prop] = value;
-    }
+    folder.save();
   }
 
   return {
     translatedCount: translatedEntries.length,
     skippedLocales,
-    entry: {
-      key: paths.entryKey,
-      source: baseValue,
-      translations: finalTranslations,
-      metadata: metaEntry,
-      ...(resourceEntry.comment !== undefined && { comment: resourceEntry.comment }),
-      ...(resourceEntry.tags !== undefined && resourceEntry.tags.length > 0 && { tags: resourceEntry.tags }),
-    },
+    entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
   };
+}
+
+function requireTreeEntry(folder: ResourceFolder, entryKey: string, resolvedKey: string): ResourceTreeEntry {
+  const treeEntry = folder.treeEntry(entryKey);
+  if (!treeEntry) {
+    throw new Error(`Resource not found: ${resolvedKey}`);
+  }
+  return treeEntry;
 }

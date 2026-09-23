@@ -1,7 +1,7 @@
 import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { calculateChecksum } from '../../resource/checksum';
-import { createBaseLocaleMetadata } from '@simoncodes-ca/domain';
+import { isUntranslatedCopy, recordTranslation } from '@simoncodes-ca/domain';
 
 export interface CreateResourceMetadataParams {
   /** The entry key for this resource */
@@ -18,87 +18,24 @@ export interface CreateResourceMetadataParams {
   }>;
 }
 
-export interface UpdateBaseValueParams {
-  /** Existing metadata for this entry */
-  readonly metadata: ResourceEntryMetadata;
-  /** New base value */
-  readonly newBaseValue: string;
-  /** Base locale code */
-  readonly baseLocale: string;
-}
-
 /**
- * Creates complete metadata for a new resource entry.
+ * Builds the metadata `addResource` writes for a new entry, without touching disk.
+ * Used by the API to update its cache after an add.
  *
- * Handles:
- * - Creating base locale metadata with checksum
- * - Creating translation metadata with proper status
- * - Detecting when translation matches base (status = 'new')
- *
- * @param params - Metadata creation parameters
- * @returns Complete metadata object ready to be written
+ * Follows the Staleness rules: a translation that is an untranslated copy of the base is `new`,
+ * whatever status was provided.
  */
 export function createResourceMetadata(params: CreateResourceMetadataParams): ResourceEntryMetadata {
   const { baseValue, baseLocale, translations = [] } = params;
 
-  const metadata: ResourceEntryMetadata = {};
   const baseChecksum = calculateChecksum(baseValue);
+  let metadata: ResourceEntryMetadata = { [baseLocale]: { checksum: baseChecksum } };
 
-  metadata[baseLocale] = createBaseLocaleMetadata(baseChecksum);
-
-  // Create translation metadata
   for (const { locale, value, status } of translations) {
-    if (locale === baseLocale) {
-      continue; // Skip base locale - already handled
-    }
-
-    const checksum = calculateChecksum(value);
-
-    // If translation matches base value, mark as 'new' regardless of provided status
-    const finalStatus = checksum === baseChecksum ? 'new' : status;
-
-    metadata[locale] = {
-      checksum,
-      baseChecksum,
-      status: finalStatus,
-    };
+    if (locale === baseLocale) continue;
+    const finalStatus = isUntranslatedCopy(value, baseValue) ? 'new' : status;
+    metadata = recordTranslation(metadata, locale, calculateChecksum(value), baseChecksum, finalStatus);
   }
 
   return metadata;
-}
-
-/**
- * Updates metadata when the base value changes.
- *
- * Handles:
- * - Updating base locale checksum
- * - Updating baseChecksum for all translations
- * - Marking translations as 'stale'
- *
- * @param params - Update parameters
- * @returns Updated metadata object
- */
-export function updateMetadataForBaseValueChange(params: UpdateBaseValueParams): ResourceEntryMetadata {
-  const { metadata, newBaseValue, baseLocale } = params;
-
-  const newBaseChecksum = calculateChecksum(newBaseValue);
-  const updatedMetadata = { ...metadata };
-
-  updatedMetadata[baseLocale] = {
-    ...updatedMetadata[baseLocale],
-    checksum: newBaseChecksum,
-  };
-
-  // Update all translations to reference new base and mark as stale
-  for (const locale of Object.keys(updatedMetadata)) {
-    if (locale !== baseLocale) {
-      updatedMetadata[locale] = {
-        ...updatedMetadata[locale],
-        baseChecksum: newBaseChecksum,
-        status: 'stale',
-      };
-    }
-  }
-
-  return updatedMetadata;
 }

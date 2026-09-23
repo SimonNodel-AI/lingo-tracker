@@ -1,9 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
-import type { ResourceEntries } from '../../resource/resource-entry';
-import type { TrackerMetadata } from '../../resource/tracker-metadata';
 import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
+import { openResourceFolder } from './resource-folder';
 
 export interface ResourceTreeNode {
   /** Folder path segments (empty array for root) */
@@ -81,38 +79,14 @@ export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTree
 }
 
 function loadResourcesFromFolder(folderPath: string): ResourceTreeEntry[] {
-  const entriesPath = path.join(folderPath, RESOURCE_ENTRIES_FILENAME);
-  const metaPath = path.join(folderPath, TRACKER_META_FILENAME);
-
-  if (!fs.existsSync(entriesPath) || !fs.existsSync(metaPath)) {
-    return [];
-  }
-
   const resources: ResourceTreeEntry[] = [];
 
   try {
-    const entries: ResourceEntries = JSON.parse(fs.readFileSync(entriesPath, 'utf8'));
-    const metadata: TrackerMetadata = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-
-    for (const [key, entry] of Object.entries(entries)) {
-      const meta = metadata[key];
-      if (!meta) continue;
-
-      const translations: Record<string, string> = {};
-      for (const [prop, value] of Object.entries(entry)) {
-        if (prop !== 'source' && prop !== 'tags' && prop !== 'comment' && typeof value === 'string') {
-          translations[prop] = value;
-        }
-      }
-
-      resources.push({
-        key,
-        source: entry.source,
-        translations,
-        comment: entry.comment,
-        tags: entry.tags,
-        metadata: meta,
-      });
+    const folder = openResourceFolder(folderPath);
+    for (const key of folder.keys()) {
+      // Entries without metadata are skipped (a folder without tracker_meta.json has no resources)
+      const resource = folder.treeEntry(key);
+      if (resource) resources.push(resource);
     }
   } catch (error) {
     // Malformed JSON, skip this folder's resources

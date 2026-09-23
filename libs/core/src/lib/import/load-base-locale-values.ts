@@ -1,9 +1,6 @@
-import { resolve, join } from 'node:path';
 import type { ImportedResource } from './types';
-import type { ResourceEntries } from '../../resource/resource-entry';
-import { splitResolvedKey } from '@simoncodes-ca/domain';
-import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
-import { readJsonFile } from '../file-io/json-file-operations';
+import { resolveResourcePaths } from '../resource/resource-file-paths';
+import { openResourceFolder } from '../resource/resource-folder';
 
 /**
  * Loads base locale values for all imported resources from existing resource files.
@@ -27,14 +24,12 @@ export function loadBaseLocaleValues(
   const folderToKeys = new Map<string, Array<{ key: string; entryKey: string }>>();
 
   for (const resource of resources) {
-    const { folderPath: pathSegments, entryKey } = splitResolvedKey(resource.key);
+    const { folderPath, entryKey } = resolveResourcePaths({ key: resource.key, translationsFolder, cwd });
 
-    const fullFolderPath = pathSegments.length ? join(translationsFolder, ...pathSegments) : translationsFolder;
-
-    let folderKeys = folderToKeys.get(fullFolderPath);
+    let folderKeys = folderToKeys.get(folderPath);
     if (!folderKeys) {
       folderKeys = [];
-      folderToKeys.set(fullFolderPath, folderKeys);
+      folderToKeys.set(folderPath, folderKeys);
     }
 
     folderKeys.push({ key: resource.key, entryKey });
@@ -42,18 +37,13 @@ export function loadBaseLocaleValues(
 
   // Load base values from each folder
   for (const [folderPath, keys] of folderToKeys.entries()) {
-    const entryResourcePath = resolve(cwd, folderPath, RESOURCE_ENTRIES_FILENAME);
-
     try {
-      const resourceEntries = readJsonFile<ResourceEntries>({
-        filePath: entryResourcePath,
-        defaultValue: {} as ResourceEntries,
-      });
+      const folder = openResourceFolder(folderPath);
 
       for (const { key, entryKey } of keys) {
-        const entry = resourceEntries[entryKey];
-        if (entry?.source) {
-          baseValues.set(key, entry.source);
+        const source = folder.get(entryKey)?.entry.source;
+        if (source) {
+          baseValues.set(key, source);
         }
       }
     } catch {

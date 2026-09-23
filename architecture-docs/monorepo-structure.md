@@ -47,7 +47,7 @@ lingo-tracker/                         # Nx workspace root
 │   │       ├── translation-status.ts  # TranslationStatus type
 │   │       ├── locale-metadata.ts     # LocaleMetadata interface
 │   │       ├── resource-key.ts        # Key validation, resolve, split
-│   │       ├── status-helpers.ts      # Checksum-driven status transitions
+│   │       ├── staleness.ts           # Staleness rule and status transitions
 │   │       ├── icu-to-transloco.ts    # ICU → Transloco syntax conversion
 │   │       ├── transloco-to-icu.ts    # Transloco → ICU syntax conversion
 │   │       ├── icu-auto-fixer.ts      # ICU quote-escape repair
@@ -141,7 +141,7 @@ graph TD
 | `translation-status.ts` | Defines the `TranslationStatus` union type (`'new' \| 'translated' \| 'stale' \| 'verified'`) |
 | `locale-metadata.ts` | Defines the `LocaleMetadata` interface (checksum, baseChecksum, status) |
 | `resource-key.ts` | Validates, resolves (`resolveResourceKey`), and splits (`splitResolvedKey`) dot-delimited keys |
-| `status-helpers.ts` | Pure functions for checksum-driven status transitions (`shouldMarkStale`, `createBaseLocaleMetadata`, etc.) |
+| `staleness.ts` | The staleness rule and status transitions (`applyBaseChange`, `recordTranslation`, `needsTranslation`, `resolveImportStatus`) |
 | `icu-to-transloco.ts` | Converts ICU `{varName}` to Transloco `{{ varName }}` at bundle time |
 | `transloco-to-icu.ts` | Converts Transloco `{{ varName }}` back to ICU `{varName}` at import time |
 | `icu-classifier.ts` | Classifies a string as `plain`, `simple-placeholders`, or `complex-icu` |
@@ -162,7 +162,7 @@ See [domain-and-data-model.md](domain-and-data-model.md) for the data structures
 
 Key responsibilities:
 
-- **Resource CRUD**: Reading and writing `resource_entries.json` and `tracker_meta.json` atomically.
+- **Resource CRUD**: Reading and writing `resource_entries.json` and `tracker_meta.json` (both files are always written together by one call; the writes are not atomic).
 - **Checksum calculation**: `calculateChecksum(value)` uses `node:crypto` MD5.
 - **Bundle generation**: Aggregating resources across collections, applying tag filters, converting ICU to Transloco syntax, writing locale JSON files.
 - **Import/export**: Parsing external XLIFF or JSON, applying ICU auto-fixes, determining translation status on import.

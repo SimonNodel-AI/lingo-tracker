@@ -1,13 +1,10 @@
-import { existsSync, readFileSync } from 'node:fs';
-import type { ResourceEntry } from './resource-entry';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { ensureDirectoryExists } from '../lib/file-io/directory-operations';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../lib/file-io/json-file-operations';
-import { createResourceMetadata } from '../lib/resource/metadata-operations';
+import { openResourceFolder } from '../lib/resource/resource-folder';
 import type { TranslationConfig } from '../config/translation-config';
 import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
-import { translocoToICU, normalizeTags } from '@simoncodes-ca/domain';
+import { translocoToICU, normalizeTags, isUntranslatedCopy } from '@simoncodes-ca/domain';
 
 export interface AddResourceOptions {
   cwd?: string;
@@ -81,28 +78,12 @@ export async function addResource(
     errorContext: 'Creating resource folder',
   });
 
-  // Check if entry already exists
-  const isNewEntry = !existsSync(paths.resourceEntriesPath) || !hasEntryKey(paths.resourceEntriesPath, paths.entryKey);
+  const folder = openResourceFolder(paths.folderPath, { baseLocale });
+  const isNewEntry = !folder.has(paths.entryKey);
 
-  // Load or create resource entries
-  const resourceEntries = readResourceEntries(paths.resourceEntriesPath, {});
-
-  // Build resource entry — normalize values to ICU format before storing
+  // Normalize values to ICU format before storing
   const normalizedBaseValue = translocoToICU(params.baseValue);
-  const resourceEntry: ResourceEntry = {
-    source: normalizedBaseValue,
-  };
-
-  if (params.comment) {
-    resourceEntry.comment = params.comment;
-  }
-
-  if (params.tags && params.tags.length > 0) {
-    const normalized = normalizeTags(params.tags);
-    if (normalized.length > 0) {
-      resourceEntry.tags = normalized;
-    }
-  }
+  const normalizedTags = normalizeTags(params.tags ?? []);
 
   // Resolve translations: prefer explicit translations, fall back to auto-translation, then nothing.
   // Pass the ICU-normalized base value so the translation provider receives the stored form,
@@ -114,39 +95,31 @@ export async function addResource(
     translationConfig,
   });
 
-  const resolvedTranslations = resolveResult?.translations ?? null;
-
-  // Add translations (skip base locale - it's in 'source') — normalize values to ICU format
-  if (resolvedTranslations) {
-    resolvedTranslations.forEach(({ locale, value }) => {
-      // Skip base locale - its value comes from 'source' property
-      if (locale !== baseLocale) {
-        resourceEntry[locale] = translocoToICU(value);
-      }
-    });
-  }
-
-  resourceEntries[paths.entryKey] = resourceEntry;
-
-  // Create metadata — use the already-normalized base value for checksum consistency
-  const trackerMeta = readTrackerMetadata(paths.trackerMetaPath, {});
-
-  const normalizedTranslations = resolvedTranslations?.map(({ locale, value, status }) => ({
+  const normalizedTranslations = resolveResult?.translations.map(({ locale, value, status }) => ({
     locale,
     value: translocoToICU(value),
     status,
   }));
 
-  trackerMeta[paths.entryKey] = createResourceMetadata({
-    entryKey: paths.entryKey,
-    baseValue: normalizedBaseValue,
-    baseLocale,
-    translations: normalizedTranslations ?? undefined,
-  });
+  // add-resource replaces the whole entry (previous translations and metadata are dropped).
+  // setEntry clears it in place so an existing key keeps its position in the file.
+  folder.setEntry(paths.entryKey, { source: normalizedBaseValue }, {});
+  folder.setBase(paths.entryKey, normalizedBaseValue);
+  folder.setDetails(paths.entryKey, { comment: params.comment || undefined, tags: normalizedTags });
 
-  // Write files back
-  writeJsonFile({ filePath: paths.resourceEntriesPath, data: resourceEntries });
-  writeJsonFile({ filePath: paths.trackerMetaPath, data: trackerMeta });
+  // Skip the base locale — its value is the entry's 'source'.
+  for (const { locale, value, status } of normalizedTranslations ?? []) {
+    if (locale === baseLocale) continue;
+    // Staleness rule: an untranslated copy of the base is 'new', whatever status was requested.
+    folder.setTranslation(
+      paths.entryKey,
+      locale,
+      value,
+      isUntranslatedCopy(value, normalizedBaseValue) ? 'new' : status,
+    );
+  }
+
+  folder.save();
 
   return {
     resolvedKey: paths.resolvedKey,
@@ -208,21 +181,4 @@ async function resolveTranslations(
     translations: autoTranslateResult.translations.map(({ locale, value, status }) => ({ locale, value, status })),
     skippedLocales: autoTranslateResult.skippedLocales,
   };
-}
-
-/**
- * Checks if a resource entry already exists in a file.
- */
-function hasEntryKey(filePath: string, entryKey: string): boolean {
-  if (!existsSync(filePath)) {
-    return false;
-  }
-
-  try {
-    const content = readFileSync(filePath, 'utf8');
-    const data = JSON.parse(content) as Record<string, unknown>;
-    return entryKey in data;
-  } catch {
-    return false;
-  }
 }

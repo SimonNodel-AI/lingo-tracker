@@ -13,6 +13,12 @@ vi.mock('../resource/extract-subtree');
 vi.mock('../file-io/json-file-operations');
 vi.mock('./translation-provider-factory');
 vi.mock('./translation-orchestrator');
+// ResourceFolder only reads files that exist. Only the resource file pair "exists"; the mocked readers above
+// supply its contents.
+vi.mock('node:fs', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('node:fs')>()),
+  existsSync: vi.fn((filePath: unknown) => /(^|[\\/])(resource_entries|tracker_meta)\.json$/.test(String(filePath))),
+}));
 
 import { loadResourceTree } from '../resource/load-resource-tree';
 import { extractResourcesRecursively } from '../resource/extract-subtree';

@@ -14,14 +14,13 @@
 import * as path from 'node:path';
 import { loadResourceTree } from '../resource/load-resource-tree';
 import { extractResourcesRecursively } from '../resource/extract-subtree';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
-import { calculateChecksum } from '../../resource/checksum';
+import { resolveResourcePaths } from '../resource/resource-file-paths';
+import { openResourceFolder } from '../resource/resource-folder';
+import { needsTranslation } from '@simoncodes-ca/domain';
 import { createTranslationProvider } from './translation-provider-factory';
 import { TranslationOrchestrator } from './translation-orchestrator';
 import { TranslationError } from './translation-provider';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { TranslationConfig } from '../../config/translation-config';
-import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -73,35 +72,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Returns true when a resource needs translation for `targetLocale`.
- * A resource needs translation when its status is `new`, `stale`,
- * or when there is no metadata at all for the locale.
- */
-function needsTranslation(resource: ResourceTreeEntry, targetLocale: string): boolean {
-  const meta = resource.metadata[targetLocale];
-  if (!meta) return true;
-  return meta.status === 'new' || meta.status === 'stale';
-}
-
-/**
- * Converts a dot-delimited composite key (e.g. `apps.common.buttons.ok`)
- * into the filesystem folder path (e.g. `apps/common/buttons`) and the
- * entry key (`ok`).
- */
-function resolveResourcePath(
-  compositeKey: string,
-  absoluteTranslationsFolder: string,
-): { folderPath: string; entryKey: string } {
-  const segments = compositeKey.split('.');
-  const entryKey = segments[segments.length - 1];
-  const folderSegments = segments.slice(0, -1);
-  const folderPath =
-    folderSegments.length > 0 ? path.join(absoluteTranslationsFolder, ...folderSegments) : absoluteTranslationsFolder;
-
-  return { folderPath, entryKey };
-}
-
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
@@ -109,7 +79,6 @@ function resolveResourcePath(
 interface FolderWriteEntry {
   readonly entryKey: string;
   readonly result: { kind: string; value: string };
-  readonly source: string;
   readonly resourceKey: string;
 }
 
@@ -133,39 +102,23 @@ function writeTranslatedResources(
   writtenKeys: string[];
   skippedKeys: string[];
 } {
-  const entriesFilePath = path.join(folderPath, RESOURCE_ENTRIES_FILENAME);
-  const metaFilePath = path.join(folderPath, TRACKER_META_FILENAME);
-
-  const resourceEntries = readResourceEntries(entriesFilePath, {});
-  const trackerMeta = readTrackerMetadata(metaFilePath, {});
+  const folder = openResourceFolder(folderPath, { baseLocale });
 
   const writtenKeys: string[] = [];
   const skippedKeys: string[] = [];
 
   for (const entry of entries) {
-    if (!resourceEntries[entry.entryKey]) {
+    if (!folder.has(entry.entryKey)) {
       skippedKeys.push(entry.resourceKey);
       continue;
     }
 
-    (resourceEntries[entry.entryKey] as Record<string, unknown>)[targetLocale] = entry.result.value;
-
-    const baseChecksum = trackerMeta[entry.entryKey]?.[baseLocale]?.checksum ?? calculateChecksum(entry.source);
-    trackerMeta[entry.entryKey] = {
-      ...trackerMeta[entry.entryKey],
-      [targetLocale]: {
-        checksum: calculateChecksum(entry.result.value),
-        baseChecksum,
-        status: 'translated',
-      },
-    };
-
+    folder.setTranslation(entry.entryKey, targetLocale, entry.result.value, 'translated');
     writtenKeys.push(entry.resourceKey);
   }
 
   if (writtenKeys.length > 0) {
-    writeJsonFile({ filePath: entriesFilePath, data: resourceEntries });
-    writeJsonFile({ filePath: metaFilePath, data: trackerMeta });
+    folder.save();
   }
 
   return { writtenKeys, skippedKeys };
@@ -201,7 +154,7 @@ export async function translateLocale(params: TranslateLocaleParams): Promise<Tr
   const allResources = extractResourcesRecursively(tree);
 
   // Filter to only those that need translating for the target locale.
-  const resourcesToTranslate = allResources.filter((resource) => needsTranslation(resource, targetLocale));
+  const resourcesToTranslate = allResources.filter((resource) => needsTranslation(resource.metadata[targetLocale]));
 
   if (resourcesToTranslate.length === 0) {
     return {
@@ -261,9 +214,12 @@ export async function translateLocale(params: TranslateLocaleParams): Promise<Tr
           continue;
         }
 
-        const { folderPath, entryKey } = resolveResourcePath(resource.key, absoluteFolder);
+        const { folderPath, entryKey } = resolveResourcePaths({
+          key: resource.key,
+          translationsFolder: absoluteFolder,
+        });
         const folderEntries = byFolder.get(folderPath) ?? [];
-        folderEntries.push({ entryKey, result, source: resource.source, resourceKey: resource.key });
+        folderEntries.push({ entryKey, result, resourceKey: resource.key });
         byFolder.set(folderPath, folderEntries);
       }
 

@@ -2,7 +2,7 @@ export * from './lib/escape-regexp';
 export * from './lib/translation-status';
 export * from './lib/locale-metadata';
 export * from './lib/resource-key';
-export * from './lib/status-helpers';
+export * from './lib/staleness';
 export * from './lib/icu-auto-fixer';
 export * from './lib/icu-to-transloco';
 export * from './lib/transloco-to-icu';

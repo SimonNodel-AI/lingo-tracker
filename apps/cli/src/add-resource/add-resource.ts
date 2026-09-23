@@ -1,8 +1,6 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { addResource, createDefaultTranslations } from '@simoncodes-ca/core';
-import { resolveResourceKey, splitResolvedKey, type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
+import { addResource, createDefaultTranslations, openResourceFolder, resolveResourcePaths } from '@simoncodes-ca/core';
+import { type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
 import prompts from 'prompts';
 import {
   ConsoleFormatter,
@@ -43,15 +41,13 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
 
   try {
     // Check if resource already exists
-    const resolvedKey = resolveResourceKey(answers.key, answers.targetFolder || undefined);
-    const { folderPath, entryKey } = splitResolvedKey(resolvedKey);
-
-    const fullFolderPath = folderPath.length
-      ? join(collection.config.translationsFolder, ...folderPath)
-      : collection.config.translationsFolder;
-
-    const entryResourcePath = resolve(cwd, fullFolderPath, 'resource_entries.json');
-    const resourceExists = existsSync(entryResourcePath) && hasEntryKey(entryResourcePath, entryKey);
+    const { resolvedKey, folderPath, entryKey } = resolveResourcePaths({
+      key: answers.key,
+      translationsFolder: collection.config.translationsFolder,
+      targetFolder: answers.targetFolder || undefined,
+      cwd,
+    });
+    const resourceExists = hasEntryKey(folderPath, entryKey);
 
     if (resourceExists) {
       if (process.stdout.isTTY) {
@@ -259,17 +255,11 @@ async function promptForMissing(
 }
 
 /**
- * Checks if a resource entry already exists in a file.
+ * Checks if a resource entry already exists in a folder. Unreadable files count as "not found".
  */
-function hasEntryKey(filePath: string, entryKey: string): boolean {
-  if (!existsSync(filePath)) {
-    return false;
-  }
-
+function hasEntryKey(folderPath: string, entryKey: string): boolean {
   try {
-    const content = readFileSync(filePath, 'utf8');
-    const data = JSON.parse(content) as Record<string, unknown>;
-    return entryKey in data;
+    return openResourceFolder(folderPath).has(entryKey);
   } catch {
     return false;
   }

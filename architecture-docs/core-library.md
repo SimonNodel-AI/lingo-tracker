@@ -154,7 +154,7 @@ graph TD
         FILEIO["file-io/\nreadJsonFile · writeJsonFile\nensureDirectoryExists"]
         CONFIG_LIB["config/\ncreateConfigFileOperations"]
         ERRORS["errors/\nErrorMessages"]
-        RESOURCE_LIB["resource/\nresource-file-paths\nmetadata-operations\nload-resource-tree"]
+        RESOURCE_LIB["resource/\nresource-folder\nresource-file-paths\nload-resource-tree"]
     end
 
     subgraph domain["@simoncodes-ca/domain (peer)"]
@@ -228,7 +228,9 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 ## Resource CRUD Flows
 
-Resource CRUD is implemented across four functions in `libs/core/src/resource/`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back atomically.
+Resource CRUD is implemented across four functions in `libs/core/src/resource/`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
+
+**All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. Readers (tree loading, search, folder move/delete, folder cleanup) use it too, and `resolveResourcePaths()` is the only function that maps a key to its folder.
 
 ### add-resource
 
@@ -238,14 +240,14 @@ Steps:
 
 1. **Resolve paths** — `validateAndResolvePaths()` calls `resolveResourceKey()` and `splitResolvedKey()` from `@simoncodes-ca/domain` to derive `folderPath`, `resourceEntriesPath`, `trackerMetaPath`, and `entryKey`.
 2. **Ensure directory** — `ensureDirectoryExists()` creates the folder tree with `mkdirSync({ recursive: true })`.
-3. **Load existing files** — `readResourceEntries()` and `readTrackerMetadata()` return the current JSON or empty objects if the files do not exist yet.
+3. **Load existing files** — `openResourceFolder()` loads both files (missing files are empty).
 4. **Normalize base value** — `translocoToICU()` converts any Transloco `{{ varName }}` syntax in the incoming base value to ICU `{varName}` before storage.
 5. **Resolve translations** — three-way priority:
    - Explicit translations in `params.translations` are used as-is.
    - If no explicit translations and `translationConfig` is enabled, `autoTranslateResource()` is called (see [Auto-Translation Pipeline](#auto-translation-pipeline)).
    - Otherwise, the entry is stored with no translations (all locales default to `new` status).
-6. **Build metadata** — `createResourceMetadata()` in `lib/resource/metadata-operations.ts` computes MD5 checksums for the base value and each translation, assigns `TranslationStatus` per locale.
-7. **Write files** — `writeJsonFile()` writes both `resource_entries.json` and `tracker_meta.json`.
+6. **Replace the entry** — `setEntry` / `setBase` / `setDetails` / `setTranslation` on the `ResourceFolder`. A translation equal to the base value is stored as `new`.
+7. **Write files** — `folder.save()` writes both `resource_entries.json` and `tracker_meta.json`.
 
 ### edit-resource
 
@@ -255,11 +257,11 @@ Steps:
 
 1. **Resolve paths and load** — same as add-resource.
 2. **Throws if not found** — exits immediately if either JSON file or the specific entry key is absent.
-3. **Update base value** (if changed) — `translocoToICU()` normalizes the incoming value; `updateMetadataForBaseValueChange()` recomputes the base checksum and marks every non-base locale as `stale` if their stored `baseChecksum` diverges from the new base checksum.
+3. **Update base value** (if changed) — `translocoToICU()` normalizes the incoming value; `folder.setBase()` recomputes the base checksum and applies the [staleness rule](glossary.md#staleness-rule) to every non-base locale.
 4. **Update comment/tags** — simple field overwrites with change detection to avoid unnecessary writes.
 5. **Update locale values** — for each locale in `options.locales`, normalizes with `translocoToICU()`, recomputes checksum via `calculateChecksum()`, and updates `status` (defaults to `'translated'` if not provided).
-6. **Persist initial changes** — writes both files before attempting auto-translation, so the base value change is durable even if the translation API call fails.
-7. **Auto-translate on base change** — if `baseValueDidChange` and `translationConfig` is enabled, `autoTranslateResource()` is called for all non-base locales; results are written in a second pass.
+6. **Persist initial changes** — `folder.save()` before attempting auto-translation, so the base value change is durable even if the translation API call fails.
+7. **Auto-translate on base change** — if `baseValueDidChange` and `translationConfig` is enabled, `autoTranslateResource()` is called for all non-base locales; results are written by a second `folder.save()`.
 
 ### delete-resource
 
@@ -269,8 +271,8 @@ Steps:
 
 1. **Validate each key** — `validateKey()` from `@simoncodes-ca/domain`.
 2. **Resolve paths** — `resolveResourcePaths()`.
-3. **Load and mutate** — reads `resource_entries.json`, deletes the entry key, reads `tracker_meta.json`, deletes the matching metadata key.
-4. **Cleanup empty files** — if `resource_entries.json` is now empty (`Object.keys(entries).length === 0`), both JSON files are deleted with `unlinkSync()`. Otherwise, both are rewritten.
+3. **Remove** — `folder.remove(entryKey)` removes the entry and its metadata.
+4. **Save** — `folder.save()` rewrites both files, or deletes both when the folder has no entries left.
 5. **Batch errors** — errors per key are collected and returned; the operation does not stop on first failure.
 
 ### move-resource
@@ -279,7 +281,7 @@ Steps:
 
 Two modes:
 
-- **Single key move** (`moveSingleResource`) — validates source and destination keys, checks for collision at destination (returns warning unless `override` is set), calls `addResource()` at the destination with the source entry's existing translations (bypassing auto-translation), then calls `deleteResource()` at the source.
+- **Single key move** (`moveSingleResource`) — validates source and destination keys, checks for collision at destination (returns warning unless `override` is set), copies the entry and its metadata to the destination with `setEntry()` (lossless: values, comment, tags, checksums, and statuses such as `verified` and `stale` are kept; no auto-translation), then calls `deleteResource()` at the source. `moveFolder()` moves each resource this way.
 - **Wildcard pattern move** (`moveResourcesByPattern`) — patterns ending with `*` are expanded by `walkFolders()` to enumerate all keys under the prefix, then each key is moved individually using `moveSingleResource()`.
 
 ---

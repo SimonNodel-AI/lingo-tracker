@@ -1330,6 +1330,67 @@ describe('process-resource-group', () => {
       expect(meta.ok.en.status).toBeUndefined();
     });
 
+    describe('staleness when the base value changes (regression)', () => {
+      const md5 = calculateChecksum;
+
+      function writeExisting(): void {
+        mkdirSync(folderPath, { recursive: true });
+        writeFileSync(entryResourcePath, JSON.stringify({ ok: { source: 'OK', es: 'Bien', fr: 'Okay', de: 'OK' } }));
+        writeFileSync(
+          entryMetaPath,
+          JSON.stringify({
+            ok: {
+              en: { checksum: md5('OK') },
+              es: { checksum: md5('Bien'), baseChecksum: md5('OK'), status: 'verified' },
+              fr: { checksum: md5('Okay'), baseChecksum: md5('OK'), status: 'translated' },
+              de: { checksum: md5('OK'), baseChecksum: md5('OK'), status: 'new' },
+            },
+          }),
+        );
+      }
+
+      function importBase(value: string): void {
+        const group: ResourceGroup = {
+          folderPath,
+          entryResourcePath,
+          entryMetaPath,
+          resources: [{ resource: { key: 'common.buttons.ok', value }, entryKey: 'ok' }],
+        };
+        processResourceGroup(
+          group,
+          'en',
+          'en',
+          { source: 'test.json', locale: 'en', strategy: 'migration' },
+          false,
+          true, // isBaseLocaleImport
+          new Set<string>(),
+          [],
+        );
+      }
+
+      it('marks translations stale and points them at the new base checksum', () => {
+        writeExisting();
+
+        importBase('Okay');
+
+        const meta = JSON.parse(readFileSync(entryMetaPath, 'utf8'));
+        expect(meta.ok.en).toEqual({ checksum: md5('Okay') });
+        expect(meta.ok.es).toEqual({ checksum: md5('Bien'), baseChecksum: md5('Okay'), status: 'stale' });
+        // A translation equal to the new base value is an untranslated copy: 'new', not 'stale'
+        expect(meta.ok.fr).toEqual({ checksum: md5('Okay'), baseChecksum: md5('Okay'), status: 'new' });
+        expect(meta.ok.de).toEqual({ checksum: md5('OK'), baseChecksum: md5('Okay'), status: 'stale' });
+      });
+
+      it('leaves translations alone when the base value is unchanged', () => {
+        writeExisting();
+        const before = readFileSync(entryMetaPath, 'utf8');
+
+        importBase('OK');
+
+        expect(readFileSync(entryMetaPath, 'utf8')).toBe(before);
+      });
+    });
+
     it('should update comment and tags for base locale when flags are set', () => {
       // Create existing resource
       mkdirSync(folderPath, { recursive: true });

@@ -1,8 +1,7 @@
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../lib/file-io/json-file-operations';
+import { openResourceFolder } from '../lib/resource/resource-folder';
 import { validateKey } from '@simoncodes-ca/domain';
-import type { TrackerMetadata } from './tracker-metadata';
 
 export interface DeleteResourceParams {
   keys: string[];
@@ -56,35 +55,14 @@ function deleteSingleResource(translationsFolder: string, key: string): boolean 
     throw new Error(`Resource file not found: ${paths.resourceEntriesPath}`);
   }
 
-  const resourceEntries = readResourceEntries(paths.resourceEntriesPath);
+  const folder = openResourceFolder(paths.folderPath);
 
-  if (!(paths.entryKey in resourceEntries)) {
+  if (!folder.remove(paths.entryKey)) {
     throw new Error(`Resource entry not found: ${key}`);
   }
 
-  delete resourceEntries[paths.entryKey];
-
-  // Load and update metadata
-  let trackerMeta: TrackerMetadata = {};
-  if (existsSync(paths.trackerMetaPath)) {
-    trackerMeta = readTrackerMetadata(paths.trackerMetaPath);
-    delete trackerMeta[paths.entryKey];
-  }
-
-  const isEmpty = Object.keys(resourceEntries).length === 0;
-
-  if (isEmpty) {
-    unlinkSync(paths.resourceEntriesPath);
-    if (existsSync(paths.trackerMetaPath)) {
-      unlinkSync(paths.trackerMetaPath);
-    }
-  } else {
-    writeJsonFile({
-      filePath: paths.resourceEntriesPath,
-      data: resourceEntries,
-    });
-    writeJsonFile({ filePath: paths.trackerMetaPath, data: trackerMeta });
-  }
+  // Removes both files when this was the folder's last entry.
+  folder.save();
 
   return true;
 }

@@ -1,4 +1,4 @@
-import type { PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain';
+import type { ImportStrategy, PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain';
 
 /**
  * Supported import formats
@@ -6,9 +6,10 @@ import type { PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain
 export type ImportFormat = 'xliff' | 'json';
 
 /**
- * Import strategies determine how imported data is processed and merged
+ * Import strategies determine how imported data is processed and merged.
+ * Defined in domain next to the status rule that depends on it (`resolveImportStatus`).
  */
-export type ImportStrategy = 'translation-service' | 'verification' | 'migration' | 'update';
+export type { ImportStrategy };
 
 /**
  * Options for importing translations
