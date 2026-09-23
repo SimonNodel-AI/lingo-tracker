@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { isValidSegment } from '@simoncodes-ca/domain';
+import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
@@ -64,7 +65,7 @@ export function createFolder(translationsFolder: string, params: CreateFolderPar
   const folderSegments = folderName.split('.');
   for (const segment of folderSegments) {
     if (!isValidSegment(segment)) {
-      throw new Error(`Invalid folder name segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`);
+      throw new InvalidFolderPathError('folder name', segment);
     }
   }
 
@@ -73,7 +74,7 @@ export function createFolder(translationsFolder: string, params: CreateFolderPar
     const parentSegments = parentPath.split('.');
     for (const segment of parentSegments) {
       if (!isValidSegment(segment)) {
-        throw new Error(`Invalid parent path segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`);
+        throw new InvalidFolderPathError('parent path', segment);
       }
     }
   }

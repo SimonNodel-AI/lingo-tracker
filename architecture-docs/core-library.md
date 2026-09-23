@@ -10,6 +10,7 @@ Return to [architecture README](README.md).
 
 - [Module Map](#module-map)
 - [Config and Collection Resolution](#config-and-collection-resolution)
+- [Error Model](#error-model)
 - [Resource CRUD Flows](#resource-crud-flows)
   - [add-resource](#add-resource)
   - [edit-resource](#edit-resource)
@@ -127,7 +128,7 @@ libs/core/src/
     │
     └── errors/                   # Error messages and typed errors
         ├── error-messages.ts     # ErrorMessages: static error string builders
-        └── lingo-tracker-error.ts # LingoTrackerError and its subclasses (config / collection errors)
+        └── lingo-tracker-error.ts # LingoTrackerError and its typed subclasses (see Error Model)
 ```
 
 <!-- Module relationship graph within @simoncodes-ca/core -->
@@ -235,7 +236,39 @@ Core owns the config file and the rule that turns a collection's config entry in
 - **`loadConfig({ cwd? })`** is the only reader of `.lingo-tracker.json`. It returns the file as written, with no validation and no fallbacks. It throws `ConfigNotFoundError` when the file does not exist and `ConfigParseError` when the file is not a JSON object; other I/O errors pass through. The CLI passes its `INIT_CWD`-aware directory, the API passes `process.cwd()`, and `createConfigFileOperations().read()` (used by the config writers) reads through it too.
 - **`openCollection(config, name, { cwd?, writable? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (collection, else global, else `[]`), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `readOnly`, and the raw entry as `config`. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
 
-The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. Per-resource operations keep their `(translationsFolder, …, baseLocale, allLocales, translationConfig)` parameters; callers fill them from the `Collection`. The typed errors extend `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`), so an adapter maps them with `instanceof` instead of matching message text.
+The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. Per-resource operations keep their `(translationsFolder, …, baseLocale, allLocales, translationConfig)` parameters; callers fill them from the `Collection`. The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
+
+---
+
+## Error Model
+
+Core raises a [typed error](glossary.md#typed-errors) for every failure that an adapter must tell apart. Each class extends `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`), has a stable `code`, and keeps its payload in typed fields. The message text comes from `ErrorMessages` (`lib/errors/error-messages.ts`), so it did not change when the types were added. The CLI prints the message; the API maps the class to an HTTP status (see [api.md — Error Mapping](api.md#error-mapping)). Neither adapter reads the message to decide what happened.
+
+| Class | `code` | Payload | Thrown by |
+|---|---|---|---|
+| `ConfigNotFoundError` | `CONFIG_NOT_FOUND` | `configPath` | `loadConfig` |
+| `ConfigParseError` | `CONFIG_PARSE_FAILED` | `configPath`, `reason` | `loadConfig` |
+| `CollectionNotFoundError` | `COLLECTION_NOT_FOUND` | `collectionName` | `openCollection`, `deleteCollectionByName`, `updateCollection`, `setCollectionProtectedTerms`, `setCollectionProtectedTermsFile` |
+| `CollectionAlreadyExistsError` | `COLLECTION_ALREADY_EXISTS` | `collectionName` | `addCollection`, `updateCollection` (rename) |
+| `ReadOnlyCollectionError` | `COLLECTION_READ_ONLY` | `collectionName` | `openCollection` with `{ writable: true }` |
+| `InvalidLocaleError` | `INVALID_LOCALE` | `locale` | `addLocaleToCollection`, `removeLocaleFromCollection` |
+| `LocaleNotFoundError` | `LOCALE_NOT_FOUND` | `locale`, `collectionName` | `removeLocaleFromCollection` |
+| `LocaleAlreadyExistsError` | `LOCALE_ALREADY_EXISTS` | `locale`, `collectionName` | `addLocaleToCollection` |
+| `BaseLocaleImmutableError` | `BASE_LOCALE_IMMUTABLE` | `locale` | `addLocaleToCollection`, `removeLocaleFromCollection` |
+| `InvalidResourceKeyError` | `INVALID_RESOURCE_KEY` | `key` | `validateAndResolvePaths` (so `addResource`, `editResource`, `translateExistingResource`) |
+| `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | `key` | `editResource`, `translateExistingResource` |
+| `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder` (`deleteFolder` and `moveFolder` report it in their result) |
+| `BundleNotFoundError` | `BUNDLE_NOT_FOUND` | `bundleName` | `updateBundleDefinition`, `deleteBundleDefinition` |
+| `BundleAlreadyExistsError` | `BUNDLE_ALREADY_EXISTS` | `bundleName` | `addBundleDefinition`, `updateBundleDefinition` (rename) |
+| `InvalidBundleDefinitionError` | `INVALID_BUNDLE_DEFINITION` | `errors[]` | bundle definition add / update |
+| `TranslationError` | provider code (`MISSING_API_KEY`, `RATE_LIMIT`, `INVALID_REQUEST`, …) | `retryable`, `providerErrorCode` | translation providers, `autoTranslateResource` |
+| `PreferredTerminologyValidationError` | `INVALID_PREFERRED_TERMINOLOGY` | `errors[]` | `writePreferredTerminology` |
+
+Rules:
+
+- **Domain validators stay untyped.** `@simoncodes-ca/domain` has no error classes. `validateKey`, `validateTargetFolder`, and `validateLocale` throw a plain `Error`. Core wraps each call in one place and throws the typed error with the same message: `validateAndResolvePaths` for keys and target folders, and `assertValidLocale` (`collections-manager/assert-valid-locale.ts`) for locales.
+- **Batch operations report, not throw.** `deleteResource`, `moveResource`, `deleteFolder`, and `moveFolder` put per-item failures into their result (`errors`, `error`) as strings.
+- **Unexpected failures stay `Error`.** File I/O errors, invariant breaks (for example `ResourceFolder`'s "Resource entry not found"), and parser errors for import files are not typed. An adapter treats them as "something went wrong" and shows the message.
 
 ---
 

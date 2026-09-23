@@ -23,6 +23,7 @@ import {
   promptForCollection,
   resolveWritableCollection,
 } from '../utils';
+import { PromptCancelledError } from '../utils/report-error';
 
 export const LARGE_FILE_SIZE_THRESHOLD = 5;
 
@@ -59,7 +60,7 @@ export async function importCommand(options: ImportCommandOptions): Promise<void
   try {
     answers = await promptForMissing({ ...options, collection: collectionName }, locales, baseLocale);
   } catch (error) {
-    if ((error as Error).message === 'Import cancelled') {
+    if (error instanceof PromptCancelledError) {
       ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Import'));
       return;
     }
@@ -230,7 +231,7 @@ async function promptForMissing(
     });
 
     if (!sourceAnswer.source) {
-      throw new Error('Import cancelled');
+      throw new PromptCancelledError('Import');
     }
 
     answers.source = sourceAnswer.source;
@@ -266,7 +267,7 @@ async function promptForMissing(
     });
 
     if (!formatAnswer.format) {
-      throw new Error('Import cancelled');
+      throw new PromptCancelledError('Import');
     }
 
     answers.format = formatAnswer.format;
@@ -303,7 +304,7 @@ async function promptForMissing(
     });
 
     if (!strategyAnswer.strategy) {
-      throw new Error('Import cancelled');
+      throw new PromptCancelledError('Import');
     }
 
     answers.strategy = strategyAnswer.strategy;
@@ -343,7 +344,7 @@ async function promptForMissing(
     });
 
     if (!('locale' in localeAnswer)) {
-      throw new Error('Import cancelled');
+      throw new PromptCancelledError('Import');
     }
 
     answers.locale = localeAnswer.locale;
@@ -360,7 +361,7 @@ async function promptForMissing(
       });
 
       if (!('updateComments' in updateCommentsAnswer)) {
-        throw new Error('Import cancelled');
+        throw new PromptCancelledError('Import');
       }
 
       answers.updateComments = updateCommentsAnswer.updateComments;
@@ -375,7 +376,7 @@ async function promptForMissing(
       });
 
       if (!('updateTags' in updateTagsAnswer)) {
-        throw new Error('Import cancelled');
+        throw new PromptCancelledError('Import');
       }
 
       answers.updateTags = updateTagsAnswer.updateTags;
@@ -390,7 +391,7 @@ async function promptForMissing(
       });
 
       if (!('createMissing' in createMissingAnswer)) {
-        throw new Error('Import cancelled');
+        throw new PromptCancelledError('Import');
       }
 
       answers.createMissing = createMissingAnswer.createMissing;

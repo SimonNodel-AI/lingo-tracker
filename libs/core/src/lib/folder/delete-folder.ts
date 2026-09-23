@@ -2,6 +2,7 @@ import { existsSync, rmSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
+import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
 import { openResourceFolder } from '../resource/resource-folder';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
@@ -59,7 +60,7 @@ export function deleteFolder(translationsFolder: string, params: DeleteFolderPar
     const pathSegments = folderPath.split('.');
     for (const segment of pathSegments) {
       if (!isValidSegment(segment)) {
-        throw new Error(`Invalid folder path segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`);
+        throw new InvalidFolderPathError('folder path', segment);
       }
     }
 

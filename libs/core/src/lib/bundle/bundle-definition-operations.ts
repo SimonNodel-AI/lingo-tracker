@@ -9,7 +9,11 @@
 import type { BundleDefinition, CollectionBundleDefinition, EntrySelectionRule } from '../../config/bundle-definition';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { updateConfig } from '../config/config-file-operations';
-import { ErrorMessages } from '../errors/error-messages';
+import {
+  BundleAlreadyExistsError,
+  BundleNotFoundError,
+  InvalidBundleDefinitionError,
+} from '../errors/lingo-tracker-error';
 import { validateBundleDefinition, validateBundleKey } from './validate-bundle-definition';
 
 export interface BundleDefinitionOperationOptions {
@@ -30,7 +34,7 @@ export function addBundleDefinition(
 
   updateConfig((config) => {
     if (config.bundles?.[bundleKey]) {
-      throw new Error(ErrorMessages.bundleAlreadyExists(bundleKey));
+      throw new BundleAlreadyExistsError(bundleKey);
     }
 
     const cleaned = assertValidDefinition(definition, config);
@@ -60,11 +64,11 @@ export function updateBundleDefinition(
     const bundles = config.bundles ?? {};
 
     if (!bundles[bundleKey]) {
-      throw new Error(ErrorMessages.bundleNotFound(bundleKey));
+      throw new BundleNotFoundError(bundleKey);
     }
 
     if (isRename && bundles[targetKey]) {
-      throw new Error(ErrorMessages.bundleAlreadyExists(targetKey));
+      throw new BundleAlreadyExistsError(targetKey);
     }
 
     const cleaned = assertValidDefinition(definition, config);
@@ -97,7 +101,7 @@ export function deleteBundleDefinition(
     const bundles = config.bundles ?? {};
 
     if (!bundles[bundleKey]) {
-      throw new Error(ErrorMessages.bundleNotFound(bundleKey));
+      throw new BundleNotFoundError(bundleKey);
     }
 
     const { [bundleKey]: _removed, ...remaining } = bundles;
@@ -118,7 +122,7 @@ function assertValidKey(key: string): string {
   const trimmed = key?.trim() ?? '';
   const errors = validateBundleKey(trimmed);
   if (errors.length > 0) {
-    throw new Error(ErrorMessages.invalidBundleDefinition(errors));
+    throw new InvalidBundleDefinitionError(errors);
   }
   return trimmed;
 }
@@ -127,7 +131,7 @@ function assertValidDefinition(definition: BundleDefinition, config: LingoTracke
   const cleaned = stripUndefined(definition);
   const errors = validateBundleDefinition(cleaned, config);
   if (errors.length > 0) {
-    throw new Error(ErrorMessages.invalidBundleDefinition(errors));
+    throw new InvalidBundleDefinitionError(errors);
   }
   return cleaned;
 }

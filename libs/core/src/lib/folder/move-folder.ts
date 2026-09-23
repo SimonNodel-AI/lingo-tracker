@@ -2,6 +2,7 @@ import { existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
+import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
 import { moveResource, type MoveResourceResult } from '../../resource/move-resource';
 import { deleteFolder, type DeleteFolderResult } from './delete-folder';
 import { openResourceFolder } from '../resource/resource-folder';
@@ -94,7 +95,7 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
 
     for (const segment of sourceFolderSegments) {
       if (!isValidSegment(segment)) {
-        throw new Error(`Invalid source folder path segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`);
+        throw new InvalidFolderPathError('source folder path', segment);
       }
     }
 
@@ -102,9 +103,7 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
     if (destinationFolderPath !== '') {
       for (const segment of destinationFolderSegments) {
         if (!isValidSegment(segment)) {
-          throw new Error(
-            `Invalid destination folder path segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`,
-          );
+          throw new InvalidFolderPathError('destination folder path', segment);
         }
       }
     }

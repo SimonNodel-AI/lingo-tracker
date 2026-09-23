@@ -10,6 +10,7 @@ Return to [architecture README](README.md).
 
 - [Endpoint Reference](#endpoint-reference)
 - [Component Diagram](#component-diagram)
+- [Error Mapping](#error-mapping)
 - [Static File Serving](#static-file-serving)
 - [Collection Index](#collection-index)
   - [Interface](#interface)
@@ -167,9 +168,39 @@ graph TD
     style core fill:#d4edda,stroke:#28a745,color:#000
 ```
 
-Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and pass the `mutations` of every successful core write to `CollectionIndex.apply()`.
+Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and pass the `mutations` of every successful core write to `CollectionIndex.apply()`. Controllers do not catch core errors; the global exception filter maps them (see [Error Mapping](#error-mapping)).
 
 **Read-only enforcement.** `WritableCollectionGuard` (`collections/guards/writable-collection.guard.ts`) is applied at the class level to the `Resources`, `Locales`, and `Folders` controllers. For any non-`GET` request it reads the `:collectionName` route param, opens the collection with core `openCollection(config, name, { writable: true })`, and maps `ReadOnlyCollectionError` to `403 Forbidden` (unknown collections pass through so the controller returns its 404). This is the single API choke-point for read-only enforcement. The `Collections` controller is intentionally **not** guarded: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even for read-only collections, since the lock protects resources, not the registration. On create, the controller defaults `readOnly` to `true` for `node_modules` paths (via the `isUnderNodeModules` domain helper) when the DTO omits it.
+
+---
+
+## Error Mapping
+
+`LingoTrackerExceptionFilter` (`errors/lingo-tracker-exception.filter.ts`) is registered globally with `APP_FILTER` in `app.module.ts`. It is the only place that maps a core [typed error](glossary.md#typed-errors) to an HTTP status. It uses `instanceof`, never the message text. `toHttpException(error)` holds the mapping and is exported for controller specs. The filter then hands the result to Nest's `BaseExceptionFilter`. Every mapped answer has the same body shape, `{ statusCode, message, error }`, because the mapping uses Nest's dedicated exception classes (and `HttpException.createBody` for 429, which has no class). An unexpected error never discloses its message: the filter logs its message and stack on the server and answers a generic 500.
+
+| Thrown | Status | Body `message` |
+|---|---|---|
+| `HttpException` (thrown by a controller, guard, or `ConfigService`) | its own | its own |
+| `CollectionNotFoundError`, `ResourceNotFoundError`, `BundleNotFoundError` | 404 (`NotFoundException`) | error message |
+| `ReadOnlyCollectionError` | 403 (`ForbiddenException`) | error message |
+| `BundleAlreadyExistsError` | 409 (`ConflictException`) | error message |
+| `InvalidFolderPathError` | 400 (`BadRequestException`) | `Validation error: <message>` |
+| `InvalidResourceKeyError`, `InvalidLocaleError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError`, `InvalidBundleDefinitionError` | 400 (`BadRequestException`) | error message |
+| `TranslationError` with code `INVALID_REQUEST` | 400 (`BadRequestException`) | `Translation provider error: <message>` |
+| `TranslationError` with code `MISSING_API_KEY`, `UNKNOWN_PROVIDER`, or `AUTH_ERROR` (server misconfiguration) | 500 (`InternalServerErrorException`) | `Translation provider error: <message>` |
+| `TranslationError` with code `RATE_LIMIT` | 429 (`HttpException`, error `Too Many Requests`) | `Translation provider error: <message>` |
+| `TranslationError` with any other code (for example `SERVER_ERROR`) | 502 (`BadGatewayException`) | `Translation provider error: <message>` |
+| any other `LingoTrackerError` | 500 (`InternalServerErrorException`) | error message |
+| any other `Error` (message and stack logged on the server) | 500 (`InternalServerErrorException`) | `Internal server error` |
+| an error with its own numeric `statusCode` (for example from body-parser) | Nest default | Nest default |
+
+Statuses that are kept from before the filter, although they do not match the class name:
+
+- `LocaleNotFoundError` and `LocaleAlreadyExistsError` answer **400**, not 404 / 409. Bundle conflicts answer 409.
+- The `Collections` and `Config` controllers keep their own catch that answers **400** for every failure. So `CollectionNotFoundError` from `DELETE`/`PUT /collections/:name` is 400 (not 404), `CollectionAlreadyExistsError` is 400, and `PreferredTerminologyValidationError` is 400 with `{ message, errors }`. These errors never reach the filter.
+- The `Bundles` controller answers **400** for an untyped failure (the other controllers answer 500).
+- Route-level resolution keeps its own Nest exceptions, because the messages are route-specific: `openRouteCollection` / `openDestinationCollection` (404 `Collection "x" not found` / `Destination collection "x" not found`, 403 read-only), `WritableCollectionGuard` (403), and `ConfigService` (404 `Configuration file not found`, 500 `Invalid configuration file format` / `Failed to read configuration file`).
+- `POST /collections/:name/folders/move` still answers 400 when `moveFolder` reports an error whose text has `Invalid`, `not found`, `circular`, or `descendant` and nothing moved. `moveFolder` reports failures as result strings, not typed errors.
 
 ---
 

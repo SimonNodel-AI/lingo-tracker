@@ -16,6 +16,7 @@ import type { BundleDefinition, LingoTrackerConfig } from '@simoncodes-ca/core';
 import {
   addBundleDefinition,
   deleteBundleDefinition,
+  LingoTrackerError,
   planBundle,
   updateBundleDefinition,
   validateBundleDefinition,
@@ -66,7 +67,7 @@ export class BundlesController {
 
       return mapBundlePlanToDto(plan);
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error planning bundle');
+      this.#rethrow(error, 'Error planning bundle');
     }
   }
 
@@ -90,7 +91,7 @@ export class BundlesController {
 
       return addBundleDefinition(name, definition, { cwd: process.cwd() });
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error creating bundle');
+      this.#rethrow(error, 'Error creating bundle');
     }
   }
 
@@ -114,7 +115,7 @@ export class BundlesController {
         ...(newName !== undefined && newName !== decodedName && { newKey: newName }),
       });
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error updating bundle');
+      this.#rethrow(error, 'Error updating bundle');
     }
   }
 
@@ -127,7 +128,7 @@ export class BundlesController {
 
       return deleteBundleDefinition(decodedName, { cwd: process.cwd() });
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error deleting bundle');
+      this.#rethrow(error, 'Error deleting bundle');
     }
   }
 
@@ -204,22 +205,16 @@ export class BundlesController {
     return [...locales];
   }
 
-  #toHttpException(error: unknown, fallback: string): HttpException {
-    if (error instanceof HttpException) {
-      return error;
+  /**
+   * Rethrows HTTP and typed core errors (`LingoTrackerExceptionFilter` maps the latter:
+   * missing bundle 404, duplicate 409, invalid definition 400). Any other failure of a
+   * bundle route answers 400.
+   */
+  #rethrow(error: unknown, fallback: string): never {
+    if (error instanceof HttpException || error instanceof LingoTrackerError) {
+      throw error;
     }
-
-    const message = error instanceof Error ? error.message : fallback;
-
-    if (message.includes('not found')) {
-      return new NotFoundException(message);
-    }
-
-    if (message.includes('already exists')) {
-      return new ConflictException(message);
-    }
-
-    return new HttpException(message, HttpStatus.BAD_REQUEST);
+    throw new HttpException(error instanceof Error ? error.message : fallback, HttpStatus.BAD_REQUEST);
   }
 }
 

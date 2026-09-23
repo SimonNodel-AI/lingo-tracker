@@ -454,4 +454,42 @@ describe('addResourceCommand', () => {
       expect(core.loadPreferredTerminology).not.toHaveBeenCalled();
     });
   });
+
+  it('reports a cancelled prompt and returns without exiting or adding the resource', async () => {
+    const config = {
+      collections: { TestCollection: { translationsFolder: 'translations', baseLocale: 'en' } },
+      baseLocale: 'en',
+    };
+    vi.mocked(utils.loadConfiguration).mockReturnValue({
+      config,
+      configPath: '/test/.lingo-tracker.json',
+      cwd: '/test',
+    });
+    vi.mocked(utils.promptForCollection).mockResolvedValue('TestCollection');
+    vi.mocked(utils.resolveWritableCollection).mockReturnValue(
+      core.openCollection(config, 'TestCollection', { cwd: '/test' }),
+    );
+    const originalIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, writable: true });
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    // The user presses Esc: prompts calls onCancel, which throws PromptCancelledError.
+    vi.mocked(prompts).mockImplementation(async (questions, options) => {
+      const [question] = Array.isArray(questions) ? questions : [questions];
+      options?.onCancel?.(question, {});
+      return {};
+    });
+
+    try {
+      await expect(addResourceCommand({})).resolves.toBeUndefined();
+
+      expect(log).toHaveBeenCalledWith('❌ ❌ Add resource cancelled.');
+      expect(core.addResource).not.toHaveBeenCalled();
+      expect(exit).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+      exit.mockRestore();
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalIsTTY, writable: true });
+    }
+  });
 });

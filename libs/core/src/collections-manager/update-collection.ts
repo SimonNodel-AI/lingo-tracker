@@ -2,7 +2,7 @@ import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { createConfigFileOperations, updateConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
-import { ErrorMessages } from '../lib/errors/error-messages';
+import { CollectionAlreadyExistsError, CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
 import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { addLocaleToCollection } from './add-locale-to-collection';
 import { removeLocaleFromCollection } from './remove-locale-from-collection';
@@ -65,11 +65,11 @@ export async function updateCollection(
 
   updateConfig((config) => {
     if (!config.collections || !config.collections[collectionName]) {
-      throw new Error(ErrorMessages.collectionNotFound(collectionName));
+      throw new CollectionNotFoundError(collectionName);
     }
 
     if (isRename && config.collections[targetName]) {
-      throw new Error(ErrorMessages.collectionAlreadyExists(targetName));
+      throw new CollectionAlreadyExistsError(targetName);
     }
 
     const minimalCollection: LingoTrackerCollection = {

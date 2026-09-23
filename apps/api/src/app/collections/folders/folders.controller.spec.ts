@@ -4,6 +4,7 @@ import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/co
 import { FoldersController } from './folders.controller';
 import { ConfigService } from '../../config/config.service';
 import { CollectionIndex } from '../../cache/collection-index.service';
+import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import * as core from '@simoncodes-ca/core';
 
 // Mock the core module
@@ -342,6 +343,23 @@ describe('FoldersController', () => {
 
       expect(result.created).toBe(true);
       expect(result.folderPath).toBe('apps.common.buttons');
+    });
+
+    it('lets an invalid folder name propagate; the exception filter answers 400', async () => {
+      (core.createFolder as jest.Mock).mockImplementation(() => {
+        throw new core.InvalidFolderPathError('folder name', 'bad name');
+      });
+
+      const error = await foldersController
+        .create('test-collection', { folderName: 'bad name' })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(core.InvalidFolderPathError);
+      const http = toHttpException(error);
+      expect(http.getStatus()).toBe(400);
+      expect(http.message).toBe(
+        'Validation error: Invalid folder name segment "bad name". Segments must match pattern [A-Za-z0-9_-]+',
+      );
     });
   });
 

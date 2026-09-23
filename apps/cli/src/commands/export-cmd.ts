@@ -24,6 +24,7 @@ import {
   parseCommaSeparatedList,
   processMultiselectWithAll,
 } from '../utils';
+import { exitWithError, PromptCancelledError } from '../utils/report-error';
 
 export interface ExportCommandOptions {
   format?: ExportFormat;
@@ -57,7 +58,7 @@ export async function exportCommand(options: ExportCommandOptions): Promise<void
   try {
     answers = await promptForMissing(options, config, exportTargetLocales(allCollections));
   } catch (error) {
-    if ((error as Error).message === 'Export cancelled') {
+    if (error instanceof PromptCancelledError) {
       ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Export'));
       return;
     }
@@ -97,8 +98,7 @@ export async function exportCommand(options: ExportCommandOptions): Promise<void
     try {
       validateBasePropertyName(options.basePropertyName);
     } catch (error) {
-      ConsoleFormatter.error((error as Error).message);
-      process.exit(1);
+      exitWithError(error);
     }
   }
 
@@ -110,8 +110,7 @@ export async function exportCommand(options: ExportCommandOptions): Promise<void
   try {
     validateOutputDirectory(outputDir);
   } catch (error) {
-    ConsoleFormatter.error((error as Error).message);
-    process.exit(1);
+    exitWithError(error);
   }
 
   const collectionNames = parseCommaSeparatedList(options.collection);
@@ -156,8 +155,7 @@ export async function exportCommand(options: ExportCommandOptions): Promise<void
       onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
     });
   } catch (error) {
-    ConsoleFormatter.error((error as Error).message);
-    process.exit(1);
+    exitWithError(error);
   }
 
   displayResults(result);
@@ -492,7 +490,7 @@ async function promptForMissing(
   if (questions.length > 0 && process.stdout.isTTY) {
     const result = await prompts(questions, {
       onCancel: () => {
-        throw new Error('Export cancelled');
+        throw new PromptCancelledError('Export');
       },
     });
 

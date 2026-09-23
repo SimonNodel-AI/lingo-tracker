@@ -12,17 +12,17 @@ vi.mock('@simoncodes-ca/core', () => ({
   resolveCollectionProtectedTermsFilePath: vi.fn(() => undefined),
 }));
 
-vi.mock('../utils', () => ({
+vi.mock('../utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../utils')>()),
   loadConfiguration: vi.fn(),
-  ConsoleFormatter: {
-    section: vi.fn(),
-    keyValue: vi.fn(),
-    error: vi.fn(),
-    success: vi.fn(),
-  },
 }));
 
 import { loadConfiguration, ConsoleFormatter } from '../utils';
+
+// Spy on the real formatter object, which `exitWithError` prints through too.
+for (const method of ['section', 'keyValue', 'error', 'success'] as const) {
+  vi.spyOn(ConsoleFormatter, method).mockImplementation(() => undefined);
+}
 import {
   readCollectionProtectedTerms,
   readGlobalProtectedTerms,

@@ -8,7 +8,7 @@ import {
   resolveProtectedTermsFilePath,
   writeProtectedTermsFile,
 } from '../lib/config/protected-terms-file';
-import { ErrorMessages } from '../lib/errors/error-messages';
+import { CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
 import { updateCollection } from './update-collection';
 
 export interface SetProtectedTermsOptions {
@@ -53,7 +53,7 @@ export function setCollectionProtectedTerms(
   const collection = config.collections?.[collectionName];
 
   if (!collection) {
-    throw new Error(ErrorMessages.collectionNotFound(collectionName));
+    throw new CollectionNotFoundError(collectionName);
   }
 
   const filePath = resolveCollectionProtectedTermsFilePath(collection, cwd);
@@ -114,7 +114,7 @@ export async function setCollectionProtectedTermsFile(
   const collection = config.collections?.[collectionName];
 
   if (!collection) {
-    throw new Error(ErrorMessages.collectionNotFound(collectionName));
+    throw new CollectionNotFoundError(collectionName);
   }
 
   const carried = readCollectionProtectedTerms(collection, cwd);

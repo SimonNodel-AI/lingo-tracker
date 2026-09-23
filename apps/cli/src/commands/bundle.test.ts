@@ -655,12 +655,21 @@ describe('bundleCommand', () => {
       expect(mockGenerateBundle).not.toHaveBeenCalled();
     });
 
-    it('should handle prompt cancellation', async () => {
-      vi.mocked(prompts).mockImplementation(() => {
-        throw new Error('Bundle generation cancelled');
+    it('should report prompt cancellation and return without exiting or generating', async () => {
+      const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+      // The user presses Esc: prompts calls onCancel, which throws PromptCancelledError.
+      vi.mocked(prompts).mockImplementation(async (questions, options) => {
+        const [question] = Array.isArray(questions) ? questions : [questions];
+        options?.onCancel?.(question, {});
+        return {};
       });
 
-      await expect(bundleCommand({})).rejects.toThrow('Bundle generation cancelled');
+      await expect(bundleCommand({})).resolves.toBeUndefined();
+
+      expect(console.log).toHaveBeenCalledWith('❌ ❌ Bundle generation cancelled.');
+      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(exit).not.toHaveBeenCalled();
+      exit.mockRestore();
     });
   });
 });

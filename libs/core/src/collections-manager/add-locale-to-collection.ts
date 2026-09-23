@@ -1,12 +1,12 @@
 import * as path from 'node:path';
 import { existsSync } from 'node:fs';
-import { validateLocale } from '@simoncodes-ca/domain';
 import { updateConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import { walkFolders } from '../lib/normalize/iterative-folder-walker';
 import { openResourceFolder } from '../lib/resource/resource-folder';
 import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
-import { ErrorMessages } from '../lib/errors/error-messages';
+import { BaseLocaleImmutableError, LocaleAlreadyExistsError } from '../lib/errors/lingo-tracker-error';
+import { assertValidLocale } from './assert-valid-locale';
 import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 
 export interface AddLocaleToCollectionOptions {
@@ -28,7 +28,7 @@ export async function addLocaleToCollection(
 ): Promise<AddLocaleToCollectionResult> {
   const cwd = options.cwd ?? process.cwd();
 
-  validateLocale(locale);
+  assertValidLocale(locale);
 
   const updatedConfig = updateConfig((config) => {
     // `writable` throws inside the updater, so nothing is written for a read-only collection.
@@ -39,11 +39,11 @@ export async function addLocaleToCollection(
     } = openCollection(config, collectionName, { cwd, writable: true });
 
     if (locale === baseLocale) {
-      throw new Error(ErrorMessages.cannotModifyBaseLocale(locale));
+      throw new BaseLocaleImmutableError(locale);
     }
 
     if (effectiveLocales.includes(locale)) {
-      throw new Error(ErrorMessages.localeAlreadyExists(locale, collectionName));
+      throw new LocaleAlreadyExistsError(locale, collectionName);
     }
 
     const newLocales = [...effectiveLocales, locale];

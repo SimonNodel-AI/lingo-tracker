@@ -5,10 +5,12 @@ import * as core from '@simoncodes-ca/core';
 import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
 import type { Response } from 'express';
 import { ConfigService } from '../config/config.service';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { BundleJobService } from './bundle-job.service';
 import { BundlesController } from './bundles.controller';
 
 jest.mock('@simoncodes-ca/core', () => ({
+  ...jest.requireActual('@simoncodes-ca/core'),
   addBundleDefinition: jest.fn(),
   updateBundleDefinition: jest.fn(),
   deleteBundleDefinition: jest.fn(),
@@ -60,14 +62,14 @@ const plan: BundlePlan = {
   warnings: [],
 };
 
+/** The status the global exception filter answers with for what `fn` throws. */
 const statusOf = (fn: () => unknown): number => {
   try {
     fn();
   } catch (error: unknown) {
-    if (error instanceof HttpException) return error.getStatus();
-    throw error;
+    return toHttpException(error).getStatus();
   }
-  throw new Error('expected an HttpException');
+  throw new Error('expected the handler to throw');
 };
 
 const makeResponse = (): { response: Response; status: jest.Mock; json: jest.Mock } => {
@@ -151,10 +153,25 @@ describe('BundlesController', () => {
 
     it('returns 409 when core reports the bundle already exists', () => {
       (core.addBundleDefinition as jest.Mock).mockImplementation(() => {
-        throw new Error('Bundle "main" already exists');
+        throw new core.BundleAlreadyExistsError('main');
       });
 
-      expect(() => controller.createBundle({ name: 'main', bundle: requestDefinition })).toThrow(ConflictException);
+      expect(() => controller.createBundle({ name: 'main', bundle: requestDefinition })).toThrow(
+        core.BundleAlreadyExistsError,
+      );
+      expect(statusOf(() => controller.createBundle({ name: 'main', bundle: requestDefinition }))).toBe(
+        HttpStatus.CONFLICT,
+      );
+    });
+
+    it('returns 400 for a failure core does not type', () => {
+      (core.addBundleDefinition as jest.Mock).mockImplementation(() => {
+        throw new Error('Failed to write configuration file');
+      });
+
+      expect(statusOf(() => controller.createBundle({ name: 'main', bundle: requestDefinition }))).toBe(
+        HttpStatus.BAD_REQUEST,
+      );
     });
   });
 
@@ -221,10 +238,11 @@ describe('BundlesController', () => {
 
     it('maps a core not-found error to 404', () => {
       (core.deleteBundleDefinition as jest.Mock).mockImplementation(() => {
-        throw new Error('Bundle "tracker" not found');
+        throw new core.BundleNotFoundError('tracker');
       });
 
-      expect(() => controller.deleteBundle('tracker')).toThrow(NotFoundException);
+      expect(() => controller.deleteBundle('tracker')).toThrow(core.BundleNotFoundError);
+      expect(statusOf(() => controller.deleteBundle('tracker'))).toBe(HttpStatus.NOT_FOUND);
     });
   });
 

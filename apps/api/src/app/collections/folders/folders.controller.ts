@@ -1,14 +1,4 @@
-import {
-  Controller,
-  Post,
-  Delete,
-  Param,
-  Body,
-  HttpException,
-  HttpStatus,
-  NotFoundException,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Post, Delete, Param, Body, HttpException, HttpStatus, UseGuards } from '@nestjs/common';
 import { createFolder, deleteFolder, moveFolder } from '@simoncodes-ca/core';
 import type {
   CreateFolderDto,
@@ -37,95 +27,58 @@ export class FoldersController {
     @Param('collectionName') collectionName: string,
     @Body() createFolderDto: CreateFolderDto,
   ): Promise<CreateFolderResponseDto> {
-    try {
-      const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
+    const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
 
-      const result = createFolder(translationsFolder, {
-        folderName: createFolderDto.folderName,
-        parentPath: createFolderDto.parentPath,
-      });
+    const result = createFolder(translationsFolder, {
+      folderName: createFolderDto.folderName,
+      parentPath: createFolderDto.parentPath,
+    });
 
-      this.index.apply(result.mutations);
+    this.index.apply(result.mutations);
 
-      // Build the folder node for the frontend to insert into tree
-      const fullPath = createFolderDto.parentPath
-        ? `${createFolderDto.parentPath}.${createFolderDto.folderName}`
-        : createFolderDto.folderName;
+    // Build the folder node for the frontend to insert into tree
+    const fullPath = createFolderDto.parentPath
+      ? `${createFolderDto.parentPath}.${createFolderDto.folderName}`
+      : createFolderDto.folderName;
 
-      const folderNode: FolderNodeDto = {
-        name: createFolderDto.folderName,
-        fullPath,
-        loaded: true,
-        tree: {
-          path: fullPath,
-          resources: [],
-          children: [],
-        },
-      };
+    const folderNode: FolderNodeDto = {
+      name: createFolderDto.folderName,
+      fullPath,
+      loaded: true,
+      tree: {
+        path: fullPath,
+        resources: [],
+        children: [],
+      },
+    };
 
-      return {
-        folderPath: result.folderPath,
-        created: result.created,
-        folder: folderNode,
-      };
-    } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-
-      if (error instanceof HttpException) {
-        throw error;
-      }
-
-      // Validation errors (invalid folder name, etc.) should return 400
-      const errorMessage = error instanceof Error ? error.message : '';
-      if (errorMessage.includes('Invalid') || errorMessage.includes('cannot be empty')) {
-        throw new HttpException(`Validation error: ${errorMessage}`, HttpStatus.BAD_REQUEST);
-      }
-
-      // File system errors or other unexpected errors
-      throw new HttpException(errorMessage || 'Error creating folder', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+    return {
+      folderPath: result.folderPath,
+      created: result.created,
+      folder: folderNode,
+    };
   }
 
+  /** Core `deleteFolder` reports every failure in `error`, so this answers 200 even then. */
   @Delete()
   async delete(
     @Param('collectionName') collectionName: string,
     @Body() deleteFolderDto: DeleteFolderDto,
   ): Promise<DeleteFolderResponseDto> {
-    try {
-      const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
+    const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
 
-      const result = deleteFolder(translationsFolder, {
-        folderPath: deleteFolderDto.folderPath,
-      });
+    const result = deleteFolder(translationsFolder, {
+      folderPath: deleteFolderDto.folderPath,
+    });
 
-      this.index.apply(result.mutations);
+    this.index.apply(result.mutations);
 
-      return {
-        deleted: result.deleted,
-        folderPath: result.folderPath,
-        resourcesDeleted: result.resourcesDeleted,
-        error: result.error,
-      };
-    } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-
-      if (error instanceof HttpException) {
-        throw error;
-      }
-
-      // Validation errors (invalid folder path, etc.) should return 400
-      const errorMessage = error instanceof Error ? error.message : '';
-      if (errorMessage.includes('Invalid') || errorMessage.includes('not found')) {
-        throw new HttpException(`Validation error: ${errorMessage}`, HttpStatus.BAD_REQUEST);
-      }
-
-      // File system errors or other unexpected errors
-      throw new HttpException(errorMessage || 'Error deleting folder', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
+    return {
+      deleted: result.deleted,
+      folderPath: result.folderPath,
+      resourcesDeleted: result.resourcesDeleted,
+      error: result.error,
+    };
   }
 
   @Post('move')
@@ -133,73 +86,51 @@ export class FoldersController {
     @Param('collectionName') collectionName: string,
     @Body() moveFolderDto: MoveFolderDto,
   ): Promise<MoveFolderResponseDto> {
-    try {
-      const config = this.configService.getConfig();
-      const { translationsFolder } = openRouteCollection(config, collectionName);
+    const config = this.configService.getConfig();
+    const { translationsFolder } = openRouteCollection(config, collectionName);
 
-      if (
-        !moveFolderDto.sourceFolderPath ||
-        moveFolderDto.destinationFolderPath === undefined ||
-        moveFolderDto.destinationFolderPath === null
-      ) {
-        throw new HttpException(
-          'Invalid request: sourceFolderPath and destinationFolderPath are required',
-          HttpStatus.BAD_REQUEST,
-        );
-      }
-
-      // Handle cross-collection moves
-      const destinationTranslationsFolder = moveFolderDto.toCollection
-        ? openDestinationCollection(config, moveFolderDto.toCollection).translationsFolder
-        : undefined;
-
-      // Perform the move
-      const result = await moveFolder(translationsFolder, {
-        sourceFolderPath: moveFolderDto.sourceFolderPath,
-        destinationFolderPath: moveFolderDto.destinationFolderPath,
-        override: moveFolderDto.override,
-        nestUnderDestination: moveFolderDto.nestUnderDestination,
-        destinationTranslationsFolder,
-      });
-
-      this.index.apply(result.mutations);
-
-      // Check for critical errors that should return 400
-      const hasCriticalError = result.errors.some(
-        (err) =>
-          err.includes('Invalid') ||
-          err.includes('not found') ||
-          err.includes('circular') ||
-          err.includes('descendant'),
+    if (
+      !moveFolderDto.sourceFolderPath ||
+      moveFolderDto.destinationFolderPath === undefined ||
+      moveFolderDto.destinationFolderPath === null
+    ) {
+      throw new HttpException(
+        'Invalid request: sourceFolderPath and destinationFolderPath are required',
+        HttpStatus.BAD_REQUEST,
       );
-
-      if (hasCriticalError && result.movedCount === 0) {
-        throw new HttpException(`Validation error: ${result.errors.join(', ')}`, HttpStatus.BAD_REQUEST);
-      }
-
-      return {
-        movedCount: result.movedCount,
-        foldersDeleted: result.foldersDeleted,
-        warnings: result.warnings,
-        errors: result.errors,
-      };
-    } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-
-      if (error instanceof HttpException) {
-        throw error;
-      }
-
-      // Validation errors should return 400
-      const errorMessage = error instanceof Error ? error.message : '';
-      if (errorMessage.includes('Invalid') || errorMessage.includes('not found')) {
-        throw new HttpException(`Validation error: ${errorMessage}`, HttpStatus.BAD_REQUEST);
-      }
-
-      // File system errors or other unexpected errors
-      throw new HttpException(errorMessage || 'Error moving folder', HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    // Handle cross-collection moves
+    const destinationTranslationsFolder = moveFolderDto.toCollection
+      ? openDestinationCollection(config, moveFolderDto.toCollection).translationsFolder
+      : undefined;
+
+    // Perform the move. Core `moveFolder` never throws; it reports failures in `errors`.
+    const result = await moveFolder(translationsFolder, {
+      sourceFolderPath: moveFolderDto.sourceFolderPath,
+      destinationFolderPath: moveFolderDto.destinationFolderPath,
+      override: moveFolderDto.override,
+      nestUnderDestination: moveFolderDto.nestUnderDestination,
+      destinationTranslationsFolder,
+    });
+
+    this.index.apply(result.mutations);
+
+    // Check for critical errors that should return 400
+    const hasCriticalError = result.errors.some(
+      (err) =>
+        err.includes('Invalid') || err.includes('not found') || err.includes('circular') || err.includes('descendant'),
+    );
+
+    if (hasCriticalError && result.movedCount === 0) {
+      throw new HttpException(`Validation error: ${result.errors.join(', ')}`, HttpStatus.BAD_REQUEST);
+    }
+
+    return {
+      movedCount: result.movedCount,
+      foldersDeleted: result.foldersDeleted,
+      warnings: result.warnings,
+      errors: result.errors,
+    };
   }
 }

@@ -1,6 +1,7 @@
 import prompts from 'prompts';
 import { translateLocale } from '@simoncodes-ca/core';
 import { loadConfiguration, resolveWritableCollection, ConsoleFormatter, ErrorMessages } from '../utils';
+import { exitWithError } from '../utils/report-error';
 
 export interface TranslateLocaleOptions {
   collection?: string;
@@ -157,8 +158,6 @@ export async function translateLocaleCommand(options: TranslateLocaleOptions): P
       process.exit(1);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ConsoleFormatter.error(`Translation failed: ${message}`);
-    process.exit(1);
+    exitWithError(error, 'Translation failed: ');
   }
 }

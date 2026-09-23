@@ -361,8 +361,11 @@ describe('exportCommand', () => {
     });
 
     it('should handle user cancellation gracefully', async () => {
-      vi.mocked(prompts).mockImplementation(() => {
-        throw new Error('Export cancelled');
+      // The user presses Esc: prompts calls onCancel, which throws PromptCancelledError.
+      vi.mocked(prompts).mockImplementation(async (questions, options) => {
+        const [question] = Array.isArray(questions) ? questions : [questions];
+        options?.onCancel?.(question, {});
+        return {};
       });
 
       await exportCommand({});

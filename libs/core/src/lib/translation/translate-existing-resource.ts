@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
@@ -51,7 +52,7 @@ export async function translateExistingResource(
   const current = folder.get(paths.entryKey);
 
   if (!current?.meta) {
-    throw new Error(`Resource not found: ${paths.resolvedKey}`);
+    throw new ResourceNotFoundError(paths.resolvedKey);
   }
 
   const { entry, meta } = current;
@@ -97,7 +98,7 @@ export async function translateExistingResource(
 function requireTreeEntry(folder: ResourceFolder, entryKey: string, resolvedKey: string): ResourceTreeEntry {
   const treeEntry = folder.treeEntry(entryKey);
   if (!treeEntry) {
-    throw new Error(`Resource not found: ${resolvedKey}`);
+    throw new ResourceNotFoundError(resolvedKey);
   }
   return treeEntry;
 }

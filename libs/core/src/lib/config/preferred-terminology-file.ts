@@ -8,6 +8,7 @@ import {
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { LingoTrackerError } from '../errors/lingo-tracker-error';
 
 /**
  * Default location of the preferred-terminology file, resolved against the directory
@@ -30,12 +31,11 @@ export interface LoadPreferredTerminologyResult {
 }
 
 /** Thrown by `writePreferredTerminology` when the rule list fails validation. The file is left untouched. */
-export class PreferredTerminologyValidationError extends Error {
+export class PreferredTerminologyValidationError extends LingoTrackerError {
   readonly errors: PreferredTermRuleError[];
 
   constructor(errors: PreferredTermRuleError[]) {
-    super(`Invalid preferred terminology rules: ${formatRuleErrors(errors)}`);
-    this.name = 'PreferredTerminologyValidationError';
+    super(`Invalid preferred terminology rules: ${formatRuleErrors(errors)}`, 'INVALID_PREFERRED_TERMINOLOGY');
     this.errors = errors;
   }
 }

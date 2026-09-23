@@ -12,6 +12,7 @@ Return to [architecture README](README.md).
 - [Interactive vs Non-Interactive Mode](#interactive-vs-non-interactive-mode)
   - [TTY Detection](#tty-detection)
   - [Interactive Mode Flowchart](#interactive-mode-flowchart)
+- [Errors and Exit Codes](#errors-and-exit-codes)
 - [Config Loading and Collection Resolution](#config-loading-and-collection-resolution)
   - [Config Loading](#config-loading)
   - [Collection Resolution](#collection-resolution)
@@ -65,7 +66,7 @@ Both scopes read through the same core helpers. The command itself parses no ter
 
 `--list` on a collection prints three lists: the global terms, the collection's terms, and `effectiveProtectedTerms()` of the two. It names the resolved file behind each list. Paths inside the project root print as relative paths.
 
-The core layer raises errors for a malformed file, for a collection with no file, and for a missing parent directory. The command catches each one, reports it through `ConsoleFormatter.error`, and calls `process.exit(1)`. It writes no partial result.
+The core layer raises errors for a malformed file, for a collection with no file, and for a missing parent directory. The command catches each one and calls `exitWithError` (prints `❌ <message>`, exits 1). It writes no partial result.
 
 ### `glossary` pipeline
 
@@ -144,7 +145,7 @@ flowchart TD
 
     CHECK_TTY_MAIN -- Yes --> INTERACTIVE["Interactive path:\nprompts() for each\nmissing required field"]
     INTERACTIVE --> USER_INPUT{"User completes\nall fields?"}
-    USER_INPUT -- "Ctrl+C / cancel" --> EXIT_CANCEL(["Throw:\n❌ Operation cancelled"])
+    USER_INPUT -- "Ctrl+C / cancel" --> EXIT_CANCEL(["Throw PromptCancelledError:\n❌ Operation cancelled"])
     USER_INPUT -- Completes --> CALL_CORE
 
     CALL_CORE["Call @simoncodes-ca/core function\ne.g. addResource() / normalize() / validateResources()"]
@@ -160,6 +161,30 @@ flowchart TD
     style CALL_CORE fill:#d1ecf1,stroke:#17a2b8,color:#000
     style DONE fill:#d4edda,stroke:#28a745,color:#000
 ```
+
+---
+
+## Errors and Exit Codes
+
+Core raises [typed errors](glossary.md#typed-errors) whose message is already the user-facing text, so the CLI prints the message and does not branch on the class, except in the resolvers below. Helpers in `utils/report-error.ts`:
+
+- **`exitWithError(error, prefix?)`** — prints `❌ <prefix><message>` through `ConsoleFormatter.error` and calls `process.exit(1)`. Used where a failure ends the command: `export` (invalid `--base-property-name`, unwritable output directory, a run that cannot start), `glossary` (unknown extractor), `protected-terms` (file errors), and `translate-locale` (prefix `Translation failed: `).
+- **`PromptCancelledError(operation)`** — thrown from a prompt's `onCancel` (`executePromptsWithFallback`, `add-resource`, `export`, `import`, `normalize`, `bundle`). The message is `<operation> cancelled`. `export` and `import` catch it with `instanceof` and print `❌ ❌ <Op> cancelled.` (exit code 0).
+
+Exit codes:
+
+| Situation | Exit code |
+|---|---|
+| Success | 0 |
+| Config file missing or unreadable (`loadConfiguration`) | 1 |
+| Read-only collection on a mutating command (`resolveWritableCollection`, `normalize`) | 1 (`process.exitCode`) |
+| `exitWithError` sites above; missing or conflicting flags in `edit-collection`, `find-similar`, `install-skill`, `protected-terms`, `preferred-terminology` | 1 |
+| `validate` failed, or had nothing to validate; `translate-locale` with failed entries; `export` with errors or hierarchical conflicts (not with `--dry-run`); `import` with errors | 1 |
+| Unknown collection: `resolveCollection` prints `❌ Collection "x" not found.` and the command returns | 0 (`glossary` exits 1) |
+| Core error in `add-collection`, `delete-collection`, `add-resource`, `edit-resource`, `delete-resource`, `move`, `add-locale`, `remove-locale` | 0 (prints `❌ <message>`) |
+| Prompt cancelled | 0 |
+
+The last three rows are kept as they were: those commands report a failure but do not set an exit code.
 
 ---
 
@@ -218,7 +243,7 @@ All shared utilities live in `apps/cli/src/utils/` and are re-exported from `app
 
 `executePromptsWithFallback(params)` is the primary entry point for commands that have multiple optional fields. It accepts a `questions` array (prompts definitions), `currentValues` (the parsed CLI options), and `requiredFields` (field names that must be present in non-interactive mode).
 
-- In TTY mode: runs `prompts(questions, { onCancel })`, merges results with `currentValues`, and throws `"Operation cancelled"` on Ctrl+C.
+- In TTY mode: runs `prompts(questions, { onCancel })`, merges results with `currentValues`, and throws `PromptCancelledError` (message `"<operationName> cancelled"`, default `"Operation cancelled"`) on Ctrl+C.
 - In non-TTY mode: skips all prompts, checks that every `requiredField` is non-null in `currentValues`, and throws a `Missing required options: --field1, --field2` error if any are absent.
 
 `processMultiselectWithAll(selectedValues, allAvailableItems)` handles multiselect prompts that include an "All" option. If the sentinel `__ALL__` is among the selected values, it returns `undefined` (meaning "process everything"), otherwise returns the selected subset.

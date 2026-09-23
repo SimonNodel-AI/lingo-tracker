@@ -8,6 +8,7 @@ import {
   ErrorMessages,
   aggregateNumericFields,
 } from '../utils';
+import { PromptCancelledError } from '../utils/report-error';
 
 export interface NormalizeOptions {
   collection?: string;
@@ -46,7 +47,16 @@ export async function normalizeCommand(options: NormalizeOptions): Promise<void>
   if (!loaded) return;
   const { config, cwd } = loaded;
 
-  const answers = await promptForMissing(options, config);
+  let answers: Awaited<ReturnType<typeof promptForMissing>>;
+  try {
+    answers = await promptForMissing(options, config);
+  } catch (error) {
+    if (error instanceof PromptCancelledError) {
+      ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED(error.operation));
+      return;
+    }
+    throw error;
+  }
 
   // Determine which collections to process
   const collectionsToProcess: string[] = [];
@@ -233,7 +243,7 @@ async function promptForMissing(
   if (questions.length > 0 && process.stdout.isTTY) {
     const result = await prompts(questions, {
       onCancel: () => {
-        throw new Error('Normalize cancelled');
+        throw new PromptCancelledError('Normalize');
       },
     });
 

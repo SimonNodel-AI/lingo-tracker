@@ -3,6 +3,7 @@ import * as path from 'path';
 import { loadResourcesFromCollections, openCollection } from '@simoncodes-ca/core';
 import type { Collection, LingoTrackerConfig } from '@simoncodes-ca/core';
 import { ConsoleFormatter, loadConfiguration, parseCommaSeparatedList, resolveCollection } from '../utils';
+import { exitWithError } from '../utils/report-error';
 import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
 import { matchGlossary, type FlatEntry } from './glossary-matcher';
 
@@ -125,8 +126,7 @@ export async function glossaryCommand(options: GlossaryCommandOptions): Promise<
   try {
     extractor = resolveExtractor(options.extractor ?? 'ngram');
   } catch (error) {
-    ConsoleFormatter.error((error as Error).message);
-    process.exit(1);
+    exitWithError(error);
   }
 
   const candidates = extractor(block);

@@ -1,4 +1,5 @@
 import prompts from 'prompts';
+import { PromptCancelledError } from './report-error';
 
 /**
  * Sentinel value used to represent "all items" in multiselect prompts
@@ -95,7 +96,7 @@ export interface PromptExecutionOptions<TValues extends object = Record<string, 
  *
  * @param params - Prompt execution configuration
  * @returns Merged values from currentValues and prompt responses
- * @throws Error if operation is cancelled or required fields are missing in non-interactive mode
+ * @throws PromptCancelledError if the user cancels; Error if required fields are missing in non-interactive mode
  *
  * @example
  * const answers = await executePromptsWithFallback({
@@ -122,8 +123,7 @@ export async function executePromptsWithFallback<TValues extends object>(
   if (isInteractiveTerminal()) {
     const result = await prompts(questions, {
       onCancel: () => {
-        const opName = operationName || 'Operation';
-        throw new Error(`${opName} cancelled`);
+        throw new PromptCancelledError(operationName || 'Operation');
       },
     });
 

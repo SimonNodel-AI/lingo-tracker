@@ -1,7 +1,8 @@
 import prompts from 'prompts';
 import type { LingoTrackerConfig, TokenCasing } from '@simoncodes-ca/core';
 import { generateBundle, hasTypeDistConfigured } from '@simoncodes-ca/core';
-import { loadConfiguration, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
+import { loadConfiguration, parseCommaSeparatedList, ConsoleFormatter, ErrorMessages } from '../utils';
+import { PromptCancelledError } from '../utils/report-error';
 
 export interface BundleOptions {
   name?: string;
@@ -48,7 +49,16 @@ export async function bundleCommand(options: BundleOptions): Promise<void> {
     return;
   }
 
-  const answers = await promptForMissing(options, config);
+  let answers: Awaited<ReturnType<typeof promptForMissing>>;
+  try {
+    answers = await promptForMissing(options, config);
+  } catch (error) {
+    if (error instanceof PromptCancelledError) {
+      ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED(error.operation));
+      return;
+    }
+    throw error;
+  }
 
   // Determine which bundles to process
   const bundlesToProcess: string[] = [];
@@ -265,7 +275,7 @@ async function promptForMissing(
   if (questions.length > 0) {
     const result = await prompts(questions, {
       onCancel: () => {
-        throw new Error('Bundle generation cancelled');
+        throw new PromptCancelledError('Bundle generation');
       },
     });
 

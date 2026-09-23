@@ -11,6 +11,7 @@ import {
   resolveWritableCollection,
   warnAboutPreferredTerminology,
 } from '../utils';
+import { PromptCancelledError } from '../utils/report-error';
 
 export interface AddResourceOptions {
   collection?: string;
@@ -37,7 +38,16 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
   const collection = resolveWritableCollection(collectionName, config, cwd);
   if (!collection) return;
 
-  const answers = await promptForMissing(options, collection);
+  let answers: Awaited<ReturnType<typeof promptForMissing>>;
+  try {
+    answers = await promptForMissing(options, collection);
+  } catch (error) {
+    if (error instanceof PromptCancelledError) {
+      ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED(error.operation));
+      return;
+    }
+    throw error;
+  }
 
   try {
     // Check if resource already exists
@@ -181,7 +191,7 @@ async function promptForMissing(
   if (questions.length > 0 && process.stdout.isTTY) {
     const result = await prompts(questions, {
       onCancel: () => {
-        throw new Error('Add resource cancelled');
+        throw new PromptCancelledError('Add resource');
       },
     });
     Object.assign(responses, result);

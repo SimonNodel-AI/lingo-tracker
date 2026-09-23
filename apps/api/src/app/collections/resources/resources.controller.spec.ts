@@ -8,7 +8,14 @@ import { ResourcesController } from './resources.controller';
 import { ConfigService } from '../../config/config.service';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
+import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import * as core from '@simoncodes-ca/core';
+
+/** What the handler rejects with, as the HTTP exception the global exception filter answers with. */
+const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
+  promise.then(() => {
+    throw new Error('expected the handler to reject');
+  }, toHttpException);
 
 // Mock the core module
 jest.mock('@simoncodes-ca/core', () => {
@@ -341,10 +348,11 @@ describe('ResourcesController', () => {
       await expect(resourcesController.createResources('test-collection', [])).rejects.toThrow(HttpException);
     });
 
-    it('should throw HttpException (400) for invalid key validation', async () => {
+    it('should answer 400 for invalid key validation', async () => {
+      const message = 'Key validation: Invalid key segment "invalid@key". Segments must match pattern [A-Za-z0-9_-]+';
       const addResource = core.addResource as jest.Mock;
       addResource.mockImplementation(() => {
-        throw new Error('Invalid key segment "invalid@key". Segments must match pattern [A-Za-z0-9_-]+');
+        throw new core.InvalidResourceKeyError('invalid@key', message);
       });
 
       const dto = {
@@ -352,20 +360,19 @@ describe('ResourcesController', () => {
         baseValue: 'OK',
       };
 
-      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(HttpException);
+      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(
+        core.InvalidResourceKeyError,
+      );
 
-      try {
-        await resourcesController.createResources('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-        expect(error.message).toContain('Validation error');
-      }
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      expect(error.getStatus()).toBe(400);
+      expect(error.message).toBe(message);
     });
 
-    it('should throw HttpException (400) for empty key', async () => {
+    it('should answer 400 for empty key', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource.mockImplementation(() => {
-        throw new Error('Key cannot be empty');
+        throw new core.InvalidResourceKeyError('', 'Key validation: Key cannot be empty');
       });
 
       const dto = {
@@ -373,16 +380,23 @@ describe('ResourcesController', () => {
         baseValue: 'OK',
       };
 
-      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.createResources('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-      }
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      expect(error.getStatus()).toBe(400);
     });
 
-    it('should throw HttpException (500) for unexpected errors', async () => {
+    it('should answer 502 when the translation provider fails during auto-translation', async () => {
+      const addResource = core.addResource as jest.Mock;
+      addResource.mockImplementation(() => {
+        throw new TranslationError('Google Translate server error: backend down', 'SERVER_ERROR', true);
+      });
+
+      const error = await httpErrorOf(
+        resourcesController.createResources('test-collection', { key: 'app.button.ok', baseValue: 'OK' }),
+      );
+      expect(error.getStatus()).toBe(502);
+    });
+
+    it('should answer a generic 500 that hides the message for unexpected errors', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource.mockImplementation(() => {
         throw new Error('Unexpected file system error');
@@ -393,13 +407,13 @@ describe('ResourcesController', () => {
         baseValue: 'OK',
       };
 
-      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(HttpException);
+      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(
+        'Unexpected file system error',
+      );
 
-      try {
-        await resourcesController.createResources('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(500);
-      }
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      expect(error.getStatus()).toBe(500);
+      expect(error.message).toBe('Internal server error');
     });
 
     it('should handle resource with all optional fields', async () => {
@@ -730,7 +744,7 @@ describe('ResourcesController', () => {
       }
     });
 
-    it('should throw HttpException (500) for unexpected errors', async () => {
+    it('should answer 500 for unexpected errors', async () => {
       const deleteResource = core.deleteResource as jest.Mock;
       deleteResource.mockImplementation(() => {
         throw new Error('Unexpected file system error');
@@ -740,13 +754,8 @@ describe('ResourcesController', () => {
         keys: ['app.button.ok'],
       };
 
-      await expect(resourcesController.delete('test-collection', dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.delete('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(500);
-      }
+      const error = await httpErrorOf(resourcesController.delete('test-collection', dto));
+      expect(error.getStatus()).toBe(500);
     });
 
     it('should successfully delete nested resource', async () => {
@@ -998,36 +1007,35 @@ describe('ResourcesController', () => {
       });
     });
 
-    it('should throw NotFoundException when resource not found', async () => {
+    it('should answer 404 when resource not found', async () => {
       const editResource = core.editResource as jest.Mock;
       editResource.mockImplementation(() => {
-        throw new Error('Resource not found: app.button.missing');
+        throw new core.ResourceNotFoundError('app.button.missing');
       });
 
       const dto = {
         key: 'app.button.missing',
       };
 
-      await expect(resourcesController.update('test-collection', dto)).rejects.toThrow(NotFoundException);
+      await expect(resourcesController.update('test-collection', dto)).rejects.toThrow(core.ResourceNotFoundError);
+
+      const error = await httpErrorOf(resourcesController.update('test-collection', dto));
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toBe('Resource not found: app.button.missing');
     });
 
-    it('should throw BadRequestException for validation errors', async () => {
+    it('should answer 400 for validation errors', async () => {
       const editResource = core.editResource as jest.Mock;
       editResource.mockImplementation(() => {
-        throw new Error('Invalid key segment');
+        throw new core.InvalidResourceKeyError('invalid..key', 'Key validation: Invalid key format "invalid..key"');
       });
 
       const dto = {
         key: 'invalid..key',
       };
 
-      await expect(resourcesController.update('test-collection', dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.update('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-      }
+      const error = await httpErrorOf(resourcesController.update('test-collection', dto));
+      expect(error.getStatus()).toBe(400);
     });
   });
 
@@ -1138,14 +1146,16 @@ describe('ResourcesController', () => {
       );
     });
 
-    it('should return 500 when reading the index throws', async () => {
+    it('should return a generic 500 when reading the index throws', async () => {
       mockIndex.tree.mockImplementationOnce(() => {
         throw new Error('boom');
       });
 
-      await expect(
+      const error = await httpErrorOf(
         resourcesController.getTree('test-collection', '', undefined, mockResponse() as any),
-      ).rejects.toThrow(HttpException);
+      );
+      expect(error.getStatus()).toBe(500);
+      expect(error.message).toBe('Internal server error');
     });
   });
 
@@ -1261,25 +1271,27 @@ describe('ResourcesController', () => {
       (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
 
       const translateExistingResource = core.translateExistingResource as jest.Mock;
-      translateExistingResource.mockRejectedValue(new Error('Resource not found: buttons.save'));
+      translateExistingResource.mockRejectedValue(new core.ResourceNotFoundError('buttons.save'));
 
-      await expect(resourcesController.translateResource('test-collection', { key: 'buttons.save' })).rejects.toThrow(
-        NotFoundException,
+      const error = await httpErrorOf(
+        resourcesController.translateResource('test-collection', { key: 'buttons.save' }),
       );
+      expect(error).toBeInstanceOf(NotFoundException);
     });
 
     it('should return 502 when the translation provider throws a TranslationError', async () => {
       (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
 
       const translateExistingResource = core.translateExistingResource as jest.Mock;
-      translateExistingResource.mockRejectedValue(new TranslationError('Rate limit exceeded', 'RATE_LIMIT', true));
+      translateExistingResource.mockRejectedValue(
+        new TranslationError('Google Translate server error: backend down', 'SERVER_ERROR', true),
+      );
 
-      try {
-        await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(502);
-      }
+      const error = await httpErrorOf(
+        resourcesController.translateResource('test-collection', { key: 'buttons.save' }),
+      );
+      expect(error.getStatus()).toBe(502);
+      expect(error.message).toBe('Translation provider error: Google Translate server error: backend down');
     });
 
     it('should return a TranslateResourceResponseDto with translated resource on success', async () => {

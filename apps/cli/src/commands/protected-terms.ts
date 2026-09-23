@@ -11,6 +11,7 @@ import {
 } from '@simoncodes-ca/core';
 import { effectiveProtectedTerms, normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import { loadConfiguration, ConsoleFormatter } from '../utils';
+import { exitWithError } from '../utils/report-error';
 
 export interface ProtectedTermsOptions {
   collection?: string;
@@ -68,8 +69,7 @@ export async function protectedTermsCommand(options: ProtectedTermsOptions): Pro
         : setGlobalProtectedTermsFile(pointer, { cwd });
       ConsoleFormatter.success(result.message);
     } catch (error) {
-      ConsoleFormatter.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
+      exitWithError(error);
       return;
     }
   }
@@ -85,8 +85,7 @@ export async function protectedTermsCommand(options: ProtectedTermsOptions): Pro
     globalTerms = readGlobalProtectedTerms(currentConfig, cwd);
     collectionTerms = currentCollection ? readCollectionProtectedTerms(currentCollection, cwd) : [];
   } catch (error) {
-    ConsoleFormatter.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    exitWithError(error);
     return;
   }
 
@@ -149,8 +148,7 @@ export async function protectedTermsCommand(options: ProtectedTermsOptions): Pro
         ConsoleFormatter.success(`${scopeLabel} protected terms updated: ${next.join(', ')} ${where}`);
       }
     } catch (error) {
-      ConsoleFormatter.error(error instanceof Error ? error.message : String(error));
-      process.exit(1);
+      exitWithError(error);
     }
   }
 }

@@ -39,5 +39,16 @@ export const ErrorMessages = {
 
   bundleAlreadyExists: (name: string) => `Bundle "${name}" already exists`,
 
-  invalidBundleDefinition: (errors: string[]) => `Invalid bundle definition: ${errors.join('; ')}`,
+  invalidBundleDefinition: (errors: readonly string[]) => `Invalid bundle definition: ${errors.join('; ')}`,
+
+  invalidFolderSegment: (part: FolderPathPart, segment: string) =>
+    `Invalid ${part} segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`,
 } as const;
+
+/** Which part of a folder operation's input a malformed segment came from. */
+export type FolderPathPart =
+  | 'folder name'
+  | 'parent path'
+  | 'folder path'
+  | 'source folder path'
+  | 'destination folder path';

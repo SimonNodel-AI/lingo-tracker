@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import prompts from 'prompts';
 import { normalizeCommand } from './normalize';
 import { type Collection, normalize } from '@simoncodes-ca/core';
 import { loadConfiguration, resolveCollection, ConsoleFormatter } from '../utils';
@@ -38,6 +39,7 @@ vi.mock('../utils', () => ({
     NO_COLLECTIONS: 'no collections',
     COLLECTION_READ_ONLY: (name: string) => `❌ Collection "${name}" is read-only. Its resources cannot be modified.`,
     MISSING_OPTIONS: (opts: string[]) => `missing: ${opts.join(', ')}`,
+    OPERATION_CANCELLED: (operation: string) => `❌ ${operation} cancelled.`,
   },
 }));
 
@@ -106,5 +108,24 @@ describe('normalizeCommand', () => {
       expect(process.exitCode).toBeUndefined();
       expect(ConsoleFormatter.info).toHaveBeenCalledWith('Skipping read-only collection: Lib');
     });
+  });
+
+  it('reports a cancelled prompt and returns without exiting or normalizing', async () => {
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    // The user presses Esc: prompts calls onCancel, which throws PromptCancelledError.
+    vi.mocked(prompts).mockImplementation(async (questions, options) => {
+      const [question] = Array.isArray(questions) ? questions : [questions];
+      options?.onCancel?.(question, {});
+      return {};
+    });
+
+    await expect(normalizeCommand({})).resolves.toBeUndefined();
+
+    expect(ConsoleFormatter.error).toHaveBeenCalledWith('❌ Normalize cancelled.');
+    expect(normalize).not.toHaveBeenCalled();
+    expect(exit).not.toHaveBeenCalled();
+    expect(process.exitCode).toBeUndefined();
+    exit.mockRestore();
   });
 });

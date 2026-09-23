@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { ResourceNotFoundError } from '../lib/errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
 import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
@@ -64,7 +65,7 @@ export async function editResource(
   const current = folder.get(paths.entryKey);
 
   if (!current?.meta) {
-    throw new Error(`Resource not found: ${paths.resolvedKey}`);
+    throw new ResourceNotFoundError(paths.resolvedKey);
   }
 
   const key = paths.entryKey;
@@ -149,7 +150,7 @@ export async function editResource(
 
   const updatedEntry = folder.treeEntry(key);
   if (!updatedEntry) {
-    throw new Error(`Resource not found: ${paths.resolvedKey}`);
+    throw new ResourceNotFoundError(paths.resolvedKey);
   }
 
   return {
