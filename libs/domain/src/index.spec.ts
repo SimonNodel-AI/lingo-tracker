@@ -1,0 +1,63 @@
+import { describe, expect, it } from 'vitest';
+import * as domain from './index';
+
+// The barrel is the library's interface. Adding a name here is a deliberate API change:
+// export it only when something outside libs/domain needs it. Types are erased, so only values appear.
+describe('domain public surface', () => {
+  it('exports exactly the listed runtime values', () => {
+    expect(Object.keys(domain).sort()).toEqual([
+      'JS_IDENTIFIER_PATTERN',
+      'STATUS_PRECEDENCE',
+      'applyBaseChange',
+      'applyPreferredTerm',
+      'autoFixICUPlaceholders',
+      'autoFixTranslocoPlaceholders',
+      'classifyICUContent',
+      'compareIcuArguments',
+      'countByStatus',
+      'detectDuplicateKeys',
+      'detectHierarchicalConflicts',
+      'effectiveProtectedTerms',
+      'effectiveTags',
+      'escapeRegExp',
+      'findIcuCompileError',
+      'findPreferredTermFindings',
+      'findProtectedTermViolations',
+      'findProtectedTerms',
+      'findUnportablePluralCases',
+      'hasICUPlaceholders',
+      'hasTranslocoPlaceholders',
+      'hasUnbundlableBranchBody',
+      'icuToTransloco',
+      'isEmptyValue',
+      'isIcuLocaleSupported',
+      'isJavaScriptReservedWord',
+      'isKeyTooLong',
+      'isUnderNodeModules',
+      'isUntranslatedCopy',
+      'isValidJavaScriptIdentifier',
+      'isValidSegment',
+      'needsTranslation',
+      'normalizePreferredTermRules',
+      'normalizeProtectedTerms',
+      'normalizeTag',
+      'normalizeTags',
+      'normalizeTranslocoSyntax',
+      'normalizedLevenshtein',
+      'recordTranslation',
+      'resolveAllReferences',
+      'resolveImportStatus',
+      'resolveResourceKey',
+      'sortPreferredTermRules',
+      'splitResolvedKey',
+      'translocoToICU',
+      'validateICUSyntax',
+      'validateImportKey',
+      'validateKey',
+      'validateLocale',
+      'validatePreferredTermRules',
+      'validateTargetFolder',
+      'worstStatus',
+    ]);
+  });
+});

@@ -1,4 +1,5 @@
-import type { BundleDefinition, TokenCasing } from './bundle-definition';
+import type { TokenCasing } from '@simoncodes-ca/domain';
+import type { BundleDefinition } from './bundle-definition';
 import type { LingoTrackerCollection } from './lingo-tracker-collection';
 import type { TranslationConfig } from './translation-config';
 

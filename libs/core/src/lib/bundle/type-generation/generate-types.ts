@@ -1,11 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { LingoTrackerConfig } from '../../../config/lingo-tracker-config';
-import { type BundleDefinition, hasTypeDistConfigured, type TokenCasing } from '../../../config/bundle-definition';
+import { type BundleDefinition, hasTypeDistConfigured } from '../../../config/bundle-definition';
 import { loadCollectionResources } from '../resource-loader';
 import { matchesPattern } from '../pattern-matcher';
 import { matchesTags } from '../tag-filter';
-import { effectiveTags } from '@simoncodes-ca/domain';
+import { effectiveTags, type TokenCasing } from '@simoncodes-ca/domain';
 import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
 import { generateFileHeader } from './file-header';
 import { bundleKeyToConstantName, validateJavaScriptIdentifier } from './key-transformer';

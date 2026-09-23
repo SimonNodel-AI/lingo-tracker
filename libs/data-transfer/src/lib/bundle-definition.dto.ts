@@ -3,12 +3,10 @@
  * so they are safe to use from the browser-based Tracker UI.
  */
 
-/**
- * Casing of generated TypeScript token property keys.
- * - 'upperCase': SCREAMING_SNAKE_CASE (e.g. FILE_UPLOAD) — default
- * - 'camelCase': camelCase (e.g. fileUpload)
- */
-export type TokenCasingDto = 'upperCase' | 'camelCase';
+import type { TokenCasing } from '@simoncodes-ca/domain';
+
+/** Casing of generated TypeScript token property keys. Declared once, in domain. */
+export type TokenCasingDto = TokenCasing;
 
 /** Pattern and tag-based rule selecting which entries of a collection are bundled. */
 export interface EntrySelectionRuleDto {

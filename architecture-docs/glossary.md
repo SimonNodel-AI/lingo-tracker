@@ -153,6 +153,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#prot
 
 ---
 
+### Public Surface
+
+The names a library's `index.ts` barrel exports — everything a caller must know to use it. The `domain` and `core` barrels list their exports by name, never with `export *`. They list only names that something outside the library uses, plus the types those names' signatures need. A helper that only its own library uses stays exported from its file but not from the barrel. `libs/domain/src/index.spec.ts` pins domain's runtime exports, so adding one is a deliberate change.
+
+Explained in context: [`monorepo-structure.md`](monorepo-structure.md#public-surface), [`core-library.md`](core-library.md#public-surface)
+
+---
+
 ## R
 
 ### Resource Entry

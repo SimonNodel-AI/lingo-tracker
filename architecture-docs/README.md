@@ -77,7 +77,7 @@ apps (cli, api, tracker)
             └── domain  (pure logic — browser-safe, no Node.js)
 ```
 
-`domain` has zero Node.js dependencies and is safe to import in the browser. `core` depends on `domain` but never the reverse. Apps depend on both; `data-transfer` is leaf-level with no dependencies on `core` or `domain`.
+`domain` has zero Node.js dependencies and is safe to import in the browser. `core` depends on `domain` but never the reverse. Apps depend on both; `data-transfer` never imports `core` and takes only two types from `domain` (`TranslationStatus`, `TokenCasing`).
 
 ---
 

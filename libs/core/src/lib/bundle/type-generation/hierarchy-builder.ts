@@ -1,5 +1,5 @@
 import { segmentToPropertyName, splitKeyIntoSegments, constantNameToTypeName } from './key-transformer';
-import type { TokenCasing } from '../../../config/bundle-definition';
+import type { TokenCasing } from '@simoncodes-ca/domain';
 
 export interface TypeHierarchyNode {
   children: Record<string, TypeHierarchyNode>;

@@ -4,13 +4,18 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { effectiveTags, hasUnbundlableBranchBody, icuToTransloco, validateICUSyntax } from '@simoncodes-ca/domain';
+import {
+  effectiveTags,
+  hasUnbundlableBranchBody,
+  icuToTransloco,
+  type TokenCasing,
+  validateICUSyntax,
+} from '@simoncodes-ca/domain';
 import {
   type BundleDefinition,
   type CollectionBundleDefinition,
   type EntrySelectionRule,
   hasTypeDistConfigured,
-  type TokenCasing,
 } from '../../config/bundle-definition';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { ResourceEntries } from '../../resource/resource-entry';

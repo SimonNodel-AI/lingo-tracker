@@ -14,6 +14,7 @@ Return to [architecture README](README.md).
   - [domain — browser-safe pure logic](#domain--browser-safe-pure-logic)
   - [core — Node.js business logic](#core--nodejs-business-logic)
   - [data-transfer — API contract DTOs](#data-transfer--api-contract-dtos)
+  - [Public surface](#public-surface)
 - [Nx Workspace Configuration Highlights](#nx-workspace-configuration-highlights)
   - [Build targets by project](#build-targets-by-project)
   - [Test runner: Vitest](#test-runner-vitest)
@@ -45,6 +46,7 @@ lingo-tracker/                         # Nx workspace root
 │   ├── domain/                        # Browser-safe pure logic (zero Node.js deps)
 │   │   └── src/lib/
 │   │       ├── translation-status.ts  # TranslationStatus type
+│   │       ├── token-casing.ts        # TokenCasing type
 │   │       ├── translation-status-summary.ts # Status counts and worst-status precedence
 │   │       ├── locale-metadata.ts     # LocaleMetadata interface
 │   │       ├── resource-key.ts        # Key validation, resolve, split
@@ -119,6 +121,7 @@ graph TD
     Tracker --> Domain
 
     Core --> Domain
+    DT -.->|types only| Domain
 
     style Domain fill:#d4edda,stroke:#28a745,color:#000
     style Core fill:#d1ecf1,stroke:#17a2b8,color:#000
@@ -128,7 +131,7 @@ graph TD
     style Tracker fill:#f8f9fa,stroke:#6c757d,color:#000
 ```
 
-**Arrows point in the direction of the import.** No arrow ever points toward `apps`; no arrow ever points from `domain` to `core`. `data-transfer` has no dependencies on `core` or `domain` — it is a leaf library.
+**Arrows point in the direction of the import.** No arrow ever points toward `apps`; no arrow ever points from `domain` to `core`. `data-transfer` never imports `core`; it imports two types from `domain` (see [data-transfer](#data-transfer--api-contract-dtos)).
 
 ---
 
@@ -141,6 +144,7 @@ graph TD
 | Module | What it does |
 |---|---|
 | `translation-status.ts` | Defines the `TranslationStatus` union type (`'new' \| 'translated' \| 'stale' \| 'verified'`) |
+| `token-casing.ts` | Defines the `TokenCasing` union type (`'upperCase' \| 'camelCase'`) for generated bundle tokens |
 | `translation-status-summary.ts` | The [translation status summary](glossary.md#translation-status-summary): `countByStatus`, `worstStatus`, and `STATUS_PRECEDENCE` (worst first) |
 | `locale-metadata.ts` | Defines the `LocaleMetadata` interface (checksum, baseChecksum, status) |
 | `resource-key.ts` | Validates, resolves (`resolveResourceKey`), and splits (`splitResolvedKey`) dot-delimited keys |
@@ -182,13 +186,29 @@ See [core-library.md](core-library.md) for the full module breakdown.
 
 ### data-transfer — API contract DTOs
 
-`@simoncodes-ca/data-transfer` is a leaf library: it imports nothing from `core` or `domain`. It contains only TypeScript interfaces and classes that define the shapes of HTTP request bodies, response payloads, and shared view models exchanged between the API, CLI, and Tracker UI.
+`@simoncodes-ca/data-transfer` imports nothing from `core`. From `domain` it takes two types, with `import type`, so they are declared once: `TranslationStatus` (re-exported as is) and `TokenCasing` (aliased as `TokenCasingDto`). Both are browser-safe and erased at build time. Otherwise it contains only TypeScript interfaces and classes that define the shapes of HTTP request bodies, response payloads, and shared view models exchanged between the API, CLI, and Tracker UI.
 
 **Why isolate DTOs in their own library?** API contracts must be stable across all three consumers. Keeping DTOs in a dedicated library with no business logic means:
 
 1. Any consumer can import only the shapes it needs without pulling in Node.js code.
 2. Breaking changes to the API surface are localized here and immediately visible to all consumers via TypeScript compilation.
 3. The library has no runtime behavior to test, so its `project.json` intentionally has an empty `targets` block.
+
+The bundle DTOs (`BundleDefinitionDto`, `CollectionBundleDefinitionDto`, `EntrySelectionRuleDto`) still mirror core's `BundleDefinition` field for field, which is why `apps/api/src/app/mappers/bundle.mapper.ts` copies every field in both directions.
+
+---
+
+### Public surface
+
+Each library's [public surface](glossary.md#public-surface) is its `src/index.ts` barrel. The `domain` and `core` barrels list every export by name and group them with a one-line comment per group. They export only what a caller outside the library uses, plus the types in those names' signatures. Everything else is a module detail: it can stay exported from its own file for the library's specs, but not from the barrel.
+
+| Library | Barrel | Groups |
+|---|---|---|
+| `domain` | `libs/domain/src/index.ts` (69 names) | shared types, keys, staleness, status summary, ICU/Transloco, validation, terminology, references, tags, utilities. `index.spec.ts` pins the runtime export list. |
+| `core` | `libs/core/src/index.ts` (172 names) | operations, collection & config, `ResourceFolder`, read models, errors, operation parameter and result types. See [core-library.md](core-library.md#public-surface). |
+| `data-transfer` | `libs/data-transfer/src/index.ts` | `export *` of each DTO file. The library holds only DTOs, so every export is part of the contract. |
+
+`core` does not re-export `domain` names. A caller that needs `TranslationStatus`, `TokenCasing` or `ImportStrategy` imports it from `@simoncodes-ca/domain`.
 
 ---
 

@@ -1,60 +1,64 @@
 import { describe, it, expect } from 'vitest';
-import { findIcuArguments, compareIcuArguments } from './icu-arguments';
+import { compareIcuArguments } from './icu-arguments';
 
-describe('findIcuArguments', () => {
+/** The arguments a value interpolates, read back as the `missing` side of a comparison against plain text. */
+const argumentsOf = (value: string): ReadonlySet<string> =>
+  new Set(compareIcuArguments(value, 'plain text')?.missing ?? []);
+
+describe('compareIcuArguments — which arguments count', () => {
   it('returns an empty set for a value with no arguments', () => {
-    expect(findIcuArguments('No placeholders here')).toEqual(new Set());
+    expect(argumentsOf('No placeholders here')).toEqual(new Set());
   });
 
   it('finds a plain argument', () => {
-    expect(findIcuArguments('Folder {name}')).toEqual(new Set(['name']));
+    expect(argumentsOf('Folder {name}')).toEqual(new Set(['name']));
   });
 
   it('accepts Transloco syntax', () => {
-    expect(findIcuArguments('Folder {{ name }}')).toEqual(new Set(['name']));
+    expect(argumentsOf('Folder {{ name }}')).toEqual(new Set(['name']));
   });
 
   it('gives the same answer in either syntax', () => {
-    expect(findIcuArguments('Folder {{ name }}')).toEqual(findIcuArguments('Folder {name}'));
+    expect(argumentsOf('Folder {{ name }}')).toEqual(argumentsOf('Folder {name}'));
   });
 
   it('finds a formatted argument', () => {
-    expect(findIcuArguments('{count, number} files')).toEqual(new Set(['count']));
+    expect(argumentsOf('{count, number} files')).toEqual(new Set(['count']));
   });
 
   it('finds the argument a plural switches on', () => {
-    expect(findIcuArguments('{count, plural, =1 {1 file} other {# files}}')).toEqual(new Set(['count']));
+    expect(argumentsOf('{count, plural, =1 {1 file} other {# files}}')).toEqual(new Set(['count']));
   });
 
   it('finds arguments used only inside a branch', () => {
     const value = '{count, plural, =1 {1 file in {dir}} other {# files in {dir}}}';
-    expect(findIcuArguments(value)).toEqual(new Set(['count', 'dir']));
+    expect(argumentsOf(value)).toEqual(new Set(['count', 'dir']));
   });
 
   it('finds arguments nested through a select inside a plural', () => {
     const value = '{n, plural, =1 {{kind, select, a {{x}} other {{y}}}} other {#}}';
-    expect(findIcuArguments(value)).toEqual(new Set(['n', 'kind', 'x', 'y']));
+    expect(argumentsOf(value)).toEqual(new Set(['n', 'kind', 'x', 'y']));
   });
 
   it('excludes branch selectors', () => {
-    const args = findIcuArguments('{count, plural, =1 {one} one {one} few {few} other {many}}');
+    const args = argumentsOf('{count, plural, =1 {one} one {one} few {few} other {many}}');
     expect(args).toEqual(new Set(['count']));
   });
 
   it('excludes the octothorpe', () => {
-    expect(findIcuArguments('{count, plural, other {# items}}')).toEqual(new Set(['count']));
+    expect(argumentsOf('{count, plural, other {# items}}')).toEqual(new Set(['count']));
   });
 
   it('collapses a repeated argument', () => {
-    expect(findIcuArguments('{a} and {a} and {a}')).toEqual(new Set(['a']));
+    expect(argumentsOf('{a} and {a} and {a}')).toEqual(new Set(['a']));
   });
 
   it('returns an empty set for an unparseable value', () => {
-    expect(findIcuArguments('{unbalanced')).toEqual(new Set());
+    expect(argumentsOf('{unbalanced')).toEqual(new Set());
   });
 
   it('is case-sensitive', () => {
-    expect(findIcuArguments('Ordner {Name}')).toEqual(new Set(['Name']));
+    expect(argumentsOf('Ordner {Name}')).toEqual(new Set(['Name']));
   });
 });
 

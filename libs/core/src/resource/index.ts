@@ -1,9 +1,8 @@
-export * from './resource-entry';
-export * from './resource-entry-metadata';
-export * from './tracker-metadata';
-export * from './checksum';
-export * from './translation-helpers';
-export * from './add-resource';
-export * from './delete-resource';
-export * from './move-resource';
-export * from './edit-resource';
+// Resource operations: add, edit, delete and move one entry.
+
+export { type AddResourceOptions, type AddResourceParams, addResource } from './add-resource';
+export { type DeleteResourceParams, type DeleteResourceResult, deleteResource } from './delete-resource';
+export { type EditResourceOptions, type EditResourceResult, editResource } from './edit-resource';
+export { type MoveResourceParams, type MoveResourceResult, moveResource } from './move-resource';
+export type { ResourceEntryMetadata } from './resource-entry-metadata';
+export { createDefaultTranslations } from './translation-helpers';

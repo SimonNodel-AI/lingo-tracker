@@ -4,13 +4,13 @@ import {
   type ImportFormat,
   type ImportResult,
   type ImportRunOptions,
-  type ImportStrategy,
   importResources,
   loadPreferredTerminology,
   parseJsonImport,
   parseXliffImport,
   readEffectiveProtectedTerms,
 } from '@simoncodes-ca/core';
+import type { ImportStrategy } from '@simoncodes-ca/domain';
 import * as fs from 'fs';
 import * as path from 'path';
 import prompts from 'prompts';

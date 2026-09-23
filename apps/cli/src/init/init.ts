@@ -8,9 +8,9 @@ import {
   type LingoTrackerConfig,
   type LingoTrackerCollection,
   type TranslationConfig,
-  type TokenCasing,
   type BundleDefinition,
 } from '@simoncodes-ca/core';
+import type { TokenCasing } from '@simoncodes-ca/domain';
 import { getCwd, ConsoleFormatter, executePromptsWithFallback } from '../utils';
 
 const DEFAULT_BUNDLE_DIST = './src/assets/i18n';

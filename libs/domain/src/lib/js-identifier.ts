@@ -10,7 +10,7 @@
 export const JS_IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 /** ES2022 + TypeScript contextual keywords that cannot be used as bare identifiers in a const declaration. */
-export const JS_RESERVED_WORDS: ReadonlySet<string> = new Set([
+const JS_RESERVED_WORDS: ReadonlySet<string> = new Set([
   // ES2022 reserved words
   'break',
   'case',

@@ -9,8 +9,8 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { detectHierarchicalConflicts } from '@simoncodes-ca/domain';
-import { type BundleDefinition, hasTypeDistConfigured, type TokenCasing } from '../../config/bundle-definition';
+import { detectHierarchicalConflicts, type TokenCasing } from '@simoncodes-ca/domain';
+import { type BundleDefinition, hasTypeDistConfigured } from '../../config/bundle-definition';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { ResourceEntries } from '../../resource/resource-entry';
 import { type BundleKeyTrace, collectBundleData, getBundleOutputPath } from './generate-bundle';

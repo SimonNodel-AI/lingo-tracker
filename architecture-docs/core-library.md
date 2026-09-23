@@ -9,6 +9,7 @@ Return to [architecture README](README.md).
 ## Table of Contents
 
 - [Module Map](#module-map)
+- [Public Surface](#public-surface)
 - [Config and Collection Resolution](#config-and-collection-resolution)
 - [Error Model](#error-model)
 - [Resource CRUD Flows](#resource-crud-flows)
@@ -32,8 +33,8 @@ Return to [architecture README](README.md).
 
 ```
 libs/core/src/
-├── index.ts                      # Public barrel — re-exports all sub-modules
-├── constants.ts                  # Shared filenames (resource_entries.json, tracker_meta.json, etc.)
+├── index.ts                      # Public barrel — named exports grouped by role (see Public Surface)
+├── constants.ts                  # CONFIG_FILENAME, DEFAULT_CONFIG (public); resource/meta filenames (internal)
 │
 ├── config/                       # Config types used at the root of the package
 │   ├── lingo-tracker-config.ts   # LingoTrackerConfig interface
@@ -122,12 +123,12 @@ libs/core/src/
     │   ├── delete-folder.ts      # deleteFolder(): recursive removal
     │   └── move-folder.ts        # moveFolder(): rename + resource re-key
     │
-    ├── file-io/                  # Low-level JSON read/write helpers
+    ├── file-io/                  # Low-level JSON read/write helpers (internal; no barrel)
     │   ├── json-file-operations.ts  # readJsonFile(), writeJsonFile(), typed helpers
     │   └── directory-operations.ts  # ensureDirectoryExists()
     │
     └── errors/                   # Error messages and typed errors
-        ├── error-messages.ts     # ErrorMessages: static error string builders
+        ├── error-messages.ts     # ErrorMessages: static error string builders (internal)
         └── lingo-tracker-error.ts # LingoTrackerError and its typed subclasses (see Error Model)
 ```
 
@@ -140,13 +141,13 @@ graph TD
         API["api"]
     end
 
-    subgraph core["@simoncodes-ca/core (public surface)"]
+    subgraph core["@simoncodes-ca/core root modules"]
         RESOURCE["resource/\nadd · edit · delete · move"]
         COLLECTIONS["collections-manager/\nadd · delete · update"]
         CONFIG_ROOT["config/\nLingoTrackerConfig\nBundleDefinition\nTranslationConfig"]
     end
 
-    subgraph lib["core/lib/ (internal sub-modules)"]
+    subgraph lib["core/lib/ sub-modules"]
         BUNDLE["bundle/\ngenerateBundle"]
         EXPORT["export/\nrunExport"]
         IMPORT["import/\nparseJsonImport · parseXliffImport\nimportResources"]
@@ -161,7 +162,7 @@ graph TD
     end
 
     subgraph domain["@simoncodes-ca/domain (peer)"]
-        DOMAIN["validateKey · resolveResourceKey\nsplitResolvedKey · translocoToICU\nicuToTransloco · classifyICUContent\nshouldMarkStale · calculateChecksum"]
+        DOMAIN["validateKey · resolveResourceKey\nsplitResolvedKey · translocoToICU\nicuToTransloco · classifyICUContent\napplyBaseChange · recordTranslation"]
     end
 
     CLI --> RESOURCE
@@ -226,6 +227,23 @@ graph TD
 ```
 
 For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that these modules read and write, see [domain-and-data-model.md](domain-and-data-model.md).
+
+---
+
+## Public Surface
+
+`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 172 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
+
+| Group | What it holds |
+|---|---|
+| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`, `createDefaultTranslations`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition`, `validateBundleKey`, `validateBundleDefinition`, `getBundleOutputPath`, `hasTypeDistConfigured`. Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks, `loadResourcesFromCollections`. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
+| Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `BundleDefinition`, ...), and the protected-terms and preferred-terminology file readers and writers. |
+| ResourceFolder | `openResourceFolder`, `ResourceFolder` and the types in its methods, `resolveResourcePaths`. |
+| Read models | `loadResourceTree`, `extractSubtree`, `extractResourcesRecursively`, `searchTranslations`, `searchResourceTree`, `computeTreeFingerprint`, `treeFingerprintsMatch`, `reindexMutation` and their types. The API's [Collection Index](glossary.md#collection-index) is built from these. |
+| Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
+| Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
+
+Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the translation provider classes, the bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers such as `setupMockFs` (`collections-manager/locale-spec-helpers.ts`) are not in any barrel.
 
 ---
 

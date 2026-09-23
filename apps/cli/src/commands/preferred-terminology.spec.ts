@@ -1,7 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { clearPreferredTerminologyCache } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { preferredTerminologyCommand } from './preferred-terminology';
 
@@ -34,7 +33,6 @@ describe('preferredTerminologyCommand', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    clearPreferredTerminologyCache();
     projectDir = mkdtempSync(join(tmpdir(), 'lingo-preferred-terminology-'));
     filePath = join(projectDir, FILE_NAME);
     config = { baseLocale: 'en', locales: ['en', 'es'], collections: {} };

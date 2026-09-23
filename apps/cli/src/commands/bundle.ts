@@ -1,5 +1,6 @@
 import prompts from 'prompts';
-import type { LingoTrackerConfig, TokenCasing } from '@simoncodes-ca/core';
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { TokenCasing } from '@simoncodes-ca/domain';
 import { generateBundle, hasTypeDistConfigured } from '@simoncodes-ca/core';
 import { loadConfiguration, parseCommaSeparatedList, ConsoleFormatter, ErrorMessages } from '../utils';
 import { PromptCancelledError } from '../utils/report-error';

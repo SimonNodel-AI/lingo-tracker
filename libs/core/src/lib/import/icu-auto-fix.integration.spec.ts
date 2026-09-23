@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  autoFixICUPlaceholders,
-  hasICUPlaceholders,
-  extractICUPlaceholders,
-  validateICUSyntax,
-} from '@simoncodes-ca/domain';
+import { autoFixICUPlaceholders } from '@simoncodes-ca/domain';
 import { applyICUAutoFixToResources } from './apply-icu-auto-fix';
 import type { ImportedResource } from './types';
 
@@ -226,34 +221,6 @@ describe('ICU Auto-Fix Integration', () => {
 
       const result2 = autoFixICUPlaceholders(baseValue2, translatedValue2);
       expect(result2.value).toBe('Hola {name}');
-    });
-  });
-
-  describe('Utility Functions', () => {
-    it('hasICUPlaceholders should detect various placeholder types', () => {
-      expect(hasICUPlaceholders('Hello {name}')).toBe(true);
-      expect(hasICUPlaceholders('{count, plural, one {#} other {#}}')).toBe(true);
-      expect(hasICUPlaceholders('{gender, select, male {he} female {she}}')).toBe(true);
-      expect(hasICUPlaceholders('No placeholders')).toBe(false);
-      expect(hasICUPlaceholders("'{escaped}'")).toBe(false);
-    });
-
-    it('extractICUPlaceholders should extract all placeholder types', () => {
-      const result = extractICUPlaceholders('Hello {name}, you have {count, plural, one {# item} other {# items}}');
-
-      expect(result.success).toBe(true);
-      expect(result.placeholders).toHaveLength(2);
-      expect(result.placeholders[0].name).toBe('name');
-      expect(result.placeholders[0].type).toBe('simple');
-      expect(result.placeholders[1].name).toBe('count');
-      expect(result.placeholders[1].type).toBe('plural');
-    });
-
-    it('validateICUSyntax should validate syntax', () => {
-      expect(validateICUSyntax('Hello {name}')).toBe(true);
-      expect(validateICUSyntax('{count, plural, one {#} other {#}}')).toBe(true);
-      expect(validateICUSyntax('Hello {name')).toBe(false);
-      expect(validateICUSyntax('Hello name}')).toBe(false);
     });
   });
 

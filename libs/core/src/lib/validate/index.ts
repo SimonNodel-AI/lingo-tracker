@@ -1,6 +1,6 @@
-export * from './generate-validation-summary';
-export * from './types';
-export * from './validate-icu';
-export * from './validate-placeholders';
-export * from './validate-resources';
-export * from './validate-terminology';
+// The validate module: check a collection's resources and summarise the result.
+
+export { generateValidationSummary } from './generate-validation-summary';
+export type { ResourceValidationResult, ValidationOptions } from './types';
+export { validateResources } from './validate-resources';
+export { describePreferredTermRule } from './validate-terminology';
