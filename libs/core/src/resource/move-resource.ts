@@ -7,12 +7,17 @@ import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
 import { RESOURCE_ENTRIES_FILENAME } from '../constants';
+import type { Collection } from '../lib/config/open-collection';
 
 export interface MoveResourceParams {
-  source: string;
-  destination: string;
-  override?: boolean;
-  destinationTranslationsFolder?: string;
+  /** Full source key, or a prefix pattern ending with `*` (`common.buttons.*`). */
+  readonly source: string;
+  /** Full destination key; for a pattern, the prefix the matched keys move under. */
+  readonly destination: string;
+  /** Replace an existing destination entry. Default: false (the key is skipped with a warning). */
+  readonly override?: boolean;
+  /** Destination collection for a cross-collection move. Default: the source collection. */
+  readonly destinationCollection?: Collection;
 }
 
 export interface MoveResourceResult {
@@ -24,30 +29,29 @@ export interface MoveResourceResult {
 }
 
 /**
- * Moves resources from source to destination.
+ * Moves resources from source to destination, within a collection or into another one.
  * Supports single key move and wildcard pattern move (ending with *).
+ * Per-key failures are reported in the result, not thrown.
  */
-export async function moveResource(
-  translationsFolder: string,
-  params: MoveResourceParams,
-): Promise<MoveResourceResult> {
-  const { source, destination, override = false, destinationTranslationsFolder } = params;
-  const targetFolder = destinationTranslationsFolder || translationsFolder;
+export async function moveResource(collection: Collection, params: MoveResourceParams): Promise<MoveResourceResult> {
+  const { source, destination, override = false, destinationCollection = collection } = params;
 
   if (source.endsWith('*')) {
-    return moveResourcesByPattern(translationsFolder, source, destination, override, targetFolder);
+    return moveResourcesByPattern(collection, source, destination, override, destinationCollection);
   } else {
-    return moveSingleResource(translationsFolder, source, destination, override, targetFolder);
+    return moveSingleResource(collection, source, destination, override, destinationCollection);
   }
 }
 
 async function moveSingleResource(
-  sourceTranslationsFolder: string,
+  sourceCollection: Collection,
   sourceKey: string,
   destinationKey: string,
   override: boolean,
-  destinationTranslationsFolder: string,
+  destinationCollection: Collection,
 ): Promise<MoveResourceResult> {
+  const sourceTranslationsFolder = sourceCollection.translationsFolder;
+  const destinationTranslationsFolder = destinationCollection.translationsFolder;
   const result: MoveResourceResult = {
     movedCount: 0,
     warnings: [],
@@ -73,7 +77,7 @@ async function moveSingleResource(
 
   let sourceFolder: ResourceFolder;
   try {
-    sourceFolder = openResourceFolder(sourcePaths.folderPath);
+    sourceFolder = openResourceFolder(sourcePaths.folderPath, { baseLocale: sourceCollection.baseLocale });
   } catch {
     result.errors.push(`Failed to read source file for key: ${sourceKey}`);
     return result;
@@ -94,7 +98,9 @@ async function moveSingleResource(
   // 3. Perform Move — a lossless copy: values, comment, tags, checksums, and statuses
   // (including 'verified' and 'stale') are carried as they are. No auto-translation.
   try {
-    const destinationFolder = openResourceFolder(destinationPaths.folderPath);
+    const destinationFolder = openResourceFolder(destinationPaths.folderPath, {
+      baseLocale: destinationCollection.baseLocale,
+    });
     if (destinationFolder.has(destinationPaths.entryKey) && !override) {
       result.warnings.push(`Destination key already exists: ${destinationKey}. Use override option to force move.`);
       return result;
@@ -116,7 +122,7 @@ async function moveSingleResource(
 
   // Delete from source
   try {
-    result.mutations.push(...deleteResource(sourceTranslationsFolder, { keys: [sourceKey] }).mutations);
+    result.mutations.push(...deleteResource(sourceCollection, { keys: [sourceKey] }).mutations);
   } catch (error) {
     result.warnings.push(
       `Resource moved to ${destinationKey} but failed to delete source ${sourceKey}: ${(error as Error).message}`,
@@ -131,12 +137,13 @@ async function moveSingleResource(
 }
 
 async function moveResourcesByPattern(
-  sourceTranslationsFolder: string,
+  sourceCollection: Collection,
   pattern: string,
   destinationKey: string,
   override: boolean,
-  destinationTranslationsFolder: string,
+  destinationCollection: Collection,
 ): Promise<MoveResourceResult> {
+  const sourceTranslationsFolder = sourceCollection.translationsFolder;
   const result: MoveResourceResult = {
     movedCount: 0,
     warnings: [],
@@ -184,13 +191,7 @@ async function moveResourcesByPattern(
     const suffix = sourceKey.slice(cleanPrefix.length + 1); // +1 for dot
     const newKey = `${destinationKey}.${suffix}`;
 
-    const singleResult = await moveSingleResource(
-      sourceTranslationsFolder,
-      sourceKey,
-      newKey,
-      override,
-      destinationTranslationsFolder,
-    );
+    const singleResult = await moveSingleResource(sourceCollection, sourceKey, newKey, override, destinationCollection);
 
     result.movedCount += singleResult.movedCount;
     result.warnings.push(...singleResult.warnings);

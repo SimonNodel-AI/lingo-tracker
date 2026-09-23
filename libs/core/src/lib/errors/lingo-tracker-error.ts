@@ -142,6 +142,41 @@ export class ResourceNotFoundError extends LingoTrackerError {
   }
 }
 
+/** A resource already exists at this (resolved) key, and the operation does not overwrite it. */
+export class ResourceAlreadyExistsError extends LingoTrackerError {
+  readonly key: string;
+
+  constructor(key: string) {
+    super(ErrorMessages.resourceAlreadyExists(key), 'RESOURCE_ALREADY_EXISTS');
+    this.key = key;
+  }
+}
+
+/** No folder exists at this dot-delimited path (or the path is not a directory). */
+export class FolderNotFoundError extends LingoTrackerError {
+  readonly folderPath: string;
+
+  constructor(folderPath: string) {
+    super(ErrorMessages.folderNotFound(folderPath), 'FOLDER_NOT_FOUND');
+    this.folderPath = folderPath;
+  }
+}
+
+/** A folder move names a destination inside the folder being moved. */
+export class FolderMoveIntoDescendantError extends LingoTrackerError {
+  readonly sourceFolderPath: string;
+  readonly destinationFolderPath: string;
+
+  constructor(sourceFolderPath: string, destinationFolderPath: string) {
+    super(
+      ErrorMessages.folderMoveIntoDescendant(sourceFolderPath, destinationFolderPath),
+      'FOLDER_MOVE_INTO_DESCENDANT',
+    );
+    this.sourceFolderPath = sourceFolderPath;
+    this.destinationFolderPath = destinationFolderPath;
+  }
+}
+
 /** A segment of a dot-delimited folder path is malformed. */
 export class InvalidFolderPathError extends LingoTrackerError {
   readonly segment: string;
@@ -151,6 +186,18 @@ export class InvalidFolderPathError extends LingoTrackerError {
     super(ErrorMessages.invalidFolderSegment(part, segment), 'INVALID_FOLDER_PATH');
     this.part = part;
     this.segment = segment;
+  }
+}
+
+// --- Translation -------------------------------------------------------------
+
+/** An auto-translate operation was asked of a collection whose translation config is missing or disabled. */
+export class AutoTranslationDisabledError extends LingoTrackerError {
+  readonly collectionName: string;
+
+  constructor(collectionName: string) {
+    super(ErrorMessages.autoTranslationDisabled(collectionName), 'AUTO_TRANSLATION_DISABLED');
+    this.collectionName = collectionName;
   }
 }
 

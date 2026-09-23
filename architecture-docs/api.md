@@ -52,11 +52,11 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 
 | Method | Path | Purpose | Request DTO | Response DTO |
 |--------|------|---------|-------------|--------------|
-| `POST` | `/collections/:collectionName/resources` | Create one or more [resources](glossary.md#resource) (batch-aware) | `CreateResourceDto \| CreateResourceDto[]` | `CreateResourceResponseDto` |
-| `PATCH` | `/collections/:collectionName/resources` | Update a resource's base value, translations, comment, or tags | `UpdateResourceDto` | `UpdateResourceResponseDto` |
+| `POST` | `/collections/:collectionName/resources` | Create one or more [resources](glossary.md#resource) (batch-aware). Target locales without a supplied translation are seeded by the collection's rule ([locale seeding](glossary.md#locale-seeding)). The body has no `baseLocale`: the collection's base locale always applies. A translation in a locale the collection does not have answers 400. | `CreateResourceDto \| CreateResourceDto[]` | `CreateResourceResponseDto` |
+| `PATCH` | `/collections/:collectionName/resources` | Update a resource's base value, translations, comment, or tags. `key` is the full, existing key; `moveTo` (a folder path, `''` for the root) moves the entry there, 409 when the destination already has that entry key. | `UpdateResourceDto` | `UpdateResourceResponseDto` |
 | `DELETE` | `/collections/:collectionName/resources` | Delete one or more resources by key | `DeleteResourceDto` | `DeleteResourceResponseDto` |
 | `POST` | `/collections/:collectionName/resources/move` | Move or rename resources (single key or wildcard pattern, cross-collection supported) | `MoveResourceDto` | `MoveResourceResponseDto` |
-| `POST` | `/collections/:collectionName/resources/translate` | Auto-translate a single resource via the configured provider | `TranslateResourceDto` | `TranslateResourceResponseDto` |
+| `POST` | `/collections/:collectionName/resources/translate` | Auto-translate a single resource via the configured provider (422 when the collection has auto-translation off) | `TranslateResourceDto` | `TranslateResourceResponseDto` |
 | `GET` | `/collections/:collectionName/resources/tree` | Fetch the resource [tree](glossary.md#resource-tree) (or subtree) from the Collection Index | query: `path`, `includeNested` | `ResourceTreeDto \| TreeStatusResponseDto` |
 | `GET` | `/collections/:collectionName/resources/cache/status` | Poll the [Collection Index](glossary.md#collection-index) state (starts indexing) | — | `CacheStatusDto` |
 | `GET` | `/collections/:collectionName/resources/search` | Full-text search across the collection | query: `SearchTranslationsDto` | `SearchResultsDto` |
@@ -68,8 +68,8 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 | Method | Path | Purpose | Request DTO | Response DTO |
 |--------|------|---------|-------------|--------------|
 | `POST` | `/collections/:collectionName/folders` | Create a [folder](glossary.md#folder) | `CreateFolderDto` | `CreateFolderResponseDto` |
-| `DELETE` | `/collections/:collectionName/folders` | Delete a folder and all its contents | `DeleteFolderDto` | `DeleteFolderResponseDto` |
-| `POST` | `/collections/:collectionName/folders/move` | Move a folder within or across collections | `MoveFolderDto` | `MoveFolderResponseDto` |
+| `DELETE` | `/collections/:collectionName/folders` | Delete a folder and all its contents (404 when it does not exist, 400 for a malformed path) | `DeleteFolderDto` | `DeleteFolderResponseDto` |
+| `POST` | `/collections/:collectionName/folders/move` | Move a folder within or across collections (400 for a malformed path or a move into its own descendant, 404 for a missing source; per-resource failures come back in `errors`) | `MoveFolderDto` | `MoveFolderResponseDto` |
 
 ### Locales
 
@@ -119,7 +119,6 @@ graph TD
         end
 
         subgraph mappers["Mappers"]
-            RESMAP["resource.mapper\nCreateResourceDto → AddResourceParams"]
             TREEMP["resource-tree.mapper\nResourceTreeNode → ResourceTreeDto\nResourceTreeEntry → ResourceSummaryDto"]
             COLMAP["collection.mapper\nLingoTrackerCollectionDto ↔ LingoTrackerCollection"]
             CFGMAP["config.mapper\nLingoTrackerConfig → LingoTrackerConfigDto"]
@@ -147,7 +146,6 @@ graph TD
     COLLC --> CONFIGS
     CONFIGC --> CONFIGS
 
-    RESC --> RESMAP
     RESC --> TREEMP
     RESC --> SRCHMAP
     FOLDC --> TREEMP
@@ -168,7 +166,7 @@ graph TD
     style core fill:#d4edda,stroke:#28a745,color:#000
 ```
 
-Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and pass the `mutations` of every successful core write to `CollectionIndex.apply()`. Controllers do not catch core errors; the global exception filter maps them (see [Error Mapping](#error-mapping)).
+Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and pass the `mutations` of every successful core write to `CollectionIndex.apply()`. Controllers do not catch core errors; the global exception filter maps them (see [Error Mapping](#error-mapping)). The resource and folder handlers pass the opened `Collection` (and, for a cross-collection move, the one `openDestinationCollection()` returns) to core as the first argument and copy the DTO fields through; which locales get what on create or edit is core's [locale seeding](glossary.md#locale-seeding), not the controller's.
 
 **Read-only enforcement.** `WritableCollectionGuard` (`collections/guards/writable-collection.guard.ts`) is applied at the class level to the `Resources`, `Locales`, and `Folders` controllers. For any non-`GET` request it reads the `:collectionName` route param, opens the collection with core `openCollection(config, name, { writable: true })`, and maps `ReadOnlyCollectionError` to `403 Forbidden` (unknown collections pass through so the controller returns its 404). This is the single API choke-point for read-only enforcement. The `Collections` controller is intentionally **not** guarded: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even for read-only collections, since the lock protects resources, not the registration. On create, the controller defaults `readOnly` to `true` for `node_modules` paths (via the `isUnderNodeModules` domain helper) when the DTO omits it.
 
@@ -181,10 +179,11 @@ Controllers are the only layer that knows HTTP. They read the config from `Confi
 | Thrown | Status | Body `message` |
 |---|---|---|
 | `HttpException` (thrown by a controller, guard, or `ConfigService`) | its own | its own |
-| `CollectionNotFoundError`, `ResourceNotFoundError`, `BundleNotFoundError` | 404 (`NotFoundException`) | error message |
+| `CollectionNotFoundError`, `ResourceNotFoundError`, `FolderNotFoundError`, `BundleNotFoundError` | 404 (`NotFoundException`) | error message |
 | `ReadOnlyCollectionError` | 403 (`ForbiddenException`) | error message |
-| `BundleAlreadyExistsError` | 409 (`ConflictException`) | error message |
-| `InvalidFolderPathError` | 400 (`BadRequestException`) | `Validation error: <message>` |
+| `BundleAlreadyExistsError`, `ResourceAlreadyExistsError` | 409 (`ConflictException`) | error message |
+| `AutoTranslationDisabledError` | 422 (`UnprocessableEntityException`) | error message |
+| `InvalidFolderPathError`, `FolderMoveIntoDescendantError` | 400 (`BadRequestException`) | `Validation error: <message>` |
 | `InvalidResourceKeyError`, `InvalidLocaleError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError`, `InvalidBundleDefinitionError` | 400 (`BadRequestException`) | error message |
 | `TranslationError` with code `INVALID_REQUEST` | 400 (`BadRequestException`) | `Translation provider error: <message>` |
 | `TranslationError` with code `MISSING_API_KEY`, `UNKNOWN_PROVIDER`, or `AUTH_ERROR` (server misconfiguration) | 500 (`InternalServerErrorException`) | `Translation provider error: <message>` |
@@ -200,7 +199,6 @@ Statuses that are kept from before the filter, although they do not match the cl
 - The `Collections` and `Config` controllers keep their own catch that answers **400** for every failure. So `CollectionNotFoundError` from `DELETE`/`PUT /collections/:name` is 400 (not 404), `CollectionAlreadyExistsError` is 400, and `PreferredTerminologyValidationError` is 400 with `{ message, errors }`. These errors never reach the filter.
 - The `Bundles` controller answers **400** for an untyped failure (the other controllers answer 500).
 - Route-level resolution keeps its own Nest exceptions, because the messages are route-specific: `openRouteCollection` / `openDestinationCollection` (404 `Collection "x" not found` / `Destination collection "x" not found`, 403 read-only), `WritableCollectionGuard` (403), and `ConfigService` (404 `Configuration file not found`, 500 `Invalid configuration file format` / `Failed to read configuration file`).
-- `POST /collections/:name/folders/move` still answers 400 when `moveFolder` reports an error whose text has `Invalid`, `not found`, `circular`, or `descendant` and nothing moved. `moveFolder` reports failures as result strings, not typed errors.
 
 ---
 
@@ -279,10 +277,12 @@ reindex or failed patch
 
 Each core write returns `mutations: ResourceMutation[]` (see [core-library.md](core-library.md) and the [glossary](glossary.md#resource-mutation)), which describe what changed on disk. The controller calls `index.apply(result.mutations)`. The index finds every entry whose translations folder is the mutation's `translationsFolder`, so a cross-collection move updates the source and the destination with no controller logic.
 
+Mutations come back only from a write that returns. A core write that throws part-way returns no mutations, even when it already changed the disk. For example, `editResource` with a `moveTo` writes the destination folder before it removes the source entry; if the source save then throws, the destination entry is on disk and the index was not told. The controller applies nothing, so the index is out of date until its next revalidation: the first read after the throttle interval (`LINGO_TRACKER_REVALIDATE_INTERVAL_MS`) finds that the disk fingerprint no longer matches, drops the collection, and indexes it again. There is no rollback. (One gap: if a deferred fingerprint refresh from another request's own write runs after the partial write, the index adopts that fingerprint and does not see the change until the next outside change or restart.)
+
 | Mutation | Returned by | Index action |
 |---|---|---|
-| `upsert` (key, entry) | `addResource`, `editResource`, `translateExistingResource`, `moveResource` / `moveFolder` (destination) | Insert or replace the entry. Missing folders are created, as on disk. |
-| `remove` (key) | `deleteResource`, `moveResource` / `moveFolder` (source) | Remove the entry. Missing entry → drop the collection. |
+| `upsert` (key, entry) | `addResource`, `editResource` (at the destination after a `moveTo`), `translateExistingResource`, `moveResource` / `moveFolder` (destination) | Insert or replace the entry. Missing folders are created, as on disk. |
+| `remove` (key) | `deleteResource`, `moveResource` / `moveFolder` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → drop the collection. |
 | `add-folder` (path) | `createFolder` | Create the folder node (and missing parents). |
 | `remove-folder` (path) | `deleteFolder`, `moveFolder` (deleted source folder) | Remove the folder node. Missing folder → drop the collection. |
 | `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection` | Drop the collection. Every folder's metadata changed. |
@@ -370,13 +370,12 @@ sequenceDiagram
 
 ## Mapper Layer
 
-The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. All transformation happens in `apps/api/src/app/mappers/`. No controller accesses a raw domain model object directly in its response, and no core function receives a DTO as its argument.
+The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. All transformation happens in `apps/api/src/app/mappers/`, except the create and update requests: their fields map one to one onto the core parameters, so the resources controller copies them inline. No controller accesses a raw domain model object directly in its response, and no core function receives a DTO as its argument.
 
 For the entity types that mappers transform, see [domain-and-data-model.md](domain-and-data-model.md).
 
 | Mapper file | Direction | Key transformation |
 |-------------|-----------|-------------------|
-| `resource.mapper.ts` | `CreateResourceDto` → `AddResourceParams` | Flat field-for-field projection; adds `allLocales` when auto-translation is active |
 | `resource-tree.mapper.ts` | `ResourceTreeNode` → `ResourceTreeDto` | Flattens `folderPathSegments[]` array to a dot-delimited `path` string; merges `source` (base locale value) into the `translations` record keyed by the base locale string; extracts per-locale `status` from the `metadata` record |
 | `resource-tree.mapper.ts` | `ResourceTreeEntry` → `ResourceSummaryDto` | Identifies the base locale by the absence of `status` and `baseChecksum` in the metadata entry; produces a flat `{ key, translations, status, comment, tags, inheritedTags }` shape. The `inheritedTags` field carries the parent collection's `tags` so the UI can render them distinctly without re-reading the config. |
 | `collection.mapper.ts` | `LingoTrackerCollectionDto` ↔ `LingoTrackerCollection` | Bidirectional; shallow clone of `locales[]` and `tags[]` arrays to prevent aliasing. Carries the `protectedTermsFile` setting in both directions. Drops resolved `protectedTerms` on the way back to config, because terms live in a file and the controller writes them there separately. |

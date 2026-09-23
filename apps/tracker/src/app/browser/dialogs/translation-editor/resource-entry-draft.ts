@@ -292,9 +292,11 @@ export function removeTag(tags: readonly string[], tag: string, inherited: reado
 
 /**
  * The create request. Every translation typed alongside the base value goes in
- * as `new`, whatever its status pill says: nothing has been reviewed yet.
+ * as `new`, whatever its status pill says: nothing has been reviewed yet. The
+ * server seeds the locales left empty by the collection's rule (auto-translated,
+ * or a copy of the base value as `new`).
  */
-export function toCreateDto(draft: ResourceEntryDraft, baseLocale: string): CreateResourceDto {
+export function toCreateDto(draft: ResourceEntryDraft): CreateResourceDto {
   const translations = draft.translations
     .filter((translation) => translation.value.trim().length > 0)
     .map((translation) => ({ locale: translation.locale, value: translation.value, status: 'new' as const }));
@@ -304,7 +306,6 @@ export function toCreateDto(draft: ResourceEntryDraft, baseLocale: string): Crea
     baseValue: draft.baseValue,
     comment: draft.comment.trim() || undefined,
     tags: draft.tags.length > 0 ? [...draft.tags] : undefined,
-    baseLocale,
     translations: translations.length > 0 ? translations : undefined,
   };
 }
@@ -322,10 +323,10 @@ export function editedLocales(draft: ResourceEntryDraft, original: ResourceSumma
 }
 
 /**
- * The update request. The key names the entry where it lives now. A change to a
- * non-root folder travels as `targetFolder`. A change to the collection root is
- * sent without `targetFolder`, as it always has been, so the server edits the
- * entry where it is. Tags are always sent, so removing the last one clears them.
+ * The update request. The key is the entry's full key where it lives now. A
+ * change of folder, the collection root included, travels as `moveTo` (the
+ * destination folder; '' for the root). Tags are always sent, so removing the
+ * last one clears them.
  */
 export function toUpdateDto(draft: ResourceEntryDraft, original: OriginalEntry): UpdateResourceDto {
   const dto: UpdateResourceDto = {
@@ -335,8 +336,8 @@ export function toUpdateDto(draft: ResourceEntryDraft, original: OriginalEntry):
     tags: [...draft.tags],
   };
 
-  if (draft.folderPath && draft.folderPath !== original.folderPath) {
-    dto.targetFolder = draft.folderPath;
+  if (draft.folderPath !== original.folderPath) {
+    dto.moveTo = draft.folderPath;
   }
 
   const locales = editedLocales(draft, original.resource);

@@ -311,8 +311,8 @@ The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autoc
 | `folderEntryKeys(folderPath, known)` / `collisionFor(key, folderPath, known, ownKey?)` | Which entry keys a folder holds, from three sources in order: the expanded folder tree, the folder the browser shows, then folders the dialog fetched. Nested keys (with a dot) are not entries of the folder. The match is exact and case-sensitive, the same as `addResource`. The entry being edited never collides with itself. |
 | `contextTree(input, moreLabel)` | The "Where it lands" tree: the target folder among its siblings, and an 8-entry window of its entries around the key. The remaining entries are one "more" row. |
 | `addTag` / `removeTag` | Tag list operations. Tags are normalized with `normalizeTag`. Inherited tags cannot be removed. |
-| `toCreateDto(draft, baseLocale)` | The create request. Every typed translation is sent with status `new`. |
-| `toUpdateDto(draft, original)` / `editedLocales` | The update request. A locale is sent when it has a value or when its status changed. |
+| `toCreateDto(draft)` | The create request. Every typed translation is sent with status `new`. Locales left empty are not sent; the server seeds them by the collection's rule ([locale seeding](glossary.md#locale-seeding)). The request has no base locale: the collection's applies. |
+| `toUpdateDto(draft, original)` / `editedLocales` | The update request. `key` is the entry's full key where it lives now. A change of folder (the collection root included) is sent as `moveTo`, the destination folder. A locale is sent when it has a value or when its status changed. |
 | `hasUnsavedChanges(draft, initial, fieldsEdited)` | Closing loses work when a form field was edited, the folder moved, or the tags changed. |
 
 The key field validator is `segmentValidator` (`shared/validators/segment.validator.ts`). It uses the domain `isValidSegment` rule and reports under the `pattern` error key. The bundle name and the inline new-folder name use the same validator. The folder filter in the location popover uses `filterFolderTree` from `browser/store/folder-tree.utils.ts`, the same function as `BrowserStore.filteredFolders`.
@@ -330,13 +330,13 @@ All UI writes of a resource entry go through `withEntryWritesFeature` on `Browse
 | Method | Caller | After a successful write |
 |---|---|---|
 | `createResource(collectionName, dto)` | `TranslationEditorDialog` (create) | Reloads the current folder with `selectFolder`. |
-| `updateResource(collectionName, dto)` | `TranslationEditorDialog` (edit) | Patches the entry in place. If the DTO has a `targetFolder` property, removes the entry instead. |
+| `updateResource(collectionName, dto)` | `TranslationEditorDialog` (edit) | Patches the entry in place. If the DTO has a `moveTo` property, removes the entry instead (it moved). |
 | `deleteResource(collectionName, fullKey)` | `withItemActions.deleteTranslation` | Removes the entry when `entriesDeleted > 0`. |
 | `translateResource(collectionName, fullKey)` | `withItemActions.translateResource` | Patches the entry in place. |
 
 Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling, for example the dialog's 409 conflict dialog and its 400 and 404 messages. The store changes its caches only on success.
 
-`toUpdateDto` includes `targetFolder` only when the entry moves to a different non-root folder. A move to the collection root is sent without `targetFolder`, as before this change. The server then edits the entry in its current folder, so the store patches the row in place. The store rule and the DTO rule use the same test: the `targetFolder` property is present or absent.
+`toUpdateDto` includes `moveTo` only when the entry changes folder, and `''` means the collection root. The server edits the entry, then moves it there (core `editResource` with `moveTo`), so the store drops the row. The store rule and the DTO rule use the same test: the `moveTo` property is present or absent.
 
 The two caches use different keys. `translations` uses the key relative to `currentFolderPath`, so a nested entry keeps its sub-path (`dialog.title`). `searchResults` uses the full key. The store converts the key with `listKeyFor` in one place. The API returns a bare entry key, so the store also replaces the key of the returned resource. Callers do not convert keys.
 

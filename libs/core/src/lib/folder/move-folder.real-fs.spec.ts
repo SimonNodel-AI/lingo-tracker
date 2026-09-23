@@ -1,10 +1,25 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { addResource } from '../../resource/add-resource';
+import type { Collection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
 import { moveFolder } from './move-folder';
+
+function collection(translationsFolder: string): Collection {
+  return {
+    name: 'main',
+    translationsFolder,
+    baseLocale: 'en',
+    locales: ['en'],
+    targetLocales: [],
+    translationConfig: undefined,
+    tags: [],
+    readOnly: false,
+    config: { translationsFolder },
+  };
+}
 
 /**
  * Regression: a folder that could not be read (malformed tracker_meta.json) was silently skipped
@@ -34,7 +49,10 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
     writeFolder(JSON.stringify({ ok: { en: { checksum: 'x' } } }), 'apps', 'good');
     writeFolder('{ not json', 'apps', 'bad');
 
-    const result = await moveFolder(root, { sourceFolderPath: 'apps', destinationFolderPath: 'shared' });
+    const result = await moveFolder(collection(root), {
+      sourceFolderPath: 'apps',
+      destinationFolderPath: 'shared',
+    });
 
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]).toContain('apps.bad');
@@ -48,7 +66,10 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
   it('does not delete a source folder whose only resources are unreadable', async () => {
     writeFolder('{ not json', 'apps', 'bad');
 
-    const result = await moveFolder(root, { sourceFolderPath: 'apps.bad', destinationFolderPath: 'shared' });
+    const result = await moveFolder(collection(root), {
+      sourceFolderPath: 'apps.bad',
+      destinationFolderPath: 'shared',
+    });
 
     expect(result.errors).toHaveLength(1);
     expect(result.foldersDeleted).toBe(0);
@@ -65,9 +86,9 @@ describe('moveFolder with a destination collision (real fs)', () => {
 
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'move-folder-collision-'));
-    await addResource(root, { key: 'src.a', baseValue: 'Source A' });
-    await addResource(root, { key: 'src.b', baseValue: 'Source B' });
-    await addResource(root, { key: 'dst.src.a', baseValue: 'Existing A' });
+    await addResource(collection(root), { key: 'src.a', baseValue: 'Source A' });
+    await addResource(collection(root), { key: 'src.b', baseValue: 'Source B' });
+    await addResource(collection(root), { key: 'dst.src.a', baseValue: 'Existing A' });
   });
 
   afterEach(() => {
@@ -75,7 +96,11 @@ describe('moveFolder with a destination collision (real fs)', () => {
   });
 
   it('moves the other resources, keeps the source folder with the skipped one, and reports matching mutations', async () => {
-    const result = await moveFolder(root, { sourceFolderPath: 'src', destinationFolderPath: 'dst', override: false });
+    const result = await moveFolder(collection(root), {
+      sourceFolderPath: 'src',
+      destinationFolderPath: 'dst',
+      override: false,
+    });
 
     expect(result.movedCount).toBe(1);
     expect(result.foldersDeleted).toBe(0);

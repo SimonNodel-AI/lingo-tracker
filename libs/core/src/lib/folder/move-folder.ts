@@ -2,9 +2,14 @@ import { existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
-import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
+import type { Collection } from '../config/open-collection';
+import {
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
+  InvalidFolderPathError,
+} from '../errors/lingo-tracker-error';
 import { moveResource, type MoveResourceResult } from '../../resource/move-resource';
-import { deleteFolder, type DeleteFolderResult } from './delete-folder';
+import { deleteFolder } from './delete-folder';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 
@@ -15,8 +20,8 @@ export interface MoveFolderParams {
   readonly destinationFolderPath: string;
   /** If true, override existing resources at destination */
   readonly override?: boolean;
-  /** Optional destination translations folder for cross-collection moves */
-  readonly destinationTranslationsFolder?: string;
+  /** Destination collection for a cross-collection move. Default: the source collection. */
+  readonly destinationCollection?: Collection;
   /**
    * When true, the source folder is nested under the destination as a child folder.
    * When false, uses depth-based rename/nest heuristic (legacy behavior).
@@ -48,37 +53,30 @@ export interface MoveFolderResult {
  * 4. Moves each resource to the corresponding destination path
  * 5. Deletes the source folder once every resource in it was moved (otherwise keeps it and warns)
  *
- * @param translationsFolder - Root translations folder path
+ * Bad input throws; failures of individual resources are reported in the result.
+ *
+ * @param collection - The collection the source folder is in
  * @param params - Folder move parameters
  * @returns Object containing move statistics and any warnings/errors
+ * @throws {InvalidFolderPathError} A folder path has a malformed segment.
+ * @throws {FolderMoveIntoDescendantError} The destination is inside the source folder (same collection).
+ * @throws {FolderNotFoundError} The source folder does not exist.
  *
  * @example
  * ```typescript
  * // Move a folder with all its contents
- * const result = moveFolder('/app/translations', {
+ * const result = await moveFolder(collection, {
  *   sourceFolderPath: 'apps.common.buttons',
  *   destinationFolderPath: 'apps.shared'
  * });
  * // Result: { movedCount: 5, foldersDeleted: 1, warnings: [], errors: [] }
  * // Resources like 'apps.common.buttons.ok' become 'apps.shared.buttons.ok'
- *
- * // Prevent circular dependency
- * const result = moveFolder('/app/translations', {
- *   sourceFolderPath: 'apps.common',
- *   destinationFolderPath: 'apps.common.nested'
- * });
- * // Result: { movedCount: 0, foldersDeleted: 0, warnings: [], errors: ['Cannot move...'] }
  * ```
  */
-export async function moveFolder(translationsFolder: string, params: MoveFolderParams): Promise<MoveFolderResult> {
-  const {
-    sourceFolderPath,
-    destinationFolderPath,
-    override = false,
-    destinationTranslationsFolder,
-    nestUnderDestination = true,
-  } = params;
-  const targetFolder = destinationTranslationsFolder || translationsFolder;
+export async function moveFolder(collection: Collection, params: MoveFolderParams): Promise<MoveFolderResult> {
+  const { sourceFolderPath, destinationFolderPath, override = false, nestUnderDestination = true } = params;
+  const destinationCollection = params.destinationCollection ?? collection;
+  const sameCollection = destinationCollection.translationsFolder === collection.translationsFolder;
 
   const result: MoveFolderResult = {
     movedCount: 0,
@@ -88,177 +86,154 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
     mutations: [],
   };
 
-  try {
-    // Validate folder path segments and split for later use
-    const sourceFolderSegments = sourceFolderPath.split('.');
-    const destinationFolderSegments = destinationFolderPath.split('.');
+  // Validate folder path segments and split for later use
+  const sourceFolderSegments = sourceFolderPath.split('.');
+  const destinationFolderSegments = destinationFolderPath.split('.');
 
-    for (const segment of sourceFolderSegments) {
+  for (const segment of sourceFolderSegments) {
+    if (!isValidSegment(segment)) {
+      throw new InvalidFolderPathError('source folder path', segment);
+    }
+  }
+
+  // Skip validation if destination is empty (root-level move)
+  if (destinationFolderPath !== '') {
+    for (const segment of destinationFolderSegments) {
       if (!isValidSegment(segment)) {
-        throw new InvalidFolderPathError('source folder path', segment);
+        throw new InvalidFolderPathError('destination folder path', segment);
       }
     }
+  }
 
-    // Skip validation if destination is empty (root-level move)
-    if (destinationFolderPath !== '') {
-      for (const segment of destinationFolderSegments) {
-        if (!isValidSegment(segment)) {
-          throw new InvalidFolderPathError('destination folder path', segment);
-        }
-      }
-    }
-
-    // Check for same-folder move (no-op)
-    if (sourceFolderPath === destinationFolderPath && !destinationTranslationsFolder) {
-      result.warnings.push('Source and destination are the same. No move performed.');
-      return result;
-    }
-
-    // Check for circular dependency: prevent moving folder into its own descendant
-    // If destination starts with source + '.', it's a descendant
-    if (destinationFolderPath.startsWith(`${sourceFolderPath}.`) && !destinationTranslationsFolder) {
-      result.errors.push('Cannot move folder into its own descendant');
-      return result;
-    }
-
-    // When nesting, check if destination is the source's parent (would be a no-op)
-    if (nestUnderDestination && !destinationTranslationsFolder) {
-      const sourceParentPath = sourceFolderSegments.slice(0, -1).join('.');
-      if (sourceParentPath === destinationFolderPath) {
-        result.warnings.push('Folder is already at this location. No move performed.');
-        return result;
-      }
-    }
-
-    // Convert dot-delimited paths to filesystem paths
-    const sourceFolderFsPath = sourceFolderSegments.length
-      ? join(translationsFolder, ...sourceFolderSegments)
-      : translationsFolder;
-    const absoluteSourcePath = resolve(sourceFolderFsPath);
-
-    // Check if source folder exists
-    if (!existsSync(absoluteSourcePath)) {
-      result.errors.push(`Source folder not found: ${sourceFolderPath}`);
-      return result;
-    }
-
-    // Verify it's a directory
-    const stats = statSync(absoluteSourcePath);
-    if (!stats.isDirectory()) {
-      result.errors.push(`Source path is not a directory: ${sourceFolderPath}`);
-      return result;
-    }
-
-    // Extract all resource keys from the source folder tree
-    const { keys: resourceKeys, errors: enumerationErrors } = extractAllResourceKeysFromFolder(
-      absoluteSourcePath,
-      sourceFolderPath,
-    );
-
-    // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
-    if (enumerationErrors.length > 0) {
-      result.errors.push(...enumerationErrors);
-      return result;
-    }
-
-    if (resourceKeys.length === 0) {
-      result.warnings.push('No resources found in source folder. Nothing to move.');
-      // Still delete the empty folder
-      const deleteResult = deleteFolder(translationsFolder, { folderPath: sourceFolderPath });
-      result.mutations.push(...deleteResult.mutations);
-      if (deleteResult.deleted) {
-        result.foldersDeleted++;
-      } else if (deleteResult.error) {
-        result.errors.push(`Failed to delete empty source folder: ${deleteResult.error}`);
-      }
-      return result;
-    }
-
-    // Move each resource
-    // Calculate depth once for all resources
-    const sourceDepth = sourceFolderSegments.length;
-    const destDepth = destinationFolderSegments.length;
-    const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
-    // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
-    const keptKeys: string[] = [];
-
-    for (const sourceKey of resourceKeys) {
-      // Calculate destination key by replacing source folder prefix with destination folder prefix
-      //
-      // When nestUnderDestination is true (default):
-      // - ALWAYS append source folder name to destination
-      // - testdata.foo.bar + common => common.testdata.foo.bar
-      // - data.testdata.foo + common => common.testdata.foo
-      // - testdata.foo + "" (root) => testdata.foo
-
-      // Extract the relative suffix after the source folder
-      const suffix = sourceKey.slice(sourceFolderPath.length);
-      // If sourceKey === sourceFolderPath exactly, suffix will be empty
-      // Otherwise suffix will start with '.'
-
-      let destinationKey: string;
-      if (nestUnderDestination) {
-        // always nest the source folder under destination
-        const sourceFolderName = lastSourceSegment;
-        if (destinationFolderPath) {
-          destinationKey = suffix
-            ? `${destinationFolderPath}.${sourceFolderName}${suffix}`
-            : `${destinationFolderPath}.${sourceFolderName}`;
-        } else {
-          // Root-level move: just use source folder name + suffix
-          destinationKey = suffix ? `${sourceFolderName}${suffix}` : sourceFolderName;
-        }
-      } else {
-        // depth-based RENAME/NEST logic
-        if (destDepth === sourceDepth) {
-          // Same depth: RENAME - replace entire source path with destination
-          // apps.buttons.ok -> apps.actions becomes apps.actions.ok
-          destinationKey = suffix ? `${destinationFolderPath}${suffix}` : destinationFolderPath;
-        } else {
-          // Different depth: NEST - append last segment of source to destination
-          // apps.common.buttons.ok -> apps.shared becomes apps.shared.buttons.ok
-          destinationKey = suffix
-            ? `${destinationFolderPath}.${lastSourceSegment}${suffix}`
-            : `${destinationFolderPath}.${lastSourceSegment}`;
-        }
-      }
-
-      const moveResult: MoveResourceResult = await moveResource(translationsFolder, {
-        source: sourceKey,
-        destination: destinationKey,
-        override,
-        destinationTranslationsFolder: targetFolder,
-      });
-
-      result.movedCount += moveResult.movedCount;
-      result.warnings.push(...moveResult.warnings);
-      result.errors.push(...moveResult.errors);
-      result.mutations.push(...moveResult.mutations);
-      if (moveResult.movedCount === 0) {
-        keptKeys.push(sourceKey);
-      }
-    }
-
-    if (keptKeys.length > 0) {
-      result.warnings.push(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
-    }
-
-    // Only delete the source folder when every resource in it was moved
-    if (keptKeys.length === 0 && result.errors.length === 0) {
-      const deleteResult: DeleteFolderResult = deleteFolder(translationsFolder, { folderPath: sourceFolderPath });
-      result.mutations.push(...deleteResult.mutations);
-      if (deleteResult.deleted) {
-        result.foldersDeleted++;
-      } else if (deleteResult.error) {
-        result.warnings.push(`Resources moved but failed to delete source folder: ${deleteResult.error}`);
-      }
-    }
-
-    return result;
-  } catch (error) {
-    result.errors.push(error instanceof Error ? error.message : String(error));
+  // Check for same-folder move (no-op)
+  if (sourceFolderPath === destinationFolderPath && sameCollection) {
+    result.warnings.push('Source and destination are the same. No move performed.');
     return result;
   }
+
+  // Prevent moving a folder into its own descendant
+  if (destinationFolderPath.startsWith(`${sourceFolderPath}.`) && sameCollection) {
+    throw new FolderMoveIntoDescendantError(sourceFolderPath, destinationFolderPath);
+  }
+
+  // When nesting, check if destination is the source's parent (would be a no-op)
+  if (nestUnderDestination && sameCollection) {
+    const sourceParentPath = sourceFolderSegments.slice(0, -1).join('.');
+    if (sourceParentPath === destinationFolderPath) {
+      result.warnings.push('Folder is already at this location. No move performed.');
+      return result;
+    }
+  }
+
+  const absoluteSourcePath = resolve(join(collection.translationsFolder, ...sourceFolderSegments));
+  if (!existsSync(absoluteSourcePath) || !statSync(absoluteSourcePath).isDirectory()) {
+    throw new FolderNotFoundError(sourceFolderPath);
+  }
+
+  // Extract all resource keys from the source folder tree
+  const { keys: resourceKeys, errors: enumerationErrors } = extractAllResourceKeysFromFolder(
+    absoluteSourcePath,
+    sourceFolderPath,
+  );
+
+  // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
+  if (enumerationErrors.length > 0) {
+    result.errors.push(...enumerationErrors);
+    return result;
+  }
+
+  if (resourceKeys.length === 0) {
+    result.warnings.push('No resources found in source folder. Nothing to move.');
+    // Still delete the empty folder
+    try {
+      result.mutations.push(...deleteFolder(collection, { folderPath: sourceFolderPath }).mutations);
+      result.foldersDeleted++;
+    } catch (error) {
+      result.errors.push(`Failed to delete empty source folder: ${errorMessage(error)}`);
+    }
+    return result;
+  }
+
+  // Calculate depth once for all resources
+  const sourceDepth = sourceFolderSegments.length;
+  const destDepth = destinationFolderSegments.length;
+  const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
+  // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
+  const keptKeys: string[] = [];
+
+  for (const sourceKey of resourceKeys) {
+    // Calculate destination key by replacing source folder prefix with destination folder prefix
+    //
+    // When nestUnderDestination is true (default):
+    // - ALWAYS append source folder name to destination
+    // - testdata.foo.bar + common => common.testdata.foo.bar
+    // - data.testdata.foo + common => common.testdata.foo
+    // - testdata.foo + "" (root) => testdata.foo
+
+    // Extract the relative suffix after the source folder
+    const suffix = sourceKey.slice(sourceFolderPath.length);
+    // If sourceKey === sourceFolderPath exactly, suffix will be empty
+    // Otherwise suffix will start with '.'
+
+    let destinationKey: string;
+    if (nestUnderDestination) {
+      // always nest the source folder under destination
+      const sourceFolderName = lastSourceSegment;
+      if (destinationFolderPath) {
+        destinationKey = suffix
+          ? `${destinationFolderPath}.${sourceFolderName}${suffix}`
+          : `${destinationFolderPath}.${sourceFolderName}`;
+      } else {
+        // Root-level move: just use source folder name + suffix
+        destinationKey = suffix ? `${sourceFolderName}${suffix}` : sourceFolderName;
+      }
+    } else if (destDepth === sourceDepth) {
+      // Same depth: RENAME - replace entire source path with destination
+      // apps.buttons.ok -> apps.actions becomes apps.actions.ok
+      destinationKey = suffix ? `${destinationFolderPath}${suffix}` : destinationFolderPath;
+    } else {
+      // Different depth: NEST - append last segment of source to destination
+      // apps.common.buttons.ok -> apps.shared becomes apps.shared.buttons.ok
+      destinationKey = suffix
+        ? `${destinationFolderPath}.${lastSourceSegment}${suffix}`
+        : `${destinationFolderPath}.${lastSourceSegment}`;
+    }
+
+    const moveResult: MoveResourceResult = await moveResource(collection, {
+      source: sourceKey,
+      destination: destinationKey,
+      override,
+      destinationCollection,
+    });
+
+    result.movedCount += moveResult.movedCount;
+    result.warnings.push(...moveResult.warnings);
+    result.errors.push(...moveResult.errors);
+    result.mutations.push(...moveResult.mutations);
+    if (moveResult.movedCount === 0) {
+      keptKeys.push(sourceKey);
+    }
+  }
+
+  if (keptKeys.length > 0) {
+    result.warnings.push(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
+  }
+
+  // Only delete the source folder when every resource in it was moved
+  if (keptKeys.length === 0 && result.errors.length === 0) {
+    try {
+      result.mutations.push(...deleteFolder(collection, { folderPath: sourceFolderPath }).mutations);
+      result.foldersDeleted++;
+    } catch (error) {
+      result.warnings.push(`Resources moved but failed to delete source folder: ${errorMessage(error)}`);
+    }
+  }
+
+  return result;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**

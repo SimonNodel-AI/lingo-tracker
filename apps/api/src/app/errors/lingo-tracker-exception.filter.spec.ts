@@ -2,10 +2,13 @@ import { Controller, Get, HttpException, type INestApplication, Logger, NotFound
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import {
+  AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
   CollectionNotFoundError,
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
   InvalidBundleDefinitionError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -14,6 +17,7 @@ import {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   ReadOnlyCollectionError,
+  ResourceAlreadyExistsError,
   ResourceNotFoundError,
   TranslationError,
 } from '@simoncodes-ca/core';
@@ -31,6 +35,11 @@ describe('toHttpException', () => {
       404,
       { message: 'Resource not found: a.b', error: 'Not Found', statusCode: 404 },
     ],
+    [
+      new FolderNotFoundError('apps.missing'),
+      404,
+      { message: 'Folder not found: apps.missing', error: 'Not Found', statusCode: 404 },
+    ],
     [new BundleNotFoundError('main'), 404, { message: 'Bundle "main" not found', error: 'Not Found', statusCode: 404 }],
     [
       new ReadOnlyCollectionError('vendor'),
@@ -47,10 +56,33 @@ describe('toHttpException', () => {
       { message: 'Bundle "main" already exists', error: 'Conflict', statusCode: 409 },
     ],
     [
+      new ResourceAlreadyExistsError('apps.ok'),
+      409,
+      { message: 'Resource already exists: apps.ok', error: 'Conflict', statusCode: 409 },
+    ],
+    [
+      new AutoTranslationDisabledError('app'),
+      422,
+      {
+        message: 'Auto-translation is not enabled for collection "app"',
+        error: 'Unprocessable Entity',
+        statusCode: 422,
+      },
+    ],
+    [
       new InvalidFolderPathError('folder name', 'a b'),
       400,
       {
         message: 'Validation error: Invalid folder name segment "a b". Segments must match pattern [A-Za-z0-9_-]+',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
+    ],
+    [
+      new FolderMoveIntoDescendantError('apps.common', 'apps.common.buttons'),
+      400,
+      {
+        message: 'Validation error: Cannot move folder "apps.common" into its own descendant "apps.common.buttons"',
         error: 'Bad Request',
         statusCode: 400,
       },

@@ -2,6 +2,7 @@
 
 export type { FolderPathPart } from './error-messages';
 export {
+  AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
@@ -9,6 +10,8 @@ export {
   CollectionNotFoundError,
   ConfigNotFoundError,
   ConfigParseError,
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
   InvalidBundleDefinitionError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -17,5 +20,6 @@ export {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   ReadOnlyCollectionError,
+  ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from './lingo-tracker-error';

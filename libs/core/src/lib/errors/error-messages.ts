@@ -20,6 +20,15 @@ export const ErrorMessages = {
 
   resourceNotFound: (key: string) => `Resource not found: ${key}`,
 
+  resourceAlreadyExists: (key: string) => `Resource already exists: ${key}`,
+
+  folderNotFound: (folderPath: string) => `Folder not found: ${folderPath}`,
+
+  folderMoveIntoDescendant: (source: string, destination: string) =>
+    `Cannot move folder "${source}" into its own descendant "${destination}"`,
+
+  autoTranslationDisabled: (collection: string) => `Auto-translation is not enabled for collection "${collection}"`,
+
   collectionNotFound: (name: string) => `Collection "${name}" not found`,
 
   collectionReadOnly: (name: string) => `Collection "${name}" is read-only. Its resources cannot be modified.`,

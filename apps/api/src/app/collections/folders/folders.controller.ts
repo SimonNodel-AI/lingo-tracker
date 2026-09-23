@@ -27,9 +27,9 @@ export class FoldersController {
     @Param('collectionName') collectionName: string,
     @Body() createFolderDto: CreateFolderDto,
   ): Promise<CreateFolderResponseDto> {
-    const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
+    const collection = openRouteCollection(this.configService.getConfig(), collectionName);
 
-    const result = createFolder(translationsFolder, {
+    const result = createFolder(collection, {
       folderName: createFolderDto.folderName,
       parentPath: createFolderDto.parentPath,
     });
@@ -59,35 +59,38 @@ export class FoldersController {
     };
   }
 
-  /** Core `deleteFolder` reports every failure in `error`, so this answers 200 even then. */
+  /** Failures are typed core errors: a missing folder answers 404, a malformed path 400. */
   @Delete()
   async delete(
     @Param('collectionName') collectionName: string,
     @Body() deleteFolderDto: DeleteFolderDto,
   ): Promise<DeleteFolderResponseDto> {
-    const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
+    const collection = openRouteCollection(this.configService.getConfig(), collectionName);
 
-    const result = deleteFolder(translationsFolder, {
+    const result = deleteFolder(collection, {
       folderPath: deleteFolderDto.folderPath,
     });
 
     this.index.apply(result.mutations);
 
     return {
-      deleted: result.deleted,
+      deleted: true,
       folderPath: result.folderPath,
       resourcesDeleted: result.resourcesDeleted,
-      error: result.error,
     };
   }
 
+  /**
+   * Bad input is a typed core error (400 for a malformed path or a move into the folder's own
+   * descendant, 404 for a missing source folder). Per-resource failures come back in `errors`.
+   */
   @Post('move')
   async move(
     @Param('collectionName') collectionName: string,
     @Body() moveFolderDto: MoveFolderDto,
   ): Promise<MoveFolderResponseDto> {
     const config = this.configService.getConfig();
-    const { translationsFolder } = openRouteCollection(config, collectionName);
+    const collection = openRouteCollection(config, collectionName);
 
     if (
       !moveFolderDto.sourceFolderPath ||
@@ -100,31 +103,19 @@ export class FoldersController {
       );
     }
 
-    // Handle cross-collection moves
-    const destinationTranslationsFolder = moveFolderDto.toCollection
-      ? openDestinationCollection(config, moveFolderDto.toCollection).translationsFolder
+    const destinationCollection = moveFolderDto.toCollection
+      ? openDestinationCollection(config, moveFolderDto.toCollection)
       : undefined;
 
-    // Perform the move. Core `moveFolder` never throws; it reports failures in `errors`.
-    const result = await moveFolder(translationsFolder, {
+    const result = await moveFolder(collection, {
       sourceFolderPath: moveFolderDto.sourceFolderPath,
       destinationFolderPath: moveFolderDto.destinationFolderPath,
       override: moveFolderDto.override,
       nestUnderDestination: moveFolderDto.nestUnderDestination,
-      destinationTranslationsFolder,
+      destinationCollection,
     });
 
     this.index.apply(result.mutations);
-
-    // Check for critical errors that should return 400
-    const hasCriticalError = result.errors.some(
-      (err) =>
-        err.includes('Invalid') || err.includes('not found') || err.includes('circular') || err.includes('descendant'),
-    );
-
-    if (hasCriticalError && result.movedCount === 0) {
-      throw new HttpException(`Validation error: ${result.errors.join(', ')}`, HttpStatus.BAD_REQUEST);
-    }
 
     return {
       movedCount: result.movedCount,

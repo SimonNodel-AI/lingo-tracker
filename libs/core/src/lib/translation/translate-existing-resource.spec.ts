@@ -1,8 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { translateExistingResource } from './translate-existing-resource';
 import * as fs from 'node:fs';
-import { type SafeAny, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TranslationConfig } from '../../config/translation-config';
+import { RESOURCE_ENTRIES_FILENAME, type SafeAny, TRACKER_META_FILENAME } from '../../constants';
+import type { Collection } from '../config/open-collection';
+import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
+import { translateExistingResource } from './translate-existing-resource';
 
 vi.mock('node:fs');
 vi.mock('./auto-translate-resources');
@@ -10,14 +12,27 @@ vi.mock('./auto-translate-resources');
 import { autoTranslateResource } from './auto-translate-resources';
 
 describe('translateExistingResource', () => {
-  const translationsFolder = 'translations';
-  const cwd = '/test';
+  const translationsFolder = '/test/translations';
 
   const enabledTranslationConfig: TranslationConfig = {
     enabled: true,
     provider: 'google-translate',
     apiKeyEnv: 'GOOGLE_TRANSLATE_API_KEY',
   };
+
+  function collection(locales: readonly string[], translationConfig = enabledTranslationConfig): Collection {
+    return {
+      name: 'main',
+      translationsFolder,
+      baseLocale: 'en',
+      locales,
+      targetLocales: locales.filter((locale) => locale !== 'en'),
+      translationConfig,
+      tags: [],
+      readOnly: false,
+      config: { translationsFolder },
+    };
+  }
 
   const baseResourceEntries = {
     save: { source: 'Save', 'fr-ca': 'Sauvegarder' },
@@ -57,31 +72,17 @@ describe('translateExistingResource', () => {
   it('should throw when the resource files do not exist', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
-    await expect(
-      translateExistingResource({
-        key: 'buttons.save',
-        translationsFolder,
-        translationConfig: enabledTranslationConfig,
-        allLocales: ['en', 'fr-ca', 'es'],
-        baseLocale: 'en',
-        cwd,
-      }),
-    ).rejects.toThrow(/Resource not found/);
+    await expect(translateExistingResource(collection(['en', 'fr-ca', 'es']), 'buttons.save')).rejects.toThrow(
+      /Resource not found/,
+    );
   });
 
   it('should throw when the entry key is not present in the files', async () => {
     mockFileSystem({}, {});
 
-    await expect(
-      translateExistingResource({
-        key: 'buttons.save',
-        translationsFolder,
-        translationConfig: enabledTranslationConfig,
-        allLocales: ['en', 'fr-ca'],
-        baseLocale: 'en',
-        cwd,
-      }),
-    ).rejects.toThrow(/Resource not found/);
+    await expect(translateExistingResource(collection(['en', 'fr-ca']), 'buttons.save')).rejects.toThrow(
+      /Resource not found/,
+    );
   });
 
   it('should return translatedCount 0 when no locales have new or stale status', async () => {
@@ -94,14 +95,7 @@ describe('translateExistingResource', () => {
     };
     mockFileSystem(baseResourceEntries, allTranslatedMeta);
 
-    const result = await translateExistingResource({
-      key: 'buttons.save',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'fr-ca', 'es'],
-      baseLocale: 'en',
-      cwd,
-    });
+    const result = await translateExistingResource(collection(['en', 'fr-ca', 'es']), 'buttons.save');
 
     expect(result.translatedCount).toBe(0);
     expect(result.skippedLocales).toEqual([]);
@@ -119,14 +113,7 @@ describe('translateExistingResource', () => {
     };
     mockFileSystem(resourceEntries, allVerifiedMeta);
 
-    const result = await translateExistingResource({
-      key: 'buttons.save',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'fr-ca'],
-      baseLocale: 'en',
-      cwd,
-    });
+    const result = await translateExistingResource(collection(['en', 'fr-ca']), 'buttons.save');
 
     expect(result.entry.key).toBe('save');
     expect(result.entry.source).toBe('Save');
@@ -152,14 +139,7 @@ describe('translateExistingResource', () => {
       skippedLocales: [],
     });
 
-    const result = await translateExistingResource({
-      key: 'buttons.save',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'fr-ca', 'es'],
-      baseLocale: 'en',
-      cwd,
-    });
+    const result = await translateExistingResource(collection(['en', 'fr-ca', 'es']), 'buttons.save');
 
     expect(result.translatedCount).toBe(2);
     expect(result.skippedLocales).toEqual([]);
@@ -182,14 +162,7 @@ describe('translateExistingResource', () => {
       skippedLocales: [],
     });
 
-    const result = await translateExistingResource({
-      key: 'buttons.save',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'fr-ca'],
-      baseLocale: 'en',
-      cwd,
-    });
+    const result = await translateExistingResource(collection(['en', 'fr-ca']), 'buttons.save');
 
     expect(result.translatedCount).toBe(1);
     expect(result.entry.translations['fr-ca']).toBe('Enregistrer');
@@ -217,14 +190,7 @@ describe('translateExistingResource', () => {
       skippedLocales: [],
     });
 
-    const result = await translateExistingResource({
-      key: 'buttons.save',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'fr-ca', 'es', 'de'],
-      baseLocale: 'en',
-      cwd,
-    });
+    const result = await translateExistingResource(collection(['en', 'fr-ca', 'es', 'de']), 'buttons.save');
 
     expect(autoTranslateResource).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -252,14 +218,7 @@ describe('translateExistingResource', () => {
       skippedLocales: ['fr-ca', 'es'],
     });
 
-    const result = await translateExistingResource({
-      key: 'messages.plural',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'fr-ca', 'es'],
-      baseLocale: 'en',
-      cwd,
-    });
+    const result = await translateExistingResource(collection(['en', 'fr-ca', 'es']), 'messages.plural');
 
     expect(result.translatedCount).toBe(0);
     expect(result.skippedLocales).toEqual(['fr-ca', 'es']);
@@ -280,14 +239,7 @@ describe('translateExistingResource', () => {
       skippedLocales: [],
     });
 
-    await translateExistingResource({
-      key: 'buttons.save',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'fr-ca'],
-      baseLocale: 'en',
-      cwd,
-    });
+    await translateExistingResource(collection(['en', 'fr-ca']), 'buttons.save');
 
     const writeCalls = vi.mocked(fs.writeFileSync).mock.calls;
     expect(writeCalls).toHaveLength(2);
@@ -314,14 +266,7 @@ describe('translateExistingResource', () => {
       skippedLocales: [],
     });
 
-    await translateExistingResource({
-      key: 'messages.greeting',
-      translationsFolder,
-      translationConfig: enabledTranslationConfig,
-      allLocales: ['en', 'de'],
-      baseLocale: 'en',
-      cwd,
-    });
+    await translateExistingResource(collection(['en', 'de']), 'messages.greeting');
 
     expect(autoTranslateResource).toHaveBeenCalledWith({
       baseValue: 'Hello World',
@@ -329,5 +274,11 @@ describe('translateExistingResource', () => {
       targetLocales: ['de'],
       translationConfig: enabledTranslationConfig,
     });
+  });
+
+  it('should throw a typed error when auto-translation is disabled', async () => {
+    await expect(
+      translateExistingResource(collection(['en', 'fr-ca'], { ...enabledTranslationConfig, enabled: false }), 'x.y'),
+    ).rejects.toThrow(AutoTranslationDisabledError);
   });
 });

@@ -1,5 +1,5 @@
 import type { Collection } from '@simoncodes-ca/core';
-import { addResource, createDefaultTranslations, openResourceFolder, resolveResourcePaths } from '@simoncodes-ca/core';
+import { addResource, openResourceFolder, resolveResourcePaths } from '@simoncodes-ca/core';
 import { type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
 import prompts from 'prompts';
 import {
@@ -55,7 +55,6 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
       key: answers.key,
       translationsFolder: collection.translationsFolder,
       targetFolder: answers.targetFolder || undefined,
-      cwd,
     });
     const resourceExists = hasEntryKey(folderPath, entryKey);
 
@@ -77,31 +76,16 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
     }
 
     const tagsArray = parseCommaSeparatedList(answers.tags) || [];
-    const { baseLocale, locales, translationConfig } = collection;
 
-    // Build translations: use provided translations or create entries for all non-base locales with base value.
-    // When auto-translation is configured, skip building default translations here — addResource will handle it.
-    const translations =
-      answers.translations && answers.translations.length > 0
-        ? answers.translations
-        : translationConfig?.enabled
-          ? undefined
-          : createDefaultTranslations(locales, baseLocale, answers.value);
-
-    const result = await addResource(
-      collection.translationsFolder,
-      {
-        key: answers.key,
-        baseValue: answers.value,
-        comment: answers.comment || undefined,
-        tags: tagsArray.length > 0 ? tagsArray : undefined,
-        targetFolder: answers.targetFolder || undefined,
-        baseLocale,
-        translations: translations && translations.length > 0 ? translations : undefined,
-        allLocales: locales,
-      },
-      { cwd, translationConfig },
-    );
+    // Locales without a supplied translation are seeded by core (auto-translated or copied as `new`).
+    const result = await addResource(collection, {
+      key: answers.key,
+      baseValue: answers.value,
+      comment: answers.comment || undefined,
+      tags: tagsArray.length > 0 ? tagsArray : undefined,
+      targetFolder: answers.targetFolder || undefined,
+      translations: answers.translations,
+    });
 
     ConsoleFormatter.success(`Resource added: ${result.resolvedKey}`);
     if (result.created) {

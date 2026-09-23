@@ -1,189 +1,103 @@
-import { resolve } from 'node:path';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
-import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
+import { isUntranslatedCopy, normalizeTags, translocoToICU } from '@simoncodes-ca/domain';
+import type { Collection } from '../lib/config/open-collection';
 import { ensureDirectoryExists } from '../lib/file-io/directory-operations';
+import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder } from '../lib/resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
-import type { TranslationConfig } from '../config/translation-config';
-import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
-import { translocoToICU, normalizeTags, isUntranslatedCopy } from '@simoncodes-ca/domain';
-
-export interface AddResourceOptions {
-  cwd?: string;
-  translationConfig?: TranslationConfig;
-}
+import { assertCollectionLocales, type ResourceTranslation, seedLocales } from './locale-seeding';
 
 export interface AddResourceParams {
-  /** Dot-delimited key, e.g., "apps.common.buttons.ok" */
-  key: string;
-  /** Base locale value (the source text) */
-  baseValue: string;
-  /** Optional context for translators */
-  comment?: string;
-  /** Optional tags (will be stored as array) */
-  tags?: string[];
-  /** Optional target folder to override part of the path */
-  targetFolder?: string;
-  /** Base locale (defaults to "en") */
-  baseLocale?: string;
-  /** Localized translations with locale, value, and status */
-  translations?: Array<{
-    locale: string;
-    value: string;
-    status: TranslationStatus;
-  }>;
+  /** Dot-delimited key, e.g., "apps.common.buttons.ok". */
+  readonly key: string;
+  /** Base locale value (the source text). */
+  readonly baseValue: string;
+  /** Optional context for translators. */
+  readonly comment?: string;
+  /** Optional tags (normalized before they are stored). */
+  readonly tags?: readonly string[];
+  /** Optional dot-delimited folder the key is placed under: the stored key is `targetFolder.key`. */
+  readonly targetFolder?: string;
   /**
-   * All configured locales. Required when using auto-translation so the
-   * orchestrator knows which target locales to translate into.
+   * Translations the caller supplies. Each locale must be one of the collection's locales
+   * (a value for the base locale is ignored). Target locales without one are seeded
+   * (see {@link seedLocales}).
    */
-  allLocales?: readonly string[];
+  readonly translations?: readonly ResourceTranslation[];
+}
+
+export interface AddResourceResult {
+  /** The stored key (`targetFolder.key`). */
+  readonly resolvedKey: string;
+  /** False when an existing entry was replaced. */
+  readonly created: boolean;
+  /** Every translation written, supplied and seeded. */
+  readonly translations: ResourceTranslation[];
+  /** Locales the provider did not translate (ICU messages). Present only when auto-translation ran. */
+  readonly skippedLocales?: string[];
+  /** The `upsert` for the stored entry. */
+  readonly mutations: ResourceMutation[];
 }
 
 /**
- * Adds or updates a resource entry in the translations folder.
- * Creates nested folders and files as needed at each level.
+ * Adds a resource entry to a collection, or replaces the entry at that key (its previous
+ * translations and metadata are dropped). Creates the folders it needs.
  *
- * When `options.translationConfig` is provided and enabled, and no explicit
- * translations are supplied, the base value is automatically translated to all
- * non-base locales using the configured provider.
+ * Every target locale of the collection gets a value: the supplied translation, else an
+ * auto-translation when the collection has it enabled, else a copy of the base value as
+ * `new` (the Locale seeding rule, {@link seedLocales}). A translation identical to the base
+ * value is stored as `new` whatever its requested status (Staleness rule).
  *
- * @param translationsFolder - Root translations folder path
- * @param params - Resource creation parameters
- * @param options - Additional options (e.g., cwd, translationConfig)
- * @returns Object with the resolved key, status, actual translations written to disk,
- *          any locales skipped due to ICU format (only present when auto-translation ran),
- *          and the mutation that describes the stored entry
+ * Values are normalized to ICU before they are stored. Nothing is written when the
+ * translation provider fails.
+ *
+ * @throws {InvalidResourceKeyError} The key or `targetFolder` is malformed.
+ * @throws {LocaleNotFoundError} A supplied translation names a locale the collection does not have.
+ * @throws {TranslationError} The translation provider failed.
  */
-export async function addResource(
-  translationsFolder: string,
-  params: AddResourceParams,
-  options: AddResourceOptions = {},
-): Promise<{
-  resolvedKey: string;
-  created: boolean;
-  translations: Array<{ locale: string; value: string; status: TranslationStatus }>;
-  skippedLocales?: string[];
-  mutations: ResourceMutation[];
-}> {
-  const { cwd = process.cwd(), translationConfig } = options;
-  const baseLocale = params.baseLocale || 'en';
+export async function addResource(collection: Collection, params: AddResourceParams): Promise<AddResourceResult> {
+  const { baseLocale, translationsFolder } = collection;
+  const paths = validateAndResolvePaths({ key: params.key, translationsFolder, targetFolder: params.targetFolder });
 
-  // Validate and resolve paths
-  const paths = validateAndResolvePaths({
-    key: params.key,
-    translationsFolder,
-    targetFolder: params.targetFolder,
-    cwd,
-  });
+  const supplied = (params.translations ?? []).filter(({ locale }) => locale !== baseLocale);
+  assertCollectionLocales(
+    collection,
+    supplied.map(({ locale }) => locale),
+  );
 
-  // Ensure directory exists
-  ensureDirectoryExists({
-    directoryPath: paths.folderPath,
-    errorContext: 'Creating resource folder',
-  });
+  const baseValue = translocoToICU(params.baseValue);
+  // Resolve every value before touching the disk, so a provider failure writes nothing.
+  const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) });
+  const translations: ResourceTranslation[] = [
+    ...supplied.map(({ locale, value, status }) => {
+      const normalized = translocoToICU(value);
+      return { locale, value: normalized, status: isUntranslatedCopy(normalized, baseValue) ? 'new' : status };
+    }),
+    ...seeding.translations.map((translation) =>
+      isUntranslatedCopy(translation.value, baseValue) ? { ...translation, status: 'new' as const } : translation,
+    ),
+  ];
 
+  ensureDirectoryExists({ directoryPath: paths.folderPath, errorContext: 'Creating resource folder' });
   const folder = openResourceFolder(paths.folderPath, { baseLocale });
-  const isNewEntry = !folder.has(paths.entryKey);
+  const created = !folder.has(paths.entryKey);
 
-  // Normalize values to ICU format before storing
-  const normalizedBaseValue = translocoToICU(params.baseValue);
-  const normalizedTags = normalizeTags(params.tags ?? []);
-
-  // Resolve translations: prefer explicit translations, fall back to auto-translation, then nothing.
-  // Pass the ICU-normalized base value so the translation provider receives the stored form,
-  // not the raw Transloco-style input from the caller.
-  const resolveResult = await resolveTranslations({
-    params,
-    normalizedBaseValue,
-    baseLocale,
-    translationConfig,
+  // setEntry clears the entry in place, so an existing key keeps its position in the file.
+  folder.setEntry(paths.entryKey, { source: baseValue }, {});
+  folder.setBase(paths.entryKey, baseValue);
+  folder.setDetails(paths.entryKey, {
+    comment: params.comment || undefined,
+    tags: normalizeTags([...(params.tags ?? [])]),
   });
-
-  const normalizedTranslations = resolveResult?.translations.map(({ locale, value, status }) => ({
-    locale,
-    value: translocoToICU(value),
-    status,
-  }));
-
-  // add-resource replaces the whole entry (previous translations and metadata are dropped).
-  // setEntry clears it in place so an existing key keeps its position in the file.
-  folder.setEntry(paths.entryKey, { source: normalizedBaseValue }, {});
-  folder.setBase(paths.entryKey, normalizedBaseValue);
-  folder.setDetails(paths.entryKey, { comment: params.comment || undefined, tags: normalizedTags });
-
-  // Skip the base locale — its value is the entry's 'source'.
-  for (const { locale, value, status } of normalizedTranslations ?? []) {
-    if (locale === baseLocale) continue;
-    // Staleness rule: an untranslated copy of the base is 'new', whatever status was requested.
-    folder.setTranslation(
-      paths.entryKey,
-      locale,
-      value,
-      isUntranslatedCopy(value, normalizedBaseValue) ? 'new' : status,
-    );
+  for (const { locale, value, status } of translations) {
+    folder.setTranslation(paths.entryKey, locale, value, status);
   }
-
   folder.save();
 
   return {
     resolvedKey: paths.resolvedKey,
-    created: isNewEntry,
-    translations: normalizedTranslations ?? [],
-    ...(resolveResult?.skippedLocales !== undefined && { skippedLocales: resolveResult.skippedLocales }),
-    mutations: [upsertMutation(resolve(cwd, translationsFolder), paths.resolvedKey, folder.treeEntry(paths.entryKey))],
-  };
-}
-
-interface ResolveTranslationsParams {
-  readonly params: AddResourceParams;
-  /** ICU-normalized form of the base value — this is what gets stored and what the translation provider should receive. */
-  readonly normalizedBaseValue: string;
-  readonly baseLocale: string;
-  readonly translationConfig: TranslationConfig | undefined;
-}
-
-interface ResolveTranslationsResult {
-  readonly translations: Array<{ locale: string; value: string; status: TranslationStatus }>;
-  readonly skippedLocales: string[];
-}
-
-/**
- * Determines which translations to use for the resource entry.
- *
- * Priority:
- * 1. Explicit `params.translations` — used as-is when provided (no `skippedLocales`).
- * 2. Auto-translation — triggered when `translationConfig` is enabled and
- *    `params.allLocales` is set (caller must supply target locale list).
- * 3. No translations — returns `undefined` so the entry is stored without them.
- */
-async function resolveTranslations(
-  resolveParams: ResolveTranslationsParams,
-): Promise<ResolveTranslationsResult | undefined> {
-  const { params, normalizedBaseValue, baseLocale, translationConfig } = resolveParams;
-
-  if (params.translations && params.translations.length > 0) {
-    return { translations: params.translations, skippedLocales: [] };
-  }
-
-  const shouldAutoTranslate = translationConfig?.enabled && params.allLocales && params.allLocales.length > 0;
-  if (!shouldAutoTranslate || !translationConfig || !params.allLocales) {
-    return undefined;
-  }
-
-  const targetLocales = params.allLocales.filter((locale) => locale !== baseLocale);
-  if (targetLocales.length === 0) {
-    return undefined;
-  }
-
-  const autoTranslateResult = await autoTranslateResource({
-    baseValue: normalizedBaseValue,
-    baseLocale,
-    targetLocales,
-    translationConfig,
-  });
-
-  return {
-    translations: autoTranslateResult.translations.map(({ locale, value, status }) => ({ locale, value, status })),
-    skippedLocales: autoTranslateResult.skippedLocales,
+    created,
+    translations,
+    ...(seeding.skippedLocales !== undefined && { skippedLocales: seeding.skippedLocales }),
+    mutations: [upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey))],
   };
 }

@@ -3,7 +3,7 @@
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
-export { addResource, createDefaultTranslations, deleteResource, editResource, moveResource } from './resource';
+export { addResource, deleteResource, editResource, moveResource } from './resource';
 
 // Operations: folders
 export { createFolder, deleteFolder, moveFolder } from './lib/folder';
@@ -112,6 +112,7 @@ export {
 // Errors
 export { PreferredTerminologyValidationError } from './lib/config';
 export {
+  AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
@@ -119,6 +120,8 @@ export {
   CollectionNotFoundError,
   ConfigNotFoundError,
   ConfigParseError,
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
   type FolderPathPart,
   InvalidBundleDefinitionError,
   InvalidFolderPathError,
@@ -128,6 +131,7 @@ export {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   ReadOnlyCollectionError,
+  ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from './lib/errors';
 export { TranslationError } from './lib/translation';
@@ -190,7 +194,6 @@ export type {
   SearchTreeParams,
 } from './lib/resource';
 export type {
-  TranslateExistingResourceOptions,
   TranslateExistingResourceResult,
   TranslateLocaleParams,
   TranslateLocaleProgress,
@@ -198,13 +201,14 @@ export type {
 } from './lib/translation';
 export type { ResourceValidationResult, ValidationOptions } from './lib/validate';
 export type {
-  AddResourceOptions,
   AddResourceParams,
+  AddResourceResult,
   DeleteResourceParams,
   DeleteResourceResult,
-  EditResourceOptions,
+  EditResourceChanges,
   EditResourceResult,
   MoveResourceParams,
   MoveResourceResult,
   ResourceEntryMetadata,
+  ResourceTranslation,
 } from './resource';

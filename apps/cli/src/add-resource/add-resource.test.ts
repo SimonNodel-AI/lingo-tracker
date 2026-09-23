@@ -162,7 +162,7 @@ describe('addResourceCommand', () => {
     expect(utils.resolveWritableCollection).toHaveBeenCalledWith('NonExistentCollection', config, '/test');
   });
 
-  it('should handle translations array format', async () => {
+  it('should pass the opened collection and supplied fields through to core', async () => {
     const config = {
       collections: {
         TestCollection: {
@@ -196,30 +196,32 @@ describe('addResourceCommand', () => {
       collection: 'TestCollection',
       key: 'buttons.ok',
       value: 'OK',
+      comment: 'Primary confirmation action',
+      tags: 'ui, buttons',
+      targetFolder: 'common',
       translations: [
         { locale: 'fr-ca', value: "D'accord", status: 'translated' },
         { locale: 'es', value: 'Aceptar', status: 'verified' },
       ],
     });
 
-    // Should call addResource with translations array
     expect(core.addResource).toHaveBeenCalledWith(
-      '/test/translations',
       expect.objectContaining({
-        translations: expect.arrayContaining([
-          expect.objectContaining({
-            locale: 'fr-ca',
-            value: "D'accord",
-            status: 'translated',
-          }),
-          expect.objectContaining({
-            locale: 'es',
-            value: 'Aceptar',
-            status: 'verified',
-          }),
-        ]),
+        name: 'TestCollection',
+        translationsFolder: '/test/translations',
+        baseLocale: 'en',
       }),
-      expect.any(Object),
+      {
+        key: 'buttons.ok',
+        baseValue: 'OK',
+        comment: 'Primary confirmation action',
+        tags: ['ui', 'buttons'],
+        targetFolder: 'common',
+        translations: [
+          { locale: 'fr-ca', value: "D'accord", status: 'translated' },
+          { locale: 'es', value: 'Aceptar', status: 'verified' },
+        ],
+      },
     );
   });
 
@@ -282,73 +284,6 @@ describe('addResourceCommand', () => {
         type: 'confirm',
         message: expect.stringContaining('already exists'),
       }),
-    );
-
-    // Restore
-    Object.defineProperty(process.stdout, 'isTTY', {
-      value: originalIsTTY,
-      writable: true,
-    });
-  });
-
-  it('should create entries for all locales when no translations provided', async () => {
-    const config = {
-      collections: {
-        TestCollection: {
-          translationsFolder: 'translations',
-          baseLocale: 'en',
-          locales: ['en', 'fr-ca', 'es', 'de'],
-        },
-      },
-      baseLocale: 'en',
-      locales: ['en', 'fr-ca', 'es', 'de'],
-    };
-
-    // Mock successful config loading
-    vi.mocked(utils.loadConfiguration).mockReturnValue({
-      config,
-      configPath: '/test/.lingo-tracker.json',
-      cwd: '/test',
-    });
-
-    // Mock promptForCollection to return the collection name
-    vi.mocked(utils.promptForCollection).mockResolvedValue('TestCollection');
-
-    // Mock resolveWritableCollection to return collection data
-    vi.mocked(utils.resolveWritableCollection).mockReturnValue(
-      core.openCollection(config, 'TestCollection', { cwd: '/test' }),
-    );
-
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-
-    // Mock non-interactive mode
-    const originalIsTTY = process.stdout.isTTY;
-    Object.defineProperty(process.stdout, 'isTTY', {
-      value: false,
-      writable: true,
-    });
-
-    await addResourceCommand({
-      collection: 'TestCollection',
-      key: 'buttons.ok',
-      value: 'OK',
-    });
-
-    // Should call addResource with translations for all non-base locales
-    expect(core.addResource).toHaveBeenCalledWith(
-      '/test/translations',
-      expect.objectContaining({
-        translations: expect.arrayContaining([
-          expect.objectContaining({
-            locale: 'fr-ca',
-            value: 'OK',
-            status: 'new',
-          }),
-          expect.objectContaining({ locale: 'es', value: 'OK', status: 'new' }),
-          expect.objectContaining({ locale: 'de', value: 'OK', status: 'new' }),
-        ]),
-      }),
-      expect.any(Object),
     );
 
     // Restore

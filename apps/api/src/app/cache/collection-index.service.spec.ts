@@ -153,7 +153,7 @@ describe('CollectionIndex', () => {
     });
 
     it('adds a resource, creating its folders', async () => {
-      const result = await addResource(collection().translationsFolder, {
+      const result = await addResource(collection(), {
         key: 'apps.dialogs.confirm.yes',
         baseValue: 'Yes',
       });
@@ -164,7 +164,7 @@ describe('CollectionIndex', () => {
     });
 
     it('replaces an edited resource in place', async () => {
-      const result = await editResource(collection().translationsFolder, { key: 'common.ok', baseValue: 'Okay' });
+      const result = await editResource(collection(), 'common.ok', { baseValue: 'Okay' });
       index.apply(result.mutations);
 
       expect(readyTree(collection(), 'common')?.resources.find((r) => r.key === 'ok')?.source).toBe('Okay');
@@ -172,14 +172,14 @@ describe('CollectionIndex', () => {
     });
 
     it('removes deleted resources', () => {
-      index.apply(deleteResource(collection().translationsFolder, { keys: ['common.ok', 'apps.title'] }).mutations);
+      index.apply(deleteResource(collection(), { keys: ['common.ok', 'apps.title'] }).mutations);
 
       expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);
       expectIndexMatchesDisk();
     });
 
     it('moves resources by pattern', async () => {
-      const result = await moveResource(collection().translationsFolder, { source: 'common.*', destination: 'shared' });
+      const result = await moveResource(collection(), { source: 'common.*', destination: 'shared' });
       index.apply(result.mutations);
 
       expect(keysOf(readyTree(collection(), 'shared'))).toEqual(['cancel', 'ok']);
@@ -192,10 +192,10 @@ describe('CollectionIndex', () => {
       const other = openCollection(config('other'), 'other');
       readyTree(other);
 
-      const result = await moveResource(collection().translationsFolder, {
+      const result = await moveResource(collection(), {
         source: 'common.ok',
         destination: 'imported.ok',
-        destinationTranslationsFolder: other.translationsFolder,
+        destinationCollection: other,
       });
       index.apply(result.mutations);
 
@@ -206,10 +206,10 @@ describe('CollectionIndex', () => {
     });
 
     it('creates, moves and deletes folders', async () => {
-      index.apply(createFolder(collection().translationsFolder, { folderName: 'empty', parentPath: 'apps' }).mutations);
+      index.apply(createFolder(collection(), { folderName: 'empty', parentPath: 'apps' }).mutations);
       expect(readyTree(collection(), 'apps.empty')).not.toBeNull();
 
-      const moved = await moveFolder(collection().translationsFolder, {
+      const moved = await moveFolder(collection(), {
         sourceFolderPath: 'common',
         destinationFolderPath: 'apps',
       });
@@ -217,7 +217,7 @@ describe('CollectionIndex', () => {
       expect(keysOf(readyTree(collection(), 'apps.common'))).toEqual(['cancel', 'ok']);
       expect(readyTree(collection(), 'common')).toBeNull();
 
-      index.apply(deleteFolder(collection().translationsFolder, { folderPath: 'apps.empty' }).mutations);
+      index.apply(deleteFolder(collection(), { folderPath: 'apps.empty' }).mutations);
       expect(readyTree(collection(), 'apps.empty')).toBeNull();
 
       expectIndexMatchesDisk();
@@ -242,7 +242,7 @@ describe('CollectionIndex', () => {
     });
 
     it('ignores mutations for collections that are not indexed', async () => {
-      const result = await addResource(path.join(root, 'elsewhere'), { key: 'ok', baseValue: 'OK' });
+      const result = await addResource(collection('elsewhere'), { key: 'ok', baseValue: 'OK' });
       index.apply(result.mutations);
 
       expect(index.tree(collection()).status).toBe('ready');
@@ -273,17 +273,13 @@ describe('CollectionIndex', () => {
     });
 
     it('does not read its own write as an outside change', async () => {
-      index.apply(
-        (await addResource(collection().translationsFolder, { key: 'common.yes', baseValue: 'Yes' })).mutations,
-      );
+      index.apply((await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' })).mutations);
 
       expect(index.tree(collection()).status).toBe('ready');
     });
 
     it('detects an outside change made after its own write settled', async () => {
-      index.apply(
-        (await addResource(collection().translationsFolder, { key: 'common.yes', baseValue: 'Yes' })).mutations,
-      );
+      index.apply((await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' })).mutations);
       // Let the deferred fingerprint refresh run.
       await new Promise((resolve) => setTimeout(resolve, 5));
 

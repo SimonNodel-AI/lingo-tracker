@@ -13,6 +13,8 @@ Return to [architecture README](README.md).
 - [Config and Collection Resolution](#config-and-collection-resolution)
 - [Error Model](#error-model)
 - [Resource CRUD Flows](#resource-crud-flows)
+  - [Collection-bound operations](#collection-bound-operations)
+  - [Locale seeding](#locale-seeding)
   - [add-resource](#add-resource)
   - [edit-resource](#edit-resource)
   - [delete-resource](#delete-resource)
@@ -42,9 +44,10 @@ libs/core/src/
 │   ├── bundle-definition.ts      # BundleDefinition, CollectionBundleDefinition, EntrySelectionRule
 │   └── translation-config.ts     # TranslationConfig (provider name, API key env var)
 │
-├── resource/                     # Resource CRUD — reads/writes resource_entries.json + tracker_meta.json
+├── resource/                     # Resource CRUD on an opened Collection — reads/writes resource_entries.json + tracker_meta.json
 │   ├── add-resource.ts           # addResource(): create or overwrite a single entry
-│   ├── edit-resource.ts          # editResource(): update value, comment, tags, or locale values
+│   ├── edit-resource.ts          # editResource(): update value, comment, tags, or locale values; moveTo moves the entry
+│   ├── locale-seeding.ts         # seedLocales(): what target locales get when a base value is written
 │   ├── delete-resource.ts        # deleteResource(): remove one or more entries by key
 │   ├── move-resource.ts          # moveResource(): rename/relocate entries (single or wildcard)
 │   ├── checksum.ts               # calculateChecksum(): MD5 via node:crypto
@@ -236,7 +239,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 | Group | What it holds |
 |---|---|
-| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`, `createDefaultTranslations`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition`, `validateBundleKey`, `validateBundleDefinition`, `getBundleOutputPath`, `hasTypeDistConfigured`. Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks, `loadResourcesFromCollections`. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
+| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition`, `validateBundleKey`, `validateBundleDefinition`, `getBundleOutputPath`, `hasTypeDistConfigured`. Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks, `loadResourcesFromCollections`. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
 | Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `BundleDefinition`, ...), and the protected-terms and preferred-terminology file readers and writers. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder` and the types in its methods, `resolveResourcePaths`. |
 | Read models | `loadResourceTree`, `extractSubtree`, `extractResourcesRecursively`, `searchTranslations`, `searchResourceTree`, `computeTreeFingerprint`, `treeFingerprintsMatch`, `reindexMutation` and their types. The API's [Collection Index](glossary.md#collection-index) is built from these. |
@@ -254,7 +257,7 @@ Core owns the config file and the rule that turns a collection's config entry in
 - **`loadConfig({ cwd? })`** is the only reader of `.lingo-tracker.json`. It returns the file as written, with no validation and no fallbacks. It throws `ConfigNotFoundError` when the file does not exist and `ConfigParseError` when the file is not a JSON object; other I/O errors pass through. The CLI passes its `INIT_CWD`-aware directory, the API passes `process.cwd()`, and `createConfigFileOperations().read()` (used by the config writers) reads through it too.
 - **`openCollection(config, name, { cwd?, writable? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (collection, else global, else `[]`), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `readOnly`, and the raw entry as `config`. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
 
-The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. Per-resource operations keep their `(translationsFolder, …, baseLocale, allLocales, translationConfig)` parameters; callers fill them from the `Collection`. The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
+The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
 
 ---
 
@@ -270,12 +273,16 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 | `CollectionAlreadyExistsError` | `COLLECTION_ALREADY_EXISTS` | `collectionName` | `addCollection`, `updateCollection` (rename) |
 | `ReadOnlyCollectionError` | `COLLECTION_READ_ONLY` | `collectionName` | `openCollection` with `{ writable: true }` |
 | `InvalidLocaleError` | `INVALID_LOCALE` | `locale` | `addLocaleToCollection`, `removeLocaleFromCollection` |
-| `LocaleNotFoundError` | `LOCALE_NOT_FOUND` | `locale`, `collectionName` | `removeLocaleFromCollection` |
+| `LocaleNotFoundError` | `LOCALE_NOT_FOUND` | `locale`, `collectionName` | `removeLocaleFromCollection`; `addResource` / `editResource` for a supplied translation in a locale the collection does not have |
 | `LocaleAlreadyExistsError` | `LOCALE_ALREADY_EXISTS` | `locale`, `collectionName` | `addLocaleToCollection` |
 | `BaseLocaleImmutableError` | `BASE_LOCALE_IMMUTABLE` | `locale` | `addLocaleToCollection`, `removeLocaleFromCollection` |
-| `InvalidResourceKeyError` | `INVALID_RESOURCE_KEY` | `key` | `validateAndResolvePaths` (so `addResource`, `editResource`, `translateExistingResource`) |
+| `InvalidResourceKeyError` | `INVALID_RESOURCE_KEY` | `key` | `validateAndResolvePaths` (so `addResource`, `editResource` including its `moveTo`, `translateExistingResource`) |
 | `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | `key` | `editResource`, `translateExistingResource` |
-| `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder` (`deleteFolder` and `moveFolder` report it in their result) |
+| `ResourceAlreadyExistsError` | `RESOURCE_ALREADY_EXISTS` | `key` | `editResource` with a `moveTo` whose folder already has the entry key |
+| `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder`, `deleteFolder`, `moveFolder` |
+| `FolderNotFoundError` | `FOLDER_NOT_FOUND` | `folderPath` | `deleteFolder`, `moveFolder` (source missing or not a directory) |
+| `FolderMoveIntoDescendantError` | `FOLDER_MOVE_INTO_DESCENDANT` | `sourceFolderPath`, `destinationFolderPath` | `moveFolder` (same collection) |
+| `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `translateExistingResource` |
 | `BundleNotFoundError` | `BUNDLE_NOT_FOUND` | `bundleName` | `updateBundleDefinition`, `deleteBundleDefinition` |
 | `BundleAlreadyExistsError` | `BUNDLE_ALREADY_EXISTS` | `bundleName` | `addBundleDefinition`, `updateBundleDefinition` (rename) |
 | `InvalidBundleDefinitionError` | `INVALID_BUNDLE_DEFINITION` | `errors[]` | bundle definition add / update |
@@ -285,22 +292,51 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 Rules:
 
 - **Domain validators stay untyped.** `@simoncodes-ca/domain` has no error classes. `validateKey`, `validateTargetFolder`, and `validateLocale` throw a plain `Error`. Core wraps each call in one place and throws the typed error with the same message: `validateAndResolvePaths` for keys and target folders, and `assertValidLocale` (`collections-manager/assert-valid-locale.ts`) for locales.
-- **Batch operations report, not throw.** `deleteResource`, `moveResource`, `deleteFolder`, and `moveFolder` put per-item failures into their result (`errors`, `error`) as strings.
+- **Batch operations report per-item failures, not throw.** `deleteResource`, `moveResource`, and `moveFolder` put per-key failures into their result (`errors`) as strings. Bad input to the whole operation (a malformed folder path, a missing folder, a move into the folder's own descendant) is a typed error.
 - **Unexpected failures stay `Error`.** File I/O errors, invariant breaks (for example `ResourceFolder`'s "Resource entry not found"), and parser errors for import files are not typed. An adapter treats them as "something went wrong" and shows the message.
 
 ---
 
 ## Resource CRUD Flows
 
-Resource CRUD is implemented across four functions in `libs/core/src/resource/`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
+Resource CRUD is implemented across four functions in `libs/core/src/resource/`, each bound to an opened `Collection`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
 
 **All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. Readers (tree loading, search, folder move/delete, folder cleanup) use it too, and `resolveResourcePaths()` is the only function that maps a key to its folder.
 
 **Writes return what changed.** Every write (add, edit, delete, move, translate-existing-resource, folder create/delete/move, add/remove-locale) returns `mutations: ResourceMutation[]` (`lib/resource/resource-mutation.ts`) next to its other results: an `upsert` with the stored entry as `ResourceFolder.treeEntry()` reads it, a `remove`, an `add-folder` / `remove-folder`, or a `reindex` when the change is too broad to describe. Each mutation carries the absolute translations folder it applies to. A move returns an `upsert` at the destination and a `remove` at the source for each moved key, and a folder move adds a `remove-folder` for the deleted source. The API's [Collection Index](glossary.md#collection-index) uses them to follow the disk without reading it again; the CLI ignores them. See [Resource Mutation](glossary.md#resource-mutation).
 
+### Collection-bound operations
+
+Every resource and folder operation takes an opened [Collection](glossary.md#collection-resolved) as its first parameter, like the Import run:
+
+```ts
+addResource(collection, { key, baseValue, comment?, tags?, targetFolder?, translations? })
+editResource(collection, key, { baseValue?, comment?, tags?, translations?, moveTo? })
+deleteResource(collection, { keys })
+moveResource(collection, { source, destination, override?, destinationCollection? })
+translateExistingResource(collection, key)
+createFolder(collection, { folderName, parentPath? })
+deleteFolder(collection, { folderPath })
+moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nestUnderDestination?, destinationCollection? })
+```
+
+The base locale, the target locales, and the translation config come only from the `Collection`; there is no `'en'` fallback and no `cwd` (the `translationsFolder` is absolute). A cross-collection move takes the destination as a second `Collection`.
+
+**Key placement.** `addResource` stores `targetFolder.key` (`resolveResourceKey`, applied by `validateAndResolvePaths`). `editResource` takes the entry's full, existing key. Its `moveTo` is a destination folder (`''` is the collection root): the entry keeps its entry key (the last segment) and moves there, as a lossless copy, after the edit is saved. The destination must not already have that entry key (`ResourceAlreadyExistsError`). This is checked before anything is written, and again on a fresh read of the destination just before the move, because auto-translation may run in between; a collision found then throws with the edit already saved in the source folder. The destination is written before the source entry is removed.
+
+### Locale seeding
+
+[Locale seeding](glossary.md#locale-seeding) (`seedLocales` in `resource/locale-seeding.ts`) decides what each of `collection.targetLocales` gets when a base value is written:
+
+1. A translation the caller supplied → the caller's value and status.
+2. Else, when `collection.translationConfig` is enabled → `autoTranslateResource()` (status `translated`).
+3. Else, or when the provider skipped the locale (ICU) → a copy of the base value with status `new`.
+
+`addResource` applies it to every target locale. `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](glossary.md#staleness-rule) (`needsTranslation` after `setBase`), with one limit: step 3 never overwrites a real translation. Only a missing locale, or one that held an untranslated copy of the old base, gets the copy; a real translation stays, marked `stale`. A supplied translation for a locale that is not in the collection throws `LocaleNotFoundError`; a value for the base locale is ignored.
+
 ### add-resource
 
-**Entry point:** `addResource(translationsFolder, params, options)`
+**Entry point:** `addResource(collection, params)`
 
 Steps:
 
@@ -308,30 +344,28 @@ Steps:
 2. **Ensure directory** — `ensureDirectoryExists()` creates the folder tree with `mkdirSync({ recursive: true })`.
 3. **Load existing files** — `openResourceFolder()` loads both files (missing files are empty).
 4. **Normalize base value** — `translocoToICU()` converts any Transloco `{{ varName }}` syntax in the incoming base value to ICU `{varName}` before storage.
-5. **Resolve translations** — three-way priority:
-   - Explicit translations in `params.translations` are used as-is.
-   - If no explicit translations and `translationConfig` is enabled, `autoTranslateResource()` is called (see [Auto-Translation Pipeline](#auto-translation-pipeline)).
-   - Otherwise, the entry is stored with no translations (all locales default to `new` status).
+5. **Resolve translations** — [locale seeding](#locale-seeding): supplied translations first, then auto-translation or a copy of the base as `new` for every other target locale. All values are resolved before anything is written, so a provider failure writes nothing.
 6. **Replace the entry** — `setEntry` / `setBase` / `setDetails` / `setTranslation` on the `ResourceFolder`. A translation equal to the base value is stored as `new`.
 7. **Write files** — `folder.save()` writes both `resource_entries.json` and `tracker_meta.json`.
 
 ### edit-resource
 
-**Entry point:** `editResource(translationsFolder, options)`
+**Entry point:** `editResource(collection, key, changes)`
 
 Steps:
 
-1. **Resolve paths and load** — same as add-resource.
+1. **Resolve paths and load** — same as add-resource. `key` is the entry's full key. A `moveTo` is resolved and checked for a collision before anything changes.
 2. **Throws if not found** — exits immediately if either JSON file or the specific entry key is absent.
 3. **Update base value** (if changed) — `translocoToICU()` normalizes the incoming value; `folder.setBase()` recomputes the base checksum and applies the [staleness rule](glossary.md#staleness-rule) to every non-base locale.
 4. **Update comment/tags** — simple field overwrites with change detection to avoid unnecessary writes.
-5. **Update locale values** — for each locale in `options.locales`, normalizes with `translocoToICU()`, recomputes checksum via `calculateChecksum()`, and updates `status` (defaults to `'translated'` if not provided).
+5. **Update locale values** — for each locale in `changes.translations`, normalizes with `translocoToICU()`, recomputes checksum via `calculateChecksum()`, and updates `status` (defaults to `'translated'` if not provided).
 6. **Persist initial changes** — `folder.save()` before attempting auto-translation, so the base value change is durable even if the translation API call fails.
-7. **Auto-translate on base change** — if `baseValueDidChange` and `translationConfig` is enabled, `autoTranslateResource()` is called for all non-base locales; results are written by a second `folder.save()`.
+7. **Seed on base change** — if the base value changed, [locale seeding](#locale-seeding) runs for the locales that need work and were not supplied; results are written by a second `folder.save()`.
+8. **Move** — with a `moveTo` naming another folder, the entry is copied as stored to the destination and removed from the source. The result's `resolvedKey` is the destination key, and `mutations` are an `upsert` there and a `remove` at the source.
 
 ### delete-resource
 
-**Entry point:** `deleteResource(translationsFolder, { keys })`
+**Entry point:** `deleteResource(collection, { keys })`
 
 Steps:
 
@@ -343,7 +377,7 @@ Steps:
 
 ### move-resource
 
-**Entry point:** `moveResource(translationsFolder, { source, destination, override })`
+**Entry point:** `moveResource(collection, { source, destination, override, destinationCollection })`
 
 Two modes:
 
@@ -377,7 +411,7 @@ Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `va
 
 **Entry point:** `autoTranslateResource(params)` in `lib/translation/auto-translate-resources.ts`
 
-This pipeline is called from `addResource()` and `editResource()` (on base value change), and also from the standalone `translateExistingResource()` function which targets only entries with `new` or `stale` status.
+This pipeline is called by [locale seeding](#locale-seeding) (so from `addResource()` and from `editResource()` on a base value change), and also from the standalone `translateExistingResource()` function which targets only entries with `new` or `stale` status.
 
 <!-- Auto-translation pipeline flowchart -->
 

@@ -44,7 +44,7 @@ apps.common.buttons.ok
             └── tracker_meta.json       ← contains checksums and status for "ok"
 ```
 
-A [resolved key](glossary.md#resolved-key) is formed by prepending an optional [target folder](glossary.md#target-folder): `resolvedKey = targetFolder + "." + key`. For example, key `ok` with target folder `apps.common.buttons` resolves to `apps.common.buttons.ok` before the folder path is computed. The resolution logic lives in `resolveResourceKey()` in `@simoncodes-ca/domain`.
+A [resolved key](glossary.md#resolved-key) is formed by prepending an optional [target folder](glossary.md#target-folder): `resolvedKey = targetFolder + "." + key`. For example, key `ok` with target folder `apps.common.buttons` resolves to `apps.common.buttons.ok` before the folder path is computed. The resolution logic lives in `resolveResourceKey()` in `@simoncodes-ca/domain`. Only creation (`addResource`) takes a target folder; an edit names the full existing key and changes folder with `moveTo` (see [core-library.md](core-library.md#collection-bound-operations)).
 
 A single-segment key (e.g. `title`) places the entry at the root of the collection's `translationsFolder` — no subdirectory is created.
 

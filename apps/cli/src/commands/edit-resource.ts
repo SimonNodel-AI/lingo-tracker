@@ -1,6 +1,4 @@
-import { resolve } from 'node:path';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { editResource } from '@simoncodes-ca/core';
+import { type EditResourceChanges, editResource, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { translocoToICU } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import {
@@ -37,59 +35,30 @@ export async function editResourceCommand(options: EditResourceOptions): Promise
 
   const answers = await promptForMissing(options, config, collectionName);
 
-  // Prepare edit options
-  const editOptions: {
-    key: string;
-    cwd: string;
-    baseLocale: string;
-    targetFolder?: string;
-    baseValue?: string;
-    comment?: string;
-    tags?: string[];
-    locales?: Record<string, { value: string }>;
-  } = {
-    key: answers.key,
-    cwd: resolve(cwd),
-    baseLocale: collection.baseLocale,
-  };
-
-  if (options.targetFolder) {
-    editOptions.targetFolder = options.targetFolder;
-  }
-
-  if (answers.baseValue) {
-    editOptions.baseValue = answers.baseValue;
-  }
-
-  if (options.comment) {
-    editOptions.comment = options.comment;
-  }
-
-  if (options.tags) {
-    editOptions.tags = parseCommaSeparatedList(options.tags);
-  }
-
-  if (options.locale && options.localeValue) {
-    editOptions.locales = {
-      [options.locale]: { value: options.localeValue },
-    };
-  } else if (options.locale || options.localeValue) {
+  const translations =
+    options.locale && options.localeValue ? { [options.locale]: { value: options.localeValue } } : undefined;
+  if (!translations && (options.locale || options.localeValue)) {
     ConsoleFormatter.warning('Both --locale and --localeValue must be provided to update a translation.');
   }
 
+  const changes: EditResourceChanges = {
+    baseValue: answers.baseValue || undefined,
+    comment: options.comment || undefined,
+    tags: options.tags ? parseCommaSeparatedList(options.tags) : undefined,
+    translations,
+    // `--target-folder` names the folder the entry moves to ('' for the collection root).
+    moveTo: options.targetFolder,
+  };
+
   try {
-    const result = await editResource(collection.translationsFolder, {
-      ...editOptions,
-      translationConfig: collection.translationConfig,
-      allLocales: collection.locales,
-    });
+    const result = await editResource(collection, answers.key, changes);
 
     if (result.updated) {
       ConsoleFormatter.success(`Resource "${result.resolvedKey}" updated successfully.`);
       // Only a base value supplied in this invocation is checked; editing a comment
       // or a translation should not re-raise advice about untouched wording.
-      if (editOptions.baseValue !== undefined) {
-        warnAboutPreferredTerminology(config, cwd, translocoToICU(editOptions.baseValue));
+      if (changes.baseValue !== undefined) {
+        warnAboutPreferredTerminology(config, cwd, translocoToICU(changes.baseValue));
       }
     } else {
       ConsoleFormatter.info(result.message || 'No changes detected');

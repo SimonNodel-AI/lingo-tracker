@@ -1,21 +1,11 @@
-import { resolve } from 'node:path';
 import { needsTranslation } from '@simoncodes-ca/domain';
-import type { TranslationConfig } from '../../config/translation-config';
+import type { Collection } from '../config/open-collection';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
-import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import { AutoTranslationDisabledError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
 import { autoTranslateResource } from './auto-translate-resources';
-
-export interface TranslateExistingResourceOptions {
-  readonly key: string;
-  readonly translationsFolder: string;
-  readonly translationConfig: TranslationConfig;
-  readonly allLocales: readonly string[];
-  readonly baseLocale: string;
-  readonly cwd?: string;
-}
 
 export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
@@ -26,27 +16,27 @@ export interface TranslateExistingResourceResult {
 }
 
 /**
- * Translates an existing resource entry for all locales with 'new' or 'stale' status.
- *
- * Resolves the resource key to its file paths, reads the current state, identifies
- * which locales still need translation (status is 'new' or 'stale'), calls the
- * auto-translate provider, updates the resource entries and tracker metadata, and
- * writes both files to disk.
+ * Auto-translates an existing resource entry of a collection, for every target locale
+ * that needs translation (no metadata, or status `new` or `stale`).
  *
  * Returns early with `translatedCount: 0` when no locales require translation.
  *
- * Throws {@link TranslationError} if the translation provider fails — callers
- * should map this to an appropriate HTTP error (e.g. 502 Bad Gateway).
- *
- * @param options - Resolution and translation parameters for this resource.
- * @returns The updated resource entry along with translation and skip counts.
+ * @param key - The entry's full key.
+ * @throws {AutoTranslationDisabledError} The collection has no enabled translation config.
+ * @throws {InvalidResourceKeyError} The key is malformed.
+ * @throws {ResourceNotFoundError} No entry exists at the key.
+ * @throws {TranslationError} The translation provider failed.
  */
 export async function translateExistingResource(
-  options: TranslateExistingResourceOptions,
+  collection: Collection,
+  key: string,
 ): Promise<TranslateExistingResourceResult> {
-  const { key, translationsFolder, translationConfig, allLocales, baseLocale, cwd = process.cwd() } = options;
+  const { translationConfig, baseLocale, translationsFolder } = collection;
+  if (!translationConfig?.enabled) {
+    throw new AutoTranslationDisabledError(collection.name);
+  }
 
-  const paths = validateAndResolvePaths({ key, translationsFolder, cwd });
+  const paths = validateAndResolvePaths({ key, translationsFolder });
 
   const folder = openResourceFolder(paths.folderPath, { baseLocale });
   const current = folder.get(paths.entryKey);
@@ -56,7 +46,7 @@ export async function translateExistingResource(
   }
 
   const { entry, meta } = current;
-  const targetLocales = allLocales.filter((locale) => locale !== baseLocale && needsTranslation(meta[locale]));
+  const targetLocales = collection.targetLocales.filter((locale) => needsTranslation(meta[locale]));
 
   if (targetLocales.length === 0) {
     return {
@@ -89,9 +79,7 @@ export async function translateExistingResource(
     skippedLocales,
     entry: updatedEntry,
     mutations:
-      translatedEntries.length > 0
-        ? [upsertMutation(resolve(cwd, translationsFolder), paths.resolvedKey, updatedEntry)]
-        : [],
+      translatedEntries.length > 0 ? [upsertMutation(translationsFolder, paths.resolvedKey, updatedEntry)] : [],
   };
 }
 

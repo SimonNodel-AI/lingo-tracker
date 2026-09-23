@@ -1,6 +1,19 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { deleteResource } from './delete-resource';
 import * as fs from 'node:fs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Collection } from '../lib/config/open-collection';
+import { deleteResource } from './delete-resource';
+
+const collection: Collection = {
+  name: 'main',
+  translationsFolder: 'translations',
+  baseLocale: 'en',
+  locales: ['en'],
+  targetLocales: [],
+  translationConfig: undefined,
+  tags: [],
+  readOnly: false,
+  config: { translationsFolder: 'translations' },
+};
 
 vi.mock('node:fs');
 
@@ -28,7 +41,7 @@ describe('deleteResource', () => {
     });
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
-    const result = deleteResource('translations', { keys: ['app.button.ok'] });
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
 
     expect(result.entriesDeleted).toBe(1);
     expect(result.errors).toBeUndefined();
@@ -47,7 +60,7 @@ describe('deleteResource', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(resourceEntries));
 
-    const result = deleteResource('translations', { keys: ['app.button.ok'] });
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
 
     expect(result.entriesDeleted).toBe(0);
     expect(result.errors).toBeDefined();
@@ -59,7 +72,7 @@ describe('deleteResource', () => {
   it('should collect error when folder does not exist', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
 
-    const result = deleteResource('translations', { keys: ['app.button.ok'] });
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
 
     expect(result.entriesDeleted).toBe(0);
     expect(result.errors).toBeDefined();
@@ -69,7 +82,7 @@ describe('deleteResource', () => {
   });
 
   it('should collect error for invalid key format', () => {
-    const result = deleteResource('translations', { keys: ['invalid key!'] });
+    const result = deleteResource(collection, { keys: ['invalid key!'] });
 
     expect(result.entriesDeleted).toBe(0);
     expect(result.errors).toBeDefined();
@@ -91,7 +104,7 @@ describe('deleteResource', () => {
     });
     vi.mocked(fs.unlinkSync).mockImplementation(() => undefined);
 
-    const result = deleteResource('translations', { keys: ['app.button.ok'] });
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
 
     expect(result.entriesDeleted).toBe(1);
     expect(result.errors).toBeUndefined();
@@ -122,7 +135,7 @@ describe('deleteResource', () => {
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
     vi.mocked(fs.unlinkSync).mockImplementation(() => undefined);
 
-    const result = deleteResource('translations', { keys: ['app.button.ok'] });
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
 
     expect(result.entriesDeleted).toBe(1);
     expect(result.errors).toBeUndefined();
@@ -143,7 +156,7 @@ describe('deleteResource', () => {
     });
     vi.mocked(fs.unlinkSync).mockImplementation(() => undefined);
 
-    const result = deleteResource('translations', {
+    const result = deleteResource(collection, {
       keys: ['apps.common.buttons.ok'],
     });
 
@@ -164,7 +177,7 @@ describe('deleteResource', () => {
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(resourceEntries));
     vi.mocked(fs.unlinkSync).mockImplementation(() => undefined);
 
-    const result = deleteResource('translations', { keys: ['app.button.ok'] });
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
 
     expect(result.entriesDeleted).toBe(1);
     expect(result.errors).toBeUndefined();
@@ -195,7 +208,7 @@ describe('deleteResource', () => {
       });
       vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
-      const result = deleteResource('translations', {
+      const result = deleteResource(collection, {
         keys: ['app.button.ok', 'app.button.cancel'],
       });
 
@@ -223,7 +236,7 @@ describe('deleteResource', () => {
       });
       vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
-      const result = deleteResource('translations', {
+      const result = deleteResource(collection, {
         keys: ['app.button.ok', 'invalid key!', 'app.button.cancel'],
       });
 
@@ -235,14 +248,14 @@ describe('deleteResource', () => {
     });
 
     it('should handle empty array', () => {
-      const result = deleteResource('translations', { keys: [] });
+      const result = deleteResource(collection, { keys: [] });
 
       expect(result.entriesDeleted).toBe(0);
       expect(result.errors).toBeUndefined();
     });
 
     it('should handle all keys invalid scenario', () => {
-      const result = deleteResource('translations', {
+      const result = deleteResource(collection, {
         keys: ['invalid key!', 'another bad@key', 'bad#key'],
       });
 
@@ -267,7 +280,7 @@ describe('deleteResource', () => {
       });
       vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
-      const result = deleteResource('translations', {
+      const result = deleteResource(collection, {
         keys: ['app.button.ok', 'app.button.notfound', 'app.button.missing'],
       });
 
@@ -303,7 +316,7 @@ describe('deleteResource', () => {
         callCount.writeCount++;
       });
 
-      const result = deleteResource('translations', {
+      const result = deleteResource(collection, {
         keys: ['app.button.ok', 'common.label.cancel'],
       });
 
@@ -314,7 +327,7 @@ describe('deleteResource', () => {
 
   describe('Security', () => {
     it('should reject invalid keys with path traversal characters', () => {
-      const result = deleteResource('translations', {
+      const result = deleteResource(collection, {
         keys: ['../secret.key'],
       });
 
@@ -325,7 +338,7 @@ describe('deleteResource', () => {
     });
 
     it('should NOT attempt to delete files for invalid paths', () => {
-      deleteResource('translations', {
+      deleteResource(collection, {
         keys: ['../secret.key'],
       });
 

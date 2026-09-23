@@ -1,8 +1,23 @@
-import { join, resolve } from 'node:path';
-import { moveResource } from './move-resource';
-import { RESOURCE_ENTRIES_FILENAME } from '../constants';
-import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 import * as fs from 'node:fs';
+import { join, resolve } from 'node:path';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { RESOURCE_ENTRIES_FILENAME } from '../constants';
+import type { Collection } from '../lib/config/open-collection';
+import { moveResource } from './move-resource';
+
+function collection(translationsFolder: string, name = 'main'): Collection {
+  return {
+    name,
+    translationsFolder,
+    baseLocale: 'en',
+    locales: ['en'],
+    targetLocales: [],
+    translationConfig: undefined,
+    tags: [],
+    readOnly: false,
+    config: { translationsFolder },
+  };
+}
 
 // Mock node:fs
 vi.mock('node:fs', () => {
@@ -125,7 +140,7 @@ describe('Move Resource', () => {
         }),
       );
 
-      const result = await moveResource(testDir, {
+      const result = await moveResource(collection(testDir), {
         source: 'common.buttons.ok',
         destination: 'common.actions.ok',
       });
@@ -172,7 +187,7 @@ describe('Move Resource', () => {
         }),
       );
 
-      const result = await moveResource(testDir, {
+      const result = await moveResource(collection(testDir), {
         source: 'a.key',
         destination: 'b.key',
         override: false,
@@ -212,7 +227,7 @@ describe('Move Resource', () => {
         }),
       );
 
-      const result = await moveResource(testDir, {
+      const result = await moveResource(collection(testDir), {
         source: 'a.key',
         destination: 'b.key',
         override: true,
@@ -242,7 +257,7 @@ describe('Move Resource', () => {
         }),
       );
 
-      const result = await moveResource(testDir, {
+      const result = await moveResource(collection(testDir), {
         source: 'common.buttons.*',
         destination: 'common.actions',
       });
@@ -284,7 +299,7 @@ describe('Move Resource', () => {
         }),
       );
 
-      const result = await moveResource(testDir, {
+      const result = await moveResource(collection(testDir), {
         source: 'common.buttons.*',
         destination: 'common.actions',
       });
@@ -326,10 +341,10 @@ describe('Move Resource', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       mockDirectories.add(collectionBFolder);
 
-      const result = await moveResource(collectionAFolder, {
+      const result = await moveResource(collection(collectionAFolder, 'collectionA'), {
         source: 'common.buttons.ok',
         destination: 'common.actions.ok',
-        destinationTranslationsFolder: collectionBFolder,
+        destinationCollection: collection(collectionBFolder, 'collectionB'),
       });
 
       expect(result.movedCount).toBe(1);
@@ -369,10 +384,10 @@ describe('Move Resource', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       mockDirectories.add(collectionBFolder);
 
-      const result = await moveResource(collectionAFolder, {
+      const result = await moveResource(collection(collectionAFolder, 'collectionA'), {
         source: 'common.buttons.*',
         destination: 'common.actions',
-        destinationTranslationsFolder: collectionBFolder,
+        destinationCollection: collection(collectionBFolder, 'collectionB'),
       });
 
       expect(result.movedCount).toBe(2);
@@ -396,7 +411,7 @@ describe('Move Resource', () => {
       const invalidPattern = 'invalid@char*';
       const invalidPath = join(testDir, 'invalid@char');
 
-      const result = await moveResource(testDir, {
+      const result = await moveResource(collection(testDir), {
         source: invalidPattern,
         destination: 'dest',
       });

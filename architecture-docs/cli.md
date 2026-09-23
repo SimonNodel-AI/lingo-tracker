@@ -40,8 +40,8 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `delete-collection` | `--collection-name` | `deleteCollectionByName()` |
 | `add-locale` | `--collection`, `--locale` | `addLocaleToCollection()` |
 | `remove-locale` | `--collection`, `--locale` | `removeLocaleFromCollection()` |
-| `add-resource` | `--collection`, `--key`, `--value`, `--comment`, `--tags`, `--target-folder`, `--translations <json>` | `addResource()` |
-| `edit-resource` | `--collection`, `--key`, `--base-value`, `--comment`, `--tags`, `--target-folder`, `--locale`, `--locale-value` | `editResource()` |
+| `add-resource` | `--collection`, `--key`, `--value`, `--comment`, `--tags`, `--target-folder`, `--translations <json>` | `addResource()` (locales without a `--translations` value are seeded by core: [locale seeding](glossary.md#locale-seeding)) |
+| `edit-resource` | `--collection`, `--key` (full key), `--base-value`, `--comment`, `--tags`, `--target-folder` (moves the entry into this folder; core `moveTo`), `--locale`, `--locale-value` | `editResource()` |
 | `delete-resource` | `--collection`, `--key`, `--yes` | `deleteResource()` |
 | `move` | `--collection`, `--source`, `--dest`, `--override`, `--verbose` | `moveResource()` |
 | `normalize` | `--collection`, `--all`, `--dry-run`, `--json` | `normalize()` |
@@ -228,10 +228,10 @@ flowchart LR
     PROMPT --> NAME["collectionName: string"]
     NAME --> RESOLVE["resolveCollection(collectionName, config, cwd)"]
     RESOLVE --> RESOLVED["Collection (core)\n{ name, translationsFolder, baseLocale,\nlocales, targetLocales, translationConfig, ... }"]
-    RESOLVED --> CORE["@simoncodes-ca/core function\ne.g. addResource(collection.translationsFolder, params)"]
+    RESOLVED --> CORE["@simoncodes-ca/core function\ne.g. addResource(collection, params)"]
 ```
 
-The `translationsFolder` from the `Collection` is the first argument passed to every core resource operation, and its `baseLocale` / `locales` / `translationConfig` fill the remaining parameters. Commands never construct filesystem paths or effective settings themselves.
+The `Collection` itself is the first argument passed to every core resource and folder operation (`addResource(collection, …)`, `editResource(collection, key, …)`, `moveResource(collection, …)`, `deleteResource(collection, …)`). Commands never construct filesystem paths or effective settings themselves, and they do not decide what untranslated locales get: core's [locale seeding](glossary.md#locale-seeding) does.
 
 ---
 

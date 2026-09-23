@@ -1,10 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { moveResource } from './move-resource';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { Collection } from '../lib/config/open-collection';
 import { moveFolder } from '../lib/folder/move-folder';
 import { calculateChecksum } from './checksum';
+import { moveResource } from './move-resource';
 
 const md5 = calculateChecksum;
 
@@ -14,6 +15,18 @@ const md5 = calculateChecksum;
  */
 describe('moving resources keeps metadata (real fs)', () => {
   let root: string;
+
+  const collection = (translationsFolder = root, name = 'main'): Collection => ({
+    name,
+    translationsFolder,
+    baseLocale: 'en',
+    locales: ['en', 'fr', 'es'],
+    targetLocales: ['fr', 'es'],
+    translationConfig: undefined,
+    tags: [],
+    readOnly: false,
+    config: { translationsFolder },
+  });
 
   const entries = { ok: { source: 'OK', comment: 'Button', tags: ['ui'], fr: "D'accord", es: 'Vale' } };
   const meta = {
@@ -46,7 +59,7 @@ describe('moving resources keeps metadata (real fs)', () => {
   it('moveResource carries values, details, checksums, and statuses', async () => {
     writeFolder('common');
 
-    const result = await moveResource(root, { source: 'common.ok', destination: 'shared.buttons.confirm' });
+    const result = await moveResource(collection(), { source: 'common.ok', destination: 'shared.buttons.confirm' });
 
     expect(result).toEqual({
       movedCount: 1,
@@ -66,7 +79,7 @@ describe('moving resources keeps metadata (real fs)', () => {
   it('moveResource by pattern keeps statuses', async () => {
     writeFolder('common', 'buttons');
 
-    await moveResource(root, { source: 'common.*', destination: 'shared' });
+    await moveResource(collection(), { source: 'common.*', destination: 'shared' });
 
     expect(read('tracker_meta.json', 'shared', 'buttons').ok.fr.status).toBe('verified');
     expect(read('tracker_meta.json', 'shared', 'buttons').ok.es.status).toBe('stale');
@@ -76,10 +89,10 @@ describe('moving resources keeps metadata (real fs)', () => {
     writeFolder('common');
     const otherCollection = join(root, 'other');
 
-    await moveResource(root, {
+    await moveResource(collection(), {
       source: 'common.ok',
       destination: 'common.ok',
-      destinationTranslationsFolder: otherCollection,
+      destinationCollection: collection(otherCollection, 'other'),
     });
 
     expect(read('tracker_meta.json', 'other', 'common')).toEqual(meta);
@@ -88,7 +101,10 @@ describe('moving resources keeps metadata (real fs)', () => {
   it('moveFolder keeps statuses', async () => {
     writeFolder('apps', 'buttons');
 
-    const result = await moveFolder(root, { sourceFolderPath: 'apps.buttons', destinationFolderPath: 'shared' });
+    const result = await moveFolder(collection(), {
+      sourceFolderPath: 'apps.buttons',
+      destinationFolderPath: 'shared',
+    });
 
     expect(result.errors).toEqual([]);
     expect(read('resource_entries.json', 'shared', 'buttons')).toEqual(entries);
@@ -100,7 +116,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     writeFolder('common');
     writeFolder('shared');
 
-    const result = await moveResource(root, { source: 'common.ok', destination: 'shared.ok' });
+    const result = await moveResource(collection(), { source: 'common.ok', destination: 'shared.ok' });
 
     expect(result.movedCount).toBe(0);
     expect(result.warnings[0]).toContain('Destination key already exists');

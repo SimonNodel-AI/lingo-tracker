@@ -352,7 +352,6 @@ describe('toCreateDto', () => {
         ],
         tags: ['browser'],
       }),
-      'en',
     );
 
     expect(dto).toEqual({
@@ -360,7 +359,6 @@ describe('toCreateDto', () => {
       baseValue: 'OK',
       comment: 'The affirmative button',
       tags: ['browser'],
-      baseLocale: 'en',
       translations: [{ locale: 'fr', value: 'Valeur', status: 'new' }],
     });
   });
@@ -372,7 +370,7 @@ describe('toCreateDto', () => {
     ['no tags are omitted', { tags: [] }, { tags: undefined }],
     ['no filled translations are omitted', {}, { translations: undefined }],
   ])('%s', (_case, overrides, expected) => {
-    expect(toCreateDto(draft(overrides), 'en')).toMatchObject(expected);
+    expect(toCreateDto(draft(overrides))).toMatchObject(expected);
   });
 });
 
@@ -426,19 +424,29 @@ describe('toUpdateDto and editedLocales', () => {
     const dto = toUpdateDto(draft({ comment: '  Why  ', translations: untouched }), original);
 
     expect(dto).toEqual({ key: 'common.buttons.ok', baseValue: 'OK', comment: 'Why', tags: [] });
-    expect('targetFolder' in dto).toBe(false);
+    expect('moveTo' in dto).toBe(false);
   });
 
   it('should keep a root-level entry on its bare key', () => {
     expect(toUpdateDto(draft({ folderPath: '' }), { ...original, folderPath: '' }).key).toBe('ok');
   });
 
-  it('should send a move to another folder as targetFolder', () => {
-    expect(toUpdateDto(draft({ folderPath: 'common.dialogs' }), original).targetFolder).toBe('common.dialogs');
+  it('should send a move to another folder as moveTo, with the full original key', () => {
+    const dto = toUpdateDto(draft({ folderPath: 'common.dialogs' }), original);
+
+    expect(dto.key).toBe('common.buttons.ok');
+    expect(dto.moveTo).toBe('common.dialogs');
   });
 
-  it('should omit targetFolder entirely for a move to the collection root', () => {
-    expect('targetFolder' in toUpdateDto(draft({ folderPath: '' }), original)).toBe(false);
+  it('should send a move to the collection root as an empty moveTo', () => {
+    expect(toUpdateDto(draft({ folderPath: '' }), original).moveTo).toBe('');
+  });
+
+  it('should send a move out of the collection root', () => {
+    const dto = toUpdateDto(draft({ folderPath: 'common' }), { ...original, folderPath: '' });
+
+    expect(dto.key).toBe('ok');
+    expect(dto.moveTo).toBe('common');
   });
 });
 

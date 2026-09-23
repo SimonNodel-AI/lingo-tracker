@@ -113,9 +113,9 @@ describe('BrowserStore entry writes', () => {
   });
 
   describe('updateResource', () => {
-    const update = (key: string, response: object, targetFolder?: string): void => {
+    const update = (key: string, response: object, moveTo?: string): void => {
       store
-        .updateResource('my-collection', { key, baseValue: 'x', ...(targetFolder ? { targetFolder } : {}) })
+        .updateResource('my-collection', { key, baseValue: 'x', ...(moveTo !== undefined ? { moveTo } : {}) })
         .subscribe();
       const patch = http.expectOne({ method: 'PATCH', url: RESOURCES_URL });
       expect(patch.request.body.key).toBe(key);
@@ -168,22 +168,30 @@ describe('BrowserStore entry writes', () => {
     it('should drop an entry sent to another folder from both caches', () => {
       searchMode();
 
-      update('common.save', { resolvedKey: 'other.common.save', updated: true, resource: entry('save') }, 'other');
+      update('common.save', { resolvedKey: 'other.save', updated: true, resource: entry('save') }, 'other');
 
       expect(store.translations().map((item) => item.key)).toEqual(['dialog.title']);
       expect(store.searchResults().map((item) => item.key)).toEqual(['errors.save']);
     });
 
-    it('should patch in place when the DTO carries no targetFolder, as a move to the root does', () => {
+    it('should patch in place when the DTO carries no moveTo', () => {
       folderMode();
 
       store.updateResource('my-collection', { key: 'common.save', baseValue: 'Save now' }).subscribe();
       const patch = http.expectOne({ method: 'PATCH', url: RESOURCES_URL });
-      expect('targetFolder' in patch.request.body).toBe(false);
+      expect('moveTo' in patch.request.body).toBe(false);
       patch.flush({ resolvedKey: 'common.save', updated: true, resource: entry('save', 'Save now') });
 
       expect(store.translations().map((item) => item.key)).toEqual(['save', 'dialog.title']);
       expect(englishOf(store.translations(), 'save')).toBe('Save now');
+    });
+
+    it('should drop an entry moved to the collection root (an empty moveTo)', () => {
+      folderMode();
+
+      update('common.save', { resolvedKey: 'save', updated: true, resource: entry('save') }, '');
+
+      expect(store.translations().map((item) => item.key)).toEqual(['dialog.title']);
     });
 
     it('should leave the caches alone when the response carries no resource', () => {

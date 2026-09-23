@@ -17,7 +17,6 @@ import {
 import type { Response } from 'express';
 import {
   addResource,
-  createDefaultTranslations,
   deleteResource,
   moveResource,
   editResource,
@@ -46,7 +45,6 @@ import type {
   TranslateLocaleJobDto,
 } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
-import { mapDtoToAddResourceParams } from '../../mappers/resource.mapper';
 import { mapResourceTreeToDto, mapResourceEntryToSummary } from '../../mappers/resource-tree.mapper';
 import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
 import { CollectionIndex } from '../../cache/collection-index.service';
@@ -73,20 +71,7 @@ export class ResourcesController {
     @Body() dto: TranslateResourceDto,
   ): Promise<TranslateResourceResponseDto> {
     const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-    const { translationConfig } = collection;
-
-    if (!translationConfig?.enabled) {
-      throw new HttpException('Auto-translation is not enabled for this collection', HttpStatus.UNPROCESSABLE_ENTITY);
-    }
-
-    const result = await translateExistingResource({
-      key: dto.key,
-      translationsFolder: collection.translationsFolder,
-      translationConfig,
-      allLocales: collection.locales,
-      baseLocale: collection.baseLocale,
-      cwd: process.cwd(),
-    });
+    const result = await translateExistingResource(collection, dto.key);
 
     this.#index.apply(result.mutations);
 
@@ -103,7 +88,6 @@ export class ResourcesController {
     @Body() body: CreateResourceDto | CreateResourceDto[],
   ): Promise<CreateResourceResponseDto> {
     const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-    const { translationsFolder, baseLocale, locales, translationConfig } = collection;
 
     // Normalize to array
     const resources = Array.isArray(body) ? body : [body];
@@ -113,37 +97,20 @@ export class ResourcesController {
     }
 
     let entriesCreated = 0;
-    let hasCreated = false;
     const allSkippedLocales: string[] = [];
 
     for (const resource of resources) {
-      const resourceBaseLocale = resource.baseLocale || baseLocale;
-      const hasExplicitTranslations = resource.translations && resource.translations.length > 0;
-      const canAutoTranslate = translationConfig?.enabled && !hasExplicitTranslations;
-
-      // When auto-translation is enabled and no explicit translations provided,
-      // let addResource handle translation via the configured provider.
-      // Otherwise, fall back to default translations (copies base value with 'new' status).
-      const translations = hasExplicitTranslations
-        ? resource.translations
-        : canAutoTranslate
-          ? undefined
-          : createDefaultTranslations(locales, resourceBaseLocale, resource.baseValue);
-
-      const params = mapDtoToAddResourceParams({
-        ...resource,
-        baseLocale: resourceBaseLocale,
-        translations,
-        ...(canAutoTranslate && { allLocales: locales }),
+      const result = await addResource(collection, {
+        key: resource.key,
+        baseValue: resource.baseValue,
+        comment: resource.comment,
+        tags: resource.tags,
+        targetFolder: resource.targetFolder,
+        translations: resource.translations,
       });
-
-      const result = canAutoTranslate
-        ? await addResource(translationsFolder, params, { translationConfig })
-        : await addResource(translationsFolder, params);
 
       if (result.created) {
         entriesCreated++;
-        hasCreated = true;
       }
 
       if (result.skippedLocales?.length) {
@@ -157,7 +124,7 @@ export class ResourcesController {
 
     return {
       entriesCreated,
-      created: hasCreated,
+      created: entriesCreated > 0,
       ...(uniqueSkippedLocales.length > 0 && { skippedLocales: uniqueSkippedLocales }),
     };
   }
@@ -167,13 +134,13 @@ export class ResourcesController {
     @Param('collectionName') collectionName: string,
     @Body() dto: DeleteResourceDto,
   ): Promise<DeleteResourceResponseDto> {
-    const { translationsFolder } = openRouteCollection(this.#configService.getConfig(), collectionName);
+    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
 
     if (!dto.keys || !Array.isArray(dto.keys) || dto.keys.length === 0) {
       throw new HttpException('Invalid request: keys array is required and must not be empty', HttpStatus.BAD_REQUEST);
     }
 
-    const result = deleteResource(translationsFolder, { keys: dto.keys });
+    const result = deleteResource(collection, { keys: dto.keys });
     this.#index.apply(result.mutations);
 
     return {
@@ -188,7 +155,7 @@ export class ResourcesController {
     @Body() dto: MoveResourceDto,
   ): Promise<MoveResourceResponseDto> {
     const config = this.#configService.getConfig();
-    const { translationsFolder } = openRouteCollection(config, collectionName);
+    const collection = openRouteCollection(config, collectionName);
 
     const result: MoveResourceResponseDto = {
       movedCount: 0,
@@ -201,12 +168,11 @@ export class ResourcesController {
     }
 
     for (const moveOp of dto.moves) {
-      let destinationTranslationsFolder: string | undefined;
+      let destinationCollection: Collection | undefined;
 
       if (moveOp.toCollection) {
-        let destination: Collection;
         try {
-          destination = openDestinationCollection(config, moveOp.toCollection);
+          destinationCollection = openDestinationCollection(config, moveOp.toCollection);
         } catch (error: unknown) {
           if (!(error instanceof NotFoundException || error instanceof ForbiddenException)) throw error;
           // Missing or read-only destination: for consistency with other bulk ops, report it
@@ -215,14 +181,13 @@ export class ResourcesController {
           result.errors.push(error.message);
           continue;
         }
-        destinationTranslationsFolder = destination.translationsFolder;
       }
 
-      const moveResult = await moveResource(translationsFolder, {
+      const moveResult = await moveResource(collection, {
         source: moveOp.source,
         destination: moveOp.destination,
         override: moveOp.override,
-        destinationTranslationsFolder: destinationTranslationsFolder,
+        destinationCollection,
       });
       this.#index.apply(moveResult.mutations);
 
@@ -245,11 +210,12 @@ export class ResourcesController {
   ): Promise<UpdateResourceResponseDto> {
     const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
 
-    const result = await editResource(collection.translationsFolder, {
-      ...dto,
-      baseLocale: collection.baseLocale,
-      translationConfig: collection.translationConfig,
-      allLocales: collection.locales,
+    const result = await editResource(collection, dto.key, {
+      baseValue: dto.baseValue,
+      comment: dto.comment,
+      tags: dto.tags,
+      translations: dto.locales,
+      moveTo: dto.moveTo,
     });
 
     this.#index.apply(result.mutations);

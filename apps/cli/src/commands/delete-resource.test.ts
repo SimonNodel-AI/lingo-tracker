@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolve } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
-import { deleteResourceCommand } from './delete-resource';
+import { resolve } from 'node:path';
 import { deleteResource } from '@simoncodes-ca/core';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { deleteResourceCommand } from './delete-resource';
 
 const fsMocks = vi.hoisted(() => ({
   existsSync: vi.fn(),
@@ -63,9 +63,10 @@ describe('deleteResourceCommand', () => {
 
     await deleteResourceCommand(options);
 
-    expect(mockDeleteResource).toHaveBeenCalledWith(resolve('/test/project', 'src/i18n'), {
-      keys: ['apps.common.buttons.ok'],
-    });
+    expect(mockDeleteResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      { keys: ['apps.common.buttons.ok'] },
+    );
   });
 
   it('should delete multiple resources from comma-separated keys', async () => {
@@ -83,9 +84,10 @@ describe('deleteResourceCommand', () => {
 
     await deleteResourceCommand(options);
 
-    expect(mockDeleteResource).toHaveBeenCalledWith(resolve('/test/project', 'src/i18n'), {
-      keys: ['apps.common.buttons.ok', 'apps.common.buttons.cancel', 'apps.common.buttons.save'],
-    });
+    expect(mockDeleteResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      { keys: ['apps.common.buttons.ok', 'apps.common.buttons.cancel', 'apps.common.buttons.save'] },
+    );
   });
 
   it('should handle partial success with errors', async () => {
@@ -104,9 +106,10 @@ describe('deleteResourceCommand', () => {
 
     await deleteResourceCommand(options);
 
-    expect(mockDeleteResource).toHaveBeenCalledWith(resolve('/test/project', 'src/i18n'), {
-      keys: ['apps.common.buttons.ok', 'apps.common.buttons.cancel', 'apps.common.invalid'],
-    });
+    expect(mockDeleteResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      { keys: ['apps.common.buttons.ok', 'apps.common.buttons.cancel', 'apps.common.invalid'] },
+    );
   });
 
   it('should not delete if config does not exist', async () => {
@@ -155,9 +158,10 @@ describe('deleteResourceCommand', () => {
 
     await deleteResourceCommand(options);
 
-    expect(mockDeleteResource).toHaveBeenCalledWith(resolve('/test/project', 'src/i18n'), {
-      keys: ['apps.common.buttons.ok', 'apps.common.buttons.cancel'],
-    });
+    expect(mockDeleteResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      { keys: ['apps.common.buttons.ok', 'apps.common.buttons.cancel'] },
+    );
   });
 
   it('should handle zero deletions', async () => {
@@ -176,8 +180,9 @@ describe('deleteResourceCommand', () => {
 
     await deleteResourceCommand(options);
 
-    expect(mockDeleteResource).toHaveBeenCalledWith(resolve('/test/project', 'src/i18n'), {
-      keys: ['apps.common.notfound'],
-    });
+    expect(mockDeleteResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      { keys: ['apps.common.notfound'] },
+    );
   });
 });

@@ -40,11 +40,11 @@ export async function moveResourceCommand(options: MoveResourceOptions): Promise
   }
 
   try {
-    const result = await moveResource(sourceCollection.translationsFolder, {
+    const result = await moveResource(sourceCollection, {
       source: answers.source,
       destination: answers.dest,
       override: options.override,
-      destinationTranslationsFolder: destCollection?.translationsFolder,
+      destinationCollection: destCollection,
     });
 
     if (result.movedCount > 0) {

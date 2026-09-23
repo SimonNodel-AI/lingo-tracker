@@ -92,14 +92,14 @@ export function withEntryWritesFeature<_>() {
         },
 
         /**
-         * Updates the entry `dto.key` names. A DTO with a `targetFolder` moves the
-         * entry, so it leaves the caches. A DTO without one, including a move to
-         * the collection root (see `toUpdateDto`), is patched in place.
+         * Updates the entry `dto.key` names. A DTO with a `moveTo` (the collection
+         * root included) moves the entry, so it leaves the caches. A DTO without
+         * one is patched in place.
          */
         updateResource(collectionName: string, dto: UpdateResourceDto): Observable<UpdateResourceResponseDto> {
           return api.updateResource(collectionName, dto).pipe(
             tap((response) => {
-              if (dto.targetFolder !== undefined) {
+              if (dto.moveTo !== undefined) {
                 dropEntry(dto.key);
               } else if (response.resource) {
                 patchEntry(dto.key, response.resource);

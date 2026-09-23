@@ -1211,7 +1211,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.isSubmitting.set(true);
     this.errorMessage.set(null);
 
-    const createDto = toCreateDto(draft, this.data.baseLocale);
+    const createDto = toCreateDto(draft);
 
     this.browserStore.createResource(this.data.collectionName, createDto).subscribe({
       next: (response: CreateResourceResponseDto) => {

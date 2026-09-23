@@ -1,8 +1,28 @@
-import { join, resolve } from 'node:path';
-import { moveFolder } from './move-folder';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
-import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
 import * as fs from 'node:fs';
+import { join, resolve } from 'node:path';
+import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import type { Collection } from '../config/open-collection';
+import {
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
+  InvalidFolderPathError,
+} from '../errors/lingo-tracker-error';
+import { moveFolder } from './move-folder';
+
+function collection(translationsFolder: string, name = 'main'): Collection {
+  return {
+    name,
+    translationsFolder,
+    baseLocale: 'en',
+    locales: ['en', 'fr'],
+    targetLocales: ['fr'],
+    translationConfig: undefined,
+    tags: [],
+    readOnly: false,
+    config: { translationsFolder },
+  };
+}
 
 // Mock node:fs
 vi.mock('node:fs', () => {
@@ -147,7 +167,7 @@ describe('Move Folder', () => {
         }),
       );
 
-      const result = await moveFolder(testDir, {
+      const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.common.buttons',
         destinationFolderPath: 'apps.shared',
       });
@@ -210,7 +230,7 @@ describe('Move Folder', () => {
         }),
       );
 
-      const result = await moveFolder(testDir, {
+      const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.common.buttons',
         destinationFolderPath: 'apps.shared',
       });
@@ -243,7 +263,7 @@ describe('Move Folder', () => {
       mockDirectories.add(join(testDir, 'apps'));
       mockDirectories.add(emptyFolder);
 
-      const result = await moveFolder(testDir, {
+      const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.empty',
         destinationFolderPath: 'apps.shared',
       });
@@ -254,33 +274,29 @@ describe('Move Folder', () => {
       expect(result.warnings[0]).toContain('No resources found');
     });
 
-    it('should return error for non-existent source folder', async () => {
-      const result = await moveFolder(testDir, {
-        sourceFolderPath: 'apps.nonexistent',
-        destinationFolderPath: 'apps.shared',
-      });
-
-      expect(result.movedCount).toBe(0);
-      expect(result.foldersDeleted).toBe(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain('Source folder not found');
+    it('should throw for non-existent source folder', async () => {
+      await expect(
+        moveFolder(collection(testDir), {
+          sourceFolderPath: 'apps.nonexistent',
+          destinationFolderPath: 'apps.shared',
+        }),
+      ).rejects.toThrow(FolderNotFoundError);
+      expect(mockDirectories.has(join(testDir, 'apps', 'nonexistent'))).toBe(false);
     });
 
-    it('should return error when source is not a directory', async () => {
+    it('should throw when source is not a directory', async () => {
       // Create a file instead of directory
       const filePath = join(testDir, 'apps', 'notadir');
       mockDirectories.add(join(testDir, 'apps'));
       mockFileSystem.set(filePath, 'some content');
 
-      const result = await moveFolder(testDir, {
-        sourceFolderPath: 'apps.notadir',
-        destinationFolderPath: 'apps.shared',
-      });
-
-      expect(result.movedCount).toBe(0);
-      expect(result.foldersDeleted).toBe(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain('not a directory');
+      await expect(
+        moveFolder(collection(testDir), {
+          sourceFolderPath: 'apps.notadir',
+          destinationFolderPath: 'apps.shared',
+        }),
+      ).rejects.toThrow(FolderNotFoundError);
+      expect(mockFileSystem.get(filePath)).toBe('some content');
     });
   });
 
@@ -293,15 +309,13 @@ describe('Move Folder', () => {
       const buttonsFolder = join(commonFolder, 'buttons');
       mockDirectories.add(buttonsFolder);
 
-      const result = await moveFolder(testDir, {
-        sourceFolderPath: 'apps.common',
-        destinationFolderPath: 'apps.common.buttons',
-      });
-
-      expect(result.movedCount).toBe(0);
-      expect(result.foldersDeleted).toBe(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain('Cannot move folder into its own descendant');
+      await expect(
+        moveFolder(collection(testDir), {
+          sourceFolderPath: 'apps.common',
+          destinationFolderPath: 'apps.common.buttons',
+        }),
+      ).rejects.toThrow(FolderMoveIntoDescendantError);
+      expect(mockDirectories.has(commonFolder)).toBe(true);
     });
 
     it('should prevent moving folder into deeply nested descendant', async () => {
@@ -309,14 +323,13 @@ describe('Move Folder', () => {
       mockDirectories.add(join(testDir, 'apps'));
       mockDirectories.add(commonFolder);
 
-      const result = await moveFolder(testDir, {
-        sourceFolderPath: 'apps.common',
-        destinationFolderPath: 'apps.common.buttons.nested.deep',
-      });
-
-      expect(result.movedCount).toBe(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain('Cannot move folder into its own descendant');
+      await expect(
+        moveFolder(collection(testDir), {
+          sourceFolderPath: 'apps.common',
+          destinationFolderPath: 'apps.common.buttons.nested.deep',
+        }),
+      ).rejects.toThrow(FolderMoveIntoDescendantError);
+      expect(mockDirectories.has(commonFolder)).toBe(true);
     });
 
     it('should allow moving to sibling folder', async () => {
@@ -343,7 +356,7 @@ describe('Move Folder', () => {
 
       // Move to sibling: apps.actions
       // With new default (nestUnderDestination: true), creates apps.actions.buttons.ok
-      const result = await moveFolder(testDir, {
+      const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.buttons',
         destinationFolderPath: 'apps.actions',
       });
@@ -370,7 +383,7 @@ describe('Move Folder', () => {
       mockDirectories.add(join(testDir, 'apps', 'common'));
       mockDirectories.add(buttonsFolder);
 
-      const result = await moveFolder(testDir, {
+      const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.common.buttons',
         destinationFolderPath: 'apps.common.buttons',
       });
@@ -379,6 +392,23 @@ describe('Move Folder', () => {
       expect(result.foldersDeleted).toBe(0);
       expect(result.warnings).toHaveLength(1);
       expect(result.warnings[0]).toContain('Source and destination are the same');
+    });
+
+    it('should treat a destination collection with the same translations folder as the same collection', async () => {
+      const buttonsFolder = join(testDir, 'apps', 'buttons');
+      mockDirectories.add(join(testDir, 'apps'));
+      mockDirectories.add(buttonsFolder);
+
+      const result = await moveFolder(collection(testDir), {
+        sourceFolderPath: 'apps.buttons',
+        destinationFolderPath: 'apps.buttons',
+        destinationCollection: collection(testDir, 'alias'),
+      });
+
+      expect(result.movedCount).toBe(0);
+      expect(result.foldersDeleted).toBe(0);
+      expect(result.warnings).toEqual(['Source and destination are the same. No move performed.']);
+      expect(mockDirectories.has(buttonsFolder)).toBe(true);
     });
 
     it('should return warning when moving folder to its own parent with nestUnderDestination', async () => {
@@ -406,7 +436,7 @@ describe('Move Folder', () => {
 
       // Move apps.common.buttons to apps.common (its parent)
       // With nestUnderDestination=true, this would result in apps.common.buttons.ok -> apps.common.buttons.ok (no-op)
-      const result = await moveFolder(testDir, {
+      const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.common.buttons',
         destinationFolderPath: 'apps.common',
       });
@@ -447,11 +477,11 @@ describe('Move Folder', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       mockDirectories.add(collectionBFolder);
 
-      const result = await moveFolder(collectionAFolder, {
+      const result = await moveFolder(collection(collectionAFolder, 'collectionA'), {
         sourceFolderPath: 'apps.buttons',
         destinationFolderPath: 'shared.buttons',
         nestUnderDestination: false,
-        destinationTranslationsFolder: collectionBFolder,
+        destinationCollection: collection(collectionBFolder, 'collectionB'),
       });
 
       expect(result.movedCount).toBe(1);
@@ -499,11 +529,11 @@ describe('Move Folder', () => {
       mockDirectories.add(collectionBFolder);
 
       // Same path but different collection should work
-      const result = await moveFolder(collectionAFolder, {
+      const result = await moveFolder(collection(collectionAFolder, 'collectionA'), {
         sourceFolderPath: 'apps.buttons',
         destinationFolderPath: 'apps.buttons',
         nestUnderDestination: false,
-        destinationTranslationsFolder: collectionBFolder,
+        destinationCollection: collection(collectionBFolder, 'collectionB'),
       });
 
       expect(result.movedCount).toBe(1);
@@ -519,14 +549,12 @@ describe('Move Folder', () => {
 
   describe('Validation', () => {
     it('should reject invalid source folder path segments', async () => {
-      const result = await moveFolder(testDir, {
-        sourceFolderPath: 'apps.invalid@char.buttons',
-        destinationFolderPath: 'apps.shared',
-      });
-
-      expect(result.movedCount).toBe(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain('Invalid source folder path segment');
+      await expect(
+        moveFolder(collection(testDir), {
+          sourceFolderPath: 'apps.invalid@char.buttons',
+          destinationFolderPath: 'apps.shared',
+        }),
+      ).rejects.toThrow(InvalidFolderPathError);
     });
 
     it('should reject invalid destination folder path segments', async () => {
@@ -534,14 +562,12 @@ describe('Move Folder', () => {
       mockDirectories.add(join(testDir, 'apps'));
       mockDirectories.add(buttonsFolder);
 
-      const result = await moveFolder(testDir, {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.invalid@char',
-      });
-
-      expect(result.movedCount).toBe(0);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain('Invalid destination folder path segment');
+      await expect(
+        moveFolder(collection(testDir), {
+          sourceFolderPath: 'apps.buttons',
+          destinationFolderPath: 'apps.invalid@char',
+        }),
+      ).rejects.toThrow(InvalidFolderPathError);
     });
   });
 
@@ -569,7 +595,7 @@ describe('Move Folder', () => {
         );
 
         // Move testdata into common (both are depth 1)
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'testdata',
           destinationFolderPath: 'common',
           nestUnderDestination: true,
@@ -613,7 +639,7 @@ describe('Move Folder', () => {
         );
 
         // Move data.testdata into common (depth 2 -> depth 1)
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'data.testdata',
           destinationFolderPath: 'common',
           nestUnderDestination: true,
@@ -657,7 +683,7 @@ describe('Move Folder', () => {
         );
 
         // Move common.testdata to root (empty destination)
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'common.testdata',
           destinationFolderPath: '',
           nestUnderDestination: true,
@@ -721,7 +747,7 @@ describe('Move Folder', () => {
         );
 
         // Move testdata into common (should merge with existing common.testdata)
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'testdata',
           destinationFolderPath: 'common',
           nestUnderDestination: true,
@@ -766,7 +792,7 @@ describe('Move Folder', () => {
         );
 
         // Move testdata into common
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'testdata',
           destinationFolderPath: 'common',
           nestUnderDestination: true,
@@ -810,7 +836,7 @@ describe('Move Folder', () => {
         );
 
         // Move testdata into common with legacy behavior (both are depth 1, should RENAME)
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'testdata',
           destinationFolderPath: 'common',
           nestUnderDestination: false,
@@ -854,7 +880,7 @@ describe('Move Folder', () => {
         );
 
         // Move data.testdata into common (depth 2 -> depth 1, should NEST)
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'data.testdata',
           destinationFolderPath: 'common',
           nestUnderDestination: false,
@@ -901,7 +927,7 @@ describe('Move Folder', () => {
           }),
         );
 
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'apps.common.buttons',
           destinationFolderPath: 'apps.shared',
           nestUnderDestination: false,
@@ -946,7 +972,7 @@ describe('Move Folder', () => {
         );
 
         // Move testdata into common WITHOUT specifying nestUnderDestination
-        const result = await moveFolder(testDir, {
+        const result = await moveFolder(collection(testDir), {
           sourceFolderPath: 'testdata',
           destinationFolderPath: 'common',
           // nestUnderDestination not specified, should default to true

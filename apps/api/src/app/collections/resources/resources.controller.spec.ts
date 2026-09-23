@@ -1,15 +1,15 @@
 import { resolve } from 'node:path';
-import { Test, type TestingModule } from '@nestjs/testing';
 import { HttpException, NotFoundException } from '@nestjs/common';
-import { TranslationError } from '@simoncodes-ca/core';
-import type { TranslationStatus, LocaleMetadata } from '@simoncodes-ca/domain';
-import type { ResourceTreeDto } from '@simoncodes-ca/data-transfer';
-import { ResourcesController } from './resources.controller';
-import { ConfigService } from '../../config/config.service';
-import { CollectionIndex } from '../../cache/collection-index.service';
-import { TranslationJobService } from '../../translation-job/translation-job.service';
-import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
+import { Test, type TestingModule } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
+import { TranslationError } from '@simoncodes-ca/core';
+import type { ResourceTreeDto } from '@simoncodes-ca/data-transfer';
+import type { LocaleMetadata, TranslationStatus } from '@simoncodes-ca/domain';
+import { CollectionIndex } from '../../cache/collection-index.service';
+import { ConfigService } from '../../config/config.service';
+import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
+import { TranslationJobService } from '../../translation-job/translation-job.service';
+import { ResourcesController } from './resources.controller';
 
 /** What the handler rejects with, as the HTTP exception the global exception filter answers with. */
 const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
@@ -28,15 +28,9 @@ jest.mock('@simoncodes-ca/core', () => {
     moveResourcesByPattern: jest.fn(),
     editResource: jest.fn(),
     translateExistingResource: jest.fn(),
-    createDefaultTranslations: jest.fn(),
     extractResourcesRecursively: jest.fn(),
   };
 });
-
-// Mock the mapper
-jest.mock('../../mappers/resource.mapper', () => ({
-  mapDtoToAddResourceParams: jest.fn((dto) => dto),
-}));
 
 // Mock the resource tree mapper
 jest.mock('../../mappers/resource-tree.mapper', () => ({
@@ -171,12 +165,19 @@ describe('ResourcesController', () => {
         created: true,
       });
       expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
         expect.objectContaining({
-          key: 'app.button.ok',
-          baseValue: 'OK',
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
           baseLocale: 'en',
         }),
+        {
+          key: 'app.button.ok',
+          baseValue: 'OK',
+          comment: undefined,
+          tags: undefined,
+          targetFolder: undefined,
+          translations: undefined,
+        },
       );
     });
 
@@ -246,62 +247,6 @@ describe('ResourcesController', () => {
       expect(addResource).toHaveBeenCalledTimes(3);
     });
 
-    it('should use collection baseLocale when provided', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const configWithCustomBaseLocale = {
-        ...mockConfig,
-        collections: {
-          'test-collection': {
-            translationsFolder: './translations/test',
-            baseLocale: 'fr-ca',
-          },
-        },
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithCustomBaseLocale);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
-        expect.objectContaining({
-          baseLocale: 'fr-ca',
-        }),
-      );
-    });
-
-    it('should use DTO baseLocale when explicitly provided', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-        baseLocale: 'es',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
-        expect.objectContaining({
-          baseLocale: 'es',
-        }),
-      );
-    });
-
     it('should URI decode collection names with special characters', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource.mockReturnValue({
@@ -326,7 +271,13 @@ describe('ResourcesController', () => {
 
       await resourcesController.createResources('My%20Collection', dto);
 
-      expect(addResource).toHaveBeenCalledWith(resolve('./translations/my-collection'), expect.any(Object));
+      expect(addResource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'My Collection',
+          translationsFolder: resolve('./translations/my-collection'),
+        }),
+        expect.any(Object),
+      );
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
@@ -438,7 +389,11 @@ describe('ResourcesController', () => {
         created: true,
       });
       expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
+        expect.objectContaining({
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
+          baseLocale: 'en',
+        }),
         expect.objectContaining({
           key: 'cancel',
           baseValue: 'Cancel',
@@ -476,130 +431,12 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           translations: [
             { locale: 'fr-ca', value: "D'accord", status: 'translated' },
             { locale: 'es', value: 'De acuerdo', status: 'translated' },
           ],
-        }),
-      );
-    });
-
-    it('should automatically create entries for all non-base locales when translations are not provided', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const createDefaultTranslations = core.createDefaultTranslations as jest.Mock;
-      createDefaultTranslations.mockReturnValue([
-        { locale: 'fr-ca', value: 'OK', status: 'new' },
-        { locale: 'es', value: 'OK', status: 'new' },
-      ]);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-        // No translations provided
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
-        expect.objectContaining({
-          key: 'app.button.ok',
-          baseValue: 'OK',
-          baseLocale: 'en',
-          translations: [
-            { locale: 'fr-ca', value: 'OK', status: 'new' },
-            { locale: 'es', value: 'OK', status: 'new' },
-          ],
-        }),
-      );
-    });
-
-    it('should use collection locales when available, fall back to global locales', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const createDefaultTranslations = core.createDefaultTranslations as jest.Mock;
-      createDefaultTranslations.mockReturnValue([
-        { locale: 'fr-ca', value: 'OK', status: 'new' },
-        { locale: 'es', value: 'OK', status: 'new' },
-        { locale: 'de', value: 'OK', status: 'new' },
-      ]);
-
-      const configWithCollectionLocales = {
-        ...mockConfig,
-        collections: {
-          'test-collection': {
-            translationsFolder: './translations/test',
-            baseLocale: 'en',
-            locales: ['en', 'fr-ca', 'es', 'de'],
-          },
-        },
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithCollectionLocales);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
-        expect.objectContaining({
-          translations: [
-            { locale: 'fr-ca', value: 'OK', status: 'new' },
-            { locale: 'es', value: 'OK', status: 'new' },
-            { locale: 'de', value: 'OK', status: 'new' },
-          ],
-        }),
-      );
-    });
-
-    it('should not create translations if locales array is empty', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const createDefaultTranslations = core.createDefaultTranslations as jest.Mock;
-      createDefaultTranslations.mockReturnValue(undefined);
-
-      const configWithNoLocales = {
-        ...mockConfig,
-        collections: {
-          'test-collection': {
-            translationsFolder: './translations/test',
-            baseLocale: 'en',
-            // No locales property
-          },
-        },
-        locales: [], // Empty global locales
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithNoLocales);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
-        expect.objectContaining({
-          translations: undefined,
         }),
       );
     });
@@ -623,9 +460,10 @@ describe('ResourcesController', () => {
         entriesDeleted: 1,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/test'), {
-        keys: ['app.button.ok'],
-      });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        { keys: ['app.button.ok'] },
+      );
     });
 
     it('should successfully delete multiple resources (bulk operation)', async () => {
@@ -645,9 +483,10 @@ describe('ResourcesController', () => {
         entriesDeleted: 3,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/test'), {
-        keys: ['app.button.ok', 'app.button.cancel', 'app.button.save'],
-      });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        { keys: ['app.button.ok', 'app.button.cancel', 'app.button.save'] },
+      );
     });
 
     it('should handle partial failures with errors array', async () => {
@@ -700,7 +539,10 @@ describe('ResourcesController', () => {
 
       await resourcesController.delete('My%20Collection', dto);
 
-      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/my-collection'), { keys: ['app.button.ok'] });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'My Collection', translationsFolder: resolve('./translations/my-collection') }),
+        { keys: ['app.button.ok'] },
+      );
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
@@ -775,9 +617,10 @@ describe('ResourcesController', () => {
         entriesDeleted: 1,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith(resolve('./translations/test'), {
-        keys: ['apps.common.buttons.ok'],
-      });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        { keys: ['apps.common.buttons.ok'] },
+      );
     });
   });
 
@@ -802,7 +645,7 @@ describe('ResourcesController', () => {
         errors: [],
       });
       expect(moveResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
@@ -831,7 +674,7 @@ describe('ResourcesController', () => {
       await resourcesController.move('test-collection', dto);
 
       expect(moveResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
@@ -906,11 +749,14 @@ describe('ResourcesController', () => {
 
       expect(result.movedCount).toBe(1);
       expect(moveResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
-          destinationTranslationsFolder: resolve('./translations/other'),
+          destinationCollection: expect.objectContaining({
+            name: 'other-collection',
+            translationsFolder: resolve('./translations/other'),
+          }),
         }),
       );
     });
@@ -976,13 +822,47 @@ describe('ResourcesController', () => {
         message: undefined,
       });
       expect(editResource).toHaveBeenCalledWith(
-        resolve('./translations/test'),
         expect.objectContaining({
-          key: 'app.button.ok',
-          baseValue: 'OK Updated',
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
           baseLocale: 'en',
         }),
+        'app.button.ok',
+        {
+          baseValue: 'OK Updated',
+          comment: undefined,
+          tags: undefined,
+          translations: undefined,
+          moveTo: undefined,
+        },
       );
+    });
+
+    it('should pass moveTo through to core', async () => {
+      const editResource = core.editResource as jest.Mock;
+      editResource.mockReturnValue({ resolvedKey: 'shared.ok', updated: true });
+
+      await resourcesController.update('test-collection', {
+        key: 'app.button.ok',
+        moveTo: 'shared',
+      });
+
+      expect(editResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection' }),
+        'app.button.ok',
+        expect.objectContaining({ moveTo: 'shared' }),
+      );
+    });
+
+    it('should answer 409 when the destination resource already exists', async () => {
+      const editResource = core.editResource as jest.Mock;
+      editResource.mockRejectedValue(new core.ResourceAlreadyExistsError('shared.ok'));
+
+      const error = await httpErrorOf(
+        resourcesController.update('test-collection', { key: 'app.button.ok', moveTo: 'shared' }),
+      );
+
+      expect(error.getStatus()).toBe(409);
     });
 
     it('should return no-op message when no changes detected', async () => {
@@ -1246,17 +1126,14 @@ describe('ResourcesController', () => {
     };
 
     it('should return 422 when translation is not enabled for the collection', async () => {
-      // mockConfig has no translation config — auto-translation is disabled
-      await expect(resourcesController.translateResource('test-collection', { key: 'buttons.save' })).rejects.toThrow(
-        HttpException,
+      const translateExistingResource = core.translateExistingResource as jest.Mock;
+      translateExistingResource.mockRejectedValue(new core.AutoTranslationDisabledError('test-collection'));
+
+      const error = await httpErrorOf(
+        resourcesController.translateResource('test-collection', { key: 'buttons.save' }),
       );
 
-      try {
-        await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(422);
-      }
+      expect(error.getStatus()).toBe(422);
     });
 
     it('should return 404 when the collection does not exist', async () => {
@@ -1311,24 +1188,8 @@ describe('ResourcesController', () => {
       expect(result.resource.key).toBe('save');
     });
 
-    it('should pass translation config from collection when collection overrides global', async () => {
-      const collectionTranslationConfig = {
-        enabled: true,
-        provider: 'google-translate',
-        apiKeyEnv: 'COLLECTION_API_KEY',
-      };
-      const configWithCollectionTranslation = {
-        ...mockConfig,
-        translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'GLOBAL_API_KEY' },
-        collections: {
-          'test-collection': {
-            ...mockConfig.collections['test-collection'],
-            translation: collectionTranslationConfig,
-          },
-        },
-      };
-      (configService.getConfig as jest.Mock).mockReturnValue(configWithCollectionTranslation);
-
+    it('should pass the opened collection and resource key to core', async () => {
+      (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
       const translateExistingResource = core.translateExistingResource as jest.Mock;
       translateExistingResource.mockResolvedValue({
         translatedCount: 1,
@@ -1340,8 +1201,10 @@ describe('ResourcesController', () => {
 
       expect(translateExistingResource).toHaveBeenCalledWith(
         expect.objectContaining({
-          translationConfig: collectionTranslationConfig,
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
         }),
+        'buttons.save',
       );
     });
 

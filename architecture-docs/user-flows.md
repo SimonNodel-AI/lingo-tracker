@@ -37,14 +37,14 @@ sequenceDiagram
 
     Note over Dev,FS: 1. Create resource
     Dev->>CLI: add-resource apps.common.ok "OK"
-    CLI->>Core: addResource(translationsFolder, params)
+    CLI->>Core: addResource(collection, params)
     Core->>Domain: validateKey("apps.common.ok")
     Domain-->>Core: valid
     Core->>Domain: resolveResourceKey() → folderPath
     Core->>FS: ensureDirectoryExists(folderPath)
     Core->>FS: openResourceFolder(folderPath) — reads resource_entries.json + tracker_meta.json
     Core->>Domain: translocoToICU("OK") → "OK"
-    Core->>Core: autoTranslateResource() [if translationConfig.enabled]
+    Core->>Core: seedLocales() — auto-translate if collection.translationConfig is enabled, else copy base as new
     Core->>Provider: translate("OK", en→fr, en→de, ...)
     Provider-->>Core: { fr: "OK", de: "OK", ... }
     Core->>Core: ResourceFolder.setBase() + setTranslation() — MD5 checksums, status=translated
@@ -54,21 +54,21 @@ sequenceDiagram
 
     Note over Dev,FS: 2. Edit base value — triggers stale
     Dev->>CLI: edit-resource apps.common.ok "OK" --base "Confirm"
-    CLI->>Core: editResource(translationsFolder, options)
+    CLI->>Core: editResource(collection, key, changes)
     Core->>FS: openResourceFolder(folderPath) — reads resource_entries.json + tracker_meta.json
     Core->>Domain: translocoToICU("Confirm") → "Confirm"
     Core->>Core: ResourceFolder.setBase() — applies the Staleness rule
     Note right of Core: new baseChecksum ≠ stored baseChecksum<br/>for each locale → status = "stale"
     Core->>Core: ResourceFolder.setTranslation() / setStatus() [explicit locale edits]
     Core->>FS: ResourceFolder.save() — persists stale status before API call
-    Core->>Core: autoTranslateResource() [on base value change]
+    Core->>Core: seedLocales() [on base value change; auto-translate when enabled]
     Core->>Provider: translate("Confirm", en→fr, ...)
     Provider-->>Core: { fr: "Confirmer", ... }
     Core->>FS: ResourceFolder.setTranslation() + save() — second pass with translated values
 
     Note over Dev,FS: 3. Manual re-translate (UI trigger)
     Dev->>CLI: translate-resource apps.common.ok
-    CLI->>Core: translateExistingResource(translationsFolder, key)
+    CLI->>Core: translateExistingResource(collection, key)
     Core->>FS: read current entries + metadata
     Note right of Core: Only translates locales with status<br/>"new" or "stale"
     Core->>Provider: translate(baseValue, ...)
@@ -77,7 +77,7 @@ sequenceDiagram
 
     Note over Dev,FS: 4. Verify
     Dev->>CLI: edit-resource apps.common.ok --locale fr --status verified
-    CLI->>Core: editResource(..., { locales: [{ locale: "fr", status: "verified" }] })
+    CLI->>Core: editResource(collection, key, { translations: { fr: { value, status: "verified" } } })
     Core->>FS: write tracker_meta.json (fr.status = "verified")
     Core-->>CLI: EditResourceResult
 

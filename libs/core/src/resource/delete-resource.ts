@@ -3,6 +3,7 @@ import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder } from '../lib/resource/resource-folder';
 import { removeMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { validateKey } from '@simoncodes-ca/domain';
+import type { Collection } from '../lib/config/open-collection';
 
 export interface DeleteResourceParams {
   keys: string[];
@@ -18,14 +19,16 @@ export interface DeleteResourceResult {
   mutations: ResourceMutation[];
 }
 
-export function deleteResource(translationsFolder: string, params: DeleteResourceParams): DeleteResourceResult {
+/** Deletes entries from a collection. Per-key failures are reported in the result, not thrown. */
+export function deleteResource(collection: Collection, params: DeleteResourceParams): DeleteResourceResult {
+  const { translationsFolder, baseLocale } = collection;
   let entriesDeleted = 0;
   const errors: Array<{ key: string; error: string }> = [];
   const mutations: ResourceMutation[] = [];
 
   for (const key of params.keys) {
     try {
-      const deletionSucceeded = deleteSingleResource(translationsFolder, key);
+      const deletionSucceeded = deleteSingleResource(translationsFolder, baseLocale, key);
       if (deletionSucceeded) {
         entriesDeleted++;
         mutations.push(removeMutation(translationsFolder, key));
@@ -45,7 +48,7 @@ export function deleteResource(translationsFolder: string, params: DeleteResourc
   };
 }
 
-function deleteSingleResource(translationsFolder: string, key: string): boolean {
+function deleteSingleResource(translationsFolder: string, baseLocale: string, key: string): boolean {
   validateKey(key);
 
   const paths = resolveResourcePaths({
@@ -61,7 +64,7 @@ function deleteSingleResource(translationsFolder: string, key: string): boolean 
     throw new Error(`Resource file not found: ${paths.resourceEntriesPath}`);
   }
 
-  const folder = openResourceFolder(paths.folderPath);
+  const folder = openResourceFolder(paths.folderPath, { baseLocale });
 
   if (!folder.remove(paths.entryKey)) {
     throw new Error(`Resource entry not found: ${key}`);

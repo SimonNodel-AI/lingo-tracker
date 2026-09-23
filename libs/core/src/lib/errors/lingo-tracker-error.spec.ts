@@ -3,6 +3,7 @@ import { PreferredTerminologyValidationError } from '../config/preferred-termino
 import { TranslationError } from '../translation/translation-provider';
 import { ErrorMessages } from './error-messages';
 import {
+  AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
@@ -10,6 +11,8 @@ import {
   CollectionNotFoundError,
   ConfigNotFoundError,
   ConfigParseError,
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
   InvalidBundleDefinitionError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -18,6 +21,7 @@ import {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   ReadOnlyCollectionError,
+  ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from './lingo-tracker-error';
 
@@ -90,6 +94,24 @@ describe('LingoTrackerError subclasses', () => {
       message: ErrorMessages.resourceNotFound('common.ok'),
     },
     {
+      error: new ResourceAlreadyExistsError('common.ok'),
+      name: 'ResourceAlreadyExistsError',
+      code: 'RESOURCE_ALREADY_EXISTS',
+      message: ErrorMessages.resourceAlreadyExists('common.ok'),
+    },
+    {
+      error: new FolderNotFoundError('apps.common'),
+      name: 'FolderNotFoundError',
+      code: 'FOLDER_NOT_FOUND',
+      message: ErrorMessages.folderNotFound('apps.common'),
+    },
+    {
+      error: new FolderMoveIntoDescendantError('apps', 'apps.common'),
+      name: 'FolderMoveIntoDescendantError',
+      code: 'FOLDER_MOVE_INTO_DESCENDANT',
+      message: ErrorMessages.folderMoveIntoDescendant('apps', 'apps.common'),
+    },
+    {
       error: new InvalidFolderPathError('folder name', 'a b'),
       name: 'InvalidFolderPathError',
       code: 'INVALID_FOLDER_PATH',
@@ -100,6 +122,12 @@ describe('LingoTrackerError subclasses', () => {
       name: 'BundleNotFoundError',
       code: 'BUNDLE_NOT_FOUND',
       message: ErrorMessages.bundleNotFound('main'),
+    },
+    {
+      error: new AutoTranslationDisabledError('main'),
+      name: 'AutoTranslationDisabledError',
+      code: 'AUTO_TRANSLATION_DISABLED',
+      message: ErrorMessages.autoTranslationDisabled('main'),
     },
     {
       error: new BundleAlreadyExistsError('main'),

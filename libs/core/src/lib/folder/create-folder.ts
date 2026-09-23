@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { isValidSegment } from '@simoncodes-ca/domain';
+import type { Collection } from '../config/open-collection';
 import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
@@ -22,7 +23,7 @@ export interface CreateFolderResult {
 }
 
 /**
- * Creates a folder in the translations directory structure.
+ * Creates a folder in a collection's translations folder.
  *
  * This function:
  * 1. Validates the folder name segments using the same rules as resource keys
@@ -31,35 +32,36 @@ export interface CreateFolderResult {
  * 4. Creates the directory (and any parent directories) if needed
  * 5. Returns whether the folder was newly created
  *
- * @param translationsFolder - Root translations folder path
+ * @param collection - The collection to create the folder in
  * @param params - Folder creation parameters
  * @returns Object containing the folder path and creation status
- * @throws Error if folder name contains invalid segments
+ * @throws {InvalidFolderPathError} The folder name or parent path has a malformed segment.
  *
  * @example
  * ```typescript
  * // Create a top-level folder
- * const result = createFolder('/app/translations', {
+ * const result = createFolder(collection, {
  *   folderName: 'apps'
  * });
- * // Result: { folderPath: '/app/translations/apps', created: true }
+ * // Result: { folderPath: '<translationsFolder>/apps', created: true }
  *
  * // Create a nested folder
- * const result = createFolder('/app/translations', {
+ * const result = createFolder(collection, {
  *   folderName: 'buttons',
  *   parentPath: 'apps.common'
  * });
- * // Result: { folderPath: '/app/translations/apps/common/buttons', created: true }
+ * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', created: true }
  *
  * // Create a multi-segment folder
- * const result = createFolder('/app/translations', {
+ * const result = createFolder(collection, {
  *   folderName: 'apps.common.buttons'
  * });
- * // Result: { folderPath: '/app/translations/apps/common/buttons', created: true }
+ * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', created: true }
  * ```
  */
-export function createFolder(translationsFolder: string, params: CreateFolderParams): CreateFolderResult {
+export function createFolder(collection: Collection, params: CreateFolderParams): CreateFolderResult {
   const { folderName, parentPath } = params;
+  const { translationsFolder } = collection;
 
   // Validate folderName segments
   const folderSegments = folderName.split('.');

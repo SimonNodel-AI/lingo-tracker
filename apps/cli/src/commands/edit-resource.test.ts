@@ -68,11 +68,14 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
       expect.objectContaining({
-        key: 'apps.common.buttons.ok',
-        baseValue: 'OK Updated',
+        name: 'default',
+        translationsFolder: resolve('/test/project', 'src/i18n'),
         baseLocale: 'en',
+      }),
+      'apps.common.buttons.ok',
+      expect.objectContaining({
+        baseValue: 'OK Updated',
       }),
     );
   });
@@ -115,7 +118,8 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      'apps.common.buttons.ok',
       expect.objectContaining({
         comment: 'New comment',
         tags: ['ui', 'buttons'],
@@ -141,9 +145,10 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      'apps.common.buttons.ok',
       expect.objectContaining({
-        locales: {
+        translations: {
           fr: { value: "D'accord" },
         },
       }),
@@ -169,9 +174,10 @@ describe('editResourceCommand', () => {
       expect.stringContaining('Both --locale and --localeValue must be provided'),
     );
     expect(mockEditResource).toHaveBeenCalledWith(
-      expect.any(String),
+      expect.objectContaining({ name: 'default' }),
+      'apps.common.buttons.ok',
       expect.not.objectContaining({
-        locales: expect.anything(),
+        translations: expect.anything(),
       }),
     );
   });
@@ -260,10 +266,29 @@ describe('editResourceCommand', () => {
     );
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      'apps.common.buttons.ok',
       expect.objectContaining({
         baseValue: 'Promped Value',
       }),
+    );
+  });
+
+  it('maps --target-folder to moveTo', async () => {
+    mockExistsSync.mockReturnValue(true);
+    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    mockEditResource.mockResolvedValue({ resolvedKey: 'shared.ok', updated: true });
+
+    await editResourceCommand({
+      collection: 'default',
+      key: 'apps.common.buttons.ok',
+      targetFolder: 'shared',
+    });
+
+    expect(mockEditResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'default' }),
+      'apps.common.buttons.ok',
+      expect.objectContaining({ moveTo: 'shared' }),
     );
   });
 

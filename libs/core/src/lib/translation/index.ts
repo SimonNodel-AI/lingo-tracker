@@ -1,7 +1,6 @@
 // The translation module: machine-translate one resource or a whole locale through the configured provider.
 
 export {
-  type TranslateExistingResourceOptions,
   type TranslateExistingResourceResult,
   translateExistingResource,
 } from './translate-existing-resource';

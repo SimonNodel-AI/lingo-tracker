@@ -10,13 +10,17 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import {
+  AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
   CollectionNotFoundError,
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
   InvalidBundleDefinitionError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -25,6 +29,7 @@ import {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   ReadOnlyCollectionError,
+  ResourceAlreadyExistsError,
   ResourceNotFoundError,
   TranslationError,
 } from '@simoncodes-ca/core';
@@ -45,6 +50,7 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   if (
     error instanceof CollectionNotFoundError ||
     error instanceof ResourceNotFoundError ||
+    error instanceof FolderNotFoundError ||
     error instanceof BundleNotFoundError
   ) {
     return new NotFoundException(message);
@@ -52,10 +58,13 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   if (error instanceof ReadOnlyCollectionError) {
     return new ForbiddenException(message);
   }
-  if (error instanceof BundleAlreadyExistsError) {
+  if (error instanceof BundleAlreadyExistsError || error instanceof ResourceAlreadyExistsError) {
     return new ConflictException(message);
   }
-  if (error instanceof InvalidFolderPathError) {
+  if (error instanceof AutoTranslationDisabledError) {
+    return new UnprocessableEntityException(message);
+  }
+  if (error instanceof InvalidFolderPathError || error instanceof FolderMoveIntoDescendantError) {
     return new BadRequestException(`Validation error: ${message}`);
   }
   if (

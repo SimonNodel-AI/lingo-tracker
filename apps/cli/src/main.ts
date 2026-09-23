@@ -115,7 +115,7 @@ program
   .option('--base-value <value>', 'New base value (source text)')
   .option('--comment <comment>', 'New comment')
   .option('--tags <tags>', 'New tags (comma-separated)')
-  .option('--target-folder <folder>', 'New target folder (dot-delimited)')
+  .option('--target-folder <folder>', 'Move the resource into this folder (dot-delimited; "" for the collection root)')
   .option('--locale <locale>', 'Locale to update (requires --locale-value)')
   .option('--locale-value <value>', 'New value for the specified locale')
   .action(async (options) => {

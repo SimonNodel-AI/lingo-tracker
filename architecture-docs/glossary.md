@@ -51,7 +51,7 @@ Collections may declare a `tags?: string[]` array. These are **collection-level 
 
 Example collections from the project's own config: `trackerResources` (the Tracker UI's own strings), `TestDataPlayground`, and `mockDesignSystem`.
 
-**Collection (resolved).** Code outside the config module never reads a collection's raw entry to get its settings. `openCollection(config, name)` in `@simoncodes-ca/core` returns a `Collection` with the effective values: `baseLocale` (collection, else global, else `en`), `locales` (collection, else global, else none), `targetLocales` (the locales without the base locale), `translationConfig` (collection, else global; the two are not merged), the absolute `translationsFolder`, normalized `tags`, and `readOnly`. It throws `CollectionNotFoundError` for an unknown name, and `ReadOnlyCollectionError` when `{ writable: true }` is set on a read-only collection. The CLI and the API both open collections this way.
+**Collection (resolved).** Code outside the config module never reads a collection's raw entry to get its settings. `openCollection(config, name)` in `@simoncodes-ca/core` returns a `Collection` with the effective values: `baseLocale` (collection, else global, else `en`), `locales` (collection, else global, else none), `targetLocales` (the locales without the base locale), `translationConfig` (collection, else global; the two are not merged), the absolute `translationsFolder`, normalized `tags`, and `readOnly`. It throws `CollectionNotFoundError` for an unknown name, and `ReadOnlyCollectionError` when `{ writable: true }` is set on a read-only collection. The CLI and the API both open collections this way. Every resource and folder operation (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) takes the opened `Collection` as its first parameter, like the [Import run](#import-run), so the base locale and locales come only from it.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`cli.md`](cli.md), [`core-library.md`](core-library.md#config-and-collection-resolution)
 
@@ -96,6 +96,14 @@ Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 ---
 
 ## L
+
+### Locale Seeding
+
+What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation when the collection enables it, else a copy of the base value with status `new`. In code, `seedLocales(collection, request)` in `libs/core/src/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. The API, the CLI and the Tracker do not decide this themselves.
+
+Explained in context: [`core-library.md`](core-library.md#locale-seeding)
+
+---
 
 ### Locale Metadata
 
@@ -261,11 +269,13 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ### Target Folder
 
-An optional dot-delimited path prefix that scopes an input [resource key](#resource-key) to a specific folder within the collection's translation hierarchy. Used in `add-resource`, `edit-resource`, and the REST API to place a short key (e.g. `ok`) at a specific location (e.g. `apps.common.buttons`) without repeating the full path in the key itself.
+An optional dot-delimited path prefix that scopes an input [resource key](#resource-key) to a specific folder within the collection's translation hierarchy. Used when a resource is created (`addResource`, `add-resource --target-folder`, `CreateResourceDto.targetFolder`) to place a short key (e.g. `ok`) at a specific location (e.g. `apps.common.buttons`) without repeating the full path in the key itself.
 
 Validated to the same segment rules as a resource key (`[A-Za-z0-9_-]`). An empty string means no folder scoping.
 
-Explained in context: [`libs-domain.md`](libs-domain.md), [`apps-cli.md`](apps-cli.md)
+An edit does not use it. `editResource(collection, key, { moveTo })` takes the full existing key, and `moveTo` is the folder the entry moves to (`''` for the collection root); `UpdateResourceDto.moveTo` and `edit-resource --target-folder` map to it.
+
+Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`core-library.md`](core-library.md#collection-bound-operations), [`cli.md`](cli.md)
 
 ---
 
