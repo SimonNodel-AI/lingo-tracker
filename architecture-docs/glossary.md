@@ -57,6 +57,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### Collection Index
+
+The API's in-memory copy of each open [collection's](#collection) [resource tree](#resource-tree). In code, `CollectionIndex` in `apps/api/src/app/cache/collection-index.service.ts` has four methods: `tree(collection, path)` and `search(collection, query, maxResults)` read, `status(collection)` answers the `cache/status` endpoint, and `apply(mutations)` takes the [resource mutations](#resource-mutation) of a write. Indexing on first read, revalidation against a disk fingerprint, patching, and the memory cap (least recently used eviction) are internal. When a patch does not match the tree, the index drops that collection and indexes it again on the next read. The HTTP endpoints and the Tracker UI still call it the "cache".
+
+Explained in context: [`api.md`](api.md#collection-index)
+
+---
+
 ## E
 
 ### Export Run
@@ -178,6 +186,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 One folder of the translation hierarchy, seen as a unit: its `resource_entries.json` ([resource entries](#resource-entry)) and `tracker_meta.json` ([tracker metadata](#tracker-metadata)) are always read and written together. In code, `openResourceFolder()` returns a `ResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), and every core operation that changes resources goes through it. It computes checksums and applies the [staleness rule](#staleness-rule).
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
+
+---
+
+### Resource Mutation
+
+One change that a core write made to a translations folder: `upsert` (key and the stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (the change is too broad to describe, for example a locale was added). Each carries the absolute `translationsFolder` it applies to. `addResource`, `editResource`, `translateExistingResource`, `deleteResource`, `moveResource`, `createFolder`, `deleteFolder`, `moveFolder`, `addLocaleToCollection` and `removeLocaleFromCollection` return them as `mutations`. The type is in `libs/core/src/lib/resource/resource-mutation.ts`. The [Collection Index](#collection-index) uses them to update itself without reading the disk again.
+
+Explained in context: [`api.md`](api.md#writes-resource-mutations)
 
 ---
 

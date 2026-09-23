@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { TranslationJobService } from './translation-job.service';
+import type { CollectionIndex } from '../cache/collection-index.service';
 import { TranslationError } from '@simoncodes-ca/core';
 import type { TranslateLocaleResult, TranslateLocaleProgress } from '@simoncodes-ca/core';
 
@@ -36,11 +37,12 @@ const makeStartJobParams = () => ({
 describe('TranslationJobService', () => {
   let service: TranslationJobService;
   let mockLogger: jest.Mocked<Pick<Logger, 'error' | 'log' | 'warn'>>;
+  const mockIndex = { apply: jest.fn() };
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockLogger = { error: jest.fn(), log: jest.fn(), warn: jest.fn() };
-    service = new TranslationJobService(mockLogger as unknown as Logger);
+    service = new TranslationJobService(mockLogger as unknown as Logger, mockIndex as unknown as CollectionIndex);
   });
 
   it('startJob returns a non-empty job ID', () => {
@@ -117,6 +119,21 @@ describe('TranslationJobService', () => {
     const job = service.getJob(jobId);
     expect(job).toBeDefined();
     expect(job?.status).toBe('failed');
+  });
+
+  it.each([
+    ['completes', () => mockTranslateLocale.mockResolvedValue(makeSuccessResult())],
+    ['fails', () => mockTranslateLocale.mockRejectedValue(new Error('Unexpected network failure'))],
+  ])('drops the collection index for the translations folder when the job %s', async (_outcome, arrange) => {
+    arrange();
+
+    service.startJob(makeStartJobParams());
+    expect(mockIndex.apply).not.toHaveBeenCalled();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockIndex.apply).toHaveBeenCalledWith([{ kind: 'reindex', translationsFolder: '/path/to/translations' }]);
   });
 
   it('getJob omits optional fields when there are no failures or skipped keys', async () => {

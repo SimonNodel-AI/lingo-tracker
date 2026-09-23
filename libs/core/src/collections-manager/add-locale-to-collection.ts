@@ -5,6 +5,7 @@ import { updateConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import { walkFolders } from '../lib/normalize/iterative-folder-walker';
 import { openResourceFolder } from '../lib/resource/resource-folder';
+import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { ErrorMessages } from '../lib/errors/error-messages';
 import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 
@@ -16,6 +17,8 @@ export interface AddLocaleToCollectionResult {
   readonly message: string;
   readonly entriesBackfilled: number;
   readonly filesUpdated: number;
+  /** A `reindex` of the collection: every folder's metadata changed. */
+  readonly mutations: ResourceMutation[];
 }
 
 export async function addLocaleToCollection(
@@ -81,5 +84,6 @@ export async function addLocaleToCollection(
     message: `Locale "${locale}" added to collection "${collectionName}" successfully`,
     entriesBackfilled,
     filesUpdated,
+    mutations: [reindexMutation(collection.translationsFolder)],
   };
 }

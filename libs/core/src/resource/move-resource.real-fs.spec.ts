@@ -48,7 +48,15 @@ describe('moving resources keeps metadata (real fs)', () => {
 
     const result = await moveResource(root, { source: 'common.ok', destination: 'shared.buttons.confirm' });
 
-    expect(result).toEqual({ movedCount: 1, warnings: [], errors: [] });
+    expect(result).toEqual({
+      movedCount: 1,
+      warnings: [],
+      errors: [],
+      mutations: [
+        { kind: 'upsert', translationsFolder: root, key: 'shared.buttons.confirm', entry: expect.any(Object) },
+        { kind: 'remove', translationsFolder: root, key: 'common.ok' },
+      ],
+    });
     expect(read('resource_entries.json', 'shared', 'buttons')).toEqual({ confirm: entries.ok });
     expect(read('tracker_meta.json', 'shared', 'buttons')).toEqual({ confirm: meta.ok });
     // Source folder had only this entry, so both files are removed

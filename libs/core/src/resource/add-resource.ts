@@ -1,7 +1,9 @@
+import { resolve } from 'node:path';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { ensureDirectoryExists } from '../lib/file-io/directory-operations';
 import { openResourceFolder } from '../lib/resource/resource-folder';
+import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
 import type { TranslationConfig } from '../config/translation-config';
 import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
 import { translocoToICU, normalizeTags, isUntranslatedCopy } from '@simoncodes-ca/domain';
@@ -49,7 +51,8 @@ export interface AddResourceParams {
  * @param params - Resource creation parameters
  * @param options - Additional options (e.g., cwd, translationConfig)
  * @returns Object with the resolved key, status, actual translations written to disk,
- *          and any locales skipped due to ICU format (only present when auto-translation ran)
+ *          any locales skipped due to ICU format (only present when auto-translation ran),
+ *          and the mutation that describes the stored entry
  */
 export async function addResource(
   translationsFolder: string,
@@ -60,6 +63,7 @@ export async function addResource(
   created: boolean;
   translations: Array<{ locale: string; value: string; status: TranslationStatus }>;
   skippedLocales?: string[];
+  mutations: ResourceMutation[];
 }> {
   const { cwd = process.cwd(), translationConfig } = options;
   const baseLocale = params.baseLocale || 'en';
@@ -126,6 +130,7 @@ export async function addResource(
     created: isNewEntry,
     translations: normalizedTranslations ?? [],
     ...(resolveResult?.skippedLocales !== undefined && { skippedLocales: resolveResult.skippedLocales }),
+    mutations: [upsertMutation(resolve(cwd, translationsFolder), paths.resolvedKey, folder.treeEntry(paths.entryKey))],
   };
 }
 

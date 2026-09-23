@@ -5,6 +5,7 @@ import { deleteResource } from './delete-resource';
 import { validateKey } from '@simoncodes-ca/domain';
 import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
+import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
 import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 
 export interface MoveResourceParams {
@@ -18,6 +19,8 @@ export interface MoveResourceResult {
   movedCount: number;
   warnings: string[];
   errors: string[];
+  /** Per moved key: an `upsert` in the destination folder and a `remove` from the source. */
+  mutations: ResourceMutation[];
 }
 
 /**
@@ -49,6 +52,7 @@ async function moveSingleResource(
     movedCount: 0,
     warnings: [],
     errors: [],
+    mutations: [],
   };
 
   try {
@@ -98,6 +102,13 @@ async function moveSingleResource(
 
     destinationFolder.setEntry(destinationPaths.entryKey, sourceData.entry, sourceData.meta ?? {});
     destinationFolder.save();
+    result.mutations.push(
+      upsertMutation(
+        destinationTranslationsFolder,
+        destinationKey,
+        destinationFolder.treeEntry(destinationPaths.entryKey),
+      ),
+    );
   } catch (error) {
     result.errors.push(`Failed to create destination resource: ${(error as Error).message}`);
     return result;
@@ -105,7 +116,7 @@ async function moveSingleResource(
 
   // Delete from source
   try {
-    deleteResource(sourceTranslationsFolder, { keys: [sourceKey] });
+    result.mutations.push(...deleteResource(sourceTranslationsFolder, { keys: [sourceKey] }).mutations);
   } catch (error) {
     result.warnings.push(
       `Resource moved to ${destinationKey} but failed to delete source ${sourceKey}: ${(error as Error).message}`,
@@ -130,6 +141,7 @@ async function moveResourcesByPattern(
     movedCount: 0,
     warnings: [],
     errors: [],
+    mutations: [],
   };
 
   const prefix = pattern.slice(0, -1); // remove '*'
@@ -183,6 +195,7 @@ async function moveResourcesByPattern(
     result.movedCount += singleResult.movedCount;
     result.warnings.push(...singleResult.warnings);
     result.errors.push(...singleResult.errors);
+    result.mutations.push(...singleResult.mutations);
   }
 
   return result;

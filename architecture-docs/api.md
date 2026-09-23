@@ -1,6 +1,6 @@
 # REST API (`apps/api`)
 
-The NestJS API is LingoTracker's HTTP interface. It exposes all translation management operations over REST, serves the Angular Tracker UI as static files from the same process, and owns two cross-cutting systems: a single-collection in-memory cache that makes the resource tree fast to browse, and an async job runner for long-running locale translation operations. All API routes are prefixed with `/api`; Swagger docs are available at `/api` when the server is running.
+The NestJS API is LingoTracker's HTTP interface. It exposes all translation management operations over REST, serves the Angular Tracker UI as static files from the same process, and owns two cross-cutting systems: an in-memory [Collection Index](glossary.md#collection-index) that makes the resource tree fast to browse, and an async job runner for long-running locale translation operations. All API routes are prefixed with `/api`; Swagger docs are available at `/api` when the server is running.
 
 Return to [architecture README](README.md).
 
@@ -11,10 +11,11 @@ Return to [architecture README](README.md).
 - [Endpoint Reference](#endpoint-reference)
 - [Component Diagram](#component-diagram)
 - [Static File Serving](#static-file-serving)
-- [Collection Cache](#collection-cache)
-  - [Single-Collection Design](#single-collection-design)
-  - [Cache State Machine](#cache-state-machine)
-  - [Incremental Updates vs Full Clear](#incremental-updates-vs-full-clear)
+- [Collection Index](#collection-index)
+  - [Interface](#interface)
+  - [Bounded Multi-Collection Design](#bounded-multi-collection-design)
+  - [Index State Machine](#index-state-machine)
+  - [Writes: Resource Mutations](#writes-resource-mutations)
   - [Polling Flow from the Frontend](#polling-flow-from-the-frontend)
 - [Translation Job System](#translation-job-system)
 - [Mapper Layer](#mapper-layer)
@@ -55,8 +56,8 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 | `DELETE` | `/collections/:collectionName/resources` | Delete one or more resources by key | `DeleteResourceDto` | `DeleteResourceResponseDto` |
 | `POST` | `/collections/:collectionName/resources/move` | Move or rename resources (single key or wildcard pattern, cross-collection supported) | `MoveResourceDto` | `MoveResourceResponseDto` |
 | `POST` | `/collections/:collectionName/resources/translate` | Auto-translate a single resource via the configured provider | `TranslateResourceDto` | `TranslateResourceResponseDto` |
-| `GET` | `/collections/:collectionName/resources/tree` | Fetch the resource [tree](glossary.md#resource-tree) (or subtree) from cache | query: `path`, `includeNested` | `ResourceTreeDto \| TreeStatusResponseDto` |
-| `GET` | `/collections/:collectionName/resources/cache/status` | Poll the cache [indexing](glossary.md#indexing) state | — | `CacheStatusDto` |
+| `GET` | `/collections/:collectionName/resources/tree` | Fetch the resource [tree](glossary.md#resource-tree) (or subtree) from the Collection Index | query: `path`, `includeNested` | `ResourceTreeDto \| TreeStatusResponseDto` |
+| `GET` | `/collections/:collectionName/resources/cache/status` | Poll the [Collection Index](glossary.md#collection-index) state (starts indexing) | — | `CacheStatusDto` |
 | `GET` | `/collections/:collectionName/resources/search` | Full-text search across the collection | query: `SearchTranslationsDto` | `SearchResultsDto` |
 | `POST` | `/collections/:collectionName/resources/translate-locale` | Fire-and-forget: start a bulk locale translation job | `TranslateLocaleRequestDto` | `TranslateLocaleJobDto` (202 Accepted) |
 | `GET` | `/collections/:collectionName/resources/translate-locale/:jobId` | Poll a translation job by ID | — | `TranslateLocaleJobDto` |
@@ -65,16 +66,16 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 
 | Method | Path | Purpose | Request DTO | Response DTO |
 |--------|------|---------|-------------|--------------|
-| `POST` | `/collections/:collectionName/folders` | Create a [folder](glossary.md#folder) (incremental cache update) | `CreateFolderDto` | `CreateFolderResponseDto` |
-| `DELETE` | `/collections/:collectionName/folders` | Delete a folder and all its contents (incremental cache update) | `DeleteFolderDto` | `DeleteFolderResponseDto` |
+| `POST` | `/collections/:collectionName/folders` | Create a [folder](glossary.md#folder) | `CreateFolderDto` | `CreateFolderResponseDto` |
+| `DELETE` | `/collections/:collectionName/folders` | Delete a folder and all its contents | `DeleteFolderDto` | `DeleteFolderResponseDto` |
 | `POST` | `/collections/:collectionName/folders/move` | Move a folder within or across collections | `MoveFolderDto` | `MoveFolderResponseDto` |
 
 ### Locales
 
 | Method | Path | Purpose | Request DTO | Response DTO |
 |--------|------|---------|-------------|--------------|
-| `POST` | `/collections/:collectionName/locales` | Add a locale to a collection (clears cache) | `AddLocaleDto` | `AddLocaleResponseDto` |
-| `DELETE` | `/collections/:collectionName/locales/:locale` | Remove a locale from a collection (clears cache) | — | `RemoveLocaleResponseDto` |
+| `POST` | `/collections/:collectionName/locales` | Add a locale to a collection (re-indexes) | `AddLocaleDto` | `AddLocaleResponseDto` |
+| `DELETE` | `/collections/:collectionName/locales/:locale` | Remove a locale from a collection (re-indexes) | — | `RemoveLocaleResponseDto` |
 
 ### Bundles
 
@@ -112,7 +113,7 @@ graph TD
 
         subgraph services["Services / Infrastructure"]
             CONFIGS["ConfigService\ncore loadConfig() on every request\n(errors → 404 / 500)"]
-            CACHE["CollectionCacheService\nSingle-collection in-memory\nResourceTreeNode cache"]
+            INDEX["CollectionIndex\ntree · search · status · apply\nin-memory ResourceTreeNode per collection"]
             JOBS["TranslationJobService\nIn-memory job map\nUUID → TranslationJob"]
         end
 
@@ -135,12 +136,12 @@ graph TD
     TRACKER -->|"Static files"| STATIC
     CLI -.->|"Some flows use API"| controllers
 
-    RESC --> CACHE
+    RESC --> INDEX
     RESC --> CONFIGS
     RESC --> JOBS
-    FOLDC --> CACHE
+    FOLDC --> INDEX
     FOLDC --> CONFIGS
-    LOCALEC --> CACHE
+    LOCALEC --> INDEX
     LOCALEC --> CONFIGS
     COLLC --> CONFIGS
     CONFIGC --> CONFIGS
@@ -153,7 +154,7 @@ graph TD
     COLLC --> COLMAP
 
     CONFIGS -->|"reads .lingo-tracker.json"| COREOPS
-    CACHE -->|"core.loadResourceTree()"| COREOPS
+    INDEX -->|"core.loadResourceTree()"| COREOPS
     RESC -->|"delegate writes"| COREOPS
     FOLDC -->|"delegate writes"| COREOPS
     LOCALEC -->|"delegate writes"| COREOPS
@@ -166,7 +167,7 @@ graph TD
     style core fill:#d4edda,stroke:#28a745,color:#000
 ```
 
-Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and update `CollectionCacheService` incrementally after successful writes.
+Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and pass the `mutations` of every successful core write to `CollectionIndex.apply()`.
 
 **Read-only enforcement.** `WritableCollectionGuard` (`collections/guards/writable-collection.guard.ts`) is applied at the class level to the `Resources`, `Locales`, and `Folders` controllers. For any non-`GET` request it reads the `:collectionName` route param, opens the collection with core `openCollection(config, name, { writable: true })`, and maps `ReadOnlyCollectionError` to `403 Forbidden` (unknown collections pass through so the controller returns its 404). This is the single API choke-point for read-only enforcement. The `Collections` controller is intentionally **not** guarded: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even for read-only collections, since the lock protects resources, not the registration. On create, the controller defaults `readOnly` to `true` for `node_modules` paths (via the `isUnderNodeModules` domain helper) when the DTO omits it.
 
@@ -184,110 +185,114 @@ This means a single `node apps/api/main.js` process serves both the UI and the A
 
 ---
 
-## Collection Cache
+## Collection Index
+
+`CollectionIndex` (`apps/api/src/app/cache/collection-index.service.ts`) is a singleton Nest provider. It holds an in-memory copy of each open collection's [resource tree](glossary.md#resource-tree), so the Tracker can browse and search a collection without reading the disk on each request.
+
+### Interface
+
+```typescript
+tree(collection: Collection, path?: string): TreeRead;          // { status: 'ready', tree | null } | { status: 'not-started' | 'indexing' | 'error' }
+search(collection: Collection, query: string, maxResults: number): SearchResult[];
+status(collection: Collection): CacheStatusDto;                  // for GET .../cache/status
+apply(mutations: readonly ResourceMutation[]): void;              // after every core write
+```
+
+Controllers do not know how the index works. They read with `tree()`, `search()` and `status()`, and give the `mutations` of each core write to `apply()`. These items are internal to the index:
+
+- **Indexing.** `tree()` indexes a collection that is not indexed or whose last attempt failed. `status()` indexes only a collection that is not indexed, and reports `error` as it is. Both report the state that they found, so the first read answers `not-started` (and `/tree` returns `202`). `search()` never starts indexing. It searches the disk until the collection is indexed.
+- **Revalidation.** Before each read, a ready entry compares a stat-only disk fingerprint (`computeTreeFingerprint`) with the fingerprint from its last index or own write. If they differ, the entry is dropped and indexed again. This makes CLI commands, `git checkout` and hand edits visible without a restart. Filesystem watching is not used, because inotify does not fire for Windows-side writes on a WSL `/mnt/c` mount, and the same is true for some network and container mounts. The check runs at most once per `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` (default 2000 ms) for each entry.
+- **Own writes.** After `apply()` patches an entry, the index refreshes that entry's fingerprint at the end of the tick. A bulk endpoint that applies mutations in a loop causes one scan, not one per resource. A read that comes before the refresh adopts the new fingerprint, so an own write is never read as an outside change.
+- **Patching.** One tree-walk helper applies each mutation to the tree. When a mutation does not match the tree (for example, a `remove` of a key that the index does not have), the index drops that collection. The next read indexes it again. A wrong patch never stays in memory.
 
 ### Bounded Multi-Collection Design
 
-`CollectionCacheService` holds a `Map` of `CachedCollection` entries keyed by collection name, capped at `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` (default 4) and evicted least-recently-used.
+The index holds a `Map` of entries keyed by collection name. The map is capped at `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` (default 4). When the cap is reached, the least recently used entry is evicted.
 
-**Why more than one.** Opening a second collection in another browser tab is a real usage pattern. With a single slot, each tab's 2-second `/cache/status` poll evicted the other tab's cache, so neither ever reached `READY`, both polled forever, and the server re-indexed continuously. Independent entries remove the contention entirely.
+**Why more than one.** Opening a second collection in another browser tab is a real usage pattern. With a single slot, each tab's 2-second `/cache/status` poll evicted the other tab's entry, so neither reached `ready`, both polled forever, and the server re-indexed continuously. Independent entries remove the contention.
 
-**Why bounded.** A fully-loaded [resource tree](glossary.md#resource-tree) for a large collection (thousands of keys, multiple locales, full translation values and metadata) can be tens of megabytes of JavaScript heap, and that cost multiplies per cached collection. The cap is a memory budget; lower it to 1 to restore the old single-slot behaviour.
+**Why bounded.** A fully loaded tree for a large collection (thousands of keys, many locales, full values and metadata) can use tens of megabytes of JavaScript heap, and that cost multiplies per collection. The cap is a memory budget. Set it to 1 to get the old single-slot behaviour.
 
-**Eviction.** On inserting a new entry at the cap, the entry with the lowest `accessSequence` is dropped. `accessSequence` is a monotonic counter bumped on every read and write, not a clock — several collections can be touched inside the same millisecond and eviction still needs a strict order. An entry in `INDEXING` state is never chosen: discarding in-flight work would leave the request that started it waiting for nothing, so the map is allowed to overflow briefly when every entry is busy.
+**Eviction.** Each read or patch increments the entry's `accessSequence` (a monotonic counter, not a clock, because several collections can be touched in the same millisecond). When a new entry is added at the cap, the entry with the lowest `accessSequence` is dropped.
 
-**Per-entry state.** Fingerprint, revalidation throttle stamp and the deferred fingerprint-refresh timer all live on the entry. A read of one collection therefore cannot postpone another collection's staleness check.
+**Per-entry state.** The fingerprint, the revalidation throttle stamp and the deferred fingerprint-refresh timer are stored on the entry. A read of one collection cannot postpone the staleness check of a different collection.
 
-### Cache State Machine
+### Index State Machine
 
-<!-- Cache state machine — CacheStatus enum values and transitions -->
+<!-- Index state machine — status values reported by tree() and status() -->
 
 ```mermaid
 stateDiagram-v2
-    [*] --> NOT_STARTED : server start\nor cache eviction
+    [*] --> not_started : server start,
+eviction, disk change,
+reindex or failed patch
 
-    NOT_STARTED --> INDEXING : indexCollection() called\n(triggered by first /tree or /cache/status request)
-    ERROR --> INDEXING : indexCollection() called\n(auto-retry on next /tree request)
+    not_started --> indexing : first tree() or status() read
+    error --> indexing : next tree() read (retry)
 
-    INDEXING --> READY : core.loadResourceTree() succeeds
-    INDEXING --> ERROR : core.loadResourceTree() throws
+    indexing --> ready : core.loadResourceTree() succeeds
+    indexing --> error : core.loadResourceTree() throws
 
-    READY --> NOT_STARTED : clearCache(name) called\n(delete/move resource or locale change)
-    READY --> NOT_STARTED : evicted as least recently used\n(cache at its collection limit)
-
-    READY --> READY : incremental update\n(addResourceToCache, addFolderToCache,\nremoveFolderFromCache, removeResourceFromCache,\nmoveFolderInCache)
+    ready --> not_started : entry dropped
+    ready --> ready : apply() patches the tree
 ```
 
-State values are the string literals from the `CacheStatus` enum in `collection-cache.service.ts`:
+| State | Meaning |
+|-------|---------|
+| `not-started` | The index has no entry for this collection. The read that reported it has started indexing. |
+| `indexing` | `core.loadResourceTree()` is running. `loadResourceTree()` is synchronous, so in practice the read that starts indexing also finishes it; the state is part of the HTTP contract. |
+| `ready` | The tree is in memory. Reads are served from it. |
+| `error` | The last attempt threw. The message is reported by `status()`. The next `tree()` read tries again. |
 
-| State | String value | Meaning |
-|-------|-------------|---------|
-| `NOT_STARTED` | `"not-started"` | No cache exists for this collection. Indexing has not been requested yet. |
-| `INDEXING` | `"indexing"` | `core.loadResourceTree()` is running asynchronously. Read requests must wait. |
-| `READY` | `"ready"` | Tree is in memory. Read requests are served instantly from the entry's `tree`. |
-| `ERROR` | `"error"` | The last indexing attempt threw. The error message is stored on the entry. The next `/tree` or `/cache/status` request automatically re-triggers indexing. |
+### Writes: Resource Mutations
 
-### Incremental Updates vs Full Cache Clear
+Each core write returns `mutations: ResourceMutation[]` (see [core-library.md](core-library.md) and the [glossary](glossary.md#resource-mutation)), which describe what changed on disk. The controller calls `index.apply(result.mutations)`. The index finds every entry whose translations folder is the mutation's `translationsFolder`, so a cross-collection move updates the source and the destination with no controller logic.
 
-After a successful write operation the cache is updated by one of two strategies:
+| Mutation | Returned by | Index action |
+|---|---|---|
+| `upsert` (key, entry) | `addResource`, `editResource`, `translateExistingResource`, `moveResource` / `moveFolder` (destination) | Insert or replace the entry. Missing folders are created, as on disk. |
+| `remove` (key) | `deleteResource`, `moveResource` / `moveFolder` (source) | Remove the entry. Missing entry → drop the collection. |
+| `add-folder` (path) | `createFolder` | Create the folder node (and missing parents). |
+| `remove-folder` (path) | `deleteFolder`, `moveFolder` (deleted source folder) | Remove the folder node. Missing folder → drop the collection. |
+| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection` | Drop the collection. Every folder's metadata changed. |
 
-**Incremental update** — for operations where the exact structural change is known and bounded. The controller calls a targeted method on `CollectionCacheService` that mutates only the affected subtree of `ResourceTreeNode` in memory, leaving the rest of the tree intact. The cache stays in `READY` state throughout.
-
-| Cache method | Triggered by |
-|---|---|
-| `addResourceToCache()` | `POST /resources` (create), `PATCH /resources` (edit in-place or move-to-new-folder) |
-| `removeResourceFromCache()` | `PATCH /resources` (when resource moves folder — removes from old location) |
-| `addFolderToCache()` | `POST /folders` |
-| `removeFolderFromCache()` | `DELETE /folders` |
-| `moveFolderInCache()` | `POST /folders/move` within one collection (with `clearCache(name)` fallback if structural navigation fails; a cross-collection move clears both collections instead) |
-
-**Full cache clear** — for operations where the breadth of changes cannot be tracked in a single incremental call, or where correctness risk outweighs the cost of a re-index. `clearCache(collectionName)` drops that one collection's entry, returning it to `NOT_STARTED`; the next request to `/tree` or `/cache/status` triggers a fresh `indexCollection()`. It is always scoped to the collection that was written — a write against one collection must never force a re-index of a collection somebody else is viewing. Cross-collection moves clear the source and every destination collection they touched. `clearAllCaches()` exists for changes that invalidate everything.
-
-| Operation | Why full clear |
-|---|---|
-| `DELETE /resources` | Keys may span multiple folders; tracking all removals is error-prone. |
-| `POST /resources/move` | Wildcard pattern moves affect an unbounded set of folders. |
-| `POST /locales` (add) | Every folder's `tracker_meta.json` gains a new locale entry; the cached tree would be stale everywhere. |
-| `DELETE /locales/:locale` | Same — locale removal touches all metadata nodes. |
+A folder move is a list of per-key `upsert` + `remove` pairs and then a `remove-folder`. Thus the index follows partial moves, merges into an existing folder, and `nestUnderDestination: false` in the same way as the disk. Writes that do not go through the API (the translate-locale job, CLI commands, imports) are found by revalidation.
 
 ### Polling Flow from the Frontend
 
-The Tracker UI polls the cache endpoints when it needs the resource tree. For the full sequence, see [user-flows.md — Cache Indexing Flow](user-flows.md#6-cache-indexing-flow). The protocol is:
+The Tracker UI polls the index endpoints when it needs the resource tree. For the full sequence, see [user-flows.md — Cache Indexing Flow](user-flows.md#6-cache-indexing-flow). The protocol is:
 
 ```mermaid
 sequenceDiagram
     participant UI as Tracker UI
     participant API as ResourcesController
-    participant Cache as CollectionCacheService
+    participant Index as CollectionIndex
     participant Core as @simoncodes-ca/core
 
     UI->>API: GET /api/collections/{name}/resources/tree
-    API->>Cache: getCacheStatus(name)
+    API->>Index: tree(collection, path)
+    Index->>Index: revalidate against disk fingerprint
 
-    alt Cache is NOT_STARTED or ERROR
-        Cache-->>API: NOT_STARTED | ERROR
-        API->>Cache: indexCollection() [fire, no await]
-        Cache->>Core: loadResourceTree() [async]
+    alt Not indexed or last attempt failed
+        Index->>Core: loadResourceTree()
+        Index-->>API: { status: "not-started" | "error" }
         API-->>UI: 202 Accepted { status: "not-ready", message: "..." }
-        UI->>UI: wait ~1s, then retry
+        UI->>UI: wait, then retry
     end
 
-    alt Cache is INDEXING
-        Cache-->>API: INDEXING
+    alt Indexing
+        Index-->>API: { status: "indexing" }
         API-->>UI: 202 Accepted { status: "indexing", message: "..." }
-        UI->>UI: wait ~1s, then retry
     end
 
-    alt Cache is READY
-        Core-->>Cache: ResourceTreeNode
-        Cache-->>API: setCacheStatus(READY, tree)
-        Cache-->>API: tree (ResourceTreeNode)
+    alt Ready
+        Index-->>API: { status: "ready", tree }
         API->>API: mapResourceTreeToDto(tree)
-        API-->>UI: 200 OK ResourceTreeDto
+        API-->>UI: 200 OK ResourceTreeDto (404 when the path is not in the tree)
     end
 ```
 
-A 202 Accepted response always means "retry shortly". A 200 OK carries the full or partial tree. The frontend is responsible for the retry loop; there is no server-sent event or WebSocket involved.
+A 202 Accepted response always means "retry shortly". A 200 OK carries the full or partial tree. The route uses `@Res({ passthrough: true })` only to set the 202 status; Nest serializes the returned DTO. The frontend owns the retry loop; there is no server-sent event or WebSocket.
 
 ---
 

@@ -3,7 +3,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
 import { FoldersController } from './folders.controller';
 import { ConfigService } from '../../config/config.service';
-import { CollectionCacheService } from '../../cache/collection-cache.service';
+import { CollectionIndex } from '../../cache/collection-index.service';
 import * as core from '@simoncodes-ca/core';
 
 // Mock the core module
@@ -21,7 +21,6 @@ describe('FoldersController', () => {
   let foldersModule: TestingModule;
   let foldersController: FoldersController;
   let _configService: ConfigService;
-  let cacheService: CollectionCacheService;
 
   const mockConfig = {
     exportFolder: 'dist/lingo-export',
@@ -42,12 +41,7 @@ describe('FoldersController', () => {
     },
   };
 
-  const mockCacheService = {
-    addFolderToCache: jest.fn(),
-    removeFolderFromCache: jest.fn(),
-    moveFolderInCache: jest.fn().mockReturnValue(true),
-    clearCache: jest.fn(),
-  };
+  const mockIndex = { apply: jest.fn() };
 
   beforeEach(async () => {
     foldersModule = await Test.createTestingModule({
@@ -60,15 +54,14 @@ describe('FoldersController', () => {
           },
         },
         {
-          provide: CollectionCacheService,
-          useValue: mockCacheService,
+          provide: CollectionIndex,
+          useValue: mockIndex,
         },
       ],
     }).compile();
 
     foldersController = foldersModule.get<FoldersController>(FoldersController);
     _configService = foldersModule.get<ConfigService>(ConfigService);
-    cacheService = foldersModule.get<CollectionCacheService>(CollectionCacheService);
 
     // Reset all mocks before each test
     jest.clearAllMocks();
@@ -99,12 +92,6 @@ describe('FoldersController', () => {
         nestUnderDestination: undefined,
         destinationTranslationsFolder: undefined,
       });
-
-      expect(cacheService.moveFolderInCache).toHaveBeenCalledWith(
-        'test-collection',
-        'apps.common.buttons',
-        'apps.shared',
-      );
 
       expect(result).toEqual({
         movedCount: 5,
@@ -246,7 +233,6 @@ describe('FoldersController', () => {
       await expect(foldersController.move('test-collection', moveFolderDto)).rejects.toThrow(HttpException);
 
       expect(core.moveFolder).toHaveBeenCalled();
-      expect(cacheService.clearCache).not.toHaveBeenCalled();
     });
 
     it('should throw HttpException for invalid path segments', async () => {
@@ -267,7 +253,7 @@ describe('FoldersController', () => {
       await expect(foldersController.move('test-collection', moveFolderDto)).rejects.toThrow(HttpException);
     });
 
-    it('should not clear cache when no resources were moved', async () => {
+    it('should report a move of an empty folder', async () => {
       const moveFolderDto = {
         sourceFolderPath: 'apps.empty',
         destinationFolderPath: 'apps.shared',
@@ -284,7 +270,6 @@ describe('FoldersController', () => {
 
       const result = await foldersController.move('test-collection', moveFolderDto);
 
-      expect(cacheService.clearCache).not.toHaveBeenCalled();
       expect(result.movedCount).toBe(0);
       expect(result.foldersDeleted).toBe(1);
       expect(result.warnings).toHaveLength(1);
@@ -355,8 +340,6 @@ describe('FoldersController', () => {
         parentPath: 'apps.common',
       });
 
-      expect(cacheService.addFolderToCache).toHaveBeenCalledWith('test-collection', 'buttons', 'apps.common');
-
       expect(result.created).toBe(true);
       expect(result.folderPath).toBe('apps.common.buttons');
     });
@@ -381,8 +364,6 @@ describe('FoldersController', () => {
       expect(core.deleteFolder).toHaveBeenCalledWith(resolve('./translations/test'), {
         folderPath: 'apps.common.buttons',
       });
-
-      expect(cacheService.removeFolderFromCache).toHaveBeenCalledWith('test-collection', 'apps.common.buttons');
 
       expect(result.deleted).toBe(true);
       expect(result.resourcesDeleted).toBe(5);

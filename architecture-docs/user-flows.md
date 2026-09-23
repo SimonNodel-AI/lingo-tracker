@@ -42,29 +42,29 @@ sequenceDiagram
     Domain-->>Core: valid
     Core->>Domain: resolveResourceKey() → folderPath
     Core->>FS: ensureDirectoryExists(folderPath)
-    Core->>FS: readResourceEntries() + readTrackerMetadata()
+    Core->>FS: openResourceFolder(folderPath) — reads resource_entries.json + tracker_meta.json
     Core->>Domain: translocoToICU("OK") → "OK"
     Core->>Core: autoTranslateResource() [if translationConfig.enabled]
     Core->>Provider: translate("OK", en→fr, en→de, ...)
     Provider-->>Core: { fr: "OK", de: "OK", ... }
-    Core->>Core: createResourceMetadata() — MD5 checksums, status=translated
-    Core->>FS: writeJsonFile(resource_entries.json)
-    Core->>FS: writeJsonFile(tracker_meta.json)
+    Core->>Core: ResourceFolder.setBase() + setTranslation() — MD5 checksums, status=translated
+    Core->>FS: ResourceFolder.save() — writes resource_entries.json + tracker_meta.json
     Core-->>CLI: AddResourceResult
     CLI-->>Dev: "Resource created"
 
     Note over Dev,FS: 2. Edit base value — triggers stale
     Dev->>CLI: edit-resource apps.common.ok "OK" --base "Confirm"
     CLI->>Core: editResource(translationsFolder, options)
-    Core->>FS: readResourceEntries() + readTrackerMetadata()
+    Core->>FS: openResourceFolder(folderPath) — reads resource_entries.json + tracker_meta.json
     Core->>Domain: translocoToICU("Confirm") → "Confirm"
-    Core->>Core: updateMetadataForBaseValueChange()
+    Core->>Core: ResourceFolder.setBase() — applies the Staleness rule
     Note right of Core: new baseChecksum ≠ stored baseChecksum<br/>for each locale → status = "stale"
-    Core->>FS: writeJsonFile() — persists stale status before API call
+    Core->>Core: ResourceFolder.setTranslation() / setStatus() [explicit locale edits]
+    Core->>FS: ResourceFolder.save() — persists stale status before API call
     Core->>Core: autoTranslateResource() [on base value change]
     Core->>Provider: translate("Confirm", en→fr, ...)
     Provider-->>Core: { fr: "Confirmer", ... }
-    Core->>FS: writeJsonFile() — second pass with translated values
+    Core->>FS: ResourceFolder.setTranslation() + save() — second pass with translated values
 
     Note over Dev,FS: 3. Manual re-translate (UI trigger)
     Dev->>CLI: translate-resource apps.common.ok
@@ -326,7 +326,7 @@ sequenceDiagram
 
     BS->>BS: patchState({ isSearchLoading: true, searchError: null })
     BS->>API: GET /api/collections/{name}/resources/search?query=confirm
-    Note right of API: searchTranslations() in @simoncodes-ca/core<br/>walks cached ResourceTreeNode in memory<br/>or falls back to disk if cache not ready
+    Note right of API: CollectionIndex.search() walks the indexed<br/>ResourceTreeNode in memory (searchResourceTree)<br/>or searches the disk (searchTranslations) if not indexed
 
     API-->>BS: SearchResultsDto { results: SearchResultDto[] }
     BS->>BS: patchState({ searchResults, isSearchLoading: false })
@@ -358,9 +358,9 @@ sequenceDiagram
     participant FN as FolderNode (drop target)
     participant BS as BrowserStore
     participant API as ResourcesController / FoldersController
-    participant Cache as CollectionCacheService
+    participant Index as CollectionIndex
 
-    Note over Dev,Cache: A. Drag a resource
+    Note over Dev,Index: A. Drag a resource
     Dev->>TI: dragStart on TranslationItem
     TI->>TB: dragStarted output → activeDragData = { type: "resource", key, folderPath }
     TB->>FN: pass activeDragData as input → FolderNode highlights valid drop targets
@@ -378,8 +378,7 @@ sequenceDiagram
     BS->>BS: patchState({ isDisabled: true })
 
     BS->>API: POST /api/collections/{name}/resources/move<br/>{ source: "apps.common.ok", destination: "apps.navigation.ok" }
-    API->>Cache: clearCache() — wildcard-safe full clear
-    Cache-->>API: cache state = NOT_STARTED
+    API->>Index: apply(moveResult.mutations)<br/>— upsert at destination, remove at source
     API-->>BS: MoveResourceResponseDto { success: true }
 
     Note over BS: Success path
@@ -396,7 +395,7 @@ sequenceDiagram
         BS->>BS: notifications.error(errorMessage)
     end
 
-    Note over Dev,Cache: C. Drag a folder (abbreviated — same pattern)
+    Note over Dev,Index: C. Drag a folder (abbreviated — same pattern)
     Dev->>FN: dragStart on FolderNode (type: "folder")
     Dev->>FN: drop on destination FolderNode
     FN->>BS: moveFolder({ sourceFolderPath, destinationFolderPath })
@@ -420,7 +419,7 @@ sequenceDiagram
 
 ## 6. Cache Indexing Flow
 
-The sequence from opening a collection to having a fully populated resource tree in the browser store. This flow is driven by `withCacheStatusFeature.checkCacheStatus` (which polls every 2 seconds using `interval(2000)`) and `CollectionCacheService` on the API. The cache state machine is documented in [api.md — Cache State Machine](api.md#cache-state-machine).
+The sequence from opening a collection to having a fully populated resource tree in the browser store. This flow is driven by `withCacheStatusFeature.checkCacheStatus` (which polls every 2 seconds using `interval(2000)`) and the [Collection Index](glossary.md#collection-index) (`CollectionIndex`) on the API. The state machine is documented in [api.md — Index State Machine](api.md#index-state-machine).
 
 <!-- Cache indexing flowchart: app opens collection → poll cache status → wait for READY → load tree into store -->
 
@@ -439,7 +438,7 @@ flowchart TD
     STATUS_CHECK -- "not-started" --> TRIGGER_INDEX
     STATUS_CHECK -- "indexing" --> WAIT_LOOP
 
-    TRIGGER_INDEX["CollectionCacheService.indexCollection()\n[API fires, does not await]\nCore.loadResourceTree() starts async"]
+    TRIGGER_INDEX["CollectionIndex.status() found no entry\nand indexed the collection\n(core.loadResourceTree())"]
 
     TRIGGER_INDEX --> WAIT_LOOP
 
@@ -448,7 +447,7 @@ flowchart TD
     WAIT_LOOP --> POLL_START
 
     STATUS_CHECK -- "error" --> SHOW_ERROR
-    SHOW_ERROR["patchState({ cacheStatus: 'error', cacheError })\nError shown in UI\nNext /tree request will re-trigger indexCollection()"]
+    SHOW_ERROR["patchState({ cacheStatus: 'error', cacheError })\nError shown in UI\nNext /tree request will retry indexing"]
 
     STATUS_CHECK -- "ready" --> MARK_READY["patchState({ cacheStatus: 'ready', collectionStats })\ntakeWhile stops the interval — polling ends"]
 
@@ -479,4 +478,4 @@ flowchart TD
 - Poll interval: `2000 ms` (hard-coded in `withCacheStatusFeature` via `interval(2000)`)
 - The interval uses `takeWhile(..., true)` — the final `"ready"` emission is included before the stream completes, which is what triggers `loadRootFolders()`
 - There is no WebSocket or server-sent event. The retry loop is entirely client-driven.
-- `CollectionCacheService` holds at most one collection at a time. Switching collections immediately discards the previous collection's tree from memory. See [api.md — Single-Collection Design](api.md#single-collection-design).
+- `CollectionIndex` holds up to `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` (default 4) collections and evicts the least recently used one. Switching back to a recently opened collection does not re-index it. See [api.md — Bounded Multi-Collection Design](api.md#bounded-multi-collection-design).

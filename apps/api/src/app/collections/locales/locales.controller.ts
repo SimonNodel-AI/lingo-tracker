@@ -13,7 +13,7 @@ import {
 import { addLocaleToCollection, ReadOnlyCollectionError, removeLocaleFromCollection } from '@simoncodes-ca/core';
 import type { AddLocaleDto, AddLocaleResponseDto, RemoveLocaleResponseDto } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
-import { CollectionCacheService } from '../../cache/collection-cache.service';
+import { CollectionIndex } from '../../cache/collection-index.service';
 import { WritableCollectionGuard } from '../guards/writable-collection.guard';
 import { openRouteCollection } from '../open-route-collection';
 
@@ -21,11 +21,11 @@ import { openRouteCollection } from '../open-route-collection';
 @Controller('collections/:collectionName/locales')
 export class LocalesController {
   readonly #configService: ConfigService;
-  readonly #cacheService: CollectionCacheService;
+  readonly #index: CollectionIndex;
 
-  constructor(configService: ConfigService, cacheService: CollectionCacheService) {
+  constructor(configService: ConfigService, index: CollectionIndex) {
     this.#configService = configService;
-    this.#cacheService = cacheService;
+    this.#index = index;
   }
 
   @Post()
@@ -36,11 +36,10 @@ export class LocalesController {
     try {
       const { name } = openRouteCollection(this.#configService.getConfig(), collectionName);
 
-      const result = await addLocaleToCollection(name, body.locale);
+      const { mutations, ...response } = await addLocaleToCollection(name, body.locale);
+      this.#index.apply(mutations);
 
-      this.#cacheService.clearCache(name);
-
-      return result;
+      return response;
     } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof HttpException) {
         throw error;
@@ -77,11 +76,10 @@ export class LocalesController {
     try {
       const { name } = openRouteCollection(this.#configService.getConfig(), collectionName);
 
-      const result = await removeLocaleFromCollection(name, locale);
+      const { mutations, ...response } = await removeLocaleFromCollection(name, locale);
+      this.#index.apply(mutations);
 
-      this.#cacheService.clearCache(name);
-
-      return result;
+      return response;
     } catch (error: unknown) {
       if (error instanceof NotFoundException || error instanceof HttpException) {
         throw error;

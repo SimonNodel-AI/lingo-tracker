@@ -1,6 +1,8 @@
+import { resolve } from 'node:path';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
 import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
+import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
 import type { TranslationConfig } from '../config/translation-config';
 import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
@@ -29,6 +31,8 @@ export interface EditResourceResult {
   message?: string;
   entry?: ResourceTreeEntry;
   skippedLocales?: string[];
+  /** What changed on disk (empty when nothing was updated). */
+  mutations: ResourceMutation[];
 }
 
 /**
@@ -112,6 +116,7 @@ export async function editResource(
       resolvedKey: paths.resolvedKey,
       updated: false,
       message: 'No changes detected',
+      mutations: [],
     };
   }
 
@@ -151,6 +156,7 @@ export async function editResource(
     resolvedKey: paths.resolvedKey,
     updated: true,
     entry: updatedEntry,
+    mutations: [upsertMutation(resolve(cwd, translationsFolder), paths.resolvedKey, updatedEntry)],
     ...(autoTranslateSkippedLocales !== undefined && { skippedLocales: autoTranslateSkippedLocales }),
   };
 }

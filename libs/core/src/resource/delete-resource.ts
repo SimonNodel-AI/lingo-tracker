@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder } from '../lib/resource/resource-folder';
+import { removeMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { validateKey } from '@simoncodes-ca/domain';
 
 export interface DeleteResourceParams {
@@ -13,17 +14,21 @@ export interface DeleteResourceResult {
     key: string;
     error: string;
   }>;
+  /** One `remove` per deleted key. */
+  mutations: ResourceMutation[];
 }
 
 export function deleteResource(translationsFolder: string, params: DeleteResourceParams): DeleteResourceResult {
   let entriesDeleted = 0;
   const errors: Array<{ key: string; error: string }> = [];
+  const mutations: ResourceMutation[] = [];
 
   for (const key of params.keys) {
     try {
       const deletionSucceeded = deleteSingleResource(translationsFolder, key);
       if (deletionSucceeded) {
         entriesDeleted++;
+        mutations.push(removeMutation(translationsFolder, key));
       }
     } catch (caughtError) {
       errors.push({
@@ -36,6 +41,7 @@ export function deleteResource(translationsFolder: string, params: DeleteResourc
   return {
     entriesDeleted,
     errors: errors.length > 0 ? errors : undefined,
+    mutations,
   };
 }
 

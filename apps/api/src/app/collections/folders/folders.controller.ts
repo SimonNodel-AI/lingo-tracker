@@ -20,7 +20,7 @@ import type {
   MoveFolderResponseDto,
 } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
-import { CollectionCacheService } from '../../cache/collection-cache.service';
+import { CollectionIndex } from '../../cache/collection-index.service';
 import { WritableCollectionGuard } from '../guards/writable-collection.guard';
 import { openDestinationCollection, openRouteCollection } from '../open-route-collection';
 
@@ -29,7 +29,7 @@ import { openDestinationCollection, openRouteCollection } from '../open-route-co
 export class FoldersController {
   constructor(
     private readonly configService: ConfigService,
-    private readonly cacheService: CollectionCacheService,
+    private readonly index: CollectionIndex,
   ) {}
 
   @Post()
@@ -38,24 +38,14 @@ export class FoldersController {
     @Body() createFolderDto: CreateFolderDto,
   ): Promise<CreateFolderResponseDto> {
     try {
-      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(
-        this.configService.getConfig(),
-        collectionName,
-      );
+      const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
 
       const result = createFolder(translationsFolder, {
         folderName: createFolderDto.folderName,
         parentPath: createFolderDto.parentPath,
       });
 
-      // Update cache incrementally after successful folder creation
-      if (result.created) {
-        this.cacheService.addFolderToCache(
-          decodedCollectionName,
-          createFolderDto.folderName,
-          createFolderDto.parentPath,
-        );
-      }
+      this.index.apply(result.mutations);
 
       // Build the folder node for the frontend to insert into tree
       const fullPath = createFolderDto.parentPath
@@ -104,19 +94,13 @@ export class FoldersController {
     @Body() deleteFolderDto: DeleteFolderDto,
   ): Promise<DeleteFolderResponseDto> {
     try {
-      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(
-        this.configService.getConfig(),
-        collectionName,
-      );
+      const { translationsFolder } = openRouteCollection(this.configService.getConfig(), collectionName);
 
       const result = deleteFolder(translationsFolder, {
         folderPath: deleteFolderDto.folderPath,
       });
 
-      // Update cache incrementally after successful folder deletion
-      if (result.deleted) {
-        this.cacheService.removeFolderFromCache(decodedCollectionName, deleteFolderDto.folderPath);
-      }
+      this.index.apply(result.mutations);
 
       return {
         deleted: result.deleted,
@@ -151,7 +135,7 @@ export class FoldersController {
   ): Promise<MoveFolderResponseDto> {
     try {
       const config = this.configService.getConfig();
-      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(config, collectionName);
+      const { translationsFolder } = openRouteCollection(config, collectionName);
 
       if (
         !moveFolderDto.sourceFolderPath ||
@@ -165,13 +149,9 @@ export class FoldersController {
       }
 
       // Handle cross-collection moves
-      let destinationTranslationsFolder: string | undefined;
-      let destinationCollectionName: string | undefined;
-      if (moveFolderDto.toCollection) {
-        const destination = openDestinationCollection(config, moveFolderDto.toCollection);
-        destinationCollectionName = destination.name;
-        destinationTranslationsFolder = destination.translationsFolder;
-      }
+      const destinationTranslationsFolder = moveFolderDto.toCollection
+        ? openDestinationCollection(config, moveFolderDto.toCollection).translationsFolder
+        : undefined;
 
       // Perform the move
       const result = await moveFolder(translationsFolder, {
@@ -182,25 +162,7 @@ export class FoldersController {
         destinationTranslationsFolder,
       });
 
-      // Update cache incrementally after successful folder move
-      if (result.movedCount > 0) {
-        if (destinationCollectionName && destinationCollectionName !== decodedCollectionName) {
-          // A cross-collection move rewrites two trees; the incremental update only knows how
-          // to relocate a folder within one, so both caches are dropped instead.
-          this.cacheService.clearCache(decodedCollectionName);
-          this.cacheService.clearCache(destinationCollectionName);
-        } else {
-          const moved = this.cacheService.moveFolderInCache(
-            decodedCollectionName,
-            moveFolderDto.sourceFolderPath,
-            moveFolderDto.destinationFolderPath,
-          );
-          if (!moved) {
-            // Fallback: clear cache if incremental update failed
-            this.cacheService.clearCache(decodedCollectionName);
-          }
-        }
-      }
+      this.index.apply(result.mutations);
 
       // Check for critical errors that should return 400
       const hasCriticalError = result.errors.some(

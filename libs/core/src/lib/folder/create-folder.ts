@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { isValidSegment } from '@simoncodes-ca/domain';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
+import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface CreateFolderParams {
   /** The folder name to create (dot-delimited path segments) */
@@ -15,6 +16,8 @@ export interface CreateFolderResult {
   readonly folderPath: string;
   /** Whether the folder was newly created (true) or already existed (false) */
   readonly created: boolean;
+  /** An `add-folder` when the folder was created; empty when it already existed. */
+  readonly mutations: ResourceMutation[];
 }
 
 /**
@@ -98,5 +101,6 @@ export function createFolder(translationsFolder: string, params: CreateFolderPar
   return {
     folderPath: absoluteFolderPath,
     created: !alreadyExists,
+    mutations: alreadyExists ? [] : [folderMutation('add-folder', translationsFolder, fullDotPath)],
   };
 }

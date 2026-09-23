@@ -1,8 +1,10 @@
+import { resolve } from 'node:path';
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
+import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
 import { autoTranslateResource } from './auto-translate-resources';
 
 export interface TranslateExistingResourceOptions {
@@ -18,6 +20,8 @@ export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
   readonly skippedLocales: string[];
   readonly entry: ResourceTreeEntry;
+  /** What changed on disk (empty when nothing was translated). */
+  readonly mutations: ResourceMutation[];
 }
 
 /**
@@ -58,6 +62,7 @@ export async function translateExistingResource(
       translatedCount: 0,
       skippedLocales: [],
       entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
+      mutations: [],
     };
   }
 
@@ -76,10 +81,16 @@ export async function translateExistingResource(
     folder.save();
   }
 
+  const updatedEntry = requireTreeEntry(folder, paths.entryKey, paths.resolvedKey);
+
   return {
     translatedCount: translatedEntries.length,
     skippedLocales,
-    entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
+    entry: updatedEntry,
+    mutations:
+      translatedEntries.length > 0
+        ? [upsertMutation(resolve(cwd, translationsFolder), paths.resolvedKey, updatedEntry)]
+        : [],
   };
 }
 

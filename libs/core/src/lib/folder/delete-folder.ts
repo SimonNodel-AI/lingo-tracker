@@ -3,6 +3,7 @@ import { resolve, join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
 import { openResourceFolder } from '../resource/resource-folder';
+import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface DeleteFolderParams {
   /** The folder path to delete (dot-delimited path like "apps.common.buttons") */
@@ -18,6 +19,8 @@ export interface DeleteFolderResult {
   readonly resourcesDeleted: number;
   /** Error message if deletion failed */
   readonly error?: string;
+  /** A `remove-folder` when the folder was deleted, otherwise empty. */
+  readonly mutations: ResourceMutation[];
 }
 
 /**
@@ -72,6 +75,7 @@ export function deleteFolder(translationsFolder: string, params: DeleteFolderPar
         folderPath,
         deleted: false,
         resourcesDeleted: 0,
+        mutations: [],
         error: `Folder not found: ${absoluteFolderPath}`,
       };
     }
@@ -83,6 +87,7 @@ export function deleteFolder(translationsFolder: string, params: DeleteFolderPar
         folderPath,
         deleted: false,
         resourcesDeleted: 0,
+        mutations: [],
         error: `Path is not a directory: ${absoluteFolderPath}`,
       };
     }
@@ -97,12 +102,14 @@ export function deleteFolder(translationsFolder: string, params: DeleteFolderPar
       folderPath,
       deleted: true,
       resourcesDeleted,
+      mutations: [folderMutation('remove-folder', translationsFolder, folderPath)],
     };
   } catch (error) {
     return {
       folderPath,
       deleted: false,
       resourcesDeleted: 0,
+      mutations: [],
       error: error instanceof Error ? error.message : String(error),
     };
   }

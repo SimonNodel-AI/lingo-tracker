@@ -75,7 +75,7 @@ Each cell shows whether the operation is supported (`Yes`), not supported (`—`
 | Validate all resources (CI gate) | Yes (`validate`) | — | — |
 | View resource status per locale | — | — | Yes (status badge per locale row in item) |
 | **Cache / Indexing** | | | |
-| Poll [indexing](glossary.md#indexing) cache state | — | Yes (`GET /collections/:name/resources/cache/status`) | Yes (via `withCacheStatusFeature` — auto-polls on collection load) |
+| Poll [Collection Index](glossary.md#collection-index) state | — | Yes (`GET /collections/:name/resources/cache/status`) | Yes (via `withCacheStatusFeature` — auto-polls on collection load) |
 | Trigger cache re-index | — | Yes (implicit on `GET /tree` when state is `NOT_STARTED` or `ERROR`) | Yes (implicit on collection switch in `BrowserStore`) |
 
 ---
@@ -84,7 +84,7 @@ Each cell shows whether the operation is supported (`Yes`), not supported (`—`
 
 ### API Only
 
-- **In-memory collection cache** — `CollectionCacheService` is an API-only system. It holds a single-slot, incrementally-updated in-memory tree of the active collection, making browsing fast for the Tracker UI. The CLI bypasses the cache entirely and reads files directly on every invocation. See [`api.md — Collection Cache`](api.md#collection-cache).
+- **In-memory Collection Index** — `CollectionIndex` is an API-only system. It holds an incrementally updated in-memory tree of each open collection (at most 4 by default), making browsing fast for the Tracker UI. The CLI reads files directly on every invocation and ignores the `mutations` that core writes return. See [`api.md — Collection Index`](api.md#collection-index).
 - **Async translation jobs** — The `TranslationJobService` (fire-and-forget job map with UUID-based polling) is API-only. The CLI's `translate-locale` command runs synchronously in-process and prints progress inline.
 - **Async bundle jobs** — `BundleJobService` runs bundle generation through a sequential job queue with UUID-based polling. The CLI's `bundle` command runs synchronously in-process. See [`bundle-generation.md`](bundle-generation.md) for the shared pipeline.
 - **Batch resource creation** — The `POST /collections/:name/resources` endpoint accepts an array of `CreateResourceDto` objects. The CLI's `add-resource` and the UI's editor dialog only create one resource at a time.

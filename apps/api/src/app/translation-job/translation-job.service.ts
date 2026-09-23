@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { translateLocale, TranslationError } from '@simoncodes-ca/core';
+import { resolve } from 'node:path';
+import { reindexMutation, translateLocale, TranslationError } from '@simoncodes-ca/core';
 import type { TranslateLocaleParams, TranslateLocaleProgress } from '@simoncodes-ca/core';
 import type { TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
+import { CollectionIndex } from '../cache/collection-index.service';
 
 interface TranslationJob {
   jobId: string;
@@ -23,10 +25,12 @@ interface TranslationJob {
 @Injectable()
 export class TranslationJobService {
   readonly #logger: Logger;
+  readonly #index: CollectionIndex;
   readonly #jobs = new Map<string, TranslationJob>();
 
-  constructor(logger: Logger) {
+  constructor(logger: Logger, index: CollectionIndex) {
     this.#logger = logger;
+    this.#index = index;
   }
 
   /**
@@ -88,8 +92,15 @@ export class TranslationJobService {
     runningJob.status = 'running';
     runningJob.startedAt = new Date();
 
+    // translateLocale writes resource files (even when it fails part-way), so the index is dropped either way.
+    const reindex = (): void =>
+      this.#index.apply([
+        reindexMutation(resolve(translateParams.cwd ?? process.cwd(), translateParams.translationsFolder)),
+      ]);
+
     translateLocale({ ...translateParams, onProgress })
       .then((result) => {
+        reindex();
         const completedJob = this.#jobs.get(jobId);
 
         if (!completedJob) {
@@ -106,6 +117,7 @@ export class TranslationJobService {
         completedJob.skippedKeys = [...result.skippedKeys];
       })
       .catch((error: unknown) => {
+        reindex();
         const failedJob = this.#jobs.get(jobId);
 
         if (!failedJob) {

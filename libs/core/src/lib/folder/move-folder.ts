@@ -5,6 +5,7 @@ import { isValidSegment } from '@simoncodes-ca/domain';
 import { moveResource, type MoveResourceResult } from '../../resource/move-resource';
 import { deleteFolder, type DeleteFolderResult } from './delete-folder';
 import { openResourceFolder } from '../resource/resource-folder';
+import type { ResourceMutation } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -32,6 +33,8 @@ export interface MoveFolderResult {
   warnings: string[];
   /** Error messages */
   errors: string[];
+  /** Per moved key an `upsert` and a `remove`, then a `remove-folder` if every key moved and the folder was deleted. */
+  mutations: ResourceMutation[];
 }
 
 /**
@@ -42,7 +45,7 @@ export interface MoveFolderResult {
  * 2. Prevents circular dependencies (moving folder into its own descendant)
  * 3. Extracts all resources in the source folder tree recursively
  * 4. Moves each resource to the corresponding destination path
- * 5. Deletes the now-empty source folder after all moves complete
+ * 5. Deletes the source folder once every resource in it was moved (otherwise keeps it and warns)
  *
  * @param translationsFolder - Root translations folder path
  * @param params - Folder move parameters
@@ -81,6 +84,7 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
     foldersDeleted: 0,
     warnings: [],
     errors: [],
+    mutations: [],
   };
 
   try {
@@ -162,6 +166,7 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
       result.warnings.push('No resources found in source folder. Nothing to move.');
       // Still delete the empty folder
       const deleteResult = deleteFolder(translationsFolder, { folderPath: sourceFolderPath });
+      result.mutations.push(...deleteResult.mutations);
       if (deleteResult.deleted) {
         result.foldersDeleted++;
       } else if (deleteResult.error) {
@@ -175,6 +180,8 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
     const sourceDepth = sourceFolderSegments.length;
     const destDepth = destinationFolderSegments.length;
     const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
+    // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
+    const keptKeys: string[] = [];
 
     for (const sourceKey of resourceKeys) {
       // Calculate destination key by replacing source folder prefix with destination folder prefix
@@ -227,11 +234,20 @@ export async function moveFolder(translationsFolder: string, params: MoveFolderP
       result.movedCount += moveResult.movedCount;
       result.warnings.push(...moveResult.warnings);
       result.errors.push(...moveResult.errors);
+      result.mutations.push(...moveResult.mutations);
+      if (moveResult.movedCount === 0) {
+        keptKeys.push(sourceKey);
+      }
     }
 
-    // After all resources moved successfully, delete the source folder
-    if (result.movedCount > 0 && result.errors.length === 0) {
+    if (keptKeys.length > 0) {
+      result.warnings.push(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
+    }
+
+    // Only delete the source folder when every resource in it was moved
+    if (keptKeys.length === 0 && result.errors.length === 0) {
       const deleteResult: DeleteFolderResult = deleteFolder(translationsFolder, { folderPath: sourceFolderPath });
+      result.mutations.push(...deleteResult.mutations);
       if (deleteResult.deleted) {
         result.foldersDeleted++;
       } else if (deleteResult.error) {

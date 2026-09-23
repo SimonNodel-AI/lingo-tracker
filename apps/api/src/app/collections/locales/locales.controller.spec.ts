@@ -2,7 +2,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { HttpException, NotFoundException } from '@nestjs/common';
 import { LocalesController } from './locales.controller';
 import { ConfigService } from '../../config/config.service';
-import { CollectionCacheService } from '../../cache/collection-cache.service';
+import { CollectionIndex } from '../../cache/collection-index.service';
 import * as core from '@simoncodes-ca/core';
 
 jest.mock('@simoncodes-ca/core', () => {
@@ -17,7 +17,6 @@ jest.mock('@simoncodes-ca/core', () => {
 describe('LocalesController', () => {
   let localesModule: TestingModule;
   let localesController: LocalesController;
-  let cacheService: CollectionCacheService;
 
   const mockConfig = {
     baseLocale: 'en',
@@ -31,9 +30,7 @@ describe('LocalesController', () => {
     },
   };
 
-  const mockCacheService = {
-    clearCache: jest.fn(),
-  };
+  const mockIndex = { apply: jest.fn() };
 
   beforeEach(async () => {
     localesModule = await Test.createTestingModule({
@@ -46,14 +43,13 @@ describe('LocalesController', () => {
           },
         },
         {
-          provide: CollectionCacheService,
-          useValue: mockCacheService,
+          provide: CollectionIndex,
+          useValue: mockIndex,
         },
       ],
     }).compile();
 
     localesController = localesModule.get<LocalesController>(LocalesController);
-    cacheService = localesModule.get<CollectionCacheService>(CollectionCacheService);
 
     jest.clearAllMocks();
   });
@@ -65,12 +61,14 @@ describe('LocalesController', () => {
         entriesBackfilled: 4,
         filesUpdated: 2,
       };
-      (core.addLocaleToCollection as jest.Mock).mockResolvedValue(mockResult);
+      const mutations = [{ kind: 'reindex', translationsFolder: '/t' }];
+      (core.addLocaleToCollection as jest.Mock).mockResolvedValue({ ...mockResult, mutations });
 
       const result = await localesController.addLocale('test-collection', { locale: 'de' });
 
       expect(core.addLocaleToCollection).toHaveBeenCalledWith('test-collection', 'de');
-      expect(cacheService.clearCache).toHaveBeenCalled();
+      expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
+      // The mutations are for the index; the response is unchanged.
       expect(result).toEqual(mockResult);
     });
 
@@ -136,10 +134,10 @@ describe('LocalesController', () => {
       expect((error as HttpException).getStatus()).toBe(403);
     });
 
-    it('does not clear cache when collection lookup fails before core is called', async () => {
+    it('does not touch the index when collection lookup fails before core is called', async () => {
       await localesController.addLocale('nonexistent-collection', { locale: 'de' }).catch(() => undefined);
 
-      expect(cacheService.clearCache).not.toHaveBeenCalled();
+      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
   });
 
@@ -150,12 +148,14 @@ describe('LocalesController', () => {
         entriesPurged: 3,
         filesUpdated: 2,
       };
-      (core.removeLocaleFromCollection as jest.Mock).mockResolvedValue(mockResult);
+      const mutations = [{ kind: 'reindex', translationsFolder: '/t' }];
+      (core.removeLocaleFromCollection as jest.Mock).mockResolvedValue({ ...mockResult, mutations });
 
       const result = await localesController.removeLocale('test-collection', 'fr');
 
       expect(core.removeLocaleFromCollection).toHaveBeenCalledWith('test-collection', 'fr');
-      expect(cacheService.clearCache).toHaveBeenCalled();
+      expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
+      // The mutations are for the index; the response is unchanged.
       expect(result).toEqual(mockResult);
     });
 
@@ -209,10 +209,10 @@ describe('LocalesController', () => {
       expect((error as HttpException).getStatus()).toBe(403);
     });
 
-    it('does not clear cache when collection lookup fails before core is called', async () => {
+    it('does not touch the index when collection lookup fails before core is called', async () => {
       await localesController.removeLocale('nonexistent-collection', 'fr').catch(() => undefined);
 
-      expect(cacheService.clearCache).not.toHaveBeenCalled();
+      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
     it('passes collection name and locale directly to core function', async () => {

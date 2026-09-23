@@ -5,6 +5,7 @@ import { updateConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import { walkFolders } from '../lib/normalize/iterative-folder-walker';
 import { openResourceFolder } from '../lib/resource/resource-folder';
+import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { ErrorMessages } from '../lib/errors/error-messages';
 import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 
@@ -16,6 +17,8 @@ export interface RemoveLocaleFromCollectionResult {
   readonly message: string;
   readonly entriesPurged: number;
   readonly filesUpdated: number;
+  /** A `reindex` of the collection: every folder's metadata changed. */
+  readonly mutations: ResourceMutation[];
 }
 
 export async function removeLocaleFromCollection(
@@ -79,5 +82,6 @@ export async function removeLocaleFromCollection(
     message: `Locale "${locale}" removed from collection "${collectionName}" successfully`,
     entriesPurged,
     filesUpdated,
+    mutations: [reindexMutation(collection.translationsFolder)],
   };
 }

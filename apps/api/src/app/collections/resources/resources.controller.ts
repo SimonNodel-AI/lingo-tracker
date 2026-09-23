@@ -12,7 +12,6 @@ import {
   ForbiddenException,
   NotFoundException,
   Res,
-  Logger,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
@@ -24,14 +23,8 @@ import {
   editResource,
   translateExistingResource,
   TranslationError,
-  searchTranslations,
-  searchResourceTree,
-  extractSubtree,
   extractResourcesRecursively,
-  createResourceMetadata,
   type Collection,
-  type SearchResult,
-  type ResourceTreeEntry,
 } from '@simoncodes-ca/core';
 import type {
   CreateResourceDto,
@@ -57,7 +50,7 @@ import { ConfigService } from '../../config/config.service';
 import { mapDtoToAddResourceParams } from '../../mappers/resource.mapper';
 import { mapResourceTreeToDto, mapResourceEntryToSummary } from '../../mappers/resource-tree.mapper';
 import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
-import { CollectionCacheService, CacheStatus } from '../../cache/collection-cache.service';
+import { CollectionIndex } from '../../cache/collection-index.service';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import { WritableCollectionGuard } from '../guards/writable-collection.guard';
 import { openDestinationCollection, openRouteCollection } from '../open-route-collection';
@@ -65,18 +58,13 @@ import { openDestinationCollection, openRouteCollection } from '../open-route-co
 @UseGuards(WritableCollectionGuard)
 @Controller('collections/:collectionName/resources')
 export class ResourcesController {
-  readonly #logger = new Logger(ResourcesController.name);
   readonly #configService: ConfigService;
-  readonly #cacheService: CollectionCacheService;
+  readonly #index: CollectionIndex;
   readonly #translationJobService: TranslationJobService;
 
-  constructor(
-    configService: ConfigService,
-    cacheService: CollectionCacheService,
-    translationJobService: TranslationJobService,
-  ) {
+  constructor(configService: ConfigService, index: CollectionIndex, translationJobService: TranslationJobService) {
     this.#configService = configService;
-    this.#cacheService = cacheService;
+    this.#index = index;
     this.#translationJobService = translationJobService;
   }
 
@@ -102,7 +90,7 @@ export class ResourcesController {
         cwd: process.cwd(),
       });
 
-      this.#cacheService.addResourceToCache(collection.name, result.entry, dto.key.split('.').slice(0, -1).join('.'));
+      this.#index.apply(result.mutations);
 
       const resource = mapResourceEntryToSummary(result.entry, collection.tags);
 
@@ -137,7 +125,7 @@ export class ResourcesController {
   ): Promise<CreateResourceResponseDto> {
     try {
       const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-      const { name: decodedCollectionName, translationsFolder, baseLocale, locales, translationConfig } = collection;
+      const { translationsFolder, baseLocale, locales, translationConfig } = collection;
 
       // Normalize to array
       const resources = Array.isArray(body) ? body : [body];
@@ -185,38 +173,7 @@ export class ResourcesController {
             allSkippedLocales.push(...result.skippedLocales);
           }
 
-          // Add resource to cache instead of clearing it
-          const resolvedKeyParts = result.resolvedKey.split('.');
-          const entryKey = resolvedKeyParts.pop() || '';
-          const folderPath = resolvedKeyParts.join('.');
-
-          // Build translations record from actual result (includes auto-translated values)
-          const translationsRecord: Record<string, string> = {};
-          const actualTranslations = result.translations?.length > 0 ? result.translations : translations || [];
-          for (const t of actualTranslations) {
-            if (t.locale !== resourceBaseLocale) {
-              translationsRecord[t.locale] = t.value;
-            }
-          }
-
-          // Create metadata for cache entry
-          const metadata = createResourceMetadata({
-            entryKey,
-            baseValue: resource.baseValue,
-            baseLocale: resourceBaseLocale,
-            translations: actualTranslations,
-          });
-
-          const cacheEntry: ResourceTreeEntry = {
-            key: entryKey,
-            source: resource.baseValue,
-            translations: translationsRecord,
-            metadata,
-            ...(resource.comment && { comment: resource.comment }),
-            ...(resource.tags && resource.tags.length > 0 && { tags: resource.tags }),
-          };
-
-          this.#cacheService.addResourceToCache(decodedCollectionName, cacheEntry, folderPath);
+          this.#index.apply(result.mutations);
         } catch (error: unknown) {
           // Validation errors (invalid key, etc.) should return 400
           const errorMessage = error instanceof Error ? error.message : '';
@@ -256,10 +213,7 @@ export class ResourcesController {
     @Body() dto: DeleteResourceDto,
   ): Promise<DeleteResourceResponseDto> {
     try {
-      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(
-        this.#configService.getConfig(),
-        collectionName,
-      );
+      const { translationsFolder } = openRouteCollection(this.#configService.getConfig(), collectionName);
 
       if (!dto.keys || !Array.isArray(dto.keys) || dto.keys.length === 0) {
         throw new HttpException(
@@ -269,11 +223,7 @@ export class ResourcesController {
       }
 
       const result = deleteResource(translationsFolder, { keys: dto.keys });
-
-      // Clear cache after successful resource deletion
-      if (result.entriesDeleted > 0) {
-        this.#cacheService.clearCache(decodedCollectionName);
-      }
+      this.#index.apply(result.mutations);
 
       return {
         entriesDeleted: result.entriesDeleted,
@@ -300,7 +250,7 @@ export class ResourcesController {
   ): Promise<MoveResourceResponseDto> {
     try {
       const config = this.#configService.getConfig();
-      const { name: decodedCollectionName, translationsFolder } = openRouteCollection(config, collectionName);
+      const { translationsFolder } = openRouteCollection(config, collectionName);
 
       const result: MoveResourceResponseDto = {
         movedCount: 0,
@@ -314,10 +264,6 @@ export class ResourcesController {
           HttpStatus.BAD_REQUEST,
         );
       }
-
-      // Every collection a move touched, so each one's cache is dropped and no untouched
-      // collection's cache is.
-      const affectedCollections = new Set<string>([decodedCollectionName]);
 
       for (const moveOp of dto.moves) {
         let destinationTranslationsFolder: string | undefined;
@@ -335,7 +281,6 @@ export class ResourcesController {
             continue;
           }
           destinationTranslationsFolder = destination.translationsFolder;
-          affectedCollections.add(destination.name);
         }
 
         const moveResult = await moveResource(translationsFolder, {
@@ -344,6 +289,7 @@ export class ResourcesController {
           override: moveOp.override,
           destinationTranslationsFolder: destinationTranslationsFolder,
         });
+        this.#index.apply(moveResult.mutations);
 
         result.movedCount += moveResult.movedCount;
         if (moveResult.warnings && result.warnings) {
@@ -351,13 +297,6 @@ export class ResourcesController {
         }
         if (moveResult.errors && result.errors) {
           result.errors.push(...moveResult.errors);
-        }
-      }
-
-      // Clear cache after successful resource move
-      if (result.movedCount > 0) {
-        for (const affected of affectedCollections) {
-          this.#cacheService.clearCache(affected);
         }
       }
 
@@ -379,7 +318,6 @@ export class ResourcesController {
   ): Promise<UpdateResourceResponseDto> {
     try {
       const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-      const decodedCollectionName = collection.name;
 
       const result = await editResource(collection.translationsFolder, {
         ...dto,
@@ -388,24 +326,9 @@ export class ResourcesController {
         allLocales: collection.locales,
       });
 
-      let resourceDto: ResourceSummaryDto | undefined;
-
-      if (result.updated && result.entry) {
-        const keyParts = dto.key.split('.');
-        const entryKey = keyParts[keyParts.length - 1];
-        const oldFolderPath = keyParts.slice(0, -1).join('.');
-
-        if (dto.targetFolder !== undefined && dto.targetFolder !== oldFolderPath) {
-          // Resource moved to a different folder — remove from old location, insert at new
-          this.#cacheService.removeResourceFromCache(decodedCollectionName, entryKey, oldFolderPath);
-          this.#cacheService.addResourceToCache(decodedCollectionName, result.entry, dto.targetFolder ?? '');
-        } else {
-          // In-place edit — upsert in the same folder
-          this.#cacheService.addResourceToCache(decodedCollectionName, result.entry, oldFolderPath);
-        }
-
-        resourceDto = mapResourceEntryToSummary(result.entry, collection.tags);
-      }
+      this.#index.apply(result.mutations);
+      const resourceDto: ResourceSummaryDto | undefined =
+        result.updated && result.entry ? mapResourceEntryToSummary(result.entry, collection.tags) : undefined;
 
       return {
         resolvedKey: result.resolvedKey,
@@ -436,110 +359,44 @@ export class ResourcesController {
   @Get('tree')
   async getTree(
     @Param('collectionName') collectionName: string,
-    @Query('path') path = '',
-    @Query('includeNested') includeNested?: string,
-    @Res() response?: Response,
+    @Query('path') path: string | undefined,
+    @Query('includeNested') includeNested: string | undefined,
+    @Res({ passthrough: true }) response: Response,
   ): Promise<ResourceTreeDto | TreeStatusResponseDto> {
     try {
-      // Support two calling styles for tests and consumers:
-      // 1) (collectionName, path, includeNested, response)
-      // 2) (collectionName, path, response) - tests pass response as third arg
-      // Detect when includeNested is actually the Response object and adjust accordingly.
-      let responseObj: Response | undefined = response;
-      let isIncludeNested = includeNested === 'true';
-
-      if (
-        includeNested !== undefined &&
-        typeof includeNested === 'object' &&
-        includeNested !== null &&
-        typeof (includeNested as Record<string, unknown>).status === 'function' &&
-        typeof (includeNested as Record<string, unknown>).json === 'function'
-      ) {
-        responseObj = includeNested as unknown as Response;
-        isIncludeNested = false;
-      }
-
       const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-      const { name: decodedCollectionName, translationsFolder } = collection;
+      const read = this.#index.tree(collection, path ?? '');
 
-      // Pick up changes made outside this process (CLI commands, git checkouts, hand edits)
-      // before trusting the cache.
-      this.#cacheService.revalidate(decodedCollectionName, translationsFolder);
-
-      // Check cache status
-      const cacheStatus = this.#cacheService.getCacheStatus(decodedCollectionName);
-
-      // Handle cache states
-      if (cacheStatus === CacheStatus.NOT_STARTED || cacheStatus === CacheStatus.ERROR) {
-        // Trigger indexing asynchronously (don't await)
-        this.#cacheService
-          .indexCollection(decodedCollectionName, translationsFolder, collection.locales.length)
-          .catch((error) => {
-            this.#logger.warn(`Async indexing failed for ${decodedCollectionName}`, error);
-          });
-
-        const statusResponse: TreeStatusResponseDto = {
-          status: 'not-ready',
-          message:
-            cacheStatus === CacheStatus.ERROR
-              ? 'Cache indexing failed, re-indexing collection. Please try again shortly.'
-              : 'Collection indexing started. Please try again shortly.',
-        };
-
-        if (responseObj) {
-          responseObj.status(HttpStatus.ACCEPTED).json(statusResponse);
-          return statusResponse;
-        }
-        return statusResponse;
+      if (read.status !== 'ready') {
+        response.status(HttpStatus.ACCEPTED);
+        return read.status === 'indexing'
+          ? { status: 'indexing', message: 'Collection is currently being indexed. Please try again shortly.' }
+          : {
+              status: 'not-ready',
+              message:
+                read.status === 'error'
+                  ? 'Cache indexing failed, re-indexing collection. Please try again shortly.'
+                  : 'Collection indexing started. Please try again shortly.',
+            };
       }
 
-      if (cacheStatus === CacheStatus.INDEXING) {
-        const statusResponse: TreeStatusResponseDto = {
-          status: 'indexing',
-          message: 'Collection is currently being indexed. Please try again shortly.',
-        };
-
-        if (responseObj) {
-          responseObj.status(HttpStatus.ACCEPTED).json(statusResponse);
-          return statusResponse;
-        }
-        return statusResponse;
-      }
-
-      // Cache is READY - retrieve cached tree
-      const cachedTree = this.#cacheService.getCache(decodedCollectionName);
-
-      if (!cachedTree) {
-        throw new HttpException('Cache is marked as ready but tree is not available', HttpStatus.INTERNAL_SERVER_ERROR);
+      if (!read.tree) {
+        throw new NotFoundException(`Path "${path}" not found in collection tree`);
       }
 
       // An empty path addresses the collection root, which the artificial root node in the
       // Tracker sidebar selects. It is a folder like any other here, so it honours
       // includeNested too and can list every resource in the collection.
-      const subtree = !path || path.trim() === '' ? cachedTree : extractSubtree(cachedTree, path);
+      const treeDto = mapResourceTreeToDto(read.tree, collection.tags);
 
-      if (!subtree) {
-        throw new NotFoundException(`Path "${path}" not found in collection tree`);
-      }
-
-      const treeDto = mapResourceTreeToDto(subtree, collection.tags);
-
-      if (isIncludeNested) {
-        treeDto.resources = extractResourcesRecursively(subtree).map((res) =>
+      if (includeNested === 'true') {
+        treeDto.resources = extractResourcesRecursively(read.tree).map((res) =>
           mapResourceEntryToSummary(res, collection.tags),
         );
       }
 
-      if (responseObj) {
-        responseObj.status(HttpStatus.OK).json(treeDto);
-        return treeDto;
-      }
       return treeDto;
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-
       if (error instanceof HttpException) {
         throw error;
       }
@@ -552,54 +409,8 @@ export class ResourcesController {
   @Get('cache/status')
   async getCacheStatus(@Param('collectionName') collectionName: string): Promise<CacheStatusDto> {
     try {
-      const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-      const { name: decodedCollectionName, translationsFolder } = collection;
-      this.#cacheService.revalidate(decodedCollectionName, translationsFolder);
-
-      const cacheStatus = this.#cacheService.getCacheStatus(decodedCollectionName);
-
-      // If cache is not started, trigger indexing asynchronously
-      if (cacheStatus === CacheStatus.NOT_STARTED) {
-        this.#cacheService
-          .indexCollection(decodedCollectionName, translationsFolder, collection.locales.length)
-          .catch((error) => {
-            this.#logger.warn(`Async indexing failed for ${decodedCollectionName}`, error);
-          });
-      }
-
-      // Get additional cache metadata
-      const metadata = this.#cacheService.getCacheMetadata(decodedCollectionName);
-
-      // Map CacheStatus enum to CacheStatusType string literal
-      const statusType = cacheStatus as 'not-started' | 'indexing' | 'ready' | 'error';
-
-      const statusDto: CacheStatusDto = {
-        status: statusType,
-        collectionName: decodedCollectionName,
-      };
-
-      if (metadata?.indexedAt) {
-        statusDto.indexedAt = metadata.indexedAt.toISOString();
-      }
-
-      if (metadata?.error) {
-        statusDto.error = metadata.error;
-      }
-
-      // Include stats when cache is ready
-      if (cacheStatus === CacheStatus.READY) {
-        const stats = this.#cacheService.getCacheStats(decodedCollectionName);
-        if (stats) {
-          statusDto.stats = stats;
-        }
-      }
-
-      return statusDto;
+      return this.#index.status(openRouteCollection(this.#configService.getConfig(), collectionName));
     } catch (error: unknown) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
-
       if (error instanceof HttpException) {
         throw error;
       }
@@ -616,7 +427,6 @@ export class ResourcesController {
   ): Promise<SearchResultsDto> {
     try {
       const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-      const { name: decodedCollectionName, translationsFolder, baseLocale } = collection;
 
       // Validate query
       if (!dto.query || dto.query.trim().length === 0) {
@@ -631,28 +441,8 @@ export class ResourcesController {
       // Default maxResults to 100, cap at 500
       const maxResults = Math.min(dto.maxResults || 100, 500);
 
-      // Try to use cached tree for faster search
-      this.#cacheService.revalidate(decodedCollectionName, translationsFolder);
-      const cachedTree = this.#cacheService.getCache(decodedCollectionName);
-      let searchResults: SearchResult[];
-
-      if (cachedTree) {
-        // Use in-memory search on cached tree
-        searchResults = searchResourceTree({
-          tree: cachedTree,
-          query: dto.query,
-          maxResults: maxResults + 1, // Request one extra to detect if limited
-          baseLocale,
-        });
-      } else {
-        // Fall back to disk-based search
-        searchResults = searchTranslations({
-          translationsFolder,
-          query: dto.query,
-          maxResults: maxResults + 1, // Request one extra to detect if limited
-          baseLocale,
-        });
-      }
+      // Request one extra result to detect whether the results were limited.
+      const searchResults = this.#index.search(collection, dto.query, maxResults + 1);
 
       // Check if results were limited
       const limited = searchResults.length > maxResults;

@@ -7,10 +7,14 @@ import type { SafeAny } from '../constants';
 
 vi.mock('node:fs');
 vi.mock('./add-locale-to-collection', () => ({
-  addLocaleToCollection: vi.fn().mockResolvedValue({ message: 'ok', entriesBackfilled: 0, filesUpdated: 0 }),
+  addLocaleToCollection: vi
+    .fn()
+    .mockResolvedValue({ message: 'ok', entriesBackfilled: 0, filesUpdated: 0, mutations: [] }),
 }));
 vi.mock('./remove-locale-from-collection', () => ({
-  removeLocaleFromCollection: vi.fn().mockResolvedValue({ message: 'ok', entriesPurged: 0, filesUpdated: 0 }),
+  removeLocaleFromCollection: vi
+    .fn()
+    .mockResolvedValue({ message: 'ok', entriesPurged: 0, filesUpdated: 0, mutations: [] }),
 }));
 
 describe('updateCollection', () => {
