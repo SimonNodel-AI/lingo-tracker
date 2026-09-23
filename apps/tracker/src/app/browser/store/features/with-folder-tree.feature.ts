@@ -11,6 +11,7 @@ import {
   insertFolderIntoTree,
   removeFolderFromTree,
   findFolderInTree,
+  filterFolderTree,
   rebaseFolderPaths,
   collectExpandablePaths,
   collectAncestorPaths,
@@ -70,30 +71,7 @@ export function withFolderTreeFeature<_>() {
     withState(initialFolderTreeState),
     withComputed(
       ({ rootFolders, folderTreeFilter, currentFolderPath, isFolderTreeLoading, isTranslationsLoading }) => ({
-        filteredFolders: computed(() => {
-          const filter = folderTreeFilter().toLowerCase().trim();
-          if (!filter) return rootFolders();
-
-          const matchesFilter = (folder: FolderNodeDto): boolean =>
-            folder.name.toLowerCase().includes(filter) || folder.fullPath.toLowerCase().includes(filter);
-
-          const filterTree = (folders: FolderNodeDto[]): FolderNodeDto[] =>
-            folders.reduce<FolderNodeDto[]>((acc, folder) => {
-              const folderMatches = matchesFilter(folder);
-              const childrenMatch = folder.tree?.children ? filterTree(folder.tree.children) : [];
-
-              if (folderMatches || childrenMatch.length > 0) {
-                acc.push({
-                  ...folder,
-                  tree: folder.tree ? { ...folder.tree, children: childrenMatch } : undefined,
-                });
-              }
-
-              return acc;
-            }, []);
-
-          return filterTree(rootFolders());
-        }),
+        filteredFolders: computed(() => filterFolderTree(rootFolders(), folderTreeFilter())),
 
         breadcrumbs: computed(() => {
           const path = currentFolderPath();

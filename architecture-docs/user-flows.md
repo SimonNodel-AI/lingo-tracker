@@ -284,19 +284,22 @@ sequenceDiagram
     Note over Dev,Dialog: E. Edit a resource
     Dev->>TB: double-click TranslationItem (or press E)
     TB->>TLS: editTranslation(translation, collectionName)
-    TLS->>Dialog: MatDialog.open(TranslationEditorDialog, data)
+    TLS->>Dialog: MatDialog.open(TranslationEditorDialog, data) [via TranslationEditorLauncher]
     Dev->>Dialog: edit values, click Save
-    Dialog->>API: PATCH /api/collections/{name}/resources
-    API-->>Dialog: UpdateResourceResponseDto { resource: ResourceSummaryDto }
-    Dialog-->>TLS: afterClosed() → { success: true, resource, folderPath }
+    Dialog->>Dialog: toUpdateDto(draft, original) [resource-entry-draft.ts]
+    Dialog->>BS: updateResource(collectionName, dto) [withEntryWritesFeature]
+    BS->>API: PATCH /api/collections/{name}/resources
+    API-->>BS: UpdateResourceResponseDto { resource: ResourceSummaryDto }
 
-    Note over TLS,BS: F. Optimistic cache update (no re-fetch)
-    TLS->>BS: updateTranslationInCache(resource)
-    Note right of BS: Replaces the stale entry in translations[]<br/>in-place using the API response payload.<br/>No second HTTP request.
+    Note over BS: F. Cache patch (no re-fetch)
+    BS->>BS: patch translations[] (relative key) and searchResults[] (full key)
+    Note right of BS: Uses the API response payload.<br/>No second HTTP request.
+    BS-->>Dialog: response
+    Dialog-->>TLS: afterClosed() → { success: true, resource, folderPath }
     TLS->>TLS: flashRecentlyUpdated(key) — 1.5 s highlight
 
-    Note over TLS,BS: G. Rollback path (API error)
-    Note right of TLS: If PATCH fails, Dialog closes<br/>with result.success = false.<br/>translations[] is never mutated —<br/>no rollback needed for edit.
+    Note over BS,Dialog: G. Error path
+    Note right of BS: If PATCH fails, the store does not<br/>change the caches. The error reaches<br/>the dialog, which shows it and stays open.<br/>No rollback is needed.
 ```
 
 ---

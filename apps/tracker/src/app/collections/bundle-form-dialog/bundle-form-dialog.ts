@@ -29,6 +29,7 @@ import type {
   TokenCasingDto,
 } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { segmentValidator } from '../../shared/validators/segment.validator';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from '../store/collections.store';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
@@ -74,7 +75,6 @@ export interface PreviewFile {
 export type PreviewStatus = 'waiting' | 'loading' | 'ready' | 'error';
 
 const LOCALE_PLACEHOLDER = '{locale}';
-const NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -146,7 +146,7 @@ export class BundleFormDialog {
   readonly form = new FormGroup({
     name: new FormControl<string>('', {
       nonNullable: true,
-      validators: [Validators.required, Validators.pattern(NAME_PATTERN), this.#uniqueNameValidator()],
+      validators: [Validators.required, segmentValidator, this.#uniqueNameValidator()],
     }),
     dist: new FormControl<string>('', { nonNullable: true, validators: [Validators.required] }),
     bundleName: new FormControl<string>('', {

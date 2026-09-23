@@ -3,6 +3,7 @@ import {
   insertFolderIntoTree,
   removeFolderFromTree,
   findFolderInTree,
+  filterFolderTree,
   rebaseFolderPaths,
   collectExpandablePaths,
   collectAncestorPaths,
@@ -305,5 +306,39 @@ describe('rebaseExpandedPaths', () => {
     const paths = new Set(['apps', 'apps.common']);
 
     expect([...rebaseExpandedPaths(paths, 'apps', '')]).toEqual(['apps', 'apps.common']);
+  });
+});
+
+describe('filterFolderTree', () => {
+  const buttons = leaf('buttons', 'common.buttons');
+  const errors = leaf('errors', 'common.errors');
+  const common = withChildren(leaf('common', 'common'), [buttons, errors]);
+  const http = leaf('http', 'errors.http');
+  const rootErrors = withChildren(leaf('errors', 'errors'), [http]);
+  const tree = [common, rootErrors];
+
+  it('should return the tree itself for an empty or blank filter', () => {
+    expect(filterFolderTree(tree, '')).toBe(tree);
+    expect(filterFolderTree(tree, '   ')).toBe(tree);
+  });
+
+  it('should keep a matching folder whole, descendants included', () => {
+    expect(filterFolderTree(tree, 'common')).toEqual([common]);
+  });
+
+  it('should keep an unmatched ancestor pruned to its matching children', () => {
+    expect(filterFolderTree(tree, 'buttons')).toEqual([withChildren(leaf('common', 'common'), [buttons])]);
+  });
+
+  it('should match on the full path, trimmed and case-insensitive', () => {
+    expect(filterFolderTree(tree, '  COMMON.ERR ')).toEqual([withChildren(leaf('common', 'common'), [errors])]);
+  });
+
+  it('should keep every branch that holds a match', () => {
+    expect(filterFolderTree(tree, 'errors')).toEqual([withChildren(leaf('common', 'common'), [errors]), rootErrors]);
+  });
+
+  it('should return nothing when no folder matches', () => {
+    expect(filterFolderTree(tree, 'missing')).toEqual([]);
   });
 });

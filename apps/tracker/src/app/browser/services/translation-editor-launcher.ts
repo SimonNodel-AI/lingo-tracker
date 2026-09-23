@@ -22,15 +22,10 @@ export interface OpenEditorParams {
   /** Dot-delimited folder the entry lives in; '' for the collection root. */
   folderPath: string;
   /**
-   * The key the browser store files this resource under — the list caches by the
-   * key it renders, which is relative in folder mode and full in search mode.
+   * The key the list renders this resource under — relative in folder mode, full
+   * in search mode — handed back through `onUpdated` for the row's flash.
    */
   storeKey: string;
-  /**
-   * The key to drop from the cache when the entry moves out of `folderPath`.
-   * Defaults to the saved key, which is what a same-folder rename produces.
-   */
-  originalKey?: string;
   /** Called with the store key after an in-place update, for the row's flash. */
   onUpdated?: (storeKey: string) => void;
 }
@@ -39,7 +34,7 @@ export interface OpenEditorParams {
  * Opens the translation editor in edit mode, from wherever the request came.
  *
  * The list's row menu and the create dialog's "Open existing" both need the same
- * dialog with the same post-save bookkeeping, and they sit in different injector
+ * dialog with the same post-save feedback, and they sit in different injector
  * branches — the list store is component-scoped, the header is its sibling. The
  * launcher is the one place that knows the dialog's configuration, so neither
  * call site carries a copy of it.
@@ -54,7 +49,7 @@ export class TranslationEditorLauncher {
 
   /** Opens the editor for a resource the caller already holds. */
   openEditor(params: OpenEditorParams): void {
-    const { resource, collectionName, folderPath, storeKey, originalKey, onUpdated } = params;
+    const { resource, collectionName, folderPath, storeKey, onUpdated } = params;
 
     const dialogData: TranslationEditorDialogData = {
       mode: 'edit',
@@ -80,17 +75,14 @@ export class TranslationEditorLauncher {
       restoreFocus: false,
     });
 
+    // The save went through `BrowserStore.updateResource`, which has already
+    // brought the list in line; what is left here is telling the user.
     dialogRef.afterClosed().subscribe((result: TranslationEditorResult | undefined) => {
       if (!result?.success) return;
       if (!result.resource) return;
+      // Saved into another folder: the entry has left this list, so there is no row to flash.
+      if (result.folderPath !== folderPath) return;
 
-      const cacheKey = originalKey ?? result.key;
-      if (result.folderPath !== folderPath) {
-        this.#browserStore.removeResourceFromCache(cacheKey);
-        return;
-      }
-
-      this.#browserStore.updateTranslationInCache({ ...result.resource, key: storeKey });
       onUpdated?.(storeKey);
       this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.TRANSLATIONUPDATED));
 

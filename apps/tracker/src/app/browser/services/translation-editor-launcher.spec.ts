@@ -101,19 +101,23 @@ describe('TranslationEditorLauncher', () => {
   });
 
   describe('openEditor', () => {
-    it('should update the cache under the store key and flash the row after a save', () => {
-      patchState(store, { translations: [{ ...resource, key: 'backButton' }] });
+    const savedInto = (folderPath: string) => ({
+      afterClosed: () =>
+        of({
+          key: 'backButton',
+          baseValue: 'Back',
+          folderPath,
+          success: true,
+          resource: { ...resource, translations: { en: 'Go back' } },
+        }),
+    });
+
+    // The save itself, and the cache patch that follows it, belong to
+    // BrowserStore.updateResource; the launcher only reports on it.
+    it('should flash the row under its store key and confirm the save', () => {
+      patchState(store, { translations: [resource] });
       const onUpdated = vi.fn();
-      mockDialog.open.mockReturnValue({
-        afterClosed: () =>
-          of({
-            key: 'backButton',
-            baseValue: 'Back',
-            folderPath: 'browser.header',
-            success: true,
-            resource: { ...resource, translations: { en: 'Go back' } },
-          }),
-      });
+      mockDialog.open.mockReturnValue(savedInto('browser.header'));
 
       launcher.openEditor({
         resource,
@@ -123,32 +127,24 @@ describe('TranslationEditorLauncher', () => {
         onUpdated,
       });
 
-      expect(store.translations()[0].translations['en']).toBe('Go back');
       expect(onUpdated).toHaveBeenCalledWith('backButton');
       expect(notifications.success).toHaveBeenCalled();
+      expect(store.translations()).toEqual([resource]);
     });
 
-    it('should drop the entry from the cache when it was saved into another folder', () => {
-      patchState(store, { translations: [{ ...resource, key: 'backButton' }] });
-      mockDialog.open.mockReturnValue({
-        afterClosed: () =>
-          of({
-            key: 'backButton',
-            baseValue: 'Back',
-            folderPath: 'browser.footer',
-            success: true,
-            resource,
-          }),
-      });
+    it('should stay quiet when the entry was saved into another folder', () => {
+      const onUpdated = vi.fn();
+      mockDialog.open.mockReturnValue(savedInto('browser.footer'));
 
       launcher.openEditor({
         resource,
         collectionName: 'test-collection',
         folderPath: 'browser.header',
         storeKey: 'backButton',
+        onUpdated,
       });
 
-      expect(store.translations()).toEqual([]);
+      expect(onUpdated).not.toHaveBeenCalled();
       expect(notifications.success).not.toHaveBeenCalled();
     });
   });

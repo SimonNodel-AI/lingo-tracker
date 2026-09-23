@@ -120,9 +120,9 @@ export class TranslationMainHeader {
         return;
       }
 
+      // `BrowserStore.createResource` has already reloaded the folder.
       if (!result?.success) return;
 
-      this.store.selectFolder(this.store.currentFolderPath());
       this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCECREATED));
 
       if (result.skippedLocales?.length) {

@@ -190,39 +190,6 @@ export function withTranslationsFeature<_>() {
           patchState(store, { showNestedResources: value });
           this.selectFolder(store.currentFolderPath());
         },
-
-        removeResourceFromCache(resourceKey: string): void {
-          const updatedTranslations = store.translations().filter((resource) => resource.key !== resourceKey);
-          patchState(store, { translations: updatedTranslations });
-
-          if (store.isSearchMode()) {
-            const updatedSearchResults = store.searchResults().filter((resource) => resource.key !== resourceKey);
-            patchState(store, { searchResults: updatedSearchResults });
-          }
-        },
-
-        updateTranslationInCache(resource: ResourceSummaryDto): void {
-          const currentTranslations = store.translations();
-          const translationIndex = currentTranslations.findIndex((t) => t.key === resource.key);
-          if (translationIndex !== -1) {
-            const updatedTranslations = [...currentTranslations];
-            updatedTranslations[translationIndex] = resource;
-            patchState(store, { translations: updatedTranslations });
-          }
-
-          if (store.isSearchMode()) {
-            const currentSearchResults = store.searchResults();
-            const searchIndex = currentSearchResults.findIndex((t) => t.key === resource.key);
-            if (searchIndex !== -1) {
-              const updatedSearchResults = [...currentSearchResults];
-              updatedSearchResults[searchIndex] = {
-                ...currentSearchResults[searchIndex],
-                ...resource,
-              };
-              patchState(store, { searchResults: updatedSearchResults });
-            }
-          }
-        },
       };
     }),
   );

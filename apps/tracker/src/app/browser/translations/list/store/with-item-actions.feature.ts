@@ -4,7 +4,6 @@ import { signalStoreFeature, type, withMethods } from '@ngrx/signals';
 import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../../shared/notification';
-import { BrowserApiService } from '../../../services/browser-api.service';
 import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
@@ -24,7 +23,6 @@ export function withItemActions() {
       }>(),
     },
     withMethods((store) => {
-      const api = inject(BrowserApiService);
       const browserStore = inject(BrowserStore);
       const dialog = inject(MatDialog);
       const launcher = inject(TranslationEditorLauncher);
@@ -61,7 +59,6 @@ export function withItemActions() {
             collectionName,
             folderPath,
             storeKey: translation.key,
-            originalKey: browserStore.isSearchMode() ? translation.key : undefined,
             onUpdated: (key) => store.flashRecentlyUpdated(key),
           });
         },
@@ -107,14 +104,12 @@ export function withItemActions() {
             .pipe(takeUntilDestroyed(destroyRef))
             .subscribe((confirmed: boolean | undefined) => {
               if (!confirmed) return;
-              api
-                .deleteResource(collectionName, [fullKey])
+              browserStore
+                .deleteResource(collectionName, fullKey)
                 .pipe(takeUntilDestroyed(destroyRef))
                 .subscribe({
                   next: (response) => {
                     if (response.entriesDeleted > 0) {
-                      // Cache is indexed by the relative key, not the full key used for the API call.
-                      browserStore.removeResourceFromCache(translation.key);
                       notifications.success(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEDELETED));
                     } else {
                       notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED));
@@ -139,15 +134,12 @@ export function withItemActions() {
           );
           store.addTranslatingKey(translation.key);
 
-          api
+          browserStore
             .translateResource(collectionName, fullKey)
             .pipe(takeUntilDestroyed(destroyRef))
             .subscribe({
               next: (response: TranslateResourceResponseDto) => {
                 store.removeTranslatingKey(translation.key);
-                // Cache uses the relative key; rewrite from the bare API key before updating.
-                const storeResource = { ...response.resource, key: translation.key };
-                browserStore.updateTranslationInCache(storeResource);
                 store.flashRecentlyUpdated(translation.key);
 
                 const { translatedCount, skippedLocales } = response;

@@ -6,6 +6,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { segmentValidator } from '../../../../shared/validators/segment.validator';
 
 /**
  * Inline input component for creating new folders in the folder tree.
@@ -42,7 +43,7 @@ export class InlineFolderInput {
   /** Form control for folder name with validation */
   readonly folderNameControl = new FormControl('', {
     nonNullable: true,
-    validators: [Validators.required, Validators.pattern(/^[A-Za-z0-9_-]+$/)],
+    validators: [Validators.required, segmentValidator],
   });
 
   /** Track if confirm was already emitted to prevent blur from canceling */

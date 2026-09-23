@@ -4,6 +4,7 @@ import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import { createComponentFactory } from '@ngneat/spectator/vitest';
+import { patchState } from '@ngrx/signals';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -392,10 +393,7 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
     expect(notificationsSpy.error).not.toHaveBeenCalled();
   });
 
-  it('should update the store cache when the edit result contains skippedLocales', () => {
-    const store = fixture.debugElement.injector.get(BrowserStore);
-    const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
-
+  it('should flash the edited row when the edit result contains skippedLocales', () => {
     const result: TranslationEditorResult = {
       key: 'common.test',
       baseValue: 'Test Value',
@@ -409,7 +407,7 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
     listStore.editTranslation(mockResource, 'test-collection');
 
-    expect(updateCacheSpy).toHaveBeenCalledWith({ ...mockResource, key: mockResource.key });
+    expect(listStore.recentlyUpdatedKey()).toBe(mockResource.key);
   });
 });
 
@@ -437,9 +435,10 @@ describe('TranslationList - handleEdit key rewrite', () => {
     fixture.detectChanges();
   });
 
-  it('should rewrite key to the store key when calling updateTranslationInCache on edit success', () => {
+  // The cache itself is patched by BrowserStore.updateResource (see
+  // with-entry-writes.feature.spec.ts); the list only has to flash the right row.
+  it('should flash the row under the key the list renders, not the bare API key', () => {
     const store = fixture.debugElement.injector.get(BrowserStore);
-    const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
 
     // Activate search mode so the store key contains the full path ("buttons.save")
     // while the API returns only the bare entry key ("save").
@@ -474,9 +473,7 @@ describe('TranslationList - handleEdit key rewrite', () => {
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
     listStore.editTranslation(storeResource, 'test-collection');
 
-    // updateTranslationInCache must be called with the full-path key that the
-    // store uses ("buttons.save"), not the bare API key ("save").
-    expect(updateCacheSpy).toHaveBeenCalledWith({ ...apiResource, key: storeResource.key });
+    expect(listStore.recentlyUpdatedKey()).toBe(storeResource.key);
   });
 });
 
@@ -556,14 +553,13 @@ describe('TranslationList - deleteTranslation', () => {
   it('should call API and show success notification when dialog is confirmed', () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(of({ entriesDeleted: 1 }));
-
-    const removeFromCacheSpy = vi.spyOn(store, 'removeResourceFromCache');
+    patchState(store, { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.deleteTranslation(mockResource, 'my-collection');
 
     expect(mockBrowserApi.deleteResource).toHaveBeenCalledWith('my-collection', ['button.delete']);
-    expect(removeFromCacheSpy).toHaveBeenCalledWith('button.delete');
+    expect(store.translations()).toEqual([]);
     expect(notificationsSpy.success).toHaveBeenCalled();
     expect(notificationsSpy.error).not.toHaveBeenCalled();
   });
@@ -571,13 +567,12 @@ describe('TranslationList - deleteTranslation', () => {
   it('should show error notification when API throws', () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(throwError(() => new Error('Network failure')));
-
-    const removeFromCacheSpy = vi.spyOn(store, 'removeResourceFromCache');
+    patchState(store, { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.deleteTranslation(mockResource, 'my-collection');
 
-    expect(removeFromCacheSpy).not.toHaveBeenCalled();
+    expect(store.translations()).toEqual([mockResource]);
     expect(notificationsSpy.error).toHaveBeenCalledWith('Network failure');
   });
 
@@ -611,8 +606,7 @@ describe('TranslationList - handleTranslate', () => {
   };
 
   // The API returns only the bare entry key ("save"), not the relative-path key
-  // ("button.save") that the store uses. The store must rewrite it before
-  // passing the resource to updateTranslationInCache.
+  // ("button.save") the list renders. BrowserStore rewrites it when it patches.
   const mockUpdatedResource: ResourceSummaryDto = {
     key: 'save',
     translations: { en: 'Save', fr: 'Enregistrer' },
@@ -642,7 +636,7 @@ describe('TranslationList - handleTranslate', () => {
     vi.useRealTimers();
   });
 
-  it('should add the key to translatingKeys during the request and call store.updateTranslationInCache on success', () => {
+  it('should add the key to translatingKeys during the request and patch the store on success', () => {
     vi.useFakeTimers();
 
     mockBrowserApi.translateResource.mockReturnValue(
@@ -653,7 +647,7 @@ describe('TranslationList - handleTranslate', () => {
       }),
     );
 
-    const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
+    patchState(store, { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.translateResource(mockResource, 'my-collection');
@@ -663,7 +657,7 @@ describe('TranslationList - handleTranslate', () => {
 
     // Store was updated with the key rewritten from the bare API key ("save")
     // back to the relative-path key that the store indexes by ("button.save").
-    expect(updateCacheSpy).toHaveBeenCalledWith({ ...mockUpdatedResource, key: mockResource.key });
+    expect(store.translations()).toEqual([{ ...mockUpdatedResource, key: mockResource.key }]);
 
     // Success notification shown
     expect(notificationsSpy.success).toHaveBeenCalledWith('1 locale translated successfully');
