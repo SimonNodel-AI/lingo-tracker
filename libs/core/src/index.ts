@@ -1,6 +1,6 @@
 // The public surface of @simoncodes-ca/core: the Node-side operations the API and CLI call.
 // Only names with a consumer outside this library are listed, plus the types their signatures use.
-// Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, ...) come from @simoncodes-ca/domain.
+// Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
 export { addResource, deleteResource, editResource, moveResource } from './resource';
@@ -22,16 +22,12 @@ export {
 } from './collections-manager';
 
 // Operations: bundles
-export { hasTypeDistConfigured } from './config/bundle-definition';
 export {
   addBundleDefinition,
   deleteBundleDefinition,
   generateBundle,
-  getBundleOutputPath,
   planBundle,
   updateBundleDefinition,
-  validateBundleDefinition,
-  validateBundleKey,
 } from './lib/bundle';
 
 // Operations: import
@@ -56,7 +52,6 @@ export { translateExistingResource, translateLocale } from './lib/translation';
 export { describePreferredTermRule, generateValidationSummary, validateResources } from './lib/validate';
 
 // Collection & config
-export type { BundleDefinition, CollectionBundleDefinition, EntrySelectionRule } from './config/bundle-definition';
 export type { LingoTrackerCollection } from './config/lingo-tracker-collection';
 export type { LingoTrackerConfig } from './config/lingo-tracker-config';
 export type { TranslationConfig } from './config/translation-config';

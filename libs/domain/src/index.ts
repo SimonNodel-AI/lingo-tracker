@@ -6,8 +6,30 @@ export type { LocaleMetadata } from './lib/locale-metadata';
 export type { TokenCasing } from './lib/token-casing';
 export type { TranslationStatus } from './lib/translation-status';
 
+// Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
+export {
+  type BundleDefinition,
+  type BundleDefinitionCheck,
+  bundleOutputFile,
+  checkBundleDefinition,
+  type CollectionBundleDefinition,
+  type EntrySelectionRule,
+  findBundleDefinition,
+  hasLocalePlaceholder,
+  hasTypeDistConfigured,
+  isTypeScriptFile,
+  normalizeBundleDefinition,
+  validateBundleDefinition,
+  validateBundleKey,
+} from './lib/bundle-definition';
+
 // Keys: resource keys and generated-token identifiers
-export { isJavaScriptReservedWord, isValidJavaScriptIdentifier, JS_IDENTIFIER_PATTERN } from './lib/js-identifier';
+export {
+  isJavaScriptReservedWord,
+  isValidJavaScriptIdentifier,
+  JS_IDENTIFIER_PATTERN,
+  validateJavaScriptIdentifier,
+} from './lib/js-identifier';
 export {
   isValidSegment,
   type KeyValidationOptions,

@@ -12,7 +12,6 @@ export {
   type GenerateBundleParams,
   type GenerateBundleResult,
   generateBundle,
-  getBundleOutputPath,
 } from './generate-bundle';
 export {
   type BundlePlan,
@@ -21,4 +20,3 @@ export {
   type PlanBundleParams,
   planBundle,
 } from './plan-bundle';
-export { validateBundleDefinition, validateBundleKey } from './validate-bundle-definition';

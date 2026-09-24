@@ -14,6 +14,7 @@ Return to [architecture README](README.md).
   - [tracker_meta.json](#tracker_metajson)
   - [Folder layout example](#folder-layout-example)
 - [Entity Diagram](#entity-diagram)
+- [Bundle Definition](#bundle-definition)
 - [ICU vs Transloco Format](#icu-vs-transloco-format)
 - [Translation Status Lifecycle](#translation-status-lifecycle)
 - [Checksum-Driven Staleness Detection](#checksum-driven-staleness-detection)
@@ -272,6 +273,43 @@ interface ResourceSummary {
 ```
 
 A target locale without a value still has a row. Values for locales the collection does not have are not shown.
+
+---
+
+## Bundle Definition
+
+A [bundle](glossary.md#bundle) is configured by one entry under `bundles` in `.lingo-tracker.json`, keyed by the bundle name. The [Bundle Definition](glossary.md#bundle-definition) type and its rules live in `libs/domain/src/lib/bundle-definition.ts`, so all four consumers use the same ones: core (`LingoTrackerConfig.bundles`, the add/update/delete operations, generation), the API (the dry run and generate; `BundleDefinitionDto` is an alias), the CLI (`init`, `bundle`) and the Tracker bundle form.
+
+```typescript
+interface BundleDefinition {
+  bundleName: string;                       // file name pattern with {locale}, e.g. "main.{locale}"
+  dist: string;                             // output folder, relative to the project root or absolute
+  collections: 'All' | Array<{
+    name: string;                           // an existing collection
+    bundledKeyPrefix?: string;              // prepended to every key from this collection
+    entriesSelectionRules: 'All' | Array<{
+      matchingPattern: string;              // "*", "apps.*" or an exact key
+      matchingTags?: string[];
+      matchingTagOperator?: 'All' | 'Any';  // default 'Any'
+    }>;
+    mergeStrategy?: 'merge' | 'override';   // default 'merge' (first collection wins)
+  }>;
+  typeDistFile?: string;                    // .ts file for generated token constants
+  tokenCasing?: TokenCasing;                // overrides the global setting
+  tokenConstantName?: string;               // a JavaScript identifier
+  transformICUToTransloco?: boolean;        // overrides the global setting (default true)
+}
+```
+
+| Function | Rule |
+|---|---|
+| `validateBundleKey(key)` | The bundle name is required and uses only letters, digits, hyphens and underscores. |
+| `validateBundleDefinition(definition, collectionNames)` | Returns every problem, never throws: `bundleName` is required and has `{locale}`; `dist` is required; `collections` is `'All'` or a non-empty list of existing collections, each at most once per `bundledKeyPrefix`; rules are `'All'` or a non-empty list, each with a `matchingPattern` and a valid tag operator; `mergeStrategy` is `merge` or `override`; `tokenCasing` is `upperCase` or `camelCase`; `typeDistFile` ends in `.ts`; `tokenConstantName` passes `validateJavaScriptIdentifier`. |
+| `normalizeBundleDefinition(definition)` | The stored form: strings trimmed, empty or undefined optionals and empty tags dropped, unknown fields dropped, `'All'` kept, and a legacy `typeDist` moved to `typeDistFile` when that is absent. It never throws: a non-object input becomes an empty definition, and a non-object collection or rule becomes `{ name: '' }` / `{ matchingPattern: '' }`, which validation reports with its index. |
+| `checkBundleDefinition(definition, collectionNames, key?)` | The one check every writer runs (core add/update, the API dry run, the Tracker form): the normalized `definition` and `errors`, key errors first. |
+| `findBundleDefinition(bundles, key)` | The stored definition for a key, own properties only, so `constructor` finds nothing. |
+| `bundleOutputFile(definition, locale)` | `<dist>/<bundleName with {locale} replaced>.json` with `/` separators, no `.` segments or duplicate slashes. Config paths use `/`; backslashes are not normalized. Core resolves the result against the project directory to write the file. |
+| `hasLocalePlaceholder`, `isTypeScriptFile`, `hasTypeDistConfigured` | The small checks the validator and the Tracker form share; `hasTypeDistConfigured` also accepts the deprecated `typeDist`. |
 
 ---
 

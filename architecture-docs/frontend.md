@@ -27,6 +27,7 @@ Return to [architecture README](README.md).
   - [Translation Status Summary](#translation-status-summary)
   - [Translation Rows and the Row View](#translation-rows-and-the-row-view)
   - [Writing a Resource Entry](#writing-a-resource-entry)
+  - [Bundle Form Dialog](#bundle-form-dialog)
 - [Theming System](#theming-system)
 - [i18n — Transloco Integration](#i18n--transloco-integration)
 - [Cross-Links](#cross-links)
@@ -365,6 +366,15 @@ Each method takes the full dot-delimited key and returns the API `Observable`. T
 Both caches (`translations` and `searchResults`) are keyed by each resource's `fullKey`, in folder mode, nested mode and search mode alike. The API returns the updated resource with its own full address, so the store swaps it in by `fullKey`; there is no key conversion anywhere. A drag carries the row's `fullKey` and its real `folderPath`, also for nested rows.
 
 `TranslationEditorLauncher` and `TranslationMainHeader` only give feedback after the dialog closes: the row flash and the toasts.
+
+### Bundle Form Dialog
+
+`BundleFormDialog` (`collections/bundle-form-dialog/`) creates and edits a bundle definition. It builds a `BundleDefinitionDto`, which is an alias of the domain [Bundle Definition](glossary.md#bundle-definition) type, so the Tracker, the API and core share one type and one set of rules:
+
+- **Field validators** give live feedback on each control: required fields, the unique name, `segmentValidator` for the name, a non-empty collection list and rule list. The rules the server also applies call the domain predicates: `hasLocalePlaceholder` for the file name pattern, `isTypeScriptFile` for the types file and `isValidJavaScriptIdentifier` for the constant name.
+- **On populate**, the dialog reads the definition through `normalizeBundleDefinition`, so a legacy `typeDist` shows as the types file and is saved as `typeDistFile`.
+- **On submit**, after the field validators pass, the dialog runs the domain `checkBundleDefinition(definition, collectionNames, name)` (the name only while it can be edited), the same check core and the API dry run apply. Any message stops the submit and shows above the footer (`submitErrors`, an alert, in the domain's English text). The next edit clears it. So the dialog does not close on a definition the server would reject. If a server 400 still happens, `withBundlesFeature` shows `Invalid bundle definition: <errors joined by "; ">`.
+- **Output paths** come from the domain `bundleOutputFile`: the rail summary (with the `{locale}` placeholder kept), the "writes" hint and the local "Will write" tree. The dry-run tree comes from the API plan, which uses the same rule, so both trees show the paths core writes.
 
 ---
 

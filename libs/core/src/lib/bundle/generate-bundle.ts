@@ -5,8 +5,12 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { TokenCasing } from '@simoncodes-ca/domain';
-import { type BundleDefinition, hasTypeDistConfigured } from '../../config/bundle-definition';
+import {
+  type BundleDefinition,
+  bundleOutputFile,
+  hasTypeDistConfigured,
+  type TokenCasing,
+} from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   type BundleSelection,
@@ -118,7 +122,7 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
   const keysPerLocale: Record<string, number> = {};
 
   const write = (locale: string, data: Record<string, string>): void => {
-    writeBundleFile(path.resolve(cwd, getBundleOutputPath(bundleDefinition, locale)), buildHierarchy(data));
+    writeBundleFile(path.resolve(cwd, bundleOutputFile(bundleDefinition, locale)), buildHierarchy(data));
     localesProcessed.push(locale);
     keysPerLocale[locale] = Object.keys(data).length;
   };
@@ -126,7 +130,7 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
   const targetLocales = params.locales ?? config.locales;
   const total = targetLocales.length + (debugKeysLocale ? 1 : 0);
   const progress = (locale: string, index: number): void =>
-    onProgress?.({ locale, index, total, file: getBundleOutputPath(bundleDefinition, locale) });
+    onProgress?.({ locale, index, total, file: bundleOutputFile(bundleDefinition, locale) });
 
   targetLocales.forEach((locale, index) => {
     progress(locale, index + 1);
@@ -187,15 +191,6 @@ function generateTypes(
     );
     return undefined;
   }
-}
-
-/**
- * The bundle file for `locale`: `<dist>/<bundleName with {locale} replaced>.json`, as configured
- * (relative paths stay relative; resolve against the project directory before touching the disk).
- */
-export function getBundleOutputPath(bundleDefinition: BundleDefinition, locale: string): string {
-  const fileName = bundleDefinition.bundleName.replace('{locale}', locale);
-  return path.join(bundleDefinition.dist, `${fileName}.json`);
 }
 
 /**

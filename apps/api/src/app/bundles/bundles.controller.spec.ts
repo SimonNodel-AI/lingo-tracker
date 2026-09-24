@@ -1,8 +1,9 @@
-import { ConflictException, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import { HttpStatus, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
-import type { BundleDefinition, BundlePlan, LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { BundlePlan, LingoTrackerConfig } from '@simoncodes-ca/core';
 import * as core from '@simoncodes-ca/core';
 import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
+import type { BundleDefinition } from '@simoncodes-ca/domain';
 import type { Response } from 'express';
 import { ConfigService } from '../config/config.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
@@ -15,9 +16,6 @@ jest.mock('@simoncodes-ca/core', () => ({
   updateBundleDefinition: jest.fn(),
   deleteBundleDefinition: jest.fn(),
   planBundle: jest.fn(),
-  validateBundleKey: jest.fn(() => []),
-  validateBundleDefinition: jest.fn(() => []),
-  getBundleOutputPath: jest.fn((definition: BundleDefinition, locale: string) => `${definition.dist}/${locale}.json`),
 }));
 
 const existingDefinition: BundleDefinition = {
@@ -62,15 +60,18 @@ const plan: BundlePlan = {
   warnings: [],
 };
 
-/** The status the global exception filter answers with for what `fn` throws. */
-const statusOf = (fn: () => unknown): number => {
+/** The answer the global exception filter gives for what `fn` throws. */
+const answerOf = (fn: () => unknown): { status: number; body: unknown } => {
   try {
     fn();
   } catch (error: unknown) {
-    return toHttpException(error).getStatus();
+    const http = toHttpException(error);
+    return { status: http.getStatus(), body: http.getResponse() };
   }
   throw new Error('expected the handler to throw');
 };
+
+const statusOf = (fn: () => unknown): number => answerOf(fn).status;
 
 const makeResponse = (): { response: Response; status: jest.Mock; json: jest.Mock } => {
   const json = jest.fn();
@@ -100,55 +101,47 @@ describe('BundlesController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     configService.getConfig.mockReturnValue(config);
-    (core.validateBundleKey as jest.Mock).mockReturnValue([]);
-    (core.validateBundleDefinition as jest.Mock).mockReturnValue([]);
   });
 
   describe('POST /bundles', () => {
-    it('validates then adds the mapped definition', () => {
+    it('hands the trimmed name and the body definition to core, which normalises and validates', () => {
       (core.addBundleDefinition as jest.Mock).mockReturnValue({ message: 'Bundle "main" added successfully' });
+      const bundle = { ...requestDefinition, dist: ' ./dist/i18n ' };
 
-      const result = controller.createBundle({
-        name: ' main ',
-        bundle: { ...requestDefinition, dist: ' ./dist/i18n ' },
-      });
+      const result = controller.createBundle({ name: ' main ', bundle });
 
       expect(result).toEqual({ message: 'Bundle "main" added successfully' });
-      expect(core.validateBundleKey).toHaveBeenCalledWith('main');
-      expect(core.validateBundleDefinition).toHaveBeenCalledWith(
-        { bundleName: 'main.{locale}', dist: './dist/i18n', collections: 'All' },
-        config,
-      );
-      expect(core.addBundleDefinition).toHaveBeenCalledWith(
-        'main',
-        { bundleName: 'main.{locale}', dist: './dist/i18n', collections: 'All' },
-        { cwd: process.cwd() },
-      );
+      expect(core.addBundleDefinition).toHaveBeenCalledWith('main', bundle, { cwd: process.cwd() });
     });
 
-    it('returns 400 with every validation message and does not write', () => {
-      (core.validateBundleKey as jest.Mock).mockReturnValue(['Bundle name is required.']);
-      (core.validateBundleDefinition as jest.Mock).mockReturnValue(['dist (output folder) is required.']);
+    it('passes a missing name as empty so the key rule reports it', () => {
+      controller.createBundle({ bundle: requestDefinition } as never);
 
-      try {
-        controller.createBundle({ name: 'x', bundle: requestDefinition });
-        throw new Error('expected an HttpException');
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
-        expect((error as HttpException).getResponse()).toEqual({
+      expect(core.addBundleDefinition).toHaveBeenCalledWith('', requestDefinition, { cwd: process.cwd() });
+    });
+
+    it('returns 400 with every message when core rejects the definition', () => {
+      (core.addBundleDefinition as jest.Mock).mockImplementation(() => {
+        throw new core.InvalidBundleDefinitionError(['Bundle name is required.', 'dist (output folder) is required.']);
+      });
+
+      expect(answerOf(() => controller.createBundle({ name: 'x', bundle: requestDefinition }))).toEqual({
+        status: HttpStatus.BAD_REQUEST,
+        body: {
+          statusCode: HttpStatus.BAD_REQUEST,
           message: 'Invalid bundle definition',
+          error: 'Bad Request',
           errors: ['Bundle name is required.', 'dist (output folder) is required.'],
-        });
-      }
-      expect(core.addBundleDefinition).not.toHaveBeenCalled();
+        },
+      });
     });
 
-    it('returns 400 when the body carries no definition', () => {
-      expect(statusOf(() => controller.createBundle({ name: 'main' } as never))).toBe(HttpStatus.BAD_REQUEST);
-      expect(statusOf(() => controller.createBundle({ bundle: requestDefinition } as never))).toBe(
-        HttpStatus.BAD_REQUEST,
-      );
+    it('returns 400 when the body carries no definition, without calling core', () => {
+      expect(answerOf(() => controller.createBundle({ name: 'main' } as never))).toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        body: { errors: ['bundle definition is required.'] },
+      });
+      expect(core.addBundleDefinition).not.toHaveBeenCalled();
     });
 
     it('returns 409 when core reports the bundle already exists', () => {
@@ -176,9 +169,14 @@ describe('BundlesController', () => {
   });
 
   describe('PUT /bundles/:name', () => {
-    it('returns 404 when the bundle does not exist', () => {
-      expect(() => controller.updateBundle('missing', { bundle: requestDefinition })).toThrow(NotFoundException);
-      expect(core.updateBundleDefinition).not.toHaveBeenCalled();
+    it('returns 404 when core reports the bundle missing', () => {
+      (core.updateBundleDefinition as jest.Mock).mockImplementation(() => {
+        throw new core.BundleNotFoundError('missing');
+      });
+
+      expect(statusOf(() => controller.updateBundle('missing', { bundle: requestDefinition }))).toBe(
+        HttpStatus.NOT_FOUND,
+      );
     });
 
     it('updates in place when no rename is requested', () => {
@@ -187,39 +185,58 @@ describe('BundlesController', () => {
       const result = controller.updateBundle('tracker', { bundle: requestDefinition });
 
       expect(result).toEqual({ message: 'updated' });
-      expect(core.updateBundleDefinition).toHaveBeenCalledWith(
-        'tracker',
-        { bundleName: 'main.{locale}', dist: './dist/i18n', collections: 'All' },
-        { cwd: process.cwd() },
-      );
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker', requestDefinition, { cwd: process.cwd() });
+    });
+
+    it('returns 400 for a missing bundle when the body has no definition', () => {
+      expect(answerOf(() => controller.updateBundle('missing', {} as never))).toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        body: { errors: ['bundle definition is required.'] },
+      });
+      expect(core.updateBundleDefinition).not.toHaveBeenCalled();
+    });
+
+    it('passes a body.name equal to the current name as newKey', () => {
+      (core.updateBundleDefinition as jest.Mock).mockReturnValue({ message: 'updated' });
+
+      controller.updateBundle('tracker', { name: 'tracker', bundle: requestDefinition });
+
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker', requestDefinition, {
+        cwd: process.cwd(),
+        newKey: 'tracker',
+      });
     });
 
     it('URI-decodes the name and renames via body.name', () => {
       (core.updateBundleDefinition as jest.Mock).mockReturnValue({ message: 'renamed' });
 
-      controller.updateBundle('tracker', { name: 'tracker-v2', bundle: requestDefinition });
+      controller.updateBundle('tracker%2Dv1', { name: 'tracker-v2', bundle: requestDefinition });
 
-      expect(core.validateBundleKey).toHaveBeenCalledWith('tracker-v2');
-      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker', expect.any(Object), {
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker-v1', requestDefinition, {
         cwd: process.cwd(),
         newKey: 'tracker-v2',
       });
     });
 
-    it('returns 409 when renaming onto an existing bundle', () => {
-      expect(() => controller.updateBundle('tracker', { name: 'other', bundle: requestDefinition })).toThrow(
-        ConflictException,
+    it('returns 409 when core reports a rename collision', () => {
+      (core.updateBundleDefinition as jest.Mock).mockImplementation(() => {
+        throw new core.BundleAlreadyExistsError('other');
+      });
+
+      expect(statusOf(() => controller.updateBundle('tracker', { name: 'other', bundle: requestDefinition }))).toBe(
+        HttpStatus.CONFLICT,
       );
-      expect(core.updateBundleDefinition).not.toHaveBeenCalled();
     });
 
-    it('returns 400 when the definition is invalid', () => {
-      (core.validateBundleDefinition as jest.Mock).mockReturnValue(['bundleName is required.']);
+    it('returns 400 when core rejects the definition', () => {
+      (core.updateBundleDefinition as jest.Mock).mockImplementation(() => {
+        throw new core.InvalidBundleDefinitionError(['bundleName is required.']);
+      });
 
-      expect(statusOf(() => controller.updateBundle('tracker', { bundle: requestDefinition }))).toBe(
-        HttpStatus.BAD_REQUEST,
-      );
-      expect(core.updateBundleDefinition).not.toHaveBeenCalled();
+      expect(answerOf(() => controller.updateBundle('tracker', { bundle: requestDefinition }))).toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        body: { message: 'Invalid bundle definition', errors: ['bundleName is required.'] },
+      });
     });
   });
 
@@ -229,11 +246,6 @@ describe('BundlesController', () => {
 
       expect(controller.deleteBundle('tracker')).toEqual({ message: 'deleted' });
       expect(core.deleteBundleDefinition).toHaveBeenCalledWith('tracker', { cwd: process.cwd() });
-    });
-
-    it('returns 404 for an unknown bundle', () => {
-      expect(() => controller.deleteBundle('missing')).toThrow(NotFoundException);
-      expect(core.deleteBundleDefinition).not.toHaveBeenCalled();
     });
 
     it('maps a core not-found error to 404', () => {
@@ -247,10 +259,14 @@ describe('BundlesController', () => {
   });
 
   describe('POST /bundles/dry-run', () => {
-    it('plans the definition from the request body, not the saved one', () => {
+    it('plans the normalised definition from the request body, not the saved one', () => {
       (core.planBundle as jest.Mock).mockReturnValue(plan);
 
-      const result = controller.dryRun({ name: 'preview', bundle: requestDefinition, locales: ['en'] });
+      const result = controller.dryRun({
+        name: ' preview ',
+        bundle: { ...requestDefinition, dist: ' ./dist/i18n ', typeDistFile: '' },
+        locales: ['en'],
+      });
 
       expect(core.planBundle).toHaveBeenCalledWith({
         bundleKey: 'preview',
@@ -273,12 +289,35 @@ describe('BundlesController', () => {
       expect('locales' in (core.planBundle as jest.Mock).mock.calls[0][0]).toBe(false);
     });
 
-    it('returns 400 for an invalid definition without planning', () => {
-      (core.validateBundleDefinition as jest.Mock).mockReturnValue(['dist (output folder) is required.']);
+    it('returns 400 with every domain message without planning', () => {
+      const bundle: BundleDefinition = {
+        ...requestDefinition,
+        dist: '',
+        collections: [{ name: 'ghost', entriesSelectionRules: 'All' }],
+      };
 
-      expect(statusOf(() => controller.dryRun({ name: 'preview', bundle: requestDefinition }))).toBe(
-        HttpStatus.BAD_REQUEST,
-      );
+      expect(answerOf(() => controller.dryRun({ name: 'bad name', bundle }))).toEqual({
+        status: HttpStatus.BAD_REQUEST,
+        body: {
+          statusCode: HttpStatus.BAD_REQUEST,
+          message: 'Invalid bundle definition',
+          error: 'Bad Request',
+          errors: [
+            'Bundle name may only contain letters, numbers, hyphens and underscores.',
+            'dist (output folder) is required.',
+            "Collection 'ghost' does not exist in the configuration.",
+          ],
+        },
+      });
+      expect(core.planBundle).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when the name or the definition is missing', () => {
+      expect(answerOf(() => controller.dryRun({ bundle: requestDefinition } as never))).toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        body: { errors: ['Bundle name is required.'] },
+      });
+      expect(statusOf(() => controller.dryRun({ name: 'preview' } as never))).toBe(HttpStatus.BAD_REQUEST);
       expect(core.planBundle).not.toHaveBeenCalled();
     });
 
@@ -327,7 +366,15 @@ describe('BundlesController', () => {
     it('returns 404 for an unknown bundle', () => {
       const { response } = makeResponse();
 
-      expect(() => controller.generateBundle('missing', {}, response)).toThrow(NotFoundException);
+      expect(() => controller.generateBundle('missing', {}, response)).toThrow(core.BundleNotFoundError);
+      expect(statusOf(() => controller.generateBundle('missing', {}, response))).toBe(HttpStatus.NOT_FOUND);
+      expect(jobService.startJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 for a name that only exists on Object.prototype', () => {
+      const { response } = makeResponse();
+
+      expect(statusOf(() => controller.generateBundle('constructor', {}, response))).toBe(HttpStatus.NOT_FOUND);
       expect(jobService.startJob).not.toHaveBeenCalled();
     });
 

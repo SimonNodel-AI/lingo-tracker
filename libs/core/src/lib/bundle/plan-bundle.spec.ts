@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { BundleDefinition } from '../../config/bundle-definition';
+import type { BundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type SeedResource, seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { planBundle } from './plan-bundle';
@@ -56,7 +56,7 @@ describe('planBundle (real fs)', () => {
     expect(plan.locales).toEqual(['en', 'fr']);
     expect(plan.files).toEqual([
       {
-        path: path.join('./dist/i18n', 'main.en.json'),
+        path: 'dist/i18n/main.en.json',
         absolutePath: path.resolve(root(), 'dist/i18n/main.en.json'),
         kind: 'bundle',
         locale: 'en',
@@ -64,7 +64,7 @@ describe('planBundle (real fs)', () => {
         keysCount: 1,
       },
       {
-        path: path.join('./dist/i18n', 'main.fr.json'),
+        path: 'dist/i18n/main.fr.json',
         absolutePath: path.resolve(root(), 'dist/i18n/main.fr.json'),
         kind: 'bundle',
         locale: 'fr',

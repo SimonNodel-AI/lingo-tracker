@@ -42,10 +42,16 @@ import {
  * what the class name suggests: locale conflicts and missing locales answer 400 (bundle
  * conflicts answer 409).
  *
- * Every mapped answer has the same `{ statusCode, message, error }` body.
+ * Every mapped answer has the same `{ statusCode, message, error }` body. An invalid bundle
+ * definition also carries `errors`, every problem the domain rules found, under the fixed
+ * message `Invalid bundle definition`.
  */
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
   const { message } = error;
+
+  if (error instanceof InvalidBundleDefinitionError) {
+    return invalidBundleDefinitionToHttp(error);
+  }
 
   if (
     error instanceof CollectionNotFoundError ||
@@ -72,8 +78,7 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
     error instanceof InvalidLocaleError ||
     error instanceof LocaleNotFoundError ||
     error instanceof LocaleAlreadyExistsError ||
-    error instanceof BaseLocaleImmutableError ||
-    error instanceof InvalidBundleDefinitionError
+    error instanceof BaseLocaleImmutableError
   ) {
     return new BadRequestException(message);
   }
@@ -81,6 +86,14 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
     return translationErrorToHttp(error);
   }
   return new InternalServerErrorException(message);
+}
+
+function invalidBundleDefinitionToHttp(error: InvalidBundleDefinitionError): HttpException {
+  const status = HttpStatus.BAD_REQUEST;
+  return new BadRequestException({
+    ...HttpException.createBody('Invalid bundle definition', 'Bad Request', status),
+    errors: [...error.errors],
+  });
 }
 
 /** Translation codes that mean the server's translation setup is wrong, not the request. */

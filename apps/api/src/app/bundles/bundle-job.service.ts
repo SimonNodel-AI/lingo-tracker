@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
-import type { BundleDefinition, BundleProgressEvent, LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { BundleProgressEvent, LingoTrackerConfig } from '@simoncodes-ca/core';
 import { generateBundle } from '@simoncodes-ca/core';
 import type {
   BundleGenerateJobDto,
@@ -8,6 +8,7 @@ import type {
   BundleGenerateJobResultDto,
   BundleGenerateJobStatus,
 } from '@simoncodes-ca/data-transfer';
+import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { mapGenerateBundleResultToJobResult } from '../mappers/bundle.mapper';
 
 export interface StartBundleJobParams {

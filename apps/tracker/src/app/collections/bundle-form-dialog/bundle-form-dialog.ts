@@ -19,7 +19,15 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { catchError, debounceTime, map, of, startWith, switchMap, tap } from 'rxjs';
-import { isValidJavaScriptIdentifier, normalizeTag } from '@simoncodes-ca/domain';
+import {
+  bundleOutputFile,
+  checkBundleDefinition,
+  hasLocalePlaceholder,
+  isTypeScriptFile,
+  isValidJavaScriptIdentifier,
+  normalizeBundleDefinition,
+  normalizeTag,
+} from '@simoncodes-ca/domain';
 import type {
   BundleDefinitionDto,
   BundleDryRunRequestDto,
@@ -91,6 +99,11 @@ const splitAfterSeparators = (value: string, separators: RegExp): readonly strin
 const PATH_SEPARATORS = /(?<=[._\-/])/;
 const TOKEN_SEPARATORS = /(?<=[._])/;
 
+/**
+ * Tidies a types file path for display: the one typed in the form, and the one the dry-run
+ * plan returns (the plan echoes `typeDistFile` as configured). Bundle file paths come from
+ * `bundleOutputFile` and need no tidying.
+ */
 const stripDotSlash = (path: string): string => path.replace(/^\.\//, '').replace(/\/+$/, '');
 
 @Component({
@@ -170,6 +183,11 @@ export class BundleFormDialog {
 
   readonly activeSection = signal<BundleSection>(this.#initialSection());
   readonly submitAttempted = signal(false);
+  /**
+   * Messages from the domain Bundle Definition rules that the control validators did not
+   * catch, found on submit. Cleared on the next edit.
+   */
+  readonly submitErrors = signal<readonly string[]>([]);
   readonly previewOpen = signal(false);
 
   readonly dryRun = signal<BundleDryRunResultDto | undefined>(undefined);
@@ -215,12 +233,12 @@ export class BundleFormDialog {
       : this.form.controls.collections.length;
   });
 
-  /** Rail summary under Output: `dist/pattern.json`, or nothing until both are typed. */
+  /** Rail summary under Output: `dist/pattern.json` (the placeholder kept), or nothing until one is typed. */
   readonly outputSummary = computed(() => {
     this.#formTick();
     const { dist, bundleName } = this.form.getRawValue();
     if (!dist.trim() && !bundleName.trim()) return '';
-    return `${stripDotSlash(dist.trim())}/${bundleName.trim()}.json`;
+    return bundleOutputFile({ dist: dist.trim(), bundleName: bundleName.trim() }, LOCALE_PLACEHOLDER);
   });
 
   readonly typeFileName = computed(() => {
@@ -235,11 +253,21 @@ export class BundleFormDialog {
     return deriveConstantName(this.form.getRawValue().name.trim() || 'bundle');
   });
 
+  /** The bundle file per project locale, relative to the output folder. */
   readonly patternFiles = computed(() => {
     this.#formTick();
-    const pattern = this.form.getRawValue().bundleName.trim();
-    if (!pattern) return [];
-    return this.projectLocales().map((locale) => `${pattern.replace(LOCALE_PLACEHOLDER, locale)}.json`);
+    const bundleName = this.form.getRawValue().bundleName.trim();
+    if (!bundleName) return [];
+    return this.projectLocales().map((locale) => bundleOutputFile({ dist: '', bundleName }, locale));
+  });
+
+  /** The bundle file per project locale as core will write it (domain `bundleOutputFile`). */
+  readonly outputFiles = computed(() => {
+    this.#formTick();
+    const raw = this.form.getRawValue();
+    const bundleName = raw.bundleName.trim();
+    if (!bundleName) return [];
+    return this.projectLocales().map((locale) => bundleOutputFile({ dist: raw.dist.trim(), bundleName }, locale));
   });
 
   readonly writesHintParams = computed(() => {
@@ -268,8 +296,8 @@ export class BundleFormDialog {
   readonly localTree = computed<readonly PreviewFolder[]>(() => {
     this.#formTick();
     const raw = this.form.getRawValue();
-    const files: { path: string; kind: 'bundle' | 'types' }[] = this.patternFiles().map((file) => ({
-      path: `${stripDotSlash(raw.dist.trim())}/${file}`,
+    const files: { path: string; kind: 'bundle' | 'types' }[] = this.outputFiles().map((path) => ({
+      path,
       kind: 'bundle',
     }));
     if (raw.typesEnabled && raw.typeDistFile.trim()) {
@@ -334,6 +362,7 @@ export class BundleFormDialog {
     this.#populate();
     this.#wireDependentValidation();
     this.#wireDryRun();
+    this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.submitErrors.set([]));
   }
 
   // ───────────────────────────── navigation ─────────────────────────────
@@ -470,7 +499,11 @@ export class BundleFormDialog {
       this.#revealFirstError();
       return;
     }
-    this.#dialogRef.close(this.#buildResult());
+    const result = this.#buildResult();
+    const errors = this.#domainErrors(result);
+    this.submitErrors.set(errors);
+    if (errors.length > 0) return;
+    this.#dialogRef.close(result);
   }
 
   // ───────────────────────────── private ─────────────────────────────
@@ -482,7 +515,8 @@ export class BundleFormDialog {
   }
 
   #populate(): void {
-    const bundle = this.#data.bundle;
+    // Read through the domain normaliser, so a legacy `typeDist` shows as the types file.
+    const bundle = this.#data.bundle ? normalizeBundleDefinition(this.#data.bundle) : undefined;
     const name = this.#data.name ?? '';
     const collections = bundle?.collections;
 
@@ -660,6 +694,16 @@ export class BundleFormDialog {
     return { name: this.form.getRawValue().name.trim(), bundle: this.#buildDefinition() };
   }
 
+  /**
+   * The same domain rules the API applies on save, so the dialog never closes on a
+   * definition the server would reject. The key is checked only when it can be sent
+   * (it is locked in edit mode).
+   */
+  #domainErrors({ name, bundle }: BundleFormResult): string[] {
+    return checkBundleDefinition(bundle, this.allCollectionNames(), this.form.controls.name.enabled ? name : undefined)
+      .errors;
+  }
+
   /** After a failed submit, land on the first section that has something to fix. */
   #revealFirstError(): void {
     const order: BundleSection[] = [
@@ -676,10 +720,14 @@ export class BundleFormDialog {
 
 // ───────────────────────────── validators & helpers ─────────────────────────────
 
+// The control validators give live, per-field feedback. The rules they share with the server
+// (`{locale}` placeholder, `.ts` extension, identifier) are the domain predicates, and
+// `onSubmit` re-checks the whole definition with the domain `checkBundleDefinition`.
+
 function localePlaceholderValidator(control: AbstractControl): ValidationErrors | null {
   const value = String(control.value ?? '');
   if (!value.trim()) return null;
-  return value.includes(LOCALE_PLACEHOLDER) ? null : { missingLocale: true };
+  return hasLocalePlaceholder(value) ? null : { missingLocale: true };
 }
 
 function typeFileValidator(control: AbstractControl): ValidationErrors | null {
@@ -688,14 +736,10 @@ function typeFileValidator(control: AbstractControl): ValidationErrors | null {
   if (!enabled) return null;
   const value = String(control.value ?? '').trim();
   if (!value) return { required: true };
-  return value.endsWith('.ts') ? null : { notTypeScript: true };
+  return isTypeScriptFile(value) ? null : { notTypeScript: true };
 }
 
-/**
- * Mirrors core's `validateJavaScriptIdentifier` exactly: the shared rules live in
- * `@simoncodes-ca/domain` so the client check can never be weaker than the server's,
- * which would let the dialog close on a name the API then rejects with a 400.
- */
+/** Domain identifier rule, the one `validateBundleDefinition` applies to `tokenConstantName`. */
 function identifierValidator(control: AbstractControl): ValidationErrors | null {
   const value = String(control.value ?? '').trim();
   if (!value) return null;

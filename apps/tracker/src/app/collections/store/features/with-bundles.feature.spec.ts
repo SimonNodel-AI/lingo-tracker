@@ -152,6 +152,32 @@ describe('withBundlesFeature', () => {
       expect(api.getConfig).not.toHaveBeenCalled();
     });
 
+    it('createBundle appends the validation errors of an invalid definition', () => {
+      api.createBundle.mockReturnValue(
+        throwError(
+          () =>
+            new HttpErrorResponse({
+              status: 400,
+              error: {
+                statusCode: 400,
+                message: 'Invalid bundle definition',
+                error: 'Bad Request',
+                errors: [
+                  'dist (output folder) is required.',
+                  "Collection 'ghost' does not exist in the configuration.",
+                ],
+              },
+            }),
+        ),
+      );
+
+      store.createBundle({ name: 'tracker', bundle: trackerBundle });
+
+      expect(store.error()).toBe(
+        "Invalid bundle definition: dist (output folder) is required.; Collection 'ghost' does not exist in the configuration.",
+      );
+    });
+
     it('createBundle falls back to a generic message when the error has none', () => {
       api.createBundle.mockReturnValue(throwError(() => ({ weird: true })));
 

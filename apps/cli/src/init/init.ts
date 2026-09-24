@@ -8,9 +8,8 @@ import {
   type LingoTrackerConfig,
   type LingoTrackerCollection,
   type TranslationConfig,
-  type BundleDefinition,
 } from '@simoncodes-ca/core';
-import type { TokenCasing } from '@simoncodes-ca/domain';
+import type { BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
 import { type Answers, defineCommand, requireOptions } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 

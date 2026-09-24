@@ -100,12 +100,16 @@ const FALLBACK_MESSAGES = {
 /**
  * Extracts a human-readable message from an HTTP or generic error.
  * The API returns `{ message }` bodies, which `HttpErrorResponse` exposes on `error.error`.
+ * An invalid bundle definition also carries `errors: string[]`; they are appended
+ * (`Invalid bundle definition: a; b`) so the reason is readable.
  */
 function toBundleErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof HttpErrorResponse) {
     const body: unknown = error.error;
     if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-      return body.message;
+      const errors: unknown = 'errors' in body ? body.errors : undefined;
+      const details = Array.isArray(errors) ? errors.filter((item): item is string => typeof item === 'string') : [];
+      return details.length > 0 ? `${body.message}: ${details.join('; ')}` : body.message;
     }
     return error.message || fallback;
   }

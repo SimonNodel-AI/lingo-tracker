@@ -82,13 +82,15 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 
 Bundle definitions live under `bundles` in `.lingo-tracker.json` and are exposed on `GET /config`. Generation runs as an async job (one at a time, in order) that the client polls, mirroring the translation job flow.
 
+The [Bundle Definition](glossary.md#bundle-definition) type and its rules are in `@simoncodes-ca/domain`; `BundleDefinitionDto` is an alias of the domain type, so no mapper copies it. The controller does not validate for create and update: it passes the trimmed name and the body definition to core's `addBundleDefinition` / `updateBundleDefinition`, which normalize, validate and throw typed errors. Only the dry run, which calls no core operation that validates, runs the domain `checkBundleDefinition` itself. Generate looks the saved bundle up with `findBundleDefinition` (own properties only, so `POST /bundles/constructor/generate` answers 404). Invalid input answers 400 `{ statusCode, message: 'Invalid bundle definition', error, errors[] }`, where `errors` holds every message from the domain rules (see [Error Mapping](#error-mapping)). The Tracker bundle form runs the same check before it submits, and the Tracker store shows a 400 as `Invalid bundle definition: <errors joined by "; ">`.
+
 | Method | Path | Purpose | Request DTO | Response DTO |
 |--------|------|---------|-------------|--------------|
-| `POST` | `/bundles` | Create a [bundle](glossary.md#bundle) definition. Validation failures return 400 `{ message, errors[] }`; a duplicate name returns 409. | `CreateBundleDto` | `{ message: string }` |
-| `PUT` | `/bundles/:name` | Replace a bundle definition, optionally renaming it via `name` in the body. 404 when missing, 400 when invalid, 409 when the new name is taken. | `UpdateBundleDto` | `{ message: string }` |
+| `POST` | `/bundles` | Create a [bundle](glossary.md#bundle) definition. An invalid name or definition (or no `bundle` in the body) returns 400 with `errors[]`; a duplicate name returns 409. | `CreateBundleDto` | `{ message: string }` |
+| `PUT` | `/bundles/:name` | Replace a bundle definition, optionally renaming it via `name` in the body. 404 when missing, then 400 when invalid, then 409 when the new name is taken (core checks in that order). | `UpdateBundleDto` | `{ message: string }` |
 | `DELETE` | `/bundles/:name` | Remove a bundle definition (404 when missing) | — | `{ message: string }` |
-| `POST` | `/bundles/dry-run` | Plan a bundle from the request body without writing anything (`planBundle` with `cwd: process.cwd()`; generation jobs pass the same `cwd` to `generateBundle`). The definition does not have to be saved, so the UI can preview unsaved edits. | `BundleDryRunRequestDto` | `BundleDryRunResultDto` |
-| `POST` | `/bundles/:name/generate` | Fire-and-forget: start a generation job for a saved bundle. Optional `locales` must be a subset of the project locales (400 otherwise). | `GenerateBundleRequestDto` | `BundleGenerateJobDto` (202 Accepted) |
+| `POST` | `/bundles/dry-run` | Plan a bundle from the request body without writing anything (`planBundle` with `cwd: process.cwd()`; generation jobs pass the same `cwd` to `generateBundle`). The definition does not have to be saved, so the UI can preview unsaved edits. The definition is normalized and validated with the domain rules first (400 with `errors[]`). | `BundleDryRunRequestDto` | `BundleDryRunResultDto` |
+| `POST` | `/bundles/:name/generate` | Fire-and-forget: start a generation job for a saved bundle (404 `BundleNotFoundError` when missing). Optional `locales` must be a subset of the project locales (400 otherwise). | `GenerateBundleRequestDto` | `BundleGenerateJobDto` (202 Accepted) |
 | `GET` | `/bundles/jobs/:jobId` | Poll a bundle generation job by ID | — | `BundleGenerateJobDto` |
 
 ---
@@ -174,7 +176,7 @@ Controllers are the only layer that knows HTTP. They read the config from `Confi
 
 ## Error Mapping
 
-`LingoTrackerExceptionFilter` (`errors/lingo-tracker-exception.filter.ts`) is registered globally with `APP_FILTER` in `app.module.ts`. It is the only place that maps a core [typed error](glossary.md#typed-errors) to an HTTP status. It uses `instanceof`, never the message text. `toHttpException(error)` holds the mapping and is exported for controller specs. The filter then hands the result to Nest's `BaseExceptionFilter`. Every mapped answer has the same body shape, `{ statusCode, message, error }`, because the mapping uses Nest's dedicated exception classes (and `HttpException.createBody` for 429, which has no class). An unexpected error never discloses its message: the filter logs its message and stack on the server and answers a generic 500.
+`LingoTrackerExceptionFilter` (`errors/lingo-tracker-exception.filter.ts`) is registered globally with `APP_FILTER` in `app.module.ts`. It is the only place that maps a core [typed error](glossary.md#typed-errors) to an HTTP status. It uses `instanceof`, never the message text. `toHttpException(error)` holds the mapping and is exported for controller specs. The filter then hands the result to Nest's `BaseExceptionFilter`. Every mapped answer has the same body shape, `{ statusCode, message, error }`, because the mapping uses Nest's dedicated exception classes (and `HttpException.createBody` for 429, which has no class). `InvalidBundleDefinitionError` adds `errors`, the list of every problem found. An unexpected error never discloses its message: the filter logs its message and stack on the server and answers a generic 500.
 
 | Thrown | Status | Body `message` |
 |---|---|---|
@@ -184,7 +186,8 @@ Controllers are the only layer that knows HTTP. They read the config from `Confi
 | `BundleAlreadyExistsError`, `ResourceAlreadyExistsError` | 409 (`ConflictException`) | error message |
 | `AutoTranslationDisabledError` | 422 (`UnprocessableEntityException`) | error message |
 | `InvalidFolderPathError`, `FolderMoveIntoDescendantError` | 400 (`BadRequestException`) | `Validation error: <message>` |
-| `InvalidResourceKeyError`, `InvalidLocaleError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError`, `InvalidBundleDefinitionError` | 400 (`BadRequestException`) | error message |
+| `InvalidResourceKeyError`, `InvalidLocaleError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError` | 400 (`BadRequestException`) | error message |
+| `InvalidBundleDefinitionError` | 400 (`BadRequestException`) | `Invalid bundle definition`, with `errors: string[]` in the body |
 | `TranslationError` with code `INVALID_REQUEST` | 400 (`BadRequestException`) | `Translation provider error: <message>` |
 | `TranslationError` with code `MISSING_API_KEY`, `UNKNOWN_PROVIDER`, or `AUTH_ERROR` (server misconfiguration) | 500 (`InternalServerErrorException`) | `Translation provider error: <message>` |
 | `TranslationError` with code `RATE_LIMIT` | 429 (`HttpException`, error `Too Many Requests`) | `Translation provider error: <message>` |
@@ -379,7 +382,7 @@ sequenceDiagram
 
 ## Mapper Layer
 
-The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. All transformation happens in `apps/api/src/app/mappers/`, except the create and update requests: their fields map one to one onto the core parameters, so the resources controller copies them inline. No controller accesses a raw domain model object directly in its response, and no core function receives a DTO as its argument.
+The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. All transformation happens in `apps/api/src/app/mappers/`, except the create and update requests: their fields map one to one onto the core parameters, so the resources controller copies them inline. No controller accesses a raw domain model object directly in its response, and no core function receives a DTO as its argument. Bundle definitions are the one exception: `BundleDefinitionDto` is an alias of the domain `BundleDefinition`, so the bundles controller passes it to core as it is.
 
 For the entity types that mappers transform, see [domain-and-data-model.md](domain-and-data-model.md).
 
@@ -388,8 +391,8 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 | `resource-tree.mapper.ts` | `ResourceTreeNode` + `Collection` → `ResourceTreeDto` | Flattens `folderPathSegments[]` array to a dot-delimited `path` string; turns every resource into a Resource Summary |
 | `resource-tree.mapper.ts` | `ResourceTreeEntry` + folder path + `Collection` → `ResourceSummaryDto` | Resolves the entry's full key against the folder it is relative to and calls the domain `buildResourceSummary`. The base locale, the target locales and the `inheritedTags` come from the opened `Collection`; nothing is guessed from the metadata. The translate and update handlers call `buildResourceSummary` directly with the key they already hold. |
 | `collection.mapper.ts` | `LingoTrackerCollectionDto` ↔ `LingoTrackerCollection` | Bidirectional; shallow clone of `locales[]` and `tags[]` arrays to prevent aliasing. Carries the `protectedTermsFile` setting in both directions. Drops resolved `protectedTerms` on the way back to config, because terms live in a file and the controller writes them there separately. |
-| `config.mapper.ts` | `LingoTrackerConfig` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper` and bundle mapping to `bundle.mapper`; shallow clone of `locales[]`. Takes an optional `ResolvedProtectedTerms` and `projectName` (basename of the API's working directory) from the controller, so the mapper itself reads no files. |
-| `bundle.mapper.ts` | `BundleDefinitionDto` ↔ `BundleDefinition`; `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | Bidirectional definition mapping trims strings and drops empty optionals so nothing spurious is written to the config. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper rebuilds written file paths from `localesProcessed` plus the types file. |
+| `config.mapper.ts` | `LingoTrackerConfig` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper`; bundles pass through unmapped (the DTO is the domain `BundleDefinition`); shallow clone of `locales[]`. Takes an optional `ResolvedProtectedTerms` and `projectName` (basename of the API's working directory) from the controller, so the mapper itself reads no files. |
+| `bundle.mapper.ts` | `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | No definition mapping: `BundleDefinitionDto` is the domain type, and the domain `normalizeBundleDefinition` does the trimming. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper rebuilds written file paths from `localesProcessed` with the domain `bundleOutputFile` (the rule core writes with), plus the types file. |
 | `search-result.mapper.ts` | `SearchResult` + `Collection` → `SearchResultDto` | The hit's Resource Summary (from its `key`, `source`, `translations` and `metadata`) plus `matchType` (`'similar-value'` for `mode=similar`), `matchedLocales`, and `similarity` (0..1) when the search was in similar mode |
 
 **Why does `config.mapper.ts` take resolved terms as an argument?** Protected terms live in JSON files outside `.lingo-tracker.json`. Building the DTO therefore requires reading the filesystem.

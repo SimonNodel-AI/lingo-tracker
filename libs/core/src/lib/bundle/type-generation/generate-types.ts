@@ -1,10 +1,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { TokenCasing } from '@simoncodes-ca/domain';
-import { type BundleDefinition, hasTypeDistConfigured } from '../../../config/bundle-definition';
+import {
+  type BundleDefinition,
+  hasTypeDistConfigured,
+  type TokenCasing,
+  validateJavaScriptIdentifier,
+} from '@simoncodes-ca/domain';
 import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
 import { generateFileHeader } from './file-header';
-import { bundleKeyToConstantName, validateJavaScriptIdentifier } from './key-transformer';
+import { bundleKeyToConstantName } from './key-transformer';
 
 export interface GenerateTypesResult {
   bundleKey: string;

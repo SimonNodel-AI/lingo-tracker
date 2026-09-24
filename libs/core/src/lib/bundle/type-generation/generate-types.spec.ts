@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { BundleDefinition } from '../../../config/bundle-definition';
+import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { useTempDir } from '../../../testing/temp-dir.spec-helpers';
 import { generateBundleTypes } from './generate-types';
 

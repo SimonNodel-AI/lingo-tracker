@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { BundleDefinition, CollectionBundleDefinition } from '../../config/bundle-definition';
+import type { BundleDefinition, CollectionBundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { Collection } from '../config/open-collection';
 import {

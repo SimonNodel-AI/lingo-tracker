@@ -679,6 +679,14 @@
     </aside>
   </form>
 
+  @if (submitErrors().length > 0) {
+    <div class="submit-errors" role="alert" data-testid="submit-errors">
+      @for (message of submitErrors(); track message) {
+        <p class="field-error">{{ message }}</p>
+      }
+    </div>
+  }
+
   <!-- ───────────── Footer ───────────── -->
   <footer class="dialog-footer">
     <div class="footer-meta" data-testid="footer-meta">

@@ -1,12 +1,20 @@
 /**
  * Add / update / delete bundle definitions in `.lingo-tracker.json`.
  *
- * Every operation validates the definition against the freshly read config
- * inside the `updateConfig` updater so the check and the write see the same
- * state. Key order in `config.bundles` is preserved on update and rename.
+ * Every operation normalises the definition and validates it (with the domain
+ * Bundle Definition rules) against the freshly read config inside the
+ * `updateConfig` updater, so the check and the write see the same state. Key
+ * order in `config.bundles` is preserved on update and rename.
+ *
+ * Failure order: a missing bundle (`BundleNotFoundError`), then every key and
+ * definition problem at once (`InvalidBundleDefinitionError`), then a key
+ * collision (`BundleAlreadyExistsError`).
+ *
+ * Existence is an own-property check (`findBundleDefinition`), so a key such as
+ * `constructor` is an ordinary bundle name, never something on `Object.prototype`.
  */
 
-import type { BundleDefinition, CollectionBundleDefinition, EntrySelectionRule } from '../../config/bundle-definition';
+import { type BundleDefinition, checkBundleDefinition, findBundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { updateConfig } from '../config/config-file-operations';
 import {
@@ -14,7 +22,6 @@ import {
   BundleNotFoundError,
   InvalidBundleDefinitionError,
 } from '../errors/lingo-tracker-error';
-import { validateBundleDefinition, validateBundleKey } from './validate-bundle-definition';
 
 export interface BundleDefinitionOperationOptions {
   cwd?: string;
@@ -30,21 +37,19 @@ export function addBundleDefinition(
   definition: BundleDefinition,
   options: BundleDefinitionOperationOptions = {},
 ): { message: string } {
-  const bundleKey = assertValidKey(key);
+  const bundleKey = key?.trim() ?? '';
 
   updateConfig((config) => {
-    if (config.bundles?.[bundleKey]) {
+    const cleaned = assertValid(definition, config, bundleKey);
+
+    if (findBundleDefinition(config.bundles, bundleKey)) {
       throw new BundleAlreadyExistsError(bundleKey);
     }
 
-    const cleaned = assertValidDefinition(definition, config);
-
+    // `Object.fromEntries` defines own properties, so even `__proto__` is stored as a key.
     return {
       ...config,
-      bundles: {
-        ...(config.bundles ?? {}),
-        [bundleKey]: cleaned,
-      },
+      bundles: Object.fromEntries([...Object.entries(config.bundles ?? {}), [bundleKey, cleaned]]),
     };
   }, options.cwd);
 
@@ -57,31 +62,29 @@ export function updateBundleDefinition(
   options: UpdateBundleDefinitionOptions = {},
 ): { message: string } {
   const bundleKey = key.trim();
-  const targetKey = options.newKey === undefined ? bundleKey : assertValidKey(options.newKey);
+  const newKey = options.newKey?.trim();
+  const targetKey = newKey ?? bundleKey;
   const isRename = targetKey !== bundleKey;
 
   updateConfig((config) => {
     const bundles = config.bundles ?? {};
 
-    if (!bundles[bundleKey]) {
+    if (!findBundleDefinition(bundles, bundleKey)) {
       throw new BundleNotFoundError(bundleKey);
     }
 
-    if (isRename && bundles[targetKey]) {
+    const cleaned = assertValid(definition, config, newKey);
+
+    if (isRename && findBundleDefinition(bundles, targetKey)) {
       throw new BundleAlreadyExistsError(targetKey);
     }
 
-    const cleaned = assertValidDefinition(definition, config);
-
     // Rebuild the record in the original order so a rename keeps its position.
-    const nextBundles: Record<string, BundleDefinition> = {};
-    for (const [existingKey, existingDefinition] of Object.entries(bundles)) {
-      if (existingKey === bundleKey) {
-        nextBundles[targetKey] = cleaned;
-      } else {
-        nextBundles[existingKey] = existingDefinition;
-      }
-    }
+    const nextBundles: Record<string, BundleDefinition> = Object.fromEntries(
+      Object.entries(bundles).map(([existingKey, existingDefinition]) =>
+        existingKey === bundleKey ? [targetKey, cleaned] : [existingKey, existingDefinition],
+      ),
+    );
 
     return { ...config, bundles: nextBundles };
   }, options.cwd);
@@ -100,11 +103,11 @@ export function deleteBundleDefinition(
   updateConfig((config) => {
     const bundles = config.bundles ?? {};
 
-    if (!bundles[bundleKey]) {
+    if (!findBundleDefinition(bundles, bundleKey)) {
       throw new BundleNotFoundError(bundleKey);
     }
 
-    const { [bundleKey]: _removed, ...remaining } = bundles;
+    const remaining = Object.fromEntries(Object.entries(bundles).filter(([existingKey]) => existingKey !== bundleKey));
     const next: LingoTrackerConfig = { ...config, bundles: remaining };
 
     // Drop the `bundles` key entirely when the last bundle goes, keeping the file minimal.
@@ -118,53 +121,11 @@ export function deleteBundleDefinition(
   return { message: `Bundle "${bundleKey}" deleted successfully` };
 }
 
-function assertValidKey(key: string): string {
-  const trimmed = key?.trim() ?? '';
-  const errors = validateBundleKey(trimmed);
-  if (errors.length > 0) {
-    throw new InvalidBundleDefinitionError(errors);
+/** Runs the domain `checkBundleDefinition`; throws one `InvalidBundleDefinitionError` with every problem. */
+function assertValid(definition: BundleDefinition, config: LingoTrackerConfig, key?: string): BundleDefinition {
+  const check = checkBundleDefinition(definition, Object.keys(config.collections ?? {}), key);
+  if (check.errors.length > 0) {
+    throw new InvalidBundleDefinitionError(check.errors);
   }
-  return trimmed;
-}
-
-function assertValidDefinition(definition: BundleDefinition, config: LingoTrackerConfig): BundleDefinition {
-  const cleaned = stripUndefined(definition);
-  const errors = validateBundleDefinition(cleaned, config);
-  if (errors.length > 0) {
-    throw new InvalidBundleDefinitionError(errors);
-  }
-  return cleaned;
-}
-
-/**
- * Returns a copy of the definition with every `undefined` optional field
- * removed (recursively through collections and rules) so nothing spurious is
- * serialised into the config file.
- */
-function stripUndefined(definition: BundleDefinition): BundleDefinition {
-  const collections =
-    definition.collections === 'All'
-      ? ('All' as const)
-      : definition.collections.map((collection) => stripCollection(collection));
-
-  return omitUndefined({ ...definition, collections });
-}
-
-function stripCollection(collection: CollectionBundleDefinition): CollectionBundleDefinition {
-  const entriesSelectionRules =
-    collection.entriesSelectionRules === 'All'
-      ? ('All' as const)
-      : collection.entriesSelectionRules.map((rule) => omitUndefined<EntrySelectionRule>({ ...rule }));
-
-  return omitUndefined({ ...collection, entriesSelectionRules });
-}
-
-function omitUndefined<T extends object>(value: T): T {
-  const result: Record<string, unknown> = {};
-  for (const [field, fieldValue] of Object.entries(value)) {
-    if (fieldValue !== undefined) {
-      result[field] = fieldValue;
-    }
-  }
-  return result as T;
+  return check.definition;
 }

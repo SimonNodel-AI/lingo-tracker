@@ -9,11 +9,15 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { detectHierarchicalConflicts, type TokenCasing } from '@simoncodes-ca/domain';
-import { type BundleDefinition, hasTypeDistConfigured } from '../../config/bundle-definition';
+import {
+  type BundleDefinition,
+  bundleOutputFile,
+  detectHierarchicalConflicts,
+  hasTypeDistConfigured,
+  type TokenCasing,
+} from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type BundleSelection, resolveBundleCollections, selectBundleEntries } from './bundle-selection';
-import { getBundleOutputPath } from './generate-bundle';
 import { type BundleLocale, COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
 import {
   bundleKeyToConstantName,
@@ -133,7 +137,7 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
       warnings.push(`Bundle '${bundleKey}' for locale '${locale}' is empty`);
     }
 
-    const outputPath = getBundleOutputPath(bundleDefinition, locale);
+    const outputPath = bundleOutputFile(bundleDefinition, locale);
     files.push(describeFile(outputPath, 'bundle', keysCount, cwd, locale));
   }
 

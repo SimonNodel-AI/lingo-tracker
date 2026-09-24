@@ -1,6 +1,6 @@
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import type { TokenCasing } from '@simoncodes-ca/domain';
-import { generateBundle, hasTypeDistConfigured } from '@simoncodes-ca/core';
+import { hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
+import { generateBundle } from '@simoncodes-ca/core';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { ALL_ITEMS_SENTINEL, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
 

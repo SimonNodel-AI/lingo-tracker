@@ -116,7 +116,7 @@ describe('toHttpException', () => {
     [
       new InvalidBundleDefinitionError(['a', 'b']),
       400,
-      { message: 'Invalid bundle definition: a; b', error: 'Bad Request', statusCode: 400 },
+      { message: 'Invalid bundle definition', error: 'Bad Request', statusCode: 400, errors: ['a', 'b'] },
     ],
     [
       new ProtectedTermsFileError('/p/terms.json', 'Protected terms file is not valid JSON: /p/terms.json'),

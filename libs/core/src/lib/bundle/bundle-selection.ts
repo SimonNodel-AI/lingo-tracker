@@ -5,8 +5,14 @@
  * place.
  */
 
-import { hasUnbundlableBranchBody, icuToTransloco, validateICUSyntax } from '@simoncodes-ca/domain';
-import type { BundleDefinition, CollectionBundleDefinition, EntrySelectionRule } from '../../config/bundle-definition';
+import {
+  type BundleDefinition,
+  type CollectionBundleDefinition,
+  type EntrySelectionRule,
+  hasUnbundlableBranchBody,
+  icuToTransloco,
+  validateICUSyntax,
+} from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import { matchesPattern } from './pattern-matcher';

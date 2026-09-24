@@ -43,7 +43,6 @@ libs/core/src/
 ├── config/                       # Config types used at the root of the package
 │   ├── lingo-tracker-config.ts   # LingoTrackerConfig interface
 │   ├── lingo-tracker-collection.ts # Collection config (incl. protectedTermsFile pointer)
-│   ├── bundle-definition.ts      # BundleDefinition, CollectionBundleDefinition, EntrySelectionRule
 │   └── translation-config.ts     # TranslationConfig (provider name, API key env var)
 │
 ├── resource/                     # Resource CRUD on an opened Collection — reads/writes resource_entries.json + tracker_meta.json
@@ -67,6 +66,7 @@ libs/core/src/
     ├── bundle/                   # Bundle generation pipeline
     │   ├── generate-bundle.ts    # generateBundle(): main entry point
     │   ├── plan-bundle.ts        # planBundle(): the dry-run plan (files, key counts, conflicts), writes nothing
+    │   ├── bundle-definition-operations.ts # add/update/deleteBundleDefinition(): edit `bundles` in the config file
     │   ├── bundle-selection.ts   # Bundle Selection: resolveBundleCollections() + selectBundleEntries()
     │   ├── resource-loader.ts    # loadCollectionResources(): one collection's values for one locale, via readCollection()
     │   ├── hierarchy-builder.ts  # buildHierarchy(): dot-keys → nested JSON object
@@ -160,7 +160,7 @@ graph TD
     subgraph core["@simoncodes-ca/core root modules"]
         RESOURCE["resource/\nadd · edit · delete · move"]
         COLLECTIONS["collections-manager/\nadd · delete · update"]
-        CONFIG_ROOT["config/\nLingoTrackerConfig\nBundleDefinition\nTranslationConfig"]
+        CONFIG_ROOT["config/\nLingoTrackerConfig\nTranslationConfig"]
     end
 
     subgraph lib["core/lib/ sub-modules"]
@@ -248,13 +248,13 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 ## Public Surface
 
-`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 186 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
+`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 179 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing`, `ImportStrategy` and the [Bundle Definition](glossary.md#bundle-definition) type and rules from `@simoncodes-ca/domain`.
 
 | Group | What it holds |
 |---|---|
-| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition`, `validateBundleKey`, `validateBundleDefinition`, `getBundleOutputPath`, `hasTypeDistConfigured`. Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
+| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition` (the definition type, its validators, `bundleOutputFile` and `hasTypeDistConfigured` are domain names). Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
 | Translator | Only the types in the translate operations' signatures: `OpenTranslatorOptions` (the optional `{ provider?, protectedTerms? }` of `addResource`, `editResource`, `translateExistingResource`, `translateLocale`) and the `TranslationProvider` seam (`TranslateRequest`, `TranslateResult`, `ProviderCapabilities`). `openTranslator`, the `Translator` types and `InMemoryTranslationProvider` stay internal to core (the translation barrel), because no app uses them. See [Auto-Translation Pipeline](#auto-translation-pipeline). |
-| Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `BundleDefinition`, ...), and the protected-terms and preferred-terminology file readers and writers. |
+| Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, ...; `LingoTrackerConfig.bundles` holds domain `BundleDefinition`s), and the protected-terms and preferred-terminology file readers and writers. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder` and the types in its methods, `resolveResourcePaths`. |
 | Collection Reader | `readCollection`, `StoredResource`, `CollectionRead`, `CollectionReadProblem`, `CollectionReadTarget`. See [Collection Reader](#collection-reader). |
 | Read models | `loadResourceTree`, `extractSubtree`, `extractResourcesRecursively`, `computeTreeFingerprint`, `treeFingerprintsMatch`, `reindexMutation` and their types, and [Resource Search](#resource-search): `searchResources`, `treeResources`, `SearchableResource`, `SearchMode`, `SearchOptions`, `SearchResult`, `MatchType`. The API's [Collection Index](glossary.md#collection-index) is built from these, and the CLI `find-similar` uses Resource Search. A `ResourceTreeEntry` and a `SearchResult` (which carries the entry's `source`, `translations` and `metadata`) both fit the domain `buildResourceSummary` input, which the API uses to answer with a [Resource Summary](glossary.md#resource-summary). |
@@ -301,7 +301,7 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 | `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `openTranslator` (so `translateExistingResource`, and `translateLocale` when there is work) |
 | `BundleNotFoundError` | `BUNDLE_NOT_FOUND` | `bundleName` | `updateBundleDefinition`, `deleteBundleDefinition` |
 | `BundleAlreadyExistsError` | `BUNDLE_ALREADY_EXISTS` | `bundleName` | `addBundleDefinition`, `updateBundleDefinition` (rename) |
-| `InvalidBundleDefinitionError` | `INVALID_BUNDLE_DEFINITION` | `errors[]` | bundle definition add / update |
+| `InvalidBundleDefinitionError` | `INVALID_BUNDLE_DEFINITION` | `errors[]` | `addBundleDefinition`, `updateBundleDefinition` (every message from the domain `validateBundleKey` / `validateBundleDefinition`); the API throws it too for a dry run or a missing body |
 | `TranslationError` | provider code (`MISSING_API_KEY`, `UNKNOWN_PROVIDER`, `INVALID_RESPONSE`, `RATE_LIMIT`, `INVALID_REQUEST`, …) | `retryable`, `providerErrorCode` | translation providers, `openTranslator` / `Translator.translate` (so every operation that auto-translates) |
 | `PreferredTerminologyValidationError` | `INVALID_PREFERRED_TERMINOLOGY` | `errors[]` | `writePreferredTerminology` |
 
@@ -657,7 +657,7 @@ Key steps:
 2. **Resolve the collections** — `resolveBundleCollections(definition, config, { cwd })` opens each collection the definition reads once per run, with `openCollection(config, name, { cwd })`. See [Bundle Selection](#bundle-selection).
 3. **Select, per locale** — `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` returns the locale's final keys with their values and origins. It reads, filters, prefixes, converts ICU and merges.
 4. **Build hierarchy** — `buildHierarchy()` converts the flat `{dotKey: value}` map into a nested object matching the Angular Transloco expected structure.
-5. **Write output** — `writeBundleFile()` creates the output directory if needed and writes the JSON file at `getBundleOutputPath(definition, locale)` (`dist` + `bundleName.replace('{locale}', locale)`), resolved against `cwd`. A locale with no entries is skipped with a warning.
+5. **Write output** — `writeBundleFile()` creates the output directory if needed and writes the JSON file at the domain `bundleOutputFile(definition, locale)` (`<dist>/<bundleName with {locale} replaced>.json`, `/` separators, no leading `./`), resolved against `cwd`. The dry-run plan, the progress events and the Tracker preview show this path. The API job result shows it too, but the API makes it project-relative (`toProjectRelative`), so an absolute `dist` inside `cwd` appears there as a relative path. Config paths use `/`; `bundleOutputFile` does not normalize backslashes. A locale with no entries is skipped with a warning.
 6. **Base keys** — the debug-keys bundle and the type file use one more selection with `COLLECTION_BASE_LOCALE` and no ICU conversion: every collection's own base keys, computed once.
 7. **Type generation** — if `typeDistFile` (or the deprecated `typeDist`) is configured, `generateBundleTypes({ bundleKey, definition, keys, tokenCasing, tokenConstantName, cwd })` writes the TypeScript constant file from those keys. It does not read collections itself.
 
@@ -674,6 +674,18 @@ The [Bundle Selection](glossary.md#bundle-selection) is the one place that decid
 - The result is `{ entries, conflicts, warnings }`. `entries` maps each final key to `{ value, origin: { collectionName, sourceKey } }` in first-selected order. `conflicts` holds the final keys that more than one resource defines. `warnings` holds the unreadable folders (on the first read of a run, through the shared `cache`) and the ICU warnings: a malformed value, and a branch body that cannot be carried to Transloco.
 
 The ICU conversion is inside the selection because the bundle and the plan report the same warnings for the same values. `generateBundle`'s base selection (for the debug-keys bundle and the type file) turns it off, because it uses keys only. The type file selects nothing itself: `generateBundleTypes` receives those keys.
+
+### Bundle Definition
+
+**Entry points:** `addBundleDefinition(key, definition, { cwd })`, `updateBundleDefinition(key, definition, { cwd, newKey })` and `deleteBundleDefinition(key, { cwd })` in `lib/bundle/bundle-definition-operations.ts`
+
+The [Bundle Definition](glossary.md#bundle-definition) type and its rules are in `@simoncodes-ca/domain` (`libs/domain/src/lib/bundle-definition.ts`), because the API dry run and the Tracker bundle form apply the same rules. The operations only add the file I/O. Inside the `updateConfig` updater, each operation does these steps:
+
+1. `updateBundleDefinition` and `deleteBundleDefinition` throw `BundleNotFoundError` for an unknown key.
+2. `add` and `update` run the domain `checkBundleDefinition(definition, Object.keys(config.collections), key)`. It normalizes the definition (trimmed strings, no empty or undefined optionals, a legacy `typeDist` moved to `typeDistFile`) and validates the key (the new key; for `update`, only when `newKey` is given) and the definition. The operations throw one `InvalidBundleDefinitionError` with every message, and otherwise store the normalized definition.
+3. `add` and a renaming `update` throw `BundleAlreadyExistsError` when the key is taken.
+
+Existence checks use the domain `findBundleDefinition`, which reads own properties only. So `constructor` or `__proto__` is an ordinary bundle name and never finds something on `Object.prototype`. The records are rebuilt with `Object.fromEntries`, which stores such a key as a normal property. A rename keeps the bundle's position in `config.bundles`. When the last bundle is deleted, the `bundles` key is removed.
 
 For a deep-dive into `BundleDefinition` configuration and the type generation sub-pipeline, see [bundle-generation.md](bundle-generation.md).
 
