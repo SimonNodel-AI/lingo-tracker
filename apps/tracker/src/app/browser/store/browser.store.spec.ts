@@ -272,6 +272,58 @@ describe('BrowserStore', () => {
       expect(notifyError).toHaveBeenCalledWith('Collection is being indexed.');
     });
 
+    it('should keep a loaded tree with root resources and no folders when the index goes not ready', async () => {
+      const rootOnlyTree: ResourceTreeDto = {
+        path: '',
+        resources: [summary('welcome', 'Welcome', { es: ['Bienvenido', 'translated'] })],
+        children: [],
+      };
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      const getTree = vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(rootOnlyTree));
+      const notifyError = vi.spyOn(spectator.inject(NotificationService), 'error').mockImplementation(() => undefined);
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en', 'es'] });
+      await waitForSignals();
+      expect(store.rootFolders()).toEqual([]);
+      expect(store.folderTreeLoaded()).toBe(true);
+
+      getTree.mockReturnValue(throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')));
+      store.loadRootFolders();
+      await waitForSignals();
+
+      expect(store.translations()).toEqual(rootOnlyTree.resources);
+      expect(store.isFolderTreeLoading()).toBe(false);
+      expect(store.error()).toBeNull();
+      expect(notifyError).toHaveBeenCalledWith('Collection is being indexed.');
+    });
+
+    it('should show the error state when the first root load finds the index not ready', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(
+        throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')),
+      );
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en', 'es'] });
+      await waitForSignals();
+
+      expect(store.folderTreeLoaded()).toBe(false);
+      expect(store.error()).toBe('Collection is being indexed.');
+    });
+
+    it('should forget the loaded tree when the collection changes', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      const getTree = vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en', 'es'] });
+      await waitForSignals();
+      expect(store.folderTreeLoaded()).toBe(true);
+
+      getTree.mockReturnValue(NEVER);
+      store.setSelectedCollection({ collectionName: 'website-translations', locales: ['en', 'fr'] });
+
+      expect(store.folderTreeLoaded()).toBe(false);
+    });
+
     it('should set loading state during folder tree fetch', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
@@ -1394,6 +1446,25 @@ describe('BrowserStore', () => {
       store.clearAllLocales();
     });
 
+    // `delta`'s only unfinished locale has no metadata (no stored status, `needsWork`).
+    async function loadWithMetadataLessRow(): Promise<void> {
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(
+        of({
+          ...mockStatusTree,
+          resources: [
+            ...mockStatusTree.resources,
+            summary('delta', 'Delta', {
+              es: ['Delta', 'verified'],
+              fr: [undefined, undefined],
+              de: ['Delta', 'verified'],
+            }),
+          ],
+        }),
+      );
+      store.loadRootFolders();
+      await waitForSignals();
+    }
+
     it('should count resources, not status cells', () => {
       // `gamma` is verified in all three target locales but is one resource.
       expect(store.statusCounts().verified).toBe(2);
@@ -1416,8 +1487,11 @@ describe('BrowserStore', () => {
       }
     });
 
-    it('should agree with the list the needs-work shortcut produces', () => {
+    it('should agree with the list the needs-work shortcut produces', async () => {
+      await loadWithMetadataLessRow();
+
       store.selectNeedsWorkStatuses();
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['alpha', 'beta', 'delta']);
       expect(store.sortedTranslations().length).toBe(store.needsWorkCount());
     });
 
@@ -1430,6 +1504,24 @@ describe('BrowserStore', () => {
       store.setSelectedLocales(['de']);
       expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 1, verified: 2 });
       expect(store.needsWorkCount()).toBe(0);
+    });
+
+    it('should count and filter a locale with no metadata as new', async () => {
+      await loadWithMetadataLessRow();
+
+      expect(store.needsWorkCount()).toBe(3);
+      expect(store.statusCounts()).toEqual({ new: 3, stale: 1, translated: 1, verified: 3 });
+      store.setSelectedStatuses(['new']);
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toContain('delta');
+      expect(store.sortedTranslations().length).toBe(store.statusCounts().new);
+    });
+
+    it('should sort a locale with no metadata as new', async () => {
+      await loadWithMetadataLessRow();
+
+      store.setSelectedLocales(['fr']);
+      store.setSortField('status');
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['alpha', 'delta', 'beta', 'gamma']);
     });
 
     it('should report zero for every status when the folder is empty', () => {

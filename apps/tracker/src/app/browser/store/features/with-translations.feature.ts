@@ -8,6 +8,7 @@ import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/
 import { sortTranslations } from '../../translations/utils/sort-translations';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { countByStatus, STATUS_PRECEDENCE, summaryTarget, type TranslationStatus } from '@simoncodes-ca/domain';
+import { displayStatus } from '../../../shared/translation-status/display-status';
 import { toErrorMessage } from '../async-error.utils';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
@@ -29,15 +30,16 @@ const NEEDS_WORK_STATUSES: readonly TranslationStatus[] = ['new', 'stale'];
  * A resource is in scope for a status filter when any of the locales being
  * filtered on carries one of those statuses.
  *
- * Both the list and the counts beside the filter toggles run through here, so
- * the two can never drift into disagreeing about what a status means.
+ * Both the list and the per-status counts beside the filter toggles run through
+ * here, so the two can never drift into disagreeing about what a status means.
+ * It reads the `displayStatus`, so a locale with no metadata matches `new`.
  */
 function matchesAnyStatus(
   item: ResourceSummaryDto,
   locales: readonly string[],
   statuses: readonly TranslationStatus[],
 ): boolean {
-  const counts = countByStatus(locales.map((locale) => summaryTarget(item, locale)?.status));
+  const counts = countByStatus(locales.map((locale) => displayStatus(summaryTarget(item, locale))));
   return statuses.some((status) => counts[status] > 0);
 }
 
@@ -120,9 +122,10 @@ export function withTranslationsFeature<_>() {
         }),
 
         /**
-         * Resources with anything unfinished in the filtered locales. Counted as a
-         * union rather than `new + stale`, because a resource that is new in one
-         * locale and stale in another is one row, not two.
+         * Resources with anything unfinished in the filtered locales: the rows the
+         * needs-work shortcut (`new` + `stale`) shows, a locale with no metadata
+         * included. Counted as a union rather than `new + stale`, because a resource
+         * that is new in one locale and stale in another is one row, not two.
          */
         needsWorkCount: computed(() => {
           const items = isSearchMode() ? searchResults() : translations();

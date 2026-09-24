@@ -25,6 +25,11 @@ import type { Observable } from 'rxjs';
 
 interface FolderTreeState {
   rootFolders: FolderNodeDto[];
+  /**
+   * A root tree load has succeeded for the selected collection. Not the same as
+   * `rootFolders().length > 0`: a collection with only root resources has no folders.
+   */
+  folderTreeLoaded: boolean;
   expandedFolders: Set<string>;
   /** Expansion as it stood before a filter took over; restored when the filter clears. */
   preFilterExpandedFolders: Set<string> | null;
@@ -40,6 +45,7 @@ interface FolderTreeState {
 
 const initialFolderTreeState: FolderTreeState = {
   rootFolders: [],
+  folderTreeLoaded: false,
   expandedFolders: new Set<string>(),
   preFilterExpandedFolders: null,
   isRootExpanded: true,
@@ -114,11 +120,12 @@ export function withFolderTreeFeature<_>() {
 
       /**
        * The index can go not-ready mid-session (reindex, outside change, eviction). When a tree read
-       * gives up for that reason and a tree is already on screen, keep it and toast: the `error`
+       * gives up for that reason and a root tree has already loaded (`folderTreeLoaded`, which also
+       * covers a collection with root resources and no folders), keep it and toast: the `error`
        * state would replace the tree. Returns false (not handled) for other errors and on first load.
        */
       function keepTreeOnNotReady(error: unknown, message: string): boolean {
-        if (!(error instanceof CollectionIndexNotReadyError) || store.rootFolders().length === 0) return false;
+        if (!(error instanceof CollectionIndexNotReadyError) || !store.folderTreeLoaded()) return false;
         patchState(store, { isFolderTreeLoading: false });
         notifications.error(message);
         return true;
@@ -214,6 +221,7 @@ export function withFolderTreeFeature<_>() {
                 tap((treeData) =>
                   patchState(store, {
                     rootFolders: treeData.children,
+                    folderTreeLoaded: true,
                     translations: treeData.resources,
                     currentFolderPath: '',
                     isFolderTreeLoading: false,

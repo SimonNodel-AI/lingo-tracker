@@ -1,5 +1,6 @@
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { countByStatus, STATUS_PRECEDENCE, type StatusCounts, summaryTarget } from '@simoncodes-ca/domain';
+import { displayStatus } from '../../../../shared/translation-status/display-status';
 
 /*
  * Row View: what one translation row shows, as plain data and functions.
@@ -9,6 +10,7 @@ import { countByStatus, STATUS_PRECEDENCE, type StatusCounts, summaryTarget } fr
  * which locale rows to show and in what order, what compact density says, which
  * markers appear, and what the rollup counts. The per-locale verdicts (needs work,
  * same as base) come from the Resource Summary; this module only arranges them.
+ * Every status here is the `displayStatus`: a target with no metadata shows as `new`.
  */
 
 /** A value longer than this is clipped by the full-density line clamp. */
@@ -33,6 +35,7 @@ export interface LocaleRow {
   readonly locale: string;
   /** The stored value; `''` when there is none. */
   readonly value: string;
+  /** The display status: `new` for a target with no metadata. */
   readonly status?: TranslationStatus;
   /** The value is the base value verbatim, whatever the status says. */
   readonly isSameAsBase: boolean;
@@ -44,12 +47,12 @@ export interface CompactRow {
   /** The stored value; `''` when there is none. */
   readonly value: string;
   readonly isBase: boolean;
-  /** `undefined` for the base locale. */
+  /** The display status the chip names: `new` for a target with no metadata; `undefined` for the base locale. */
   readonly status?: TranslationStatus;
   /**
-   * Show the status chip. Only a status that asks for work is worth a chip —
-   * `translated` and `verified` are the quiet states the rollup already reports —
-   * and a locale with no metadata has no status to name.
+   * Show the status chip: the locale's summary target says `needsWork` (`new`,
+   * `stale`, or no metadata). `translated` and `verified` are the quiet states the
+   * rollup already reports.
    */
   readonly needsAttention: boolean;
   /**
@@ -71,7 +74,7 @@ export interface RowView {
   /** The visible target locales, worst status first, then by locale code. */
   readonly localeRows: readonly LocaleRow[];
   readonly compact: CompactRow;
-  /** Every target locale that has a status, whatever the locale filter shows. */
+  /** Every target locale that has a display status, whatever the locale filter shows. */
   readonly rollupLocales: readonly RollupLocale[];
   /** Status counts over {@link rollupLocales}. */
   readonly statusCounts: StatusCounts;
@@ -92,15 +95,16 @@ export function rowView(summary: ResourceSummaryDto, selection: RowViewSelection
       return {
         locale,
         value: target?.value ?? '',
-        status: target?.status,
+        status: displayStatus(target),
         isSameAsBase: target?.sameAsBase ?? false,
       };
     })
     .sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.locale.localeCompare(b.locale));
 
-  const rollupLocales = summary.targets.flatMap((target) =>
-    target.status ? [{ code: target.locale, status: target.status }] : [],
-  );
+  const rollupLocales = summary.targets.flatMap((target) => {
+    const status = displayStatus(target);
+    return status ? [{ code: target.locale, status }] : [];
+  });
 
   return {
     baseRow: base.value.trim() ? { locale: base.locale, value: base.value } : undefined,
@@ -132,12 +136,12 @@ function compactRow(summary: ResourceSummaryDto, locale: string): CompactRow {
   }
 
   const target = summaryTarget(summary, locale);
-  const needsAttention = target?.status !== undefined && target.needsWork;
+  const needsAttention = target?.needsWork === true;
   return {
     locale,
     value: target?.value ?? '',
     isBase: false,
-    status: target?.status,
+    status: displayStatus(target),
     needsAttention,
     isSameAsBase: !needsAttention && (target?.sameAsBase ?? false),
   };

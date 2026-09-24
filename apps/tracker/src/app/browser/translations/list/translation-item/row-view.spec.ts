@@ -38,7 +38,7 @@ describe('rowView', () => {
       ]);
     });
 
-    it('orders worst status first, then by locale code; a row with no status goes last', () => {
+    it('orders worst status first, then by locale code; a locale with no metadata ranks with new', () => {
       const mixed = summary('Save', {
         de: ['Speichern', 'verified'],
         it: [undefined, undefined],
@@ -48,7 +48,8 @@ describe('rowView', () => {
       });
       const rows = rowView(mixed, selection({ visibleLocales: ['en', 'de', 'it', 'fr', 'es', 'pt'] })).localeRows;
 
-      expect(rows.map((row) => row.locale)).toEqual(['fr', 'pt', 'es', 'de', 'it']);
+      expect(rows.map((row) => row.locale)).toEqual(['fr', 'pt', 'es', 'it', 'de']);
+      expect(rows.find((row) => row.locale === 'it')?.status).toBe('new');
     });
 
     it('shows a missing value as empty', () => {
@@ -102,13 +103,22 @@ describe('rowView', () => {
       expect(rowView(row, selection({ compactLocale: 'es' })).compact.needsAttention).toBe(expected);
     });
 
-    it('does not ask for attention for a locale with no status to name', () => {
+    it('asks for attention for a locale with no metadata, shown as new', () => {
       const row = summary('Save', { es: [undefined, undefined] });
 
       expect(rowView(row, selection({ compactLocale: 'es' })).compact).toMatchObject({
         value: '',
-        status: undefined,
-        needsAttention: false,
+        status: 'new',
+        needsAttention: true,
+        isSameAsBase: false,
+      });
+    });
+
+    it('shows one marker for a copied value with no metadata: the chip', () => {
+      const row = summary('Save', { es: ['Save', undefined] });
+
+      expect(rowView(row, selection({ compactLocale: 'es' })).compact).toMatchObject({
+        needsAttention: true,
         isSameAsBase: false,
       });
     });
@@ -133,7 +143,7 @@ describe('rowView', () => {
   });
 
   describe('rollup', () => {
-    it('counts every target locale with a status, whatever the filter shows', () => {
+    it('counts every target locale, whatever the filter shows; one with no metadata as new', () => {
       const row = summary('Save', {
         es: ['a', 'stale'],
         fr: ['b', 'verified'],
@@ -146,8 +156,9 @@ describe('rowView', () => {
         { code: 'es', status: 'stale' },
         { code: 'fr', status: 'verified' },
         { code: 'de', status: 'verified' },
+        { code: 'it', status: 'new' },
       ]);
-      expect(view.statusCounts).toEqual({ stale: 1, new: 0, translated: 0, verified: 2 });
+      expect(view.statusCounts).toEqual({ stale: 1, new: 1, translated: 0, verified: 2 });
     });
   });
 
