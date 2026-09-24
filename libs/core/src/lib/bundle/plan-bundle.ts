@@ -12,8 +12,9 @@ import * as path from 'node:path';
 import { detectHierarchicalConflicts, type TokenCasing } from '@simoncodes-ca/domain';
 import { type BundleDefinition, hasTypeDistConfigured } from '../../config/bundle-definition';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { type BundleKeyTrace, collectBundleData, getBundleOutputPath } from './generate-bundle';
-import { COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
+import { type BundleSelection, resolveBundleCollections, selectBundleEntries } from './bundle-selection';
+import { getBundleOutputPath } from './generate-bundle';
+import { type BundleLocale, COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
 import {
   bundleKeyToConstantName,
   segmentToPropertyName,
@@ -32,7 +33,10 @@ export interface PlanBundleParams {
   readonly tokenConstantName?: string;
   /** Override for ICU → Transloco transformation; same precedence as `generateBundle`. */
   readonly transformICUToTransloco?: boolean;
-  /** Base directory used to resolve relative paths for `exists` checks (default: `process.cwd()`). */
+  /**
+   * The project directory (holding `.lingo-tracker.json`): translations folders and the planned
+   * files resolve against it. Default: `process.cwd()`.
+   */
   readonly cwd?: string;
 }
 
@@ -50,6 +54,7 @@ export interface BundlePlanFile {
   readonly keysCount: number;
 }
 
+/** One bundled key, to show where a resource lands: the first key the selection produced. */
 export interface BundlePlanExampleKey {
   readonly collectionName: string;
   readonly sourceKey: string;
@@ -75,6 +80,10 @@ export interface BundlePlan {
    * fail. Each one is also echoed in `warnings`.
    */
   readonly hierarchicalConflicts: string[];
+  /**
+   * The first key the selection produced, in collection then folder order (from every collection's
+   * base values). Absent when the bundle has no keys.
+   */
   readonly exampleKey?: BundlePlanExampleKey;
   readonly warnings: string[];
 }
@@ -105,22 +114,19 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
     tokenConstantNameOverride ?? bundleDefinition.tokenConstantName ?? bundleKeyToConstantName(bundleKey);
 
   const targetLocales = locales ?? config.locales;
-  const warnings: string[] = [];
+  const { collections, warnings: missing } = resolveBundleCollections(bundleDefinition, config, { cwd });
+  const warnings = [...missing];
   const keysPerLocale: Record<string, number> = {};
   const files: BundlePlanFile[] = [];
-  const resourceCache: CollectionReadCache = new Map();
+  const cache: CollectionReadCache = new Map();
+  const select = (locale: BundleLocale): BundleSelection =>
+    selectBundleEntries(collections, locale, { transformICUToTransloco: resolvedTransformICUToTransloco, cache });
 
   for (const locale of targetLocales) {
-    const bundleData = collectBundleData(
-      bundleDefinition,
-      config,
-      locale,
-      warnings,
-      resolvedTransformICUToTransloco,
-      resourceCache,
-    );
+    const selection = select(locale);
+    warnings.push(...selection.warnings);
 
-    const keysCount = Object.keys(bundleData).length;
+    const keysCount = selection.entries.size;
     keysPerLocale[locale] = keysCount;
 
     if (keysCount === 0) {
@@ -132,32 +138,26 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
   }
 
   // The key set drives conflict detection, the example key and the types count. It is read
-  // once, from every collection's own base values (a collection may override the base locale),
-  // and traced only here: conflicts are a property of the key set, not of a locale. Its
-  // warnings were already reported by the locale passes, so they are dropped unless there were none.
-  const trace: BundleKeyTrace = { conflicts: new Set(), origins: new Map() };
-  const baseLocaleData = collectBundleData(
-    bundleDefinition,
-    config,
-    COLLECTION_BASE_LOCALE,
-    targetLocales.length > 0 ? [] : warnings,
-    resolvedTransformICUToTransloco,
-    resourceCache,
-    trace,
-  );
+  // once, from every collection's own base values (a collection may override the base locale).
+  // Conflicts are a property of the key set, not of a locale. Its warnings were already reported
+  // by the locale passes, so they are dropped unless there were none.
+  const base = select(COLLECTION_BASE_LOCALE);
+  if (targetLocales.length === 0) {
+    warnings.push(...base.warnings);
+  }
+  const baseKeys = Array.from(base.entries.keys());
 
   const typesConfigured = hasTypeDistConfigured(bundleDefinition);
-  const baseKeysCount = Object.keys(baseLocaleData).length;
 
   if (typesConfigured && bundleDefinition.typeDistFile) {
-    files.push(describeFile(bundleDefinition.typeDistFile, 'types', baseKeysCount, cwd));
+    files.push(describeFile(bundleDefinition.typeDistFile, 'types', baseKeys.length, cwd));
   }
 
-  const conflictKeys = Array.from(trace.conflicts).sort();
+  const conflictKeys = Array.from(base.conflicts).sort();
 
   // A key that is both a leaf and a parent makes `buildHierarchy` throw during
   // generation, so surface it in the plan rather than letting the run explode.
-  const hierarchicalConflicts = detectHierarchicalConflicts(Object.keys(baseLocaleData)).sort();
+  const hierarchicalConflicts = detectHierarchicalConflicts(baseKeys).sort();
   for (const key of hierarchicalConflicts) {
     warnings.push(
       `Hierarchical conflict: bundled key '${key}' has a value and child keys; generation would fail. ` +
@@ -165,7 +165,7 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
     );
   }
 
-  const exampleKey = pickExampleKey(baseLocaleData, trace, typesConfigured, resolvedConstantName, resolvedTokenCasing);
+  const exampleKey = pickExampleKey(base, typesConfigured, resolvedConstantName, resolvedTokenCasing);
 
   return {
     bundleKey,
@@ -199,22 +199,17 @@ function describeFile(
 }
 
 function pickExampleKey(
-  baseLocaleData: Record<string, string>,
-  trace: BundleKeyTrace,
+  base: BundleSelection,
   typesConfigured: boolean,
   constantName: string,
   tokenCasing: TokenCasing,
 ): BundlePlanExampleKey | undefined {
-  const [firstKey] = Object.keys(baseLocaleData);
-  if (firstKey === undefined) {
+  const [first] = base.entries;
+  if (first === undefined) {
     return undefined;
   }
 
-  const origin = trace.origins.get(firstKey);
-  if (!origin) {
-    return undefined;
-  }
-
+  const [firstKey, { origin }] = first;
   const example: BundlePlanExampleKey = {
     collectionName: origin.collectionName,
     sourceKey: origin.sourceKey,

@@ -159,5 +159,30 @@ describe('hierarchy-builder', () => {
         },
       });
     });
+
+    it('treats __proto__ and constructor segments as ordinary keys without touching Object.prototype', () => {
+      const result = buildHierarchy({
+        '__proto__.x': 'polluted?',
+        'constructor.ok': 'OK',
+        'toString.label': 'Label',
+        'buttons.ok': 'Fine',
+      });
+
+      expect(({} as Record<string, unknown>).x).toBeUndefined();
+      expect(Object.prototype).not.toHaveProperty('x');
+      expect(JSON.parse(JSON.stringify(result))).toEqual(
+        JSON.parse(
+          '{"__proto__":{"x":"polluted?"},"constructor":{"ok":"OK"},"toString":{"label":"Label"},"buttons":{"ok":"Fine"}}',
+        ),
+      );
+    });
+
+    it('serializes normal keys exactly as a plain object would', () => {
+      const flat = { 'a.b': '1', 'a.c': '2', d: '3' };
+
+      expect(JSON.stringify(buildHierarchy(flat), null, 2)).toBe(
+        JSON.stringify({ a: { b: '1', c: '2' }, d: '3' }, null, 2),
+      );
+    });
   });
 });

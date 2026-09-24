@@ -41,7 +41,7 @@ const DEFAULT_DEBUG_KEYS_LOCALE = '99';
 export async function bundleCommand(options: BundleOptions): Promise<void> {
   const loaded = loadConfiguration({ exitOnError: false });
   if (!loaded) return;
-  const { config } = loaded;
+  const { config, cwd } = loaded;
 
   // Check if bundles are configured
   if (!config.bundles || Object.keys(config.bundles).length === 0) {
@@ -122,6 +122,7 @@ export async function bundleCommand(options: BundleOptions): Promise<void> {
         tokenConstantName: options.tokenConstantName,
         transformICUToTransloco: options.transformICUToTransloco,
         debugKeysLocale,
+        cwd,
       });
 
       bundleResults.push({

@@ -42,12 +42,14 @@ Bundle generation is a sub-module of `@simoncodes-ca/core`. The entry point is `
 ```
 libs/core/src/lib/bundle/
 ├── generate-bundle.ts          # generateBundle(): main entry point, GenerateBundleParams, GenerateBundleResult
+├── plan-bundle.ts              # planBundle(): the dry-run plan, writes nothing
+├── bundle-selection.ts         # resolveBundleCollections() + selectBundleEntries(): the Bundle Selection
 ├── resource-loader.ts          # loadCollectionResources(): one collection's FlatResource list per locale, via readCollection()
 ├── hierarchy-builder.ts        # buildHierarchy(): dot-keys → nested JSON object
 ├── pattern-matcher.ts          # matchesPattern(): glob-style key filtering
 ├── tag-filter.ts               # matchesTags(): AND/OR tag filter logic
 └── type-generation/
-    ├── generate-types.ts       # generateBundleTypes(): orchestrates type file generation
+    ├── generate-types.ts       # generateBundleTypes(): writes the type file from the selected keys
     ├── hierarchy-builder.ts    # buildTypeHierarchy(), serializeHierarchy()
     ├── key-transformer.ts      # segmentToPropertyName(), bundleKeyToConstantName(), constantNameToTypeName()
     └── file-header.ts          # generateFileHeader(): auto-generated file comment block
@@ -179,7 +181,7 @@ A more complex example demonstrating `bundledKeyPrefix`, filtered rules, and tag
 
 ## Entry Filtering Pipeline
 
-For each locale, `generateBundle()` iterates over each `CollectionBundleDefinition`, loads resources, applies the filtering pipeline, and merges results into a single flat key-value map. The pipeline for a single collection runs as follows.
+The pipeline is the [Bundle Selection](glossary.md#bundle-selection) (`bundle-selection.ts`). `resolveBundleCollections()` opens the collections once per run. Then, for each locale, `selectBundleEntries()` iterates over each `CollectionBundleDefinition`, loads resources, applies the filtering pipeline, and merges results into a single flat key-value map with the winning origin of each key. `generateBundle()`, `planBundle()` (the dry run) and the type file (keys only) all consume the same selection, so the rules below are applied in one place. The pipeline for a single collection runs as follows.
 
 ### Pipeline Flowchart
 
@@ -187,16 +189,20 @@ For each locale, `generateBundle()` iterates over each `CollectionBundleDefiniti
 
 ```mermaid
 flowchart TD
-    START([generateBundle called\nfor one locale]) --> RESOLVE_COLLECTIONS
+    START([resolveBundleCollections\nonce per run]) --> RESOLVE_COLLECTIONS
 
     RESOLVE_COLLECTIONS{"collections === 'All'?"}
     RESOLVE_COLLECTIONS -- Yes --> EXPAND["Expand: create a CollectionBundleDefinition\nfor each entry in config.collections\nwith entriesSelectionRules: 'All'"]
-    RESOLVE_COLLECTIONS -- No --> USE_DEFINED["Use the explicit\nCollectionBundleDefinition array"]
+    RESOLVE_COLLECTIONS -- No --> USE_DEFINED["Use the explicit\nCollectionBundleDefinition array\nName not in config → left out,\none warning per run"]
 
-    EXPAND --> FOR_EACH_COLLECTION
-    USE_DEFINED --> FOR_EACH_COLLECTION
+    EXPAND --> OPEN
+    USE_DEFINED --> OPEN
 
-    FOR_EACH_COLLECTION["For each CollectionBundleDefinition\n(sequential loop)"]
+    OPEN["openCollection(config, name, { cwd })\nfor each → BundleCollection[]"]
+
+    OPEN --> FOR_EACH_COLLECTION
+
+    FOR_EACH_COLLECTION["selectBundleEntries(collections, locale)\nFor each BundleCollection\n(sequential loop)"]
 
     FOR_EACH_COLLECTION --> LOAD_RESOURCES
 
@@ -207,7 +213,7 @@ flowchart TD
     RULES_ALL -- Yes --> ALL_PASS["All resources pass\n(no filtering)"]
     RULES_ALL -- No --> APPLY_RULES
 
-    APPLY_RULES["For each FlatResource:\nApply matchesAnyRule(resource, rules)"]
+    APPLY_RULES["For each FlatResource:\nkeep it if any rule matches"]
 
     APPLY_RULES --> FOR_EACH_RULE["For each EntrySelectionRule\n(short-circuit on first match)"]
 
@@ -236,11 +242,11 @@ flowchart TD
 
     ICU_CONVERT --> MERGE_CHECK
 
-    MERGE_CHECK{"Key already in\nbundleData?"}
+    MERGE_CHECK{"Key already in\nentries?"}
 
-    MERGE_CHECK -- No --> ADD_KEY["Add key to bundleData\nbundleData[finalKey] = finalValue"]
-    MERGE_CHECK -- Yes, strategy='override' --> OVERWRITE["Overwrite existing value\nbundleData[finalKey] = finalValue"]
-    MERGE_CHECK -- Yes, strategy='merge' --> SKIP_KEY["Skip\n(first collection wins)"]
+    MERGE_CHECK -- No --> ADD_KEY["Add entry\n{ value, origin: { collectionName, sourceKey } }"]
+    MERGE_CHECK -- Yes, strategy='override' --> OVERWRITE["Record a conflict\nReplace value and origin\n(key keeps its position)"]
+    MERGE_CHECK -- Yes, strategy='merge' --> SKIP_KEY["Record a conflict\nSkip (first collection wins)"]
 
     ADD_KEY --> NEXT_COLLECTION
     OVERWRITE --> NEXT_COLLECTION
@@ -250,16 +256,16 @@ flowchart TD
 
     NEXT_COLLECTION --> BUILD_HIERARCHY
 
-    BUILD_HIERARCHY["buildHierarchy(bundleData)\nFlat { 'a.b.c': 'val' }\n→ Nested { a: { b: { c: 'val' } } }"]
+    BUILD_HIERARCHY["generateBundle: buildHierarchy(values)\nFlat { 'a.b.c': 'val' }\n→ Nested { a: { b: { c: 'val' } } }"]
 
     BUILD_HIERARCHY --> WRITE_JSON
 
-    WRITE_JSON["writeBundleFile()\nWrite <dist>/<bundleName>.json\nCreate output directory if absent"]
+    WRITE_JSON["writeBundleFile()\nWrite <dist>/<bundleName>.json\n(resolved against cwd)\nCreate output directory if absent"]
 
     WRITE_JSON --> TYPE_GEN_CHECK{"typeDistFile\nconfigured?"}
 
     TYPE_GEN_CHECK -- No --> DONE(["Bundle complete for this locale"])
-    TYPE_GEN_CHECK -- Yes --> GENERATE_TYPES["generateBundleTypes()\n(runs once per bundle, not per locale)\nSee Type Generation section"]
+    TYPE_GEN_CHECK -- Yes --> GENERATE_TYPES["generateBundleTypes()\n(runs once per bundle, not per locale)\nkeys = selection with\nCOLLECTION_BASE_LOCALE, no ICU\nSee Type Generation section"]
 
     GENERATE_TYPES --> DONE
 
@@ -294,12 +300,14 @@ Any other pattern form (e.g. `'*.suffix'`, `'apps.*.buttons'`) is not supported 
 
 ### Merge Strategy
 
-When two `CollectionBundleDefinition` entries (or one collection iterated by `'All'`) produce the same final key, the `mergeStrategy` on the **second** definition controls the outcome:
+When two `CollectionBundleDefinition` entries (or one collection iterated by `'All'`) produce the same final key, the key is recorded in the selection's `conflicts` (the dry-run plan reports them), and the `mergeStrategy` on the **second** definition controls the outcome:
 
 - `'merge'` (default) — the first value written wins. Subsequent collections that produce the same key are silently skipped.
 - `'override'` — the later collection's value unconditionally replaces the previously written value.
 
 This allows a layered composition pattern: a base design-system collection uses `'merge'`, and an app-specific collection uses `'override'` to patch specific keys.
+
+**Key order.** The selection keeps its keys in the order it first selects them: collection order, then folder order. An `'override'` replaces the value but keeps the key's position. The dry-run plan's example key is the first key in that order. This changed with the Bundle Selection: the example key used to be the first key of a plain object, which lists a numeric-like key such as `404` before every other key, whatever collection it came from.
 
 ---
 
@@ -307,7 +315,7 @@ This allows a layered composition pattern: a base design-system collection uses 
 
 LingoTracker stores translation values in [ICU format](glossary.md#icu-format) internally. At bundle time, `icuToTransloco()` from `@simoncodes-ca/domain` converts them to the syntax Angular's Transloco library expects. For the full explanation of why ICU is the internal storage format, see [domain-and-data-model.md — ICU vs Transloco Format](domain-and-data-model.md#icu-vs-transloco-format).
 
-**Conversion happens per value, after filtering, before merging into `bundleData`.**
+**Conversion happens per value, inside `selectBundleEntries()`, after filtering and before merging.** It is part of the selection so that the bundle and the dry-run plan report the same warnings. `generateBundle()`'s base selection, which gives the debug-keys bundle and the type file their keys, turns the conversion off, because it uses keys only.
 
 The conversion rules applied by `icuToTransloco()`:
 
@@ -344,7 +352,7 @@ On both shapes, the interpolation pass strands a branch with no body. The ICU co
 
 ### Per-Locale JSON Files
 
-For each locale in `config.locales` (or the `--locale` CLI override), one JSON file is written to `<dist>/<bundleName>.json`. The `{locale}` placeholder in `bundleName` is replaced with the locale code before the path is resolved.
+For each locale in `config.locales` (or the `--locale` CLI override), one JSON file is written to `<dist>/<bundleName>.json`. The `{locale}` placeholder in `bundleName` is replaced with the locale code, and a relative path is resolved against the project directory (`cwd` on `generateBundle`: the CLI's `INIT_CWD`-aware directory, the API's `process.cwd()`). Collection `translationsFolder` values resolve against the same directory.
 
 Example for the `"main"` bundle with `bundleName: "{locale}"` and `dist: "./dist/i18n"`:
 
@@ -390,7 +398,7 @@ Output nested JSON (`en.json`):
 }
 ```
 
-**Locale fallback**: if a [resource entry](glossary.md#resource-entry) has no translation for the target locale, `loadCollectionResources()` omits that key from `FlatResource[]` — it does not silently fall back to the base locale value. For the collection's own base locale (each collection is opened with `openCollection()`, so a collection can override the global `baseLocale`) the value is `entry.source`; all other locale values are the stored translations. An entry without a value for the requested locale simply does not appear in the bundle. The debug-keys bundle and the dry-run plan's key set (conflicts, example key, types count) read each collection's own base values instead (`COLLECTION_BASE_LOCALE`), so a collection with its own base locale is never left out of them.
+**Locale fallback**: if a [resource entry](glossary.md#resource-entry) has no translation for the target locale, `loadCollectionResources()` omits that key from `FlatResource[]` — it does not silently fall back to the base locale value. For the collection's own base locale (each collection is opened with `openCollection()`, so a collection can override the global `baseLocale`) the value is `entry.source`; all other locale values are the stored translations. An entry without a value for the requested locale simply does not appear in the bundle. The debug-keys bundle, the type file's keys, and the dry-run plan's key set (conflicts, example key, types count) read each collection's own base values instead (`COLLECTION_BASE_LOCALE`), so a collection with its own base locale is never left out of them.
 
 **Reading**: the entries come from the [Collection Reader](glossary.md#collection-reader) (`readCollection()`), read once per collection per run. Its rules apply: entries without metadata are bundled, hidden folders are skipped, and a folder that cannot be read is left out and reported in the bundle result's `warnings`. Selection rules match against the reader's effective tags (collection tags united with the entry's own).
 
@@ -423,7 +431,7 @@ When `typeDistFile` is set on a `BundleDefinition`, `generateBundleTypes()` emit
 2. An `export const` declaration: the key tree as an `as const` object.
 3. An `export type` declaration: the type alias derived from the `const`.
 
-The type file is written to the path specified by `typeDistFile`, resolved with `path.resolve()`. The output directory is created if it does not already exist.
+The type file is written to the path specified by `typeDistFile`, resolved against the project directory (`cwd`). The output directory is created if it does not already exist. `generateBundleTypes({ bundleKey, definition, keys, tokenCasing, tokenConstantName, cwd })` does not select keys: `generateBundle()` passes the [Bundle Selection](glossary.md#bundle-selection)'s base keys, the same key set as the debug-keys bundle.
 
 ---
 
@@ -595,5 +603,5 @@ CLI flag  →  BundleDefinition field  →  global config field  →  hard defau
 - [domain-and-data-model.md](domain-and-data-model.md) — ICU format, resource entry structure (`ResourceEntry`, `TrackerMetadata`), and the full explanation of internal vs. bundle-time format.
 - [frontend.md](frontend.md) — how the Tracker UI imports and uses the generated type constants via Transloco.
 - [cli.md](cli.md) — the `bundle` CLI command that invokes `generateBundle()`, including interactive bundle selection and locale filtering.
-- [api.md](api.md) — the REST API does not expose a bundle endpoint; bundle generation is CLI-only.
+- [api.md](api.md) — the REST API's bundle endpoints: definition CRUD, `POST /bundles/dry-run` (`planBundle`), `POST /bundles/:name/generate` (a `generateBundle` job) and `GET /bundles/jobs/:jobId`.
 - [glossary.md](glossary.md) — definitions for [bundle](glossary.md#bundle), [resource key](glossary.md#resource-key), [ICU format](glossary.md#icu-format), [Transloco](glossary.md#transloco), [collection](glossary.md#collection), [base locale](glossary.md#base-locale).

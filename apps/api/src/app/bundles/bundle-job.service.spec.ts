@@ -75,7 +75,7 @@ describe('BundleJobService', () => {
     expect(service.getJob('nope')).toBeUndefined();
   });
 
-  it('passes the bundle params, locales and an onProgress callback to generateBundle', async () => {
+  it('passes the bundle params, locales, the project directory and an onProgress callback to generateBundle', async () => {
     mockGenerateBundle.mockResolvedValue(makeResult());
 
     service.startJob({ ...makeParams(), locales: ['fr'] });
@@ -87,6 +87,7 @@ describe('BundleJobService', () => {
     expect(params.bundleDefinition).toBe(bundleDefinition);
     expect(params.config).toBe(config);
     expect(params.locales).toEqual(['fr']);
+    expect(params.cwd).toBe(process.cwd());
     expect(typeof params.onProgress).toBe('function');
   });
 

@@ -93,6 +93,7 @@ export class BundleJobService {
         config: params.config,
         ...(params.locales && { locales: params.locales }),
         onProgress,
+        cwd: process.cwd(),
       });
 
       const completed = this.#jobs.get(jobId);

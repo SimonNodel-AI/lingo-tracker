@@ -199,6 +199,14 @@ describe('bundleCommand', () => {
     });
   });
 
+  describe('project directory', () => {
+    it('passes the directory the config was loaded from to generateBundle', async () => {
+      await bundleCommand({ name: 'core' });
+
+      expect(mockGenerateBundle).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/test' }));
+    });
+  });
+
   describe('locale filtering', () => {
     it('should pass single locale filter to generateBundle', async () => {
       await bundleCommand({ name: 'core', locale: 'en' });

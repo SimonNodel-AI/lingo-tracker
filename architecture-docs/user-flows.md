@@ -83,12 +83,13 @@ sequenceDiagram
 
     Note over Dev,FS: 5. Bundle
     Dev->>CLI: bundle
-    CLI->>Core: generateBundle(params)
-    Core->>FS: loadCollectionResources() — readCollection(): entries + metadata per folder, once per collection
-    Core->>Domain: icuToTransloco(value) — per entry
+    CLI->>Core: generateBundle({ ..., cwd })
+    Core->>Core: resolveBundleCollections() — open each collection once
+    Core->>FS: selectBundleEntries() per locale — readCollection(), once per collection
+    Core->>Domain: icuToTransloco(value) — per selected entry
     Core->>Core: buildHierarchy() — dot-keys → nested object
     Core->>FS: writeBundleFile(dist/i18n/en.json, dist/i18n/fr.json, ...)
-    Core->>Core: generateBundleTypes() [if typeDist configured]
+    Core->>Core: generateBundleTypes(base keys) [if typeDistFile configured]
     Core->>FS: write TRACKER_TOKENS type file
     Core-->>CLI: BundleResult
     CLI-->>Dev: "Bundle written"

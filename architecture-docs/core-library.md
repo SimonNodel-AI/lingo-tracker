@@ -65,11 +65,13 @@ libs/core/src/
 └── lib/                          # Deeper sub-modules
     ├── bundle/                   # Bundle generation pipeline
     │   ├── generate-bundle.ts    # generateBundle(): main entry point
+    │   ├── plan-bundle.ts        # planBundle(): the dry-run plan (files, key counts, conflicts), writes nothing
+    │   ├── bundle-selection.ts   # Bundle Selection: resolveBundleCollections() + selectBundleEntries()
     │   ├── resource-loader.ts    # loadCollectionResources(): one collection's values for one locale, via readCollection()
     │   ├── hierarchy-builder.ts  # buildHierarchy(): dot-keys → nested JSON object
     │   ├── pattern-matcher.ts    # matchesPattern(): glob-style key filtering
     │   ├── tag-filter.ts         # matchesTags(): AND/OR tag filter logic
-    │   └── type-generation/      # TypeScript type file generation from bundle keys
+    │   └── type-generation/      # generateBundleTypes(): the TypeScript type file from the selected keys
     │
     ├── config/                   # Config file I/O and collection resolution
     │   ├── load-config.ts        # loadConfig(): the only reader of .lingo-tracker.json
@@ -258,7 +260,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 | Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
 | Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
 
-Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
+Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the [Bundle Selection](#bundle-selection) and the other bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
 
 ---
 
@@ -431,7 +433,7 @@ The caller decides what a problem means:
 |---|---|
 | `validateResources` | Lists it in `unreadableFolders`, and validation fails. |
 | `runExport` | Lists it under `malformedFiles` in the result and the summary. The other resources are exported. |
-| Bundle and type generation (`loadCollectionResources`) | Adds a warning to the bundle result, once for each collection. Type generation logs it. |
+| Bundle generation, the dry-run plan and type generation (the [Bundle Selection](#bundle-selection), through `loadCollectionResources`) | Adds a warning to the bundle result or the plan, once for each collection per run. |
 | `glossary` (CLI) | Writes a warning to stderr. |
 | `loadResourceTree`, `searchTranslations` | Log it. The tree keeps the folder, with no resources. |
 | `translateLocale` | Does not translate the folder's resources and adds one line to `warnings` in the result (`Folder '<path>' was not translated: <message>`). The CLI prints the warnings after the summary; the API translation job logs them with `Logger.warn`. |
@@ -629,15 +631,29 @@ The pointer-setting functions call `assertWritableProtectedTermsPath()` *before*
 
 Key steps:
 
-1. **Resolve configuration** — token casing, ICU-to-Transloco transformation flag, and target locales are resolved via a three-level priority chain: CLI override → bundle config → global config → default.
-2. **Load resources** — each collection is opened with `openCollection(config, name)`. `loadCollectionResources(collection, locale, cache, warnings)` reads it through the [Collection Reader](#collection-reader) once per run (the cache holds each collection's read). It returns one `{ key, value, tags }` for each entry that has a value for the locale, with the reader's effective tags. The value is `source` when the locale is the collection's own base locale, and the stored translation otherwise. An entry with no value for the locale is left out. A folder that cannot be read becomes a warning. The base data of a run — the debug-keys bundle, and the plan's key set, conflicts and types count — passes `COLLECTION_BASE_LOCALE` instead of a locale, so each collection gives its own base values even when it overrides the global base locale.
-3. **Filter entries** — `EntrySelectionRule` objects in the `BundleDefinition` combine pattern matching (`matchesPattern()`) and tag filtering (`matchesTags()`) to include only the relevant subset of resources. Collections set to `'All'` skip filtering.
-4. **ICU conversion** — when `transformICUToTransloco` is `true` (the default), `icuToTransloco()` from `@simoncodes-ca/domain` is called on each value. Values with malformed ICU syntax are passed through with a warning.
-5. **Build hierarchy** — `buildHierarchy()` converts the flat `{dotKey: value}` map into a nested object matching the Angular Transloco expected structure.
-6. **Write output** — `writeBundleFile()` creates the output directory if needed and writes the JSON file at the path defined by `bundleDefinition.dist` + `bundleDefinition.bundleName.replace('{locale}', locale)`.
-7. **Type generation** — if `bundleDefinition.typeDist` is configured, `generateBundleTypes()` emits a TypeScript constant file with the translation key tree for use in Angular templates.
+1. **Resolve configuration** — token casing, ICU-to-Transloco transformation flag, and target locales are resolved via a three-level priority chain: CLI override → bundle config → global config → default. `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API `process.cwd()`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
+2. **Resolve the collections** — `resolveBundleCollections(definition, config, { cwd })` opens each collection the definition reads once per run, with `openCollection(config, name, { cwd })`. See [Bundle Selection](#bundle-selection).
+3. **Select, per locale** — `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` returns the locale's final keys with their values and origins. It reads, filters, prefixes, converts ICU and merges.
+4. **Build hierarchy** — `buildHierarchy()` converts the flat `{dotKey: value}` map into a nested object matching the Angular Transloco expected structure.
+5. **Write output** — `writeBundleFile()` creates the output directory if needed and writes the JSON file at `getBundleOutputPath(definition, locale)` (`dist` + `bundleName.replace('{locale}', locale)`), resolved against `cwd`. A locale with no entries is skipped with a warning.
+6. **Base keys** — the debug-keys bundle and the type file use one more selection with `COLLECTION_BASE_LOCALE` and no ICU conversion: every collection's own base keys, computed once.
+7. **Type generation** — if `typeDistFile` (or the deprecated `typeDist`) is configured, `generateBundleTypes({ bundleKey, definition, keys, tokenCasing, tokenConstantName, cwd })` writes the TypeScript constant file from those keys. It does not read collections itself.
 
-For a deep-dive into `BundleDefinition` configuration and the type generation sub-pipeline, see [bundle-generation.md](bundle-generation.md) *(phase 5, coming soon)*.
+`planBundle(params)` in `lib/bundle/plan-bundle.ts` runs steps 1 to 3 and writes nothing. It also makes one selection with `COLLECTION_BASE_LOCALE`, with the resolved ICU flag (its warnings are kept only when there are no target locales). It reports the files it would write, the keys per locale, the conflicts (from that selection's `conflicts`), the hierarchical conflicts and an example key: the first key the selection produced, in collection then folder order, with its origin.
+
+### Bundle Selection
+
+**Entry points:** `resolveBundleCollections(definition, config, { cwd })` and `selectBundleEntries(collections, locale, options)` in `lib/bundle/bundle-selection.ts`
+
+The [Bundle Selection](glossary.md#bundle-selection) is the one place that decides what a bundle holds. `generateBundle`, `planBundle` and the type file all consume it.
+
+- `resolveBundleCollections` expands `'All'` to every collection in the config, with `entriesSelectionRules: 'All'` and no prefix. It opens each named collection once and pairs it with its `CollectionBundleDefinition` (a `BundleCollection`). A name the config does not have is left out and reported once per run: `Collection '<name>' not found in config`.
+- `selectBundleEntries` reads each collection for the locale with `loadCollectionResources` (the `source` for the collection's own base locale or `COLLECTION_BASE_LOCALE`, otherwise the stored translation). It keeps the entries that match any rule (`matchesPattern()` and `matchesTags()` on the reader's effective tags), prepends `bundledKeyPrefix`, and converts ICU to Transloco when asked. Then it merges in definition order: the first value of a final key wins, unless a later collection's `mergeStrategy` is `'override'`.
+- The result is `{ entries, conflicts, warnings }`. `entries` maps each final key to `{ value, origin: { collectionName, sourceKey } }` in first-selected order. `conflicts` holds the final keys that more than one resource defines. `warnings` holds the unreadable folders (on the first read of a run, through the shared `cache`) and the ICU warnings: a malformed value, and a branch body that cannot be carried to Transloco.
+
+The ICU conversion is inside the selection because the bundle and the plan report the same warnings for the same values. `generateBundle`'s base selection (for the debug-keys bundle and the type file) turns it off, because it uses keys only. The type file selects nothing itself: `generateBundleTypes` receives those keys.
+
+For a deep-dive into `BundleDefinition` configuration and the type generation sub-pipeline, see [bundle-generation.md](bundle-generation.md).
 
 ---
 

@@ -13,13 +13,21 @@
  * @returns Hierarchical object
  */
 export function buildHierarchy(flatEntries: Record<string, string>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  const result = createNode();
 
   for (const [key, value] of Object.entries(flatEntries)) {
     setNestedValue(result, key, value);
   }
 
   return result;
+}
+
+/**
+ * A tree node without a prototype, so a key segment such as `__proto__` or `constructor` is an
+ * ordinary property. `JSON.stringify` writes it the same as a plain object.
+ */
+function createNode(): Record<string, unknown> {
+  return Object.create(null) as Record<string, unknown>;
 }
 
 /**
@@ -36,9 +44,9 @@ function setNestedValue(obj: Record<string, unknown>, key: string, value: string
   for (let i = 0; i < segments.length - 1; i++) {
     const segment = segments[i];
 
-    // Create intermediate object if it doesn't exist
-    if (!(segment in current)) {
-      current[segment] = {};
+    // Create intermediate object if it doesn't exist (own properties only; lib es2020 has no Object.hasOwn)
+    if (Object.getOwnPropertyDescriptor(current, segment) === undefined) {
+      current[segment] = createNode();
     }
 
     // Navigate deeper (cast as Record for type safety)

@@ -97,6 +97,22 @@ describe('Hierarchy Builder', () => {
       expect(commonNode.value).toBe('common');
       expect(commonNode.children['TITLE']).toBeDefined();
     });
+
+    it('treats __proto__ and constructor segments as ordinary children without touching Object.prototype', () => {
+      const result = buildTypeHierarchy(['__proto__.x', 'constructor.ok', 'constructor'], 'camelCase');
+
+      expect(Object.prototype).not.toHaveProperty('value');
+      expect(Object.prototype).not.toHaveProperty('x');
+      expect(Object.keys(result.children)).toEqual(['__proto__', 'constructor']);
+      expect(Object.getOwnPropertyDescriptor(result.children, '__proto__')?.value).toEqual({
+        children: { x: { children: {}, value: '__proto__.x' } },
+      });
+      expect(result.children.constructor).toEqual({
+        children: { ok: { children: {}, value: 'constructor.ok' } },
+        value: 'constructor',
+      });
+      expect(serializeHierarchy(result, 'TOKENS')).toContain("ok: 'constructor.ok',");
+    });
   });
 
   describe('serializeHierarchy', () => {
