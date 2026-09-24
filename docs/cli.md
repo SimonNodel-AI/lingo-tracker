@@ -720,7 +720,7 @@ Translating locale 'fr' in collection 'playground'...
 Done.
 
 Translated: 45 resources
-Skipped (ICU): 3 resources
+Skipped (needs human translation): 3 resources
 Failed: 0 resources
 ```
 
@@ -734,7 +734,8 @@ Failed: 0 resources
 
 **Notes:**
 - Only resources with status `new` or `stale` are translated; `translated` and `verified` resources are left unchanged
-- Resources whose base value uses complex ICU syntax are skipped and reported in the "Skipped (ICU)" count
+- Resources whose base value uses complex ICU syntax, and translations that lose a placeholder or drop a [protected term](./features/protected-terms.md), are skipped and reported in the "Skipped (needs human translation)" count
+- Translations are stored in ICU format (`{{ name }}` becomes `{name}`)
 - Throttling is controlled by `batchSize` and `delayMs` in the `translation` config block; see [Auto-Translation](./auto-translation.md) for recommended settings
 - Requires `translation.enabled: true` in `.lingo-tracker.json`
 

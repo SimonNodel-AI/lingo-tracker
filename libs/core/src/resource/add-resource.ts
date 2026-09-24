@@ -1,6 +1,7 @@
 import { isUntranslatedCopy, normalizeTags, translocoToICU } from '@simoncodes-ca/domain';
 import type { Collection } from '../lib/config/open-collection';
 import { ensureDirectoryExists } from '../lib/file-io/directory-operations';
+import type { OpenTranslatorOptions } from '../lib/translation/translator';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder } from '../lib/resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
@@ -32,7 +33,7 @@ export interface AddResourceResult {
   readonly created: boolean;
   /** Every translation written, supplied and seeded. */
   readonly translations: ResourceTranslation[];
-  /** Locales the provider did not translate (ICU messages). Present only when auto-translation ran. */
+  /** Locales the Translator skipped (see {@link seedLocales}). Present only when auto-translation ran. */
   readonly skippedLocales?: string[];
   /** The `upsert` for the stored entry. */
   readonly mutations: ResourceMutation[];
@@ -50,11 +51,17 @@ export interface AddResourceResult {
  * Values are normalized to ICU before they are stored. Nothing is written when the
  * translation provider fails.
  *
+ * @param options - `provider` / `protectedTerms`: used instead of the collection's (see `openTranslator`).
  * @throws {InvalidResourceKeyError} The key or `targetFolder` is malformed.
  * @throws {LocaleNotFoundError} A supplied translation names a locale the collection does not have.
  * @throws {TranslationError} The translation provider failed.
+ * @throws {ProtectedTermsFileError} Auto-translation runs and a protected-terms file is malformed.
  */
-export async function addResource(collection: Collection, params: AddResourceParams): Promise<AddResourceResult> {
+export async function addResource(
+  collection: Collection,
+  params: AddResourceParams,
+  options: OpenTranslatorOptions = {},
+): Promise<AddResourceResult> {
   const { baseLocale, translationsFolder } = collection;
   const paths = validateAndResolvePaths({ key: params.key, translationsFolder, targetFolder: params.targetFolder });
 
@@ -66,7 +73,7 @@ export async function addResource(collection: Collection, params: AddResourcePar
 
   const baseValue = translocoToICU(params.baseValue);
   // Resolve every value before touching the disk, so a provider failure writes nothing.
-  const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) });
+  const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) }, options);
   const translations: ResourceTranslation[] = [
     ...supplied.map(({ locale, value, status }) => {
       const normalized = translocoToICU(value);

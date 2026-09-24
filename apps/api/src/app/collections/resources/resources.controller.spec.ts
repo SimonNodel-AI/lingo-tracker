@@ -1284,6 +1284,10 @@ describe('ResourcesController', () => {
 
       await resourcesController.translateLocale('test-collection', { locale: 'fr-ca' }, mockResponse as any);
 
+      expect(translationJobService.startJob).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationConfig: configWithTranslation.translation }),
+        'fr-ca',
+      );
       expect(mockResponse.status).toHaveBeenCalledWith(202);
       expect(mockResponse.json).toHaveBeenCalledWith(mockJobDto);
     });

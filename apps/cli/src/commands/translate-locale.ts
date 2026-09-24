@@ -113,19 +113,12 @@ export async function translateLocaleCommand(options: TranslateLocaleOptions): P
   // Run translation
   // -------------------------------------------------------------------------
 
-  const { translationsFolder } = collection;
-
   console.log('');
   ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);
 
   try {
-    const result = await translateLocale({
-      translationsFolder,
-      translationConfig,
+    const result = await translateLocale(collection, {
       targetLocale,
-      baseLocale,
-      allLocales,
-      cwd,
       onProgress: options.verbose
         ? (progress) => {
             ConsoleFormatter.indent(
@@ -143,8 +136,15 @@ export async function translateLocaleCommand(options: TranslateLocaleOptions): P
     console.log('');
     ConsoleFormatter.success(`Translated locale '${targetLocale}' in collection '${collectionName}'`);
     ConsoleFormatter.keyValue('Translated', result.translatedCount);
-    ConsoleFormatter.keyValue('Skipped (ICU)', result.skippedCount);
+    ConsoleFormatter.keyValue('Skipped (needs human translation)', result.skippedCount);
     ConsoleFormatter.keyValue('Failed', result.failedCount);
+
+    if (result.warnings.length > 0) {
+      console.log('');
+      for (const warning of result.warnings) {
+        ConsoleFormatter.warning(warning);
+      }
+    }
 
     if (result.failures.length > 0) {
       console.log('');

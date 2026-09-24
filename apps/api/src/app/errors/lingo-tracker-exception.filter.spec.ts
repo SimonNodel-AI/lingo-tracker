@@ -16,6 +16,7 @@ import {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  ProtectedTermsFileError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
@@ -116,6 +117,15 @@ describe('toHttpException', () => {
       new InvalidBundleDefinitionError(['a', 'b']),
       400,
       { message: 'Invalid bundle definition: a; b', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
+      new ProtectedTermsFileError('/p/terms.json', 'Protected terms file is not valid JSON: /p/terms.json'),
+      500,
+      {
+        message: 'Protected terms file is not valid JSON: /p/terms.json',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
     ],
     [
       new LingoTrackerError('Unmapped', 'UNMAPPED'),

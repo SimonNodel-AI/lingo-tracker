@@ -19,6 +19,7 @@ export {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  ProtectedTermsFileError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,

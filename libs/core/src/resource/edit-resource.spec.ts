@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import type { TranslationConfig } from '../config/translation-config';
 import { type Collection, openCollection } from '../lib/config/open-collection';
@@ -12,12 +12,10 @@ import {
   ResourceNotFoundError,
 } from '../lib/errors/lingo-tracker-error';
 import { openResourceFolder } from '../lib/resource/resource-folder';
-import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
+import { InMemoryTranslationProvider } from '../lib/translation/in-memory-translation-provider';
 import { TranslationError } from '../lib/translation/translation-provider';
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
-
-vi.mock('../lib/translation/auto-translate-resources');
 
 const AUTO: TranslationConfig = { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' };
 
@@ -33,7 +31,7 @@ describe('editResource (real fs)', () => {
       collections: { main: { translationsFolder: join(root, 'translations') } },
       ...(translation && { translation }),
     };
-    return openCollection(config, 'main');
+    return openCollection(config, 'main', { cwd: root });
   }
 
   /**
@@ -54,7 +52,6 @@ describe('editResource (real fs)', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'edit-resource-'));
-    vi.mocked(autoTranslateResource).mockReset();
     seedEntry();
   });
 
@@ -80,7 +77,9 @@ describe('editResource (real fs)', () => {
 
   describe('base value change', () => {
     it('keeps real translations as `stale` and re-seeds copies and missing locales as `new`', async () => {
-      const result = await editResource(collection(), 'common.save', { baseValue: 'Save all' });
+      const provider = new InMemoryTranslationProvider();
+
+      const result = await editResource(collection(), 'common.save', { baseValue: 'Save all' }, { provider });
 
       expect(read('resource_entries.json', 'common').save).toEqual({
         source: 'Save all',
@@ -95,37 +94,37 @@ describe('editResource (real fs)', () => {
       expect(meta.es.status).toBe('new');
       expect(result.updated).toBe(true);
       expect(result.skippedLocales).toBeUndefined();
-      expect(autoTranslateResource).not.toHaveBeenCalled();
+      expect(provider.calls).toEqual([]);
     });
 
     it('auto-translates every locale that needs work, except those supplied in the same edit', async () => {
-      vi.mocked(autoTranslateResource).mockResolvedValue({
-        translations: [{ locale: 'de', value: 'Alles speichern', status: 'translated' }],
-        skippedLocales: ['es'],
-      });
+      // es loses the placeholder marker, so the Translator skips it.
+      const provider = new InMemoryTranslationProvider(({ text, targetLocale }) =>
+        targetLocale === 'de' ? text.replace('Save all', 'Alles speichern') : 'Guardar todo',
+      );
 
-      const result = await editResource(collection(AUTO), 'common.save', {
-        baseValue: 'Save all',
-        translations: { fr: { value: 'Tout enregistrer', status: 'translated' } },
-      });
+      const result = await editResource(
+        collection(AUTO),
+        'common.save',
+        {
+          baseValue: 'Save all {count}',
+          translations: { fr: { value: 'Tout enregistrer {count}', status: 'translated' } },
+        },
+        { provider },
+      );
 
-      expect(autoTranslateResource).toHaveBeenCalledWith({
-        baseValue: 'Save all',
-        baseLocale: 'en',
-        targetLocales: ['de', 'es'],
-        translationConfig: AUTO,
-      });
+      expect(provider.calls.map((call) => call.map(({ targetLocale }) => targetLocale))).toEqual([['de'], ['es']]);
       expect(read('resource_entries.json', 'common').save).toEqual({
-        source: 'Save all',
-        fr: 'Tout enregistrer',
-        de: 'Alles speichern',
-        es: 'Save all',
+        source: 'Save all {count}',
+        fr: 'Tout enregistrer {count}',
+        de: 'Alles speichern {count}',
+        es: 'Save all {count}',
       });
       const meta = read('tracker_meta.json', 'common').save;
       expect(meta.fr.status).toBe('translated');
       expect(meta.de).toEqual({
-        checksum: md5('Alles speichern'),
-        baseChecksum: md5('Save all'),
+        checksum: md5('Alles speichern {count}'),
+        baseChecksum: md5('Save all {count}'),
         status: 'translated',
       });
       expect(meta.es.status).toBe('new');
@@ -133,20 +132,24 @@ describe('editResource (real fs)', () => {
     });
 
     it('keeps the saved edit when the provider fails', async () => {
-      vi.mocked(autoTranslateResource).mockRejectedValue(new TranslationError('down', 'SERVICE_ERROR', true));
+      const provider = new InMemoryTranslationProvider(() => {
+        throw new TranslationError('down', 'SERVICE_ERROR', true);
+      });
 
-      await expect(editResource(collection(AUTO), 'common.save', { baseValue: 'Save all' })).rejects.toThrow(
-        TranslationError,
-      );
+      await expect(
+        editResource(collection(AUTO), 'common.save', { baseValue: 'Save all' }, { provider }),
+      ).rejects.toThrow(TranslationError);
 
       expect(read('resource_entries.json', 'common').save.source).toBe('Save all');
       expect(read('tracker_meta.json', 'common').save.fr.status).toBe('stale');
     });
 
     it('does not seed anything when only the comment changes', async () => {
-      await editResource(collection(AUTO), 'common.save', { comment: 'Toolbar button' });
+      const provider = new InMemoryTranslationProvider();
 
-      expect(autoTranslateResource).not.toHaveBeenCalled();
+      await editResource(collection(AUTO), 'common.save', { comment: 'Toolbar button' }, { provider });
+
+      expect(provider.calls).toEqual([]);
       expect(read('resource_entries.json', 'common').save.es).toBeUndefined();
     });
 
@@ -256,20 +259,24 @@ describe('editResource (real fs)', () => {
     });
 
     describe('while auto-translation is awaited', () => {
-      /** Makes the provider wait until `release()`; `called` resolves once the edit is awaiting it. */
-      function holdProvider(): { called: Promise<void>; release: () => void } {
+      /** A provider that waits until `release()`; `called` resolves once the edit is awaiting it. */
+      function holdProvider(): { provider: InMemoryTranslationProvider; called: Promise<void>; release: () => void } {
         let release = (): void => undefined;
         let markCalled = (): void => undefined;
         const called = new Promise<void>((resolve) => {
           markCalled = resolve;
         });
-        vi.mocked(autoTranslateResource).mockImplementation(() => {
-          markCalled();
-          return new Promise((resolve) => {
-            release = () => resolve({ translations: [], skippedLocales: [] });
-          });
+        const held = new Promise<void>((resolve) => {
+          release = resolve;
         });
-        return { called, release: () => release() };
+        const provider = new InMemoryTranslationProvider();
+        const translate = provider.translate.bind(provider);
+        provider.translate = async (requests) => {
+          markCalled();
+          await held;
+          return translate(requests);
+        };
+        return { provider, called, release: () => release() };
       }
 
       function writeDestinationEntry(key: string, value: string): void {
@@ -281,7 +288,12 @@ describe('editResource (real fs)', () => {
       it('keeps an entry written to the destination folder meanwhile, and still moves the edited entry', async () => {
         const provider = holdProvider();
 
-        const editing = editResource(collection(AUTO), 'common.save', { baseValue: 'Save all', moveTo: 'dialogs' });
+        const editing = editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue: 'Save all', moveTo: 'dialogs' },
+          { provider: provider.provider },
+        );
         await provider.called;
         writeDestinationEntry('cancel', 'Cancel');
         provider.release();
@@ -296,7 +308,12 @@ describe('editResource (real fs)', () => {
       it('throws ResourceAlreadyExistsError when the entry key was taken meanwhile, keeping both entries', async () => {
         const provider = holdProvider();
 
-        const editing = editResource(collection(AUTO), 'common.save', { baseValue: 'Save all', moveTo: 'dialogs' });
+        const editing = editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue: 'Save all', moveTo: 'dialogs' },
+          { provider: provider.provider },
+        );
         await provider.called;
         writeDestinationEntry('save', 'Other');
         provider.release();

@@ -25,6 +25,7 @@ describe('mutations returned by core writes (real fs)', () => {
     targetLocales: ['fr'],
     translationConfig: undefined,
     tags: [],
+    protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
     readOnly: false,
     config: { translationsFolder },
   });

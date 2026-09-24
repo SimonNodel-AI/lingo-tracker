@@ -24,6 +24,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     targetLocales: ['fr', 'es'],
     translationConfig: undefined,
     tags: [],
+    protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
     readOnly: false,
     config: { translationsFolder },
   });

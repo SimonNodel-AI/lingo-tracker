@@ -45,6 +45,7 @@ const RESOLVED_COLLECTION: Collection = {
   targetLocales: ['fr'],
   translationConfig: undefined,
   tags: [],
+  protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
   readOnly: false,
   config: { translationsFolder: 'src/i18n' },
 };

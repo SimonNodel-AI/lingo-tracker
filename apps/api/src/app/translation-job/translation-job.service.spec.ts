@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { TranslationJobService } from './translation-job.service';
 import type { CollectionIndex } from '../cache/collection-index.service';
 import { TranslationError } from '@simoncodes-ca/core';
-import type { TranslateLocaleResult, TranslateLocaleProgress } from '@simoncodes-ca/core';
+import type { Collection, TranslateLocaleResult, TranslateLocaleProgress } from '@simoncodes-ca/core';
 
 const mockTranslateLocale = jest.fn();
 
@@ -10,7 +10,7 @@ jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
   return {
     ...actual,
-    translateLocale: (params: unknown) => mockTranslateLocale(params),
+    translateLocale: (collection: unknown, params: unknown) => mockTranslateLocale(collection, params),
   };
 });
 
@@ -21,18 +21,24 @@ const makeSuccessResult = (overrides: Partial<TranslateLocaleResult> = {}): Tran
   skippedCount: 0,
   failures: [{ key: 'apps.button.ok', error: 'Rate limit exceeded' }],
   skippedKeys: [],
+  warnings: [],
   ...overrides,
 });
 
-const makeStartJobParams = () => ({
-  collectionName: 'my-collection',
+const collection: Collection = {
+  name: 'my-collection',
   translationsFolder: '/path/to/translations',
-  translationConfig: { enabled: true, provider: 'google', apiKeyEnv: 'GOOGLE_API_KEY' },
-  targetLocale: 'fr',
   baseLocale: 'en',
-  allLocales: ['en', 'fr', 'de'],
-  cwd: '/workspace',
-});
+  locales: ['en', 'fr', 'de'],
+  targetLocales: ['fr', 'de'],
+  translationConfig: { enabled: true, provider: 'google', apiKeyEnv: 'GOOGLE_API_KEY' },
+  tags: [],
+  protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
+  readOnly: false,
+  config: { translationsFolder: '/path/to/translations' },
+};
+
+const startJob = (service: TranslationJobService): string => service.startJob(collection, 'fr');
 
 describe('TranslationJobService', () => {
   let service: TranslationJobService;
@@ -45,10 +51,21 @@ describe('TranslationJobService', () => {
     service = new TranslationJobService(mockLogger as unknown as Logger, mockIndex as unknown as CollectionIndex);
   });
 
+  it('runs translateLocale on the opened collection for the target locale', () => {
+    mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
+
+    startJob(service);
+
+    expect(mockTranslateLocale).toHaveBeenCalledWith(
+      collection,
+      expect.objectContaining({ targetLocale: 'fr', onProgress: expect.any(Function) }),
+    );
+  });
+
   it('startJob returns a non-empty job ID', () => {
     mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
 
-    const jobId = service.startJob(makeStartJobParams());
+    const jobId = startJob(service);
 
     expect(jobId).toBeTruthy();
     expect(typeof jobId).toBe('string');
@@ -63,7 +80,7 @@ describe('TranslationJobService', () => {
   it('getJob returns a running job immediately after startJob (before async completes)', () => {
     mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
 
-    const jobId = service.startJob(makeStartJobParams());
+    const jobId = startJob(service);
     const job = service.getJob(jobId);
 
     expect(job).toBeDefined();
@@ -77,7 +94,7 @@ describe('TranslationJobService', () => {
     const result = makeSuccessResult();
     mockTranslateLocale.mockResolvedValue(result);
 
-    const jobId = service.startJob(makeStartJobParams());
+    const jobId = startJob(service);
 
     // Wait for the microtask queue to flush the resolved promise
     await Promise.resolve();
@@ -97,7 +114,7 @@ describe('TranslationJobService', () => {
   it('job status becomes failed when translateLocale throws a TranslationError', async () => {
     mockTranslateLocale.mockRejectedValue(new TranslationError('API quota exceeded', 'QUOTA_EXCEEDED', false));
 
-    const jobId = service.startJob(makeStartJobParams());
+    const jobId = startJob(service);
 
     await Promise.resolve();
     await Promise.resolve();
@@ -111,7 +128,7 @@ describe('TranslationJobService', () => {
   it('job status becomes failed when translateLocale throws a generic Error', async () => {
     mockTranslateLocale.mockRejectedValue(new Error('Unexpected network failure'));
 
-    const jobId = service.startJob(makeStartJobParams());
+    const jobId = startJob(service);
 
     await Promise.resolve();
     await Promise.resolve();
@@ -127,7 +144,7 @@ describe('TranslationJobService', () => {
   ])('drops the collection index for the translations folder when the job %s', async (_outcome, arrange) => {
     arrange();
 
-    service.startJob(makeStartJobParams());
+    startJob(service);
     expect(mockIndex.apply).not.toHaveBeenCalled();
 
     await Promise.resolve();
@@ -136,10 +153,21 @@ describe('TranslationJobService', () => {
     expect(mockIndex.apply).toHaveBeenCalledWith([{ kind: 'reindex', translationsFolder: '/path/to/translations' }]);
   });
 
+  it('logs the folders translateLocale could not read', async () => {
+    mockTranslateLocale.mockResolvedValue(makeSuccessResult({ warnings: ["Folder 'broken' was not translated: bad"] }));
+
+    const jobId = startJob(service);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(mockLogger.warn).toHaveBeenCalledWith(`Translation job ${jobId}: Folder 'broken' was not translated: bad`);
+  });
+
   it('getJob omits optional fields when there are no failures or skipped keys', async () => {
     mockTranslateLocale.mockResolvedValue(makeSuccessResult({ failures: [], skippedKeys: [] }));
 
-    const jobId = service.startJob(makeStartJobParams());
+    const jobId = startJob(service);
 
     await Promise.resolve();
     await Promise.resolve();
@@ -154,7 +182,7 @@ describe('TranslationJobService', () => {
     let resolveTranslation!: (result: TranslateLocaleResult) => void;
 
     mockTranslateLocale.mockImplementationOnce(
-      (params: { onProgress?: (p: TranslateLocaleProgress) => void }) =>
+      (_collection: Collection, params: { onProgress?: (p: TranslateLocaleProgress) => void }) =>
         new Promise<TranslateLocaleResult>((resolve) => {
           resolveTranslation = resolve;
           params.onProgress?.({
@@ -168,7 +196,7 @@ describe('TranslationJobService', () => {
         }),
     );
 
-    const jobId = service.startJob(makeStartJobParams());
+    const jobId = startJob(service);
 
     // Give the microtask queue a tick so the async function runs up to its first await
     // (the Promise constructor callback runs synchronously, so onProgress has already been called)

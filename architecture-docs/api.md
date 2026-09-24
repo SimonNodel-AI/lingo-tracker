@@ -56,7 +56,7 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 | `PATCH` | `/collections/:collectionName/resources` | Update a resource's base value, translations, comment, or tags. `key` is the full, existing key; `moveTo` (a folder path, `''` for the root) moves the entry there, 409 when the destination already has that entry key. | `UpdateResourceDto` | `UpdateResourceResponseDto` |
 | `DELETE` | `/collections/:collectionName/resources` | Delete one or more resources by key | `DeleteResourceDto` | `DeleteResourceResponseDto` |
 | `POST` | `/collections/:collectionName/resources/move` | Move or rename resources (single key or wildcard pattern, cross-collection supported) | `MoveResourceDto` | `MoveResourceResponseDto` |
-| `POST` | `/collections/:collectionName/resources/translate` | Auto-translate a single resource via the configured provider (422 when the collection has auto-translation off) | `TranslateResourceDto` | `TranslateResourceResponseDto` |
+| `POST` | `/collections/:collectionName/resources/translate` | Auto-translate a single resource through the [Translator](glossary.md#translator) (422 when the collection has auto-translation off). Values are stored in ICU format; `skippedLocales` lists the locales it did not store (complex ICU, a lost placeholder, a dropped protected term) | `TranslateResourceDto` | `TranslateResourceResponseDto` |
 | `GET` | `/collections/:collectionName/resources/tree` | Fetch the resource [tree](glossary.md#resource-tree) (or subtree) from the Collection Index | query: `path`, `includeNested` | `ResourceTreeDto \| TreeStatusResponseDto` |
 | `GET` | `/collections/:collectionName/resources/cache/status` | Poll the [Collection Index](glossary.md#collection-index) state (starts indexing) | — | `CacheStatusDto` |
 | `GET` | `/collections/:collectionName/resources/search` | Full-text search across the collection | query: `SearchTranslationsDto` | `SearchResultsDto` |
@@ -189,6 +189,7 @@ Controllers are the only layer that knows HTTP. They read the config from `Confi
 | `TranslationError` with code `MISSING_API_KEY`, `UNKNOWN_PROVIDER`, or `AUTH_ERROR` (server misconfiguration) | 500 (`InternalServerErrorException`) | `Translation provider error: <message>` |
 | `TranslationError` with code `RATE_LIMIT` | 429 (`HttpException`, error `Too Many Requests`) | `Translation provider error: <message>` |
 | `TranslationError` with any other code (for example `SERVER_ERROR`) | 502 (`BadGatewayException`) | `Translation provider error: <message>` |
+| `ProtectedTermsFileError` (a malformed protected-terms file on the server) | 500 (`InternalServerErrorException`) | error message (names the file) |
 | any other `LingoTrackerError` | 500 (`InternalServerErrorException`) | error message |
 | any other `Error` (message and stack logged on the server) | 500 (`InternalServerErrorException`) | `Internal server error` |
 | an error with its own numeric `statusCode` (for example from body-parser) | Nest default | Nest default |
@@ -341,10 +342,10 @@ sequenceDiagram
     participant Core as @simoncodes-ca/core
 
     UI->>RC: POST /translate-locale { locale: "fr" }
-    RC->>JS: startJob(params)
+    RC->>JS: startJob(collection, locale)
     JS->>JS: generate UUID jobId
     JS->>JS: store job (status: "pending")
-    JS->>Core: translateLocale() [no await — runs in background]
+    JS->>Core: translateLocale(collection, { targetLocale, onProgress }) [no await — runs in background]
     JS-->>RC: jobId
     RC-->>UI: 202 Accepted TranslateLocaleJobDto\n{ jobId, status: "pending", ... }
 
@@ -362,11 +363,17 @@ sequenceDiagram
     RC-->>UI: 200 OK\n{ status: "completed", translatedCount: N, skippedCount: M }
 ```
 
+**Starting a job.** The handler opens the collection with `openRouteCollection`, answers 422 when its translation config is not enabled and 400 when the locale is the base locale or not one of its locales, and then calls `startJob(collection, locale)`. The job runs core `translateLocale(collection, { targetLocale, onProgress })`, which translates through the [Translator](glossary.md#translator). When the job ends, successfully or not, the service applies `reindexMutation(collection.translationsFolder)` to the [Collection Index](glossary.md#collection-index), because `translateLocale` may have written files.
+
 **Job lifecycle states:** `pending` → `running` → `completed` | `failed`. `TranslationJobService` stores jobs in a plain `Map<string, TranslationJob>` in process memory. Jobs are never evicted — this is appropriate for a single-user development tool. If the process restarts, all jobs are lost and the UI must re-issue any in-progress operations.
 
 **Progress reporting.** `translateLocale()` in `@simoncodes-ca/core` accepts an `onProgress` callback. `TranslationJobService` subscribes to this callback and updates the in-memory job's `translatedCount`, `failedCount`, and `skippedCount` fields on each tick. Polling clients see live progress, not just a final result.
 
-**Error handling.** If `translateLocale()` rejects with a `TranslationError` (API key issue, provider timeout) or any other error, the job transitions to `failed` and the `error` field is set. No retry is attempted. The UI can display the error and offer a manual re-trigger.
+**Unreadable folders.** `translateLocale` returns a `warnings` line for each folder the Collection Reader could not read (its resources are not translated). The service logs each one with `Logger.warn`; the DTO does not carry them.
+
+**Skips.** `skippedCount` and `skippedKeys` cover every resource the Translator did not store: complex ICU, a lost placeholder, or a translation that dropped a [protected term](glossary.md#protected-term). The DTO does not carry the reason.
+
+**Error handling.** If `translateLocale()` rejects with a `TranslationError` (a missing API key, which is only checked when some resource needs work) or any other error, the job transitions to `failed` and the `error` field is set. A provider failure in one batch does not reject: that batch's resources are listed in `failures`. No retry is attempted. The UI can display the error and offer a manual re-trigger.
 
 ---
 

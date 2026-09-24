@@ -1,5 +1,10 @@
-// The translation module: machine-translate one resource or a whole locale through the configured provider.
+// The translation module: the Translator (one seam to the machine-translation provider) and the
+// operations that translate one resource or a whole locale through it.
 
+export {
+  type InMemoryTranslate,
+  InMemoryTranslationProvider,
+} from './in-memory-translation-provider';
 export {
   type TranslateExistingResourceResult,
   translateExistingResource,
@@ -10,4 +15,20 @@ export {
   type TranslateLocaleResult,
   translateLocale,
 } from './translate-locale';
-export { TranslationError } from './translation-provider';
+export {
+  type ProviderCapabilities,
+  type TranslateRequest,
+  type TranslateResult,
+  TranslationError,
+  type TranslationProvider,
+} from './translation-provider';
+export {
+  type OpenTranslatorOptions,
+  openTranslator,
+  type SkippedTranslation,
+  type TranslatedValue,
+  type TranslationOutcome,
+  type TranslationSkipReason,
+  type Translator,
+  type TranslatorEntry,
+} from './translator';

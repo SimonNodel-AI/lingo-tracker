@@ -1,156 +1,40 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { TranslationError } from './translation-provider';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import type { TranslationConfig } from '../../config/translation-config';
-import type { TranslateTextResult } from './translation-orchestrator';
-import type { ResourceTreeNode } from '../resource/load-resource-tree';
+import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
+import type { Collection } from '../config/open-collection';
+import { openResourceFolder } from '../resource/resource-folder';
+import { InMemoryTranslationProvider } from './in-memory-translation-provider';
+import { type TranslateLocaleProgress, translateLocale } from './translate-locale';
+import { TranslationError } from './translation-provider';
 
-// ---------------------------------------------------------------------------
-// Module mocks — must be declared before any imports that reference them
-// ---------------------------------------------------------------------------
-
-vi.mock('../resource/load-resource-tree');
-vi.mock('../resource/extract-subtree');
-vi.mock('../file-io/json-file-operations');
-vi.mock('./translation-provider-factory');
-vi.mock('./translation-orchestrator');
-// ResourceFolder only reads files that exist. Only the resource file pair "exists"; the mocked readers above
-// supply its contents.
-vi.mock('node:fs', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('node:fs')>()),
-  existsSync: vi.fn((filePath: unknown) => /(^|[\\/])(resource_entries|tracker_meta)\.json$/.test(String(filePath))),
-}));
-
-import { loadResourceTree } from '../resource/load-resource-tree';
-import { extractResourcesRecursively } from '../resource/extract-subtree';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
-import { createTranslationProvider } from './translation-provider-factory';
-import { TranslationOrchestrator } from './translation-orchestrator';
-import { translateLocale } from './translate-locale';
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const EMPTY_TREE: ResourceTreeNode = {
-  folderPathSegments: [],
-  resources: [],
-  children: [],
-};
-
-const BASE_CONFIG: TranslationConfig = {
+const AUTO: TranslationConfig = {
   enabled: true,
   provider: 'google-translate',
-  apiKeyEnv: 'GOOGLE_TRANSLATE_API_KEY',
-  batchSize: 5,
-  delayMs: 0, // no delay in tests
+  apiKeyEnv: 'TRANSLATE_LOCALE_SPEC_KEY',
+  delayMs: 0,
 };
 
-function translated(value: string): TranslateTextResult {
-  return { kind: 'translated', value };
-}
-
-function skipped(value: string): TranslateTextResult {
-  return { kind: 'skipped', value };
-}
-
-function makeResource(
-  key: string,
-  source: string,
-  targetLocaleStatus?: 'new' | 'stale' | 'translated' | 'verified',
-  targetLocale = 'fr',
-) {
-  return {
-    key,
-    source,
-    translations: {},
-    metadata: targetLocaleStatus
-      ? {
-          [targetLocale]: { checksum: 'abc', status: targetLocaleStatus },
-          en: { checksum: '123' },
-        }
-      : { en: { checksum: '123' } },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-
-const mockTranslateBatchForLocale = vi.fn();
-
-beforeEach(() => {
-  vi.clearAllMocks();
-
-  process.env.GOOGLE_TRANSLATE_API_KEY = 'test-api-key';
-
-  vi.mocked(loadResourceTree).mockReturnValue(EMPTY_TREE);
-  vi.mocked(extractResourcesRecursively).mockReturnValue([]);
-
-  vi.mocked(createTranslationProvider).mockReturnValue({
-    translate: vi.fn(),
-    getCapabilities: vi.fn(),
-  });
-
-  // Vitest 4 requires a constructable implementation for `new TranslationOrchestrator(...)`.
-  // biome-ignore lint/complexity/useArrowFunction: this mock must remain constructable
-  vi.mocked(TranslationOrchestrator).mockImplementation(function () {
-    return {
-      translateBatchForLocale: mockTranslateBatchForLocale,
-    } as unknown as TranslationOrchestrator;
-  });
-
-  // Default mocks return generic entries so any entryKey resolves correctly.
-  vi.mocked(readResourceEntries).mockReturnValue({
-    ok: { source: 'OK' },
-    cancel: { source: 'Cancel' },
-    a: { source: 'A' },
-    b: { source: 'B' },
-    c: { source: 'C' },
-    key0: { source: 'Text 0' },
-    key1: { source: 'Text 1' },
-    key2: { source: 'Text 2' },
-    key3: { source: 'Text 3' },
-    key4: { source: 'Text 4' },
-    key5: { source: 'Text 5' },
-  } as ReturnType<typeof readResourceEntries>);
-  vi.mocked(readTrackerMetadata).mockReturnValue({
-    ok: { en: { checksum: '123' } },
-    cancel: { en: { checksum: '456' } },
-    a: { en: { checksum: '111' } },
-    b: { en: { checksum: '222' } },
-    c: { en: { checksum: '333' } },
-  });
-  vi.mocked(writeJsonFile).mockImplementation(() => undefined);
-});
-
-afterEach(() => {
-  delete process.env.GOOGLE_TRANSLATE_API_KEY;
-});
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe('translateLocale', () => {
-  const defaultParams = {
-    translationsFolder: 'src/i18n',
-    translationConfig: BASE_CONFIG,
-    targetLocale: 'fr',
-    baseLocale: 'en',
-    allLocales: ['en', 'fr'],
-    cwd: '/project',
-  };
+  const dir = useTempDir('translate-locale-');
 
-  // -------------------------------------------------------------------------
-  // Early exit — nothing to translate
-  // -------------------------------------------------------------------------
+  function collection(overrides: Partial<Collection> = {}): Collection {
+    return testCollection(dir(), { locales: ['en', 'fr'], translationConfig: AUTO, ...overrides });
+  }
 
-  describe('early exit when nothing needs translating', () => {
-    it('returns zeroed result when there are no resources at all', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([]);
-      const onProgress = vi.fn();
+  function withBatchSize(batchSize: number): Collection {
+    return collection({ translationConfig: { ...AUTO, batchSize } });
+  }
 
-      const result = await translateLocale({ ...defaultParams, onProgress });
+  function read(file: string, ...segments: string[]) {
+    return JSON.parse(readFileSync(join(dir(), ...segments, file), 'utf8'));
+  }
+
+  describe('when nothing needs translating', () => {
+    it('returns zeros for an empty collection, without an API key', async () => {
+      const result = await translateLocale(collection(), { targetLocale: 'fr' });
 
       expect(result).toEqual({
         totalResources: 0,
@@ -159,271 +43,175 @@ describe('translateLocale', () => {
         skippedCount: 0,
         failures: [],
         skippedKeys: [],
+        warnings: [],
       });
-      expect(mockTranslateBatchForLocale).not.toHaveBeenCalled();
-      expect(onProgress).not.toHaveBeenCalled();
     });
 
-    it('returns zeroed result when all resources are already translated', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([
-        makeResource('apps.ok', 'OK', 'translated'),
-        makeResource('apps.cancel', 'Cancel', 'verified'),
-      ]);
-      const onProgress = vi.fn();
+    it('returns zeros when every resource is translated or verified', async () => {
+      seedResources(collection(), {
+        ok: { source: 'OK', translations: { fr: 'OK fr' } },
+        cancel: { source: 'Cancel', translations: { fr: { value: 'Annuler', status: 'verified' } } },
+      });
 
-      const result = await translateLocale({ ...defaultParams, onProgress });
+      const result = await translateLocale(collection(), { targetLocale: 'fr' });
 
       expect(result.totalResources).toBe(0);
-      expect(mockTranslateBatchForLocale).not.toHaveBeenCalled();
-      expect(onProgress).not.toHaveBeenCalled();
-    });
-
-    it('skips resources with verified status', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('apps.ok', 'OK', 'verified')]);
-      const onProgress = vi.fn();
-
-      const result = await translateLocale({ ...defaultParams, onProgress });
-
-      expect(result.totalResources).toBe(0);
-      expect(mockTranslateBatchForLocale).not.toHaveBeenCalled();
-      expect(onProgress).not.toHaveBeenCalled();
     });
   });
 
-  // -------------------------------------------------------------------------
-  // Status filtering
-  // -------------------------------------------------------------------------
-
-  describe('status filtering', () => {
-    it('translates resources with new status', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', 'OK', 'new')]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([translated('OK-fr')]);
-
-      const result = await translateLocale(defaultParams);
-
-      expect(result.totalResources).toBe(1);
-      expect(result.translatedCount).toBe(1);
+  it('translates new, stale and metadata-less resources, and leaves translated and verified ones', async () => {
+    const target = collection();
+    seedResources(target, {
+      fresh: { source: 'Fresh', translations: { fr: { value: 'Fresh', status: 'new' } } },
+      done: { source: 'Done', translations: { fr: 'Fait' } },
+      checked: { source: 'Checked', translations: { fr: { value: 'Vérifié', status: 'verified' } } },
+      missing: { source: 'Missing' },
+      old: { source: 'Old', translations: { fr: 'Vieux' } },
     });
+    const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+    folder.setBase('old', 'Older');
+    folder.save();
+    const provider = new InMemoryTranslationProvider();
 
-    it('translates resources with stale status', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', 'OK', 'stale')]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([translated('OK-fr')]);
+    const result = await translateLocale(target, { targetLocale: 'fr', provider });
 
-      const result = await translateLocale(defaultParams);
-
-      expect(result.totalResources).toBe(1);
-      expect(result.translatedCount).toBe(1);
-    });
-
-    it('translates resources with no metadata for the target locale', async () => {
-      // makeResource without a status means no 'fr' metadata entry.
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', 'OK')]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([translated('OK-fr')]);
-
-      const result = await translateLocale(defaultParams);
-
-      expect(result.totalResources).toBe(1);
-      expect(result.translatedCount).toBe(1);
-    });
-
-    it('does not translate resources with translated status', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', 'OK', 'translated')]);
-
-      const result = await translateLocale(defaultParams);
-
-      expect(result.totalResources).toBe(0);
-      expect(mockTranslateBatchForLocale).not.toHaveBeenCalled();
-    });
+    expect(result).toMatchObject({ totalResources: 3, translatedCount: 3, failedCount: 0, skippedCount: 0 });
+    const entries = read(RESOURCE_ENTRIES_FILENAME);
+    expect(entries.fresh.fr).toBe('[fr] Fresh');
+    expect(entries.missing.fr).toBe('[fr] Missing');
+    expect(entries.old.fr).toBe('[fr] Older');
+    expect(entries.done.fr).toBe('Fait');
+    expect(entries.checked.fr).toBe('Vérifié');
+    const meta = read(TRACKER_META_FILENAME);
+    expect(meta.fresh.fr.status).toBe('translated');
+    expect(meta.old.fr.status).toBe('translated');
+    expect(meta.checked.fr.status).toBe('verified');
   });
 
-  // -------------------------------------------------------------------------
-  // Batching
-  // -------------------------------------------------------------------------
-
-  describe('batch processing', () => {
-    it('calls onProgress for each batch', async () => {
-      const resources = [makeResource('a', 'A', 'new'), makeResource('b', 'B', 'new'), makeResource('c', 'C', 'new')];
-      vi.mocked(extractResourcesRecursively).mockReturnValue(resources);
-
-      mockTranslateBatchForLocale
-        .mockResolvedValueOnce([translated('A-fr'), translated('B-fr')])
-        .mockResolvedValueOnce([translated('C-fr')]);
-
-      const progressEvents: number[] = [];
-      await translateLocale({
-        ...defaultParams,
-        translationConfig: { ...BASE_CONFIG, batchSize: 2, delayMs: 0 },
-        onProgress: (p) => progressEvents.push(p.currentBatch),
-      });
-
-      expect(progressEvents).toEqual([1, 2]);
+  it('writes each folder it translates into, with values normalised to ICU', async () => {
+    const target = collection();
+    seedResources(target, {
+      'dialogs.greet': { source: 'Hello {{ name }}' },
+      'buttons.ok': { source: 'OK' },
     });
+    const provider = new InMemoryTranslationProvider(({ text }) => text.replace('Hello', 'Bonjour'));
 
-    it('respects batchSize when calling the orchestrator', async () => {
-      const resources = Array.from({ length: 6 }, (_, i) => makeResource(`key${i}`, `Text ${i}`, 'new'));
-      vi.mocked(extractResourcesRecursively).mockReturnValue(resources);
+    const result = await translateLocale(target, { targetLocale: 'fr', provider });
 
-      mockTranslateBatchForLocale.mockResolvedValue([translated('t1'), translated('t2'), translated('t3')]);
-
-      await translateLocale({
-        ...defaultParams,
-        translationConfig: { ...BASE_CONFIG, batchSize: 3, delayMs: 0 },
-      });
-
-      expect(mockTranslateBatchForLocale).toHaveBeenCalledTimes(2);
-    });
-
-    it('reports accurate progress counts in onProgress', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', 'OK', 'new')]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([translated('OK-fr')]);
-
-      let capturedProgress: Parameters<NonNullable<(typeof defaultParams)['onProgress']>>[0] | undefined;
-
-      await translateLocale({
-        ...defaultParams,
-        onProgress: (p) => {
-          capturedProgress = p;
-        },
-      });
-
-      expect(capturedProgress).toMatchObject({
-        totalResources: 1,
-        translatedCount: 1,
-        failedCount: 0,
-        skippedCount: 0,
-        currentBatch: 1,
-        totalBatches: 1,
-      });
-    });
+    expect(result.translatedCount).toBe(2);
+    expect(read(RESOURCE_ENTRIES_FILENAME, 'dialogs').greet.fr).toBe('Bonjour {name}');
+    expect(read(RESOURCE_ENTRIES_FILENAME, 'buttons').ok.fr).toBe('OK');
   });
 
-  // -------------------------------------------------------------------------
-  // ICU skipping
-  // -------------------------------------------------------------------------
+  describe('batches', () => {
+    it('sends one provider call per batch of batchSize, and reports progress after each', async () => {
+      seedResources(collection(), { a: { source: 'A' }, b: { source: 'B' }, c: { source: 'C' } });
+      const provider = new InMemoryTranslationProvider();
+      const progress: TranslateLocaleProgress[] = [];
 
-  describe('ICU skipping', () => {
-    it('adds skipped-ICU resource keys to skippedKeys', async () => {
-      const icuSource = '{count, plural, one {# item} other {# items}}';
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', icuSource, 'new')]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([skipped(icuSource)]);
+      await translateLocale(withBatchSize(2), {
+        targetLocale: 'fr',
+        provider,
+        onProgress: (event) => progress.push(event),
+      });
 
-      const result = await translateLocale(defaultParams);
-
-      expect(result.skippedKeys).toContain('ok');
-      expect(result.skippedCount).toBe(1);
-      expect(result.translatedCount).toBe(0);
-    });
-
-    it('does not call writeJsonFile for skipped resources', async () => {
-      const icuSource = '{count, plural, one {# item} other {# items}}';
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', icuSource, 'new')]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([skipped(icuSource)]);
-
-      await translateLocale(defaultParams);
-
-      expect(writeJsonFile).not.toHaveBeenCalled();
-    });
-
-    it('skips writing and increments skippedCount when entryKey is missing from disk entries', async () => {
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', 'OK', 'new')]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([translated('OK-fr')]);
-
-      // Return an empty object — the 'ok' entry is absent from disk
-      vi.mocked(readResourceEntries).mockReturnValue({} as ReturnType<typeof readResourceEntries>);
-
-      const result = await translateLocale(defaultParams);
-
-      expect(result.skippedCount).toBe(1);
-      expect(result.translatedCount).toBe(0);
-      expect(writeJsonFile).not.toHaveBeenCalled();
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // File I/O
-  // -------------------------------------------------------------------------
-
-  describe('file I/O', () => {
-    it('writes entries and meta files once per unique folder', async () => {
-      // Both resources share the same root folder — grouped write produces 2 files.
-      vi.mocked(extractResourcesRecursively).mockReturnValue([
-        makeResource('ok', 'OK', 'new'),
-        makeResource('cancel', 'Cancel', 'new'),
+      expect(provider.calls.map((call) => call.map(({ text }) => text))).toEqual([['A', 'B'], ['C']]);
+      expect(progress).toEqual([
+        { totalResources: 3, translatedCount: 2, failedCount: 0, skippedCount: 0, currentBatch: 1, totalBatches: 2 },
+        { totalResources: 3, translatedCount: 3, failedCount: 0, skippedCount: 0, currentBatch: 2, totalBatches: 2 },
       ]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([translated('OK-fr'), translated('Annuler')]);
-
-      await translateLocale(defaultParams);
-
-      // Two resources in the same folder → one read-modify-write cycle → 2 file writes.
-      expect(writeJsonFile).toHaveBeenCalledTimes(2);
     });
 
-    it('writes entries and meta files once per unique folder across multiple folders', async () => {
-      // Resources in two different folders each get their own write cycle.
-      vi.mocked(extractResourcesRecursively).mockReturnValue([
-        makeResource('folderA.ok', 'OK', 'new'),
-        makeResource('folderB.cancel', 'Cancel', 'new'),
-      ]);
-      mockTranslateBatchForLocale.mockResolvedValueOnce([translated('OK-fr'), translated('Annuler')]);
-
-      await translateLocale(defaultParams);
-
-      // Two distinct folders → 2 read-modify-write cycles → 4 file writes.
-      expect(writeJsonFile).toHaveBeenCalledTimes(4);
-    });
-  });
-
-  // -------------------------------------------------------------------------
-  // Error handling
-  // -------------------------------------------------------------------------
-
-  describe('error handling', () => {
-    it('throws TranslationError with MISSING_API_KEY when the env var is absent', async () => {
-      delete process.env.GOOGLE_TRANSLATE_API_KEY;
-      vi.mocked(extractResourcesRecursively).mockReturnValue([makeResource('ok', 'OK', 'new')]);
-
-      await expect(translateLocale(defaultParams)).rejects.toMatchObject({
-        code: 'MISSING_API_KEY',
-        retryable: false,
+    it('marks every resource of a failed batch as failed and continues with the next batch', async () => {
+      seedResources(collection(), { a: { source: 'A' }, b: { source: 'B' }, c: { source: 'C' } });
+      let calls = 0;
+      const provider = new InMemoryTranslationProvider(({ text }) => {
+        if (calls++ === 0) {
+          throw new TranslationError('quota exceeded', 'RATE_LIMIT', true);
+        }
+        return `${text}-fr`;
       });
-    });
 
-    it('records all resources in a failed batch as failures and continues', async () => {
-      const resources = [makeResource('a', 'A', 'new'), makeResource('b', 'B', 'new'), makeResource('c', 'C', 'new')];
-      vi.mocked(extractResourcesRecursively).mockReturnValue(resources);
-
-      const providerError = new TranslationError('quota exceeded', 'RATE_LIMIT', true);
-
-      mockTranslateBatchForLocale
-        .mockRejectedValueOnce(providerError) // batch 1 fails
-        .mockResolvedValueOnce([translated('C-fr')]); // batch 2 succeeds
-
-      const result = await translateLocale({
-        ...defaultParams,
-        translationConfig: { ...BASE_CONFIG, batchSize: 2, delayMs: 0 },
-      });
+      const result = await translateLocale(withBatchSize(2), { targetLocale: 'fr', provider });
 
       expect(result.failedCount).toBe(2);
+      expect(result.failures).toEqual([
+        { key: 'a', error: 'quota exceeded' },
+        { key: 'b', error: 'quota exceeded' },
+      ]);
       expect(result.translatedCount).toBe(1);
-      expect(result.failures).toHaveLength(2);
-      expect(result.failures[0].key).toBe('a');
-      expect(result.failures[1].key).toBe('b');
+      expect(read(RESOURCE_ENTRIES_FILENAME).c.fr).toBe('C-fr');
+      expect(read(RESOURCE_ENTRIES_FILENAME).a.fr).toBeUndefined();
+    });
+  });
+
+  describe('skips', () => {
+    it('reports complex ICU resources in skippedKeys and leaves them untouched', async () => {
+      const plural = '{count, plural, one {# item} other {# items}}';
+      seedResources(collection(), { items: { source: plural }, ok: { source: 'OK' } });
+      const provider = new InMemoryTranslationProvider();
+
+      const result = await translateLocale(collection(), { targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({ translatedCount: 1, skippedCount: 1, skippedKeys: ['items'] });
+      expect(read(RESOURCE_ENTRIES_FILENAME).items.fr).toBeUndefined();
     });
 
-    it('continues processing subsequent batches after a batch failure', async () => {
-      const resources = [makeResource('a', 'A', 'new'), makeResource('b', 'B', 'new')];
-      vi.mocked(extractResourcesRecursively).mockReturnValue(resources);
+    it('reports a translation that dropped a protected term in skippedKeys', async () => {
+      const target = collection();
+      seedResources(target, { buy: { source: 'Buy an iPhone' }, ok: { source: 'OK' } });
+      const provider = new InMemoryTranslationProvider(({ text }) => text.replace('iPhone', 'téléphone'));
 
-      const providerError = new TranslationError('fail', 'SERVER_ERROR', true);
-      mockTranslateBatchForLocale.mockRejectedValueOnce(providerError).mockResolvedValueOnce([translated('B-fr')]);
+      const result = await translateLocale(target, { targetLocale: 'fr', provider, protectedTerms: ['iPhone'] });
 
-      const result = await translateLocale({
-        ...defaultParams,
-        translationConfig: { ...BASE_CONFIG, batchSize: 1, delayMs: 0 },
+      expect(result).toMatchObject({ translatedCount: 1, skippedCount: 1, skippedKeys: ['buy'] });
+      expect(read(RESOURCE_ENTRIES_FILENAME).buy.fr).toBeUndefined();
+    });
+
+    it('skips a resource whose entry was removed from disk while it was being translated', async () => {
+      seedResources(collection(), { ok: { source: 'OK' } });
+      const provider = new InMemoryTranslationProvider(({ text }) => {
+        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        folder.remove('ok');
+        folder.save();
+        return text;
       });
 
-      expect(result.failedCount).toBe(1);
-      expect(result.translatedCount).toBe(1);
+      const result = await translateLocale(collection(), { targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({ translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
+    });
+  });
+
+  it('does not translate a folder the Collection Reader cannot read, and reports it in warnings', async () => {
+    writeFolderFiles(dir(), 'broken', { entries: '{ not json' });
+    seedResources(collection(), { ok: { source: 'OK' } });
+
+    const result = await translateLocale(collection(), {
+      targetLocale: 'fr',
+      provider: new InMemoryTranslationProvider(),
+    });
+
+    expect(result).toMatchObject({ totalResources: 1, translatedCount: 1 });
+    expect(result.warnings).toEqual([expect.stringContaining("Folder 'broken' was not translated:")]);
+    expect(result.warnings[0]).toContain(RESOURCE_ENTRIES_FILENAME);
+  });
+
+  it('reports unreadable folders in warnings even when nothing needs translating', async () => {
+    writeFolderFiles(dir(), 'broken', { entries: '{ not json' });
+
+    const result = await translateLocale(collection(), { targetLocale: 'fr' });
+
+    expect(result.totalResources).toBe(0);
+    expect(result.warnings).toHaveLength(1);
+  });
+
+  it('throws MISSING_API_KEY when there is work and no provider is injected', async () => {
+    seedResources(collection(), { ok: { source: 'OK' } });
+
+    await expect(translateLocale(collection(), { targetLocale: 'fr' })).rejects.toMatchObject({
+      code: 'MISSING_API_KEY',
+      retryable: false,
     });
   });
 });

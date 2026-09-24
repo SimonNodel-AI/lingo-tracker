@@ -5,10 +5,11 @@ import { AutoTranslationDisabledError, ResourceNotFoundError } from '../errors/l
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
-import { autoTranslateResource } from './auto-translate-resources';
+import { type OpenTranslatorOptions, openTranslator } from './translator';
 
 export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
+  /** Locales the Translator skipped (complex ICU, a lost placeholder, or a dropped protected term). */
   readonly skippedLocales: string[];
   readonly entry: ResourceTreeEntry;
   /** What changed on disk (empty when nothing was translated). */
@@ -16,23 +17,29 @@ export interface TranslateExistingResourceResult {
 }
 
 /**
- * Auto-translates an existing resource entry of a collection, for every target locale
- * that needs translation (no metadata, or status `new` or `stale`).
+ * Auto-translates an existing resource entry of a collection through the Translator, for every
+ * target locale that needs translation by the Staleness rule (no metadata, or status `new` or
+ * `stale`). Translated values are stored ICU-normalised with status `translated`; skipped locales
+ * are left as they are.
  *
- * Returns early with `translatedCount: 0` when no locales require translation.
+ * Returns early with `translatedCount: 0` when no locales require translation, without opening the
+ * Translator (so without needing an API key).
  *
  * @param key - The entry's full key.
+ * @param options - `provider` / `protectedTerms`: used instead of the collection's (see {@link openTranslator}).
  * @throws {AutoTranslationDisabledError} The collection has no enabled translation config.
  * @throws {InvalidResourceKeyError} The key is malformed.
  * @throws {ResourceNotFoundError} No entry exists at the key.
- * @throws {TranslationError} The translation provider failed.
+ * @throws {TranslationError} Some locale needs work and the API key is not set, or the provider failed.
+ * @throws {ProtectedTermsFileError} Some locale needs work and a protected-terms file is malformed.
  */
 export async function translateExistingResource(
   collection: Collection,
   key: string,
+  options: OpenTranslatorOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const { translationConfig, baseLocale, translationsFolder } = collection;
-  if (!translationConfig?.enabled) {
+  const { baseLocale, translationsFolder } = collection;
+  if (!collection.translationConfig?.enabled) {
     throw new AutoTranslationDisabledError(collection.name);
   }
 
@@ -57,29 +64,26 @@ export async function translateExistingResource(
     };
   }
 
-  const { translations: translatedEntries, skippedLocales } = await autoTranslateResource({
-    baseValue: entry.source,
-    baseLocale,
+  const { values, skipped } = await openTranslator(collection, options).translate(
+    [{ key: paths.resolvedKey, source: entry.source }],
     targetLocales,
-    translationConfig,
-  });
+  );
 
-  for (const { locale, value } of translatedEntries) {
+  for (const { locale, value } of values) {
     folder.setTranslation(paths.entryKey, locale, value, 'translated');
   }
 
-  if (translatedEntries.length > 0) {
+  if (values.length > 0) {
     folder.save();
   }
 
   const updatedEntry = requireTreeEntry(folder, paths.entryKey, paths.resolvedKey);
 
   return {
-    translatedCount: translatedEntries.length,
-    skippedLocales,
+    translatedCount: values.length,
+    skippedLocales: skipped.map(({ locale }) => locale),
     entry: updatedEntry,
-    mutations:
-      translatedEntries.length > 0 ? [upsertMutation(translationsFolder, paths.resolvedKey, updatedEntry)] : [],
+    mutations: values.length > 0 ? [upsertMutation(translationsFolder, paths.resolvedKey, updatedEntry)] : [],
   };
 }
 

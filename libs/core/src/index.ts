@@ -67,6 +67,7 @@ export {
   loadConfig,
   loadPreferredTerminology,
   openCollection,
+  type ProtectedTermsFiles,
   type ResolvedProtectedTerms,
   readCollectionProtectedTerms,
   readEffectiveProtectedTerms,
@@ -138,6 +139,7 @@ export {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  ProtectedTermsFileError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
@@ -201,10 +203,15 @@ export type {
   SearchTreeParams,
 } from './lib/resource';
 export type {
+  OpenTranslatorOptions,
+  ProviderCapabilities,
   TranslateExistingResourceResult,
   TranslateLocaleParams,
   TranslateLocaleProgress,
   TranslateLocaleResult,
+  TranslateRequest,
+  TranslateResult,
+  TranslationProvider,
 } from './lib/translation';
 export type { ResourceValidationResult, ValidationOptions } from './lib/validate';
 export type {

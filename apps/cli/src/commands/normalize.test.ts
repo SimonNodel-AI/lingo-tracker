@@ -58,6 +58,7 @@ function resolved(name: string, readOnly: boolean): Collection {
     targetLocales: ['fr'],
     translationConfig: undefined,
     tags: [],
+    protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
     readOnly,
     config: { translationsFolder: `path/${name}`, ...(readOnly ? { readOnly: true } : {}) },
   };

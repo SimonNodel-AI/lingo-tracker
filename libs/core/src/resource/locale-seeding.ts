@@ -1,7 +1,7 @@
-import { type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type { Collection } from '../lib/config/open-collection';
 import { LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
-import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
+import { type OpenTranslatorOptions, openTranslator } from '../lib/translation/translator';
 
 /** A value for one locale and the status it is stored with. */
 export interface ResourceTranslation {
@@ -27,7 +27,10 @@ export interface LocaleSeedingRequest {
 export interface LocaleSeeding {
   /** Values to write, auto-translated ones first. */
   readonly translations: ResourceTranslation[];
-  /** Locales the provider did not translate (ICU messages). Present only when auto-translation ran. */
+  /**
+   * Locales the Translator skipped (complex ICU, a lost placeholder, or a dropped protected term).
+   * Present only when auto-translation ran.
+   */
   readonly skippedLocales?: string[];
 }
 
@@ -36,36 +39,39 @@ export interface LocaleSeeding {
  * For each of `collection.targetLocales` that needs work:
  *
  * 1. the caller supplied a translation → the caller writes it (the locale is skipped here);
- * 2. the collection has auto-translation enabled → the provider's translation, as `translated`;
- * 3. otherwise (or the provider skipped the locale) → a copy of the base value, as `new`,
+ * 2. the collection has auto-translation enabled → the Translator's value, as `translated`;
+ * 3. otherwise (or the Translator skipped the locale) → a copy of the base value, as `new`,
  *    unless the locale holds a translation worth keeping (`keepsValue`), which the
  *    Staleness rule has already marked.
  *
  * Returns the values; the caller writes them to its Resource Folder.
  *
- * @throws {TranslationError} The provider failed.
+ * @param options - `provider` / `protectedTerms`: used instead of the collection's (see {@link openTranslator}).
+ * @throws {TranslationError} The provider failed, or its API key is not set.
+ * @throws {ProtectedTermsFileError} Auto-translation runs and a protected-terms file is malformed.
  */
-export async function seedLocales(collection: Collection, request: LocaleSeedingRequest): Promise<LocaleSeeding> {
+export async function seedLocales(
+  collection: Collection,
+  request: LocaleSeedingRequest,
+  options: OpenTranslatorOptions = {},
+): Promise<LocaleSeeding> {
   const supplied = new Set(request.supplied);
   const open = collection.targetLocales.filter(
     (locale) => !supplied.has(locale) && (request.needsWork?.(locale) ?? true),
   );
 
-  const { translationConfig, baseLocale } = collection;
   const translations: ResourceTranslation[] = [];
   let skippedLocales: string[] | undefined;
 
-  if (translationConfig?.enabled && open.length > 0) {
-    const result = await autoTranslateResource({
-      baseValue: request.baseValue,
-      baseLocale,
-      targetLocales: open,
-      translationConfig,
-    });
-    for (const { locale, value } of result.translations) {
-      translations.push({ locale, value: translocoToICU(value), status: 'translated' });
+  if (collection.translationConfig?.enabled && open.length > 0) {
+    const { values, skipped } = await openTranslator(collection, options).translate(
+      [{ key: 'base', source: request.baseValue }],
+      open,
+    );
+    for (const { locale, value } of values) {
+      translations.push({ locale, value, status: 'translated' });
     }
-    skippedLocales = result.skippedLocales;
+    skippedLocales = skipped.map(({ locale }) => locale);
   }
 
   const translated = new Set(translations.map(({ locale }) => locale));

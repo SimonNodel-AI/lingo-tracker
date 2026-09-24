@@ -19,6 +19,7 @@ function collection(translationsFolder: string, name = 'main'): Collection {
     targetLocales: ['fr'],
     translationConfig: undefined,
     tags: [],
+    protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
     readOnly: false,
     config: { translationsFolder },
   };

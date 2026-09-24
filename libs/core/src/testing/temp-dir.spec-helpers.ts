@@ -11,6 +11,7 @@ import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { afterEach, beforeEach } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
 import type { Collection } from '../lib/config/open-collection';
+import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../lib/config/protected-terms-file';
 import { openResourceFolder } from '../lib/resource/resource-folder';
 
 /**
@@ -33,7 +34,10 @@ export function useTempDir(prefix = 'lingo-core-'): () => string {
   return () => dir;
 }
 
-/** A resolved collection for tests. `locales` defaults to the base locale plus `fr` and `es`. */
+/**
+ * A resolved collection for tests. `locales` defaults to the base locale plus `fr` and `es`; the global
+ * protected-terms file defaults to `.lingo-tracker-protected-terms.json` inside `translationsFolder`.
+ */
 export function testCollection(translationsFolder: string, overrides: Partial<Collection> = {}): Collection {
   const baseLocale = overrides.baseLocale ?? 'en';
   const locales = overrides.locales ?? [baseLocale, 'fr', 'es'];
@@ -42,6 +46,7 @@ export function testCollection(translationsFolder: string, overrides: Partial<Co
     translationsFolder,
     translationConfig: undefined,
     tags: [],
+    protectedTermsFiles: { global: join(translationsFolder, DEFAULT_PROTECTED_TERMS_FILENAME), globalExplicit: false },
     readOnly: false,
     config: { translationsFolder },
     ...overrides,

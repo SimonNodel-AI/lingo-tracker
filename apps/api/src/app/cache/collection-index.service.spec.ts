@@ -36,7 +36,7 @@ describe('CollectionIndex', () => {
   }
 
   function collection(name = 'main'): Collection {
-    return openCollection(config(name), name);
+    return openCollection(config(name), name, { cwd: root });
   }
 
   /** Writes one entry (with metadata) the way core stores it. */
@@ -128,7 +128,7 @@ describe('CollectionIndex', () => {
     it('reports an indexing failure and retries it on the next tree read', () => {
       // A file where the translations folder should be cannot be read as a folder.
       fs.writeFileSync(path.join(root, 'broken'), 'not a folder');
-      const broken = openCollection(config('broken'), 'broken');
+      const broken = openCollection(config('broken'), 'broken', { cwd: root });
 
       expect(index.tree(broken)).toEqual({ status: 'not-started' });
       expect(index.status(broken)).toEqual(expect.objectContaining({ status: 'error', error: expect.any(String) }));
@@ -190,7 +190,7 @@ describe('CollectionIndex', () => {
 
     it('moves a resource to another collection and updates both', async () => {
       writeEntry('other', 'existing', 'Existing');
-      const other = openCollection(config('other'), 'other');
+      const other = openCollection(config('other'), 'other', { cwd: root });
       readyTree(other);
 
       const result = await moveResource(collection(), {
@@ -312,7 +312,7 @@ describe('CollectionIndex', () => {
       const capped = new CollectionIndex();
       const [first, second, third] = ['first', 'second', 'third'].map((name) => {
         writeEntry(name, 'ok', 'OK');
-        return openCollection(config(name), name);
+        return openCollection(config(name), name, { cwd: root });
       });
 
       capped.tree(first);

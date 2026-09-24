@@ -42,6 +42,19 @@ export class ConfigParseError extends LingoTrackerError {
   }
 }
 
+/**
+ * A protected-terms file exists but cannot be used: it is not valid JSON, or not a JSON array of
+ * strings. A corrupt list is an error, not an empty list, so it never protects nothing silently.
+ */
+export class ProtectedTermsFileError extends LingoTrackerError {
+  readonly filePath: string;
+
+  constructor(filePath: string, message: string) {
+    super(message, 'INVALID_PROTECTED_TERMS_FILE');
+    this.filePath = filePath;
+  }
+}
+
 // --- Collections -------------------------------------------------------------
 
 /** The config has no collection with this name. */

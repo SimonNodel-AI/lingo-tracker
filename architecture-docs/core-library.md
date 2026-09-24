@@ -113,14 +113,15 @@ libs/core/src/
     │   ├── iterative-folder-walker.ts # walkFolders(): depth-ordered directory traversal
     │   └── folder-utils.ts       # Path helpers for the walker
     │
-    ├── translation/              # Auto-translation provider abstraction
-    │   ├── translation-provider.ts       # TranslationProvider interface, TranslationError
-    │   ├── translation-provider-factory.ts # createTranslationProvider(): factory by name
-    │   ├── google-translate-v2.provider.ts # GoogleTranslateV2Provider implementation
-    │   ├── auto-translate-resources.ts   # autoTranslateResource(): orchestrate per-locale calls
-    │   ├── translate-existing-resource.ts # translateExistingResource(): translate new/stale entries
-    │   ├── placeholder-protector.ts      # protectPlaceholders() / restorePlaceholders()
-    │   └── translation-orchestrator.ts   # Wraps provider call with placeholder protection
+    ├── translation/              # Machine translation: the Translator and the operations that use it
+    │   ├── translator.ts                 # openTranslator(): setup, ICU skip, placeholder + protected-term guards, ICU normalisation
+    │   ├── translation-provider.ts       # TranslationProvider interface (the seam), TranslationError
+    │   ├── translation-provider-factory.ts # createTranslationProvider(): the Google adapter's constructor site
+    │   ├── google-translate-v2.provider.ts # GoogleTranslateV2Provider adapter
+    │   ├── in-memory-translation-provider.ts # InMemoryTranslationProvider adapter (internal; core specs, no network)
+    │   ├── translate-existing-resource.ts # translateExistingResource(): translate one entry's new/stale locales
+    │   ├── translate-locale.ts           # translateLocale(): translate one locale of a collection in batches
+    │   └── placeholder-protector.ts      # protectPlaceholders() / restorePlaceholders()
     │
     ├── resource/                 # One folder's files, and the read models built on them
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
@@ -165,7 +166,7 @@ graph TD
         IMPORT["import/\nparseJsonImport · parseXliffImport\nimportResources"]
         VALIDATE["validate/\nvalidateResources"]
         NORMALIZE["normalize/\nnormalize"]
-        TRANSLATION["translation/\nautoTranslateResource\ntranslateExistingResource"]
+        TRANSLATION["translation/\nopenTranslator\ntranslateExistingResource\ntranslateLocale"]
         FOLDER["folder/\ncreateFolder · deleteFolder\nmoveFolder"]
         FILEIO["file-io/\nreadJsonFile · writeJsonFile\nensureDirectoryExists"]
         CONFIG_LIB["config/\nloadConfig · openCollection\ncreateConfigFileOperations"]
@@ -218,7 +219,7 @@ graph TD
     NORMALIZE --> DOMAIN
 
     TRANSLATION --> DOMAIN
-    TRANSLATION --> FILEIO
+    TRANSLATION --> RESOURCE_LIB
 
     FOLDER --> FILEIO
     FOLDER --> DOMAIN
@@ -244,11 +245,12 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 ## Public Surface
 
-`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 175 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
+`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 185 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
 
 | Group | What it holds |
 |---|---|
 | Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition`, `validateBundleKey`, `validateBundleDefinition`, `getBundleOutputPath`, `hasTypeDistConfigured`. Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`, `describePreferredTermRule`. |
+| Translator | Only the types in the translate operations' signatures: `OpenTranslatorOptions` (the optional `{ provider?, protectedTerms? }` of `addResource`, `editResource`, `translateExistingResource`, `translateLocale`) and the `TranslationProvider` seam (`TranslateRequest`, `TranslateResult`, `ProviderCapabilities`). `openTranslator`, the `Translator` types and `InMemoryTranslationProvider` stay internal to core (the translation barrel), because no app uses them. See [Auto-Translation Pipeline](#auto-translation-pipeline). |
 | Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `BundleDefinition`, ...), and the protected-terms and preferred-terminology file readers and writers. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder` and the types in its methods, `resolveResourcePaths`. |
 | Collection Reader | `readCollection`, `StoredResource`, `CollectionRead`, `CollectionReadProblem`, `CollectionReadTarget`. See [Collection Reader](#collection-reader). |
@@ -256,7 +258,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 | Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
 | Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
 
-Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the translation provider classes, the bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
+Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
 
 ---
 
@@ -265,7 +267,7 @@ Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bun
 Core owns the config file and the rule that turns a collection's config entry into its effective settings. The adapters (CLI, API) call two functions in `lib/config/` once per command or request, then pass the results to the per-resource operations.
 
 - **`loadConfig({ cwd? })`** is the only reader of `.lingo-tracker.json`. It returns the file as written, with no validation and no fallbacks. It throws `ConfigNotFoundError` when the file does not exist and `ConfigParseError` when the file is not a JSON object; other I/O errors pass through. The CLI passes its `INIT_CWD`-aware directory, the API passes `process.cwd()`, and `createConfigFileOperations().read()` (used by the config writers) reads through it too.
-- **`openCollection(config, name, { cwd?, writable? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (collection, else global, else `[]`), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `readOnly`, and the raw entry as `config`. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
+- **`openCollection(config, name, { cwd?, writable? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (collection, else global, else `[]`), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `protectedTermsFiles` (the absolute paths of the global and collection protected-terms files, resolved but not read; see [Protected Terms Resolution](#protected-terms-resolution)), `readOnly`, and the raw entry as `config`. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
 
 The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
 
@@ -279,6 +281,7 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 |---|---|---|---|
 | `ConfigNotFoundError` | `CONFIG_NOT_FOUND` | `configPath` | `loadConfig` |
 | `ConfigParseError` | `CONFIG_PARSE_FAILED` | `configPath`, `reason` | `loadConfig` |
+| `ProtectedTermsFileError` | `INVALID_PROTECTED_TERMS_FILE` | `filePath` | `readProtectedTermsFile` and every reader built on it: the protected-terms commands, import/export callers, `resolveProtectedTermsForConfig`, and `openTranslator` (so `addResource` / `editResource` with auto-translation on, `translateExistingResource` and `translateLocale`, when there is work). The API answers 500 with the message. |
 | `CollectionNotFoundError` | `COLLECTION_NOT_FOUND` | `collectionName` | `openCollection`, `deleteCollectionByName`, `updateCollection`, `setCollectionProtectedTerms`, `setCollectionProtectedTermsFile` |
 | `CollectionAlreadyExistsError` | `COLLECTION_ALREADY_EXISTS` | `collectionName` | `addCollection`, `updateCollection` (rename) |
 | `ReadOnlyCollectionError` | `COLLECTION_READ_ONLY` | `collectionName` | `openCollection` with `{ writable: true }` |
@@ -292,11 +295,11 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 | `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder`, `deleteFolder`, `moveFolder` |
 | `FolderNotFoundError` | `FOLDER_NOT_FOUND` | `folderPath` | `deleteFolder`, `moveFolder` (source missing or not a directory) |
 | `FolderMoveIntoDescendantError` | `FOLDER_MOVE_INTO_DESCENDANT` | `sourceFolderPath`, `destinationFolderPath` | `moveFolder` (same collection) |
-| `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `translateExistingResource` |
+| `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `openTranslator` (so `translateExistingResource`, and `translateLocale` when there is work) |
 | `BundleNotFoundError` | `BUNDLE_NOT_FOUND` | `bundleName` | `updateBundleDefinition`, `deleteBundleDefinition` |
 | `BundleAlreadyExistsError` | `BUNDLE_ALREADY_EXISTS` | `bundleName` | `addBundleDefinition`, `updateBundleDefinition` (rename) |
 | `InvalidBundleDefinitionError` | `INVALID_BUNDLE_DEFINITION` | `errors[]` | bundle definition add / update |
-| `TranslationError` | provider code (`MISSING_API_KEY`, `RATE_LIMIT`, `INVALID_REQUEST`, …) | `retryable`, `providerErrorCode` | translation providers, `autoTranslateResource` |
+| `TranslationError` | provider code (`MISSING_API_KEY`, `UNKNOWN_PROVIDER`, `INVALID_RESPONSE`, `RATE_LIMIT`, `INVALID_REQUEST`, …) | `retryable`, `providerErrorCode` | translation providers, `openTranslator` / `Translator.translate` (so every operation that auto-translates) |
 | `PreferredTerminologyValidationError` | `INVALID_PREFERRED_TERMINOLOGY` | `errors[]` | `writePreferredTerminology` |
 
 Rules:
@@ -324,13 +327,14 @@ addResource(collection, { key, baseValue, comment?, tags?, targetFolder?, transl
 editResource(collection, key, { baseValue?, comment?, tags?, translations?, moveTo? })
 deleteResource(collection, { keys })
 moveResource(collection, { source, destination, override?, destinationCollection? })
-translateExistingResource(collection, key)
+translateExistingResource(collection, key, { provider?, protectedTerms? }?)
+translateLocale(collection, { targetLocale, onProgress?, provider?, protectedTerms? })
 createFolder(collection, { folderName, parentPath? })
 deleteFolder(collection, { folderPath })
 moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nestUnderDestination?, destinationCollection? })
 ```
 
-The base locale, the target locales, and the translation config come only from the `Collection`; there is no `'en'` fallback and no `cwd` (the `translationsFolder` is absolute). A cross-collection move takes the destination as a second `Collection`.
+`addResource` and `editResource` take the same optional `{ provider?, protectedTerms? }` as a last parameter, for [locale seeding](#locale-seeding). The base locale, the target locales, the translation config and the protected-terms files come only from the `Collection`; there is no `'en'` fallback and no `cwd` (the `translationsFolder` is absolute). A cross-collection move takes the destination as a second `Collection`.
 
 **Key placement.** `addResource` stores `targetFolder.key` (`resolveResourceKey`, applied by `validateAndResolvePaths`). `editResource` takes the entry's full, existing key. Its `moveTo` is a destination folder (`''` is the collection root): the entry keeps its entry key (the last segment) and moves there, as a lossless copy, after the edit is saved. The destination must not already have that entry key (`ResourceAlreadyExistsError`). This is checked before anything is written, and again on a fresh read of the destination just before the move, because auto-translation may run in between; a collision found then throws with the edit already saved in the source folder. The destination is written before the source entry is removed.
 
@@ -339,8 +343,8 @@ The base locale, the target locales, and the translation config come only from t
 [Locale seeding](glossary.md#locale-seeding) (`seedLocales` in `resource/locale-seeding.ts`) decides what each of `collection.targetLocales` gets when a base value is written:
 
 1. A translation the caller supplied → the caller's value and status.
-2. Else, when `collection.translationConfig` is enabled → `autoTranslateResource()` (status `translated`).
-3. Else, or when the provider skipped the locale (ICU) → a copy of the base value with status `new`.
+2. Else, when `collection.translationConfig` is enabled → the [Translator](#auto-translation-pipeline)'s value (status `translated`). Locale seeding checks `enabled` itself before it opens the Translator, so a disabled config never throws here.
+3. Else, or when the Translator skipped the locale (complex ICU, a lost placeholder, or a dropped protected term) → a copy of the base value with status `new`. On edit, this applies only to a locale with no value or an untranslated copy of the old base; a locale that holds a real translation keeps it, marked `stale` by the staleness rule.
 
 `addResource` applies it to every target locale. `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](glossary.md#staleness-rule) (`needsTranslation` after `setBase`), with one limit: step 3 never overwrites a real translation. Only a missing locale, or one that held an untranslated copy of the old base, gets the copy; a real translation stays, marked `stale`. A supplied translation for a locale that is not in the collection throws `LocaleNotFoundError`; a value for the base locale is ignored.
 
@@ -430,6 +434,7 @@ The caller decides what a problem means:
 | Bundle and type generation (`loadCollectionResources`) | Adds a warning to the bundle result, once for each collection. Type generation logs it. |
 | `glossary` (CLI) | Writes a warning to stderr. |
 | `loadResourceTree`, `searchTranslations` | Log it. The tree keeps the folder, with no resources. |
+| `translateLocale` | Does not translate the folder's resources and adds one line to `warnings` in the result (`Folder '<path>' was not translated: <message>`). The CLI prints the warnings after the summary; the API translation job logs them with `Logger.warn`. |
 
 ---
 
@@ -456,69 +461,60 @@ Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `va
 
 ## Auto-Translation Pipeline
 
-**Entry point:** `autoTranslateResource(params)` in `lib/translation/auto-translate-resources.ts`
+**Entry point:** `openTranslator(collection, { provider?, protectedTerms? })` in `lib/translation/translator.ts`, which returns a `Translator` with one method, `translate(entries, locales) → { values, skipped }`.
 
-This pipeline is called by [locale seeding](#locale-seeding) (so from `addResource()` and from `editResource()` on a base value change), and also from the standalone `translateExistingResource()` function which targets only entries with `new` or `stale` status.
+The [Translator](glossary.md#translator) is the only way core machine-translates text. Its three callers only choose what needs work, by the [staleness rule](glossary.md#staleness-rule), and store what comes back:
+
+| Caller | Entries → locales | Stores |
+|---|---|---|
+| [Locale seeding](#locale-seeding) (`addResource`, `editResource` on a base value change) | the base value → the target locales that need work and were not supplied | values as `translated`; a skipped locale gets a copy of the base as `new`, except on edit where it holds a real translation (kept, `stale`) |
+| `translateExistingResource(collection, key)` | the entry → its target locales with `needsTranslation` | values as `translated`; skipped locales stay as they are |
+| `translateLocale(collection, { targetLocale })` | every entry with `needsTranslation` for the locale (read with the [Collection Reader](#collection-reader)), in batches of `batchSize` with `delayMs` between them → `[targetLocale]` | values as `translated`, one save per folder per batch; skipped keys in `skippedKeys`; folders the reader could not read in `warnings` |
 
 <!-- Auto-translation pipeline flowchart -->
 
 ```mermaid
 flowchart TD
-    START([Caller: addResource / editResource\nor translateExistingResource]) --> CHECK_ENABLED
+    OPEN(["openTranslator(collection, { provider? })"]) --> ENABLED{"translationConfig.enabled?"}
+    ENABLED -- No --> DISABLED([Throw AutoTranslationDisabledError])
+    ENABLED -- Yes --> INJECTED{"provider injected?"}
+    READY -.- TERMSREAD["protectedTerms option, else readProtectedTermsInForce(collection)\n(ProtectedTermsFileError when a file is malformed)"]
+    INJECTED -- Yes --> READY
+    INJECTED -- No --> KEY{"process.env[apiKeyEnv] set?"}
+    KEY -- No --> THROW_KEY([Throw TranslationError\nMISSING_API_KEY])
+    KEY -- Yes --> FACTORY["createTranslationProvider(provider, apiKey)\n→ GoogleTranslateV2Provider"]
+    FACTORY --> READY
 
-    CHECK_ENABLED{"translationConfig.enabled?"}
-    CHECK_ENABLED -- No --> SKIP_ALL([Return empty translations])
-    CHECK_ENABLED -- Yes --> READ_API_KEY
+    READY(["translate(entries, locales)"]) --> CLASSIFY
 
-    READ_API_KEY["Read API key from\nprocess.env[translationConfig.apiKeyEnv]"]
-    READ_API_KEY --> KEY_MISSING{"Key present?"}
-    KEY_MISSING -- No --> THROW_KEY([Throw TranslationError\nMISSING_API_KEY])
-    KEY_MISSING -- Yes --> CREATE_PROVIDER
+    CLASSIFY["Once per entry: classifyICUContent(source)"]
+    CLASSIFY --> IS_COMPLEX{"complex-icu?"}
+    IS_COMPLEX -- Yes --> SKIP_ICU(["skipped: complex-icu\n(never sent)"])
+    IS_COMPLEX -- No --> PROTECT["simple placeholders → protectPlaceholders()\n<span class='notranslate'>__PHn__</span>"]
 
-    CREATE_PROVIDER["createTranslationProvider(providerName, apiKey)\n→ GoogleTranslateV2Provider"]
+    PROTECT --> CALL["Per locale (in parallel), base locale ignored:\none provider.translate() call with every sendable entry"]
+    CALL --> RESTORE{"restorePlaceholders():\nevery marker exactly once?"}
+    RESTORE -- No --> SKIP_PH(["skipped: placeholder-mismatch"])
+    RESTORE -- Yes --> NORMALISE["translocoToICU(value)"]
+    NORMALISE --> TERMS{"findProtectedTermViolations(\nsource, value, protectedTerms)"}
+    TERMS -- "terms dropped" --> SKIP_TERM(["skipped: protected-term\n(terms listed)"])
+    TERMS -- none --> VALUE(["values: { key, locale, value }"])
 
-    CREATE_PROVIDER --> FOR_EACH_LOCALE
-
-    FOR_EACH_LOCALE["For each target locale (parallel Promise.all):\norchestrator.translateText(baseValue, srcLocale, tgtLocale)"]
-
-    FOR_EACH_LOCALE --> CLASSIFY
-
-    subgraph orchestrator["TranslationOrchestrator (per locale)"]
-        CLASSIFY["classifyICUContent(baseValue)\n→ plain | simple-placeholders | complex-icu"]
-
-        CLASSIFY --> IS_COMPLEX{"complex-icu?"}
-        IS_COMPLEX -- Yes --> SKIP_LOCALE(["kind: 'skipped'\n(cannot safely translate ICU)"])
-        IS_COMPLEX -- No --> HAS_PLACEHOLDERS
-
-        HAS_PLACEHOLDERS{"simple-placeholders?"}
-        HAS_PLACEHOLDERS -- Yes --> PROTECT["protectPlaceholders()\nWraps {varName} in\n<span class='notranslate'>__PHn__</span>"]
-        HAS_PLACEHOLDERS -- No --> CALL_PROVIDER
-
-        PROTECT --> CALL_PROVIDER
-
-        CALL_PROVIDER["provider.translate(request)\n→ Google Translate API v2"]
-        CALL_PROVIDER --> RESTORE
-
-        RESTORE{"restorePlaceholders()\nAll markers present\nexactly once?"}
-        RESTORE -- Yes --> TRANSLATED_VALUE(["kind: 'translated'\nvalue: restored string"])
-        RESTORE -- No --> SKIP_MISMATCH(["kind: 'skipped'\nmarker-count-mismatch"])
-    end
-
-    SKIP_LOCALE --> COLLECT
-    SKIP_MISMATCH --> COLLECT
-    TRANSLATED_VALUE --> COLLECT
-
-    COLLECT["Collect results:\n- translations[]: { locale, value, status: 'translated' }\n- skippedLocales[]: locales with kind 'skipped'"]
-
-    COLLECT --> CALLER_WRITES["Caller writes results to\nresource_entries.json + tracker_meta.json\nvia writeJsonFile()"]
-
-    style SKIP_ALL fill:#f8d7da,stroke:#dc3545,color:#000
+    style DISABLED fill:#f8d7da,stroke:#dc3545,color:#000
     style THROW_KEY fill:#f8d7da,stroke:#dc3545,color:#000
-    style SKIP_LOCALE fill:#fff3cd,stroke:#ffc107,color:#000
-    style SKIP_MISMATCH fill:#fff3cd,stroke:#ffc107,color:#000
-    style TRANSLATED_VALUE fill:#d4edda,stroke:#28a745,color:#000
-    style orchestrator fill:#e8f4fd,stroke:#17a2b8,color:#000
+    style SKIP_ICU fill:#fff3cd,stroke:#ffc107,color:#000
+    style SKIP_PH fill:#fff3cd,stroke:#ffc107,color:#000
+    style SKIP_TERM fill:#fff3cd,stroke:#ffc107,color:#000
+    style VALUE fill:#d4edda,stroke:#28a745,color:#000
 ```
+
+**What the Translator owns.** Setup (the enabled check, the API key, the provider), the ICU skip, the placeholder guard, the protected-term guard, and normalisation. Each happens in one place, for every caller. There is one code path: a single text is a batch of one. A provider failure (`TranslationError`) propagates; locale seeding passes it on, and `translateLocale` marks the batch as failed and goes on with the next one.
+
+**Skip reasons.** `SkippedTranslation.reason` is `complex-icu`, `placeholder-mismatch` or `protected-term` (with the dropped `terms`). A translation that drops a protected term would be rejected by import, so it is not stored. The callers report skipped locales (`skippedLocales`) or keys (`skippedKeys`) without the reason.
+
+**When the Translator is opened.** Only when there is work, so "nothing to translate" never needs an API key or a readable terms file. `translateExistingResource` checks `translationConfig.enabled` first (`AutoTranslationDisabledError`, 422 in the API), reads the entry, and opens the Translator only when a locale needs work. `translateLocale` opens it only when at least one resource needs work. Locale seeding opens it only when the config is enabled and a locale needs work. Opening reads the protected terms once (unless the `protectedTerms` option is passed), so with auto-translation on, `addResource`, `editResource` (on a base value change), `translateExistingResource` and `translateLocale` fail with `ProtectedTermsFileError` when a terms file is malformed.
+
+**The provider seam.** The `provider` option replaces the configured provider, and the `protectedTerms` option replaces the terms files. `InMemoryTranslationProvider` (`in-memory-translation-provider.ts`) is the second adapter, internal to core: it translates each text with a function (default `[locale] text`) and records every call in `calls`, so specs can assert batching. It imports nothing from vitest. The core specs for the Translator, add, edit, translate-existing and translate-locale use it with real temp directories; none of them mocks a core module.
 
 ### Provider abstraction
 
@@ -531,19 +527,13 @@ interface TranslationProvider {
 }
 ```
 
-`createTranslationProvider(providerName, apiKey)` in `translation-provider-factory.ts` is the single switch-point that maps a provider name string to a concrete implementation. Today only `'google-translate'` is supported, instantiating `GoogleTranslateV2Provider`. Adding a new provider (e.g. DeepL) requires:
+`createTranslationProvider(providerName, apiKey)` in `translation-provider-factory.ts` is the single switch-point that maps a configured provider name to a concrete implementation; `openTranslator` calls it when no provider is injected. Today only `'google-translate'` is supported, instantiating `GoogleTranslateV2Provider`. Adding a new provider (e.g. DeepL) requires:
 
 1. Implementing `TranslationProvider`.
 2. Adding one `case` branch in `createTranslationProvider()`.
 3. Updating `TranslationConfig` to accept the new provider name.
 
-**Why a single factory instead of a plugin registry?** LingoTracker currently has one provider. A plugin-registry pattern (dynamic module loading, registration maps) would add indirection and surface area for no concrete benefit. The factory switch is O(1), statically typed, and the full provider list is visible at a glance. If a second provider ships, the factory grows by four lines. This is "extensible without over-engineering" — the abstraction boundary (`TranslationProvider`) is clean; the wiring (`createTranslationProvider`) is simple until it needs to be otherwise.
-
-The `TranslationOrchestrator` class sits between `autoTranslateResource()` and the provider. It is responsible for:
-
-- Calling `classifyICUContent()` from `@simoncodes-ca/domain` to decide whether the string is safe to send to the provider.
-- Calling `protectPlaceholders()` before the provider call and `restorePlaceholders()` after, to prevent the translation engine from mutating ICU variable names.
-- Returning a discriminated union (`kind: 'translated' | 'skipped'`) so callers can distinguish success from graceful skip without exception handling.
+**Why a single factory instead of a plugin registry?** LingoTracker has one configurable provider (the in-memory one is only injected). A plugin-registry pattern (dynamic module loading, registration maps) would add indirection and surface area for no concrete benefit. The factory switch is O(1), statically typed, and the full provider list is visible at a glance. If a second provider ships, the factory grows by four lines. This is "extensible without over-engineering" — the abstraction boundary (`TranslationProvider`) is clean; the wiring (`createTranslationProvider`) is simple until it needs to be otherwise.
 
 The [ICU format](glossary.md#icu-format) classification determines safety: `plain` and `simple-placeholders` strings are sent (with placeholder protection for the latter); `complex-icu` strings (containing `plural`, `select`, or `selectordinal`) are skipped entirely because machine translation cannot reliably preserve nested ICU syntax.
 
@@ -617,11 +607,13 @@ Core resolves both settings against the directory that holds `.lingo-tracker.jso
 
 `readEffectiveProtectedTerms(config, collection, cwd)` returns the combined list. `resolveProtectedTermsForConfig(config, cwd)` reads every scope in one pass, which suits read-only consumers such as the API.
 
+`openCollection` resolves the two paths, without reading them, into `Collection.protectedTermsFiles`: `global` (the pointer, else the default file), `globalExplicit` (whether the config names it), and `collection` (only when the collection names a file). `readProtectedTermsInForce(collection)` reads them through the cache and returns the same list as `readEffectiveProtectedTerms(config, raw, cwd)`. Opening a collection therefore reads no files, and a malformed terms file fails only the operations that use the terms. Today that is the [Translator](#auto-translation-pipeline), which reads them once when it is opened. Import and export still take `protectedTerms` from their caller.
+
 Core caches reads in a module-level `Map` keyed by absolute path. It hands back a copy of each entry, so a caller that mutates the result leaves the cache intact. `writeProtectedTermsFile()` refreshes the entry it wrote, and `clearProtectedTermsFileCache()` drops every entry.
 
-The two failure modes differ on purpose. An **absent** file reads as an empty list, and this is the normal state before the first term is added. Core warns only when the path came from an explicit setting.
+The two failure modes differ on purpose. An **absent** file reads as an empty list, and this is the normal state before the first term is added. Core warns only when the path came from an explicit setting, and only once per path (the Translator reads the files on every operation that auto-translates).
 
-**Malformed** content throws. That covers invalid JSON, a payload that is not an array, and an element that is not a string. An empty list here would protect nothing, and altered brand names would reach the resources through import with nobody seeing it.
+**Malformed** content throws `ProtectedTermsFileError` (`INVALID_PROTECTED_TERMS_FILE`, with `filePath`). That covers invalid JSON, a payload that is not an array, and an element that is not a string. An empty list here would protect nothing, and altered brand names would reach the resources through import or auto-translation with nobody seeing it.
 
 Writes normalize the list, sort it alphabetically, and end the file with a newline. Adding a term therefore produces a one-line diff.
 

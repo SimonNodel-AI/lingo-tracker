@@ -1,8 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
-import { reindexMutation, translateLocale, TranslationError } from '@simoncodes-ca/core';
-import type { TranslateLocaleParams, TranslateLocaleProgress } from '@simoncodes-ca/core';
+import { reindexMutation, translateLocale } from '@simoncodes-ca/core';
+import type { Collection, TranslateLocaleProgress } from '@simoncodes-ca/core';
 import type { TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 
@@ -34,16 +33,16 @@ export class TranslationJobService {
   }
 
   /**
-   * Kicks off an async translate-locale job and returns its ID immediately.
+   * Kicks off an async translate-locale job for an opened collection and returns its ID immediately.
    * The caller can poll `getJob(jobId)` to track progress.
    */
-  startJob(params: TranslateLocaleParams & { collectionName: string }): string {
+  startJob(collection: Collection, targetLocale: string): string {
     const jobId = randomUUID();
 
     const job: TranslationJob = {
       jobId,
-      collectionName: params.collectionName,
-      targetLocale: params.targetLocale,
+      collectionName: collection.name,
+      targetLocale,
       status: 'pending',
       totalResources: 0,
       translatedCount: 0,
@@ -55,7 +54,7 @@ export class TranslationJobService {
 
     this.#jobs.set(jobId, job);
 
-    this.#runJob(jobId, params);
+    this.#runJob(jobId, collection, targetLocale);
 
     return jobId;
   }
@@ -71,9 +70,7 @@ export class TranslationJobService {
     return this.#toDto(job);
   }
 
-  #runJob(jobId: string, params: TranslateLocaleParams & { collectionName: string }): void {
-    const { collectionName: _collectionName, ...translateParams } = params;
-
+  #runJob(jobId: string, collection: Collection, targetLocale: string): void {
     const onProgress = (progress: TranslateLocaleProgress): void => {
       const job = this.#jobs.get(jobId);
 
@@ -93,14 +90,14 @@ export class TranslationJobService {
     runningJob.startedAt = new Date();
 
     // translateLocale writes resource files (even when it fails part-way), so the index is dropped either way.
-    const reindex = (): void =>
-      this.#index.apply([
-        reindexMutation(resolve(translateParams.cwd ?? process.cwd(), translateParams.translationsFolder)),
-      ]);
+    const reindex = (): void => this.#index.apply([reindexMutation(collection.translationsFolder)]);
 
-    translateLocale({ ...translateParams, onProgress })
+    translateLocale(collection, { targetLocale, onProgress })
       .then((result) => {
         reindex();
+        for (const warning of result.warnings) {
+          this.#logger.warn(`Translation job ${jobId}: ${warning}`);
+        }
         const completedJob = this.#jobs.get(jobId);
 
         if (!completedJob) {
@@ -127,7 +124,7 @@ export class TranslationJobService {
         failedJob.status = 'failed';
         failedJob.completedAt = new Date();
 
-        if (error instanceof TranslationError || error instanceof Error) {
+        if (error instanceof Error) {
           failedJob.error = error.message;
         } else {
           failedJob.error = 'An unexpected error occurred';

@@ -408,7 +408,7 @@ Two functions use the regular expression, with opposite case sensitivity:
 | Function | Case handling | Used by |
 |---|---|---|
 | `findProtectedTerms(value, terms)` | Case-**insensitive** — returns the stored canonical term, not the matched substring | Export annotation |
-| `findProtectedTermViolations(source, translation, terms)` | Source matched case-insensitively; translation matched case-**sensitively** | Import verification |
+| `findProtectedTermViolations(source, translation, terms)` | Source matched case-insensitively; translation matched case-**sensitively** | Import verification; the [Translator](glossary.md#translator)'s protected-term guard |
 
 That difference is the mechanism. LingoTracker flags a source string however it was typed. It then requires the translation to hold the term exactly as stored. This is what catches `iPhone` returning from a translation service as `iphone` or as `Iphone`.
 

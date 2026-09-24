@@ -7,6 +7,7 @@ import { CONFIG_FILENAME } from '../../constants';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { loadConfig } from './load-config';
 import { openCollection } from './open-collection';
+import { DEFAULT_PROTECTED_TERMS_FILENAME } from './protected-terms-file';
 
 const globalTranslation = { enabled: true, provider: 'google-translate', apiKeyEnv: 'GLOBAL_KEY' };
 const collectionTranslation = { enabled: false, provider: 'google-translate', apiKeyEnv: 'OWN_KEY' };
@@ -58,6 +59,7 @@ describe('openCollection', () => {
       targetLocales: ['fr', 'de'],
       translationConfig: globalTranslation,
       tags: [],
+      protectedTermsFiles: { global: join(dir, DEFAULT_PROTECTED_TERMS_FILENAME), globalExplicit: false },
       readOnly: false,
       config: { translationsFolder: 'src/i18n' },
     });
@@ -107,6 +109,26 @@ describe('openCollection', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(dir);
 
     expect(openCollection(config, 'inherits').translationsFolder).toBe(resolve(dir, 'src/i18n'));
+  });
+
+  it('resolves the protected-terms file paths against cwd without reading them', () => {
+    const withTerms: LingoTrackerConfig = {
+      ...config,
+      protectedTermsFile: 'terms/global.json',
+      collections: { own: { translationsFolder: 'x', protectedTermsFile: '/abs/own-terms.json' } },
+    };
+
+    expect(openCollection(withTerms, 'own', { cwd: dir }).protectedTermsFiles).toEqual({
+      global: join(dir, 'terms', 'global.json'),
+      globalExplicit: true,
+      collection: resolve('/abs/own-terms.json'),
+    });
+  });
+
+  it('opens a collection whose protected-terms file is malformed', () => {
+    writeFileSync(join(dir, DEFAULT_PROTECTED_TERMS_FILENAME), '["iPhone",', 'utf8');
+
+    expect(openCollection(config, 'inherits', { cwd: dir }).baseLocale).toBe('en');
   });
 
   it('opens a read-only collection for reading and reports readOnly', () => {

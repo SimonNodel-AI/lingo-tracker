@@ -3,6 +3,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import { openCollection } from './open-collection';
 import {
   DEFAULT_PROTECTED_TERMS_FILENAME,
   clearProtectedTermsFileCache,
@@ -10,6 +12,7 @@ import {
   readEffectiveProtectedTerms,
   readGlobalProtectedTerms,
   readProtectedTermsFile,
+  readProtectedTermsInForce,
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFilePath,
   resolveProtectedTermsFilePath,
@@ -89,10 +92,23 @@ describe('protected-terms-file', () => {
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('absent.json'));
     });
 
+    it('warns only once per missing explicit file', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      readProtectedTermsFile(join(cwd, 'absent.json'), { explicit: true });
+      readProtectedTermsFile(join(cwd, 'absent.json'), { explicit: true });
+
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
     it('throws on malformed JSON', () => {
       const filePath = write('terms.json', '["iPhone",');
 
       expect(() => readProtectedTermsFile(filePath)).toThrow('not valid JSON');
+      expect(() => readProtectedTermsFile(filePath)).toThrow(
+        expect.objectContaining({ code: 'INVALID_PROTECTED_TERMS_FILE', filePath }),
+      );
+      expect(() => readProtectedTermsFile(filePath)).toThrow(ProtectedTermsFileError);
     });
 
     it('throws when the payload is not an array', () => {
@@ -180,6 +196,22 @@ describe('protected-terms-file', () => {
 
       expect(readCollectionProtectedTerms({ translationsFolder: './i18n' }, cwd)).toEqual([]);
       expect(readEffectiveProtectedTerms(baseConfig(), { translationsFolder: './i18n' }, cwd)).toEqual(['SimonCodes']);
+    });
+
+    it("reads an opened collection's terms from its resolved files, like readEffectiveProtectedTerms", () => {
+      write('global.json', '["SimonCodes", "iPhone"]');
+      write('collection-terms.json', '["iPhone", "Node.js"]');
+      const config = baseConfig({
+        protectedTermsFile: 'global.json',
+        collections: { app: { translationsFolder: './i18n', protectedTermsFile: 'collection-terms.json' } },
+      });
+
+      const collection = openCollection(config, 'app', { cwd });
+
+      expect(readProtectedTermsInForce(collection)).toEqual(['SimonCodes', 'iPhone', 'Node.js']);
+      expect(readProtectedTermsInForce(collection)).toEqual(
+        readEffectiveProtectedTerms(config, config.collections.app, cwd),
+      );
     });
 
     it('honours an explicit global pointer over the default path', () => {

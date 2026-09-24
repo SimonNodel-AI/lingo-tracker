@@ -11,6 +11,7 @@ function collectionWith(overrides: Partial<Collection> = {}): Collection {
     targetLocales: ['es', 'fr'],
     translationConfig: undefined,
     tags: [],
+    protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
     readOnly: false,
     config: { translationsFolder: '/t' },
     ...overrides,

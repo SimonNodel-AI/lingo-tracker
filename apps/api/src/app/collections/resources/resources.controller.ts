@@ -335,15 +335,7 @@ export class ResourcesController {
       );
     }
 
-    const jobId = this.#translationJobService.startJob({
-      collectionName: collection.name,
-      translationsFolder: collection.translationsFolder,
-      translationConfig,
-      targetLocale: dto.locale,
-      baseLocale,
-      allLocales,
-      cwd: process.cwd(),
-    });
+    const jobId = this.#translationJobService.startJob(collection, dto.locale);
 
     const job = this.#translationJobService.getJob(jobId);
     (response as unknown as import('express').Response).status(HttpStatus.ACCEPTED).json(job);

@@ -11,6 +11,7 @@ import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
 import { removeMutation, type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
+import type { OpenTranslatorOptions } from '../lib/translation/translator';
 import { assertCollectionLocales, seedLocales } from './locale-seeding';
 
 /** What to change on an entry. `undefined` leaves a field alone. */
@@ -35,7 +36,7 @@ export interface EditResourceResult {
   readonly updated: boolean;
   readonly message?: string;
   readonly entry?: ResourceTreeEntry;
-  /** Locales the provider did not translate (ICU messages). Present only when auto-translation ran. */
+  /** Locales the Translator skipped (see {@link seedLocales}). Present only when auto-translation ran. */
   readonly skippedLocales?: string[];
   /** What changed on disk (empty when nothing was updated). */
   readonly mutations: ResourceMutation[];
@@ -58,17 +59,20 @@ export interface EditResourceResult {
  * throws `ResourceAlreadyExistsError` with the edit already saved in the source folder.
  *
  * @param key - The entry's full, existing key.
+ * @param options - `provider` / `protectedTerms`: used instead of the collection's (see `openTranslator`).
  * @throws {InvalidResourceKeyError} `key` or `moveTo` is malformed.
  * @throws {ResourceNotFoundError} No entry exists at `key`.
  * @throws {ResourceAlreadyExistsError} The destination folder already has an entry with this entry key
  *   (checked before the edit, and again, on fresh disk state, just before the move).
  * @throws {LocaleNotFoundError} A translation names a locale the collection does not have.
  * @throws {TranslationError} The translation provider failed (the edit itself is saved).
+ * @throws {ProtectedTermsFileError} Auto-translation runs and a protected-terms file is malformed.
  */
 export async function editResource(
   collection: Collection,
   key: string,
   changes: EditResourceChanges,
+  options: OpenTranslatorOptions = {},
 ): Promise<EditResourceResult> {
   const { baseLocale, translationsFolder } = collection;
   const paths = validateAndResolvePaths({ key, translationsFolder });
@@ -132,16 +136,20 @@ export async function editResource(
 
   let skippedLocales: string[] | undefined;
   if (baseChanged) {
-    const seeding = await seedLocales(collection, {
-      baseValue,
-      supplied: translations.map(([locale]) => locale),
-      needsWork: (locale) => needsTranslation(folder.get(entryKey)?.meta?.[locale]),
-      // A real translation is kept; no value, or an untranslated copy of the old base, is not.
-      keepsValue: (locale) => {
-        const value = entry[locale];
-        return typeof value === 'string' && !isUntranslatedCopy(value, previousBase);
+    const seeding = await seedLocales(
+      collection,
+      {
+        baseValue,
+        supplied: translations.map(([locale]) => locale),
+        needsWork: (locale) => needsTranslation(folder.get(entryKey)?.meta?.[locale]),
+        // A real translation is kept; no value, or an untranslated copy of the old base, is not.
+        keepsValue: (locale) => {
+          const value = entry[locale];
+          return typeof value === 'string' && !isUntranslatedCopy(value, previousBase);
+        },
       },
-    });
+      options,
+    );
     for (const translation of seeding.translations) {
       folder.setTranslation(entryKey, translation.locale, translation.value, translation.status);
     }

@@ -1,17 +1,16 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import type { TranslationConfig } from '../config/translation-config';
 import { type Collection, openCollection } from '../lib/config/open-collection';
+import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../lib/config/protected-terms-file';
 import { InvalidResourceKeyError, LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
-import { autoTranslateResource } from '../lib/translation/auto-translate-resources';
+import { InMemoryTranslationProvider } from '../lib/translation/in-memory-translation-provider';
 import { TranslationError } from '../lib/translation/translation-provider';
 import { addResource } from './add-resource';
 import { calculateChecksum as md5 } from './checksum';
-
-vi.mock('../lib/translation/auto-translate-resources');
 
 const AUTO: TranslationConfig = { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' };
 
@@ -27,7 +26,7 @@ describe('addResource (real fs)', () => {
       collections: { main: { translationsFolder: join(root, 'translations') } },
       ...(options.translation && { translation: options.translation }),
     };
-    return openCollection(config, 'main');
+    return openCollection(config, 'main', { cwd: root });
   }
 
   function read(file: 'resource_entries.json' | 'tracker_meta.json', ...segments: string[]) {
@@ -36,7 +35,6 @@ describe('addResource (real fs)', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'add-resource-'));
-    vi.mocked(autoTranslateResource).mockReset();
   });
 
   afterEach(() => {
@@ -45,7 +43,9 @@ describe('addResource (real fs)', () => {
 
   describe('locale seeding', () => {
     it('copies the base value as `new` into every target locale when auto-translation is off', async () => {
-      const result = await addResource(collection(), { key: 'common.ok', baseValue: 'OK' });
+      const provider = new InMemoryTranslationProvider();
+
+      const result = await addResource(collection(), { key: 'common.ok', baseValue: 'OK' }, { provider });
 
       expect(read('resource_entries.json', 'common')).toEqual({ ok: { source: 'OK', fr: 'OK', de: 'OK' } });
       expect(read('tracker_meta.json', 'common').ok).toEqual({
@@ -58,7 +58,7 @@ describe('addResource (real fs)', () => {
         ['de', 'new'],
       ]);
       expect(result.skippedLocales).toBeUndefined();
-      expect(autoTranslateResource).not.toHaveBeenCalled();
+      expect(provider.calls).toEqual([]);
     });
 
     it('keeps supplied translations and seeds only the missing locales', async () => {
@@ -75,23 +75,19 @@ describe('addResource (real fs)', () => {
     });
 
     it('auto-translates the missing locales when the collection enables it', async () => {
-      vi.mocked(autoTranslateResource).mockResolvedValue({
-        translations: [{ locale: 'de', value: 'Speichern', status: 'translated' }],
-        skippedLocales: [],
-      });
+      const provider = new InMemoryTranslationProvider(() => 'Speichern');
 
-      const result = await addResource(collection({ translation: AUTO }), {
-        key: 'common.save',
-        baseValue: 'Save',
-        translations: [{ locale: 'fr', value: 'Enregistrer', status: 'verified' }],
-      });
+      const result = await addResource(
+        collection({ translation: AUTO }),
+        {
+          key: 'common.save',
+          baseValue: 'Save',
+          translations: [{ locale: 'fr', value: 'Enregistrer', status: 'verified' }],
+        },
+        { provider },
+      );
 
-      expect(autoTranslateResource).toHaveBeenCalledWith({
-        baseValue: 'Save',
-        baseLocale: 'en',
-        targetLocales: ['de'],
-        translationConfig: AUTO,
-      });
+      expect(provider.calls).toEqual([[{ text: 'Save', sourceLocale: 'en', targetLocale: 'de' }]]);
       expect(read('resource_entries.json', 'common').save).toEqual({
         source: 'Save',
         fr: 'Enregistrer',
@@ -103,49 +99,112 @@ describe('addResource (real fs)', () => {
       expect(result.skippedLocales).toEqual([]);
     });
 
-    it('copies the base value as `new` into a locale the provider skipped, and reports it', async () => {
-      vi.mocked(autoTranslateResource).mockResolvedValue({
-        translations: [{ locale: 'fr', value: '{count, plural, other {# éléments}}', status: 'translated' }],
-        skippedLocales: ['de'],
-      });
+    it('stores auto-translations normalised to ICU', async () => {
+      const provider = new InMemoryTranslationProvider(({ text }) => text.replace('Hello', 'Hallo'));
 
-      const result = await addResource(collection({ translation: AUTO }), {
-        key: 'items',
-        baseValue: '{count, plural, other {# items}}',
+      await addResource(
+        collection({ translation: AUTO }),
+        { key: 'greet', baseValue: 'Hello {{ name }}' },
+        { provider },
+      );
+
+      expect(read('resource_entries.json').greet).toEqual({
+        source: 'Hello {name}',
+        fr: 'Hallo {name}',
+        de: 'Hallo {name}',
       });
+    });
+
+    it('copies the base value as `new` into every locale when the base value is complex ICU, and reports them', async () => {
+      const provider = new InMemoryTranslationProvider();
+
+      const result = await addResource(
+        collection({ translation: AUTO }),
+        { key: 'items', baseValue: '{count, plural, other {# items}}' },
+        { provider },
+      );
 
       const entry = read('resource_entries.json').items;
+      expect(entry.fr).toBe('{count, plural, other {# items}}');
       expect(entry.de).toBe('{count, plural, other {# items}}');
       expect(read('tracker_meta.json').items.de.status).toBe('new');
-      expect(result.skippedLocales).toEqual(['de']);
+      expect(result.skippedLocales).toEqual(['fr', 'de']);
+      expect(provider.calls).toEqual([]);
+    });
+
+    it('copies the base value as `new` into a locale whose translation dropped a protected term', async () => {
+      // The global terms file beside the config (root is the config directory).
+      writeFileSync(join(root, DEFAULT_PROTECTED_TERMS_FILENAME), JSON.stringify(['iPhone']), 'utf8');
+      const provider = new InMemoryTranslationProvider(({ targetLocale }) =>
+        targetLocale === 'fr' ? 'Acheter un téléphone' : 'iPhone kaufen',
+      );
+
+      const result = await addResource(
+        collection({ translation: AUTO }),
+        { key: 'buy', baseValue: 'Buy an iPhone' },
+        { provider },
+      );
+
+      expect(read('resource_entries.json').buy).toEqual({
+        source: 'Buy an iPhone',
+        fr: 'Buy an iPhone',
+        de: 'iPhone kaufen',
+      });
+      expect(read('tracker_meta.json').buy.fr.status).toBe('new');
+      expect(read('tracker_meta.json').buy.de.status).toBe('translated');
+      expect(result.skippedLocales).toEqual(['fr']);
     });
 
     it('does not call the provider when every target locale was supplied', async () => {
-      await addResource(collection({ translation: AUTO }), {
-        key: 'ok',
-        baseValue: 'OK',
-        translations: [
-          { locale: 'fr', value: "D'accord", status: 'translated' },
-          { locale: 'de', value: 'Okay', status: 'translated' },
-        ],
-      });
+      const provider = new InMemoryTranslationProvider();
 
-      expect(autoTranslateResource).not.toHaveBeenCalled();
+      await addResource(
+        collection({ translation: AUTO }),
+        {
+          key: 'ok',
+          baseValue: 'OK',
+          translations: [
+            { locale: 'fr', value: "D'accord", status: 'translated' },
+            { locale: 'de', value: 'Okay', status: 'translated' },
+          ],
+        },
+        { provider },
+      );
+
+      expect(provider.calls).toEqual([]);
     });
 
     it('does not auto-translate when the collection translation config is disabled', async () => {
-      await addResource(collection({ translation: { ...AUTO, enabled: false } }), { key: 'ok', baseValue: 'OK' });
+      const provider = new InMemoryTranslationProvider();
 
-      expect(autoTranslateResource).not.toHaveBeenCalled();
+      await addResource(
+        collection({ translation: { ...AUTO, enabled: false } }),
+        { key: 'ok', baseValue: 'OK' },
+        { provider },
+      );
+
+      expect(provider.calls).toEqual([]);
       expect(read('tracker_meta.json').ok.fr.status).toBe('new');
     });
 
     it('writes nothing when the provider fails', async () => {
-      vi.mocked(autoTranslateResource).mockRejectedValue(new TranslationError('quota', 'RATE_LIMIT', true));
+      const provider = new InMemoryTranslationProvider(() => {
+        throw new TranslationError('quota', 'RATE_LIMIT', true);
+      });
 
       await expect(
-        addResource(collection({ translation: AUTO }), { key: 'common.ok', baseValue: 'OK' }),
+        addResource(collection({ translation: AUTO }), { key: 'common.ok', baseValue: 'OK' }, { provider }),
       ).rejects.toThrow(TranslationError);
+      expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
+    });
+
+    it('writes nothing when the API key is not set', async () => {
+      await expect(
+        addResource(collection({ translation: { ...AUTO, apiKeyEnv: 'ADD_RESOURCE_SPEC_UNSET_KEY' } }), {
+          key: 'common.ok',
+          baseValue: 'OK',
+        }),
+      ).rejects.toMatchObject({ code: 'MISSING_API_KEY' });
       expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
     });
 
