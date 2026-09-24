@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./commands/validate', () => ({ validateCommand: vi.fn() }));
 vi.mock('./add-resource/add-resource', () => ({ addResourceCommand: vi.fn() }));
 vi.mock('./delete-collection/delete-collection', () => ({ deleteCollectionCommand: vi.fn() }));
+vi.mock('./commands/move', () => ({ moveResourceCommand: vi.fn() }));
 
 import { addResourceCommand } from './add-resource/add-resource';
+import { moveResourceCommand } from './commands/move';
 import { validateCommand } from './commands/validate';
 import { deleteCollectionCommand } from './delete-collection/delete-collection';
 
@@ -18,7 +20,7 @@ async function runCli(...args: string[]): Promise<void> {
   vi.resetModules();
   await import('./main');
   await vi.waitFor(() => {
-    const calls = [validateCommand, addResourceCommand, deleteCollectionCommand].map(
+    const calls = [validateCommand, addResourceCommand, deleteCollectionCommand, moveResourceCommand].map(
       (command) => vi.mocked(command).mock.calls.length,
     );
     if (calls.every((count) => count === 0)) {
@@ -55,5 +57,16 @@ describe('main.ts flag wiring', () => {
     await runCli('delete-collection', '--collection-name', 'app', '--yes');
 
     expect(deleteCollectionCommand).toHaveBeenCalledWith({ collectionName: 'app', yes: true });
+  });
+
+  it('passes --dest-collection to move', async () => {
+    await runCli('move', '--collection', 'main', '--source', 'a.ok', '--dest', 'b.ok', '--dest-collection', 'admin');
+
+    expect(moveResourceCommand).toHaveBeenCalledWith({
+      collection: 'main',
+      source: 'a.ok',
+      dest: 'b.ok',
+      destCollection: 'admin',
+    });
   });
 });

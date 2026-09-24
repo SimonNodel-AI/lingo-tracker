@@ -7,7 +7,13 @@ describe('ThemeService', () => {
   let service: ThemeService;
   let spectator: SpectatorService<ThemeService>;
   let mockLocalStorage: Record<string, string>;
-  let mockMediaQueryList: MediaQueryList;
+  /** The parts of `MediaQueryList` the service reads; `matches` stays writable so a test can flip it. */
+  let mockMediaQueryList: {
+    matches: boolean;
+    media: string;
+    addEventListener: ReturnType<typeof vi.fn>;
+    removeEventListener: ReturnType<typeof vi.fn>;
+  };
   let mediaQueryListeners: Array<(event: MediaQueryListEvent) => void>;
 
   /**
@@ -64,9 +70,10 @@ describe('ThemeService', () => {
         }
       }),
       removeEventListener: vi.fn(),
-    } as unknown as MediaQueryList;
+    };
 
-    window.matchMedia = vi.fn(() => mockMediaQueryList);
+    // A partial fake: the service never touches onchange, addListener or dispatchEvent.
+    window.matchMedia = vi.fn(() => mockMediaQueryList as unknown as MediaQueryList);
 
     // Mock document.documentElement
     const mockRoot = {

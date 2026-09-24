@@ -3,6 +3,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
@@ -50,7 +51,7 @@ describe('TranslationEditorLauncher', () => {
 
     launcher = TestBed.inject(TranslationEditorLauncher);
     store = TestBed.inject(BrowserStore);
-    patchState(store, { availableLocales: ['en', 'fr'], baseLocale: 'en' });
+    patchState(unprotected(store), { availableLocales: ['en', 'fr'], baseLocale: 'en' });
   });
 
   describe('openByFullKey', () => {
@@ -78,7 +79,7 @@ describe('TranslationEditorLauncher', () => {
     });
 
     it('should leave search mode before navigating, so the list matches the dialog', () => {
-      patchState(store, { isSearchMode: true, searchQuery: 'back' });
+      patchState(unprotected(store), { isSearchMode: true, searchQuery: 'back' });
 
       launcher.openByFullKey('browser.header.backButton', 'test-collection');
 
@@ -130,7 +131,7 @@ describe('TranslationEditorLauncher', () => {
     // The save itself, and the cache patch that follows it, belong to
     // BrowserStore.updateResource; the launcher only reports on it.
     it('should flash the row under its full key and confirm the save', () => {
-      patchState(store, { translations: [resource] });
+      patchState(unprotected(store), { translations: [resource] });
       const onUpdated = vi.fn();
       mockDialog.open.mockReturnValue(savedInto('browser.header'));
 

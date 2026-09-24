@@ -17,7 +17,8 @@ Return to [architecture README](README.md).
   - [Public surface](#public-surface)
 - [Nx Workspace Configuration Highlights](#nx-workspace-configuration-highlights)
   - [Build targets by project](#build-targets-by-project)
-  - [Test runner: Vitest](#test-runner-vitest)
+  - [Typecheck targets](#typecheck-targets)
+  - [Test runners: Vitest and Jest](#test-runners-vitest-and-jest)
   - [Serve targets](#serve-targets)
 
 ---
@@ -231,16 +232,39 @@ The `api` build has an explicit `dependsOn: ["^build", "^typecheck"]` which mean
 
 The `tracker:serve` target has `dependsOn: ["api:serve"]`, so starting the dev server for the Angular UI automatically starts the API process as well.
 
-### Test runner: Vitest
+### Typecheck targets
 
-All projects use **Vitest** via the `@nx/vite:test` executor (or `nx:run-commands` wrapping Vitest directly for `cli`). Vitest configuration is co-located with each project. The `@nx/vite/plugin` in `nx.json` registers a `vite:test` target name; projects that need custom options (such as `cli`) override this with an explicit `nx:run-commands` target.
+The `@nx/js/typescript` plugin infers `typecheck` as `tsc --build tsconfig.json --emitDeclarationOnly`. It checks the configs that the project's `tsconfig.json` references, so a spec is typechecked only when `tsconfig.spec.json` is covered:
+
+| Project | Specs typechecked | How |
+|---|---|---|
+| `domain` | Yes | `tsconfig.json` references `tsconfig.spec.json` (composite) |
+| `tracker` | Yes | `typecheck` depends on a `typecheck-spec` target in `project.json`: `tsc --noEmit -p tsconfig.spec.json`. A composite reference would break the Analog Vitest plugin, which reads the same file (see [frontend.md](frontend.md#testing)) |
+| `core`, `cli` | No | `tsconfig.json` references only the lib/app config. Their specs have type errors today |
+| `api` | No | Same; its specs (Jest types) have no type errors today |
+| `data-transfer` | — | No specs |
+
+**Where typecheck runs.** The PR workflow (`.github/workflows/pr.yml`) runs `pnpm nx affected -t typecheck` after the affected tests, so a pull request that touches the tracker runs `tracker:typecheck` and its `typecheck-spec`. Nothing else runs it for the tracker: `tracker:build` does not depend on `typecheck`, and the root `typecheck` script and the `.husky/pre-commit` hook cover only `core` and `data-transfer`, which keeps commits fast. Run `pnpm nx typecheck tracker` locally before you push a spec change.
+
+`typecheck-spec` and `test` both depend on `generate-tokens`, whose output `src/i18n-types/tracker-resources.ts` is gitignored, so the `default` input does not hash it. Both targets add `{ "dependentTasksOutputFiles": "**/*.ts" }` to their inputs, so a regenerated token file invalidates their cache.
+
+### Test runners: Vitest and Jest
+
+`domain`, `core` and `tracker` use **Vitest** through the `@nx/vitest:test` executor. `cli` runs Vitest through `nx:run-commands` (`vitest` in `apps/cli`). `api` runs **Jest** through `nx:run-commands` (`jest` in `apps/api`). Vitest configuration is co-located with each project.
 
 Test output is cached by Nx (`"cache": true` in `targetDefaults.test`), so unchanged projects are skipped on re-runs.
 
-To run a single test file:
+To run a single test file (the path is relative to the project root):
 
 ```bash
-pnpm nx test core --testFile=src/lib/resource/checksum.spec.ts
+# domain, core, tracker (@nx/vitest:test)
+pnpm nx test core --testFile=src/resource/checksum.spec.ts
+
+# cli (vitest): a positional path after -- (vitest rejects --testFile as an unknown option)
+pnpm nx test cli -- src/commands/move.test.ts
+
+# api (jest): a positional path after --
+pnpm nx test api -- src/app/app.service.spec.ts
 ```
 
 ### Serve targets

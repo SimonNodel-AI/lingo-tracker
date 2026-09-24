@@ -11,7 +11,7 @@ import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from './with-bun
 
 describe('withBundlesFeature', () => {
   let store: InstanceType<typeof CollectionsStore>;
-  let spectator: SpectatorService<CollectionsStore>;
+  let spectator: SpectatorService<InstanceType<typeof CollectionsStore>>;
   let reloadInjector: EnvironmentInjector | undefined;
 
   const api = {

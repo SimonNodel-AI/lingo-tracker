@@ -6,6 +6,7 @@ import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dial
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import type {
   LingoTrackerConfigDto,
   ResourceSummaryDto,
@@ -988,7 +989,7 @@ describe('TranslationEditorDialog', () => {
     /** Puts entries in the folder the browser is showing, the cheapest source. */
     const seedBrowserFolder = (folderPath: string, keys: string[]): void => {
       const store = spectator.inject(BrowserStore);
-      patchState(store, {
+      patchState(unprotected(store), {
         currentFolderPath: folderPath,
         translations: keys.map((key) => entry(folderPath ? `${folderPath}.${key}` : key)),
       });
@@ -1483,7 +1484,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should keep the collision colour on the copy button', () => {
       const store = spectator.inject(BrowserStore);
-      patchState(store, {
+      patchState(unprotected(store), {
         currentFolderPath: 'common.buttons',
         translations: [summary('common.buttons.ok', 'OK')],
       });

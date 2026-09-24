@@ -9,7 +9,7 @@ import { CollectionsStore } from './collections.store';
 
 describe('CollectionsStore', () => {
   let store: InstanceType<typeof CollectionsStore>;
-  let spectator: SpectatorService<CollectionsStore>;
+  let spectator: SpectatorService<InstanceType<typeof CollectionsStore>>;
 
   const api = {
     getConfig: vi.fn(),

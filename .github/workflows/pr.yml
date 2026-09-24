@@ -60,5 +60,8 @@ jobs:
       - name: Test (affected)
         run: pnpm nx affected -t test --base=${{ steps.nx-base.outputs.NX_BASE }}
 
+      - name: Typecheck (affected)
+        run: pnpm nx affected -t typecheck --base=${{ steps.nx-base.outputs.NX_BASE }}
+
       - name: Build (affected)
         run: pnpm nx affected -t build --base=${{ steps.nx-base.outputs.NX_BASE }}

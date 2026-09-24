@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
@@ -33,7 +34,7 @@ describe('BrowserStore entry writes', () => {
 
   /** The folder list as the browser shows `common` with nested resources folded in. */
   const folderMode = (): void => {
-    patchState(store, {
+    patchState(unprotected(store), {
       selectedCollection: 'my-collection',
       currentFolderPath: 'common',
       translations: [entry('common.save', 'Save'), entry('common.dialog.title', 'Title')],
@@ -43,7 +44,7 @@ describe('BrowserStore entry writes', () => {
   /** A search over the same collection, with the `common` folder list still behind it. */
   const searchMode = (): void => {
     folderMode();
-    patchState(store, {
+    patchState(unprotected(store), {
       isSearchMode: true,
       searchQuery: 'sa',
       searchResults: [hit('common.save', 'Save'), hit('errors.save', 'Save')],

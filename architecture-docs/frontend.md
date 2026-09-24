@@ -30,6 +30,7 @@ Return to [architecture README](README.md).
   - [Bundle Form Dialog](#bundle-form-dialog)
 - [Theming System](#theming-system)
 - [i18n — Transloco Integration](#i18n--transloco-integration)
+- [Testing](#testing)
 - [Cross-Links](#cross-links)
 
 ---
@@ -447,6 +448,18 @@ The token file provides compile-time safety: a missing key is a TypeScript error
 **UI language switching**
 
 `LocaleService` (`shared/services/locale.service.ts`) holds the active UI locale as a signal. `LocalePickerComponent` in the app header calls `TranslocoService.setActiveLang()` to switch languages at runtime without a page reload. The bundle loader fetches the new locale JSON on demand.
+
+---
+
+## Testing
+
+Specs are co-located `*.spec.ts` files run by Vitest (jsdom, `globals: true`) through the Analog Angular plugin, with `src/test-setup.ts` as the setup file. `nx test tracker` depends on `generate-tokens`, because specs import `TRACKER_TOKENS`.
+
+`nx typecheck tracker` covers the specs. Its inferred command (`tsc --build tsconfig.json`) checks the app only, so `project.json` adds a `typecheck-spec` target (`tsc --noEmit -p tsconfig.spec.json`) and makes `typecheck` depend on it. `tsconfig.spec.json` cannot be a composite project reference, as domain's is: with `composite` set, the Analog plugin, which reads the same file, compiles no specs ("No test suite found"). Spec conventions the typecheck enforces:
+
+- Update a store's protected state with `patchState(unprotected(store), …)` (`@ngrx/signals/testing`).
+- Type a `SpectatorService` over a signal store as `SpectatorService<InstanceType<typeof Store>>`.
+- Mocks carry the real DTO shape (a `ResourceSummaryDto` has `tags` and `inheritedTags`). A partial fake of a DOM or library type takes one `as unknown as` cast with a comment at the point where it is handed over.
 
 ---
 

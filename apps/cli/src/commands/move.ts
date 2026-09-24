@@ -8,7 +8,6 @@ export interface MoveResourceOptions {
   dest?: string;
   destCollection?: string;
   override?: boolean;
-  verbose?: boolean;
 }
 
 const required = (val: string) => (val && val.trim().length > 0 ? true : 'Required');

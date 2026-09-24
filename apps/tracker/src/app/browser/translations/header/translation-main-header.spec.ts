@@ -4,6 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
@@ -100,7 +101,7 @@ describe('TranslationMainHeader', () => {
   describe('handleAddTranslation — "Open existing"', () => {
     it('should open the editor on the existing key the create dialog handed back', () => {
       const store = spectator.inject(BrowserStore);
-      patchState(store, { selectedCollection: 'test-collection' });
+      patchState(unprotected(store), { selectedCollection: 'test-collection' });
       const result: TranslationEditorResult = {
         key: 'backButton',
         baseValue: 'Back',

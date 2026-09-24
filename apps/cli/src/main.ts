@@ -137,8 +137,11 @@ program
   .option('--collection <name>', 'Name of the collection')
   .option('--source <source>', 'Source key or pattern (e.g., common.buttons.ok or common.buttons.*)')
   .option('--dest <dest>', 'Destination key (e.g., common.actions.ok)')
+  .option(
+    '--dest-collection <name>',
+    'Move into another collection; the destination key is relative to that collection',
+  )
   .option('--override', 'Override destination if it exists')
-  .option('--verbose', 'Show detailed output')
   .action(async (options) => {
     const { moveResourceCommand } = await import('./commands/move');
     await moveResourceCommand(options);

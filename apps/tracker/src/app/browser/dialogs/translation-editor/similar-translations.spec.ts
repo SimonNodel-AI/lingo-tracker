@@ -16,6 +16,8 @@ describe('SimilarTranslations', () => {
       entryKey,
       base: { locale: 'en', value },
       targets: [],
+      tags: [],
+      inheritedTags: [],
       matchType: 'similar-value',
       ...(similarity === undefined ? {} : { similarity }),
     };

@@ -13,7 +13,17 @@ describe('TranslationSearch', () => {
   let component: TranslationSearch;
   let fixture: ComponentFixture<TranslationSearch>;
   let spectator: Spectator<TranslationSearch>;
-  let mockStore: any;
+  let mockStore: ReturnType<typeof createMockStore>;
+
+  /** The slice of `BrowserStore` the search box reads. */
+  const createMockStore = () => ({
+    searchQuery: signal(''),
+    isSearchMode: signal(false),
+    isSearchLoading: signal(false),
+    setSearchQuery: vi.fn(),
+    clearSearch: vi.fn(),
+    searchTranslations: vi.fn(),
+  });
 
   const createComponent = createComponentFactory({
     component: TranslationSearch,
@@ -22,14 +32,7 @@ describe('TranslationSearch', () => {
   });
 
   beforeEach(() => {
-    mockStore = {
-      searchQuery: signal(''),
-      isSearchMode: signal(false),
-      isSearchLoading: signal(false),
-      setSearchQuery: vi.fn(),
-      clearSearch: vi.fn(),
-      searchTranslations: vi.fn(),
-    };
+    mockStore = createMockStore();
 
     spectator = createComponent();
     fixture = spectator.fixture;

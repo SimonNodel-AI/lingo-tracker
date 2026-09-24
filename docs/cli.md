@@ -755,11 +755,11 @@ lingo-tracker move [options]
 
 **Options:**
 
-- `--collection <name>` - Collection to move resources in (required in non-interactive mode)
+- `--collection <name>` - Collection to move resources in (required in non-interactive mode when several collections are configured)
 - `--source <key>` - Source key or pattern (e.g., `common.buttons.ok` or `common.buttons.*`) (required in non-interactive mode)
 - `--dest <key>` - Destination key (e.g., `common.actions.ok` or `common.actions`) (required in non-interactive mode)
+- `--dest-collection <name>` - Move into another collection; the destination key is relative to that collection. The collection must exist and must not be read-only. Never prompted for.
 - `--override` - Overwrite destination if it already exists
-- `--verbose` - Print detailed output for each moved resource
 
 **Examples:**
 
@@ -785,6 +785,16 @@ lingo-tracker move \
 ```
 *Result: `common.buttons.ok` -> `common.actions.ok`, `common.buttons.cancel` -> `common.actions.cancel`*
 
+Move a resource into another collection:
+```bash
+lingo-tracker move \
+  --collection Main \
+  --source common.buttons.ok \
+  --dest shared.buttons.ok \
+  --dest-collection Shared
+```
+*Result: `common.buttons.ok` is removed from `Main` and stored as `shared.buttons.ok` in `Shared`.*
+
 Force move (overwrite destination):
 ```bash
 lingo-tracker move \
@@ -798,6 +808,7 @@ lingo-tracker move \
 - When using wildcard patterns, the suffix matched by `*` is appended to the destination key.
 - Moving a resource preserves its comments, tags, and translations.
 - The source resource is deleted after a successful move.
+- A cross-collection move copies the entry and its metadata as they are. If the two collections have different base locales, the stored source text and checksums still belong to the source collection's base locale, and target locales are neither added nor removed.
 
 ---
 

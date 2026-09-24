@@ -281,11 +281,10 @@ describe('BrowserApiService', () => {
       const createDto: CreateResourceDto = {
         key: 'common.buttons.save',
         baseValue: 'Save',
-        baseLocale: 'en',
       };
 
       const mockResponse: CreateResourceResponseDto = {
-        resolvedKey: 'common.buttons.save',
+        entriesCreated: 1,
         created: true,
       };
 
@@ -307,11 +306,10 @@ describe('BrowserApiService', () => {
       const createDto: CreateResourceDto = {
         key: 'test.key',
         baseValue: 'Test',
-        baseLocale: 'en',
       };
 
       const mockResponse: CreateResourceResponseDto = {
-        resolvedKey: 'test.key',
+        entriesCreated: 1,
         created: true,
       };
 
@@ -359,8 +357,8 @@ describe('BrowserApiService', () => {
         key: 'common.greeting',
         baseValue: 'Hello',
         locales: {
-          fr: { value: 'Bonjour' },
-          es: { value: 'Hola' },
+          fr: { value: 'Bonjour', status: 'translated' },
+          es: { value: 'Hola', status: 'translated' },
         },
       };
 
@@ -380,12 +378,12 @@ describe('BrowserApiService', () => {
       await firstValueFrom(result$);
     });
 
-    it('should include targetFolder when moving resource', async () => {
+    it('should include moveTo when moving resource', async () => {
       const collectionName = 'my-collection';
       const updateDto: UpdateResourceDto = {
         key: 'old.path.button',
         baseValue: 'Click Me',
-        targetFolder: 'new.path',
+        moveTo: 'new.path',
       };
 
       const mockResponse: UpdateResourceResponseDto = {
@@ -478,7 +476,7 @@ describe('BrowserApiService', () => {
 
       const mockResponse: DeleteResourceResponseDto = {
         entriesDeleted: 0,
-        errors: ['Resource not found: nonexistent.key'],
+        errors: [{ key: 'nonexistent.key', error: 'Resource not found: nonexistent.key' }],
       };
 
       const result$ = service.deleteResource(collectionName, resourceKeys);

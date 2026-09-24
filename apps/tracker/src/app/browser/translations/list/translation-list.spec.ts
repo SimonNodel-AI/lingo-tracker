@@ -6,6 +6,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import { createComponentFactory } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,10 +60,6 @@ describe('TranslationList', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
-  });
-
-  it('should inject translation browser store', () => {
-    expect(component.store).toBeTruthy();
   });
 
   it('should accept collectionName input', () => {
@@ -543,7 +540,7 @@ describe('TranslationList - deleteTranslation', () => {
   it('should call API and show success notification when dialog is confirmed', () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(of({ entriesDeleted: 1 }));
-    patchState(store, { translations: [mockResource] });
+    patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.deleteTranslation(mockResource, 'my-collection');
@@ -557,7 +554,7 @@ describe('TranslationList - deleteTranslation', () => {
   it('should show error notification when API throws', () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(throwError(() => new Error('Network failure')));
-    patchState(store, { translations: [mockResource] });
+    patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.deleteTranslation(mockResource, 'my-collection');
@@ -627,7 +624,7 @@ describe('TranslationList - handleTranslate', () => {
       }),
     );
 
-    patchState(store, { translations: [mockResource] });
+    patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.translateResource(mockResource, 'my-collection');

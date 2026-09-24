@@ -633,7 +633,7 @@ describe('TranslationItem - compact key chip', () => {
     trigger?.click();
     fixture.detectChanges();
 
-    return [...document.querySelectorAll('.mat-mdc-menu-item')].map((item) => item.textContent?.trim() ?? '');
+    return Array.from(document.querySelectorAll('.mat-mdc-menu-item'), (item) => item.textContent?.trim() ?? '');
   }
 
   it('drops Edit from the compact overflow menu now that the rail shows it', () => {

@@ -33,8 +33,13 @@ pnpm run test:core
 pnpm run test:domain
 pnpm run test:tracker
 
-# Run a single test file (using Nx)
-pnpm nx test core --testFile=src/lib/resource/checksum.spec.ts
+# Run a single test file (path relative to the project root)
+pnpm nx test core --testFile=src/resource/checksum.spec.ts   # core, domain, tracker (@nx/vitest)
+pnpm nx test cli -- src/commands/move.test.ts                # cli (vitest): positional path after --
+pnpm nx test api -- src/app/app.service.spec.ts              # api (jest): positional path after --
+
+# Typecheck (tracker's also typechecks its specs via typecheck-spec)
+pnpm nx typecheck tracker
 ```
 
 ### Development Servers
@@ -63,7 +68,7 @@ pnpm nx                # Direct Nx CLI access
 
 ## Architecture
 
-### Monorepo Structure (Nx 21.5.3)
+### Monorepo Structure (Nx 22.7.9)
 
 The codebase follows a **layered architecture** with three applications sharing core business logic:
 
@@ -71,7 +76,7 @@ The codebase follows a **layered architecture** with three applications sharing 
 apps/
 ├── cli/        # Command-line interface (Node.js + Commander)
 ├── api/        # REST API backend (NestJS + Express)
-└── tracker/    # Web UI (Angular 20 + Material)
+└── tracker/    # Web UI (Angular 21 + Material)
 
 libs/
 ├── domain/            # Pure business logic (NO Node.js deps — browser-safe)
@@ -178,41 +183,42 @@ export class ExampleComponent implements OnInit {
 
 ## Key Implementation Patterns
 
-### Adding a Resource (libs/core/src/lib/resource/)
+### Adding a Resource (libs/core/src/resource/add-resource.ts)
 
-1. Validate key format and resolve to folder path
-2. Load existing `resource_entries.json` and `tracker_meta.json`
-3. Compute checksums (MD5) for source and translations
-4. Determine translation status based on checksums
-5. Write updated files atomically
+1. Validate the key (and optional `targetFolder`) and resolve it to a folder path
+2. Normalize values to ICU and seed every target locale (supplied value, else auto-translation, else a `new` copy of the base) before touching the disk
+3. Write through `openResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), the one read-modify-write path for `resource_entries.json` + `tracker_meta.json`: it computes MD5 checksums and applies the staleness rule
+4. `save()` writes both files together (not atomically)
 
-### CLI Command Pattern (apps/cli/src/commands/)
+### CLI Command Pattern (apps/cli/src/runner/command-runner.ts)
 
 ```typescript
-export const commandName = new Command('command-name')
-  .description('Description')
-  .argument('<arg>', 'Arg description')
-  .action(async (arg) => {
-    // Use dynamic import for prompts
-    const prompts = (await import('prompts')).default;
-
-    // Call core library functions
-    const result = await coreFunction(arg);
-  });
+export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
+  name: 'Add locale',              // "❌ Add locale cancelled."
+  collection: 'writable',          // 'writable' | 'read' | 'none'
+  prompts: (options) => (options.locale ? [] : [{ type: 'text', name: 'locale', message: 'Locale' }]),
+  required: ['locale'],            // exit 1 when missing; typed as present in run
+  run: async ({ collection, cwd, answers }) => {
+    const result = await addLocaleToCollection(collection.name, answers.locale, { cwd });
+    ConsoleFormatter.success(result.message);
+  },
+});
 ```
 
-### API Controller Pattern (apps/api/src/app/controllers/)
+- The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes (`process.exitCode`, never `process.exit`). `run` returns `{ exitCode: 1 }` for a failure it has already reported, or throws.
+- Diagnostics go to stderr via `ConsoleFormatter.error/warning`; the payload goes to stdout.
+- Commands are registered (flags, help text, lazy import) in `apps/cli/src/main.ts`; `main.spec.ts` covers the flag wiring.
+
+### API Controller Pattern (apps/api/src/app/<feature>/<feature>.controller.ts)
 
 ```typescript
 @Controller('collections')
 export class CollectionsController {
   @Post()
-  async create(@Body() dto: CreateCollectionDto) {
-    // Call core library
-    const result = await addCollection(dto.name, dto.config);
-
-    // Map to DTO if needed
-    return mapper.toDto(result);
+  async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
+    const mapped = mapDtoToCollection(body.collection); // DTO → core shape (apps/api/src/app/mappers/)
+    const result = addCollection(body.name, mapped); // synchronous core call
+    return { message: result.message };
   }
 }
 ```
@@ -222,7 +228,7 @@ export class CollectionsController {
 - **Package Manager**: pnpm 10+ required (enforced by engines)
 - **Node Version**: >=22.16.0
 - **Commits**: Use `pnpm run commit` for conventional commits with commitizen
-- **Testing**: Vitest for unit tests, use `--testFile` flag to run single test
+- **Testing**: Vitest for unit tests (the API uses Jest); see [Testing](#testing) for running a single file
 - **API Port**: Default 3030, configurable via `LINGO_TRACKER_PORT` env var
 - **CORS**: Enabled with wildcard origin in development mode
 
