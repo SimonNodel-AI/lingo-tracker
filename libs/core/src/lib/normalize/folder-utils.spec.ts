@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getAllFoldersBottomUp, isFolderEmpty } from './folder-utils';
+import { mockedReaddirSync } from '../../testing/mocked-fs.spec-helpers';
 
 // Mock the fs module
 vi.mock('fs');
@@ -31,7 +32,7 @@ describe('Folder Utilities', () => {
       const makeDirEntry = (name: string): fs.Dirent =>
         ({ name, isDirectory: () => true, isFile: () => false }) as unknown as fs.Dirent;
 
-      vi.mocked(fs.readdirSync).mockImplementation((filepath) => {
+      mockedReaddirSync().mockImplementation((filepath) => {
         if (filepath === testDir) return [makeDirEntry('level1')];
         if (filepath === level1) return [makeDirEntry('level2')];
         if (filepath === level2) return [makeDirEntry('level3')];
@@ -75,7 +76,7 @@ describe('Folder Utilities', () => {
       const makeDirEntry = (name: string): fs.Dirent =>
         ({ name, isDirectory: () => true, isFile: () => false }) as unknown as fs.Dirent;
 
-      vi.mocked(fs.readdirSync).mockImplementation((filepath) => {
+      mockedReaddirSync().mockImplementation((filepath) => {
         if (filepath === testDir) return [makeDirEntry('apps'), makeDirEntry('shared')];
         if (filepath === apps) return [makeDirEntry('common')];
         if (filepath === common) return [makeDirEntry('buttons')];
@@ -101,7 +102,7 @@ describe('Folder Utilities', () => {
       const testDir = '/test-root';
 
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.readdirSync).mockReturnValue([]);
+      mockedReaddirSync().mockReturnValue([]);
 
       const folders = getAllFoldersBottomUp(testDir);
 
@@ -124,7 +125,7 @@ describe('Folder Utilities', () => {
       const makeDirEntry = (name: string): fs.Dirent =>
         ({ name, isDirectory: () => true, isFile: () => false }) as unknown as fs.Dirent;
 
-      vi.mocked(fs.readdirSync).mockImplementation((filepath) => {
+      mockedReaddirSync().mockImplementation((filepath) => {
         if (filepath === testDir) return [makeDirEntry('folder1'), makeDirEntry('folder2')];
         return [];
       });
@@ -166,7 +167,7 @@ describe('Folder Utilities', () => {
         return false;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue([] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue([]);
 
       expect(isFolderEmpty(folder)).toBe(true);
     });
@@ -179,7 +180,7 @@ describe('Folder Utilities', () => {
         return filepath === folder || filepath === resourceEntriesPath;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue(['resource_entries.json'] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue(['resource_entries.json']);
 
       vi.mocked(fs.statSync).mockReturnValue({
         isDirectory: () => false,
@@ -198,7 +199,7 @@ describe('Folder Utilities', () => {
         return filepath === folder || filepath === resourceEntriesPath;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue(['resource_entries.json'] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue(['resource_entries.json']);
 
       vi.mocked(fs.statSync).mockReturnValue({
         isDirectory: () => false,
@@ -223,7 +224,7 @@ describe('Folder Utilities', () => {
         return filepath === parentFolder || filepath === path.join(parentFolder, 'resource_entries.json');
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue([childFolder] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue([childFolder]);
 
       vi.mocked(fs.statSync).mockReturnValue({
         isDirectory: () => true,
@@ -241,7 +242,7 @@ describe('Folder Utilities', () => {
         return false;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue(['tracker_meta.json'] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue(['tracker_meta.json']);
 
       vi.mocked(fs.statSync).mockReturnValue({
         isDirectory: () => false,
@@ -259,7 +260,7 @@ describe('Folder Utilities', () => {
         return false;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue(['.gitkeep'] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue(['.gitkeep']);
 
       vi.mocked(fs.statSync).mockReturnValue({
         isDirectory: () => false,
@@ -277,7 +278,7 @@ describe('Folder Utilities', () => {
         return false;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue(['.DS_Store'] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue(['.DS_Store']);
 
       vi.mocked(fs.statSync).mockReturnValue({
         isDirectory: () => false,
@@ -302,7 +303,7 @@ describe('Folder Utilities', () => {
         return filepath === folder || filepath === resourceEntriesPath;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue(['resource_entries.json'] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue(['resource_entries.json']);
 
       vi.mocked(fs.statSync).mockReturnValue({
         isDirectory: () => false,
@@ -322,7 +323,7 @@ describe('Folder Utilities', () => {
         return filepath === parentFolder || filepath === resourceEntriesPath;
       });
 
-      vi.mocked(fs.readdirSync).mockReturnValue(['child', 'resource_entries.json'] as unknown as fs.Dirent[]);
+      mockedReaddirSync().mockReturnValue(['child', 'resource_entries.json']);
 
       vi.mocked(fs.statSync).mockImplementation((filepath) => {
         const pathStr = filepath.toString();

@@ -32,6 +32,8 @@ import {
 } from '@simoncodes-ca/core';
 
 const BASE_CONFIG = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'es'],
   collections: {

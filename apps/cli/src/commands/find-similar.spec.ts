@@ -45,6 +45,8 @@ function loggedLines(): string[] {
 }
 
 const BASE_CONFIG: LingoTrackerConfig = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: {
@@ -335,6 +337,8 @@ describe('find-similar', () => {
   describe('findSimilarCommand — the collection it reads', () => {
     it('uses collectionConfig.baseLocale when set', async () => {
       vi.mocked(loadConfig).mockReturnValue({
+        exportFolder: 'dist/lingo-export',
+        importFolder: 'dist/lingo-import',
         baseLocale: 'en',
         locales: ['en', 'fr'],
         collections: {
@@ -353,6 +357,8 @@ describe('find-similar', () => {
 
     it('falls back to config.baseLocale when collectionConfig has no baseLocale', async () => {
       vi.mocked(loadConfig).mockReturnValue({
+        exportFolder: 'dist/lingo-export',
+        importFolder: 'dist/lingo-import',
         baseLocale: 'de',
         locales: ['de', 'en'],
         collections: {
@@ -369,14 +375,17 @@ describe('find-similar', () => {
     });
 
     it('falls back to "en" when neither collection nor config specifies baseLocale', async () => {
+      // This test deliberately omits baseLocale to exercise the command's legacy fallback.
       vi.mocked(loadConfig).mockReturnValue({
+        exportFolder: 'dist/lingo-export',
+        importFolder: 'dist/lingo-import',
         locales: ['en'],
         collections: {
           tracker: {
             translationsFolder: 'src/i18n',
           },
         },
-      });
+      } as unknown as LingoTrackerConfig);
       collectionHolds();
 
       await findSimilarCommand({ collection: 'tracker', value: 'hello' });

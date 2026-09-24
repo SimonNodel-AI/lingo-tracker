@@ -198,9 +198,8 @@ export function createNgramExtractor(options: NgramExtractorOptions = {}): Candi
     };
 
     for (const sentence of splitSentences(block)) {
-      const tokens = (sentence.toLowerCase().match(WORD_TOKEN) ?? []).filter(
-        (t) => t.length >= minLength && !stopwords.has(t),
-      );
+      const words: string[] = sentence.toLowerCase().match(WORD_TOKEN) ?? [];
+      const tokens = words.filter((t) => t.length >= minLength && !stopwords.has(t));
 
       for (let i = 0; i < tokens.length; i++) {
         add(tokens[i]);

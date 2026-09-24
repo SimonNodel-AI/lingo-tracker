@@ -67,6 +67,8 @@ const LOADED = read(
 );
 
 const CONFIG: LingoTrackerConfig = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: { app: { translationsFolder: 'i18n' } },
@@ -217,6 +219,8 @@ describe('glossaryCommand', () => {
 
   it('strips a collection base-locale override from translations', async () => {
     vi.mocked(loadConfig).mockReturnValue({
+      exportFolder: 'dist/lingo-export',
+      importFolder: 'dist/lingo-import',
       baseLocale: 'en',
       locales: ['en', 'fr', 'es'],
       collections: { app: { translationsFolder: 'i18n', baseLocale: 'fr' } },

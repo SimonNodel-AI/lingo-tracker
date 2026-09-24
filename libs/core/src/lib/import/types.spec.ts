@@ -170,6 +170,8 @@ describe('import types', () => {
         ],
         warnings: ['XLIFF source differs from existing base value'],
         errors: ['Invalid key format: "common..buttons"'],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 

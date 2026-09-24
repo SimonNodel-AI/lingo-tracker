@@ -27,6 +27,8 @@ const mockValidateResources = vi.mocked(core.validateResources);
 const mockGenerateValidationSummary = vi.mocked(core.generateValidationSummary);
 
 const CONFIG = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr', 'es'],
   collections: { common: { translationsFolder: 'translations/common' } },

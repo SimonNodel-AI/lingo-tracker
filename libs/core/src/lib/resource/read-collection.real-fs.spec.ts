@@ -35,8 +35,8 @@ describe('readCollection (real fs)', () => {
       comment: 'Confirm button',
       tags: ['ui'],
     });
-    expect(ok?.entry.metadata.fr?.status).toBe('verified');
-    expect(ok?.entry.metadata.en?.checksum).toBeDefined();
+    expect(ok?.entry.metadata['fr']?.status).toBe('verified');
+    expect(ok?.entry.metadata['en']?.checksum).toBeDefined();
     expect(ok?.effectiveTags).toEqual(['shared', 'ui']);
 
     const title = resources.find((resource) => resource.fullKey === 'title');

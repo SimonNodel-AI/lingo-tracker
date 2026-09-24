@@ -38,7 +38,7 @@ pnpm nx test core --testFile=src/resource/checksum.spec.ts   # core, domain, tra
 pnpm nx test cli -- src/commands/move.test.ts                # cli (vitest): positional path after --
 pnpm nx test api -- src/app/app.service.spec.ts              # api (jest): positional path after --
 
-# Typecheck (tracker's also typechecks its specs via typecheck-spec)
+# Typecheck (tracker, core, cli and api also typecheck their specs via typecheck-spec)
 pnpm nx typecheck tracker
 ```
 

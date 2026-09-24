@@ -15,7 +15,13 @@ describe('importResources', () => {
   beforeEach(() => {
     projectDir = mkdtempSync(join(tmpdir(), 'lingo-import-resources-'));
     collection = openCollection(
-      { baseLocale: 'en', locales: ['en', 'es', 'fr'], collections: { main: { translationsFolder: 'translations' } } },
+      {
+        baseLocale: 'en',
+        locales: ['en', 'es', 'fr'],
+        exportFolder: 'dist/export',
+        importFolder: 'dist/import',
+        collections: { main: { translationsFolder: 'translations' } },
+      },
       'main',
       { cwd: projectDir },
     );
@@ -91,13 +97,13 @@ describe('importResources', () => {
       );
 
       const ok = stored('common.buttons', 'ok');
-      expect(ok?.entry.es).toBe('Aceptar');
-      expect(ok?.meta?.es).toEqual({
+      expect(ok?.entry['es']).toBe('Aceptar');
+      expect(ok?.meta?.['es']).toEqual({
         checksum: calculateChecksum('Aceptar'),
         baseChecksum: calculateChecksum('OK'),
         status: 'translated',
       });
-      expect(stored('common.buttons', 'cancel')?.entry.es).toBe('Cancelar ya');
+      expect(stored('common.buttons', 'cancel')?.entry['es']).toBe('Cancelar ya');
     });
 
     it('skips a resource that does not exist unless createMissing is set', () => {
@@ -137,7 +143,7 @@ describe('importResources', () => {
       const result = importResources(collection, [{ key: 'common.ok', value: 'Aceptar' }], { locale: 'es' });
 
       expect(result.changes[0]).toMatchObject({ type: 'updated', oldStatus: 'stale', newStatus: 'translated' });
-      expect(stored('common', 'ok')?.meta?.es).toMatchObject({
+      expect(stored('common', 'ok')?.meta?.['es']).toMatchObject({
         baseChecksum: calculateChecksum('OK'),
         status: 'translated',
       });
@@ -182,6 +188,8 @@ describe('importResources', () => {
         {
           baseLocale: 'en',
           locales: ['en', 'fr'],
+          exportFolder: 'dist/export',
+          importFolder: 'dist/import',
           collections: { fr: { translationsFolder: 'translations', baseLocale: 'fr' } },
         },
         'fr',
@@ -203,7 +211,7 @@ describe('importResources', () => {
       expect(result.changes[0]).toMatchObject({ type: 'value-changed', oldValue: 'OK', newValue: 'Okay' });
       const ok = stored('common', 'ok');
       expect(ok?.entry.source).toBe('Okay');
-      expect(ok?.meta?.es).toMatchObject({ status: 'stale', baseChecksum: calculateChecksum('Okay') });
+      expect(ok?.meta?.['es']).toMatchObject({ status: 'stale', baseChecksum: calculateChecksum('Okay') });
     });
   });
 
@@ -251,10 +259,10 @@ describe('importResources', () => {
       ];
 
       importResources(collection, resources, { locale: 'es', strategy: 'migration' });
-      expect(stored('common', 'confirm')?.entry.es).toBe('Pulsa Aceptar');
+      expect(stored('common', 'confirm')?.entry['es']).toBe('Pulsa Aceptar');
 
       importResources(collection, resources, { locale: 'fr' });
-      expect(stored('common', 'confirm')?.entry.fr).toBe("Pulsa {{t('common.ok')}}");
+      expect(stored('common', 'confirm')?.entry['fr']).toBe("Pulsa {{t('common.ok')}}");
     });
 
     it('converts Transloco {{ name }} placeholders to ICU before writing (JSON and XLIFF alike)', () => {
@@ -262,7 +270,7 @@ describe('importResources', () => {
 
       importResources(collection, [{ key: 'common.greeting', value: 'Hola {{ name }}' }], { locale: 'es' });
 
-      expect(stored('common', 'greeting')?.entry.es).toBe('Hola {name}');
+      expect(stored('common', 'greeting')?.entry['es']).toBe('Hola {name}');
     });
 
     it('auto-fixes placeholders that differ from the stored base value and reports the fix', () => {
@@ -275,7 +283,7 @@ describe('importResources', () => {
       expect(result.icuAutoFixes).toEqual([
         expect.objectContaining({ key: 'common.greeting', originalValue: 'Hola {nombre}', fixedValue: 'Hola {name}' }),
       ]);
-      expect(stored('common', 'greeting')?.entry.es).toBe('Hola {name}');
+      expect(stored('common', 'greeting')?.entry['es']).toBe('Hola {name}');
     });
 
     it('fails invalid keys and skips empty values without stopping the run', () => {
@@ -314,8 +322,8 @@ describe('importResources', () => {
 
       expect(result.errors).toEqual(['"common.brand" Protected term(s) altered: Acme']);
       expect(result.changes.find((c) => c.key === 'common.brand')).toMatchObject({ type: 'failed' });
-      expect(stored('common', 'brand')?.entry.es).toBeUndefined();
-      expect(stored('common', 'ok')?.entry.es).toBe('Aceptar');
+      expect(stored('common', 'brand')?.entry['es']).toBeUndefined();
+      expect(stored('common', 'ok')?.entry['es']).toBe('Aceptar');
     });
   });
 

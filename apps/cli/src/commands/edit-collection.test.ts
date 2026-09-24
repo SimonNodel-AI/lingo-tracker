@@ -15,6 +15,8 @@ const mockUpdateCollection = vi.mocked(updateCollection);
 
 describe('editCollectionCommand', () => {
   const mockConfig = {
+    exportFolder: 'dist/lingo-export',
+    importFolder: 'dist/lingo-import',
     baseLocale: 'en',
     locales: ['en', 'fr'],
     collections: {

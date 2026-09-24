@@ -6,7 +6,8 @@ import { calculateChecksum } from '../../resource/checksum';
 import { type Collection, openCollection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';
-import type { ImportedResource, ImportRunOptions, TranslationStatus } from './types';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
+import type { ImportedResource, ImportRunOptions } from './types';
 
 describe('importResources merge behavior', () => {
   let dir: string;
@@ -21,6 +22,8 @@ describe('importResources merge behavior', () => {
       {
         baseLocale: 'en',
         locales: ['en', 'es', 'fr', 'de'],
+        exportFolder: 'dist/export',
+        importFolder: 'dist/import',
         collections: { main: { translationsFolder: 'translations' } },
       },
       'main',
@@ -89,7 +92,7 @@ describe('importResources merge behavior', () => {
         newValue: 'Aceptar',
         newStatus: 'translated',
       });
-      expect(stored('ok')?.entry.es).toBe('Aceptar');
+      expect(stored('ok')?.entry['es']).toBe('Aceptar');
     });
     it('should preserve existing status when value does not change', () => {
       expect(run([{ key: 'common.buttons.ok', value: 'Bien' }]).changes[0]).toMatchObject({
@@ -125,14 +128,14 @@ describe('importResources merge behavior', () => {
       );
       const result = run([{ key: 'common.buttons.ok', value: 'Bien' }], { locale: 'es', strategy });
       expect(result.changes[0]).toMatchObject({ oldStatus: 'stale', newStatus: expectedStatus });
-      expect(stored('ok')?.meta?.es?.baseChecksum).toBe(calculateChecksum(refreshes ? 'OK' : 'Old'));
+      expect(stored('ok')?.meta?.['es']?.baseChecksum).toBe(calculateChecksum(refreshes ? 'OK' : 'Old'));
       expect(result.filesModified.length > 0).toBe(refreshes);
     });
 
     it('should set status to verified for verification strategy', () => {
       const result = run([{ key: 'common.buttons.ok', value: 'Bien' }], { locale: 'es', strategy: 'verification' });
       expect(result.changes[0]?.newStatus).toBe('verified');
-      expect(stored('ok')?.meta?.es?.status).toBe('verified');
+      expect(stored('ok')?.meta?.['es']?.status).toBe('verified');
     });
     it('should warn on base value mismatch when validateBase is enabled', () => {
       const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', baseValue: 'Okay' }], {
@@ -239,8 +242,8 @@ describe('importResources merge behavior', () => {
         newValue: 'Aceptar',
         newStatus: expected,
       });
-      expect(stored('ok')?.entry.es).toBe('Aceptar');
-      expect(stored('ok')?.meta?.es?.status).toBe(expected);
+      expect(stored('ok')?.entry['es']).toBe('Aceptar');
+      expect(stored('ok')?.meta?.['es']?.status).toBe(expected);
     });
 
     it('should not use source status for translation-service strategy when preserveStatus is undefined', () => {
@@ -261,7 +264,7 @@ describe('importResources merge behavior', () => {
     it('should use source status for translation-service when preserveStatus is true and value unchanged', () => {
       seed({ ok: { source: 'OK', es: 'Bien' } });
       run([{ key: 'common.buttons.ok', value: 'Bien', status: 'verified' }], { locale: 'es', preserveStatus: true });
-      expect(stored('ok')?.meta?.es?.status).toBe('verified');
+      expect(stored('ok')?.meta?.['es']?.status).toBe('verified');
     });
   });
 
@@ -291,9 +294,9 @@ describe('importResources merge behavior', () => {
       folder.setTranslation('ok', 'de', 'OK', 'new');
       folder.save();
       importBase([{ key: 'common.buttons.ok', value: 'Okay' }]);
-      expect(stored('ok')?.meta?.es).toMatchObject({ baseChecksum: calculateChecksum('Okay'), status: 'stale' });
-      expect(stored('ok')?.meta?.fr).toMatchObject({ baseChecksum: calculateChecksum('Okay'), status: 'new' });
-      expect(stored('ok')?.meta?.de).toMatchObject({ baseChecksum: calculateChecksum('Okay'), status: 'stale' });
+      expect(stored('ok')?.meta?.['es']).toMatchObject({ baseChecksum: calculateChecksum('Okay'), status: 'stale' });
+      expect(stored('ok')?.meta?.['fr']).toMatchObject({ baseChecksum: calculateChecksum('Okay'), status: 'new' });
+      expect(stored('ok')?.meta?.['de']).toMatchObject({ baseChecksum: calculateChecksum('Okay'), status: 'stale' });
     });
     it('leaves translations alone when the base value is unchanged', () => {
       seed({ ok: { source: 'OK', es: 'Bien' } });
@@ -331,7 +334,7 @@ describe('importResources merge behavior', () => {
         reason: 'Protected term(s) altered: iPhone',
       });
       expect(result.errors).toContain('"common.buttons.ok" Protected term(s) altered: iPhone');
-      expect(stored('ok')?.entry.es).toBeUndefined();
+      expect(stored('ok')?.entry['es']).toBeUndefined();
     });
     it('passes when the term is preserved verbatim', () => {
       seed({ ok: { source: 'Get iPhone' } });
@@ -340,7 +343,7 @@ describe('importResources merge behavior', () => {
         protectedTerms: ['iPhone'],
       });
       expect(result.errors).toEqual([]);
-      expect(stored('ok')?.entry.es).toBe('Obtenez iPhone');
+      expect(stored('ok')?.entry['es']).toBe('Obtenez iPhone');
     });
     it('still imports a valid sibling when a term-bearing entry fails', () => {
       seed({ ok: { source: 'Get iPhone' }, cancel: { source: 'Cancel' } });
@@ -353,7 +356,7 @@ describe('importResources merge behavior', () => {
       );
       expect(result.changes.find(({ key }) => key.endsWith('.ok'))?.type).toBe('failed');
       expect(result.changes.find(({ key }) => key.endsWith('.cancel'))?.type).toBe('value-changed');
-      expect(stored('cancel')?.entry.es).toBe('Cancelar');
+      expect(stored('cancel')?.entry['es']).toBe('Cancelar');
     });
     it('skips the check for base locale imports', () => {
       seed({ ok: { source: 'Get iPhone' } });

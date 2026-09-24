@@ -16,6 +16,8 @@ const mockDeleteResource = vi.mocked(deleteResource);
 const mockPrompts = vi.mocked(prompts);
 
 const mockConfig = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: {
@@ -35,7 +37,7 @@ describe('deleteResourceCommand', () => {
     process.exitCode = undefined;
     vi.mocked(loadConfig).mockReturnValue(mockConfig);
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
-    mockDeleteResource.mockReturnValue({ entriesDeleted: 1 });
+    mockDeleteResource.mockReturnValue({ entriesDeleted: 1, mutations: [] });
   });
 
   afterEach(() => {
@@ -65,6 +67,7 @@ describe('deleteResourceCommand', () => {
     mockDeleteResource.mockReturnValue({
       entriesDeleted: 1,
       errors: [{ key: 'apps.common.invalid', error: 'Resource not found' }],
+      mutations: [],
     });
 
     await deleteResourceCommand({ collection: 'default', key: 'apps.common.ok,apps.common.invalid', yes: true });
@@ -81,6 +84,7 @@ describe('deleteResourceCommand', () => {
     mockDeleteResource.mockReturnValue({
       entriesDeleted: 0,
       errors: [{ key: 'apps.common.notfound', error: 'Resource not found' }],
+      mutations: [],
     });
 
     await deleteResourceCommand({ collection: 'default', key: 'apps.common.notfound', yes: true });

@@ -29,7 +29,7 @@ C4Container
 
     Container(api, "API", "NestJS + Express", "REST API on port 3030 (default). Serves the Tracker UI as static files and exposes /api/* endpoints. Swagger docs at /api.")
 
-    Container(tracker, "Tracker UI", "Angular 20 + Angular Material", "SPA for browsing collections, editing translations, filtering by status/locale, and managing folders. Served by the API process.")
+    Container(tracker, "Tracker UI", "Angular 21 + Angular Material", "SPA for browsing collections, editing translations, filtering by status/locale, and managing folders. Served by the API process.")
 
     Container(domain, "domain lib", "TypeScript (browser-safe)", "Pure business logic: key validation and parsing, translation status helpers, ICU-to-Transloco format conversion, validation utilities. Zero Node.js dependencies.")
 

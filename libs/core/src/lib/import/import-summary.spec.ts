@@ -25,6 +25,8 @@ describe('import-summary', () => {
         ],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -70,6 +72,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: true,
       };
 
@@ -103,6 +107,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: ['Base value mismatch for key: common.title', 'Duplicate key in import file: common.subtitle'],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -135,6 +141,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: ['Invalid key format: common..invalid', 'Hierarchical conflict: common'],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -186,6 +194,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -237,6 +247,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -280,6 +292,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -323,6 +337,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -359,6 +375,8 @@ describe('import-summary', () => {
         filesModified: files,
         warnings: warnings,
         errors: errors,
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -402,6 +420,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -433,6 +453,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -474,6 +496,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
@@ -504,6 +528,8 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 

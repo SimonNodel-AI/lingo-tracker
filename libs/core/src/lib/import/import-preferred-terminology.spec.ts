@@ -56,6 +56,8 @@ describe('preferred terminology on import', () => {
       {
         baseLocale: 'en',
         locales: ['en', 'es', 'fr'],
+        exportFolder: 'dist/export',
+        importFolder: 'dist/import',
         collections: { main: { translationsFolder: 'translations', baseLocale } },
       },
       'main',

@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { normalize, type NormalizeParams } from './normalize';
 import type { ResourceEntries } from '../../resource/resource-entry';
 import type { TrackerMetadata } from '../../resource/tracker-metadata';
 import { calculateChecksum } from '../../resource/checksum';
 import * as cleanupModule from './cleanup-empty-folders';
+import { mockedReaddirSync } from '../../testing/mocked-fs.spec-helpers';
 
 // Mock the fs module
 vi.mock('fs');
@@ -39,7 +40,7 @@ describe('Normalize', () => {
       } as fs.Stats;
     });
 
-    vi.mocked(fs.readdirSync).mockImplementation((filepath, options) => {
+    mockedReaddirSync().mockImplementation((filepath, options) => {
       const entry = mockFs[filepath as string];
       if (!entry || entry.type !== 'directory') {
         throw new Error(`ENOTDIR: not a directory, scandir '${filepath}'`);
@@ -63,7 +64,7 @@ describe('Normalize', () => {
           } as unknown as fs.Dirent;
         });
       }
-      return childNames as unknown as fs.Dirent[];
+      return childNames;
     });
 
     vi.mocked(fs.readFileSync).mockImplementation((filepath) => {

@@ -13,6 +13,8 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
 });
 
 const BASE_CONFIG: LingoTrackerConfig = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: {
@@ -71,6 +73,7 @@ describe('addLocaleCommand', () => {
         message: 'Locale "de" added to collection "main" successfully',
         entriesBackfilled: 3,
         filesUpdated: 2,
+        mutations: [],
       });
 
       const options: AddLocaleOptions = { collection: 'main', locale: 'de' };
@@ -120,6 +123,7 @@ describe('addLocaleCommand', () => {
         message: 'Locale "de" added to collection "main" successfully',
         entriesBackfilled: 3,
         filesUpdated: 2,
+        mutations: [],
       });
       vi.mocked(prompts).mockResolvedValueOnce({ locale: 'de' });
 

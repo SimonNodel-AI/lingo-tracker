@@ -130,11 +130,13 @@ In rich JSON, the terms appear under `doNotTranslate`:
 }
 ```
 
-In XLIFF, they become a note on the trans-unit:
+In XLIFF, they become a note on the trans-unit, after the comment note:
 
 ```xml
 <note>Do not translate: iPhone</note>
 ```
+
+When you import the translated file, LingoTracker ignores this note. The entry keeps its comment unchanged.
 
 The terms that apply come from two files. LingoTracker combines the global protected-terms file with the exported collection's own file.
 

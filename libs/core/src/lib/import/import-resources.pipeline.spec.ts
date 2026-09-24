@@ -21,7 +21,13 @@ describe('importResources pipeline', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'lingo-import-pipeline-'));
     collection = openCollection(
-      { baseLocale: 'en', locales: ['en', 'es'], collections: { main: { translationsFolder: 'translations' } } },
+      {
+        baseLocale: 'en',
+        locales: ['en', 'es'],
+        exportFolder: 'dist/export',
+        importFolder: 'dist/import',
+        collections: { main: { translationsFolder: 'translations' } },
+      },
       'main',
       { cwd: dir },
     );
@@ -55,7 +61,7 @@ describe('importResources pipeline', () => {
     );
     const result = importResources(collection, parseJsonImport(path), { locale: 'es' });
     expect(result.resourcesUpdated).toBe(2);
-    expect(folder('common.buttons').get('ok')?.meta?.es).toMatchObject({
+    expect(folder('common.buttons').get('ok')?.meta?.['es']).toMatchObject({
       checksum: calculateChecksum('Aceptar'),
       baseChecksum: calculateChecksum('OK'),
     });
@@ -69,7 +75,7 @@ describe('importResources pipeline', () => {
       JSON.stringify({ common: { buttons: { ok: 'Aceptar' } }, level: { one: { two: { deep: 'Profundo' } } } }),
     );
     expect(importResources(collection, parseJsonImport(path), { locale: 'es' }).resourcesUpdated).toBe(2);
-    expect(folder('level.one.two').get('deep')?.entry.es).toBe('Profundo');
+    expect(folder('level.one.two').get('deep')?.entry['es']).toBe('Profundo');
   });
 
   it('skips missing resources with the default strategy', () => {
@@ -137,8 +143,8 @@ describe('importResources pipeline', () => {
       ]),
     );
     // Validation never stops the run: the valid resources are still written (the last duplicate wins).
-    expect(folder('common').get('ok')?.entry.es).toBe('Two');
-    expect(folder('common').get(longKey.slice('common.'.length))?.entry.es).toBe('Long');
+    expect(folder('common').get('ok')?.entry['es']).toBe('Two');
+    expect(folder('common').get(longKey.slice('common.'.length))?.entry['es']).toBe('Long');
   });
 
   it('warns for a base value mismatch only when validateBase is enabled', () => {
@@ -191,8 +197,8 @@ describe('importResources pipeline', () => {
     seed('common', { ok: { source: 'OK', es: 'Bien', status: 'verified' } });
     const result = importResources(collection, [{ key: 'common.ok', value }], { locale: 'es', strategy: 'update' });
     expect(result.changes[0]?.newStatus).toBe('verified');
-    expect(folder('common').get('ok')?.meta?.es?.status).toBe('verified');
-    expect(folder('common').get('ok')?.entry.es).toBe(value);
+    expect(folder('common').get('ok')?.meta?.['es']?.status).toBe('verified');
+    expect(folder('common').get('ok')?.entry['es']).toBe(value);
   });
 
   it('tracks status transitions across updated resources', () => {
@@ -224,7 +230,7 @@ describe('importResources pipeline', () => {
       ],
       { locale: 'es', strategy: 'migration' },
     );
-    expect(folder('common').get('three')?.entry.es).toBe('Uno dos tres');
+    expect(folder('common').get('three')?.entry['es']).toBe('Uno dos tres');
   });
 
   it('warns for circular and missing references and keeps them as placeholders', () => {
@@ -246,8 +252,8 @@ describe('importResources pipeline', () => {
       ]),
     );
     // The unresolved references survive; Transloco-to-ICU normalization then turns them into ICU placeholders.
-    expect(folder('common').get('one')?.entry.es).toBe('{common.two}');
-    expect(folder('common').get('missing')?.entry.es).toBe('Hello {unknown} World');
+    expect(folder('common').get('one')?.entry['es']).toBe('{common.two}');
+    expect(folder('common').get('missing')?.entry['es']).toBe('Hello {unknown} World');
   });
 
   it('does not resolve references outside migration', () => {
@@ -261,7 +267,7 @@ describe('importResources pipeline', () => {
       { locale: 'es' },
     );
     // Reference resolution is migration-only, but shared Transloco-to-ICU normalization still applies.
-    expect(folder('common').get('two')?.entry.es).toBe('{common.one}');
+    expect(folder('common').get('two')?.entry['es']).toBe('{common.one}');
   });
 
   it('normalizes Transloco interpolation when creating and updating JSON resources', () => {
@@ -274,8 +280,8 @@ describe('importResources pipeline', () => {
       ],
       { locale: 'es', strategy: 'migration' },
     );
-    expect(folder('common').get('existing')?.entry.es).toBe('Hola {name}');
-    expect(folder('common').get('new')?.entry.es).toBe('Adiós {name}');
+    expect(folder('common').get('existing')?.entry['es']).toBe('Hola {name}');
+    expect(folder('common').get('new')?.entry['es']).toBe('Adiós {name}');
   });
 
   it('imports XLIFF, validates its base value and updates comments', async () => {
@@ -302,7 +308,7 @@ describe('importResources pipeline', () => {
     );
     const result = importResources(collection, await parseXliffImport(path), { locale: 'es', strategy: 'migration' });
     expect(result.resourcesCreated).toBe(1);
-    expect(folder('common').get('greeting')?.entry.es).toBe('Hola {name}');
+    expect(folder('common').get('greeting')?.entry['es']).toBe('Hola {name}');
   });
 
   it('uses verification strategy for XLIFF updates', async () => {

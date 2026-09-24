@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import prompts from 'prompts';
 import { normalizeCommand } from './normalize';
-import { type LingoTrackerConfig, loadConfig, normalize } from '@simoncodes-ca/core';
+import { type LingoTrackerConfig, loadConfig, type NormalizeResult, normalize } from '@simoncodes-ca/core';
 import { isInteractiveTerminal } from '../runner/terminal';
 
 vi.mock('prompts', () => ({
@@ -16,6 +16,8 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
 });
 
 const CONFIG: LingoTrackerConfig = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: {
@@ -28,21 +30,25 @@ const logged = () => vi.mocked(console.log).mock.calls.map(([line]) => String(li
 const errored = () => vi.mocked(console.error).mock.calls.map(([line]) => String(line));
 
 describe('normalizeCommand', () => {
+  // Most calls here are real runs; the dry-run test overrides dryRun.
+  const NORMALIZE_RESULT: NormalizeResult = {
+    entriesProcessed: 0,
+    localesAdded: 0,
+    valuesConverted: 0,
+    tagsNormalized: 0,
+    filesCreated: 0,
+    filesUpdated: 0,
+    foldersRemoved: 0,
+    dryRun: false,
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.INIT_CWD = '/p';
     process.exitCode = undefined;
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
     vi.mocked(loadConfig).mockReturnValue(CONFIG);
-    vi.mocked(normalize).mockResolvedValue({
-      entriesProcessed: 0,
-      localesAdded: 0,
-      valuesConverted: 0,
-      tagsNormalized: 0,
-      filesCreated: 0,
-      filesUpdated: 0,
-      foldersRemoved: 0,
-    });
+    vi.mocked(normalize).mockResolvedValue(NORMALIZE_RESULT);
   });
 
   afterEach(() => {
@@ -50,6 +56,7 @@ describe('normalizeCommand', () => {
   });
 
   it('normalizes the named collection with its opened settings', async () => {
+    vi.mocked(normalize).mockResolvedValueOnce({ ...NORMALIZE_RESULT, dryRun: true });
     await normalizeCommand({ collection: 'App', dryRun: true });
 
     expect(normalize).toHaveBeenCalledWith({

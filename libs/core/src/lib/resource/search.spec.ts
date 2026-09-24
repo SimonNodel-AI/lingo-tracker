@@ -135,8 +135,8 @@ describe('searchResources — text mode', () => {
       const [result] = searchResources([stored], EN, 'ok');
 
       expect(result).toBeDefined();
-      if (result) result.translations.es = 'changed';
-      expect(stored.entry.translations.es).toBe('Aceptar');
+      if (result) result.translations['es'] = 'changed';
+      expect(stored.entry.translations['es']).toBe('Aceptar');
     });
   });
 

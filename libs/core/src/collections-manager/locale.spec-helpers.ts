@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SafeAny } from '../constants';
+import { mockedReaddirSync } from '../testing/mocked-fs.spec-helpers';
 
 export interface MockFile {
   type: 'file' | 'directory';
@@ -12,11 +13,11 @@ export interface MockFile {
 export function setupMockFs(mockFs: Record<string, MockFile>): void {
   vi.mocked(fs.existsSync).mockImplementation((p: fs.PathLike) => (p as string) in mockFs);
 
-  vi.mocked(fs.readdirSync).mockImplementation(((p: fs.PathLike, opts?: SafeAny) => {
+  mockedReaddirSync().mockImplementation((p, opts) => {
     const entry = mockFs[p as string];
     if (!entry || entry.type !== 'directory') return [];
     const childNames = entry.children ?? [];
-    if (opts && typeof opts === 'object' && (opts as { withFileTypes?: boolean }).withFileTypes) {
+    if (opts?.withFileTypes) {
       return childNames.map((name) => {
         const childPath = path.join(p as string, name);
         const isDir = mockFs[childPath]?.type === 'directory';
@@ -32,8 +33,8 @@ export function setupMockFs(mockFs: Record<string, MockFile>): void {
         } as unknown as fs.Dirent;
       });
     }
-    return childNames as unknown as fs.Dirent[];
-  }) as SafeAny);
+    return childNames;
+  });
 
   vi.mocked(fs.readFileSync).mockImplementation((p: fs.PathOrFileDescriptor) => {
     const entry = mockFs[p as string];

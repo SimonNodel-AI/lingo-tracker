@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import fs from 'fs';
-import path from 'path';
+import * as fs from 'fs';
+import * as path from 'path';
 import { addLocaleToCollection } from './add-locale-to-collection';
 import { calculateChecksum } from '../resource/checksum';
 import type { ResourceEntries } from '../resource/resource-entry';

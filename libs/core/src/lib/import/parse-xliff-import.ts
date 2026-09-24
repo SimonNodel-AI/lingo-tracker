@@ -1,6 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import * as xliff from 'xliff';
+import { PROTECTED_TERMS_NOTE_PREFIX } from '../export/export-to-xliff';
 import type { ImportedResource, ImportParseOptions } from './types';
+
+/**
+ * The comment carried by a trans-unit's `<note>` elements: one note per line. The exporter's
+ * protected-terms annotation (`Do not translate: …`) is not a comment and is dropped. Undefined
+ * when no note is left.
+ */
+function commentFromNotes(note: string | string[] | undefined): string | undefined {
+  const notes = (Array.isArray(note) ? note : [note]).filter(
+    (n): n is string => typeof n === 'string' && n !== '' && !n.startsWith(PROTECTED_TERMS_NOTE_PREFIX),
+  );
+  return notes.length > 0 ? notes.join('\n') : undefined;
+}
 
 /**
  * Extracts translation resources from XLIFF 1.2 format content.
@@ -13,7 +26,8 @@ import type { ImportedResource, ImportParseOptions } from './types';
  * - `key`: The trans-unit id (translation key)
  * - `value`: The target translation
  * - `baseValue`: The source reference value
- * - `comment`: Developer notes from <note> elements
+ * - `comment`: Developer notes from <note> elements, one per line; the exporter's
+ *   `Do not translate: …` note is dropped
  *
  * Trans-units with empty or missing target values are automatically skipped.
  *
@@ -51,20 +65,15 @@ export async function extractFromXliff(xliffContent: string): Promise<ImportedRe
 
   try {
     // Parse XLIFF content using callback-based API
-    type ParsedXliff = {
-      resources: Record<string, Record<string, { source: string; target?: string; note?: string }>>;
-    };
-    const parsed = await new Promise<ParsedXliff>((resolve, reject) => {
-      xliff.xliff12ToJs(xliffContent, (err: Error | null, res: unknown) => {
+    const parsed = await new Promise<xliff.XliffData>((resolve, reject) => {
+      xliff.xliff12ToJs(xliffContent, (err, res) => {
         if (err) reject(err);
-        else resolve(res as ParsedXliff);
+        else resolve(res);
       });
     });
 
     // Extract resources from each file
-    for (const fileData of Object.values(parsed.resources)) {
-      const transUnits = fileData as Record<string, { source: string; target?: string; note?: string }>;
-
+    for (const transUnits of Object.values(parsed.resources)) {
       for (const [key, unit] of Object.entries(transUnits)) {
         // Skip if no target or target is empty
         if (!unit.target || unit.target.trim() === '') {
@@ -81,9 +90,9 @@ export async function extractFromXliff(xliffContent: string): Promise<ImportedRe
           resource.baseValue = unit.source;
         }
 
-        // Add comment from note
-        if (unit.note) {
-          resource.comment = unit.note;
+        const comment = commentFromNotes(unit.note);
+        if (comment) {
+          resource.comment = comment;
         }
 
         resources.push(resource);

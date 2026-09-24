@@ -29,6 +29,8 @@ const mockLoadPreferredTerminology = vi.mocked(core.loadPreferredTerminology);
 
 describe('validateCommand', () => {
   const mockConfig = {
+    exportFolder: 'dist/lingo-export',
+    importFolder: 'dist/lingo-import',
     baseLocale: 'en',
     locales: ['en', 'fr', 'es', 'de'],
     collections: {

@@ -18,6 +18,8 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
 });
 
 const BASE_CONFIG: LingoTrackerConfig = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: {
@@ -76,6 +78,7 @@ describe('removeLocaleCommand', () => {
         message: 'Locale "fr" removed from collection "main" successfully',
         entriesPurged: 5,
         filesUpdated: 3,
+        mutations: [],
       });
 
       const options: RemoveLocaleOptions = { collection: 'main', locale: 'fr' };
@@ -135,6 +138,7 @@ describe('removeLocaleCommand', () => {
         message: 'Locale "fr" removed from collection "main" successfully',
         entriesPurged: 5,
         filesUpdated: 3,
+        mutations: [],
       });
       vi.mocked(prompts).mockResolvedValueOnce({ locale: 'fr' });
 

@@ -173,7 +173,7 @@ describe('openCollection', () => {
 
     const collection = openCollection(config, 'overrides', { cwd: dir });
 
-    expect(collection.config).toBe(config.collections.overrides);
+    expect(collection.config).toBe(config.collections['overrides']);
     expect(JSON.stringify(config)).toBe(before);
   });
 });

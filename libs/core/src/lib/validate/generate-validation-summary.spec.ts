@@ -920,7 +920,7 @@ describe('generateValidationSummary', () => {
     const rules = [{ discouraged: 'Expenditure', preferred: 'Investment' }];
     const options: ValidationOptions = {
       allowTranslated: false,
-      terminology: { rules, baseLocaleByCollection: { main: 'en' } },
+      terminology: { rules },
     };
 
     const finding = (key: string, reason?: string): TerminologyValidationDetail => ({
@@ -974,7 +974,7 @@ describe('generateValidationSummary', () => {
           passed: false,
           terminology: { warnings: [], configError: 'Preferred terminology file is not valid JSON', valuesChecked: 0 },
         },
-        { allowTranslated: false, terminology: { rules: [], loadError: 'x', baseLocaleByCollection: {} } },
+        { allowTranslated: false, terminology: { rules: [], loadError: 'x' } },
       );
 
       expect(summary).toContain('❌ Preferred terminology file error:');
@@ -987,7 +987,7 @@ describe('generateValidationSummary', () => {
     it('adds nothing when there are no rules and no load error', () => {
       const summary = generateValidationSummary(
         { ...baseResult, terminology: { warnings: [], valuesChecked: 0 } },
-        { allowTranslated: false, terminology: { rules: [], baseLocaleByCollection: {} } },
+        { allowTranslated: false, terminology: { rules: [] } },
       );
 
       expect(summary).not.toMatch(/terminology/i);

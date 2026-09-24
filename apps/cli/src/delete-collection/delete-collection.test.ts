@@ -1,3 +1,4 @@
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import * as core from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -144,7 +145,8 @@ describe('deleteCollectionCommand', () => {
       locales: ['en', 'fr'],
     };
 
-    vi.mocked(core.loadConfig).mockReturnValue(noCollectionsConfig);
+    // This test deliberately supplies malformed persisted config with no collections field.
+    vi.mocked(core.loadConfig).mockReturnValue(noCollectionsConfig as unknown as LingoTrackerConfig);
 
     const options = {
       collectionName: 'Collection1',

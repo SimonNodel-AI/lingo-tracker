@@ -129,7 +129,7 @@ That difference is the whole point of the check. It catches a translator who cha
 Export marks every target-locale row with the protected terms it finds in the source value.
 
 - **JSON (rich)** adds a `doNotTranslate` array to each entry.
-- **XLIFF** adds a `Do not translate: …` note.
+- **XLIFF** adds a `Do not translate: …` note. XLIFF import ignores this note, so it does not become part of the entry's comment.
 
 Base-locale rows stay unmarked, because a base-locale row holds nothing to translate. To turn off marking entirely, pass `--no-protect-notes`.
 

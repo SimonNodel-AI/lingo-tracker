@@ -514,9 +514,9 @@ describe('Normalize Entry', () => {
 
       expect(result.changes.localesAdded).toBe(4); // All except base locale
       expect(result.resourceEntry['fr-ca']).toBe('Submit');
-      expect(result.resourceEntry.es).toBe('Submit');
-      expect(result.resourceEntry.de).toBe('Submit');
-      expect(result.resourceEntry.ja).toBe('Submit');
+      expect(result.resourceEntry['es']).toBe('Submit');
+      expect(result.resourceEntry['de']).toBe('Submit');
+      expect(result.resourceEntry['ja']).toBe('Submit');
     });
 
     it('should remove base locale from resource entry if it exists', () => {

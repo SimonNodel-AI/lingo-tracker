@@ -48,6 +48,52 @@ describe('parse XLIFF import', () => {
       );
       expect(resources[0]?.comment).toBe('Greeting');
     });
+    it('should join repeated notes into one comment, one note per line', async () => {
+      const resources = await extractFromXliff(
+        document(
+          '<trans-unit id="app.welcome"><source>Welcome</source><target>Bienvenue</target>' +
+            '<note>Greeting</note><note>Shown on the home page</note></trans-unit>',
+        ),
+      );
+      expect(resources).toEqual([
+        {
+          key: 'app.welcome',
+          value: 'Bienvenue',
+          baseValue: 'Welcome',
+          comment: 'Greeting\nShown on the home page',
+        },
+      ]);
+    });
+    it("should keep the comment and drop the exporter's do-not-translate note", async () => {
+      const resources = await extractFromXliff(
+        document(
+          '<trans-unit id="brand.title"><source>Home iPhone</source><target>Inicio iPhone</target>' +
+            '<note>Brand heading</note><note>Do not translate: iPhone</note></trans-unit>',
+        ),
+      );
+      expect(resources).toEqual([
+        { key: 'brand.title', value: 'Inicio iPhone', baseValue: 'Home iPhone', comment: 'Brand heading' },
+      ]);
+    });
+    it('should leave the comment undefined when the only note is the do-not-translate note', async () => {
+      const resources = await extractFromXliff(
+        document(
+          '<trans-unit id="lang.cpp"><source>C++ guide</source><target>Guía de C++</target>' +
+            '<note>Do not translate: C++</note></trans-unit>',
+        ),
+      );
+      expect(resources).toEqual([{ key: 'lang.cpp', value: 'Guía de C++', baseValue: 'C++ guide' }]);
+      expect(resources[0]?.comment).toBeUndefined();
+    });
+    it('should skip a trans-unit that has a note but no target element', async () => {
+      const resources = await extractFromXliff(
+        document(
+          '<trans-unit id="app.untranslated"><source>Untranslated</source><note>Pending</note></trans-unit>' +
+            '<trans-unit id="app.done"><source>Done</source><target>Fait</target></trans-unit>',
+        ),
+      );
+      expect(resources).toEqual([{ key: 'app.done', value: 'Fait', baseValue: 'Done' }]);
+    });
     it('should throw error for invalid XLIFF', async () => {
       await expect(extractFromXliff('not XML')).rejects.toThrow('Failed to parse XLIFF content');
     });

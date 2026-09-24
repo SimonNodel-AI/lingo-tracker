@@ -1,6 +1,6 @@
 # Monorepo Structure
 
-LingoTracker is an Nx 21.5.3 monorepo containing three applications and three shared libraries. This document covers the directory layout, the unidirectional dependency graph that keeps browser-safe logic isolated from Node.js code, and the Nx workspace configuration highlights that govern how each project is built and tested.
+LingoTracker is an Nx 22.7.9 monorepo containing three applications and three shared libraries. This document covers the directory layout, the unidirectional dependency graph that keeps browser-safe logic isolated from Node.js code, and the Nx workspace configuration highlights that govern how each project is built and tested.
 
 Return to [architecture README](README.md).
 
@@ -38,7 +38,7 @@ lingo-tracker/                         # Nx workspace root
 │   │           ├── controllers/       # HTTP route handlers
 │   │           ├── mappers/           # Domain model ↔ DTO conversion
 │   │           └── services/          # Collection cache, config service
-│   └── tracker/                       # Angular 20 SPA (Tracker UI)
+│   └── tracker/                       # Angular 21 SPA (Tracker UI)
 │       └── src/
 │           ├── app/                   # Routes, feature modules, stores
 │           └── i18n/                  # Tracker's own translation resources
@@ -101,7 +101,7 @@ graph TD
     subgraph apps["Applications (outermost layer)"]
         CLI["cli\nNode.js + Commander"]
         API["api\nNestJS + Express"]
-        Tracker["tracker\nAngular 20 SPA"]
+        Tracker["tracker\nAngular 21 SPA"]
     end
 
     subgraph libs["Libraries"]
@@ -240,13 +240,15 @@ The `@nx/js/typescript` plugin infers `typecheck` as `tsc --build tsconfig.json 
 |---|---|---|
 | `domain` | Yes | `tsconfig.json` references `tsconfig.spec.json` (composite) |
 | `tracker` | Yes | `typecheck` depends on a `typecheck-spec` target in `project.json`: `tsc --noEmit -p tsconfig.spec.json`. A composite reference would break the Analog Vitest plugin, which reads the same file (see [frontend.md](frontend.md#testing)) |
-| `core`, `cli` | No | `tsconfig.json` references only the lib/app config. Their specs have type errors today |
-| `api` | No | Same; its specs (Jest types) have no type errors today |
+| `core`, `cli` | Yes | Same `typecheck-spec` target as the tracker (Vitest types) |
+| `api` | Yes | Same `typecheck-spec` target (Jest types) |
 | `data-transfer` | — | No specs |
 
-**Where typecheck runs.** The PR workflow (`.github/workflows/pr.yml`) runs `pnpm nx affected -t typecheck` after the affected tests, so a pull request that touches the tracker runs `tracker:typecheck` and its `typecheck-spec`. Nothing else runs it for the tracker: `tracker:build` does not depend on `typecheck`, and the root `typecheck` script and the `.husky/pre-commit` hook cover only `core` and `data-transfer`, which keeps commits fast. Run `pnpm nx typecheck tracker` locally before you push a spec change.
+Each `typecheck-spec` target is cached. Its inputs are `default`, `^default`, `tsconfig.base.json` and `types/**` (the workspace's hand-written module declarations, for example `types/xliff.d.ts`). A spec config that sets `typeRoots` so that `vitest/globals` resolves must keep `../../types` in the list: without it, `xliff` has no types.
 
-`typecheck-spec` and `test` both depend on `generate-tokens`, whose output `src/i18n-types/tracker-resources.ts` is gitignored, so the `default` input does not hash it. Both targets add `{ "dependentTasksOutputFiles": "**/*.ts" }` to their inputs, so a regenerated token file invalidates their cache.
+**Where typecheck runs.** The PR workflow (`.github/workflows/pr.yml`) runs `pnpm nx affected -t typecheck` after the affected tests, so a pull request runs `typecheck` and `typecheck-spec` for every affected project. The root `typecheck` script and the `.husky/pre-commit` hook run `nx typecheck core` and `nx typecheck data-transfer`, so a commit also typechecks the core specs. They do not run the tracker, cli or api targets, which keeps commits fast. `core:build` and `api:build` depend on `^typecheck`, so `api:build` runs `core:typecheck-spec` and both builds run the `domain` spec check. Run `pnpm nx typecheck <project>` locally before you push a spec change.
+
+`tracker:typecheck-spec` and `tracker:test` both depend on `generate-tokens`, whose output `src/i18n-types/tracker-resources.ts` is gitignored, so the `default` input does not hash it. Both targets add `{ "dependentTasksOutputFiles": "**/*.ts" }` to their inputs, so a regenerated token file invalidates their cache. The other projects have no generated sources, so their `typecheck-spec` targets do not need it.
 
 ### Test runners: Vitest and Jest
 

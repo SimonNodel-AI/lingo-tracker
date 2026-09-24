@@ -12,7 +12,13 @@ describe('import session', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'lingo-import-session-'));
     collection = openCollection(
-      { baseLocale: 'en', locales: ['en', 'es'], collections: { main: { translationsFolder: 'translations' } } },
+      {
+        baseLocale: 'en',
+        locales: ['en', 'es'],
+        exportFolder: 'dist/export',
+        importFolder: 'dist/import',
+        collections: { main: { translationsFolder: 'translations' } },
+      },
       'main',
       { cwd: dir },
     );
@@ -73,6 +79,8 @@ describe('import session', () => {
         {
           baseLocale: 'en',
           locales: ['en', 'fr'],
+          exportFolder: 'dist/export',
+          importFolder: 'dist/import',
           collections: { french: { translationsFolder: 'translations', baseLocale: 'fr' } },
         },
         'french',

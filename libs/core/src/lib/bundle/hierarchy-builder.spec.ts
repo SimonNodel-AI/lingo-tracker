@@ -93,7 +93,7 @@ describe('hierarchy-builder', () => {
         'a.third': '3',
       });
 
-      const keys = Object.keys(result.a as Record<string, string>);
+      const keys = Object.keys(result['a'] as Record<string, string>);
       expect(keys).toEqual(['first', 'second', 'third']);
     });
 
@@ -168,7 +168,7 @@ describe('hierarchy-builder', () => {
         'buttons.ok': 'Fine',
       });
 
-      expect(({} as Record<string, unknown>).x).toBeUndefined();
+      expect(({} as Record<string, unknown>)['x']).toBeUndefined();
       expect(Object.prototype).not.toHaveProperty('x');
       expect(JSON.parse(JSON.stringify(result))).toEqual(
         JSON.parse(

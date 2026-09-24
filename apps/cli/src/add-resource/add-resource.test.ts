@@ -20,11 +20,11 @@ const fsMocks = vi.hoisted(() => ({
 // fs is mocked so the existing-entry check (openResourceFolder) reads what each test says.
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+  return { ...actual, ...fsMocks, default: { ...actual, ...fsMocks } };
 });
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+  return { ...actual, ...fsMocks, default: { ...actual, ...fsMocks } };
 });
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
@@ -37,6 +37,13 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
 });
 
 describe('addResourceCommand', () => {
+  const configDefaults: Pick<core.LingoTrackerConfig, 'exportFolder' | 'importFolder' | 'baseLocale' | 'locales'> = {
+    exportFolder: 'dist/lingo-export',
+    importFolder: 'dist/lingo-import',
+    baseLocale: 'en',
+    locales: ['en'],
+  };
+
   beforeEach(() => {
     process.env.INIT_CWD = '/test';
     process.exitCode = undefined;
@@ -72,6 +79,7 @@ describe('addResourceCommand', () => {
 
   it('should print a core error (invalid key) and exit 1', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations' } },
     });
     vi.mocked(core.addResource).mockRejectedValueOnce(
@@ -90,6 +98,7 @@ describe('addResourceCommand', () => {
 
   it('should show error when collection does not exist', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: {
         ExistingCollection: { translationsFolder: 'translations' },
       },
@@ -108,6 +117,7 @@ describe('addResourceCommand', () => {
 
   it('should refuse a read-only collection with exit 1', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: { Vendor: { translationsFolder: 'node_modules/x', readOnly: true } },
     });
 
@@ -119,6 +129,7 @@ describe('addResourceCommand', () => {
 
   it('should exit 1 naming --key and --value when both are missing in non-interactive mode', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations' } },
     });
 
@@ -131,6 +142,7 @@ describe('addResourceCommand', () => {
 
   it('should pass the opened collection and supplied fields through to core', async () => {
     const config = {
+      ...configDefaults,
       collections: {
         TestCollection: {
           translationsFolder: 'translations',
@@ -179,6 +191,7 @@ describe('addResourceCommand', () => {
 
   it('should exit 1 with a clear message on malformed --translations JSON', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations' } },
     });
 
@@ -191,6 +204,7 @@ describe('addResourceCommand', () => {
 
   it('should exit 1 when --translations is valid JSON of the wrong shape', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations' } },
     });
 
@@ -210,6 +224,7 @@ describe('addResourceCommand', () => {
 
   it('should prompt for overwrite confirmation when resource exists in interactive mode', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: {
         TestCollection: {
           translationsFolder: 'translations',
@@ -254,6 +269,7 @@ describe('addResourceCommand', () => {
   describe('preferred terminology', () => {
     const filePath = '/test/.lingo-tracker-preferred-terminology.json';
     const config = {
+      ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations', baseLocale: 'en', locales: ['en', 'fr'] } },
       baseLocale: 'en',
       locales: ['en', 'fr'],
@@ -341,6 +357,7 @@ describe('addResourceCommand', () => {
 
   it('reports a cancelled prompt once and exits 0 without adding the resource', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations', baseLocale: 'en' } },
       baseLocale: 'en',
     });

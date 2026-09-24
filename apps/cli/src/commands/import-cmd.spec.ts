@@ -11,11 +11,11 @@ const fsMocks = vi.hoisted(() => ({
 
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+  return { ...actual, ...fsMocks, default: { ...actual, ...fsMocks } };
 });
 vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+  return { ...actual, ...fsMocks, default: { ...actual, ...fsMocks } };
 });
 vi.mock('prompts', () => ({
   default: vi.fn(),
@@ -58,6 +58,7 @@ import {
   ConfigNotFoundError,
   detectImportFormat,
   generateImportSummary,
+  type ImportResult,
   importResources,
   type LingoTrackerCollection,
   type LingoTrackerConfig,
@@ -86,7 +87,10 @@ describe('import-cmd', () => {
     vi.mocked(loadConfig).mockReturnValue({ ...baseConfig, collections: { [name]: entry } });
   };
 
-  const baseImportResult = {
+  const baseImportResult: ImportResult = {
+    strategy: 'update',
+    locale: 'fr',
+    collection: 'default',
     resourcesImported: 10,
     resourcesCreated: 0,
     resourcesUpdated: 10,
@@ -97,6 +101,9 @@ describe('import-cmd', () => {
     warnings: [],
     errors: [],
     changes: [],
+    icuAutoFixes: [],
+    icuAutoFixErrors: [],
+    dryRun: false,
   };
 
   beforeEach(() => {
@@ -522,7 +529,7 @@ describe('import-cmd', () => {
     beforeEach(() => {
       vi.mocked(isInteractiveTerminal).mockReturnValue(true);
       vi.mocked(prompts).mockResolvedValue({ locale: 'de' });
-      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'de', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'de', warnings: [] });
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
     });
 
@@ -589,7 +596,7 @@ describe('import-cmd', () => {
 
     it('passes the loaded rules to the import', async () => {
       vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules, filePath });
-      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] });
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'en', format: 'json', strategy: 'migration' });
@@ -604,7 +611,7 @@ describe('import-cmd', () => {
 
     it('adds one config warning on a base-locale import when the rule file is broken', async () => {
       vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] });
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'en', format: 'json', strategy: 'migration' });
@@ -622,16 +629,16 @@ describe('import-cmd', () => {
 
     it('says nothing about a broken rule file on a target-locale import', async () => {
       vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] });
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
-      expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Preferred terminology'));
+      expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('Preferred terminology'));
     });
 
     it('passes the project base locale for a collection without its own', async () => {
-      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] } as never);
+      vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'es', warnings: [] });
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
@@ -651,7 +658,7 @@ describe('import-cmd', () => {
 
       it("treats an import into the collection's base locale as a base-locale import", async () => {
         vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules, filePath });
-        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] } as never);
+        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] });
 
         await importCommand({
           source: '/test/import.json',
@@ -670,7 +677,7 @@ describe('import-cmd', () => {
 
       it("adds the config warning on an import into the collection's base locale", async () => {
         vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] } as never);
+        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'fr', warnings: [] });
 
         await importCommand({
           source: '/test/import.json',
@@ -687,7 +694,7 @@ describe('import-cmd', () => {
 
       it('treats the project base locale as a target locale and adds no config warning', async () => {
         vi.mocked(loadPreferredTerminology).mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
-        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] } as never);
+        vi.mocked(importResources).mockReturnValue({ ...baseImportResult, locale: 'en', warnings: [] });
 
         await importCommand({ source: '/test/import.json', locale: 'en', format: 'json', collection: 'docs' });
 
@@ -696,7 +703,7 @@ describe('import-cmd', () => {
           [],
           expect.objectContaining({ locale: 'en' }),
         );
-        expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Preferred terminology'));
+        expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('Preferred terminology'));
       });
     });
   });

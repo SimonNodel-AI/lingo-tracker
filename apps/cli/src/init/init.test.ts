@@ -15,7 +15,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     ...fsMocks,
-    default: { ...actual.default, ...fsMocks },
+    default: { ...actual, ...fsMocks },
   };
 });
 vi.mock('prompts');

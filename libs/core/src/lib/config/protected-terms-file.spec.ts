@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
 import { openCollection } from './open-collection';
@@ -194,8 +195,10 @@ describe('protected-terms-file', () => {
     it('contributes nothing from a collection with no pointer', () => {
       write(DEFAULT_PROTECTED_TERMS_FILENAME, '["SimonCodes"]');
 
-      expect(readCollectionProtectedTerms({ translationsFolder: './i18n' }, cwd)).toEqual([]);
-      expect(readEffectiveProtectedTerms(baseConfig(), { translationsFolder: './i18n' }, cwd)).toEqual(['SimonCodes']);
+      const collection: LingoTrackerCollection = { translationsFolder: './i18n' };
+
+      expect(readCollectionProtectedTerms(collection, cwd)).toEqual([]);
+      expect(readEffectiveProtectedTerms(baseConfig(), collection, cwd)).toEqual(['SimonCodes']);
     });
 
     it("reads an opened collection's terms from its resolved files, like readEffectiveProtectedTerms", () => {
@@ -210,7 +213,7 @@ describe('protected-terms-file', () => {
 
       expect(readProtectedTermsInForce(collection)).toEqual(['SimonCodes', 'iPhone', 'Node.js']);
       expect(readProtectedTermsInForce(collection)).toEqual(
-        readEffectiveProtectedTerms(config, config.collections.app, cwd),
+        readEffectiveProtectedTerms(config, config.collections['app'], cwd),
       );
     });
 
@@ -237,8 +240,8 @@ describe('protected-terms-file', () => {
 
       expect(resolved.globalTerms).toEqual(['SimonCodes']);
       expect(resolved.globalFilePath).toBe(resolve(cwd, DEFAULT_PROTECTED_TERMS_FILENAME));
-      expect(resolved.collections.app).toEqual({ terms: ['iPhone'], filePath: join(cwd, 'app-terms.json') });
-      expect(resolved.collections.other).toEqual({ terms: [], filePath: undefined });
+      expect(resolved.collections['app']).toEqual({ terms: ['iPhone'], filePath: join(cwd, 'app-terms.json') });
+      expect(resolved.collections['other']).toEqual({ terms: [], filePath: undefined });
     });
   });
 

@@ -34,7 +34,13 @@ describe('preferredTerminologyCommand', () => {
     vi.clearAllMocks();
     projectDir = mkdtempSync(join(tmpdir(), 'lingo-preferred-terminology-'));
     filePath = join(projectDir, FILE_NAME);
-    config = { baseLocale: 'en', locales: ['en', 'es'], collections: {} };
+    config = {
+      exportFolder: 'dist/lingo-export',
+      importFolder: 'dist/lingo-import',
+      baseLocale: 'en',
+      locales: ['en', 'es'],
+      collections: {},
+    };
     process.env.INIT_CWD = projectDir;
     process.exitCode = undefined;
     vi.mocked(loadConfig).mockImplementation(() => config);

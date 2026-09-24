@@ -16,7 +16,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     ...fsMocks,
-    default: { ...actual.default, ...fsMocks },
+    default: { ...actual, ...fsMocks },
   };
 });
 vi.mock('fs', async (importOriginal) => {
@@ -24,7 +24,7 @@ vi.mock('fs', async (importOriginal) => {
   return {
     ...actual,
     ...fsMocks,
-    default: { ...actual.default, ...fsMocks },
+    default: { ...actual, ...fsMocks },
   };
 });
 vi.mock('prompts');
@@ -84,6 +84,7 @@ const exportedCollections = (): string[] | undefined => mockRunExport.mock.calls
 describe('exportCommand', () => {
   const mockConfig = {
     exportFolder: 'dist/export',
+    importFolder: 'dist/import',
     baseLocale: 'en',
     locales: ['en', 'fr', 'es'],
     collections: {
@@ -484,10 +485,10 @@ describe('exportCommand', () => {
 
       // Type functions should return proper types for JSON format
       if (structureQuestion && typeof structureQuestion.type === 'function') {
-        expect(structureQuestion.type(null, { format: 'json' })).toBe('select');
+        expect(structureQuestion.type(null, { format: 'json' }, structureQuestion)).toBe('select');
       }
       if (richQuestion && typeof richQuestion.type === 'function') {
-        expect(richQuestion.type(null, { format: 'json' })).toBe('toggle');
+        expect(richQuestion.type(null, { format: 'json' }, richQuestion)).toBe('toggle');
       }
     });
 
@@ -567,10 +568,10 @@ describe('exportCommand', () => {
 
       // These questions should have type functions that return null for XLIFF
       if (structureQuestion && typeof structureQuestion.type === 'function') {
-        expect(structureQuestion.type(null, { format: 'xliff' })).toBeNull();
+        expect(structureQuestion.type(null, { format: 'xliff' }, structureQuestion)).toBeNull();
       }
       if (richQuestion && typeof richQuestion.type === 'function') {
-        expect(richQuestion.type(null, { format: 'xliff' })).toBeNull();
+        expect(richQuestion.type(null, { format: 'xliff' }, richQuestion)).toBeNull();
       }
     });
   });

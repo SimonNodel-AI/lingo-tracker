@@ -49,6 +49,7 @@ describe('editResourceCommand', () => {
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     const options = {
@@ -78,6 +79,7 @@ describe('editResourceCommand', () => {
       resolvedKey: 'apps.common.buttons.ok',
       updated: false,
       message: 'No changes detected',
+      mutations: [],
     });
 
     const options = {
@@ -96,6 +98,7 @@ describe('editResourceCommand', () => {
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     const options = {
@@ -122,6 +125,7 @@ describe('editResourceCommand', () => {
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     const options = {
@@ -203,6 +207,7 @@ describe('editResourceCommand', () => {
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     // Mock prompts to return baseValue
@@ -240,7 +245,7 @@ describe('editResourceCommand', () => {
 
   it('maps --target-folder to moveTo', async () => {
     vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockResolvedValue({ resolvedKey: 'shared.ok', updated: true });
+    mockEditResource.mockResolvedValue({ resolvedKey: 'shared.ok', updated: true, mutations: [] });
 
     await editResourceCommand({
       collection: 'default',
@@ -287,7 +292,7 @@ describe('editResourceCommand', () => {
 
     it('warns about the new base value after a successful edit', async () => {
       const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
+      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
@@ -299,7 +304,7 @@ describe('editResourceCommand', () => {
 
     it('does not check when the base value was not part of the edit', async () => {
       const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
+      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
       await editResourceCommand({
         collection: 'default',
@@ -320,6 +325,7 @@ describe('editResourceCommand', () => {
         resolvedKey: 'budget.title',
         updated: false,
         message: 'No changes detected',
+        mutations: [],
       });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
@@ -335,7 +341,7 @@ describe('editResourceCommand', () => {
         filePath: '/test/project/terms.json',
         error: 'not valid JSON',
       });
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
+      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 

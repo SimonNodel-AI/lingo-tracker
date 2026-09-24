@@ -243,7 +243,7 @@ describe('planBundle (real fs)', () => {
 
       expect(plan.conflictsCount).toBe(0);
       expect(plan.conflictKeys).toEqual([]);
-      expect(plan.keysPerLocale.en).toBe(3);
+      expect(plan.keysPerLocale['en']).toBe(3);
     });
   });
 
