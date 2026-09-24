@@ -1,22 +1,17 @@
 import { deleteCollectionByName } from '@simoncodes-ca/core';
-import { loadConfiguration, promptForCollection, ConsoleFormatter } from '../utils';
+import { defineCommand } from '../runner/command-runner';
 
 export interface DeleteCollectionOptions {
   collectionName?: string;
 }
 
-export async function deleteCollectionCommand(options: DeleteCollectionOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
-
-  const collectionName = await promptForCollection(config, options.collectionName);
-  if (!collectionName) return;
-
-  try {
-    const result = deleteCollectionByName(collectionName, { cwd });
+/** Removes a collection's registration, so a read-only collection may be deleted too. */
+export const deleteCollectionCommand = defineCommand<DeleteCollectionOptions>()({
+  name: 'Delete collection',
+  collection: 'read',
+  collectionOption: 'collectionName',
+  run: ({ collection, cwd }) => {
+    const result = deleteCollectionByName(collection.name, { cwd });
     console.log(result.message);
-  } catch (e: unknown) {
-    ConsoleFormatter.error(e instanceof Error ? e.message : 'Failed to delete collection');
-  }
-}
+  },
+});

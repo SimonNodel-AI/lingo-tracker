@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type ImportCommandOptions, importCommand } from './import-cmd';
@@ -8,10 +7,6 @@ const fsMocks = vi.hoisted(() => ({
   existsSync: vi.fn(),
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
-}));
-const pathMocks = vi.hoisted(() => ({
-  join: vi.fn(),
-  resolve: vi.fn(),
 }));
 
 vi.mock('fs', async (importOriginal) => {
@@ -22,14 +17,6 @@ vi.mock('node:fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs')>();
   return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
 });
-vi.mock('path', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('path')>();
-  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
-});
-vi.mock('node:path', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:path')>();
-  return { ...actual, ...pathMocks, default: { ...actual.default, ...pathMocks } };
-});
 vi.mock('prompts', () => ({
   default: vi.fn(),
 }));
@@ -38,8 +25,8 @@ vi.mock('prompts', () => ({
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
-    // Config loading and collection resolution run for real against the mocked config.
-    loadConfig: actual.loadConfig,
+    // Collection resolution runs for real against the mocked config.
+    loadConfig: vi.fn(),
     openCollection: actual.openCollection,
     ConfigNotFoundError: actual.ConfigNotFoundError,
     ConfigParseError: actual.ConfigParseError,
@@ -59,60 +46,30 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   };
 });
 
-// Mock utilities
-vi.mock('../utils', () => ({
-  loadConfiguration: vi.fn(),
-  isInteractiveTerminal: vi.fn(() => false),
-  promptForCollection: vi.fn(),
-  resolveWritableCollection: vi.fn(),
+// Real utilities, except a fixed summary path.
+vi.mock('../utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../utils')>()),
   buildSummaryPath: vi.fn(() => '/tmp/lingo-tracker-import-summary-test.md'),
-  ConsoleFormatter: {
-    error: vi.fn((message: string) => console.log(`[error] ${message}`)),
-    success: vi.fn((message: string) => console.log(`[success] ${message}`)),
-    warning: vi.fn((message: string) => console.log(`[warning] ${message}`)),
-    info: vi.fn((message: string) => console.log(`[info] ${message}`)),
-    progress: vi.fn((message: string) => console.log(`[progress] ${message}`)),
-    section: vi.fn((title: string) => {
-      console.log(`\n[section] ${title}`);
-      console.log('─'.repeat(50));
-    }),
-    indent: vi.fn((message: string, level = 1) => {
-      const spaces = '  '.repeat(level);
-      console.log(`${spaces}${message}`);
-    }),
-    keyValue: vi.fn((key: string, value: string | number, indent = 1) => {
-      const spaces = '  '.repeat(indent);
-      console.log(`${spaces}${key}: ${value}`);
-    }),
-  },
-  ErrorMessages: {
-    OPERATION_CANCELLED: vi.fn((op: string) => `${op} cancelled.`),
-    MISSING_OPTION: vi.fn((opt: string) => `Missing required option: --${opt}`),
-  },
 }));
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
 // Import the mocked functions
 import {
-  type Collection,
+  ConfigNotFoundError,
   detectImportFormat,
   generateImportSummary,
   importResources,
   type LingoTrackerCollection,
+  type LingoTrackerConfig,
+  loadConfig,
   loadPreferredTerminology,
-  openCollection,
   parseJsonImport,
   parseXliffImport,
 } from '@simoncodes-ca/core';
-import {
-  ConsoleFormatter,
-  isInteractiveTerminal,
-  loadConfiguration,
-  promptForCollection,
-  resolveWritableCollection,
-} from '../utils';
+import { isInteractiveTerminal } from '../runner/terminal';
 
 describe('import-cmd', () => {
-  const baseConfig = {
+  const baseConfig: LingoTrackerConfig = {
     exportFolder: 'dist/lingo-export',
     importFolder: 'dist/lingo-import',
     baseLocale: 'en',
@@ -124,9 +81,10 @@ describe('import-cmd', () => {
     },
   };
 
-  /** What `resolveWritableCollection` resolves for this collection entry under `baseConfig`. */
-  const collectionOf = (name: string, entry: LingoTrackerCollection): Collection =>
-    openCollection({ ...baseConfig, collections: { [name]: entry } }, name, { cwd: '/test/project' });
+  /** Configures `baseConfig` with this one collection, so the runner auto-selects it. */
+  const onlyCollection = (name: string, entry: LingoTrackerCollection): void => {
+    vi.mocked(loadConfig).mockReturnValue({ ...baseConfig, collections: { [name]: entry } });
+  };
 
   const baseImportResult = {
     resourcesImported: 10,
@@ -144,14 +102,6 @@ describe('import-cmd', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    // Mock path functions
-    vi.mocked(path.join)
-      .mockReset()
-      .mockImplementation((...segments) => segments.join('/'));
-    vi.mocked(path.resolve)
-      .mockReset()
-      .mockImplementation((...segments) => segments.join('/'));
-
     // Mock process.cwd
     vi.spyOn(process, 'cwd').mockReturnValue('/test/project');
 
@@ -159,18 +109,15 @@ describe('import-cmd', () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
-    // Default configuration returned by loadConfiguration for all tests.
-    vi.mocked(loadConfiguration).mockReturnValue({
-      config: baseConfig,
-      configPath: '/test/project/.lingo-tracker.json',
-      cwd: '/test/project',
-    });
+    // Default configuration for all tests: a single 'default' collection, auto-selected.
+    process.env.INIT_CWD = '/test/project';
+    process.exitCode = undefined;
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+    vi.mocked(loadConfig).mockReturnValue(baseConfig);
+  });
 
-    // Default collection mocks — most tests use a single 'default' collection
-    vi.mocked(promptForCollection).mockResolvedValue('default');
-    vi.mocked(resolveWritableCollection).mockReturnValue(
-      collectionOf('default', { translationsFolder: 'src/translations' }),
-    );
+  afterEach(() => {
+    process.exitCode = undefined;
   });
 
   describe('Configuration Loading', () => {
@@ -185,11 +132,14 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(loadConfiguration).toHaveBeenCalledWith({ exitOnError: false });
+      expect(loadConfig).toHaveBeenCalledWith({ cwd: '/test/project' });
+      expect(process.exitCode).toBe(0);
     });
 
-    it('should return early when loadConfiguration returns null', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue(null);
+    it('should exit 1 without importing when the configuration is missing', async () => {
+      vi.mocked(loadConfig).mockImplementation(() => {
+        throw new ConfigNotFoundError('/test/project/.lingo-tracker.json');
+      });
 
       const options: ImportCommandOptions = {
         source: '/test/import.json',
@@ -200,6 +150,7 @@ describe('import-cmd', () => {
       await importCommand(options);
 
       expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -258,8 +209,9 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Cannot auto-detect format from .txt extension');
+      expect(console.log).toHaveBeenCalledWith('❌ Cannot auto-detect format from .txt extension');
       expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -302,6 +254,15 @@ describe('import-cmd', () => {
       );
     });
 
+    it('should resolve a relative --source against the project root', async () => {
+      process.env.INIT_CWD = '/test/root';
+      vi.mocked(importResources).mockReturnValue(baseImportResult);
+
+      await importCommand({ source: 'imports/fr.json', locale: 'es', format: 'json' });
+
+      expect(parseJsonImport).toHaveBeenCalledWith('/test/root/imports/fr.json', expect.any(Object));
+    });
+
     it('should parse an XLIFF file and import its resources', async () => {
       vi.mocked(importResources).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
@@ -335,8 +296,9 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Import failed: Source file not found');
+      expect(console.log).toHaveBeenCalledWith('❌ Import failed: Source file not found');
       expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('should return early with error if the import refuses to run', async () => {
@@ -346,10 +308,11 @@ describe('import-cmd', () => {
 
       await importCommand({ source: '/test/import.json', locale: 'en', format: 'json' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith(
-        'Import failed: Cannot import into base locale "en" with strategy "translation-service".',
+      expect(console.log).toHaveBeenCalledWith(
+        '❌ Import failed: Cannot import into base locale "en" with strategy "translation-service".',
       );
       expect(fs.writeFileSync).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -370,6 +333,7 @@ describe('import-cmd', () => {
       await importCommand(options);
 
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Import completed successfully!'));
+      expect(process.exitCode).toBe(0);
     });
 
     it('should display warnings for import with warnings', async () => {
@@ -399,9 +363,6 @@ describe('import-cmd', () => {
         errors: ['Error 1', 'Error 2'],
       });
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
-      vi.spyOn(process, 'exit').mockImplementation((code) => {
-        throw new Error(`Process exit: ${code}`);
-      });
 
       const options: ImportCommandOptions = {
         source: '/test/import.json',
@@ -409,7 +370,8 @@ describe('import-cmd', () => {
         format: 'json',
       };
 
-      await expect(importCommand(options)).rejects.toThrow('Process exit: 1');
+      await importCommand(options);
+      expect(process.exitCode).toBe(1);
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Errors (2)'));
     });
 
@@ -420,9 +382,6 @@ describe('import-cmd', () => {
         errors: ['some error'],
       });
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
-      vi.spyOn(process, 'exit').mockImplementation((code) => {
-        throw new Error(`Process exit: ${code}`);
-      });
 
       const options: ImportCommandOptions = {
         source: '/test/import.json',
@@ -430,7 +389,8 @@ describe('import-cmd', () => {
         format: 'json',
       };
 
-      await expect(importCommand(options)).rejects.toThrow('Process exit: 1');
+      await importCommand(options);
+      expect(process.exitCode).toBe(1);
     });
 
     it('should display dry-run message', async () => {
@@ -453,23 +413,15 @@ describe('import-cmd', () => {
 
   describe('Collection Handling', () => {
     it('should use collection-specific translations folder', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue({
-        config: {
-          ...baseConfig,
-          collections: {
-            ...baseConfig.collections,
-            admin: {
-              translationsFolder: 'src/admin-translations',
-            },
+      vi.mocked(loadConfig).mockReturnValue({
+        ...baseConfig,
+        collections: {
+          ...baseConfig.collections,
+          admin: {
+            translationsFolder: 'src/admin-translations',
           },
         },
-        configPath: '/test/project/.lingo-tracker.json',
-        cwd: '/test/project',
       });
-      vi.mocked(promptForCollection).mockResolvedValue('admin');
-      vi.mocked(resolveWritableCollection).mockReturnValue(
-        collectionOf('admin', { translationsFolder: 'src/admin-translations' }),
-      );
       vi.mocked(importResources).mockReturnValue(baseImportResult);
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
@@ -508,49 +460,61 @@ describe('import-cmd', () => {
       );
     });
 
-    it('should propagate errors thrown by promptForCollection', async () => {
-      vi.mocked(promptForCollection).mockRejectedValue(new Error('Missing required option: --collection'));
+    it('should exit 1 when several collections exist and --collection is missing', async () => {
+      vi.mocked(loadConfig).mockReturnValue({
+        ...baseConfig,
+        collections: { ...baseConfig.collections, admin: { translationsFolder: 'src/admin-translations' } },
+      });
 
-      await expect(importCommand({ source: '/test/import.json', locale: 'es', format: 'json' })).rejects.toThrow(
-        'Missing required option: --collection',
-      );
+      await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
+
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection');
       expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
-    it('should return early without error when promptForCollection returns null', async () => {
-      vi.mocked(promptForCollection).mockResolvedValue(null);
+    it('should exit 1 when the collection does not exist', async () => {
+      await importCommand({ source: '/test/import.json', locale: 'es', format: 'json', collection: 'nope' });
+
+      expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+      expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('should exit 1 when the collection is read-only', async () => {
+      onlyCollection('vendor', { translationsFolder: 'node_modules/x', readOnly: true });
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
       expect(importResources).not.toHaveBeenCalled();
-    });
-
-    it('should return early when resolveWritableCollection returns null', async () => {
-      vi.mocked(resolveWritableCollection).mockReturnValue(null);
-
-      await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
-
-      expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
   });
 
   describe('Non-TTY missing required options', () => {
-    it('should call ConsoleFormatter.error and not import when --source is missing in non-TTY mode', async () => {
+    it('should exit 1 and not import when --source is missing in non-TTY mode', async () => {
       await importCommand({ locale: 'es', format: 'json' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith(
-        'Source file is required. Use --source or run in interactive mode.',
-      );
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --source');
       expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
-    it('should call ConsoleFormatter.error and not import when --locale is missing in non-TTY mode', async () => {
+    it('should exit 1 and not import when --locale is missing in non-TTY mode', async () => {
       await importCommand({ source: '/test/import.json', format: 'json' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith(
-        'Target locale is required. Use --locale or run in interactive mode.',
-      );
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
       expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('should name both flags when --source and --locale are missing', async () => {
+      await importCommand({ format: 'json' });
+
+      expect(console.log).toHaveBeenCalledWith(
+        '❌ Missing required options in non-interactive mode: --source, --locale',
+      );
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -562,24 +526,23 @@ describe('import-cmd', () => {
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
     });
 
-    afterEach(() => {
-      vi.mocked(isInteractiveTerminal).mockReturnValue(false);
-    });
-
-    /** Choices of the target-locale prompt. */
-    const offeredLocales = (): unknown => {
-      const question = vi
-        .mocked(prompts)
-        .mock.calls.map(([asked]) => asked)
-        .find((asked) => !Array.isArray(asked) && asked.name === 'locale');
-      return question && !Array.isArray(question) ? question.choices : undefined;
+    /** Choices of the target-locale question, evaluated as prompts would (after no earlier answers). */
+    const offeredLocales = (values: Record<string, unknown> = {}): unknown => {
+      const [asked] = vi.mocked(prompts).mock.calls[0] ?? [];
+      const question = (Array.isArray(asked) ? asked : [asked]).find((q) => q?.name === 'locale');
+      const choices = question?.choices;
+      return typeof choices === 'function' ? choices(undefined, values, question) : choices;
     };
 
+    it('asks every missing value in one prompts call', async () => {
+      await importCommand({ source: '/test/import.json', format: 'json', strategy: 'translation-service' });
+
+      expect(prompts).toHaveBeenCalledTimes(1);
+      expect(process.exitCode).toBe(0);
+    });
+
     it("offers the collection's own locales, minus its base locale", async () => {
-      vi.mocked(promptForCollection).mockResolvedValue('docs');
-      vi.mocked(resolveWritableCollection).mockReturnValue(
-        collectionOf('docs', { translationsFolder: 'src/docs-translations', baseLocale: 'fr', locales: ['fr', 'de'] }),
-      );
+      onlyCollection('docs', { translationsFolder: 'src/docs-translations', baseLocale: 'fr', locales: ['fr', 'de'] });
 
       await importCommand({ source: '/test/import.json', format: 'json', strategy: 'translation-service' });
 
@@ -594,6 +557,29 @@ describe('import-cmd', () => {
         { title: 'es', value: 'es' },
         { title: 'fr', value: 'fr' },
       ]);
+    });
+
+    it('offers the base locale too when the chosen strategy is migration', async () => {
+      await importCommand({ source: '/test/import.json', format: 'json' });
+
+      expect(offeredLocales({ strategy: 'migration' })).toEqual([
+        { title: 'en (base locale)', value: 'en' },
+        { title: 'es', value: 'es' },
+        { title: 'fr', value: 'fr' },
+      ]);
+    });
+
+    it('a cancelled prompt prints one cancel line and exits 0', async () => {
+      vi.mocked(prompts).mockImplementationOnce(async (_questions, options) => {
+        options?.onCancel?.({ type: 'text', name: 'source', message: 'Source' }, {});
+        return {};
+      });
+
+      await importCommand({});
+
+      expect(console.log).toHaveBeenCalledWith('❌ Import cancelled.');
+      expect(importResources).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
     });
   });
 
@@ -659,10 +645,7 @@ describe('import-cmd', () => {
 
     describe('collection with its own base locale', () => {
       beforeEach(() => {
-        vi.mocked(promptForCollection).mockResolvedValue('docs');
-        vi.mocked(resolveWritableCollection).mockReturnValue(
-          collectionOf('docs', { translationsFolder: 'src/docs-translations', baseLocale: 'fr' }),
-        );
+        onlyCollection('docs', { translationsFolder: 'src/docs-translations', baseLocale: 'fr' });
         vi.spyOn(console, 'log').mockImplementation(() => undefined);
       });
 

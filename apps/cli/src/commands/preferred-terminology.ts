@@ -1,11 +1,13 @@
 import { relative } from 'node:path';
 import {
+  type LingoTrackerConfig,
   loadPreferredTerminology,
   PreferredTerminologyValidationError,
   writePreferredTerminology,
 } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
-import { ConsoleFormatter, loadConfiguration } from '../utils';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter } from '../utils';
 
 export interface PreferredTerminologyOptions {
   list?: boolean;
@@ -35,36 +37,30 @@ function sameTerm(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-function fail(message: string): void {
-  ConsoleFormatter.error(message);
-  process.exit(1);
-}
+export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOptions>()({
+  name: 'Preferred terminology',
+  collection: 'none',
+  run: ({ config, cwd, answers }) => run(answers, config, cwd),
+});
 
-export async function preferredTerminologyCommand(options: PreferredTerminologyOptions): Promise<void> {
+/** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
+function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const hasList = options.list === true;
   const hasAdd = options.add !== undefined;
   const hasRemove = options.remove !== undefined;
 
   if (!hasList && !hasAdd && !hasRemove) {
-    fail('Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>');
-    return;
+    throw new Error('Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>');
   }
   if (hasAdd && hasRemove) {
-    fail('--add and --remove cannot be combined; run them separately');
-    return;
+    throw new Error('--add and --remove cannot be combined; run them separately');
   }
   if (!hasAdd && (options.preferred !== undefined || options.reason !== undefined)) {
-    fail('--preferred and --reason can only be used with --add');
-    return;
+    throw new Error('--preferred and --reason can only be used with --add');
   }
   if (hasAdd && options.preferred === undefined) {
-    fail('--add requires --preferred <preferred>');
-    return;
+    throw new Error('--add requires --preferred <preferred>');
   }
-
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
 
   const result = loadPreferredTerminology(config, cwd);
   const where = displayPath(result.filePath, cwd);
@@ -77,8 +73,7 @@ export async function preferredTerminologyCommand(options: PreferredTerminologyO
     ConsoleFormatter.section('Preferred Terminology');
     ConsoleFormatter.keyValue('File', where);
     if (result.error) {
-      fail(result.error);
-      return;
+      throw new Error(result.error);
     }
     if (result.rules.length === 0) {
       ConsoleFormatter.indent('(none)');
@@ -93,8 +88,7 @@ export async function preferredTerminologyCommand(options: PreferredTerminologyO
 
   // Writing would replace a file we could not read; make the user fix it first.
   if (result.error) {
-    fail(result.error);
-    return;
+    throw new Error(result.error);
   }
 
   const next = [...result.rules];
@@ -104,8 +98,7 @@ export async function preferredTerminologyCommand(options: PreferredTerminologyO
     const term = options.remove ?? '';
     const index = next.findIndex((rule) => sameTerm(rule.discouraged, term));
     if (index === -1) {
-      fail(`No preferred terminology rule for "${term.trim()}" (${where})`);
-      return;
+      throw new Error(`No preferred terminology rule for "${term.trim()}" (${where})`);
     }
     const [removed] = next.splice(index, 1);
     successMessage = `Removed preferred terminology rule: ${formatRule(removed)} (${where})`;
@@ -137,11 +130,9 @@ export async function preferredTerminologyCommand(options: PreferredTerminologyO
         const label = row ? `"${row.discouraged} → ${row.preferred}"` : `row ${ruleError.index + 1}`;
         ConsoleFormatter.indent(`${label}: ${ruleError.message}`);
       }
-      process.exit(1);
-      return;
+      return { exitCode: 1 };
     }
-    fail(error instanceof Error ? error.message : String(error));
-    return;
+    throw new Error(error instanceof Error ? error.message : String(error));
   }
 
   ConsoleFormatter.success(successMessage);

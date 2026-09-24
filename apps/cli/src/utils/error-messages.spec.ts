@@ -20,46 +20,12 @@ describe('ErrorMessages', () => {
   });
 
   describe('Collection Errors', () => {
-    it('should provide collection not found message', () => {
-      expect(ErrorMessages.COLLECTION_NOT_FOUND('main')).toBe('❌ Collection "main" not found.');
-    });
-
-    it('should provide no collections message', () => {
-      expect(ErrorMessages.NO_COLLECTIONS).toBe('❌ No collections found. Run `lingo-tracker add-collection` first.');
-    });
-
-    it('should provide collection exists message', () => {
-      expect(ErrorMessages.COLLECTION_EXISTS('main')).toBe('❌ Collection "main" already exists.');
-    });
-
     it('should provide no collections available message', () => {
       expect(ErrorMessages.NO_COLLECTIONS_AVAILABLE).toBe('❌ No collections available.');
     });
   });
 
-  describe('Option Errors', () => {
-    it('should provide missing single option message', () => {
-      expect(ErrorMessages.MISSING_OPTION('collection')).toBe('❌ Missing required option: --collection');
-    });
-
-    it('should provide missing multiple options message', () => {
-      expect(ErrorMessages.MISSING_OPTIONS(['collection', 'key'])).toBe(
-        '❌ Missing required options: --collection, --key',
-      );
-    });
-
-    it('should provide non-interactive missing options message', () => {
-      expect(ErrorMessages.MISSING_OPTIONS_NON_INTERACTIVE(['format', 'output'])).toBe(
-        '❌ Missing required options in non-interactive mode: --format, --output',
-      );
-    });
-  });
-
   describe('Operation Errors', () => {
-    it('should provide operation cancelled message', () => {
-      expect(ErrorMessages.OPERATION_CANCELLED('Add resource')).toBe('❌ Add resource cancelled.');
-    });
-
     it('should provide operation failed message without reason', () => {
       expect(ErrorMessages.OPERATION_FAILED('Build')).toBe('❌ Build failed.');
     });

@@ -11,14 +11,25 @@ import {
   type BundleDefinition,
 } from '@simoncodes-ca/core';
 import type { TokenCasing } from '@simoncodes-ca/domain';
-import { getCwd, ConsoleFormatter, executePromptsWithFallback } from '../utils';
+import { type Answers, defineCommand, requireOptions } from '../runner/command-runner';
+import { ConsoleFormatter } from '../utils';
 
 const DEFAULT_BUNDLE_DIST = './src/assets/i18n';
 const DEFAULT_BUNDLE_NAME = '{locale}';
 const DEFAULT_TYPE_DIST_FILE = './src/generated/tokens.ts';
 
-export async function initCommand(options: InitOptions): Promise<void> {
-  const cwd = getCwd();
+export const initCommand = defineCommand<InitOptions>()({
+  name: 'Initialization',
+  // Writes `.lingo-tracker.json`, so there is none to load yet.
+  collection: 'none',
+  config: false,
+  // Nothing to ask in an initialized folder: `run` reports it.
+  prompts: (options, { cwd }) => (existsSync(resolve(cwd, CONFIG_FILENAME)) ? [] : buildQuestions(options)),
+  // No `required`: the name and folder are only needed when there is a config to write.
+  run: ({ cwd, answers, interactive }) => writeConfig(cwd, answers, interactive),
+});
+
+function writeConfig(cwd: string, result: Answers<InitOptions>, interactive: boolean): void {
   const configPath = resolve(cwd, CONFIG_FILENAME);
 
   if (existsSync(configPath)) {
@@ -26,7 +37,8 @@ export async function initCommand(options: InitOptions): Promise<void> {
     return;
   }
 
-  const answers = await promptForMissing(options);
+  requireOptions(result, ['collectionName', 'translationsFolder'], interactive);
+  const answers = resolveAnswers(result);
 
   // for the initial collection, store only the translationsFolder so all other properties live in the global config
   const collection: LingoTrackerCollection = {
@@ -89,7 +101,7 @@ function buildBundleDefinition(bundleAnswers: BundleAnswers): BundleDefinition {
   };
 }
 
-async function promptForMissing(options: InitOptions): Promise<InitAnswers> {
+function buildQuestions(options: InitOptions): prompts.PromptObject[] {
   const questions: prompts.PromptObject[] = [];
 
   if (!options.collectionName) {
@@ -242,24 +254,16 @@ async function promptForMissing(options: InitOptions): Promise<InitAnswers> {
     });
   }
 
-  const result = await executePromptsWithFallback({
-    questions,
-    currentValues: options,
-    requiredFields: ['collectionName', 'translationsFolder'],
-    operationName: 'Initialization',
-  });
+  return questions;
+}
 
-  const isAutoTranslationEnabled = Boolean(result.enableAutoTranslation ?? options.enableAutoTranslation);
-
-  const translation: TranslationConfig | undefined = isAutoTranslationEnabled
+/** Flags merged with prompt answers, with defaults filled in. */
+function resolveAnswers(answers: InitOptions & { collectionName: string; translationsFolder: string }): InitAnswers {
+  const translation: TranslationConfig | undefined = answers.enableAutoTranslation
     ? {
         enabled: true,
-        provider:
-          (result.translationProvider as string | undefined) ?? options.translationProvider ?? 'google-translate',
-        apiKeyEnv:
-          (result.translationApiKeyEnv as string | undefined) ??
-          options.translationApiKeyEnv ??
-          'GOOGLE_TRANSLATE_API_KEY',
+        provider: answers.translationProvider ?? 'google-translate',
+        apiKeyEnv: answers.translationApiKeyEnv ?? 'GOOGLE_TRANSLATE_API_KEY',
       }
     : undefined;
 
@@ -269,35 +273,27 @@ async function promptForMissing(options: InitOptions): Promise<InitAnswers> {
   // This flag only controls whether the custom bundle definition or the default bundle is written to
   // the config file.
   const hasBundleFlags =
-    options.bundleDist ||
-    options.bundleName ||
-    options.tokenCasing ||
-    options.typeDistFile ||
-    options.tokenConstantName;
-  const setupBundle = Boolean(result.setupBundle ?? options.setupBundle ?? hasBundleFlags);
+    answers.bundleDist ||
+    answers.bundleName ||
+    answers.tokenCasing ||
+    answers.typeDistFile ||
+    answers.tokenConstantName;
+  const setupBundle = Boolean(answers.setupBundle ?? hasBundleFlags);
 
   return {
-    collectionName: result.collectionName as string,
-    translationsFolder: result.translationsFolder as string,
-    exportFolder: (result.exportFolder as string | undefined) ?? DEFAULT_CONFIG.exportFolder,
-    importFolder: (result.importFolder as string | undefined) ?? DEFAULT_CONFIG.importFolder,
-    baseLocale: (result.baseLocale as string | undefined) ?? DEFAULT_CONFIG.baseLocale,
-    locales: ((result.locales as string[] | undefined) ?? options.locales ?? DEFAULT_CONFIG.locales)
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0),
+    collectionName: answers.collectionName,
+    translationsFolder: answers.translationsFolder,
+    exportFolder: answers.exportFolder ?? DEFAULT_CONFIG.exportFolder,
+    importFolder: answers.importFolder ?? DEFAULT_CONFIG.importFolder,
+    baseLocale: answers.baseLocale ?? DEFAULT_CONFIG.baseLocale,
+    locales: (answers.locales ?? DEFAULT_CONFIG.locales).map((l) => l.trim()).filter((l) => l.length > 0),
     translation,
     setupBundle,
-    bundleDist:
-      nonEmptyString(result.bundleDist as string | undefined) ??
-      nonEmptyString(options.bundleDist) ??
-      DEFAULT_BUNDLE_DIST,
-    bundleName:
-      nonEmptyString(result.bundleName as string | undefined) ??
-      nonEmptyString(options.bundleName) ??
-      DEFAULT_BUNDLE_NAME,
-    tokenCasing: (result.tokenCasing as TokenCasing | undefined) ?? options.tokenCasing,
-    typeDistFile: nonEmptyString((result.typeDistFile as string | undefined) ?? options.typeDistFile),
-    tokenConstantName: nonEmptyString((result.tokenConstantName as string | undefined) ?? options.tokenConstantName),
+    bundleDist: nonEmptyString(answers.bundleDist) ?? DEFAULT_BUNDLE_DIST,
+    bundleName: nonEmptyString(answers.bundleName) ?? DEFAULT_BUNDLE_NAME,
+    tokenCasing: answers.tokenCasing,
+    typeDistFile: nonEmptyString(answers.typeDistFile),
+    tokenConstantName: nonEmptyString(answers.tokenConstantName),
   };
 }
 

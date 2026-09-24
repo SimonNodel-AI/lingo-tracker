@@ -1,11 +1,5 @@
-import type prompts from 'prompts';
-import { type Collection, moveResource } from '@simoncodes-ca/core';
-import {
-  loadConfiguration,
-  promptForCollection,
-  resolveWritableCollection,
-  executePromptsWithFallback,
-} from '../utils';
+import { type Collection, moveResource, openCollection } from '@simoncodes-ca/core';
+import { defineCommand } from '../runner/command-runner';
 
 export interface MoveResourceOptions {
   collection?: string;
@@ -16,35 +10,44 @@ export interface MoveResourceOptions {
   verbose?: boolean;
 }
 
-export async function moveResourceCommand(options: MoveResourceOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+const required = (val: string) => (val && val.trim().length > 0 ? true : 'Required');
 
-  // Prompt for source collection first
-  const sourceCollectionName = await promptForCollection(config, options.collection);
-  if (!sourceCollectionName) return;
+export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
+  name: 'Move resource',
+  collection: 'writable',
+  prompts: (options) => [
+    ...(options.source
+      ? []
+      : [
+          {
+            type: 'text' as const,
+            name: 'source',
+            message: 'Source key or pattern (e.g. common.buttons.ok or common.buttons.*)',
+            validate: required,
+          },
+        ]),
+    ...(options.dest
+      ? []
+      : [
+          {
+            type: 'text' as const,
+            name: 'dest',
+            message: 'Destination key (e.g. common.actions.ok)',
+            validate: required,
+          },
+        ]),
+  ],
+  required: ['source', 'dest'],
+  run: async ({ collection, config, cwd, answers }) => {
+    const destinationCollection: Collection | undefined = answers.destCollection
+      ? openCollection(config, answers.destCollection, { cwd, writable: true })
+      : undefined;
 
-  // Validate source collection exists and is writable
-  const sourceCollection = resolveWritableCollection(sourceCollectionName, config, cwd);
-  if (!sourceCollection) return;
-
-  // Prompt for other fields
-  const answers = await promptForMissing(options);
-
-  // Handle optional destination collection
-  let destCollection: Collection | undefined;
-  if (answers.destCollection) {
-    destCollection = resolveWritableCollection(answers.destCollection, config, cwd);
-    if (!destCollection) return;
-  }
-
-  try {
-    const result = await moveResource(sourceCollection, {
+    const result = await moveResource(collection, {
       source: answers.source,
       destination: answers.dest,
-      override: options.override,
-      destinationCollection: destCollection,
+      override: answers.override,
+      destinationCollection,
     });
 
     if (result.movedCount > 0) {
@@ -65,47 +68,7 @@ export async function moveResourceCommand(options: MoveResourceOptions): Promise
       for (const error of result.errors) {
         console.log(`   - ${error}`);
       }
+      return { exitCode: 1 };
     }
-  } catch (e: unknown) {
-    console.log(`❌ ${e instanceof Error ? e.message : 'Failed to move resource'}`);
-  }
-}
-
-async function promptForMissing(options: MoveResourceOptions): Promise<{
-  source: string;
-  dest: string;
-  destCollection?: string;
-}> {
-  const questions: prompts.PromptObject[] = [];
-
-  if (!options.source) {
-    questions.push({
-      type: 'text',
-      name: 'source',
-      message: 'Source key or pattern (e.g. common.buttons.ok or common.buttons.*)',
-      validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
-    });
-  }
-
-  if (!options.dest) {
-    questions.push({
-      type: 'text',
-      name: 'dest',
-      message: 'Destination key (e.g. common.actions.ok)',
-      validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
-    });
-  }
-
-  const result = await executePromptsWithFallback({
-    questions,
-    currentValues: options,
-    requiredFields: ['source', 'dest'],
-    operationName: 'Move resource',
-  });
-
-  return {
-    source: result.source as string,
-    dest: result.dest as string,
-    destCollection: result.destCollection as string | undefined,
-  };
-}
+  },
+});

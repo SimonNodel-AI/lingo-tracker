@@ -1,23 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 import { findSimilarCommand } from './find-similar';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  return {
-    // Config loading and collection resolution run for real against the mocked config.
-    loadConfig: actual.loadConfig,
-    openCollection: actual.openCollection,
-    ConfigNotFoundError: actual.ConfigNotFoundError,
-    ConfigParseError: actual.ConfigParseError,
-    CollectionNotFoundError: actual.CollectionNotFoundError,
-    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
-    searchTranslations: vi.fn(),
-  };
+  // Collection resolution runs for real against the mocked config.
+  return { ...actual, loadConfig: vi.fn(), searchTranslations: vi.fn() };
 });
-
-vi.mock('../utils', () => ({
-  loadConfiguration: vi.fn(),
-}));
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
 vi.mock('path', async (importOriginal) => {
   const actual = await importOriginal<typeof import('path')>();
@@ -31,9 +20,8 @@ vi.mock('path', async (importOriginal) => {
   };
 });
 
-import { searchTranslations } from '@simoncodes-ca/core';
-import type { MatchType, SearchResult } from '@simoncodes-ca/core';
-import { loadConfiguration } from '../utils';
+import { ConfigNotFoundError, loadConfig, searchTranslations } from '@simoncodes-ca/core';
+import type { LingoTrackerConfig, MatchType, SearchResult } from '@simoncodes-ca/core';
 
 /**
  * Builds a fully typed SearchResult so the mocked searchTranslations return
@@ -48,7 +36,7 @@ function searchResult(key: string, matchType: MatchType, baseValue: string): Sea
   };
 }
 
-const BASE_CONFIG = {
+const BASE_CONFIG: LingoTrackerConfig = {
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: {
@@ -58,21 +46,18 @@ const BASE_CONFIG = {
   },
 };
 
-const LOADED_CONFIG = {
-  config: BASE_CONFIG,
-  configPath: '/project/.lingo-tracker.json',
-  cwd: '/project',
-};
-
 describe('find-similar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.spyOn(process, 'exit').mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
-    });
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    process.exitCode = undefined;
   });
 
   // ---------------------------------------------------------------------------
@@ -84,7 +69,7 @@ describe('find-similar', () => {
     // These cases pin only what the command adds on top: case folding, the 0.8
     // cutoff, and the empty-value fallback.
     beforeEach(() => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     });
 
     it('reports 100% for an identical multi-character stored value', async () => {
@@ -123,43 +108,64 @@ describe('find-similar', () => {
   // ---------------------------------------------------------------------------
 
   describe('findSimilarCommand — guard clauses', () => {
-    it('returns early without error when loadConfiguration returns null', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue(null);
+    it('exits 1 without searching when the configuration is missing', async () => {
+      vi.mocked(loadConfig).mockImplementation(() => {
+        throw new ConfigNotFoundError('/project/.lingo-tracker.json');
+      });
       await findSimilarCommand({ collection: 'tracker', value: 'hello' });
       expect(searchTranslations).not.toHaveBeenCalled();
-      expect(process.exit).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('exits with code 1 when --value is missing', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
-      await expect(findSimilarCommand({ collection: 'tracker' })).rejects.toThrow('process.exit(1)');
-      expect(console.error).toHaveBeenCalledWith('Error: --value is required');
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      await findSimilarCommand({ collection: 'tracker' });
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --value');
+      expect(searchTranslations).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('exits with code 1 when --value is an empty string', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
-      await expect(findSimilarCommand({ collection: 'tracker', value: '' })).rejects.toThrow('process.exit(1)');
-      expect(console.error).toHaveBeenCalledWith('Error: --value is required');
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      await findSimilarCommand({ collection: 'tracker', value: '' });
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --value');
+      expect(process.exitCode).toBe(1);
     });
 
     it('exits with code 1 when --value is whitespace only', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
-      await expect(findSimilarCommand({ collection: 'tracker', value: '   ' })).rejects.toThrow('process.exit(1)');
-      expect(console.error).toHaveBeenCalledWith('Error: --value is required');
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      await findSimilarCommand({ collection: 'tracker', value: '   ' });
+      expect(console.log).toHaveBeenCalledWith('❌ --value must not be blank');
+      expect(searchTranslations).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
-    it('exits with code 1 when --collection is missing', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
-      await expect(findSimilarCommand({ value: 'hello' })).rejects.toThrow('process.exit(1)');
-      expect(console.error).toHaveBeenCalledWith('Error: --collection is required');
+    it('uses the only collection when --collection is missing', async () => {
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      vi.mocked(searchTranslations).mockReturnValue([]);
+      await findSimilarCommand({ value: 'hello' });
+      expect(searchTranslations).toHaveBeenCalledWith(
+        expect.objectContaining({ translationsFolder: '/project/src/assets/i18n' }),
+      );
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('exits with code 1 when --collection is missing and several collections exist', async () => {
+      vi.mocked(loadConfig).mockReturnValue({
+        ...BASE_CONFIG,
+        collections: { tracker: { translationsFolder: 'a' }, admin: { translationsFolder: 'b' } },
+      });
+      await findSimilarCommand({ value: 'hello' });
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection');
+      expect(searchTranslations).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('exits with code 1 when collection is not found in config', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
-      await expect(findSimilarCommand({ collection: 'nonexistent', value: 'hello' })).rejects.toThrow(
-        'process.exit(1)',
-      );
-      expect(console.error).toHaveBeenCalledWith('Error: Collection "nonexistent" not found');
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      await findSimilarCommand({ collection: 'nonexistent', value: 'hello' });
+      expect(console.log).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -169,7 +175,7 @@ describe('find-similar', () => {
 
   describe('findSimilarCommand — output messages', () => {
     beforeEach(() => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     });
 
     it('prints "No similar values found" when no candidates pass the 0.8 threshold', async () => {
@@ -209,7 +215,7 @@ describe('find-similar', () => {
     // whose key contains the query is labelled a key match even when its value
     // matches too. Every candidate is scored on its base value regardless.
     beforeEach(() => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     });
 
     it.each<MatchType>([
@@ -280,7 +286,7 @@ describe('find-similar', () => {
 
   describe('findSimilarCommand — sorting and maxResults', () => {
     beforeEach(() => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     });
 
     it('sorts results by score descending', async () => {
@@ -332,20 +338,16 @@ describe('find-similar', () => {
 
   describe('findSimilarCommand — locale resolution', () => {
     it('uses collectionConfig.baseLocale when set', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue({
-        config: {
-          baseLocale: 'en',
-          locales: ['en', 'fr'],
-          collections: {
-            tracker: {
-              translationsFolder: 'src/i18n',
-              baseLocale: 'fr',
-            },
+      vi.mocked(loadConfig).mockReturnValue({
+        baseLocale: 'en',
+        locales: ['en', 'fr'],
+        collections: {
+          tracker: {
+            translationsFolder: 'src/i18n',
+            baseLocale: 'fr',
           },
         },
-        configPath: '/project/.lingo-tracker.json',
-        cwd: '/project',
-      } as any);
+      });
       vi.mocked(searchTranslations).mockReturnValue([]);
 
       await findSimilarCommand({ collection: 'tracker', value: 'bonjour' });
@@ -354,19 +356,15 @@ describe('find-similar', () => {
     });
 
     it('falls back to config.baseLocale when collectionConfig has no baseLocale', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue({
-        config: {
-          baseLocale: 'de',
-          locales: ['de', 'en'],
-          collections: {
-            tracker: {
-              translationsFolder: 'src/i18n',
-            },
+      vi.mocked(loadConfig).mockReturnValue({
+        baseLocale: 'de',
+        locales: ['de', 'en'],
+        collections: {
+          tracker: {
+            translationsFolder: 'src/i18n',
           },
         },
-        configPath: '/project/.lingo-tracker.json',
-        cwd: '/project',
-      } as any);
+      });
       vi.mocked(searchTranslations).mockReturnValue([]);
 
       await findSimilarCommand({ collection: 'tracker', value: 'hallo' });
@@ -375,18 +373,14 @@ describe('find-similar', () => {
     });
 
     it('falls back to "en" when neither collection nor config specifies baseLocale', async () => {
-      vi.mocked(loadConfiguration).mockReturnValue({
-        config: {
-          locales: ['en'],
-          collections: {
-            tracker: {
-              translationsFolder: 'src/i18n',
-            },
+      vi.mocked(loadConfig).mockReturnValue({
+        locales: ['en'],
+        collections: {
+          tracker: {
+            translationsFolder: 'src/i18n',
           },
         },
-        configPath: '/project/.lingo-tracker.json',
-        cwd: '/project',
-      } as any);
+      });
       vi.mocked(searchTranslations).mockReturnValue([]);
 
       await findSimilarCommand({ collection: 'tracker', value: 'hello' });
@@ -401,7 +395,7 @@ describe('find-similar', () => {
 
   describe('findSimilarCommand — searchTranslations arguments', () => {
     beforeEach(() => {
-      vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       vi.mocked(searchTranslations).mockReturnValue([]);
     });
 

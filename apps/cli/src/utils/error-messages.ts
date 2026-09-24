@@ -13,8 +13,6 @@
  * import { ErrorMessages } from './error-messages';
  *
  * console.log(ErrorMessages.CONFIG_NOT_FOUND);
- * console.log(ErrorMessages.COLLECTION_NOT_FOUND('main'));
- * console.log(ErrorMessages.MISSING_OPTIONS(['collection', 'key']));
  * ```
  */
 
@@ -37,22 +35,6 @@ export const ErrorMessages = {
   CONFIG_PARSE_FAILED: (error: string) => `❌ Failed to parse configuration file: ${error}`,
 
   // Collection Errors
-  /**
-   * Error when specified collection does not exist
-   * @param name - Name of the collection that was not found
-   */
-  COLLECTION_NOT_FOUND: (name: string) => `❌ Collection "${name}" not found.`,
-
-  /**
-   * Error when no collections exist in configuration
-   */
-  NO_COLLECTIONS: '❌ No collections found. Run `lingo-tracker add-collection` first.',
-
-  /**
-   * Error when trying to create a collection that already exists
-   * @param name - Name of the existing collection
-   */
-  COLLECTION_EXISTS: (name: string) => `❌ Collection "${name}" already exists.`,
 
   /**
    * Error when no collections are available for an operation
@@ -66,31 +48,8 @@ export const ErrorMessages = {
   COLLECTION_READ_ONLY: (name: string) => `❌ Collection "${name}" is read-only. Its resources cannot be modified.`,
 
   // Option Errors
-  /**
-   * Error when a single required option is missing
-   * @param option - Name of the missing option (without -- prefix)
-   */
-  MISSING_OPTION: (option: string) => `❌ Missing required option: --${option}`,
-
-  /**
-   * Error when multiple required options are missing
-   * @param options - Array of missing option names (without -- prefix)
-   */
-  MISSING_OPTIONS: (options: string[]) => `❌ Missing required options: ${options.map((o) => `--${o}`).join(', ')}`,
-
-  /**
-   * Error when required option is missing in non-interactive mode
-   * @param options - Array of missing option names (without -- prefix)
-   */
-  MISSING_OPTIONS_NON_INTERACTIVE: (options: string[]) =>
-    `❌ Missing required options in non-interactive mode: ${options.map((o) => `--${o}`).join(', ')}`,
 
   // Operation Errors
-  /**
-   * Error when user cancels an operation
-   * @param operation - Name of the operation that was cancelled
-   */
-  OPERATION_CANCELLED: (operation: string) => `❌ ${operation} cancelled.`,
 
   /**
    * Generic error for failed operations

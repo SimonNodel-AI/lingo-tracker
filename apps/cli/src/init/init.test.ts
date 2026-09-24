@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import prompts from 'prompts';
+import { isInteractiveTerminal } from '../runner/terminal';
 import { initCommand } from './init';
 
 const fsMocks = vi.hoisted(() => ({
@@ -17,28 +19,22 @@ vi.mock('node:fs', async (importOriginal) => {
   };
 });
 vi.mock('prompts');
+// Non-interactive by default, so tests never trigger prompts by accident.
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
 const mockExistsSync = vi.mocked(existsSync);
 const mockWriteFileSync = vi.mocked(writeFileSync);
 
 describe('initCommand', () => {
-  let originalStdinIsTTY: boolean | undefined;
-  let originalStdoutIsTTY: boolean | undefined;
-
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.INIT_CWD = '/test/project';
-    // Capture original TTY state and explicitly mark streams as non-interactive
-    // so tests never accidentally trigger interactive prompt fallback paths.
-    originalStdinIsTTY = process.stdin.isTTY;
-    originalStdoutIsTTY = process.stdout.isTTY;
-    process.stdin.isTTY = undefined;
-    process.stdout.isTTY = undefined;
+    process.exitCode = undefined;
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
   });
 
   afterEach(() => {
-    process.stdin.isTTY = originalStdinIsTTY;
-    process.stdout.isTTY = originalStdoutIsTTY;
+    process.exitCode = undefined;
   });
 
   it('should write config file with provided parameters', async () => {
@@ -337,5 +333,43 @@ describe('initCommand', () => {
     const writtenConfig = JSON.parse(mockWriteFileSync.mock.calls[0][1] as string);
 
     expect(writtenConfig.locales).toEqual(['en', 'fr']);
+  });
+
+  it('exits 1 naming the missing flags in non-interactive mode', async () => {
+    mockExistsSync.mockReturnValue(false);
+
+    await initCommand({});
+
+    expect(console.log).toHaveBeenCalledWith(
+      '❌ Missing required options in non-interactive mode: --collection-name, --translations-folder',
+    );
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('asks nothing and exits 0 in an initialized folder, even without flags', async () => {
+    mockExistsSync.mockReturnValue(true);
+    vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+
+    await initCommand({});
+
+    expect(prompts).not.toHaveBeenCalled();
+    expect(mockWriteFileSync).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('prompts for missing values when interactive and writes the answers', async () => {
+    mockExistsSync.mockReturnValue(false);
+    vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+    vi.mocked(prompts).mockResolvedValueOnce({ collectionName: 'Main', translationsFolder: 'src/i18n' });
+
+    await initCommand({ baseLocale: 'en', locales: ['en'] });
+
+    expect(prompts).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ name: 'collectionName' })]),
+      expect.anything(),
+    );
+    const [, written] = mockWriteFileSync.mock.calls[0];
+    expect(JSON.parse(String(written)).collections).toEqual({ Main: { translationsFolder: 'src/i18n' } });
   });
 });

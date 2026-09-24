@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { openCollection, readCollection } from '@simoncodes-ca/core';
-import type { Collection, LingoTrackerConfig } from '@simoncodes-ca/core';
-import { ConsoleFormatter, loadConfiguration, parseCommaSeparatedList, resolveCollection } from '../utils';
-import { exitWithError } from '../utils/report-error';
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { hasPipedStdin } from '../runner/terminal';
+import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
 import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
 import { matchGlossary, type FlatEntry } from './glossary-matcher';
 
@@ -45,7 +46,7 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
   }
 
   // Fall back to piped stdin when not attached to a terminal.
-  if (!process.stdin.isTTY) {
+  if (hasPipedStdin()) {
     try {
       const piped = fs.readFileSync(0, 'utf8');
       if (piped.trim().length > 0) return piped;
@@ -62,17 +63,11 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
  * Loads entries from the requested collection(s) through the core Collection Reader,
  * mapping each stored resource to the matcher's `FlatEntry`. A folder that cannot be read
  * is reported as a warning and its entries are left out.
- * Returns null if a named collection cannot be resolved.
+ * A named collection that does not exist throws CollectionNotFoundError (the runner exits 1).
  */
-function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): FlatEntry[] | null {
-  let targets: Collection[];
-  if (options.collection) {
-    const resolved = resolveCollection(options.collection, config, cwd);
-    if (!resolved) return null;
-    targets = [resolved];
-  } else {
-    targets = Object.keys(config.collections ?? {}).map((name) => openCollection(config, name, { cwd }));
-  }
+function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): FlatEntry[] {
+  const names = options.collection ? [options.collection] : Object.keys(config.collections ?? {});
+  const targets = names.map((name) => openCollection(config, name, { cwd }));
 
   const entries: FlatEntry[] = [];
   for (const collection of targets) {
@@ -101,14 +96,17 @@ function buildOutputPath(options: GlossaryCommandOptions, cwd: string): string {
   return path.resolve(cwd, `lingo-tracker-glossary-${timestamp}.json`);
 }
 
-export async function glossaryCommand(options: GlossaryCommandOptions): Promise<void> {
-  const loaded = loadConfiguration();
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
+  name: 'Glossary',
+  // `--collection` is optional here: absent means every collection, so the runner opens nothing.
+  collection: 'none',
+  run: ({ config, cwd, answers }) => runGlossary(answers, config, cwd),
+});
 
+function runGlossary(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const block = resolveInputText(options, cwd);
   if (block === null) {
-    process.exit(1);
+    return { exitCode: 1 };
   }
 
   const baseLocale = config.baseLocale || 'en';
@@ -120,16 +118,7 @@ export async function glossaryCommand(options: GlossaryCommandOptions): Promise<
   }
 
   const entries = loadEntries(options, config, cwd);
-  if (entries === null) {
-    process.exit(1);
-  }
-
-  let extractor: CandidateExtractor;
-  try {
-    extractor = resolveExtractor(options.extractor ?? 'ngram');
-  } catch (error) {
-    exitWithError(error);
-  }
+  const extractor: CandidateExtractor = resolveExtractor(options.extractor ?? 'ngram');
 
   const candidates = extractor(block);
   const terms = matchGlossary(entries, candidates, {

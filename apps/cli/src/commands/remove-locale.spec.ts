@@ -1,94 +1,76 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { resolve } from 'node:path';
+import {
+  ConfigNotFoundError,
+  type LingoTrackerConfig,
+  loadConfig,
+  removeLocaleFromCollection,
+} from '@simoncodes-ca/core';
+import prompts from 'prompts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isInteractiveTerminal } from '../runner/terminal';
 import { removeLocaleCommand, type RemoveLocaleOptions } from './remove-locale';
 
-vi.mock('@simoncodes-ca/core', () => ({
-  removeLocaleFromCollection: vi.fn(),
-}));
+vi.mock('prompts');
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return { ...actual, loadConfig: vi.fn(), removeLocaleFromCollection: vi.fn() };
+});
 
-vi.mock('../utils', () => ({
-  loadConfiguration: vi.fn(),
-  promptForCollection: vi.fn(),
-  resolveWritableCollection: vi.fn(),
-  ConsoleFormatter: {
-    error: vi.fn(),
-    success: vi.fn(),
-    keyValue: vi.fn(),
-  },
-}));
-
-vi.mock('prompts', () => ({
-  default: vi.fn(),
-}));
-
-import { type Collection, removeLocaleFromCollection } from '@simoncodes-ca/core';
-import { loadConfiguration, promptForCollection, resolveWritableCollection, ConsoleFormatter } from '../utils';
-
-const BASE_CONFIG = {
+const BASE_CONFIG: LingoTrackerConfig = {
   baseLocale: 'en',
-  locales: ['en', 'fr', 'de'],
+  locales: ['en', 'fr'],
   collections: {
     main: { translationsFolder: 'src/i18n' },
+    vendor: { translationsFolder: 'vendor/i18n', readOnly: true },
   },
 };
 
-const LOADED_CONFIG = {
-  config: BASE_CONFIG,
-  configPath: '/project/.lingo-tracker.json',
-  cwd: '/project',
-};
-
-const RESOLVED_COLLECTION: Collection = {
-  name: 'main',
-  translationsFolder: '/project/src/i18n',
-  baseLocale: 'en',
-  locales: ['en', 'fr', 'de'],
-  targetLocales: ['fr', 'de'],
-  translationConfig: undefined,
-  tags: [],
-  protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
-  readOnly: false,
-  config: { translationsFolder: 'src/i18n', locales: ['en', 'fr', 'de'] },
-};
+const mockCore = vi.mocked(removeLocaleFromCollection);
 
 describe('removeLocaleCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG);
-    vi.mocked(promptForCollection).mockResolvedValue('main');
-    vi.mocked(resolveWritableCollection).mockReturnValue(RESOLVED_COLLECTION);
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
+    vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
   });
 
-  it('returns early when loadConfiguration returns null', async () => {
-    vi.mocked(loadConfiguration).mockReturnValue(null);
-
-    await removeLocaleCommand({ locale: 'fr' });
-
-    expect(removeLocaleFromCollection).not.toHaveBeenCalled();
+  afterEach(() => {
+    process.exitCode = undefined;
   });
 
-  it('returns early when promptForCollection returns null', async () => {
-    vi.mocked(promptForCollection).mockResolvedValue(null);
-
-    await removeLocaleCommand({ locale: 'fr' });
-
-    expect(removeLocaleFromCollection).not.toHaveBeenCalled();
-  });
-
-  it('returns early when resolveWritableCollection returns null', async () => {
-    vi.mocked(resolveWritableCollection).mockReturnValue(null);
-
-    await removeLocaleCommand({ locale: 'fr' });
-
-    expect(removeLocaleFromCollection).not.toHaveBeenCalled();
-  });
-
-  describe('non-TTY mode', () => {
-    beforeEach(() => {
-      Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true });
+  it('exits 1 without calling core when the config is missing', async () => {
+    vi.mocked(loadConfig).mockImplementation(() => {
+      throw new ConfigNotFoundError(resolve('/project', '.lingo-tracker.json'));
     });
 
+    await removeLocaleCommand({ collection: 'main', locale: 'fr' });
+
+    expect(mockCore).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('exits 1 without calling core when the collection does not exist', async () => {
+    await removeLocaleCommand({ collection: 'nope', locale: 'fr' });
+
+    expect(mockCore).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('exits 1 without calling core when the collection is read-only', async () => {
+    await removeLocaleCommand({ collection: 'vendor', locale: 'fr' });
+
+    expect(mockCore).not.toHaveBeenCalled();
+    expect(console.log).toHaveBeenCalledWith('❌ Collection "vendor" is read-only. Its resources cannot be modified.');
+    expect(process.exitCode).toBe(1);
+  });
+
+  describe('non-interactive mode', () => {
     it('calls removeLocaleFromCollection and prints success when --locale is provided', async () => {
-      vi.mocked(removeLocaleFromCollection).mockResolvedValue({
+      mockCore.mockResolvedValue({
         message: 'Locale "fr" removed from collection "main" successfully',
         entriesPurged: 5,
         filesUpdated: 3,
@@ -97,34 +79,83 @@ describe('removeLocaleCommand', () => {
       const options: RemoveLocaleOptions = { collection: 'main', locale: 'fr' };
       await removeLocaleCommand(options);
 
-      expect(removeLocaleFromCollection).toHaveBeenCalledWith('main', 'fr', { cwd: '/project' });
-      expect(ConsoleFormatter.success).toHaveBeenCalledWith('Locale "fr" removed from collection "main" successfully');
-      expect(ConsoleFormatter.keyValue).toHaveBeenCalledWith('Entries purged', 5);
-      expect(ConsoleFormatter.keyValue).toHaveBeenCalledWith('Files updated', 3);
+      expect(mockCore).toHaveBeenCalledWith('main', 'fr', { cwd: '/project' });
+      expect(console.log).toHaveBeenCalledWith('✅ Locale "fr" removed from collection "main" successfully');
+      expect(console.log).toHaveBeenCalledWith('  Entries purged: 5');
+      expect(console.log).toHaveBeenCalledWith('  Files updated: 3');
+      expect(process.exitCode).toBe(0);
     });
 
-    it('prints error and returns without calling core when --locale is missing', async () => {
-      const options: RemoveLocaleOptions = { collection: 'main' };
-      await removeLocaleCommand(options);
+    it('exits 1 without calling core when --locale is missing', async () => {
+      await removeLocaleCommand({ collection: 'main' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Missing required option: --locale');
-      expect(removeLocaleFromCollection).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
+      expect(mockCore).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
-    it('prints error via ConsoleFormatter.error when core function throws', async () => {
-      vi.mocked(removeLocaleFromCollection).mockRejectedValue(new Error('Locale "fr" not found in collection "main"'));
+    it('prints the core error and exits 1 when the core function throws', async () => {
+      mockCore.mockRejectedValue(new Error('Locale "fr" not found in collection "main"'));
 
       await removeLocaleCommand({ collection: 'main', locale: 'fr' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Locale "fr" not found in collection "main"');
+      expect(console.log).toHaveBeenCalledWith('❌ Locale "fr" not found in collection "main"');
+      expect(process.exitCode).toBe(1);
     });
 
-    it('prints generic error message when core throws a non-Error value', async () => {
-      vi.mocked(removeLocaleFromCollection).mockRejectedValue('unexpected');
+    it('prints a non-Error thrown value and exits 1', async () => {
+      mockCore.mockRejectedValue('unexpected');
 
       await removeLocaleCommand({ collection: 'main', locale: 'fr' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Failed to remove locale');
+      expect(console.log).toHaveBeenCalledWith('❌ unexpected');
+      expect(process.exitCode).toBe(1);
+    });
+  });
+
+  it('exits 1 naming the reason when the collection has no removable locale', async () => {
+    vi.mocked(loadConfig).mockReturnValue({ ...BASE_CONFIG, locales: ['en'] });
+
+    await removeLocaleCommand({ collection: 'main' });
+
+    expect(console.log).toHaveBeenCalledWith('❌ No removable locales in collection "main".');
+    expect(mockCore).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  describe('interactive mode', () => {
+    beforeEach(() => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+    });
+
+    it('prompts for the locale when --locale is missing', async () => {
+      mockCore.mockResolvedValue({
+        message: 'Locale "fr" removed from collection "main" successfully',
+        entriesPurged: 5,
+        filesUpdated: 3,
+      });
+      vi.mocked(prompts).mockResolvedValueOnce({ locale: 'fr' });
+
+      await removeLocaleCommand({ collection: 'main' });
+
+      expect(prompts).toHaveBeenCalledWith(
+        [expect.objectContaining({ name: 'locale', type: 'select' })],
+        expect.anything(),
+      );
+      expect(mockCore).toHaveBeenCalledWith('main', 'fr', { cwd: '/project' });
+    });
+
+    it('cancelling the prompt prints one cancel line and exits 0', async () => {
+      vi.mocked(prompts).mockImplementationOnce(async (_questions, options) => {
+        options?.onCancel?.({ type: 'text', name: 'locale', message: 'Locale' }, {});
+        return {};
+      });
+
+      await removeLocaleCommand({ collection: 'main' });
+
+      expect(mockCore).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith('❌ Remove locale cancelled.');
+      expect(process.exitCode).toBe(0);
     });
   });
 });

@@ -1,15 +1,6 @@
-import prompts from 'prompts';
 import { deleteResource } from '@simoncodes-ca/core';
-import {
-  loadConfiguration,
-  parseCommaSeparatedList,
-  promptForCollection,
-  resolveWritableCollection,
-  ConsoleFormatter,
-  ErrorMessages,
-  isInteractiveTerminal,
-  executePromptsWithFallback,
-} from '../utils';
+import { type Ask, CommandCancelledError, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
 
 export interface DeleteResourceOptions {
   collection?: string;
@@ -17,40 +8,32 @@ export interface DeleteResourceOptions {
   yes?: boolean;
 }
 
-export async function deleteResourceCommand(options: DeleteResourceOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
-
-  // Prompt for collection first
-  const collectionName = await promptForCollection(config, options.collection);
-  if (!collectionName) return;
-
-  // Validate collection exists
-  const collection = resolveWritableCollection(collectionName, config, cwd);
-  if (!collection) return;
-
-  // Prompt for other fields
-  const answers = await promptForMissing(options);
-
-  // Parse keys
-  const keys = parseCommaSeparatedList(answers.key) || [];
-
-  if (keys.length === 0) {
-    ConsoleFormatter.error('No valid keys provided.');
-    return;
-  }
-
-  // Show confirmation unless --yes flag or non-TTY mode
-  if (!options.yes && isInteractiveTerminal()) {
-    const confirmed = await confirmDeletion(keys);
-    if (!confirmed) {
-      ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Delete resource'));
-      return;
+export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
+  name: 'Delete resource',
+  collection: 'writable',
+  prompts: (options) =>
+    options.key
+      ? []
+      : [
+          {
+            type: 'text',
+            name: 'key',
+            message: 'Resource key(s) (single key or comma-separated)',
+            validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
+          },
+        ],
+  required: ['key'],
+  run: async ({ collection, answers, interactive, ask }) => {
+    const keys = parseCommaSeparatedList(answers.key) ?? [];
+    if (keys.length === 0) {
+      throw new Error('No valid keys provided.');
     }
-  }
 
-  try {
+    // Confirm unless --yes, or non-interactive (nobody to ask).
+    if (!answers.yes && interactive && !(await confirmDeletion(keys, ask))) {
+      throw new CommandCancelledError();
+    }
+
     const result = deleteResource(collection, { keys });
 
     if (result.entriesDeleted === 0) {
@@ -65,37 +48,12 @@ export async function deleteResourceCommand(options: DeleteResourceOptions): Pro
       for (const error of result.errors) {
         ConsoleFormatter.indent(`- ${error.key}: ${error.error}`);
       }
+      return { exitCode: 1 };
     }
-  } catch (e: unknown) {
-    ConsoleFormatter.error(e instanceof Error ? e.message : 'Failed to delete resource');
-  }
-}
+  },
+});
 
-async function promptForMissing(options: DeleteResourceOptions): Promise<{ key: string }> {
-  const questions: prompts.PromptObject[] = [];
-
-  if (!options.key) {
-    questions.push({
-      type: 'text',
-      name: 'key',
-      message: 'Resource key(s) (single key or comma-separated)',
-      validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
-    });
-  }
-
-  const result = await executePromptsWithFallback({
-    questions,
-    currentValues: options,
-    requiredFields: ['key'],
-    operationName: 'Delete resource',
-  });
-
-  return {
-    key: result.key as string,
-  };
-}
-
-async function confirmDeletion(keys: string[]): Promise<boolean> {
+async function confirmDeletion(keys: string[], ask: Ask): Promise<boolean> {
   console.log('\nYou are about to delete:');
 
   if (keys.length === 1) {
@@ -109,7 +67,7 @@ async function confirmDeletion(keys: string[]): Promise<boolean> {
 
   console.log('\n⚠️  This will remove translations for all locales.');
 
-  const response = await prompts({
+  const response = await ask({
     type: 'confirm',
     name: 'confirmed',
     message: 'Are you sure?',

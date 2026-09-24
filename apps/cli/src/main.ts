@@ -100,11 +100,7 @@ program
   )
   .action(async (options) => {
     const { addResourceCommand } = await import('./add-resource/add-resource');
-    const processedOptions = {
-      ...options,
-      translations: options.translations ? JSON.parse(options.translations) : undefined,
-    };
-    await addResourceCommand(processedOptions);
+    await addResourceCommand(options);
   });
 
 program
@@ -482,6 +478,7 @@ Notes:
       allowTranslated: options.allowTranslated,
       skipLocales,
       skipIcu: options.skipIcu,
+      skipPlaceholders: options.skipPlaceholders,
       requirePortablePlurals: options.requirePortablePlurals,
     });
   });

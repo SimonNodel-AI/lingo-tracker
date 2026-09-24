@@ -116,7 +116,7 @@ apps (cli, api, tracker)
 | [`user-flows.md`](user-flows.md) | Available | End-to-end sequence diagrams and flowcharts for the six primary user flows: resource lifecycle, import/export, frontend browse-and-edit, search, drag-and-drop move, and cache indexing. |
 | [`data-flows.md`](data-flows.md) | Placeholder | Sequence diagrams for import/export pipelines, bundle generation, and the checksum-based staleness detection flow. |
 | [`apps-cli.md`](apps-cli.md) | Placeholder | Full CLI command inventory with options, interactive vs. non-interactive modes, and usage examples. |
-| [`cli.md`](cli.md) | Available | CLI command table, interactive vs. non-interactive TTY decision flowchart, config loading and collection resolution flow, and shared utilities overview. |
+| [`cli.md`](cli.md) | Available | CLI command table, the Command Runner (interactive rule, config loading, collection resolution, exit codes) with its flowchart, and shared utilities overview. |
 | [`api.md`](api.md) | Available | REST API endpoint reference, NestJS module structure, mapper pattern, the Collection Index (in-memory tree per open collection), and Swagger location. |
 | [`apps-tracker.md`](apps-tracker.md) | Placeholder | Angular UI architecture: route structure, NgRx Signal Store feature files, component hierarchy, and Transloco integration. |
 | [`frontend.md`](frontend.md) | Available | Tracker UI deep-dive: component trees for both feature areas, BrowserStore feature composition diagram, store feature breakdown, virtual scrolling, optimistic updates, drag-and-drop, lazy dialogs, theming (light/dark/system, Material M2 watercolor palette), and Transloco typed-token integration. |

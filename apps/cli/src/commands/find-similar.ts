@@ -1,6 +1,6 @@
-import { loadConfiguration } from '../utils';
-import { type Collection, CollectionNotFoundError, openCollection, searchTranslations } from '@simoncodes-ca/core';
+import { type Collection, searchTranslations } from '@simoncodes-ca/core';
 import { normalizedLevenshtein } from '@simoncodes-ca/domain';
+import { defineCommand } from '../runner/command-runner';
 
 /**
  * How many candidates to score. searchTranslations stops walking once it has
@@ -19,33 +19,24 @@ export interface FindSimilarOptions {
   maxResults?: number;
 }
 
-export async function findSimilarCommand(options: FindSimilarOptions): Promise<void> {
-  const loaded = loadConfiguration();
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+export const findSimilarCommand = defineCommand<FindSimilarOptions>()({
+  name: 'Find similar',
+  collection: 'read',
+  prompts: (options) =>
+    options.value?.trim() ? [] : [{ type: 'text', name: 'value', message: 'Base locale text to search for' }],
+  required: ['value'],
+  run: ({ collection, answers }) => {
+    // `required` rejects an absent or empty value; a blank one has nothing to compare either.
+    const query = answers.value.trim();
+    if (query.length === 0) {
+      throw new Error('--value must not be blank');
+    }
+    reportSimilar(collection, query, answers.maxResults ?? 5);
+  },
+});
 
-  if (!options.value || options.value.trim().length === 0) {
-    console.error('Error: --value is required');
-    process.exit(1);
-  }
-
-  if (!options.collection) {
-    console.error('Error: --collection is required');
-    process.exit(1);
-  }
-
-  let collection: Collection;
-  try {
-    collection = openCollection(config, options.collection, { cwd });
-  } catch (error) {
-    if (!(error instanceof CollectionNotFoundError)) throw error;
-    console.error(`Error: Collection "${options.collection}" not found`);
-    process.exit(1);
-  }
-
+function reportSimilar(collection: Collection, query: string, displayLimit: number): void {
   const { translationsFolder, baseLocale } = collection;
-  const query = options.value.trim();
-  const displayLimit = options.maxResults ?? 5;
 
   // Use a broad search to get candidates (pass the whole query for substring pre-filter)
   const candidates = searchTranslations({

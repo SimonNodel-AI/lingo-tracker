@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import { join } from 'node:path';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isInteractiveTerminal } from '../runner/terminal';
 import { exportCommand } from './export-cmd';
 
 const fsMocks = vi.hoisted(() => ({
@@ -27,12 +28,13 @@ vi.mock('fs', async (importOriginal) => {
   };
 });
 vi.mock('prompts');
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
-    // Config loading and collection resolution run for real against the mocked config.
-    loadConfig: actual.loadConfig,
+    // Collection resolution runs for real against the mocked config.
+    loadConfig: vi.fn(),
     openCollection: actual.openCollection,
     exportTargetLocales: actual.exportTargetLocales,
     ConfigNotFoundError: actual.ConfigNotFoundError,
@@ -94,30 +96,23 @@ describe('exportCommand', () => {
     },
   };
 
-  const originalStdout = process.stdout.isTTY;
   const originalLog = console.log;
   const originalError = console.error;
   const originalWarn = console.warn;
-  const originalExit = process.exit;
-  const originalExitCode = process.exitCode;
 
   beforeEach(() => {
     vi.clearAllMocks();
     console.log = vi.fn();
     console.error = vi.fn();
     console.warn = vi.fn();
-    process.exit = vi.fn() as unknown as (code?: number | string | null | undefined) => never;
-    process.exitCode = 0;
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
 
-    // Set to non-TTY by default to avoid prompts
-    Object.defineProperty(process.stdout, 'isTTY', {
-      value: false,
-      writable: true,
-      configurable: true,
-    });
+    // Non-interactive by default to avoid prompts
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
 
+    vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockConfig));
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
     mockValidateOutputDirectory.mockReturnValue(undefined);
@@ -125,58 +120,50 @@ describe('exportCommand', () => {
   });
 
   afterEach(() => {
-    Object.defineProperty(process.stdout, 'isTTY', {
-      value: originalStdout,
-      writable: true,
-      configurable: true,
-    });
     console.log = originalLog;
     console.error = originalError;
     console.warn = originalWarn;
-    process.exit = originalExit;
-    process.exitCode = originalExitCode;
+    process.exitCode = undefined;
   });
 
   describe('configuration validation', () => {
     it('should error when config file is missing', async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-      // Make process.exit actually throw to prevent further execution
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
+      vi.mocked(core.loadConfig).mockImplementation(() => {
+        throw new core.ConfigNotFoundError('/project/.lingo-tracker.json');
       });
 
-      await expect(exportCommand({ format: 'json' })).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
 
       expect(console.error).toHaveBeenCalledWith('❌ Configuration file .lingo-tracker.json not found.');
     });
 
     it('should error when config file is malformed', async () => {
-      vi.mocked(fs.readFileSync).mockReturnValue('invalid json');
-      // Make process.exit actually throw to prevent further execution
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
+      vi.mocked(core.loadConfig).mockImplementation(() => {
+        throw new core.ConfigParseError('/project/.lingo-tracker.json', 'Unexpected token i in JSON');
       });
 
-      await expect(exportCommand({ format: 'json' })).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
 
       expect(console.error).toHaveBeenCalledWith(expect.stringContaining('❌ Failed to parse configuration file'));
     });
 
     it('should error when format is missing in non-TTY mode', async () => {
-      // In non-TTY mode without format, promptForMissing throws an error directly
-      await expect(exportCommand({})).rejects.toThrow('❌ Missing required option: --format');
+      await exportCommand({});
+
+      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --format');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('should handle validateOutputDirectory errors', async () => {
       mockValidateOutputDirectory.mockImplementation(() => {
         throw new Error('Invalid output directory');
       });
-      // Make process.exit actually throw to prevent further execution
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
-      });
 
-      await expect(exportCommand({ format: 'json' })).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
 
       expect(console.log).toHaveBeenCalledWith('❌ Invalid output directory');
     });
@@ -303,14 +290,31 @@ describe('exportCommand', () => {
       expect(console.log).toHaveBeenCalledWith('   Skipping fr: No matching resources.');
     });
 
-    it('should warn when no collections found', async () => {
+    it('should exit 1 for an unknown collection', async () => {
       await exportCommand({
         format: 'json',
-        collection: 'nonexistent',
+        collection: 'common,nonexistent',
       });
 
-      expect(console.log).toHaveBeenCalledWith('⚠️  No matching collections found.');
+      expect(console.log).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
       expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('should exit 1 when no collections are configured', async () => {
+      vi.mocked(core.loadConfig).mockReturnValue({ ...mockConfig, collections: {} });
+
+      await exportCommand({ format: 'json' });
+
+      expect(console.log).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('should export a collection named twice only once', async () => {
+      await exportCommand({ format: 'json', collection: 'common,common' });
+
+      expect(exportedCollections()).toEqual(['common']);
     });
 
     it('should warn when no target locales selected', async () => {
@@ -326,11 +330,7 @@ describe('exportCommand', () => {
 
   describe('interactive mode', () => {
     beforeEach(() => {
-      Object.defineProperty(process.stdout, 'isTTY', {
-        value: true,
-        writable: true,
-        configurable: true,
-      });
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     });
 
     it('should prompt for format when not provided', async () => {
@@ -361,7 +361,7 @@ describe('exportCommand', () => {
     });
 
     it('should handle user cancellation gracefully', async () => {
-      // The user presses Esc: prompts calls onCancel, which throws PromptCancelledError.
+      // The user presses Esc: prompts calls onCancel.
       vi.mocked(prompts).mockImplementation(async (questions, options) => {
         const [question] = Array.isArray(questions) ? questions : [questions];
         options?.onCancel?.(question, {});
@@ -370,8 +370,9 @@ describe('exportCommand', () => {
 
       await exportCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ ❌ Export cancelled.');
-      expect(process.exit).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith('❌ Export cancelled.');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
     });
 
     it('should prompt for collections when not provided', async () => {
@@ -772,11 +773,9 @@ describe('exportCommand', () => {
 
     it('should report a run that cannot start and exit with an error', async () => {
       mockRunExport.mockRejectedValue(new Error('Cannot export collections with different base locales together'));
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
-      });
 
-      await expect(exportCommand({ format: 'json' })).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
 
       expect(console.log).toHaveBeenCalledWith(
         expect.stringContaining('Cannot export collections with different base locales together'),
@@ -799,21 +798,18 @@ describe('exportCommand', () => {
     });
 
     it('should exit with error when --base-property-name validation fails', async () => {
-      mockValidateBasePropertyName.mockImplementation(() => {
+      mockValidateBasePropertyName.mockImplementationOnce(() => {
         throw new Error('basePropertyName "value" is a reserved key');
       });
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
-      });
 
-      await expect(
-        exportCommand({
-          format: 'json',
-          locale: 'fr',
-          basePropertyName: 'value',
-          includeBase: true,
-        }),
-      ).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({
+        format: 'json',
+        locale: 'fr',
+        basePropertyName: 'value',
+        includeBase: true,
+      });
+      expect(process.exitCode).toBe(1);
+      expect(mockRunExport).not.toHaveBeenCalled();
 
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('basePropertyName "value" is a reserved key'));
     });

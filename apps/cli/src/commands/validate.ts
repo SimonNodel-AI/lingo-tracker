@@ -2,10 +2,11 @@ import {
   generateValidationSummary,
   loadPreferredTerminology,
   openCollection,
+  type LingoTrackerConfig,
   type ValidationOptions,
   validateResources,
 } from '@simoncodes-ca/core';
-import { loadConfiguration } from '../utils';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
 
 /**
  * Options for the validate command.
@@ -111,8 +112,7 @@ export interface ValidateCommandOptions {
  * - Prevent deployment of incomplete translations
  * - Enforce translation verification requirements
  *
- * @param options - Validation options (status strictness, locale and ICU flags)
- * @throws Never throws - exits process with appropriate code instead
+ * Options: status strictness, locale and ICU flags. Every failure sets exit code 1.
  *
  * @example
  * ```typescript
@@ -147,16 +147,18 @@ export interface ValidateCommandOptions {
  * $ lingo-tracker validate || exit 1
  * ```
  */
-export async function validateCommand(options: ValidateCommandOptions): Promise<void> {
-  const loaded = loadConfiguration();
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+export const validateCommand = defineCommand<ValidateCommandOptions>()({
+  name: 'Validate',
+  collection: 'none',
+  run: ({ config, cwd, answers }) => validate(answers, config, cwd),
+});
 
+function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const collections = Object.keys(config.collections || {}).map((name) => openCollection(config, name, { cwd }));
 
   if (collections.length === 0) {
     console.error('❌ No collections found in configuration.');
-    process.exit(1);
+    return { exitCode: 1 };
   }
 
   // Each collection is validated against its own target locales (its locales without its base locale).
@@ -165,7 +167,7 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
   if (targetLocales.length === 0) {
     console.error('❌ No target locales found in configuration.');
     console.error("Target locales are each collection's locales except its base locale.");
-    process.exit(1);
+    return { exitCode: 1 };
   }
 
   const baseLocales = new Set(collections.map((collection) => collection.baseLocale));
@@ -186,7 +188,7 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
 
   if (targetLocales.every((locale) => effectiveSkipped.includes(locale))) {
     console.error('❌ All target locales were skipped; nothing to validate.');
-    process.exit(1);
+    return { exitCode: 1 };
   }
 
   // Terminology findings are advisory, but a broken rule file is a failure:
@@ -224,7 +226,5 @@ export async function validateCommand(options: ValidateCommandOptions): Promise<
 
   console.log(summary);
 
-  if (!validationResult.passed) {
-    process.exit(1);
-  }
+  return validationResult.passed ? undefined : { exitCode: 1 };
 }

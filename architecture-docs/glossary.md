@@ -81,6 +81,14 @@ Explained in context: [`core-library.md`](core-library.md#collection-reader)
 
 ---
 
+### Command Runner
+
+The one place that runs a CLI command. In code, `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function `main.ts` calls. A command is a spec: a `name`, what it opens (`collection: 'writable' | 'read' | 'none'`, and `config: false` for `init` and `install-skill`), its `prompts` for missing values, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner does the rest the same way for every command. It finds the project root (`INIT_CWD`, else `process.cwd()`) and reads the one interactive rule (stdin and stdout are both a terminal, `runner/terminal.ts`). It loads the config with core `loadConfig`, then resolves the [collection](#collection): the flag, else the only one, else a prompt when interactive, else `Missing required option: --collection`. It opens the collection with core `openCollection`, asks the questions when interactive, checks the required options, and calls `run`. A cancel prints `❌ <name> cancelled.` once and exits 0. A thrown error prints `❌ <message>` and exits 1, as does an unknown collection or a missing required flag. `run` returns `{ exitCode: 1 }` for a failure it has already reported. The runner sets `process.exitCode` and never calls `process.exit()`.
+
+Explained in context: [`cli.md`](cli.md#command-runner)
+
+---
+
 ## E
 
 ### Export Run

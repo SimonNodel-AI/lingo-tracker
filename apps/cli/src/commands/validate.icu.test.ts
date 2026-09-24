@@ -1,26 +1,11 @@
-import * as fs from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateCommand } from './validate';
-
-const fsMocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-}));
-
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
-    // Config loading and collection resolution run for real against the mocked config.
-    loadConfig: actual.loadConfig,
+    // Collection resolution runs for real against the mocked config.
+    loadConfig: vi.fn(),
     openCollection: actual.openCollection,
     ConfigNotFoundError: actual.ConfigNotFoundError,
     ConfigParseError: actual.ConfigParseError,
@@ -54,16 +39,15 @@ function icuOptions() {
 
 describe('validateCommand ICU options', () => {
   const originalLog = console.log;
-  const originalExit = process.exit;
 
   beforeEach(() => {
     vi.clearAllMocks();
     console.log = vi.fn();
     console.warn = vi.fn();
-    process.exit = vi.fn() as unknown as (code?: number | string | null | undefined) => never;
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
 
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(CONFIG));
+    vi.mocked(core.loadConfig).mockReturnValue(CONFIG);
     mockGenerateValidationSummary.mockReturnValue('summary');
     mockValidateResources.mockReturnValue({
       totalResourcesValidated: 0,
@@ -80,7 +64,7 @@ describe('validateCommand ICU options', () => {
 
   afterEach(() => {
     console.log = originalLog;
-    process.exit = originalExit;
+    process.exitCode = undefined;
   });
 
   it('checks ICU by default', async () => {

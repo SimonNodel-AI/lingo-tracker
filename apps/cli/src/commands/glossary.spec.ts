@@ -1,27 +1,13 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  return {
-    // Config loading and collection resolution run for real against the mocked config.
-    loadConfig: actual.loadConfig,
-    openCollection: actual.openCollection,
-    ConfigNotFoundError: actual.ConfigNotFoundError,
-    ConfigParseError: actual.ConfigParseError,
-    CollectionNotFoundError: actual.CollectionNotFoundError,
-    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
-    readCollection: vi.fn(),
-  };
+  // Collection resolution runs for real against the mocked config.
+  return { ...actual, loadConfig: vi.fn(), readCollection: vi.fn() };
 });
 
-vi.mock('../utils', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../utils')>();
-  return {
-    ...actual,
-    loadConfiguration: vi.fn(),
-    resolveCollection: vi.fn(),
-  };
-});
+// A terminal on stdin by default, so stdin is not read unless a test pipes it.
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false), hasPipedStdin: vi.fn(() => false) }));
 
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>();
@@ -42,13 +28,14 @@ vi.mock('fs', async (importOriginal) => {
 import * as fs from 'fs';
 import {
   type CollectionRead,
+  ConfigNotFoundError,
   type LingoTrackerConfig,
-  openCollection,
+  loadConfig,
   readCollection,
   type StoredResource,
 } from '@simoncodes-ca/core';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
-import { loadConfiguration, resolveCollection } from '../utils';
+import { hasPipedStdin } from '../runner/terminal';
 import { glossaryCommand } from './glossary';
 
 /** A root-level stored resource with one status per translated locale. */
@@ -79,14 +66,10 @@ const LOADED = read(
   stored('settings', 'Settings', { fr: 'Paramètres' }, { fr: 'translated' }),
 );
 
-const LOADED_CONFIG = {
-  config: {
-    baseLocale: 'en',
-    locales: ['en', 'fr'],
-    collections: { app: { translationsFolder: 'i18n' } },
-  },
-  configPath: '/project/.lingo-tracker.json',
-  cwd: '/project',
+const CONFIG: LingoTrackerConfig = {
+  baseLocale: 'en',
+  locales: ['en', 'fr'],
+  collections: { app: { translationsFolder: 'i18n' } },
 };
 
 function writtenContent(): string {
@@ -100,23 +83,31 @@ describe('glossaryCommand', () => {
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    vi.spyOn(process, 'exit').mockImplementation((code) => {
-      throw new Error(`process.exit(${code})`);
-    });
-    (process.stdin as unknown as { isTTY: boolean }).isTTY = true;
-    vi.mocked(loadConfiguration).mockReturnValue(LOADED_CONFIG as never);
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
+    vi.mocked(hasPipedStdin).mockReturnValue(false);
+    vi.mocked(loadConfig).mockReturnValue(CONFIG);
     vi.mocked(readCollection).mockReturnValue(LOADED);
   });
 
-  it('returns early when configuration is missing', async () => {
-    vi.mocked(loadConfiguration).mockReturnValue(null);
-    await glossaryCommand({ text: 'Save' });
-    expect(readCollection).not.toHaveBeenCalled();
+  afterEach(() => {
+    process.exitCode = undefined;
   });
 
-  it('exits when no input is provided', async () => {
-    await expect(glossaryCommand({})).rejects.toThrow('process.exit(1)');
+  it('exits 1 when configuration is missing', async () => {
+    vi.mocked(loadConfig).mockImplementation(() => {
+      throw new ConfigNotFoundError('/project/.lingo-tracker.json');
+    });
+    await glossaryCommand({ text: 'Save' });
+    expect(readCollection).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('exits 1 when no input is provided', async () => {
+    await glossaryCommand({});
     expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(fs.readFileSync).not.toHaveBeenCalledWith(0, 'utf8');
+    expect(process.exitCode).toBe(1);
   });
 
   it('extracts from --text and writes a glossary file by default', async () => {
@@ -128,6 +119,7 @@ describe('glossaryCommand', () => {
     expect(out.matchCount).toBe(2);
     const keys = out.terms.map((t: { key: string }) => t.key).sort();
     expect(keys).toEqual(['save', 'settings']);
+    expect(process.exitCode).toBe(0);
   });
 
   it('writes to a millisecond-precision timestamped file by default (no same-second collisions)', async () => {
@@ -146,7 +138,7 @@ describe('glossaryCommand', () => {
   });
 
   it('reads from piped stdin when no --text/--input and not a TTY', async () => {
-    (process.stdin as unknown as { isTTY: boolean | undefined }).isTTY = undefined;
+    vi.mocked(hasPipedStdin).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue('Please Save your work');
     await glossaryCommand({});
     const out = JSON.parse(writtenContent());
@@ -155,9 +147,10 @@ describe('glossaryCommand', () => {
     expect(fs.readFileSync).toHaveBeenCalledWith(0, 'utf8');
   });
 
-  it('exits when --input file does not exist', async () => {
+  it('exits 1 when --input file does not exist', async () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    await expect(glossaryCommand({ input: 'missing.md' })).rejects.toThrow('process.exit(1)');
+    await glossaryCommand({ input: 'missing.md' });
+    expect(process.exitCode).toBe(1);
   });
 
   it('prints JSON to stdout with --stdout and does not write a file', async () => {
@@ -174,17 +167,23 @@ describe('glossaryCommand', () => {
     expect(out.locales).toEqual(['fr']);
   });
 
-  it('resolves a single collection with --collection', async () => {
-    vi.mocked(resolveCollection).mockReturnValue(
-      openCollection(LOADED_CONFIG.config as LingoTrackerConfig, 'app', { cwd: '/project' }),
-    );
+  it('reads only the collection named by --collection', async () => {
+    vi.mocked(loadConfig).mockReturnValue({
+      ...CONFIG,
+      collections: { app: { translationsFolder: 'i18n' }, admin: { translationsFolder: 'admin' } },
+    });
     await glossaryCommand({ text: 'Save', collection: 'app' });
-    expect(resolveCollection).toHaveBeenCalledWith('app', expect.anything(), '/project');
+    expect(readCollection).toHaveBeenCalledTimes(1);
+    expect(readCollection).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'app', translationsFolder: '/project/i18n' }),
+    );
   });
 
-  it('exits when --collection cannot be resolved', async () => {
-    vi.mocked(resolveCollection).mockReturnValue(null);
-    await expect(glossaryCommand({ text: 'Save', collection: 'nope' })).rejects.toThrow('process.exit(1)');
+  it('exits 1 when --collection cannot be resolved', async () => {
+    await glossaryCommand({ text: 'Save', collection: 'nope' });
+    expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+    expect(readCollection).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 
   it('writes an empty glossary when nothing matches', async () => {
@@ -205,15 +204,11 @@ describe('glossaryCommand', () => {
   });
 
   it('strips a collection base-locale override from translations', async () => {
-    vi.mocked(loadConfiguration).mockReturnValue({
-      config: {
-        baseLocale: 'en',
-        locales: ['en', 'fr', 'es'],
-        collections: { app: { translationsFolder: 'i18n', baseLocale: 'fr' } },
-      },
-      configPath: '/p/.lingo-tracker.json',
-      cwd: '/p',
-    } as never);
+    vi.mocked(loadConfig).mockReturnValue({
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { app: { translationsFolder: 'i18n', baseLocale: 'fr' } },
+    });
     vi.mocked(readCollection).mockReturnValue(
       read(stored('save', 'Enregistrer', { fr: 'Enregistrer', es: 'Guardar' }, { fr: 'verified', es: 'verified' })),
     );
@@ -249,7 +244,10 @@ describe('glossaryCommand', () => {
     expect(JSON.parse(writtenContent()).matchCount).toBe(1);
   });
 
-  it('exits with a clear error for the unimplemented ai extractor', async () => {
-    await expect(glossaryCommand({ text: 'Save', extractor: 'ai' })).rejects.toThrow('process.exit(1)');
+  it('exits 1 with a clear error for the unimplemented ai extractor', async () => {
+    await glossaryCommand({ text: 'Save', extractor: 'ai' });
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^❌ .*ai/i));
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 });

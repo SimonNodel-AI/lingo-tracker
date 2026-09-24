@@ -1,15 +1,7 @@
-import { type EditResourceChanges, editResource, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
 import { translocoToICU } from '@simoncodes-ca/domain';
-import type prompts from 'prompts';
-import {
-  ConsoleFormatter,
-  executePromptsWithFallback,
-  loadConfiguration,
-  parseCommaSeparatedList,
-  promptForCollection,
-  resolveWritableCollection,
-  warnAboutPreferredTerminology,
-} from '../utils';
+import { defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, parseCommaSeparatedList, warnAboutPreferredTerminology } from '../utils';
 
 export interface EditResourceOptions {
   collection?: string;
@@ -22,35 +14,41 @@ export interface EditResourceOptions {
   localeValue?: string;
 }
 
-export async function editResourceCommand(options: EditResourceOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+export const editResourceCommand = defineCommand<EditResourceOptions>()({
+  name: 'Edit resource',
+  collection: 'writable',
+  prompts: (options) => [
+    ...(options.key
+      ? []
+      : [
+          {
+            type: 'text' as const,
+            name: 'key',
+            message: 'Resource key',
+            validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
+          },
+        ]),
+    ...(options.baseValue
+      ? []
+      : [{ type: 'text' as const, name: 'baseValue', message: 'New base value (leave empty to keep current)' }]),
+  ],
+  required: ['key'],
+  run: async ({ collection, config, cwd, answers }) => {
+    const translations =
+      answers.locale && answers.localeValue ? { [answers.locale]: { value: answers.localeValue } } : undefined;
+    if (!translations && (answers.locale || answers.localeValue)) {
+      ConsoleFormatter.warning('Both --locale and --localeValue must be provided to update a translation.');
+    }
 
-  const collectionName = await promptForCollection(config, options.collection);
-  if (!collectionName) return;
+    const changes: EditResourceChanges = {
+      baseValue: answers.baseValue || undefined,
+      comment: answers.comment || undefined,
+      tags: answers.tags ? parseCommaSeparatedList(answers.tags) : undefined,
+      translations,
+      // `--target-folder` names the folder the entry moves to ('' for the collection root).
+      moveTo: answers.targetFolder,
+    };
 
-  const collection = resolveWritableCollection(collectionName, config, cwd);
-  if (!collection) return;
-
-  const answers = await promptForMissing(options, config, collectionName);
-
-  const translations =
-    options.locale && options.localeValue ? { [options.locale]: { value: options.localeValue } } : undefined;
-  if (!translations && (options.locale || options.localeValue)) {
-    ConsoleFormatter.warning('Both --locale and --localeValue must be provided to update a translation.');
-  }
-
-  const changes: EditResourceChanges = {
-    baseValue: answers.baseValue || undefined,
-    comment: options.comment || undefined,
-    tags: options.tags ? parseCommaSeparatedList(options.tags) : undefined,
-    translations,
-    // `--target-folder` names the folder the entry moves to ('' for the collection root).
-    moveTo: options.targetFolder,
-  };
-
-  try {
     const result = await editResource(collection, answers.key, changes);
 
     if (result.updated) {
@@ -63,47 +61,5 @@ export async function editResourceCommand(options: EditResourceOptions): Promise
     } else {
       ConsoleFormatter.info(result.message || 'No changes detected');
     }
-  } catch (e: unknown) {
-    ConsoleFormatter.error(e instanceof Error ? e.message : 'Failed to update resource');
-  }
-}
-
-async function promptForMissing(
-  options: EditResourceOptions,
-  _config: LingoTrackerConfig,
-  _collectionName: string,
-): Promise<{
-  key: string;
-  baseValue?: string;
-}> {
-  const questions: prompts.PromptObject[] = [];
-
-  if (!options.key) {
-    questions.push({
-      type: 'text',
-      name: 'key',
-      message: 'Resource key',
-      validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
-    });
-  }
-
-  if (!options.baseValue) {
-    questions.push({
-      type: 'text',
-      name: 'baseValue',
-      message: 'New base value (leave empty to keep current)',
-    });
-  }
-
-  const result = await executePromptsWithFallback({
-    questions,
-    currentValues: options,
-    requiredFields: ['key'],
-    operationName: 'Edit resource',
-  });
-
-  return {
-    key: result.key as string,
-    baseValue: result.baseValue as string | undefined,
-  };
-}
+  },
+});
