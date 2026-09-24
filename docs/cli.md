@@ -1194,7 +1194,8 @@ When matches are found:
 ```
 Similar values found for "Save":
   buttons.save → "Save" (similarity: 100%)
-  buttons.saveAndClose → "Save and Close" (similarity: 89%)
+  labels.saved → "Saved" (similarity: 80%)
+  buttons.saveDraft → "Save draft" (similarity: 40%)
 ```
 
 When no matches meet the similarity threshold:
@@ -1204,15 +1205,16 @@ No similar values found for "Save draft".
 
 **How It Works:**
 
-1. Runs a broad substring pre-filter via `searchTranslations` (up to 50 candidates)
-2. Scores each candidate using normalised Levenshtein distance (case-insensitive)
-3. Keeps only results with a similarity score ≥ 80%
-4. Returns top N results sorted by score descending
+1. Reads every resource of the collection
+2. Scores each base value against `--value` with normalised Levenshtein similarity (case-insensitive, trimmed)
+3. Keeps a value when its similarity is ≥ 80%, or when it contains `--value` or is contained in it as whole words with a similarity of at least 40% (for example `Save` and `Save draft`; a fragment inside a word, such as `connect` in `connection` or `don` in `don't`, does not count, nor does a short label inside a long sentence)
+4. Ranks every match by similarity (a key that contains `--value` wins a tie), then prints the top N
 
 **Notes:**
-- Only the base locale value is compared (not translations)
-- Only `exact-value` and `partial-value` match types are considered; key-based matches are excluded
-- Similarity threshold is fixed at 80% — results below this are not shown
+- Only the base locale value is compared (not translations or keys)
+- A whole-word containment match is shown with its real similarity, which can be between 40% and 80% (`Save draft` for `Save` is 40%; `Save and Close` at 29% is not shown)
+- Folders that cannot be read are reported as `⚠️  Skipped unreadable folder: …` lines; the rest of the collection is still searched
+- The same rule backs the Tracker's "Similar values" list and `GET /api/collections/:name/resources/search?mode=similar`
 - Non-interactive only; does not prompt for missing options
 
 ---

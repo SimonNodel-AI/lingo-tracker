@@ -330,7 +330,7 @@ sequenceDiagram
 
     BS->>BS: patchState({ isSearchLoading: true, searchError: null })
     BS->>API: GET /api/collections/{name}/resources/search?query=confirm
-    Note right of API: CollectionIndex.search() walks the indexed<br/>ResourceTreeNode in memory (searchResourceTree)<br/>or searches the disk (searchTranslations) if not indexed
+    Note right of API: CollectionIndex.search() runs searchResources (text mode)<br/>over the indexed tree (treeResources)<br/>or the disk (readCollection) if not indexed;<br/>every match is ranked, then maxResults applies
 
     API-->>BS: SearchResultsDto { results: SearchResultDto[] }
     BS->>BS: patchState({ searchResults, isSearchLoading: false })

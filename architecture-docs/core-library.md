@@ -20,6 +20,7 @@ Return to [architecture README](README.md).
   - [delete-resource](#delete-resource)
   - [move-resource](#move-resource)
 - [Collection Reader](#collection-reader)
+  - [Resource Search](#resource-search)
 - [Normalization Pipeline](#normalization-pipeline)
 - [Auto-Translation Pipeline](#auto-translation-pipeline)
   - [Provider abstraction](#provider-abstraction)
@@ -129,7 +130,7 @@ libs/core/src/
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
     │   ├── read-collection.ts    # readCollection(), readCollectionFolders(): the Collection Reader
     │   ├── load-resource-tree.ts # loadResourceTree(): the API's resource tree (built on readCollectionFolders)
-    │   ├── search.ts             # searchTranslations() (disk), searchResourceTree() (in memory)
+    │   ├── search.ts             # searchResources(), treeResources(): Resource Search over the reader or an index tree
     │   ├── resource-mutation.ts  # ResourceMutation: what a write changed
     │   └── tree-fingerprint.ts   # computeTreeFingerprint(): stat-only change detection
     │
@@ -247,7 +248,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 ## Public Surface
 
-`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 185 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
+`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 186 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing` and `ImportStrategy` from `@simoncodes-ca/domain`.
 
 | Group | What it holds |
 |---|---|
@@ -256,7 +257,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 | Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `BundleDefinition`, ...), and the protected-terms and preferred-terminology file readers and writers. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder` and the types in its methods, `resolveResourcePaths`. |
 | Collection Reader | `readCollection`, `StoredResource`, `CollectionRead`, `CollectionReadProblem`, `CollectionReadTarget`. See [Collection Reader](#collection-reader). |
-| Read models | `loadResourceTree`, `extractSubtree`, `extractResourcesRecursively`, `searchTranslations`, `searchResourceTree`, `computeTreeFingerprint`, `treeFingerprintsMatch`, `reindexMutation` and their types. The API's [Collection Index](glossary.md#collection-index) is built from these. A `ResourceTreeEntry` and a `SearchResult` (which carries the entry's `source` and `metadata`) both fit the domain `buildResourceSummary` input, which the API uses to answer with a [Resource Summary](glossary.md#resource-summary). |
+| Read models | `loadResourceTree`, `extractSubtree`, `extractResourcesRecursively`, `computeTreeFingerprint`, `treeFingerprintsMatch`, `reindexMutation` and their types, and [Resource Search](#resource-search): `searchResources`, `treeResources`, `SearchableResource`, `SearchMode`, `SearchOptions`, `SearchResult`, `MatchType`. The API's [Collection Index](glossary.md#collection-index) is built from these, and the CLI `find-similar` uses Resource Search. A `ResourceTreeEntry` and a `SearchResult` (which carries the entry's `source`, `translations` and `metadata`) both fit the domain `buildResourceSummary` input, which the API uses to answer with a [Resource Summary](glossary.md#resource-summary). |
 | Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
 | Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
 
@@ -414,7 +415,7 @@ A `StoredResource` holds:
 - `entry`: the `ResourceTreeEntry` that `ResourceFolder.treeEntry()` returns. It has `source`, `translations`, `metadata` per locale, `comment` and `tags`. `translations` holds every locale property stored besides `source`: normally the target locales, but a hand-written base-locale key is kept as stored. A `tags` value that is not an array reads as no tags;
 - `effectiveTags`: the collection tags united with the entry tags ([Tags](glossary.md#tags)). The reader is the one place this union is made: export filtering, bundle selection rules and type generation read `effectiveTags` and do not compute it again.
 
-`readCollectionFolders(collection, { startPath, maxDepth })` is the same walk, one folder at a time and lazily. `loadResourceTree` builds the tree from it, and `searchTranslations` uses it so that it can stop at `maxResults`.
+`readCollectionFolders(collection, { startPath, maxDepth })` is the same walk, one folder at a time and lazily. `loadResourceTree` builds the tree from it.
 
 The reader applies these rules for every caller:
 
@@ -435,8 +436,29 @@ The caller decides what a problem means:
 | `runExport` | Lists it under `malformedFiles` in the result and the summary. The other resources are exported. |
 | Bundle generation, the dry-run plan and type generation (the [Bundle Selection](#bundle-selection), through `loadCollectionResources`) | Adds a warning to the bundle result or the plan, once for each collection per run. |
 | `glossary` (CLI) | Writes a warning to stderr. |
-| `loadResourceTree`, `searchTranslations` | Log it. The tree keeps the folder, with no resources. |
+| `find-similar` (CLI, through [Resource Search](#resource-search)) | Prints one `⚠️  Skipped unreadable folder: <message>` line for each problem, then the matches from the other folders. |
+| `CollectionIndex.search` (API disk search, before the collection is indexed) | Logs one `Logger.warn` line per search that names the count and the messages. The results come from the other folders. |
+| `loadResourceTree` | Logs it. The tree keeps the folder, with no resources. |
 | `translateLocale` | Does not translate the folder's resources and adds one line to `warnings` in the result (`Folder '<path>' was not translated: <message>`). The CLI prints the warnings after the summary; the API translation job logs them with `Logger.warn`. |
+
+### Resource Search
+
+**Entry point:** `searchResources(resources, collection, query, { mode, limit })` in `lib/resource/search.ts`
+
+[Resource Search](glossary.md#resource-search) is the one matcher over a collection's resources. It takes any `Iterable<SearchableResource>` (`{ fullKey, entry }`), so the caller picks the source: `readCollection(collection).resources` for the disk, or `treeResources(tree)` for an index tree (the loaded folders only, each entry keyed from its folder's `folderPathSegments`). It is pure. The reader's `problems` are the caller's to report (see the table above). `collection` is only read for `baseLocale`.
+
+It collects every match, ranks lightweight candidates, applies `limit` (default 100; a limit that is not a positive integer is 100), and only then builds the `SearchResult`s. A better match is never lost because the walk found it late. A blank query returns `[]`. The query is trimmed and compared case-insensitively.
+
+| Mode | Compares the query with | Match rule | Ranking | Result |
+|---|---|---|---|---|
+| `'text'` (default) | The full key, the base value (`source`, always, under `collection.baseLocale`) and every stored translation | Key first: `exact-key`, else `partial-key`; else `exact-value` (some value equals the query), else `partial-value` (some value contains it) | exact-key, exact-value, partial-key, partial-value, then key | `matchType`; `matchedLocales` for value matches |
+| `'similar-value'` | The base value only (trimmed, lowercased) | `normalizedLevenshtein` ≥ 0.8 (`SIMILARITY_THRESHOLD`), or one text contains the other as whole words (no letter, digit or apostrophe next to it) with a score of at least 0.4 (`CONTAINMENT_MIN_SCORE`). A contained text scores `shorter / longer` length, which is the same as its Levenshtein score. An empty base value never matches. | Similarity (highest first), then a resource whose key also contains the query, then key | `matchType: 'similar-value'`, `similarity` (0..1), `matchedLocales: [baseLocale]` |
+
+Why whole words: the search reads the whole collection, so a substring rule matches fragments (`No` in `Cannot`, `connect` in `connection`). The whole-word rule still finds a short existing value in a longer typed one (`Save` / `Save draft`), which is the duplicate the Tracker wants to show. The 0.4 floor keeps that case (4 / 10) and drops a short label inside a long sentence in either direction (`Delete` in "Delete the selected file?" is 0.24). Apostrophes (`'`, `’`) are word characters, so `don` does not match "Don't save". The Levenshtein part keeps the CLI's old 0.8 threshold (`save` / `saved`). A base locale that does not put spaces between words gets only the Levenshtein part. Word characters are tested one UTF-16 code unit at a time, so combining marks and letters outside the Basic Multilingual Plane are approximate.
+
+A `SearchResult` carries `key`, `source` (`''` when a hand-edited entry has no string `source`; such an entry never matches on its base value), `translations` (a copy of the stored ones, without the base value), `metadata`, `comment`, `tags` and the match fields. It fits the domain `buildResourceSummary` input.
+
+Callers: `CollectionIndex.search` in the API (the index tree when the collection is indexed, else the reader) and the CLI `find-similar` (the reader, `mode: 'similar-value'`). Before this module, disk search and tree search were two copies of the matcher that stopped at the limit before they ranked, the CLI scored the first 500 text hits with Levenshtein, and the Tracker filtered a 25-hit text search by substring.
 
 ---
 

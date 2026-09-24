@@ -141,10 +141,48 @@ describe('CollectionIndex', () => {
     });
 
     it('searches the disk before indexing, without starting it, and the index after', () => {
-      expect(index.search(collection(), 'cancel', 10).map((result) => result.key)).toEqual(['common.cancel']);
+      expect(index.search(collection(), 'cancel', { limit: 10 }).map((result) => result.key)).toEqual([
+        'common.cancel',
+      ]);
       expect(index.tree(collection())).toEqual({ status: 'not-started' });
 
-      expect(index.search(collection(), 'cancel', 10).map((result) => result.key)).toEqual(['common.cancel']);
+      readyTree();
+      expect(index.search(collection(), 'cancel', { limit: 10 }).map((result) => result.key)).toEqual([
+        'common.cancel',
+      ]);
+    });
+
+    it('searches in similar-value mode on the disk and in the index alike', () => {
+      writeEntry('main', 'apps.saveDraft', 'Save draft');
+      const similar = (): Array<[string, number | undefined]> =>
+        index.search(collection(), 'save', { mode: 'similar-value' }).map((result) => [result.key, result.similarity]);
+
+      const fromDisk = similar();
+      readyTree();
+
+      expect(fromDisk).toEqual([['apps.saveDraft', 0.4]]);
+      expect(similar()).toEqual(fromDisk);
+    });
+
+    it('ranks before the limit on the disk and in the index alike', () => {
+      // The exact value match is read after the partial key match `common.cancel`.
+      writeEntry('main', 'zz.dismiss', 'Cancel');
+      const search = (): string[] => index.search(collection(), 'cancel', { limit: 1 }).map((result) => result.key);
+
+      expect(search()).toEqual(['zz.dismiss']);
+      readyTree();
+      expect(search()).toEqual(['zz.dismiss']);
+    });
+
+    it('logs the folders a disk search could not read, and searches the rest', () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      fs.mkdirSync(path.join(root, 'main', 'broken'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'main', 'broken', 'resource_entries.json'), '{ nope');
+
+      expect(index.search(collection(), 'cancel').map((result) => result.key)).toEqual(['common.cancel']);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('1 unreadable folder(s) in collection main'));
+      warn.mockRestore();
     });
   });
 

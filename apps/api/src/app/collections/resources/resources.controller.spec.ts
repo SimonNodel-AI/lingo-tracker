@@ -4,7 +4,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { Response } from 'express';
 import * as core from '@simoncodes-ca/core';
 import { TranslationError } from '@simoncodes-ca/core';
-import type { ResourceTreeDto } from '@simoncodes-ca/data-transfer';
+import type { ResourceTreeDto, SearchTranslationsDto } from '@simoncodes-ca/data-transfer';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { ConfigService } from '../../config/config.service';
@@ -1089,7 +1089,10 @@ describe('ResourcesController', () => {
         ['es', 'translated', true],
       ]);
       expect(result.limited).toBe(false);
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), 'lingo', 101);
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), 'lingo', {
+        mode: 'text',
+        limit: 101,
+      });
     });
 
     it('should return empty results for empty query', async () => {
@@ -1105,9 +1108,64 @@ describe('ResourcesController', () => {
 
       const result = await resourcesController.search('test-collection', { query: 'test', maxResults: 1000 });
 
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'test', 501);
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'test', { mode: 'text', limit: 501 });
       expect(result.limited).toBe(true);
       expect(result.results).toHaveLength(500);
+    });
+
+    it('should run a similar-value search for mode=similar and return the similarity', async () => {
+      mockIndex.search.mockReturnValue([
+        {
+          key: 'common.save',
+          source: 'Save',
+          translations: {},
+          metadata: {},
+          matchType: 'similar-value',
+          matchedLocales: ['en'],
+          similarity: 0.4,
+        },
+      ]);
+
+      const result = await resourcesController.search('test-collection', {
+        query: 'Save draft',
+        maxResults: 11,
+        mode: 'similar',
+      });
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'Save draft', {
+        mode: 'similar-value',
+        limit: 12,
+      });
+      expect(result.results.map((r) => [r.fullKey, r.matchType, r.similarity])).toEqual([
+        ['common.save', 'similar-value', 0.4],
+      ]);
+    });
+
+    it.each(['abc', '-2', '0', '2.5'])('should fall back to 100 results for maxResults=%s', async (maxResults) => {
+      mockIndex.search.mockReturnValue([]);
+      const dto = { query: 'save', maxResults } as unknown as SearchTranslationsDto;
+
+      await resourcesController.search('test-collection', dto);
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 101 });
+    });
+
+    it('should read maxResults from its query-string form', async () => {
+      mockIndex.search.mockReturnValue([]);
+      const dto = { query: 'save', maxResults: '7' } as unknown as SearchTranslationsDto;
+
+      await resourcesController.search('test-collection', dto);
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 8 });
+    });
+
+    it('should run a text search for an unknown mode', async () => {
+      mockIndex.search.mockReturnValue([]);
+      const dto = { query: 'save', mode: 'fuzzy' } as unknown as SearchTranslationsDto;
+
+      await resourcesController.search('test-collection', dto);
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 101 });
     });
   });
 

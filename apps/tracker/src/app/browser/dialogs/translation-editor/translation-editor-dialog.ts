@@ -70,7 +70,6 @@ import {
   toUpdateDto,
 } from './resource-entry-draft';
 import { SimilarTranslations } from './similar-translations';
-import { filterSimilarByValue, SIMILAR_SEARCH_MAX_RESULTS } from './similar-value-filter';
 
 /**
  * The id of the dialog's heading. The MatDialog container is labelled by this id
@@ -84,6 +83,9 @@ export const PREFERRED_TERM_ADVISORIES_ID = 'translation-editor-preferred-terms'
 
 /** Typing pause before preferred-terminology findings refresh; matches the similar search. */
 export const PREFERRED_TERM_DEBOUNCE_MS = 300;
+
+/** How many similar values the context column ever pins. */
+export const SIMILAR_DISPLAY_LIMIT = 10;
 
 export interface TranslationEditorDialogData {
   mode: 'create' | 'edit';
@@ -667,31 +669,31 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
             });
           }
 
-          return this.browserApi.searchTranslations(this.data.collectionName, query, SIMILAR_SEARCH_MAX_RESULTS).pipe(
-            catchError(() =>
-              of({
-                query: '',
-                results: [],
-                totalFound: 0,
-                limited: false,
-              }),
-            ),
-          );
+          // The API ranks by similarity. One extra hit, so a full list survives dropping the entry being edited.
+          return this.browserApi
+            .searchTranslations(this.data.collectionName, query, SIMILAR_DISPLAY_LIMIT + 1, 'similar')
+            .pipe(
+              catchError(() =>
+                of({
+                  query: '',
+                  results: [],
+                  totalFound: 0,
+                  limited: false,
+                }),
+              ),
+            );
         }),
         tap(() => this.isSearchingSimilar.set(false)),
         takeUntil(this.destroy$),
       )
       .subscribe((searchResults) => {
-        // Filter out current resource in edit mode
+        // In edit mode the entry itself is not a similar value.
         const original = this.#originalEntry();
         const withoutSelf = original
           ? searchResults.results.filter((r) => r.fullKey !== original.fullKey)
           : searchResults.results;
 
-        // The API matches keys too, and reports a key match ahead of a value one.
-        // Everything downstream — the count, the exact-duplicate caption, what
-        // stays pinned — reads this signal, so the key-only hits go before it.
-        this.similarResources.set(filterSimilarByValue(withoutSelf, searchResults.query || this.baseValueText()));
+        this.similarResources.set(withoutSelf.slice(0, SIMILAR_DISPLAY_LIMIT));
       });
   }
 

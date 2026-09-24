@@ -79,9 +79,6 @@ describe('find-similar (real fs)', () => {
     expect(loggedLines()).toContain('  labels.singleChar → "x" (similarity: 100%)');
   });
 
-  // The keys below deliberately avoid containing the query text: searchTranslations
-  // classifies a key match as 'partial-key', which find-similar filters out before
-  // scoring, so a key-shaped fixture would never reach the threshold logic at all.
   it('reports a near match that clears the threshold', async () => {
     await addResource('labels.pastTense', 'saved');
 
@@ -90,26 +87,36 @@ describe('find-similar (real fs)', () => {
     expect(loggedLines()).toContain('  labels.pastTense → "saved" (similarity: 80%)');
   });
 
-  it('rejects a candidate that reaches scoring but falls below the threshold', async () => {
-    // 'delete risk' contains the query, so it survives the substring pre-filter
-    // in searchTranslations and is actually scored: 1 - 5/11 ≈ 0.545 < 0.8.
+  it('rejects a value of the same length that falls below the threshold', async () => {
+    // Same length, no containment, so the Levenshtein score decides: 1 - 4/11 ≈ 0.636 < 0.8.
     await addResource('labels.destructiveAction', 'delete risk');
 
-    // The same fixture matches on its exact value, proving the candidate is
-    // reachable and that the rejection above is the threshold, not the pre-filter.
+    // The same fixture matches on its exact value, proving the entry is read and
+    // that the rejection below is the threshold.
     await findSimilarCommand({ collection: 'main', value: 'delete risk' });
     expect(loggedLines()).toContain('  labels.destructiveAction → "delete risk" (similarity: 100%)');
     vi.mocked(console.log).mockClear();
 
+    await findSimilarCommand({ collection: 'main', value: 'remove risk' });
+
+    expect(loggedLines()).toContain('No similar values found for "remove risk".');
+  });
+
+  it('reports values that contain the query as whole words, but not as a word fragment', async () => {
+    await addResource('labels.destructiveAction', 'delete risk');
+    await addResource('labels.deletedItems', 'deleted items');
+
     await findSimilarCommand({ collection: 'main', value: 'delete' });
 
-    expect(loggedLines()).toContain('No similar values found for "delete".');
+    const lines = loggedLines();
+    expect(lines).toContain('  labels.destructiveAction → "delete risk" (similarity: 55%)');
+    expect(lines.some((line) => line.includes('labels.deletedItems'))).toBe(false);
   });
 
   it('suggests an entry whose key contains the query text', async () => {
-    // Regression for #75: searchTranslations classifies this entry as a key
-    // match, which used to suppress it before scoring — hiding exactly the
-    // well-named canonical key a caller most wants to reuse.
+    // Regression for #75: a key that contains the query used to suppress the
+    // entry before scoring — hiding exactly the well-named canonical key a
+    // caller most wants to reuse.
     await addResource('common.button.connect', 'Connect');
 
     await findSimilarCommand({ collection: 'main', value: 'Connect' });
@@ -132,26 +139,26 @@ describe('find-similar (real fs)', () => {
     );
   });
 
-  it('finds a match that many key hits would otherwise crowd out', async () => {
-    // Regression for the candidate-budget half of #75: searchTranslations stops
-    // walking once it has maxResults hits, so the candidate budget must exceed
-    // the number of hits that precede a real match in the walk. 55 noise entries
-    // are enough to exhaust any budget at or below the old cap of 50, and far
-    // more than the display limit of 5. 'noise' sorts before 'zz', so the match
-    // is walked last.
+  it('ranks every match before the limit, so a match read last still comes first', async () => {
+    // Regression for the candidate-budget half of #75. The 55 noise entries all
+    // match ("Cancel" is a word of "Cancel 12", scored 6 / 9), far more than the
+    // display limit of 5, and 'noise' sorts before 'zz', so the exact match is read last.
     for (let i = 0; i < 55; i++) {
-      await addResource(`noise.cancelVariant${i}`, `Cancel the ${i} pending upload`);
+      await addResource(`noise.cancelVariant${i}`, `Cancel ${i}`);
     }
     await addResource('zz.dismiss', 'Cancel');
 
     await findSimilarCommand({ collection: 'main', value: 'Cancel' });
 
-    expect(loggedLines()).toContain('  zz.dismiss → "Cancel" (similarity: 100%)');
+    const results = loggedLines().filter((line) => line.startsWith('  '));
+    expect(results).toHaveLength(5);
+    expect(results[0]).toBe('  zz.dismiss → "Cancel" (similarity: 100%)');
   });
 
   it('still rejects a key-matched entry whose value is not similar', async () => {
-    // The key contains the query but the value does not resemble it, so the
-    // threshold must still discard it — key hits are scored, not waved through.
+    // The key contains the query but the value does not resemble it (it holds
+    // "connection", not the word "connect"), so the rule must still discard it —
+    // key hits are scored, not waved through.
     await addResource('errors.connectTimeout', 'The connection attempt timed out');
 
     // The entry is reachable on its own value, so the rejection below is the

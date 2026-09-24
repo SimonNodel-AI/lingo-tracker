@@ -1135,7 +1135,7 @@ describe('TranslationEditorDialog', () => {
   describe('Sticky similar values', () => {
     const hit = (fullKey: string, value: string): SearchResultDto => ({
       ...summary(fullKey, value),
-      matchType: 'partial-value',
+      matchType: 'similar-value',
     });
 
     const searchReturns = (results: ReturnType<typeof hit>[]): void => {
@@ -1248,38 +1248,31 @@ describe('TranslationEditorDialog', () => {
       expect(spectator.query('[data-testid="similar-exact-caption"]')).toBeNull();
     });
 
-    it('should drop hits that only matched on their key', () => {
-      searchReturns([
-        hit('browser.translationEditor.saveButton', 'Create translation'),
-        hit('common.actions.save', 'Save'),
-      ]);
-      typeAndSettle('Save draft');
-
-      expect(component.similarResources().map((result) => result.fullKey)).toEqual(['common.actions.save']);
-      expect(component.similarCount()).toBe(1);
-    });
-
-    it('should ask for more hits than it shows and keep at most ten', () => {
-      searchReturns(Array.from({ length: 25 }, (_, index) => hit(`common.actions.save${index}`, 'Save changes')));
+    it('should ask the API for similar values, one more than it shows, and keep at most ten', () => {
+      searchReturns(Array.from({ length: 11 }, (_, index) => hit(`common.actions.save${index}`, 'Save changes')));
       typeAndSettle('Save changes');
 
-      expect(mockBrowserApi.searchTranslations).toHaveBeenCalledWith('test-collection', 'Save changes', 25);
+      expect(mockBrowserApi.searchTranslations).toHaveBeenCalledWith('test-collection', 'Save changes', 11, 'similar');
       expect(component.similarCount()).toBe(10);
     });
 
-    it('should count only the value matches, so the badge and the list agree', () => {
+    it('should drop the entry being edited and keep the ranked order of the rest', () => {
+      vi.useRealTimers();
+      renderDialog(createMockData('edit', summary('common.actions.save', 'Save')));
+      vi.useFakeTimers();
       searchReturns([
-        hit('browser.translationEditor.saveButton', 'Create translation'),
-        hit('browser.translationEditor.saveAnyway', 'Save Anyway'),
+        hit('common.actions.saveDraft', 'Save draft'),
         hit('common.actions.save', 'Save'),
+        hit('browser.translationEditor.saveAnyway', 'Save Anyway'),
       ]);
-      typeAndSettle('Save');
 
-      expect(component.similarCount()).toBe(2);
+      typeAndSettle('Save draft');
+
       expect(component.similarResources().map((result) => result.fullKey)).toEqual([
+        'common.actions.saveDraft',
         'browser.translationEditor.saveAnyway',
-        'common.actions.save',
       ]);
+      expect(component.similarCount()).toBe(2);
     });
   });
 
@@ -1622,6 +1615,7 @@ describe('TranslationEditorDialog', () => {
         'test-collection',
         'Total Investment for the year',
         expect.any(Number),
+        'similar',
       );
     });
 

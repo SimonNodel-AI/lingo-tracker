@@ -52,7 +52,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `export` | `-f/--format`, `-c/--collection`, `-l/--locale`, `-s/--status`, `-t/--tags`, `-o/--output`, `--structure`, `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name`, `--filename`, `--no-protect-notes`, `--dry-run`, `--verbose` | `runExport()` |
 | `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `parseJsonImport()` / `parseXliffImport()` → `importResources()` |
 | `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | `openCollection()` for each collection → `validateResources()`, `generateValidationSummary()` |
-| `find-similar` | `--collection`, `--value`, `--max-results` | `searchTranslations()` |
+| `find-similar` | `--collection`, `--value`, `--max-results` | `readCollection()` → `searchResources(…, { mode: 'similar-value', limit })` ([Resource Search](glossary.md#resource-search)) |
 | `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `readCollection()` (matching/extraction done in the command, not core) |
 | `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `setGlobalProtectedTerms()` / `setCollectionProtectedTerms()` / `setGlobalProtectedTermsFile()` / `setCollectionProtectedTermsFile()`, reading via `readGlobalProtectedTerms()` / `readCollectionProtectedTerms()` |
 | `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | `loadPreferredTerminology()` / `writePreferredTerminology()` |
@@ -294,6 +294,15 @@ For scripts written against the earlier CLI:
 - `import --source` and `install-skill --dir` resolve a relative path against the project root (`INIT_CWD`, else `process.cwd()`), like `export --output` and `glossary --input`.
 - `add-resource --translations` is parsed inside the command: bad JSON exits 1 with a message instead of an unhandled rejection.
 - `validate --skip-placeholders` is passed through (it was declared but ignored).
+
+### Changes Introduced by Resource Search
+
+`find-similar` reads the collection with `readCollection` and asks [Resource Search](glossary.md#resource-search) for the `--max-results` best similar-value matches. The output format is unchanged (`  key → "value" (similarity: NN%)`).
+
+- Every base value is compared. The 500-candidate cap and its `Note: only the first 500 candidates were compared` warning are gone.
+- A match is a base value at least 80% similar to `--value` (as before), **or** one that contains `--value` or is contained in it as whole words with a similarity of at least 40%. So `--value "Save"` now also reports `"Save draft"` (similarity 40%), but not `"Save and Close"` (29%). A fragment inside a word does not count (`connect` in `connection`, `don` in `don't`).
+- Ranking: similarity, then an entry whose key contains `--value`, then key (key order is new; ties were in discovery order before).
+- A folder the reader cannot read prints `⚠️  Skipped unreadable folder: <message>` on stdout (it was a `console.error` line from the search), and the other folders are still searched.
 
 ---
 

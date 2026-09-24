@@ -8,6 +8,7 @@ export function mapSearchResultToDto(searchResult: SearchResult, collection: Col
     ...buildResourceSummary(searchResult.key, searchResult, collection),
     matchType: searchResult.matchType,
     matchedLocales: searchResult.matchedLocales,
+    ...(searchResult.similarity !== undefined && { similarity: searchResult.similarity }),
   };
 }
 

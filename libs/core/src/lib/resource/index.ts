@@ -31,11 +31,12 @@ export {
 export { type ResourceMutation, reindexMutation } from './resource-mutation';
 export {
   type MatchType,
-  type SearchParams,
+  type SearchableResource,
+  type SearchMode,
+  type SearchOptions,
   type SearchResult,
-  type SearchTreeParams,
-  searchResourceTree,
-  searchTranslations,
+  searchResources,
+  treeResources,
 } from './search';
 export {
   type ComputeTreeFingerprintOptions,

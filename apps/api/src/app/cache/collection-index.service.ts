@@ -5,13 +5,16 @@ import {
   computeTreeFingerprint,
   extractSubtree,
   loadResourceTree,
+  readCollection,
   type ResourceMutation,
   type ResourceTreeNode,
+  type SearchableResource,
+  type SearchOptions,
   type SearchResult,
-  searchResourceTree,
-  searchTranslations,
+  searchResources,
   type TreeFingerprint,
   treeFingerprintsMatch,
+  treeResources,
 } from '@simoncodes-ca/core';
 import type { CacheStatusDto } from '@simoncodes-ca/data-transfer';
 
@@ -104,14 +107,26 @@ export class CollectionIndex {
     return { status: 'ready', tree: extractSubtree(entry.tree, path) };
   }
 
-  /** Searches the indexed tree, or the disk when the collection is not indexed. Never starts indexing. */
-  search(collection: Collection, query: string, maxResults: number): SearchResult[] {
+  /**
+   * Runs Resource Search over the indexed tree, or over the disk (the Collection Reader) when the
+   * collection is not indexed. Never starts indexing. Folders the reader could not read are logged.
+   */
+  search(collection: Collection, query: string, options: SearchOptions = {}): SearchResult[] {
     const entry = this.#read(collection);
-    const options = { query, maxResults, baseLocale: collection.baseLocale };
+    return searchResources(this.#searchSource(collection, entry), collection, query, options);
+  }
 
-    return entry?.status === 'ready' && entry.tree
-      ? searchResourceTree({ tree: entry.tree, ...options })
-      : searchTranslations({ translationsFolder: collection.translationsFolder, ...options });
+  #searchSource(collection: Collection, entry: IndexEntry | undefined): Iterable<SearchableResource> {
+    if (entry?.status === 'ready' && entry.tree) return treeResources(entry.tree);
+
+    const { resources, problems } = readCollection(collection);
+    if (problems.length > 0) {
+      this.#logger.warn(
+        `Search skipped ${problems.length} unreadable folder(s) in collection ${collection.name}: ` +
+          problems.map((problem) => problem.message).join('; '),
+      );
+    }
+    return resources;
   }
 
   /** Index state for the cache-status endpoint. Starts indexing when the collection is not indexed. */

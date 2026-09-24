@@ -5,6 +5,7 @@ import type {
   ResourceTreeDto,
   TreeStatusResponseDto,
   SearchResultsDto,
+  SearchTranslationsDto,
   CacheStatusDto,
   CreateResourceDto,
   CreateResourceResponseDto,
@@ -103,10 +104,19 @@ export class BrowserApiService {
    * @param collectionName - Name of the collection to search
    * @param query - Search query string
    * @param maxResults - Maximum results to return (default: 100)
+   * @param mode - `text` (default): keys and values; `similar`: base values similar to the query, ranked by similarity
    * @returns Observable of search results
    */
-  searchTranslations(collectionName: string, query: string, maxResults = 100): Observable<SearchResultsDto> {
-    const params = new HttpParams().set('query', query).set('maxResults', maxResults.toString());
+  searchTranslations(
+    collectionName: string,
+    query: string,
+    maxResults = 100,
+    mode?: SearchTranslationsDto['mode'],
+  ): Observable<SearchResultsDto> {
+    let params = new HttpParams().set('query', query).set('maxResults', maxResults.toString());
+    if (mode) {
+      params = params.set('mode', mode);
+    }
 
     const encodedName = encodeURIComponent(collectionName);
     return this.#http.get<SearchResultsDto>(`${this.#baseUrl}/${encodedName}/resources/search`, { params });

@@ -59,7 +59,7 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 | `POST` | `/collections/:collectionName/resources/translate` | Auto-translate a single resource through the [Translator](glossary.md#translator) (422 when the collection has auto-translation off). Values are stored in ICU format; `skippedLocales` lists the locales it did not store (complex ICU, a lost placeholder, a dropped protected term) | `TranslateResourceDto` | `TranslateResourceResponseDto` |
 | `GET` | `/collections/:collectionName/resources/tree` | Fetch the resource [tree](glossary.md#resource-tree) (or subtree) from the Collection Index | query: `path`, `includeNested` | `ResourceTreeDto \| TreeStatusResponseDto` |
 | `GET` | `/collections/:collectionName/resources/cache/status` | Poll the [Collection Index](glossary.md#collection-index) state (starts indexing) | — | `CacheStatusDto` |
-| `GET` | `/collections/:collectionName/resources/search` | Full-text search across the collection | query: `SearchTranslationsDto` | `SearchResultsDto` |
+| `GET` | `/collections/:collectionName/resources/search` | [Resource Search](glossary.md#resource-search) across the collection. `mode=text` (default) finds the query in keys and in the values of every locale; `mode=similar` finds base values similar to the query and ranks them by `similarity`. Any other `mode` is a text search. `maxResults` must be a positive integer (at most 500; a larger value is 500); anything else (absent, not a number, `0`, negative, a fraction) is 100. All matches are ranked before `maxResults` applies; `limited` is true when more matches exist. | query: `SearchTranslationsDto` (`query`, `maxResults?`, `mode?`) | `SearchResultsDto` |
 | `POST` | `/collections/:collectionName/resources/translate-locale` | Fire-and-forget: start a bulk locale translation job | `TranslateLocaleRequestDto` | `TranslateLocaleJobDto` (202 Accepted) |
 | `GET` | `/collections/:collectionName/resources/translate-locale/:jobId` | Poll a translation job by ID | — | `TranslateLocaleJobDto` |
 
@@ -129,7 +129,7 @@ graph TD
     end
 
     subgraph core["@simoncodes-ca/core"]
-        COREOPS["addResource · editResource · deleteResource\nmoveResource · createFolder · deleteFolder\nmoveFolder · addLocaleToCollection\nremoveLocaleFromCollection · searchTranslations\ntranslateExistingResource · translateLocale\nloadResourceTree · searchResourceTree"]
+        COREOPS["addResource · editResource · deleteResource\nmoveResource · createFolder · deleteFolder\nmoveFolder · addLocaleToCollection\nremoveLocaleFromCollection · readCollection\ntranslateExistingResource · translateLocale\nloadResourceTree · searchResources · treeResources"]
     end
 
     TRACKER -->|"REST /api/*"| controllers
@@ -223,14 +223,14 @@ This means a single `node apps/api/main.js` process serves both the UI and the A
 
 ```typescript
 tree(collection: Collection, path?: string): TreeRead;          // { status: 'ready', tree | null } | { status: 'not-started' | 'indexing' | 'error' }
-search(collection: Collection, query: string, maxResults: number): SearchResult[];
+search(collection: Collection, query: string, options?: SearchOptions): SearchResult[]; // { mode?: 'text' | 'similar-value', limit? }
 status(collection: Collection): CacheStatusDto;                  // for GET .../cache/status
 apply(mutations: readonly ResourceMutation[]): void;              // after every core write
 ```
 
 Controllers do not know how the index works. They read with `tree()`, `search()` and `status()`, and give the `mutations` of each core write to `apply()`. These items are internal to the index:
 
-- **Indexing.** `tree()` indexes a collection that is not indexed or whose last attempt failed. `status()` indexes only a collection that is not indexed, and reports `error` as it is. Both report the state that they found, so the first read answers `not-started` (and `/tree` returns `202`). `search()` never starts indexing. It searches the disk until the collection is indexed.
+- **Indexing.** `tree()` indexes a collection that is not indexed or whose last attempt failed. `status()` indexes only a collection that is not indexed, and reports `error` as it is. Both report the state that they found, so the first read answers `not-started` (and `/tree` returns `202`). `search()` never starts indexing. It runs [Resource Search](glossary.md#resource-search) (`searchResources`) over `treeResources(tree)` when the collection is indexed, and over the disk (`readCollection(collection).resources`) until then. On the disk path it logs the folders the reader could not read with one `Logger.warn` per search. Both sources give the same results, because the same matcher ranks every match before the limit applies. The controller asks for `maxResults + 1` to set `limited`. (Before, both paths stopped at `maxResults + 1` hits in walk order and ranked only those, so a better match found late, such as an exact key, could be lost. A broad query can now return a different, better ranked page. `totalFound` and `limited` mean what they meant.)
 - **Revalidation.** Before each read, a ready entry compares a stat-only disk fingerprint (`computeTreeFingerprint`) with the fingerprint from its last index or own write. If they differ, the entry is dropped and indexed again. This makes CLI commands, `git checkout` and hand edits visible without a restart. Filesystem watching is not used, because inotify does not fire for Windows-side writes on a WSL `/mnt/c` mount, and the same is true for some network and container mounts. The check runs at most once per `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` (default 2000 ms) for each entry.
 - **Own writes.** After `apply()` patches an entry, the index refreshes that entry's fingerprint at the end of the tick. A bulk endpoint that applies mutations in a loop causes one scan, not one per resource. A read that comes before the refresh adopts the new fingerprint, so an own write is never read as an outside change.
 - **Patching.** One tree-walk helper applies each mutation to the tree. When a mutation does not match the tree (for example, a `remove` of a key that the index does not have), the index drops that collection. The next read indexes it again. A wrong patch never stays in memory.
@@ -390,7 +390,7 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 | `collection.mapper.ts` | `LingoTrackerCollectionDto` ↔ `LingoTrackerCollection` | Bidirectional; shallow clone of `locales[]` and `tags[]` arrays to prevent aliasing. Carries the `protectedTermsFile` setting in both directions. Drops resolved `protectedTerms` on the way back to config, because terms live in a file and the controller writes them there separately. |
 | `config.mapper.ts` | `LingoTrackerConfig` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper` and bundle mapping to `bundle.mapper`; shallow clone of `locales[]`. Takes an optional `ResolvedProtectedTerms` and `projectName` (basename of the API's working directory) from the controller, so the mapper itself reads no files. |
 | `bundle.mapper.ts` | `BundleDefinitionDto` ↔ `BundleDefinition`; `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | Bidirectional definition mapping trims strings and drops empty optionals so nothing spurious is written to the config. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper rebuilds written file paths from `localesProcessed` plus the types file. |
-| `search-result.mapper.ts` | `SearchResult` + `Collection` → `SearchResultDto` | The hit's Resource Summary (from its `key`, `source`, `translations` and `metadata`) plus `matchType` and `matchedLocales` |
+| `search-result.mapper.ts` | `SearchResult` + `Collection` → `SearchResultDto` | The hit's Resource Summary (from its `key`, `source`, `translations` and `metadata`) plus `matchType` (`'similar-value'` for `mode=similar`), `matchedLocales`, and `similarity` (0..1) when the search was in similar mode |
 
 **Why does `config.mapper.ts` take resolved terms as an argument?** Protected terms live in JSON files outside `.lingo-tracker.json`. Building the DTO therefore requires reading the filesystem.
 

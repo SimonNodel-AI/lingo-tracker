@@ -296,11 +296,15 @@ export class ResourcesController {
       };
     }
 
-    // Default maxResults to 100, cap at 500
-    const maxResults = Math.min(dto.maxResults || 100, 500);
+    // Query parameters arrive as strings. A value that is not a positive integer is 100; the cap is 500.
+    const requested = Number(dto.maxResults);
+    const maxResults = Number.isInteger(requested) && requested > 0 ? Math.min(requested, 500) : 100;
+
+    // Anything but `similar` is a text search, as a bad maxResults falls back to the default.
+    const mode = dto.mode === 'similar' ? 'similar-value' : 'text';
 
     // Request one extra result to detect whether the results were limited.
-    const searchResults = this.#index.search(collection, dto.query, maxResults + 1);
+    const searchResults = this.#index.search(collection, dto.query, { mode, limit: maxResults + 1 });
 
     // Check if results were limited
     const limited = searchResults.length > maxResults;

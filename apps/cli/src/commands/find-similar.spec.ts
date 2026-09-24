@@ -3,8 +3,8 @@ import { findSimilarCommand } from './find-similar';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  // Collection resolution runs for real against the mocked config.
-  return { ...actual, loadConfig: vi.fn(), searchTranslations: vi.fn() };
+  // Collection resolution and Resource Search run for real; only the config and the disk read are mocked.
+  return { ...actual, loadConfig: vi.fn(), readCollection: vi.fn() };
 });
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
@@ -20,20 +20,28 @@ vi.mock('path', async (importOriginal) => {
   };
 });
 
-import { ConfigNotFoundError, loadConfig, searchTranslations } from '@simoncodes-ca/core';
-import type { LingoTrackerConfig, MatchType, SearchResult } from '@simoncodes-ca/core';
+import { ConfigNotFoundError, loadConfig, readCollection } from '@simoncodes-ca/core';
+import type { CollectionReadProblem, LingoTrackerConfig, StoredResource } from '@simoncodes-ca/core';
 
-/**
- * Builds a fully typed SearchResult so the mocked searchTranslations return
- * value stays bound to the real contract and shape drift fails to compile.
- */
-function searchResult(key: string, matchType: MatchType, baseValue: string): SearchResult {
+/** A fully typed stored resource, so shape drift in the Collection Reader fails to compile. */
+function stored(fullKey: string, baseValue: string): StoredResource {
+  const segments = fullKey.split('.');
+  const entryKey = segments[segments.length - 1] ?? '';
   return {
-    key,
-    matchType,
-    translations: { en: baseValue },
-    status: {},
+    fullKey,
+    folderPath: segments.slice(0, -1).join('.'),
+    entryKey,
+    entry: { key: entryKey, source: baseValue, translations: { fr: `fr:${baseValue}` }, metadata: {} },
+    effectiveTags: [],
   };
+}
+
+function collectionHolds(...resources: StoredResource[]): void {
+  vi.mocked(readCollection).mockReturnValue({ resources, problems: [] });
+}
+
+function loggedLines(): string[] {
+  return vi.mocked(console.log).mock.calls.map((call) => String(call[0]));
 }
 
 const BASE_CONFIG: LingoTrackerConfig = {
@@ -61,45 +69,57 @@ describe('find-similar', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // threshold behaviour — tested indirectly via findSimilarCommand output
+  // the similar-value rule, as the command reports it
   // ---------------------------------------------------------------------------
 
-  describe('threshold behaviour (via findSimilarCommand output)', () => {
-    // Absolute scores are covered in libs/domain/src/lib/normalized-levenshtein.spec.ts.
-    // These cases pin only what the command adds on top: case folding, the 0.8
-    // cutoff, and the empty-value fallback.
+  describe('similar-value rule (via findSimilarCommand output)', () => {
+    // The rule itself is specified in libs/core/src/lib/resource/search.spec.ts and the
+    // Levenshtein scores in libs/domain/src/lib/normalized-levenshtein.spec.ts. These cases
+    // pin what the command prints for it.
     beforeEach(() => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     });
 
     it('reports 100% for an identical multi-character stored value', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('common.button.addItem', 'exact-value', 'Add Item')]);
+      collectionHolds(stored('common.button.addItem', 'Add Item'));
       await findSimilarCommand({ collection: 'tracker', value: 'Add Item' });
       expect(console.log).toHaveBeenCalledWith('  common.button.addItem → "Add Item" (similarity: 100%)');
     });
 
     it('folds case before scoring', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('labels.greeting', 'exact-value', 'Hello World')]);
+      collectionHolds(stored('labels.greeting', 'Hello World'));
       await findSimilarCommand({ collection: 'tracker', value: 'hello world' });
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('(similarity: 100%)'));
     });
 
     it('keeps a candidate sitting exactly on the 0.8 threshold', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('btn.save', 'exact-value', 'saved')]);
+      collectionHolds(stored('btn.save', 'saved'));
       await findSimilarCommand({ collection: 'tracker', value: 'save' });
       expect(console.log).toHaveBeenCalledWith('  btn.save → "saved" (similarity: 80%)');
     });
 
-    it('drops a candidate below the 0.8 threshold', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('btn.delete', 'exact-value', 'delete risk')]);
+    it('drops a candidate below the 0.8 threshold that does not contain the query as a word', async () => {
+      collectionHolds(stored('btn.delete', 'deleted items'));
       await findSimilarCommand({ collection: 'tracker', value: 'delete' });
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('No similar values found'));
     });
 
-    it('drops a candidate whose base-locale value is missing', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('x.key', 'exact-value', '')]);
+    it('drops a candidate whose base-locale value is empty', async () => {
+      collectionHolds(stored('x.key', ''));
       await findSimilarCommand({ collection: 'tracker', value: 'a' });
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('No similar values found'));
+    });
+
+    it('reports a stored value that contains the query as whole words, with its similarity', async () => {
+      collectionHolds(stored('btn.saveDraft', 'Save draft'));
+      await findSimilarCommand({ collection: 'tracker', value: 'Save' });
+      expect(console.log).toHaveBeenCalledWith('  btn.saveDraft → "Save draft" (similarity: 40%)');
+    });
+
+    it('reports a stored value that the query contains as whole words', async () => {
+      collectionHolds(stored('common.actions.save', 'Save'));
+      await findSimilarCommand({ collection: 'tracker', value: 'Save draft' });
+      expect(console.log).toHaveBeenCalledWith('  common.actions.save → "Save" (similarity: 40%)');
     });
   });
 
@@ -113,7 +133,7 @@ describe('find-similar', () => {
         throw new ConfigNotFoundError('/project/.lingo-tracker.json');
       });
       await findSimilarCommand({ collection: 'tracker', value: 'hello' });
-      expect(searchTranslations).not.toHaveBeenCalled();
+      expect(readCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
 
@@ -121,7 +141,7 @@ describe('find-similar', () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       await findSimilarCommand({ collection: 'tracker' });
       expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --value');
-      expect(searchTranslations).not.toHaveBeenCalled();
+      expect(readCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
 
@@ -136,15 +156,15 @@ describe('find-similar', () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       await findSimilarCommand({ collection: 'tracker', value: '   ' });
       expect(console.log).toHaveBeenCalledWith('❌ --value must not be blank');
-      expect(searchTranslations).not.toHaveBeenCalled();
+      expect(readCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
 
     it('uses the only collection when --collection is missing', async () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
-      vi.mocked(searchTranslations).mockReturnValue([]);
+      collectionHolds();
       await findSimilarCommand({ value: 'hello' });
-      expect(searchTranslations).toHaveBeenCalledWith(
+      expect(readCollection).toHaveBeenCalledWith(
         expect.objectContaining({ translationsFolder: '/project/src/assets/i18n' }),
       );
       expect(process.exitCode).toBe(0);
@@ -157,7 +177,7 @@ describe('find-similar', () => {
       });
       await findSimilarCommand({ value: 'hello' });
       expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection');
-      expect(searchTranslations).not.toHaveBeenCalled();
+      expect(readCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
 
@@ -178,20 +198,20 @@ describe('find-similar', () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     });
 
-    it('prints "No similar values found" when no candidates pass the 0.8 threshold', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('a.key', 'exact-value', 'hello world')]);
+    it('prints "No similar values found" when no stored value matches', async () => {
+      collectionHolds(stored('a.key', 'hello world'));
       await findSimilarCommand({ collection: 'tracker', value: 'hi' });
       expect(console.log).toHaveBeenCalledWith('No similar values found for "hi".');
     });
 
-    it('prints "No similar values found" when candidates list is empty', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([]);
+    it('prints "No similar values found" when the collection is empty', async () => {
+      collectionHolds();
       await findSimilarCommand({ collection: 'tracker', value: 'hello' });
       expect(console.log).toHaveBeenCalledWith('No similar values found for "hello".');
     });
 
-    it('prints header and matched results when a candidate is above threshold', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('btn.ok', 'exact-value', 'Ok')]);
+    it('prints header and matched results when a stored value matches', async () => {
+      collectionHolds(stored('btn.ok', 'Ok'));
       await findSimilarCommand({ collection: 'tracker', value: 'Ok' });
       expect(console.log).toHaveBeenCalledWith('Similar values found for "Ok":');
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('btn.ok'));
@@ -199,84 +219,60 @@ describe('find-similar', () => {
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('(similarity: 100%)'));
     });
 
-    it('formats each result as "  key → \\"value\\" (similarity: N%)"', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('common.ok', 'exact-value', 'Cancel')]);
+    it('formats each result as "  key → \\"value\\" (similarity: N%)" with the base value', async () => {
+      collectionHolds(stored('common.ok', 'Cancel'));
       await findSimilarCommand({ collection: 'tracker', value: 'Cancel' });
       expect(console.log).toHaveBeenCalledWith('  common.ok → "Cancel" (similarity: 100%)');
     });
   });
 
   // ---------------------------------------------------------------------------
-  // findSimilarCommand — matchType is not a filter
+  // findSimilarCommand — keys that contain the query
   // ---------------------------------------------------------------------------
 
-  describe('findSimilarCommand — matchType handling', () => {
-    // searchTranslations assigns one matchType per entry, key first, so an entry
-    // whose key contains the query is labelled a key match even when its value
-    // matches too. Every candidate is scored on its base value regardless.
+  describe('findSimilarCommand — keys that contain the query', () => {
     beforeEach(() => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     });
 
-    it.each<MatchType>([
-      'exact-value',
-      'partial-value',
-      'exact-key',
-      'partial-key',
-    ])('scores a %s candidate on its base value', async (matchType) => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('btn.connect', matchType, 'Connect')]);
+    it('scores an entry whose key contains the query on its base value', async () => {
+      collectionHolds(stored('btn.connect', 'Connect'));
       await findSimilarCommand({ collection: 'tracker', value: 'Connect' });
       expect(console.log).toHaveBeenCalledWith('  btn.connect → "Connect" (similarity: 100%)');
     });
 
-    it.each<MatchType>([
-      'exact-key',
-      'partial-key',
-    ])('still drops a %s candidate whose value is below the threshold', async (matchType) => {
-      vi.mocked(searchTranslations).mockReturnValue([
-        searchResult('errors.connectTimeout', matchType, 'The connection attempt timed out'),
-      ]);
+    it('still drops an entry whose key contains the query when its value is not similar', async () => {
+      collectionHolds(stored('errors.connectTimeout', 'The connection attempt timed out'));
       await findSimilarCommand({ collection: 'tracker', value: 'Connect' });
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('No similar values found'));
     });
 
-    it('ranks the key-matched entry first when scores tie', async () => {
-      // searchTranslations orders exact-value above partial-key, so the canonical
-      // key arrives second; on an equal score it should still be listed first.
-      vi.mocked(searchTranslations).mockReturnValue([
-        searchResult('dialogs.secondaryAction', 'exact-value', 'Connect'),
-        searchResult('common.button.connect', 'partial-key', 'Connect'),
-      ]);
+    it('ranks the entry whose key contains the query first when scores tie', async () => {
+      collectionHolds(stored('dialogs.secondaryAction', 'Connect'), stored('common.button.connect', 'Connect'));
       await findSimilarCommand({ collection: 'tracker', value: 'Connect' });
-      const calls = vi.mocked(console.log).mock.calls.map((c) => c[0] as string);
-      const canonicalIdx = calls.findIndex((c) => c.includes('common.button.connect'));
-      const otherIdx = calls.findIndex((c) => c.includes('dialogs.secondaryAction'));
+      const lines = loggedLines();
+      const canonicalIdx = lines.findIndex((line) => line.includes('common.button.connect'));
+      const otherIdx = lines.findIndex((line) => line.includes('dialogs.secondaryAction'));
       expect(canonicalIdx).toBeGreaterThan(-1);
       expect(canonicalIdx).toBeLessThan(otherIdx);
     });
 
     it('does not let a key match outrank a strictly better value match', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([
-        searchResult('common.button.connect', 'partial-key', 'Connects'),
-        searchResult('dialogs.secondaryAction', 'exact-value', 'Connect'),
-      ]);
+      collectionHolds(stored('common.button.connect', 'Connects'), stored('dialogs.secondaryAction', 'Connect'));
       await findSimilarCommand({ collection: 'tracker', value: 'Connect' });
-      const calls = vi.mocked(console.log).mock.calls.map((c) => c[0] as string);
-      const exactIdx = calls.findIndex((c) => c.includes('dialogs.secondaryAction'));
-      const keyIdx = calls.findIndex((c) => c.includes('common.button.connect'));
+      const lines = loggedLines();
+      const exactIdx = lines.findIndex((line) => line.includes('dialogs.secondaryAction'));
+      const keyIdx = lines.findIndex((line) => line.includes('common.button.connect'));
       expect(exactIdx).toBeGreaterThan(-1);
       expect(exactIdx).toBeLessThan(keyIdx);
     });
 
     it('returns a key-matched and a value-matched entry holding the same value', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([
-        searchResult('common.button.connect', 'partial-key', 'Connect'),
-        searchResult('dialogs.secondaryAction', 'exact-value', 'Connect'),
-      ]);
+      collectionHolds(stored('common.button.connect', 'Connect'), stored('dialogs.secondaryAction', 'Connect'));
       await findSimilarCommand({ collection: 'tracker', value: 'Connect' });
-      const calls = vi.mocked(console.log).mock.calls.map((c) => c[0] as string);
-      expect(calls.some((c) => c.includes('common.button.connect'))).toBe(true);
-      expect(calls.some((c) => c.includes('dialogs.secondaryAction'))).toBe(true);
+      const lines = loggedLines();
+      expect(lines.some((line) => line.includes('common.button.connect'))).toBe(true);
+      expect(lines.some((line) => line.includes('dialogs.secondaryAction'))).toBe(true);
     });
   });
 
@@ -291,52 +287,52 @@ describe('find-similar', () => {
 
     it('sorts results by score descending', async () => {
       // Query 'save': 'saved' scores 0.8, the exact match scores 1.0. The lower
-      // scoring candidate is listed first to prove the sort actually reorders.
-      vi.mocked(searchTranslations).mockReturnValue([
-        searchResult('key.near', 'exact-value', 'saved'),
-        searchResult('key.exact', 'exact-value', 'save'),
-      ]);
+      // scoring entry is read first to prove the ranking actually reorders.
+      collectionHolds(stored('key.near', 'saved'), stored('key.exact', 'save'));
       await findSimilarCommand({ collection: 'tracker', value: 'save' });
-      const calls = vi.mocked(console.log).mock.calls.map((c) => c[0] as string);
-      const exactIdx = calls.findIndex((c) => c.includes('key.exact'));
-      const nearIdx = calls.findIndex((c) => c.includes('key.near'));
+      const lines = loggedLines();
+      const exactIdx = lines.findIndex((line) => line.includes('key.exact'));
+      const nearIdx = lines.findIndex((line) => line.includes('key.near'));
       expect(exactIdx).toBeGreaterThan(-1);
       expect(nearIdx).toBeGreaterThan(-1);
       expect(exactIdx).toBeLessThan(nearIdx);
     });
 
     it('defaults maxResults to 5', async () => {
-      const manyCandidates = Array.from({ length: 10 }, (_, i) => searchResult(`key.${i}`, 'exact-value', 'a'));
-      vi.mocked(searchTranslations).mockReturnValue(manyCandidates);
+      collectionHolds(...Array.from({ length: 10 }, (_, i) => stored(`key.${i}`, 'a')));
 
       await findSimilarCommand({ collection: 'tracker', value: 'a' });
 
-      const resultLines = vi
-        .mocked(console.log)
-        .mock.calls.map((c) => c[0] as string)
-        .filter((c) => c.startsWith('  key.'));
-      expect(resultLines).toHaveLength(5);
+      expect(loggedLines().filter((line) => line.startsWith('  key.'))).toHaveLength(5);
     });
 
     it('respects custom maxResults', async () => {
-      const manyCandidates = Array.from({ length: 10 }, (_, i) => searchResult(`key.${i}`, 'exact-value', 'a'));
-      vi.mocked(searchTranslations).mockReturnValue(manyCandidates);
+      collectionHolds(...Array.from({ length: 10 }, (_, i) => stored(`key.${i}`, 'a')));
 
       await findSimilarCommand({ collection: 'tracker', value: 'a', maxResults: 3 });
 
-      const resultLines = vi
-        .mocked(console.log)
-        .mock.calls.map((c) => c[0] as string)
-        .filter((c) => c.startsWith('  key.'));
-      expect(resultLines).toHaveLength(3);
+      expect(loggedLines().filter((line) => line.startsWith('  key.'))).toHaveLength(3);
+    });
+
+    it('compares every stored value, however many precede the best match', async () => {
+      // There is no candidate cap any more: 600 weaker matches read first cannot crowd out the exact one.
+      collectionHolds(
+        ...Array.from({ length: 600 }, (_, i) => stored(`noise.variant${i}`, `Cancel ${i}`)),
+        stored('zz.dismiss', 'Cancel'),
+      );
+
+      await findSimilarCommand({ collection: 'tracker', value: 'Cancel' });
+
+      expect(loggedLines().find((line) => line.startsWith('  '))).toBe('  zz.dismiss → "Cancel" (similarity: 100%)');
+      expect(console.warn).not.toHaveBeenCalled();
     });
   });
 
   // ---------------------------------------------------------------------------
-  // findSimilarCommand — locale resolution
+  // findSimilarCommand — the collection it reads
   // ---------------------------------------------------------------------------
 
-  describe('findSimilarCommand — locale resolution', () => {
+  describe('findSimilarCommand — the collection it reads', () => {
     it('uses collectionConfig.baseLocale when set', async () => {
       vi.mocked(loadConfig).mockReturnValue({
         baseLocale: 'en',
@@ -348,11 +344,11 @@ describe('find-similar', () => {
           },
         },
       });
-      vi.mocked(searchTranslations).mockReturnValue([]);
+      collectionHolds();
 
       await findSimilarCommand({ collection: 'tracker', value: 'bonjour' });
 
-      expect(searchTranslations).toHaveBeenCalledWith(expect.objectContaining({ baseLocale: 'fr' }));
+      expect(readCollection).toHaveBeenCalledWith(expect.objectContaining({ baseLocale: 'fr' }));
     });
 
     it('falls back to config.baseLocale when collectionConfig has no baseLocale', async () => {
@@ -365,11 +361,11 @@ describe('find-similar', () => {
           },
         },
       });
-      vi.mocked(searchTranslations).mockReturnValue([]);
+      collectionHolds();
 
       await findSimilarCommand({ collection: 'tracker', value: 'hallo' });
 
-      expect(searchTranslations).toHaveBeenCalledWith(expect.objectContaining({ baseLocale: 'de' }));
+      expect(readCollection).toHaveBeenCalledWith(expect.objectContaining({ baseLocale: 'de' }));
     });
 
     it('falls back to "en" when neither collection nor config specifies baseLocale', async () => {
@@ -381,63 +377,55 @@ describe('find-similar', () => {
           },
         },
       });
-      vi.mocked(searchTranslations).mockReturnValue([]);
+      collectionHolds();
 
       await findSimilarCommand({ collection: 'tracker', value: 'hello' });
 
-      expect(searchTranslations).toHaveBeenCalledWith(expect.objectContaining({ baseLocale: 'en' }));
+      expect(readCollection).toHaveBeenCalledWith(expect.objectContaining({ baseLocale: 'en' }));
     });
-  });
 
-  // ---------------------------------------------------------------------------
-  // findSimilarCommand — searchTranslations call arguments
-  // ---------------------------------------------------------------------------
-
-  describe('findSimilarCommand — searchTranslations arguments', () => {
-    beforeEach(() => {
+    it('reads the collection with its translationsFolder resolved from cwd + collectionConfig', async () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
-      vi.mocked(searchTranslations).mockReturnValue([]);
-    });
-
-    it('calls searchTranslations with translationsFolder resolved from cwd + collectionConfig', async () => {
+      collectionHolds();
       await findSimilarCommand({ collection: 'tracker', value: 'hello' });
-      expect(searchTranslations).toHaveBeenCalledWith(
+      expect(readCollection).toHaveBeenCalledWith(
         expect.objectContaining({
           translationsFolder: '/project/src/assets/i18n',
         }),
       );
     });
 
-    it('calls searchTranslations with the trimmed query', async () => {
+    it('compares the trimmed query', async () => {
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      collectionHolds(stored('labels.hello', 'hello'));
       await findSimilarCommand({ collection: 'tracker', value: '  hello  ' });
-      expect(searchTranslations).toHaveBeenCalledWith(expect.objectContaining({ query: 'hello' }));
+      expect(console.log).toHaveBeenCalledWith('Similar values found for "hello":');
+      expect(console.log).toHaveBeenCalledWith('  labels.hello → "hello" (similarity: 100%)');
     });
 
-    it('requests a candidate budget far larger than the display limit', async () => {
-      // searchTranslations stops walking at maxResults, so the budget must exceed
-      // what is displayed by enough that ranking, not discovery order, decides
-      // which candidates survive.
-      await findSimilarCommand({ collection: 'tracker', value: 'hello' });
-      const [params] = vi.mocked(searchTranslations).mock.calls[0];
-      expect(params.maxResults).toBeGreaterThanOrEqual(500);
+    it('warns about each folder it could not read and still reports the others', async () => {
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      const problem: CollectionReadProblem = {
+        folderPath: 'broken',
+        absolutePath: '/project/src/assets/i18n/broken',
+        message: 'Unexpected token in resource_entries.json',
+      };
+      vi.mocked(readCollection).mockReturnValue({ resources: [stored('common.ok', 'OK')], problems: [problem] });
+
+      await findSimilarCommand({ collection: 'tracker', value: 'OK' });
+
+      expect(console.log).toHaveBeenCalledWith(
+        '⚠️  Skipped unreadable folder: Unexpected token in resource_entries.json',
+      );
+      expect(console.log).toHaveBeenCalledWith('  common.ok → "OK" (similarity: 100%)');
+      expect(process.exitCode).toBe(0);
     });
 
-    it('warns when the candidate budget was exhausted, since results may be incomplete', async () => {
-      const full = Array.from({ length: 500 }, (_, i) => searchResult(`key.${i}`, 'exact-value', 'a'));
-      vi.mocked(searchTranslations).mockReturnValue(full);
+    it('prints no warning when every folder was read', async () => {
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+      collectionHolds(stored('key.one', 'a'));
       await findSimilarCommand({ collection: 'tracker', value: 'a' });
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('only the first 500 candidates'));
-    });
-
-    it('does not warn when the candidate budget was not exhausted', async () => {
-      vi.mocked(searchTranslations).mockReturnValue([searchResult('key.one', 'exact-value', 'a')]);
-      await findSimilarCommand({ collection: 'tracker', value: 'a' });
-      expect(console.warn).not.toHaveBeenCalled();
-    });
-
-    it('calls searchTranslations with the resolved baseLocale', async () => {
-      await findSimilarCommand({ collection: 'tracker', value: 'hello' });
-      expect(searchTranslations).toHaveBeenCalledWith(expect.objectContaining({ baseLocale: 'en' }));
+      expect(loggedLines().some((line) => line.startsWith('⚠️'))).toBe(false);
     });
   });
 });

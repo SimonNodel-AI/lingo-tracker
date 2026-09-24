@@ -99,7 +99,7 @@ export {
   type StoredResource,
 } from './lib/resource';
 
-// Read models: the resource tree, search and fingerprints behind the API's CollectionIndex
+// Read models: the resource tree, Resource Search and fingerprints behind the API's CollectionIndex and CLI find-similar
 export {
   computeTreeFingerprint,
   extractResourcesRecursively,
@@ -111,9 +111,12 @@ export {
   type ResourceTreeEntry,
   type ResourceTreeNode,
   reindexMutation,
+  type SearchableResource,
+  type SearchMode,
+  type SearchOptions,
   type SearchResult,
-  searchResourceTree,
-  searchTranslations,
+  searchResources,
+  treeResources,
   type TreeFingerprint,
   treeFingerprintsMatch,
 } from './lib/resource';
@@ -199,8 +202,6 @@ export type {
   LoadResourceTreeOptions,
   OpenResourceFolderOptions,
   ResourcePathResolutionParams,
-  SearchParams,
-  SearchTreeParams,
 } from './lib/resource';
 export type {
   OpenTranslatorOptions,

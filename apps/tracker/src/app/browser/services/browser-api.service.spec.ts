@@ -188,6 +188,24 @@ describe('BrowserApiService', () => {
       expect(data).toEqual(mockResults);
     });
 
+    it('should send mode only when one is given', async () => {
+      const empty: SearchResultsDto = { query: 'Save', results: [], totalFound: 0, limited: false };
+
+      const similar$ = service.searchTranslations('my-collection', 'Save', 11, 'similar');
+      queueMicrotask(() => {
+        httpMock
+          .expectOne((request) => request.url.includes('/search') && request.params.get('mode') === 'similar')
+          .flush(empty);
+      });
+      await firstValueFrom(similar$);
+
+      const text$ = service.searchTranslations('my-collection', 'Save');
+      queueMicrotask(() => {
+        httpMock.expectOne((request) => request.url.includes('/search') && !request.params.has('mode')).flush(empty);
+      });
+      await firstValueFrom(text$);
+    });
+
     it('should use default maxResults of 100', async () => {
       const collectionName = 'my-collection';
       const query = 'test';

@@ -1,9 +1,10 @@
 import type { ResourceSummaryDto } from './resource-tree.dto';
 
 /**
- * Match type for search results.
+ * How a search result matched: one of the four text-mode types, or `similar-value` for a
+ * `mode=similar` search.
  */
-export type MatchType = 'exact-key' | 'partial-key' | 'exact-value' | 'partial-value';
+export type MatchType = 'exact-key' | 'partial-key' | 'exact-value' | 'partial-value' | 'similar-value';
 
 /**
  * DTO for a single search result: a Resource Summary plus how it matched.
@@ -14,6 +15,9 @@ export interface SearchResultDto extends ResourceSummaryDto {
 
   /** Locales where the match was found (for value matches) */
   matchedLocales?: string[];
+
+  /** `mode=similar` only: how similar the base value is to the query, 0..1 */
+  similarity?: number;
 }
 
 /**
