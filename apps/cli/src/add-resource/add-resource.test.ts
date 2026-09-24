@@ -84,7 +84,7 @@ describe('addResourceCommand', () => {
       value: 'Test',
     });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Invalid resource key');
+    expect(console.error).toHaveBeenCalledWith('❌ Invalid resource key');
     expect(process.exitCode).toBe(1);
   });
 
@@ -101,7 +101,7 @@ describe('addResourceCommand', () => {
       value: 'OK',
     });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "NonExistentCollection" not found');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "NonExistentCollection" not found');
     expect(core.addResource).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -124,7 +124,7 @@ describe('addResourceCommand', () => {
 
     await addResourceCommand({ collection: 'TestCollection' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key, --value');
+    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key, --value');
     expect(core.addResource).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -184,7 +184,7 @@ describe('addResourceCommand', () => {
 
     await addResourceCommand({ collection: 'TestCollection', key: 'a.b', value: 'OK', translations: '[{"locale":' });
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^❌ Invalid --translations JSON: /));
+    expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/^❌ Invalid --translations JSON: /));
     expect(core.addResource).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -201,7 +201,7 @@ describe('addResourceCommand', () => {
       translations: '[{"locale":"fr","value":"Oui","status":"done"}]',
     });
 
-    expect(console.log).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       '❌ Invalid --translations: expected a JSON array of { "locale", "value", "status" } with status one of new, translated, stale, verified',
     );
     expect(core.addResource).not.toHaveBeenCalled();
@@ -247,7 +247,7 @@ describe('addResourceCommand', () => {
       expect.anything(),
     );
     expect(core.addResource).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Add resource cancelled.');
+    expect(console.error).toHaveBeenCalledWith('❌ Add resource cancelled.');
     expect(process.exitCode).toBe(0);
   });
 
@@ -258,15 +258,16 @@ describe('addResourceCommand', () => {
       baseLocale: 'en',
       locales: ['en', 'fr'],
     };
-    let logSpy: ReturnType<typeof vi.spyOn>;
+    // Warnings are diagnostics: they go to stderr.
+    let stderrSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
       vi.mocked(core.loadConfig).mockReturnValue(config);
-      logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     });
 
     afterEach(() => {
-      logSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     const add = (value: string) => addResourceCommand({ collection: 'TestCollection', key: 'budget.title', value });
@@ -284,7 +285,7 @@ describe('addResourceCommand', () => {
 
       expect(core.addResource).toHaveBeenCalled();
       expect(core.loadPreferredTerminology).toHaveBeenCalledWith(config, '/test');
-      const lines = logSpy.mock.calls.map((call) => String(call[0]));
+      const lines = stderrSpy.mock.calls.map((call) => String(call[0]));
       expect(lines).toContain('⚠️  Preferred terminology: consider "Investment" instead of "Expenditure"');
       expect(lines).toContain('  Finance style guide');
       expect(lines).toContain('⚠️  Preferred terminology: consider "email" instead of "e-mail"');
@@ -300,7 +301,7 @@ describe('addResourceCommand', () => {
 
       await add('Investment summary');
 
-      expect(logSpy.mock.calls.some((call) => String(call[0]).includes('Preferred terminology'))).toBe(false);
+      expect(stderrSpy.mock.calls.some((call) => String(call[0]).includes('Preferred terminology'))).toBe(false);
     });
 
     it('prints one config warning and skips the check when the rule file is broken', async () => {
@@ -308,7 +309,7 @@ describe('addResourceCommand', () => {
 
       await add('Expenditure');
 
-      const lines = logSpy.mock.calls.map((call) => String(call[0]));
+      const lines = stderrSpy.mock.calls.map((call) => String(call[0]));
       expect(lines).toContain('⚠️  Preferred terminology checks skipped: not valid JSON');
       expect(lines.filter((line) => line.includes('Preferred terminology'))).toHaveLength(1);
     });
@@ -322,7 +323,7 @@ describe('addResourceCommand', () => {
 
       await add('Expenditure');
 
-      expect(logSpy).toHaveBeenCalledWith(
+      expect(stderrSpy).toHaveBeenCalledWith(
         '⚠️  Preferred terminology file not found: /test/terms.json. Treating as an empty list.',
       );
     });
@@ -333,7 +334,7 @@ describe('addResourceCommand', () => {
       await add('Expenditure');
 
       expect(core.loadPreferredTerminology).not.toHaveBeenCalled();
-      expect(logSpy).toHaveBeenCalledWith('❌ boom');
+      expect(stderrSpy).toHaveBeenCalledWith('❌ boom');
       expect(process.exitCode).toBe(1);
     });
   });
@@ -344,7 +345,7 @@ describe('addResourceCommand', () => {
       baseLocale: 'en',
     });
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const exit = vi.spyOn(process, 'exit');
     // The user presses Esc: prompts calls onCancel.
     vi.mocked(prompts).mockImplementation(async (questions, options) => {

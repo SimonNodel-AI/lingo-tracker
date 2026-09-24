@@ -161,6 +161,18 @@ describe('glossaryCommand', () => {
     expect(JSON.parse(printed).matchCount).toBe(1);
   });
 
+  it('keeps stdout to the JSON payload with --stdout: warnings and the status line go to stderr', async () => {
+    await glossaryCommand({ text: 'Save', stdout: true, locales: 'en' });
+
+    expect(console.error).toHaveBeenCalledWith(
+      '⚠️  No target locales to include (only the base locale is configured or requested).',
+    );
+    expect(console.log).not.toHaveBeenCalled();
+    expect(process.stdout.write).toHaveBeenCalledTimes(1);
+    const printed = vi.mocked(process.stdout.write).mock.calls[0][0] as string;
+    expect(JSON.parse(printed).locales).toEqual([]);
+  });
+
   it('narrows output locales with --locales', async () => {
     await glossaryCommand({ text: 'Save', locales: 'fr' });
     const out = JSON.parse(writtenContent());
@@ -181,7 +193,7 @@ describe('glossaryCommand', () => {
 
   it('exits 1 when --collection cannot be resolved', async () => {
     await glossaryCommand({ text: 'Save', collection: 'nope' });
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "nope" not found');
     expect(readCollection).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -220,7 +232,6 @@ describe('glossaryCommand', () => {
   });
 
   it('reports an unreadable folder on stderr and keeps the readable entries', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.mocked(readCollection).mockReturnValue({
       resources: LOADED.resources,
       problems: [{ folderPath: 'bad', absolutePath: '/project/i18n/bad', message: 'Failed to parse JSON file x' }],
@@ -228,7 +239,10 @@ describe('glossaryCommand', () => {
 
     await glossaryCommand({ text: 'Save', stdout: true });
 
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Collection 'app': skipped unreadable folder"));
+    expect(console.error).toHaveBeenCalledWith(
+      "⚠️  Collection 'app': skipped unreadable folder: Failed to parse JSON file x",
+    );
+    expect(console.log).not.toHaveBeenCalled();
     const printed = vi.mocked(process.stdout.write).mock.calls[0][0] as string;
     expect(JSON.parse(printed).matchCount).toBe(1);
   });
@@ -246,7 +260,7 @@ describe('glossaryCommand', () => {
 
   it('exits 1 with a clear error for the unimplemented ai extractor', async () => {
     await glossaryCommand({ text: 'Save', extractor: 'ai' });
-    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^❌ .*ai/i));
+    expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/^❌ .*ai/i));
     expect(fs.writeFileSync).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });

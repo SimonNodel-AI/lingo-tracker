@@ -25,6 +25,7 @@ const CONFIG: LingoTrackerConfig = {
 };
 
 const logged = () => vi.mocked(console.log).mock.calls.map(([line]) => String(line));
+const errored = () => vi.mocked(console.error).mock.calls.map(([line]) => String(line));
 
 describe('normalizeCommand', () => {
   beforeEach(() => {
@@ -64,7 +65,7 @@ describe('normalizeCommand', () => {
     await normalizeCommand({});
 
     expect(normalize).not.toHaveBeenCalled();
-    expect(logged()).toContain('❌ Missing required option in non-interactive mode: --collection or --all');
+    expect(errored()).toContain('❌ Missing required option in non-interactive mode: --collection or --all');
     expect(process.exitCode).toBe(1);
   });
 
@@ -72,7 +73,7 @@ describe('normalizeCommand', () => {
     await normalizeCommand({ collection: 'Nope' });
 
     expect(normalize).not.toHaveBeenCalled();
-    expect(logged()).toContain('❌ Collection "Nope" not found');
+    expect(errored()).toContain('❌ Collection "Nope" not found');
     expect(process.exitCode).toBe(1);
   });
 
@@ -90,7 +91,29 @@ describe('normalizeCommand', () => {
 
     await normalizeCommand({ collection: 'App' });
 
-    expect(logged()).toContain('  ❌ disk full');
+    expect(errored()).toContain('❌ Failed to normalize collection "App": disk full');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('with --json, reports a failed collection on stderr and keeps stdout to the JSON', async () => {
+    vi.mocked(normalize).mockRejectedValue(new Error('disk full'));
+
+    await normalizeCommand({ collection: 'App', json: true });
+
+    expect(errored()).toEqual(['❌ Failed to normalize collection "App": disk full']);
+    const lines = logged();
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({ collections: [], totals: { collectionsProcessed: 0 } });
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('with --json, reports a read-only collection on stderr and keeps stdout to the JSON', async () => {
+    await normalizeCommand({ collection: 'Lib', json: true });
+
+    expect(errored()).toEqual(['❌ Collection "Lib" is read-only. Its resources cannot be modified.']);
+    const lines = logged();
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0])).toMatchObject({ collections: [] });
     expect(process.exitCode).toBe(1);
   });
 
@@ -111,7 +134,7 @@ describe('normalizeCommand', () => {
 
       expect(normalize).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
-      expect(logged()).toContain('❌ Collection "Lib" is read-only. Its resources cannot be modified.');
+      expect(errored()).toContain('❌ Collection "Lib" is read-only. Its resources cannot be modified.');
       expect(logged()).not.toContain('ℹ️  Skipping read-only collection: Lib');
     });
 
@@ -157,7 +180,7 @@ describe('normalizeCommand', () => {
       await normalizeCommand({ all: true });
 
       expect(normalize).not.toHaveBeenCalled();
-      expect(logged()).toContain('❌ Normalize cancelled.');
+      expect(errored()).toContain('❌ Normalize cancelled.');
       expect(process.exitCode).toBe(0);
     });
 
@@ -184,7 +207,7 @@ describe('normalizeCommand', () => {
 
       await expect(normalizeCommand({})).resolves.toBeUndefined();
 
-      expect(logged().filter((line) => line.includes('cancelled'))).toEqual(['❌ Normalize cancelled.']);
+      expect(errored().filter((line) => line.includes('cancelled'))).toEqual(['❌ Normalize cancelled.']);
       expect(normalize).not.toHaveBeenCalled();
       expect(exit).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);

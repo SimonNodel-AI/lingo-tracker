@@ -148,6 +148,7 @@ export class TranslationJobService {
       ...(job.skippedKeys.length > 0 && { skippedKeys: job.skippedKeys }),
       ...(job.startedAt && { startedAt: job.startedAt.toISOString() }),
       ...(job.completedAt && { completedAt: job.completedAt.toISOString() }),
+      ...(job.error !== undefined && { error: job.error }),
     };
   }
 }

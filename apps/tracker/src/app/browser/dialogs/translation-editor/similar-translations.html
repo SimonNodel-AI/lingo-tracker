@@ -42,12 +42,22 @@
               (click)="onResultClick(row.result)"
               [title]="TOKENS.COMMON.ACTIONS.CLICKTOCOPY | transloco"
             >
-              <!-- Break only after dots so a key never splits mid-identifier. -->
-              <span class="result-key">
-                @for (segment of row.parentSegments; track $index) {
-                  <span>{{ segment }}</span><i aria-hidden="true">.</i><wbr />
+              <span class="result-head">
+                <!-- Break only after dots so a key never splits mid-identifier. -->
+                <span class="result-key">
+                  @for (segment of row.parentSegments; track $index) {
+                    <span>{{ segment }}</span><i aria-hidden="true">.</i><wbr />
+                  }
+                  <span>{{ row.leafSegment }}</span>
+                </span>
+                @if (row.similarityPercent !== undefined) {
+                  <span class="result-similarity" data-testid="similar-similarity">
+                    <span aria-hidden="true">{{ row.similarityPercent }}%</span>
+                    <span class="sr-only">{{
+                      TOKENS.BROWSER.SIMILARTRANSLATIONS.SIMILARITYX | transloco : { percent: row.similarityPercent }
+                    }}</span>
+                  </span>
                 }
-                <span>{{ row.leafSegment }}</span>
               </span>
               <span class="result-value" [class.result-value--exact]="row.isExact">{{ row.value }}</span>
             </button>

@@ -340,7 +340,7 @@ describe('initCommand', () => {
 
     await initCommand({});
 
-    expect(console.log).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       '❌ Missing required options in non-interactive mode: --collection-name, --translations-folder',
     );
     expect(mockWriteFileSync).not.toHaveBeenCalled();

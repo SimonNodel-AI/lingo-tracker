@@ -1,6 +1,6 @@
-import { normalize, openCollection } from '@simoncodes-ca/core';
+import { normalize, openCollection, ReadOnlyCollectionError } from '@simoncodes-ca/core';
 import { CommandCancelledError, defineCommand, NO_COLLECTIONS_MESSAGE } from '../runner/command-runner';
-import { ALL_ITEMS_SENTINEL, aggregateNumericFields, ConsoleFormatter, ErrorMessages } from '../utils';
+import { ALL_ITEMS_SENTINEL, aggregateNumericFields, ConsoleFormatter } from '../utils';
 
 export interface NormalizeOptions {
   collection?: string;
@@ -69,7 +69,6 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
     }
 
     if (all && interactive) {
-      console.log('');
       ConsoleFormatter.warning('This will normalize ALL collections in your project.');
       const confirmed = await ask({ type: 'confirm', name: 'confirmed', message: 'Are you sure?', initial: false });
       if (confirmed.confirmed !== true) {
@@ -97,9 +96,8 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
             ConsoleFormatter.info(`Skipping read-only collection: ${name}`);
           }
         } else {
-          if (!answers.json) {
-            console.log(ErrorMessages.COLLECTION_READ_ONLY(name));
-          }
+          // stderr, so it is reported with --json too.
+          ConsoleFormatter.error(new ReadOnlyCollectionError(name).message);
           failed = true;
         }
         continue;
@@ -147,9 +145,10 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
         }
       } catch (e: unknown) {
         failed = true;
-        if (!answers.json) {
-          ConsoleFormatter.indent(`❌ ${e instanceof Error ? e.message : 'Failed to normalize collection'}`);
-        }
+        // stderr, so it is reported with --json too.
+        ConsoleFormatter.error(
+          `Failed to normalize collection "${name}": ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     }
 
@@ -197,7 +196,6 @@ function printSummary(
   }
 
   if (options.dryRun) {
-    console.log('');
     ConsoleFormatter.warning('Dry run completed - no changes were made.');
   }
 }

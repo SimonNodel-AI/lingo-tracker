@@ -24,7 +24,6 @@ Return to [architecture README](README.md).
 - [Shared Utilities](#shared-utilities)
   - [Multiselect Helpers (`prompt-utils.ts`)](#multiselect-helpers-prompt-utilsts)
   - [Output Formatting (`console-formatter.ts`)](#output-formatting-console-formatterts)
-  - [Error Messages (`error-messages.ts`)](#error-messages-error-messagests)
   - [String Parsers (`string-parsers.ts`)](#string-parsers-string-parsersts)
   - [Result Aggregator (`result-aggregator.ts`)](#result-aggregator-result-aggregatorts)
 
@@ -38,7 +37,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 |---|---|---|
 | `init` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales`, `--setup-bundle`, `--bundle-dist`, `--bundle-name`, `--token-casing`, `--type-dist-file`, `--enable-auto-translation`, `--translation-provider`, `--translation-api-key-env` | Writes `.lingo-tracker.json` directly (no `@simoncodes-ca/core` function — uses `CONFIG_FILENAME`, `DEFAULT_CONFIG` constants) |
 | `add-collection` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales` | `addCollection()` |
-| `delete-collection` | `--collection-name` | `deleteCollectionByName()` |
+| `delete-collection` | `--collection-name`, `--yes` | `deleteCollectionByName()`. Interactive, it first asks `Delete collection "x" (translations folder: …)?` unless `--yes`; a decline prints `❌ Delete collection cancelled.` and exits 0. Non-interactive, it does not ask. Only the registration is removed; the files stay |
 | `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | `updateCollection()` with the stored collection and the new `tags` |
 | `add-locale` | `--collection`, `--locale` | `addLocaleToCollection()` |
 | `remove-locale` | `--collection`, `--locale` | `removeLocaleFromCollection()` |
@@ -138,7 +137,9 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 
 The context (`CommandContext`) has `cwd`, `interactive`, `ask`, and `answers` (the flags merged with the prompt answers). It has `config` and `configPath` unless `config: false`. It has `collection` (the core `Collection`) only when `collection` is `'writable'` or `'read'`. The type follows the spec, so a `'none'` command cannot read `ctx.collection`.
 
-`ask(questions)` runs follow-up prompts inside `run`: confirmations (`delete-resource`, `normalize --all`, the `add-resource` override), the `add-resource` translations loop, the `add-collection` read-only question, and the `install-skill` loop. A cancel in `ask` is the same cancel as in the declared questions. A command throws `CommandCancelledError` when the user declines a confirmation.
+`ask(questions)` runs follow-up prompts inside `run`: confirmations (`delete-resource`, `delete-collection`, `normalize --all`, the `add-resource` override), the `add-resource` translations loop, the `add-collection` read-only question, and the `install-skill` loop. A cancel in `ask` is the same cancel as in the declared questions. A command throws `CommandCancelledError` when the user declines a confirmation.
+
+A destructive command confirms only when interactive, and `--yes` skips the question (`delete-resource`, `delete-collection`). Non-interactive, the flags are the consent: there is nobody to ask. This matters for `delete-collection` because the runner auto-selects the only collection, so `lingo-tracker delete-collection` alone names its target.
 
 ### What Each Command Opens
 
@@ -243,14 +244,20 @@ flowchart TD
 
 ## Errors and Exit Codes
 
+**Stdout is the payload, stderr is diagnostics.** Every `❌` error and `⚠️` warning a command prints goes to stderr, with its detail lines: the runner's failure and cancel lines, the config errors, and every `ConsoleFormatter.error` / `ConsoleFormatter.warning` call. Examples are a `bundle` that fails or has warnings (also with `--quiet`), an `export` locale that fails, `import` and `export` warning and error lists, the `delete-resource` confirmation warning, and the `validate` configuration errors. Success, info, progress, section, key-value and result lines stay on stdout. Two kinds of output use `❌`/`⚠️` as markers and stay on stdout, because they are not the command's diagnostics. The first is the `validate` summary, a report whose rows are marked by status. The second is the `--verbose` progress stream from core (`import --verbose` prints `❌ ICU auto-fix failed for …` lines). The same auto-fix failures are also recorded in the import summary file.
+
+So a command whose stdout is piped keeps it clean. `glossary --stdout` writes only the glossary JSON to stdout; its status line and warnings go to stderr. `normalize --json` writes only the JSON; a failed or read-only collection is still reported, on stderr. No blank line is printed on stdout only to frame a stderr block.
+
+**Breaking change for scripts:** failure and warning text that a script captured from stdout is now on stderr (`2>&1` restores the old combined output).
+
 Core raises [typed errors](glossary.md#typed-errors) whose message is already the user-facing text. A command does not catch them: it lets them reach the runner, which prints them. The runner branches on the class only for the config errors (stderr, with a hint) and a cancel; every other error takes one path:
 
 | Thrown | Printed | Exit code |
 |---|---|---|
 | `ConfigNotFoundError` | `❌ Configuration file .lingo-tracker.json not found.` and `Run "lingo-tracker init" to initialize a project.` (stderr) | 1 |
 | `ConfigParseError`, or another error reading the file | `❌ Failed to parse configuration file: <reason>` (stderr) | 1 |
-| `CommandCancelledError` (a cancelled prompt, or a declined confirmation) | `❌ <Name> cancelled.` (one line) | 0 |
-| Any other error (`CollectionNotFoundError` → `❌ Collection "x" not found`, `ReadOnlyCollectionError`, `ResourceNotFoundError`, a plain `Error`, …) | `❌ <message>` | 1 |
+| `CommandCancelledError` (a cancelled prompt, or a declined confirmation) | `❌ <Name> cancelled.` (one line, stderr) | 0 |
+| Any other error (`CollectionNotFoundError` → `❌ Collection "x" not found`, `ReadOnlyCollectionError`, `ResourceNotFoundError`, a plain `Error`, …) | `❌ <message>` (stderr) | 1 |
 
 A cancel is not a failure: the user chose to stop, so the exit code is 0.
 
@@ -259,7 +266,7 @@ Exit codes:
 | Situation | Exit code |
 |---|---|
 | Success | 0 |
-| Prompt cancelled (Ctrl+C), or a confirmation declined (`delete-resource`, `add-resource` override, `normalize --all`) | 0 |
+| Prompt cancelled (Ctrl+C), or a confirmation declined (`delete-resource`, `delete-collection`, `add-resource` override, `normalize --all`) | 0 |
 | `init` in a folder that is already initialized | 0 |
 | Config file missing or unreadable | 1 |
 | No collections configured, on a command that needs one | 1 |
@@ -275,7 +282,7 @@ Exit codes:
 | Partial failure: `delete-resource` or `move` reports per-key errors; `normalize` fails on a collection; `bundle` fails on a bundle, names an unknown bundle, or finds no bundles | 1 |
 | `validate` failed, or had nothing to validate; `translate-locale` with failed entries (`Translation failed: <message>` when the run cannot start); `export` with errors or hierarchical conflicts (not with `--dry-run`); `import` with errors or failed resources (`Import failed: <message>` when parsing fails) | 1 |
 
-`normalize --all` skips a read-only collection with an info line and does not fail.
+`normalize --all` skips a read-only collection with an info line and does not fail. A collection that fails, or a read-only `--collection`, prints `❌ Failed to normalize collection "x": <message>` or `❌ Collection "x" is read-only. …` on stderr, also with `--json` (before, `--json` printed nothing for it).
 
 ### Changes Introduced by the Command Runner
 
@@ -302,7 +309,7 @@ For scripts written against the earlier CLI:
 - Every base value is compared. The 500-candidate cap and its `Note: only the first 500 candidates were compared` warning are gone.
 - A match is a base value at least 80% similar to `--value` (as before), **or** one that contains `--value` or is contained in it as whole words with a similarity of at least 40%. So `--value "Save"` now also reports `"Save draft"` (similarity 40%), but not `"Save and Close"` (29%). A fragment inside a word does not count (`connect` in `connection`, `don` in `don't`).
 - Ranking: similarity, then an entry whose key contains `--value`, then key (key order is new; ties were in discovery order before).
-- A folder the reader cannot read prints `⚠️  Skipped unreadable folder: <message>` on stdout (it was a `console.error` line from the search), and the other folders are still searched.
+- A folder the reader cannot read prints `⚠️  Skipped unreadable folder: <message>` on stderr (a warning; it was a `console.error` line from the search), and the other folders are still searched.
 
 ---
 
@@ -379,35 +386,20 @@ Prompting itself is done by the runner (`prompts` in the spec, `ctx.ask` in `run
 
 ### Output Formatting (`console-formatter.ts`)
 
-`ConsoleFormatter` is a `const` object with six methods used by every command for terminal output:
+`ConsoleFormatter` is a `const` object with eight methods used by every command for terminal output:
 
 | Method | Prefix | Use |
 |---|---|---|
 | `ConsoleFormatter.success(msg)` | `✅` | Operation completed successfully |
-| `ConsoleFormatter.error(msg)` | `❌` | Operation failed |
-| `ConsoleFormatter.warning(msg)` | `⚠️` | Non-fatal issue |
+| `ConsoleFormatter.error(msg, details?)` | `❌` | Operation failed (stderr) |
+| `ConsoleFormatter.warning(msg, details?)` | `⚠️` | Non-fatal issue (stderr) |
 | `ConsoleFormatter.info(msg)` | `ℹ️` | Informational message |
 | `ConsoleFormatter.progress(msg)` | `🔄` | In-progress activity |
 | `ConsoleFormatter.section(title)` | `📊` | Section header with a `─` separator line |
 | `ConsoleFormatter.indent(msg, level)` | *(spaces)* | Indented detail line (2 spaces per level) |
 | `ConsoleFormatter.keyValue(key, value, indent)` | *(spaces)* | `Key: Value` pair at a given indent level |
 
-All methods write to `console.log`. The object is `as const` so TypeScript enforces the exact method set at every call site.
-
-### Error Messages (`error-messages.ts`)
-
-`ErrorMessages` is a `const` object of string constants and factory functions. It centralizes every user-facing error string so wording is consistent across commands and tests assert against a single source of truth.
-
-Selected entries:
-
-The runner owns the collection, missing-option and cancel messages; they are not in `ErrorMessages`.
-
-```typescript
-ErrorMessages.CONFIG_NOT_FOUND            // static string
-ErrorMessages.COLLECTION_READ_ONLY(name)  // factory → "❌ Collection "name" is read-only. …" (normalize)
-ErrorMessages.OPERATION_FAILED(op, why?)  // factory → "❌ Op failed: reason"
-ErrorMessages.RESOURCE_NOT_FOUND(key)     // factory → "❌ Resource key "key" not found."
-```
+`error` and `warning` write to stderr (`console.error`), and so do their `details`: lines printed under the message, indented one level, so a header such as `Errors (3):` and its list stay on one stream. Every other method writes to `console.log`. This file decides the stream for every command ([stdout is the payload, stderr is diagnostics](#errors-and-exit-codes)). No command calls `console.error` or `console.warn` for its own `❌`/`⚠️` lines. The runner's two config-error lines are the one direct `console.error` (the hint line under them is not indented). `glossary --stdout` also writes its `✅` status line with `console.error`, so that stdout holds only the JSON. The object is `as const` so TypeScript enforces the exact method set at every call site.
 
 ### String Parsers (`string-parsers.ts`)
 

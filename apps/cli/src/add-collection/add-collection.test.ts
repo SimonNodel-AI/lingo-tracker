@@ -74,7 +74,7 @@ describe('addCollectionCommand', () => {
   it('exits 1 naming the missing flags in non-interactive mode', async () => {
     await addCollectionCommand({ collectionName: 'admin' });
 
-    expect(console.log).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       '❌ Missing required options in non-interactive mode: --translations-folder',
     );
     expect(addCollection).not.toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe('addCollectionCommand', () => {
   it('exits 1 when the collection already exists', async () => {
     await addCollectionCommand({ collectionName: 'existing', translationsFolder: 'src/x' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "existing" already exists.');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "existing" already exists.');
     expect(addCollection).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -96,7 +96,7 @@ describe('addCollectionCommand', () => {
 
     await addCollectionCommand({ collectionName: 'admin', translationsFolder: 'src/admin' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Invalid locale "xx_"');
+    expect(console.error).toHaveBeenCalledWith('❌ Invalid locale "xx_"');
     expect(process.exitCode).toBe(1);
   });
 
@@ -127,7 +127,7 @@ describe('addCollectionCommand', () => {
 
       await addCollectionCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Add collection cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Add collection cancelled.');
       expect(addCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });

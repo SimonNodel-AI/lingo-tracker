@@ -64,8 +64,9 @@ export const bundleCommand = defineCommand<BundleOptions>()({
 async function run(config: LingoTrackerConfig, cwd: string, options: Answers<BundleOptions>): Promise<CommandResult> {
   // Check if bundles are configured
   if (!config.bundles || Object.keys(config.bundles).length === 0) {
-    ConsoleFormatter.error('No bundles configured in .lingo-tracker.json');
-    ConsoleFormatter.indent('Add a "bundles" section to your configuration file.');
+    ConsoleFormatter.error('No bundles configured in .lingo-tracker.json', [
+      'Add a "bundles" section to your configuration file.',
+    ]);
     return { exitCode: 1 };
   }
 
@@ -148,7 +149,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
             );
           }
         } else if (result.typeGenerationResult.errorReason) {
-          ConsoleFormatter.indent(`└─ Types: Error (${result.typeGenerationResult.errorReason})`);
+          ConsoleFormatter.error(`Type generation failed: ${result.typeGenerationResult.errorReason}`);
         } else if (result.typeGenerationResult.skippedReason) {
           if (!options.quiet) {
             const skippedReasonMessages: Record<string, string> = {
@@ -163,18 +164,16 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         }
       } else if (hasTypeDistConfigured(bundleDefinition)) {
         // Should have result if configured, but just in case
-        ConsoleFormatter.indent(`└─ Types: Failed (No result returned)`);
+        ConsoleFormatter.error('Type generation failed: no result returned');
       } else if (!options.quiet) {
         ConsoleFormatter.indent(`└─ Types: Skipped (no typeDistFile configured)`);
       }
 
       if (result.warnings.length > 0) {
-        ConsoleFormatter.indent(`⚠️  Warnings: ${result.warnings.length}`);
-        if (options.verbose) {
-          result.warnings.forEach((warning) => {
-            ConsoleFormatter.indent(`   - ${warning}`, 2);
-          });
-        }
+        ConsoleFormatter.warning(
+          `Warnings: ${result.warnings.length}`,
+          options.verbose ? result.warnings.map((warning) => `- ${warning}`) : [],
+        );
       }
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to generate bundle';
@@ -186,7 +185,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         error: errorMessage,
       });
 
-      ConsoleFormatter.indent(`❌ ${errorMessage}`);
+      ConsoleFormatter.error(errorMessage);
     }
   }
 
@@ -220,9 +219,6 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
 
     const errors = bundleResults.filter((r) => r.error);
     if (errors.length > 0) {
-      if (!options.quiet) {
-        console.log('');
-      }
       ConsoleFormatter.warning(`${errors.length} bundle(s) failed to generate`);
     }
   }

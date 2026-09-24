@@ -82,7 +82,7 @@ describe('translateLocaleCommand', () => {
 
     await translateLocaleCommand({ locale: 'fr' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Translation failed: API key missing');
+    expect(console.error).toHaveBeenCalledWith('❌ Translation failed: API key missing');
     expect(process.exitCode).toBe(1);
   });
 
@@ -92,7 +92,7 @@ describe('translateLocaleCommand', () => {
   ])('exits 1 for %s', async (_label, locale, message) => {
     await translateLocaleCommand({ locale });
 
-    expect(console.log).toHaveBeenCalledWith(message);
+    expect(console.error).toHaveBeenCalledWith(message);
     expect(translateLocale).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -102,7 +102,7 @@ describe('translateLocaleCommand', () => {
 
     await translateLocaleCommand({});
 
-    expect(console.log).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration.',
     );
     expect(process.exitCode).toBe(1);
@@ -111,7 +111,7 @@ describe('translateLocaleCommand', () => {
   it('exits 1 without --locale in non-interactive mode', async () => {
     await translateLocaleCommand({});
 
-    expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
+    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
     expect(translateLocale).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -149,7 +149,7 @@ describe('translateLocaleCommand', () => {
 
       await translateLocaleCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Translate locale cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Translate locale cancelled.');
       expect(translateLocale).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });

@@ -19,12 +19,16 @@ function statusRank(item: ResourceSummaryDto, locales: string[]): number {
   return rank === -1 ? VERIFIED_RANK : rank;
 }
 
-/** Sorts by full key, or by status (then full key). Full keys order a folder list the same as its entry keys. */
+/**
+ * Sorts by full key, or by status over `locales` (then full key). Full keys order a
+ * folder list the same as its entry keys. `locales` are the locales in effect: the
+ * store passes every available locale when none is selected.
+ */
 export function sortTranslations<T extends ResourceSummaryDto>(
   items: T[],
   field: SortField,
   direction: SortDirection,
-  selectedLocales: string[],
+  locales: string[],
 ): T[] {
   const sortedItems = [...items];
 
@@ -36,8 +40,8 @@ export function sortTranslations<T extends ResourceSummaryDto>(
     }
 
     // Sort by status
-    const statusA = statusRank(itemA, selectedLocales);
-    const statusB = statusRank(itemB, selectedLocales);
+    const statusA = statusRank(itemA, locales);
+    const statusB = statusRank(itemB, locales);
 
     if (statusA !== statusB) {
       return statusA - statusB;

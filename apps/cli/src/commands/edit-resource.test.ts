@@ -147,7 +147,7 @@ describe('editResourceCommand', () => {
   it('should warn if locale provided without value', async () => {
     vi.mocked(loadConfig).mockReturnValue(mockConfig);
 
-    const consoleSpy = vi.spyOn(console, 'log');
+    const stderrSpy = vi.spyOn(console, 'error');
 
     const options = {
       collection: 'default',
@@ -158,9 +158,7 @@ describe('editResourceCommand', () => {
 
     await editResourceCommand(options);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Both --locale and --localeValue must be provided'),
-    );
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Both --locale and --localeValue must be provided'));
     expect(mockEditResource).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'default' }),
       'apps.common.buttons.ok',
@@ -263,7 +261,7 @@ describe('editResourceCommand', () => {
 
     await editResourceCommand({ collection: 'default', key: 'apps.missing', baseValue: 'x' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Resource not found: apps.missing');
+    expect(console.error).toHaveBeenCalledWith('❌ Resource not found: apps.missing');
     expect(process.exitCode).toBe(1);
   });
 
@@ -273,7 +271,7 @@ describe('editResourceCommand', () => {
     await editResourceCommand({ collection: 'default', baseValue: 'x' });
 
     expect(mockEditResource).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
+    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
     expect(process.exitCode).toBe(1);
   });
 
@@ -288,19 +286,19 @@ describe('editResourceCommand', () => {
     const logged = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.map((call) => String(call[0]));
 
     it('warns about the new base value after a successful edit', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
-      expect(logged(logSpy)).toContain('⚠️  Preferred terminology: consider "Investment" instead of "Expenditure"');
-      expect(logged(logSpy)).toContain('  Finance style guide');
+      expect(logged(stderrSpy)).toContain('⚠️  Preferred terminology: consider "Investment" instead of "Expenditure"');
+      expect(logged(stderrSpy)).toContain('  Finance style guide');
       expect(process.exitCode).toBe(0);
-      logSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('does not check when the base value was not part of the edit', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
 
       await editResourceCommand({
@@ -312,12 +310,12 @@ describe('editResourceCommand', () => {
       });
 
       expect(loadPreferredTerminology).not.toHaveBeenCalled();
-      expect(logged(logSpy).some((line) => line.includes('Preferred terminology'))).toBe(false);
-      logSpy.mockRestore();
+      expect(logged(stderrSpy).some((line) => line.includes('Preferred terminology'))).toBe(false);
+      stderrSpy.mockRestore();
     });
 
     it('does not check when nothing changed', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       mockEditResource.mockResolvedValue({
         resolvedKey: 'budget.title',
         updated: false,
@@ -327,11 +325,11 @@ describe('editResourceCommand', () => {
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
       expect(loadPreferredTerminology).not.toHaveBeenCalled();
-      logSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('prints one config warning and skips the check when the rule file is broken', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       vi.mocked(loadPreferredTerminology).mockReturnValue({
         rules: [],
         filePath: '/test/project/terms.json',
@@ -341,10 +339,10 @@ describe('editResourceCommand', () => {
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
-      const lines = logged(logSpy);
+      const lines = logged(stderrSpy);
       expect(lines).toContain('⚠️  Preferred terminology checks skipped: not valid JSON');
       expect(lines.filter((line) => line.includes('Preferred terminology'))).toHaveLength(1);
-      logSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
   });
 });

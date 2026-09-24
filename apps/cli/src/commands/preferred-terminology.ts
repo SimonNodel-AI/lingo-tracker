@@ -124,12 +124,14 @@ function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, c
     writePreferredTerminology(result.filePath, next);
   } catch (error) {
     if (error instanceof PreferredTerminologyValidationError) {
-      ConsoleFormatter.error('Preferred terminology not saved:');
-      for (const ruleError of error.errors) {
-        const row = next[ruleError.index];
-        const label = row ? `"${row.discouraged} → ${row.preferred}"` : `row ${ruleError.index + 1}`;
-        ConsoleFormatter.indent(`${label}: ${ruleError.message}`);
-      }
+      ConsoleFormatter.error(
+        'Preferred terminology not saved:',
+        error.errors.map((ruleError) => {
+          const row = next[ruleError.index];
+          const label = row ? `"${row.discouraged} → ${row.preferred}"` : `row ${ruleError.index + 1}`;
+          return `${label}: ${ruleError.message}`;
+        }),
+      );
       return { exitCode: 1 };
     }
     throw new Error(error instanceof Error ? error.message : String(error));

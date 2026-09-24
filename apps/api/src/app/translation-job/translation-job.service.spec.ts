@@ -123,6 +123,7 @@ describe('TranslationJobService', () => {
     expect(job).toBeDefined();
     expect(job?.status).toBe('failed');
     expect(job?.completedAt).toBeDefined();
+    expect(job?.error).toBe('API quota exceeded');
   });
 
   it('job status becomes failed when translateLocale throws a generic Error', async () => {
@@ -136,6 +137,18 @@ describe('TranslationJobService', () => {
     const job = service.getJob(jobId);
     expect(job).toBeDefined();
     expect(job?.status).toBe('failed');
+    expect(job?.error).toBe('Unexpected network failure');
+  });
+
+  it('job error is a generic message when translateLocale rejects with a non-Error', async () => {
+    mockTranslateLocale.mockRejectedValue('boom');
+
+    const jobId = startJob(service);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(service.getJob(jobId)?.error).toBe('An unexpected error occurred');
   });
 
   it.each([
@@ -176,6 +189,7 @@ describe('TranslationJobService', () => {
     expect(job).toBeDefined();
     expect(job?.failures).toBeUndefined();
     expect(job?.skippedKeys).toBeUndefined();
+    expect(job?.error).toBeUndefined();
   });
 
   it('updates job counts when onProgress is called', async () => {

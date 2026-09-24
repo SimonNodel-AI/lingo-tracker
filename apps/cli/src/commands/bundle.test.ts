@@ -85,7 +85,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
+      expect(console.error).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
       expect(process.exitCode).toBe(1);
     });
 
@@ -96,7 +96,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
+      expect(console.error).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
       expect(process.exitCode).toBe(1);
     });
   });
@@ -155,7 +155,7 @@ describe('bundleCommand', () => {
     it('should show error for non-existent bundle', async () => {
       await bundleCommand({ name: 'nonexistent' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Bundle "nonexistent" not found.');
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle "nonexistent" not found.');
       expect(mockGenerateBundle).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -243,9 +243,9 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', quiet: true });
 
-      expect(console.log).toHaveBeenCalledTimes(1);
-      expect(console.log).toHaveBeenCalledWith('  ⚠️  Warnings: 1');
-      expect(console.log).not.toHaveBeenCalledWith('       - Warning 1');
+      expect(console.log).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalledWith('⚠️  Warnings: 1');
     });
 
     it('should display errors in quiet mode', async () => {
@@ -255,8 +255,9 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', quiet: true });
 
-      expect(console.log).toHaveBeenCalledTimes(1);
-      expect(console.log).toHaveBeenCalledWith('  ❌ Bundle generation failed');
+      expect(console.log).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle generation failed');
     });
 
     it('should display type generation errors in quiet mode', async () => {
@@ -276,8 +277,9 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', quiet: true });
 
-      expect(console.log).toHaveBeenCalledTimes(1);
-      expect(console.log).toHaveBeenCalledWith('  └─ Types: Error (Unable to write type file)');
+      expect(console.log).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalledWith('❌ Type generation failed: Unable to write type file');
     });
 
     it('should display warnings count when warnings exist', async () => {
@@ -290,7 +292,8 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core' });
 
-      expect(console.log).toHaveBeenCalledWith('  ⚠️  Warnings: 2');
+      expect(console.error).toHaveBeenCalledWith('⚠️  Warnings: 2');
+      expect(console.error).not.toHaveBeenCalledWith('  - Warning 1');
     });
 
     it('should display warning details in verbose mode', async () => {
@@ -303,8 +306,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', verbose: true });
 
-      expect(console.log).toHaveBeenCalledWith('       - Warning 1');
-      expect(console.log).toHaveBeenCalledWith('       - Warning 2');
+      expect(vi.mocked(console.error).mock.calls).toEqual([['⚠️  Warnings: 2'], ['  - Warning 1'], ['  - Warning 2']]);
     });
 
     it('should display locale filter in verbose mode', async () => {
@@ -357,8 +359,8 @@ describe('bundleCommand', () => {
       expect(console.log).not.toHaveBeenCalledWith('  Total files generated: 5');
       expect(console.log).toHaveBeenCalledWith('  Total warnings: 1');
       expect(console.log).toHaveBeenCalledWith('  Run with --verbose to see warning details');
-      expect(console.log).toHaveBeenCalledWith('  ⚠️  Warnings: 1');
-      expect(console.log).not.toHaveBeenCalledWith('       - Warning 1');
+      expect(console.error).toHaveBeenCalledWith('⚠️  Warnings: 1');
+      expect(console.error).not.toHaveBeenCalledWith('  - Warning 1');
     });
 
     it('should display type generation success', async () => {
@@ -450,10 +452,10 @@ describe('bundleCommand', () => {
     it('should error when --token-constant-name is used with multiple bundles via --name', async () => {
       await bundleCommand({ name: 'core,admin', tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundle).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -462,10 +464,10 @@ describe('bundleCommand', () => {
       // In non-TTY mode with no --name, all bundles are processed
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundle).not.toHaveBeenCalled();
     });
 
@@ -527,7 +529,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core,admin' });
 
-      expect(console.log).toHaveBeenCalledWith('  ❌ Bundle generation failed');
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle generation failed');
       expect(console.log).toHaveBeenCalledWith('🔄 Generating bundle: admin');
       expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
       expect(process.exitCode).toBe(1);
@@ -547,7 +549,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core,admin' });
 
-      expect(console.log).toHaveBeenCalledWith('⚠️  1 bundle(s) failed to generate');
+      expect(console.error).toHaveBeenCalledWith('⚠️  1 bundle(s) failed to generate');
     });
   });
 
@@ -606,7 +608,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
       expect(mockGenerateBundle).not.toHaveBeenCalled();
@@ -623,7 +625,7 @@ describe('bundleCommand', () => {
 
       await expect(bundleCommand({})).resolves.toBeUndefined();
 
-      expect(console.log).toHaveBeenCalledWith('❌ Bundle generation cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle generation cancelled.');
       expect(mockGenerateBundle).not.toHaveBeenCalled();
       expect(exit).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);

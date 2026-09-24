@@ -140,7 +140,7 @@ describe('find-similar', () => {
     it('exits with code 1 when --value is missing', async () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       await findSimilarCommand({ collection: 'tracker' });
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --value');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --value');
       expect(readCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -148,14 +148,14 @@ describe('find-similar', () => {
     it('exits with code 1 when --value is an empty string', async () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       await findSimilarCommand({ collection: 'tracker', value: '' });
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --value');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --value');
       expect(process.exitCode).toBe(1);
     });
 
     it('exits with code 1 when --value is whitespace only', async () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       await findSimilarCommand({ collection: 'tracker', value: '   ' });
-      expect(console.log).toHaveBeenCalledWith('❌ --value must not be blank');
+      expect(console.error).toHaveBeenCalledWith('❌ --value must not be blank');
       expect(readCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -176,7 +176,7 @@ describe('find-similar', () => {
         collections: { tracker: { translationsFolder: 'a' }, admin: { translationsFolder: 'b' } },
       });
       await findSimilarCommand({ value: 'hello' });
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required option: --collection');
       expect(readCollection).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -184,7 +184,7 @@ describe('find-similar', () => {
     it('exits with code 1 when collection is not found in config', async () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       await findSimilarCommand({ collection: 'nonexistent', value: 'hello' });
-      expect(console.log).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
+      expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
       expect(process.exitCode).toBe(1);
     });
   });
@@ -414,7 +414,7 @@ describe('find-similar', () => {
 
       await findSimilarCommand({ collection: 'tracker', value: 'OK' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         '⚠️  Skipped unreadable folder: Unexpected token in resource_entries.json',
       );
       expect(console.log).toHaveBeenCalledWith('  common.ok → "OK" (similarity: 100%)');

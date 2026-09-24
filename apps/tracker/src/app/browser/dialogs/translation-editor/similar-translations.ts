@@ -21,6 +21,8 @@ interface SimilarRow {
   readonly leafSegment: string;
   readonly value: string;
   readonly isExact: boolean;
+  /** `similarity` (0..1) as a whole percentage; absent when the hit carries no similarity. */
+  readonly similarityPercent: number | undefined;
 }
 
 @Component({
@@ -73,6 +75,7 @@ export class SimilarTranslations {
         leafSegment: result.entryKey,
         value: this.getTranslationValue(result),
         isExact: this.isExactMatch(result),
+        similarityPercent: result.similarity === undefined ? undefined : Math.round(result.similarity * 100),
       };
     }),
   );

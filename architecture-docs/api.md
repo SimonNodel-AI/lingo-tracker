@@ -61,7 +61,7 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 | `GET` | `/collections/:collectionName/resources/cache/status` | Poll the [Collection Index](glossary.md#collection-index) state (starts indexing) | — | `CacheStatusDto` |
 | `GET` | `/collections/:collectionName/resources/search` | [Resource Search](glossary.md#resource-search) across the collection. `mode=text` (default) finds the query in keys and in the values of every locale; `mode=similar` finds base values similar to the query and ranks them by `similarity`. Any other `mode` is a text search. `maxResults` must be a positive integer (at most 500; a larger value is 500); anything else (absent, not a number, `0`, negative, a fraction) is 100. All matches are ranked before `maxResults` applies; `limited` is true when more matches exist. | query: `SearchTranslationsDto` (`query`, `maxResults?`, `mode?`) | `SearchResultsDto` |
 | `POST` | `/collections/:collectionName/resources/translate-locale` | Fire-and-forget: start a bulk locale translation job | `TranslateLocaleRequestDto` | `TranslateLocaleJobDto` (202 Accepted) |
-| `GET` | `/collections/:collectionName/resources/translate-locale/:jobId` | Poll a translation job by ID | — | `TranslateLocaleJobDto` |
+| `GET` | `/collections/:collectionName/resources/translate-locale/:jobId` | Poll a translation job by ID. A `failed` job carries `error`, the reason it stopped. | — | `TranslateLocaleJobDto` |
 
 ### Folders
 
@@ -339,7 +339,7 @@ Bulk locale translation (`POST /resources/translate-locale`) can take seconds to
 
 ```mermaid
 sequenceDiagram
-    participant UI as Tracker UI
+    participant UI as Client
     participant RC as ResourcesController
     participant JS as TranslationJobService
     participant Core as @simoncodes-ca/core
@@ -376,7 +376,9 @@ sequenceDiagram
 
 **Skips.** `skippedCount` and `skippedKeys` cover every resource the Translator did not store: complex ICU, a lost placeholder, or a translation that dropped a [protected term](glossary.md#protected-term). The DTO does not carry the reason.
 
-**Error handling.** If `translateLocale()` rejects with a `TranslationError` (a missing API key, which is only checked when some resource needs work) or any other error, the job transitions to `failed` and the `error` field is set. A provider failure in one batch does not reject: that batch's resources are listed in `failures`. No retry is attempted. The UI can display the error and offer a manual re-trigger.
+**Error handling.** If `translateLocale()` rejects with a `TranslationError` (a missing API key, which is only checked when some resource needs work) or any other error, the job transitions to `failed` and its `error` is set: the error's message, or `An unexpected error occurred` for a rejection that is not an `Error`. `TranslateLocaleJobDto.error` carries it, so a polling client can show why the job failed. The DTO has `error` only when it is set. A provider failure in one batch does not reject: that batch's resources are listed in `failures`. No retry is attempted.
+
+**Clients.** The Tracker does not start or poll translate-locale jobs today; it translates one resource at a time (`POST /resources/translate`). The job endpoints serve other clients (scripts, tools). A client shows `error` for a `failed` job and can offer a manual re-trigger.
 
 ---
 

@@ -216,7 +216,7 @@ describe('defineCommand', () => {
       await invoke({});
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
+      expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
       expect(process.exitCode).toBe(1);
     });
 
@@ -254,7 +254,7 @@ describe('defineCommand', () => {
       await invoke({});
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required option: --collection');
       expect(process.exitCode).toBe(1);
     });
 
@@ -267,7 +267,7 @@ describe('defineCommand', () => {
         run,
       })({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection-name');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required option: --collection-name');
     });
 
     it("treats --collection '' as not given", async () => {
@@ -276,7 +276,7 @@ describe('defineCommand', () => {
       await invoke({ collection: '' });
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required option: --collection');
       expect(process.exitCode).toBe(1);
     });
 
@@ -291,7 +291,7 @@ describe('defineCommand', () => {
       await invoke({});
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Do thing cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Do thing cancelled.');
       expect(process.exitCode).toBe(0);
     });
 
@@ -301,7 +301,7 @@ describe('defineCommand', () => {
       await invoke({ collection: 'nope' });
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+      expect(console.error).toHaveBeenCalledWith('❌ Collection "nope" not found');
       expect(process.exitCode).toBe(1);
     });
 
@@ -311,7 +311,7 @@ describe('defineCommand', () => {
       await invoke({ collection: 'vendor' });
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         '❌ Collection "vendor" is read-only. Its resources cannot be modified.',
       );
       expect(process.exitCode).toBe(1);
@@ -371,7 +371,7 @@ describe('defineCommand', () => {
 
       expect(mockPrompts).not.toHaveBeenCalled();
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         '❌ Missing required options in non-interactive mode: --key, --target-folder',
       );
       expect(process.exitCode).toBe(1);
@@ -383,7 +383,7 @@ describe('defineCommand', () => {
       await invoke({ collection: 'main' });
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
       expect(process.exitCode).toBe(1);
     });
 
@@ -404,7 +404,7 @@ describe('defineCommand', () => {
       await invoke({ collection: 'main' });
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options: --key');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options: --key');
       expect(process.exitCode).toBe(1);
     });
 
@@ -419,7 +419,7 @@ describe('defineCommand', () => {
       await invoke({ collection: 'main' });
 
       expect(run).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Nothing to choose from');
+      expect(console.error).toHaveBeenCalledWith('❌ Nothing to choose from');
       expect(process.exitCode).toBe(1);
     });
 
@@ -434,7 +434,7 @@ describe('defineCommand', () => {
       await invoke({ collection: 'main' });
 
       expect(run).not.toHaveBeenCalled();
-      const cancelLines = vi.mocked(console.log).mock.calls.filter(([line]) => String(line).includes('cancelled'));
+      const cancelLines = vi.mocked(console.error).mock.calls.filter(([line]) => String(line).includes('cancelled'));
       expect(cancelLines).toEqual([['❌ Do thing cancelled.']]);
       expect(process.exitCode).toBe(0);
     });
@@ -456,7 +456,7 @@ describe('defineCommand', () => {
       await invoke({});
 
       expect(after).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Do thing cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Do thing cancelled.');
       expect(process.exitCode).toBe(0);
     });
   });
@@ -472,7 +472,7 @@ describe('defineCommand', () => {
 
       await invoke({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Invalid key "bad..key"');
+      expect(console.error).toHaveBeenCalledWith('❌ Invalid key "bad..key"');
       expect(process.exitCode).toBe(1);
     });
 
@@ -486,7 +486,7 @@ describe('defineCommand', () => {
 
       await invoke({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Do thing cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Do thing cancelled.');
       expect(process.exitCode).toBe(0);
     });
 

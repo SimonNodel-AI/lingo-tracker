@@ -152,7 +152,7 @@ describe('exportCommand', () => {
     it('should error when format is missing in non-TTY mode', async () => {
       await exportCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --format');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --format');
       expect(mockRunExport).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -165,7 +165,7 @@ describe('exportCommand', () => {
       await exportCommand({ format: 'json' });
       expect(process.exitCode).toBe(1);
 
-      expect(console.log).toHaveBeenCalledWith('❌ Invalid output directory');
+      expect(console.error).toHaveBeenCalledWith('❌ Invalid output directory');
     });
   });
 
@@ -296,7 +296,7 @@ describe('exportCommand', () => {
         collection: 'common,nonexistent',
       });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
+      expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
       expect(mockRunExport).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -306,7 +306,7 @@ describe('exportCommand', () => {
 
       await exportCommand({ format: 'json' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
+      expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
       expect(mockRunExport).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -323,7 +323,7 @@ describe('exportCommand', () => {
         locale: 'en', // base locale is filtered out
       });
 
-      expect(console.log).toHaveBeenCalledWith('⚠️  No target locales selected.');
+      expect(console.error).toHaveBeenCalledWith('⚠️  No target locales selected.');
       expect(mockRunExport).not.toHaveBeenCalled();
     });
   });
@@ -370,7 +370,7 @@ describe('exportCommand', () => {
 
       await exportCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Export cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Export cancelled.');
       expect(mockRunExport).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });
@@ -626,9 +626,9 @@ describe('exportCommand', () => {
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warnings (2)'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warning 1'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warning 2'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warnings (2)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warning 1'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warning 2'));
     });
 
     it('should display errors when present', async () => {
@@ -638,9 +638,9 @@ describe('exportCommand', () => {
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Errors (2)'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Error 1'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Error 2'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Errors (2)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Error 1'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Error 2'));
     });
 
     it('should handle hierarchical conflicts as errors', async () => {
@@ -650,8 +650,8 @@ describe('exportCommand', () => {
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Errors (1)'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Conflict at key.path'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Errors (1)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Conflict at key.path'));
       expect(process.exitCode).toBe(1);
     });
 
@@ -669,7 +669,8 @@ describe('exportCommand', () => {
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('fr: Export failed - Export failed for fr'));
+      expect(console.error).toHaveBeenCalledWith('❌ fr: Export failed - Export failed for fr');
+      expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('fr: Export failed'));
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('es: Exported 5 resources to es.json'));
     });
 
@@ -702,7 +703,7 @@ describe('exportCommand', () => {
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('fr: Failed'));
+      expect(console.error).toHaveBeenCalledWith('❌ fr: Failed');
     });
 
     it('should say nothing per locale for a skipped locale', async () => {
@@ -777,7 +778,7 @@ describe('exportCommand', () => {
       await exportCommand({ format: 'json' });
       expect(process.exitCode).toBe(1);
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot export collections with different base locales together'),
       );
     });
@@ -792,7 +793,7 @@ describe('exportCommand', () => {
         includeBase: false,
       });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('--base-property-name has no effect without --include-base'),
       );
     });
@@ -811,7 +812,7 @@ describe('exportCommand', () => {
       expect(process.exitCode).toBe(1);
       expect(mockRunExport).not.toHaveBeenCalled();
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('basePropertyName "value" is a reserved key'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('basePropertyName "value" is a reserved key'));
     });
 
     it('should pass basePropertyName through to the run', async () => {

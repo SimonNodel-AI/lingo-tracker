@@ -209,7 +209,7 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(console.log).toHaveBeenCalledWith('❌ Cannot auto-detect format from .txt extension');
+      expect(console.error).toHaveBeenCalledWith('❌ Cannot auto-detect format from .txt extension');
       expect(importResources).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -296,7 +296,7 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(console.log).toHaveBeenCalledWith('❌ Import failed: Source file not found');
+      expect(console.error).toHaveBeenCalledWith('❌ Import failed: Source file not found');
       expect(importResources).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -308,7 +308,7 @@ describe('import-cmd', () => {
 
       await importCommand({ source: '/test/import.json', locale: 'en', format: 'json' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         '❌ Import failed: Cannot import into base locale "en" with strategy "translation-service".',
       );
       expect(fs.writeFileSync).not.toHaveBeenCalled();
@@ -351,7 +351,7 @@ describe('import-cmd', () => {
 
       await importCommand(options);
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warnings (2)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warnings (2)'));
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Import completed with warnings'));
     });
 
@@ -372,7 +372,7 @@ describe('import-cmd', () => {
 
       await importCommand(options);
       expect(process.exitCode).toBe(1);
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Errors (2)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Errors (2)'));
     });
 
     it('should exit with code 1 when only errors array is non-empty', async () => {
@@ -468,7 +468,7 @@ describe('import-cmd', () => {
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required option: --collection');
       expect(importResources).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -476,7 +476,7 @@ describe('import-cmd', () => {
     it('should exit 1 when the collection does not exist', async () => {
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json', collection: 'nope' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+      expect(console.error).toHaveBeenCalledWith('❌ Collection "nope" not found');
       expect(importResources).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -495,7 +495,7 @@ describe('import-cmd', () => {
     it('should exit 1 and not import when --source is missing in non-TTY mode', async () => {
       await importCommand({ locale: 'es', format: 'json' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --source');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --source');
       expect(importResources).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -503,7 +503,7 @@ describe('import-cmd', () => {
     it('should exit 1 and not import when --locale is missing in non-TTY mode', async () => {
       await importCommand({ source: '/test/import.json', format: 'json' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
       expect(importResources).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -511,7 +511,7 @@ describe('import-cmd', () => {
     it('should name both flags when --source and --locale are missing', async () => {
       await importCommand({ format: 'json' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         '❌ Missing required options in non-interactive mode: --source, --locale',
       );
       expect(process.exitCode).toBe(1);
@@ -577,7 +577,7 @@ describe('import-cmd', () => {
 
       await importCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ Import cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Import cancelled.');
       expect(importResources).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });
@@ -614,8 +614,8 @@ describe('import-cmd', () => {
         [],
         expect.objectContaining({ preferredTerminology: [] }),
       );
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warnings (1)'));
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warnings (1)'));
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Preferred terminology checks skipped: not valid JSON'),
       );
     });
@@ -680,7 +680,7 @@ describe('import-cmd', () => {
           strategy: 'migration',
         });
 
-        expect(console.log).toHaveBeenCalledWith(
+        expect(console.error).toHaveBeenCalledWith(
           expect.stringContaining('Preferred terminology checks skipped: not valid JSON'),
         );
       });

@@ -65,7 +65,9 @@ describe('moveResourceCommand', () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'vendor' });
 
     expect(moveResource).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "vendor" is read-only. Its resources cannot be modified.');
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ Collection "vendor" is read-only. Its resources cannot be modified.',
+    );
     expect(process.exitCode).toBe(1);
   });
 
@@ -79,7 +81,9 @@ describe('moveResourceCommand', () => {
 
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });
 
-    expect(console.log).toHaveBeenCalledWith('   - b.ok already exists');
+    expect(console.error).toHaveBeenCalledWith('⚠️  No resources were moved.');
+    expect(console.error).toHaveBeenCalledWith('❌ Errors:');
+    expect(console.error).toHaveBeenCalledWith('  - b.ok already exists');
     expect(process.exitCode).toBe(1);
   });
 
@@ -88,14 +92,14 @@ describe('moveResourceCommand', () => {
 
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Resource not found: a.ok');
+    expect(console.error).toHaveBeenCalledWith('❌ Resource not found: a.ok');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 naming the missing flags in non-interactive mode', async () => {
     await moveResourceCommand({ collection: 'main' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --source, --dest');
+    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --source, --dest');
     expect(moveResource).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -124,7 +128,7 @@ describe('moveResourceCommand', () => {
 
       await moveResourceCommand({ collection: 'main' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Move resource cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Move resource cancelled.');
       expect(moveResource).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });

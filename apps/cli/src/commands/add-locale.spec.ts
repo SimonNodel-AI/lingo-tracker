@@ -51,7 +51,7 @@ describe('addLocaleCommand', () => {
     await addLocaleCommand({ collection: 'nope', locale: 'de' });
 
     expect(mockCore).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "nope" not found');
     expect(process.exitCode).toBe(1);
   });
 
@@ -59,7 +59,9 @@ describe('addLocaleCommand', () => {
     await addLocaleCommand({ collection: 'vendor', locale: 'de' });
 
     expect(mockCore).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "vendor" is read-only. Its resources cannot be modified.');
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ Collection "vendor" is read-only. Its resources cannot be modified.',
+    );
     expect(process.exitCode).toBe(1);
   });
 
@@ -84,7 +86,7 @@ describe('addLocaleCommand', () => {
     it('exits 1 without calling core when --locale is missing', async () => {
       await addLocaleCommand({ collection: 'main' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
       expect(mockCore).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -94,7 +96,7 @@ describe('addLocaleCommand', () => {
 
       await addLocaleCommand({ collection: 'main', locale: 'de' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Locale "de" already exists in collection "main"');
+      expect(console.error).toHaveBeenCalledWith('❌ Locale "de" already exists in collection "main"');
       expect(process.exitCode).toBe(1);
     });
 
@@ -103,7 +105,7 @@ describe('addLocaleCommand', () => {
 
       await addLocaleCommand({ collection: 'main', locale: 'de' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ unexpected');
+      expect(console.error).toHaveBeenCalledWith('❌ unexpected');
       expect(process.exitCode).toBe(1);
     });
   });
@@ -139,7 +141,7 @@ describe('addLocaleCommand', () => {
       await addLocaleCommand({ collection: 'main' });
 
       expect(mockCore).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Add locale cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Add locale cancelled.');
       expect(process.exitCode).toBe(0);
     });
   });

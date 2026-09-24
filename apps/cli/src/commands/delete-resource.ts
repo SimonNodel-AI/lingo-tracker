@@ -43,11 +43,10 @@ export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
     }
 
     if (result.errors && result.errors.length > 0) {
-      console.log('');
-      ConsoleFormatter.warning('Some operations failed:');
-      for (const error of result.errors) {
-        ConsoleFormatter.indent(`- ${error.key}: ${error.error}`);
-      }
+      ConsoleFormatter.warning(
+        'Some operations failed:',
+        result.errors.map((error) => `- ${error.key}: ${error.error}`),
+      );
       return { exitCode: 1 };
     }
   },
@@ -65,7 +64,7 @@ async function confirmDeletion(keys: string[], ask: Ask): Promise<boolean> {
     }
   }
 
-  console.log('\n⚠️  This will remove translations for all locales.');
+  ConsoleFormatter.warning('This will remove translations for all locales.');
 
   const response = await ask({
     type: 'confirm',

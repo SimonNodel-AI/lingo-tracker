@@ -98,28 +98,28 @@ describe('editCollectionCommand', () => {
   it('exits 1 when --set-tags is combined with --add-tag', async () => {
     await editCollectionCommand('myApp', { setTags: 'foo', addTag: ['bar'] });
     expect(mockUpdateCollection).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
+    expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when --set-tags is combined with --remove-tag', async () => {
     await editCollectionCommand('myApp', { setTags: 'foo', removeTag: ['existing-tag'] });
     expect(mockUpdateCollection).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
+    expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when no options provided', async () => {
     await editCollectionCommand('myApp', {});
     expect(mockUpdateCollection).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Provide at least one of --add-tag, --remove-tag, or --set-tags');
+    expect(console.error).toHaveBeenCalledWith('❌ Provide at least one of --add-tag, --remove-tag, or --set-tags');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when collection is not found', async () => {
     await editCollectionCommand('nonexistent', { addTag: ['foo'] });
     expect(mockUpdateCollection).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
     expect(process.exitCode).toBe(1);
   });
 });

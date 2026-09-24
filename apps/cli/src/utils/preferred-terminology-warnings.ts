@@ -29,9 +29,9 @@ export function warnAboutPreferredTerminology(
   }
 
   for (const { rule } of findPreferredTermFindings(baseValue, loaded.rules)) {
-    ConsoleFormatter.warning(`Preferred terminology: ${describePreferredTermRule(rule)}`);
-    if (rule.reason) {
-      ConsoleFormatter.indent(rule.reason);
-    }
+    ConsoleFormatter.warning(
+      `Preferred terminology: ${describePreferredTermRule(rule)}`,
+      rule.reason ? [rule.reason] : [],
+    );
   }
 }

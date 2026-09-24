@@ -7,6 +7,7 @@ import {
   validateResources,
 } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter } from '../utils';
 
 /**
  * Options for the validate command.
@@ -157,7 +158,7 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
   const collections = Object.keys(config.collections || {}).map((name) => openCollection(config, name, { cwd }));
 
   if (collections.length === 0) {
-    console.error('❌ No collections found in configuration.');
+    ConsoleFormatter.error('No collections found in configuration.');
     return { exitCode: 1 };
   }
 
@@ -165,8 +166,9 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
   const targetLocales = [...new Set(collections.flatMap((collection) => collection.targetLocales))];
 
   if (targetLocales.length === 0) {
-    console.error('❌ No target locales found in configuration.');
-    console.error("Target locales are each collection's locales except its base locale.");
+    ConsoleFormatter.error('No target locales found in configuration.', [
+      "Target locales are each collection's locales except its base locale.",
+    ]);
     return { exitCode: 1 };
   }
 
@@ -183,11 +185,11 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
       // A base locale is never a target, so there is nothing to skip — silently ignore
       continue;
     }
-    console.warn(`⚠️  Skipping unknown locale '${locale}' — not in configured locales`);
+    ConsoleFormatter.warning(`Skipping unknown locale '${locale}' — not in configured locales`);
   }
 
   if (targetLocales.every((locale) => effectiveSkipped.includes(locale))) {
-    console.error('❌ All target locales were skipped; nothing to validate.');
+    ConsoleFormatter.error('All target locales were skipped; nothing to validate.');
     return { exitCode: 1 };
   }
 
@@ -195,7 +197,7 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
   // otherwise a typo in the file would silently switch the check off in CI.
   const preferredTerminology = loadPreferredTerminology(config, cwd);
   if (preferredTerminology.warning) {
-    console.warn(`⚠️  ${preferredTerminology.warning}`);
+    ConsoleFormatter.warning(preferredTerminology.warning);
   }
 
   const compileValues = !options.skipIcu;

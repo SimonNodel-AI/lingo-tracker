@@ -165,7 +165,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "NonExistentCollection" not found');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "NonExistentCollection" not found');
     expect(core.deleteCollectionByName).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -227,7 +227,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand({ collectionName: 'Collection1' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ Cannot delete');
+    expect(console.error).toHaveBeenCalledWith('❌ Cannot delete');
     expect(process.exitCode).toBe(1);
   });
 
@@ -237,18 +237,84 @@ describe('deleteCollectionCommand', () => {
     await deleteCollectionCommand({});
 
     expect(core.deleteCollectionByName).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Missing required option: --collection-name');
+    expect(console.error).toHaveBeenCalledWith('❌ Missing required option: --collection-name');
     expect(process.exitCode).toBe(1);
   });
 
-  it('prompts for one of several collections when interactive', async () => {
+  it('prompts for one of several collections when interactive, then confirms', async () => {
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
-    vi.mocked(prompts).mockResolvedValueOnce({ collection: 'Collection2' });
+    vi.mocked(prompts).mockResolvedValueOnce({ collection: 'Collection2' }).mockResolvedValueOnce({ confirmed: true });
     vi.mocked(core.deleteCollectionByName).mockReturnValue({ message: 'deleted' });
 
     await deleteCollectionCommand({});
 
     expect(core.deleteCollectionByName).toHaveBeenCalledWith('Collection2', { cwd: '/test/project' });
+  });
+
+  describe('confirmation', () => {
+    const singleCollectionConfig = {
+      ...mockConfig,
+      collections: { OnlyCollection: { translationsFolder: 'src/i18n' } },
+    };
+
+    beforeEach(() => {
+      vi.mocked(core.loadConfig).mockReturnValue(singleCollectionConfig);
+      vi.mocked(core.deleteCollectionByName).mockReturnValue({
+        message: 'Collection "OnlyCollection" deleted successfully',
+      });
+    });
+
+    it('asks before deleting an auto-selected collection, naming it and its folder', async () => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+      vi.mocked(prompts).mockResolvedValueOnce({ confirmed: true });
+
+      await deleteCollectionCommand({});
+
+      expect(prompts).toHaveBeenCalledTimes(1);
+      expect(prompts).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'confirm',
+          name: 'confirmed',
+          initial: false,
+          message:
+            'Delete collection "OnlyCollection" (translations folder: src/i18n)? It is removed from .lingo-tracker.json; its files are kept.',
+        }),
+        expect.anything(),
+      );
+      expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', { cwd: '/test/project' });
+      expect(console.log).toHaveBeenCalledWith('Collection "OnlyCollection" deleted successfully');
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('a declined confirmation deletes nothing and cancels with exit 0', async () => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+      vi.mocked(prompts).mockResolvedValueOnce({ confirmed: false });
+
+      await deleteCollectionCommand({ collectionName: 'OnlyCollection' });
+
+      expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+      const cancelLines = vi.mocked(console.error).mock.calls.filter(([line]) => String(line).includes('cancelled'));
+      expect(cancelLines).toEqual([['❌ Delete collection cancelled.']]);
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('--yes skips the confirmation when interactive', async () => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+
+      await deleteCollectionCommand({ collectionName: 'OnlyCollection', yes: true });
+
+      expect(prompts).not.toHaveBeenCalled();
+      expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', { cwd: '/test/project' });
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('does not ask when non-interactive: the flags are the consent', async () => {
+      await deleteCollectionCommand({});
+
+      expect(prompts).not.toHaveBeenCalled();
+      expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', { cwd: '/test/project' });
+      expect(process.exitCode).toBe(0);
+    });
   });
 });

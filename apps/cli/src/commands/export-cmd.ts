@@ -146,7 +146,7 @@ function displayResults(result: ExportRunResult): void {
     if (outcome === 'exported') {
       ConsoleFormatter.indent(`✅ ${locale}: Exported ${resourcesExported} resources to ${filesCreated.join(', ')}`);
     } else if (outcome === 'failed') {
-      ConsoleFormatter.indent(error ? `❌ ${locale}: Export failed - ${error}` : `❌ ${locale}: Failed`);
+      ConsoleFormatter.error(error ? `${locale}: Export failed - ${error}` : `${locale}: Failed`);
     }
   }
 
@@ -155,20 +155,18 @@ function displayResults(result: ExportRunResult): void {
   ConsoleFormatter.keyValue('Resources Exported', result.resourcesExported);
 
   if (result.warnings.length > 0) {
-    console.log('');
-    ConsoleFormatter.warning(`Warnings (${result.warnings.length}):`);
-    result.warnings.forEach((w) => {
-      ConsoleFormatter.indent(`- ${w}`);
-    });
+    ConsoleFormatter.warning(
+      `Warnings (${result.warnings.length}):`,
+      result.warnings.map((w) => `- ${w}`),
+    );
   }
 
   const errors = [...result.errors, ...result.hierarchicalConflicts];
   if (errors.length > 0) {
-    console.log('');
-    ConsoleFormatter.error(`Errors (${errors.length}):`);
-    errors.forEach((e) => {
-      ConsoleFormatter.indent(`- ${e}`);
-    });
+    ConsoleFormatter.error(
+      `Errors (${errors.length}):`,
+      errors.map((e) => `- ${e}`),
+    );
   }
 }
 

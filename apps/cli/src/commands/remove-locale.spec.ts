@@ -56,7 +56,7 @@ describe('removeLocaleCommand', () => {
     await removeLocaleCommand({ collection: 'nope', locale: 'fr' });
 
     expect(mockCore).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "nope" not found');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "nope" not found');
     expect(process.exitCode).toBe(1);
   });
 
@@ -64,7 +64,9 @@ describe('removeLocaleCommand', () => {
     await removeLocaleCommand({ collection: 'vendor', locale: 'fr' });
 
     expect(mockCore).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "vendor" is read-only. Its resources cannot be modified.');
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ Collection "vendor" is read-only. Its resources cannot be modified.',
+    );
     expect(process.exitCode).toBe(1);
   });
 
@@ -89,7 +91,7 @@ describe('removeLocaleCommand', () => {
     it('exits 1 without calling core when --locale is missing', async () => {
       await removeLocaleCommand({ collection: 'main' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
       expect(mockCore).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
@@ -99,7 +101,7 @@ describe('removeLocaleCommand', () => {
 
       await removeLocaleCommand({ collection: 'main', locale: 'fr' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Locale "fr" not found in collection "main"');
+      expect(console.error).toHaveBeenCalledWith('❌ Locale "fr" not found in collection "main"');
       expect(process.exitCode).toBe(1);
     });
 
@@ -108,7 +110,7 @@ describe('removeLocaleCommand', () => {
 
       await removeLocaleCommand({ collection: 'main', locale: 'fr' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ unexpected');
+      expect(console.error).toHaveBeenCalledWith('❌ unexpected');
       expect(process.exitCode).toBe(1);
     });
   });
@@ -118,7 +120,7 @@ describe('removeLocaleCommand', () => {
 
     await removeLocaleCommand({ collection: 'main' });
 
-    expect(console.log).toHaveBeenCalledWith('❌ No removable locales in collection "main".');
+    expect(console.error).toHaveBeenCalledWith('❌ No removable locales in collection "main".');
     expect(mockCore).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
@@ -154,7 +156,7 @@ describe('removeLocaleCommand', () => {
       await removeLocaleCommand({ collection: 'main' });
 
       expect(mockCore).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Remove locale cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Remove locale cancelled.');
       expect(process.exitCode).toBe(0);
     });
   });

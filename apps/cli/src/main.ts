@@ -60,6 +60,7 @@ program
   .command('delete-collection')
   .description('Delete a translation collection from the project')
   .option('--collection-name <name>', 'Name of the collection to delete')
+  .option('--yes', 'Skip confirmation prompt')
   .action(async (options) => {
     const { deleteCollectionCommand } = await import('./delete-collection/delete-collection');
     await deleteCollectionCommand(options);

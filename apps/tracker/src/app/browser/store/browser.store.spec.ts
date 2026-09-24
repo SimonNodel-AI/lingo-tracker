@@ -1524,6 +1524,26 @@ describe('BrowserStore', () => {
       expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['alpha', 'delta', 'beta', 'gamma']);
     });
 
+    it('should sort by status over every locale when no locale is selected', async () => {
+      // Key order puts `able` first; only `zulu` needs work, in one locale.
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(
+        of({
+          path: '',
+          resources: [
+            summary('able', 'Able', { es: ['Able', 'verified'], fr: ['Able', 'verified'], de: ['Able', 'verified'] }),
+            summary('zulu', 'Zulu', { es: ['Zulu', 'verified'], fr: ['Zulu', 'new'], de: ['Zulu', 'verified'] }),
+          ],
+          children: [],
+        }),
+      );
+      store.loadRootFolders();
+      await waitForSignals();
+
+      expect(store.selectedLocales()).toEqual([]);
+      store.setSortField('status');
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['zulu', 'able']);
+    });
+
     it('should report zero for every status when the folder is empty', () => {
       store.reset();
       expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 0, verified: 0 });

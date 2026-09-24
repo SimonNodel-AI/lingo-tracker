@@ -60,17 +60,16 @@ export function withTranslationsFeature<_>() {
       }>(),
     },
     withState(initialTranslationsState),
+    withComputed(({ selectedLocales, availableLocales }) => ({
+      /**
+       * The locales a status is read over: the selected ones, or every locale when
+       * none is selected (the UI's "All locales"). The status filter, its counts,
+       * the needs-work count and sort by status all read this one list.
+       */
+      _statusLocales: computed(() => (selectedLocales().length > 0 ? selectedLocales() : availableLocales())),
+    })),
     withComputed(
-      ({
-        translations,
-        isSearchMode,
-        searchResults,
-        selectedStatuses,
-        selectedLocales,
-        availableLocales,
-        sortField,
-        sortDirection,
-      }) => ({
+      ({ translations, isSearchMode, searchResults, selectedStatuses, _statusLocales, sortField, sortDirection }) => ({
         isEmpty: computed(() => translations().length === 0),
 
         translationCount: computed(() => translations().length),
@@ -83,13 +82,12 @@ export function withTranslationsFeature<_>() {
           const items = isSearchMode() ? searchResults() : translations();
           const statuses = selectedStatuses();
 
-          let filteredItems = items;
-          if (statuses.length > 0) {
-            const localesForFiltering = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
-            filteredItems = items.filter((item) => matchesAnyStatus(item, localesForFiltering, statuses));
-          }
+          const locales = _statusLocales();
 
-          return sortTranslations(filteredItems, sortField(), sortDirection(), selectedLocales());
+          const filteredItems =
+            statuses.length > 0 ? items.filter((item) => matchesAnyStatus(item, locales, statuses)) : items;
+
+          return sortTranslations(filteredItems, sortField(), sortDirection(), locales);
         }),
 
         /**
@@ -110,7 +108,7 @@ export function withTranslationsFeature<_>() {
          */
         statusCounts: computed(() => {
           const items = isSearchMode() ? searchResults() : translations();
-          const locales = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
+          const locales = _statusLocales();
 
           const counts: Record<TranslationStatus, number> = { new: 0, stale: 0, translated: 0, verified: 0 };
           for (const item of items) {
@@ -129,7 +127,7 @@ export function withTranslationsFeature<_>() {
          */
         needsWorkCount: computed(() => {
           const items = isSearchMode() ? searchResults() : translations();
-          const locales = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
+          const locales = _statusLocales();
           return items.filter((item) => matchesAnyStatus(item, locales, NEEDS_WORK_STATUSES)).length;
         }),
       }),

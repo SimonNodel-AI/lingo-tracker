@@ -27,6 +27,8 @@ describe('preferredTerminologyCommand', () => {
     writeFileSync(filePath, typeof content === 'string' ? content : `${JSON.stringify(content, null, 2)}\n`);
   const readRules = () => JSON.parse(readFileSync(filePath, 'utf8'));
   const indented = () => vi.mocked(ConsoleFormatter.indent).mock.calls.map((call) => call[0]);
+  const errorDetails = (message: string) =>
+    vi.mocked(ConsoleFormatter.error).mock.calls.find(([line]) => line === message)?.[1] ?? [];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -158,9 +160,10 @@ describe('preferredTerminologyCommand', () => {
       // Investment → Capital would make "Investment" both preferred and discouraged: a chain.
       await preferredTerminologyCommand({ add: 'Investment', preferred: 'Capital' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Preferred terminology not saved:');
-      expect(indented().length).toBeGreaterThan(0);
-      expect(indented()[0]).toContain('"Expenditure → Investment":');
+      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Preferred terminology not saved:', expect.any(Array));
+      const details = errorDetails('Preferred terminology not saved:');
+      expect(details.length).toBeGreaterThan(0);
+      expect(details[0]).toContain('"Expenditure → Investment":');
       expect(process.exitCode).toBe(1);
       expect(ConsoleFormatter.success).not.toHaveBeenCalled();
       expect(readFileSync(filePath, 'utf8')).toBe(before);

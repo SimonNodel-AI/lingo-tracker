@@ -72,8 +72,8 @@ describe('deleteResourceCommand', () => {
     expect(mockDeleteResource).toHaveBeenCalledWith(expectedCollection, {
       keys: ['apps.common.ok', 'apps.common.invalid'],
     });
-    expect(console.log).toHaveBeenCalledWith('⚠️  Some operations failed:');
-    expect(console.log).toHaveBeenCalledWith('  - apps.common.invalid: Resource not found');
+    expect(console.error).toHaveBeenCalledWith('⚠️  Some operations failed:');
+    expect(console.error).toHaveBeenCalledWith('  - apps.common.invalid: Resource not found');
     expect(process.exitCode).toBe(1);
   });
 
@@ -86,7 +86,7 @@ describe('deleteResourceCommand', () => {
     await deleteResourceCommand({ collection: 'default', key: 'apps.common.notfound', yes: true });
 
     expect(mockDeleteResource).toHaveBeenCalledWith(expectedCollection, { keys: ['apps.common.notfound'] });
-    expect(console.log).toHaveBeenCalledWith('⚠️  No resources were deleted.');
+    expect(console.error).toHaveBeenCalledWith('⚠️  No resources were deleted.');
     expect(process.exitCode).toBe(1);
   });
 
@@ -110,7 +110,7 @@ describe('deleteResourceCommand', () => {
 
     await deleteResourceCommand({ collection: 'default', key: 'a.b', yes: true });
 
-    expect(console.log).toHaveBeenCalledWith('❌ disk full');
+    expect(console.error).toHaveBeenCalledWith('❌ disk full');
     expect(process.exitCode).toBe(1);
   });
 
@@ -129,7 +129,7 @@ describe('deleteResourceCommand', () => {
     await deleteResourceCommand({ collection: 'nonexistent', key: 'a.b', yes: true });
 
     expect(mockDeleteResource).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
     expect(process.exitCode).toBe(1);
   });
 
@@ -137,7 +137,7 @@ describe('deleteResourceCommand', () => {
     await deleteResourceCommand({ collection: 'default' });
 
     expect(mockDeleteResource).not.toHaveBeenCalled();
-    expect(console.log).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
+    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
     expect(process.exitCode).toBe(1);
   });
 
@@ -161,7 +161,7 @@ describe('deleteResourceCommand', () => {
       await deleteResourceCommand({ collection: 'default', key: 'a.b' });
 
       expect(mockDeleteResource).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith('❌ Delete resource cancelled.');
+      expect(console.error).toHaveBeenCalledWith('❌ Delete resource cancelled.');
       expect(process.exitCode).toBe(0);
     });
 

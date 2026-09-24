@@ -72,9 +72,9 @@ function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig
   const entries: FlatEntry[] = [];
   for (const collection of targets) {
     const { resources, problems } = readCollection(collection);
-    // stderr, so --stdout output stays valid JSON.
+    // A warning goes to stderr, so --stdout output stays valid JSON.
     for (const problem of problems) {
-      console.warn(`⚠️  Collection '${collection.name}': skipped unreadable folder: ${problem.message}`);
+      ConsoleFormatter.warning(`Collection '${collection.name}': skipped unreadable folder: ${problem.message}`);
     }
     for (const { fullKey, entry } of resources) {
       const translations = { ...entry.translations };

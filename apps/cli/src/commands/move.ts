@@ -1,5 +1,6 @@
 import { type Collection, moveResource, openCollection } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter } from '../utils';
 
 export interface MoveResourceOptions {
   collection?: string;
@@ -51,23 +52,23 @@ export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
     });
 
     if (result.movedCount > 0) {
-      console.log(`✅ Moved ${result.movedCount} resource(s)`);
+      ConsoleFormatter.success(`Moved ${result.movedCount} resource(s)`);
     } else {
-      console.log('⚠️  No resources were moved.');
+      ConsoleFormatter.warning('No resources were moved.');
     }
 
     if (result.warnings && result.warnings.length > 0) {
-      console.log('\n⚠️  Warnings:');
-      for (const warning of result.warnings) {
-        console.log(`   - ${warning}`);
-      }
+      ConsoleFormatter.warning(
+        'Warnings:',
+        result.warnings.map((warning) => `- ${warning}`),
+      );
     }
 
     if (result.errors && result.errors.length > 0) {
-      console.log('\n❌ Errors:');
-      for (const error of result.errors) {
-        console.log(`   - ${error}`);
-      }
+      ConsoleFormatter.error(
+        'Errors:',
+        result.errors.map((error) => `- ${error}`),
+      );
       return { exitCode: 1 };
     }
   },

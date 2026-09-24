@@ -359,7 +359,8 @@ lingo-tracker delete-collection [options]
 
 **Options:**
 
-- `--collection-name <name>` - Name of the collection to delete (required in non-interactive mode)
+- `--collection-name <name>` - Name of the collection to delete (required in non-interactive mode when there are several collections)
+- `--yes` - Skip the confirmation prompt
 
 **Examples:**
 
@@ -376,7 +377,8 @@ lingo-tracker delete-collection --collection-name Mobile
 **Notes:**
 - Removes the collection entry from `.lingo-tracker.json`
 - Does NOT delete translation files from disk (data is preserved)
-- Will prompt for confirmation before deletion (in interactive mode)
+- In interactive mode, asks for confirmation (naming the collection and its translations folder) unless `--yes` is given, also when the only collection was selected for you. Declining cancels with exit code 0
+- In non-interactive mode, it does not ask: the flags are the consent
 
 ---
 
@@ -2134,5 +2136,6 @@ jobs:
 ### Error Handling
 
 - Commands report errors clearly with actionable messages
+- Errors (`❌`) and warnings (`⚠️`) go to stderr; results go to stdout. So `glossary --stdout` and `normalize --json` output can be piped safely
 - Bulk operations (like `delete-resource` with multiple keys) use best-effort approach
 - Check exit codes in scripts: 0 for success, non-zero for errors

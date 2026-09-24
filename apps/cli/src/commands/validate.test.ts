@@ -114,7 +114,7 @@ describe('validateCommand', () => {
 
       expect(console.error).toHaveBeenCalledWith('❌ No target locales found in configuration.');
       expect(console.error).toHaveBeenCalledWith(
-        "Target locales are each collection's locales except its base locale.",
+        "  Target locales are each collection's locales except its base locale.",
       );
     });
   });
@@ -1058,7 +1058,7 @@ describe('validateCommand', () => {
 
       await validateCommand({ skipLocales: ['xx'] });
 
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("Skipping unknown locale 'xx'"));
+      expect(console.error).toHaveBeenCalledWith("⚠️  Skipping unknown locale 'xx' — not in configured locales");
 
       expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual([]);
 
@@ -1075,7 +1075,7 @@ describe('validateCommand', () => {
       await validateCommand({ skipLocales: ['en'] });
 
       // No warning logged
-      expect(console.warn).not.toHaveBeenCalled();
+      expect(console.error).not.toHaveBeenCalled();
 
       expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual([]);
     });
@@ -1092,7 +1092,7 @@ describe('validateCommand', () => {
 
       await validateCommand({ skipLocales: ['ja'] });
 
-      expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining("Skipping unknown locale 'ja'"));
+      expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining("Skipping unknown locale 'ja'"));
       expect(mockValidateResources).toHaveBeenCalledWith(
         [
           expect.objectContaining({ name: 'common', targetLocales: ['fr', 'es', 'de'] }),
@@ -1305,7 +1305,7 @@ describe('validateCommand', () => {
 
       await validateCommand({});
 
-      expect(console.warn).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         '⚠️  Preferred terminology file not found: /project/terms.json. Treating as an empty list.',
       );
       expect(mockValidateResources.mock.calls[0]?.[1].terminology).toBeUndefined();

@@ -53,8 +53,9 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
         const fileSizeMB = stats.size / (1024 * 1024);
 
         if (fileSizeMB > LARGE_FILE_SIZE_THRESHOLD) {
-          ConsoleFormatter.warning(`Large import file detected: ${fileSizeMB.toFixed(2)} MB`);
-          ConsoleFormatter.indent('Import may take longer than usual.');
+          ConsoleFormatter.warning(`Large import file detected: ${fileSizeMB.toFixed(2)} MB`, [
+            'Import may take longer than usual.',
+          ]);
         }
       }
     } catch (_error) {
@@ -327,26 +328,18 @@ function displayResults(result: ImportResult, options: ImportRunOptions): void {
 
   // Display warnings
   if (result.warnings.length > 0) {
-    console.log('');
-    ConsoleFormatter.warning(`Warnings (${result.warnings.length}):`);
-    result.warnings.slice(0, 10).forEach((warning) => {
-      ConsoleFormatter.indent(warning);
-    });
-    if (result.warnings.length > 10) {
-      ConsoleFormatter.indent(`... and ${result.warnings.length - 10} more warnings`);
-    }
+    ConsoleFormatter.warning(`Warnings (${result.warnings.length}):`, [
+      ...result.warnings.slice(0, 10),
+      ...(result.warnings.length > 10 ? [`... and ${result.warnings.length - 10} more warnings`] : []),
+    ]);
   }
 
   // Display errors
   if (result.errors.length > 0) {
-    console.log('');
-    ConsoleFormatter.error(`Errors (${result.errors.length}):`);
-    result.errors.slice(0, 10).forEach((error) => {
-      ConsoleFormatter.indent(error);
-    });
-    if (result.errors.length > 10) {
-      ConsoleFormatter.indent(`... and ${result.errors.length - 10} more errors`);
-    }
+    ConsoleFormatter.error(`Errors (${result.errors.length}):`, [
+      ...result.errors.slice(0, 10),
+      ...(result.errors.length > 10 ? [`... and ${result.errors.length - 10} more errors`] : []),
+    ]);
   }
 
   console.log('─'.repeat(50));

@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // the command modules are replaced so only the flag wiring is under test.
 vi.mock('./commands/validate', () => ({ validateCommand: vi.fn() }));
 vi.mock('./add-resource/add-resource', () => ({ addResourceCommand: vi.fn() }));
+vi.mock('./delete-collection/delete-collection', () => ({ deleteCollectionCommand: vi.fn() }));
 
 import { addResourceCommand } from './add-resource/add-resource';
 import { validateCommand } from './commands/validate';
+import { deleteCollectionCommand } from './delete-collection/delete-collection';
 
 const originalArgv = process.argv;
 
@@ -16,7 +18,10 @@ async function runCli(...args: string[]): Promise<void> {
   vi.resetModules();
   await import('./main');
   await vi.waitFor(() => {
-    if (vi.mocked(validateCommand).mock.calls.length + vi.mocked(addResourceCommand).mock.calls.length === 0) {
+    const calls = [validateCommand, addResourceCommand, deleteCollectionCommand].map(
+      (command) => vi.mocked(command).mock.calls.length,
+    );
+    if (calls.every((count) => count === 0)) {
       throw new Error('command not called yet');
     }
   });
@@ -44,5 +49,11 @@ describe('main.ts flag wiring', () => {
     await runCli('add-resource', '--key', 'a.b', '--value', 'OK', '--translations', '[{"locale":');
 
     expect(addResourceCommand).toHaveBeenCalledWith(expect.objectContaining({ translations: '[{"locale":' }));
+  });
+
+  it('passes --yes to delete-collection', async () => {
+    await runCli('delete-collection', '--collection-name', 'app', '--yes');
+
+    expect(deleteCollectionCommand).toHaveBeenCalledWith({ collectionName: 'app', yes: true });
   });
 });

@@ -227,7 +227,7 @@ describe('installSkillCommand', () => {
   it('exits 1 without --collection in non-interactive mode', async () => {
     await installSkillCommand({});
 
-    expect(console.log).toHaveBeenCalledWith(
+    expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining('❌ Missing required option in non-interactive mode: --collection'),
     );
     expect(mkdir).not.toHaveBeenCalled();
@@ -238,7 +238,9 @@ describe('installSkillCommand', () => {
   it('exits 1 on a malformed --collection spec', async () => {
     await installSkillCommand({ collection: ['only:three:parts'] });
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('❌ Invalid collection spec "only:three:parts"'));
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining('❌ Invalid collection spec "only:three:parts"'),
+    );
     expect(mkdir).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
@@ -253,7 +255,7 @@ describe('installSkillCommand', () => {
 
     await installSkillCommand({});
 
-    expect(console.log).toHaveBeenCalledWith('❌ Install skill cancelled.');
+    expect(console.error).toHaveBeenCalledWith('❌ Install skill cancelled.');
     expect(mkdir).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
