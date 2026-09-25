@@ -2,6 +2,15 @@ import { findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-c
 import type { LoadedResource } from '../export/export-common';
 import type { TerminologyValidationDetail, TerminologyValidationOptions, TerminologyValidationResult } from './types';
 
+/** {@link TerminologyValidationOptions} plus where to report each collection's findings. */
+export interface TerminologyPassOptions extends TerminologyValidationOptions {
+  /**
+   * Base locale of each collection, by collection name. Findings are reported under this
+   * locale; a collection missing from the map is reported under an empty locale.
+   */
+  readonly baseLocaleByCollection: Readonly<Record<string, string>>;
+}
+
 /**
  * Scans every base-locale value for discouraged terms from the preferred-terminology file.
  *
@@ -24,7 +33,7 @@ import type { TerminologyValidationDetail, TerminologyValidationOptions, Termino
  */
 export function validateTerminology(
   resources: readonly LoadedResource[],
-  options: TerminologyValidationOptions,
+  options: TerminologyPassOptions,
 ): TerminologyValidationResult {
   if (options.loadError !== undefined) {
     return { warnings: [], configError: options.loadError, valuesChecked: 0 };

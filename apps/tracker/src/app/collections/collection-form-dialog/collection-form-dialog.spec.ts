@@ -14,14 +14,17 @@ const createComponent = createComponentFactory({
   detectChanges: false,
 });
 
+/** The one `MatDialog` method the form uses: `open`, for the base-locale-change confirmation. */
+type DialogMock = { open: ReturnType<typeof vi.fn> };
+
 const buildHarness = (
   data: CollectionFormDialogData,
-  mockDialog: Partial<MatDialog> = { open: vi.fn() },
+  mockDialog: DialogMock = { open: vi.fn() },
 ): {
   fixture: ComponentFixture<CollectionFormDialog>;
   spectator: Spectator<CollectionFormDialog>;
   mockDialogRef: { close: ReturnType<typeof vi.fn> };
-  mockDialog: Partial<MatDialog>;
+  mockDialog: DialogMock;
 } => {
   const mockDialogRef = { close: vi.fn() };
   const spectator = createComponent({
@@ -270,7 +273,7 @@ describe('CollectionFormDialog — edit mode', () => {
   let fixture: ComponentFixture<CollectionFormDialog>;
   let component: CollectionFormDialog;
   let mockDialogRef: { close: ReturnType<typeof vi.fn> };
-  let mockDialog: { open: ReturnType<typeof vi.fn> };
+  let mockDialog: DialogMock;
 
   const editData: CollectionFormDialogData = {
     mode: 'edit',

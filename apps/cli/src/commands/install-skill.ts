@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { type Ask, defineCommand } from '../runner/command-runner';
 
 export interface CollectionSpec {
   name: string;
@@ -28,16 +29,15 @@ export function parseCollectionArg(raw: string): CollectionSpec {
   return { name, bundle, tokenConstant, tokenFilePath };
 }
 
-async function promptForCollections(): Promise<CollectionSpec[]> {
-  const prompts = (await import('prompts')).default;
+async function promptForCollections(ask: Ask): Promise<CollectionSpec[]> {
   const collections: CollectionSpec[] = [];
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '');
   let addMore = true;
 
   while (addMore) {
-    const collectionNum = collections.length + 1;
-    console.log(`\nCollection ${collectionNum}:`);
+    console.log(`\nCollection ${collections.length + 1}:`);
 
-    const answers = await prompts([
+    const answers = await ask([
       {
         type: 'text',
         name: 'name',
@@ -64,25 +64,19 @@ async function promptForCollections(): Promise<CollectionSpec[]> {
       },
     ]);
 
-    if (!answers.name) {
-      // User cancelled
-      break;
-    }
-
     collections.push({
-      name: answers.name.trim(),
-      bundle: answers.bundle.trim(),
-      tokenConstant: answers.tokenConstant.trim(),
-      tokenFilePath: answers.tokenFilePath.trim(),
+      name: text(answers.name),
+      bundle: text(answers.bundle),
+      tokenConstant: text(answers.tokenConstant),
+      tokenFilePath: text(answers.tokenFilePath),
     });
 
-    const more = await prompts({
+    const more = await ask({
       type: 'confirm',
       name: 'value',
       message: 'Add another collection?',
       initial: false,
     });
-    if (more.value === undefined) break;
     addMore = more.value === true;
   }
 
@@ -221,82 +215,71 @@ export async function readPatternsMdTemplate(): Promise<string> {
   }
 }
 
-export async function installSkillCommand(options: InstallSkillOptions): Promise<void> {
-  const isTTY = process.stdin.isTTY;
+export const installSkillCommand = defineCommand<InstallSkillOptions>()({
+  name: 'Install skill',
+  // Generates a skill file from templates; reads no project configuration.
+  collection: 'none',
+  config: false,
+  run: async ({ answers: options, cwd, interactive, ask }) => {
+    let collections: CollectionSpec[];
+    let outputDir: string;
+    let tokenCasing = options.tokenCasing; // may be overridden by interactive prompt
 
-  let collections: CollectionSpec[];
-  let outputDir: string;
-  let tokenCasing = options.tokenCasing; // may be overridden by interactive prompt
-
-  if (options.collection && options.collection.length > 0) {
-    // Non-interactive: parse from flags
-    try {
+    if (options.collection && options.collection.length > 0) {
+      // Non-interactive: parse from flags (a malformed spec throws; the runner exits 1)
       collections = options.collection.map(parseCollectionArg);
-    } catch (err) {
-      console.error(`Error: ${(err as Error).message}`);
-      process.exit(1);
+      outputDir = options.dir ?? '.claude';
+    } else if (interactive) {
+      const dirAnswer = await ask({
+        type: 'select',
+        name: 'value',
+        message: 'Install skill into which AI tool directory?',
+        choices: [
+          { title: '.claude (default)', value: '.claude' },
+          { title: '.agents', value: '.agents' },
+          { title: '.cursor', value: '.cursor' },
+        ],
+        initial: 0,
+      });
+      outputDir = typeof dirAnswer.value === 'string' ? dirAnswer.value : '.claude';
+
+      collections = await promptForCollections(ask);
+
+      const casingAnswer = await ask({
+        type: 'select',
+        name: 'value',
+        message: 'Token property key casing?',
+        choices: [
+          { title: 'upperCase (default)', value: 'upperCase' },
+          { title: 'camelCase', value: 'camelCase' },
+        ],
+        initial: 0,
+      });
+
+      if (casingAnswer.value === 'camelCase') {
+        tokenCasing = casingAnswer.value;
+      }
+    } else {
+      throw new Error(
+        'Missing required option in non-interactive mode: --collection\n' +
+          'Usage: npx lingo-tracker install-skill --collection name:bundle:TokenConstant:tokenFilePath',
+      );
     }
-    outputDir = options.dir ?? '.claude';
-  } else if (isTTY) {
-    // Interactive mode
-    const prompts = (await import('prompts')).default;
 
-    const dirAnswer = await prompts({
-      type: 'select',
-      name: 'value',
-      message: 'Install skill into which AI tool directory?',
-      choices: [
-        { title: '.claude (default)', value: '.claude' },
-        { title: '.agents', value: '.agents' },
-        { title: '.cursor', value: '.cursor' },
-      ],
-      initial: 0,
-    });
+    // Relative to the project root (INIT_CWD under pnpm), not to wherever node was started.
+    const skillDir = path.resolve(cwd, outputDir, 'skills', 'lingo-tracker');
+    const referencesDir = path.join(skillDir, 'references');
 
-    if (dirAnswer.value === undefined) {
-      console.log('Cancelled.');
-      return;
-    }
-    outputDir = dirAnswer.value;
+    fs.mkdirSync(referencesDir, { recursive: true });
 
-    collections = await promptForCollections();
-    if (collections.length === 0) {
-      console.error('Error: at least one collection is required.');
-      process.exit(1);
-    }
+    const skillMdPath = path.join(skillDir, 'SKILL.md');
+    const patternsMdPath = path.join(referencesDir, 'patterns.md');
 
-    const casingAnswer = await prompts({
-      type: 'select',
-      name: 'value',
-      message: 'Token property key casing?',
-      choices: [
-        { title: 'upperCase (default)', value: 'upperCase' },
-        { title: 'camelCase', value: 'camelCase' },
-      ],
-      initial: 0,
-    });
+    fs.writeFileSync(skillMdPath, await generateSkillMd(collections, tokenCasing), 'utf-8');
+    fs.writeFileSync(patternsMdPath, await readPatternsMdTemplate(), 'utf-8');
 
-    if (casingAnswer.value && casingAnswer.value !== 'upperCase') {
-      tokenCasing = casingAnswer.value;
-    }
-  } else {
-    console.error('Error: --collection is required in non-interactive mode.');
-    console.error('Usage: npx lingo-tracker install-skill --collection name:bundle:TokenConstant:tokenFilePath');
-    process.exit(1);
-  }
-
-  const skillDir = path.join(outputDir, 'skills', 'lingo-tracker');
-  const referencesDir = path.join(skillDir, 'references');
-
-  fs.mkdirSync(referencesDir, { recursive: true });
-
-  const skillMdPath = path.join(skillDir, 'SKILL.md');
-  const patternsMdPath = path.join(referencesDir, 'patterns.md');
-
-  fs.writeFileSync(skillMdPath, await generateSkillMd(collections, tokenCasing), 'utf-8');
-  fs.writeFileSync(patternsMdPath, await readPatternsMdTemplate(), 'utf-8');
-
-  console.log('Skill installed successfully:');
-  console.log(`  ${skillMdPath}`);
-  console.log(`  ${patternsMdPath}`);
-}
+    console.log('Skill installed successfully:');
+    console.log(`  ${skillMdPath}`);
+    console.log(`  ${patternsMdPath}`);
+  },
+});

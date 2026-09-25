@@ -1,11 +1,14 @@
 import { computed, inject } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, tap, switchMap, catchError, of } from 'rxjs';
+import { pipe, tap, switchMap, catchError, of, map } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
-import { BrowserApiService } from '../../services/browser-api.service';
+import { NotificationService } from '../../../shared/notification';
+import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/browser-api.service';
 import { sortTranslations } from '../../translations/utils/sort-translations';
-import type { ResourceSummaryDto, SearchResultDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
+import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
+import { countByStatus, STATUS_PRECEDENCE, summaryTarget, type TranslationStatus } from '@simoncodes-ca/domain';
+import { displayStatus } from '../../../shared/translation-status/display-status';
 import { toErrorMessage } from '../async-error.utils';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
@@ -21,25 +24,23 @@ const initialTranslationsState: TranslationsState = {
   showNestedResources: true,
 };
 
-const ALL_STATUSES: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
 const NEEDS_WORK_STATUSES: readonly TranslationStatus[] = ['new', 'stale'];
 
 /**
  * A resource is in scope for a status filter when any of the locales being
  * filtered on carries one of those statuses.
  *
- * Both the list and the counts beside the filter toggles run through here, so
- * the two can never drift into disagreeing about what a status means.
+ * Both the list and the per-status counts beside the filter toggles run through
+ * here, so the two can never drift into disagreeing about what a status means.
+ * It reads the `displayStatus`, so a locale with no metadata matches `new`.
  */
 function matchesAnyStatus(
-  item: { status?: Record<string, TranslationStatus | undefined> },
+  item: ResourceSummaryDto,
   locales: readonly string[],
   statuses: readonly TranslationStatus[],
 ): boolean {
-  return locales.some((locale) => {
-    const localeStatus = item.status?.[locale];
-    return !!localeStatus && statuses.includes(localeStatus);
-  });
+  const counts = countByStatus(locales.map((locale) => displayStatus(summaryTarget(item, locale))));
+  return statuses.some((status) => counts[status] > 0);
 }
 
 export function withTranslationsFeature<_>() {
@@ -59,17 +60,16 @@ export function withTranslationsFeature<_>() {
       }>(),
     },
     withState(initialTranslationsState),
+    withComputed(({ selectedLocales, availableLocales }) => ({
+      /**
+       * The locales a status is read over: the selected ones, or every locale when
+       * none is selected (the UI's "All locales"). The status filter, its counts,
+       * the needs-work count and sort by status all read this one list.
+       */
+      _statusLocales: computed(() => (selectedLocales().length > 0 ? selectedLocales() : availableLocales())),
+    })),
     withComputed(
-      ({
-        translations,
-        isSearchMode,
-        searchResults,
-        selectedStatuses,
-        selectedLocales,
-        availableLocales,
-        sortField,
-        sortDirection,
-      }) => ({
+      ({ translations, isSearchMode, searchResults, selectedStatuses, _statusLocales, sortField, sortDirection }) => ({
         isEmpty: computed(() => translations().length === 0),
 
         translationCount: computed(() => translations().length),
@@ -82,13 +82,12 @@ export function withTranslationsFeature<_>() {
           const items = isSearchMode() ? searchResults() : translations();
           const statuses = selectedStatuses();
 
-          let filteredItems = items;
-          if (statuses.length > 0) {
-            const localesForFiltering = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
-            filteredItems = items.filter((item) => matchesAnyStatus(item, localesForFiltering, statuses));
-          }
+          const locales = _statusLocales();
 
-          return sortTranslations(filteredItems, sortField(), sortDirection(), selectedLocales());
+          const filteredItems =
+            statuses.length > 0 ? items.filter((item) => matchesAnyStatus(item, locales, statuses)) : items;
+
+          return sortTranslations(filteredItems, sortField(), sortDirection(), locales);
         }),
 
         /**
@@ -109,11 +108,11 @@ export function withTranslationsFeature<_>() {
          */
         statusCounts: computed(() => {
           const items = isSearchMode() ? searchResults() : translations();
-          const locales = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
+          const locales = _statusLocales();
 
           const counts: Record<TranslationStatus, number> = { new: 0, stale: 0, translated: 0, verified: 0 };
           for (const item of items) {
-            for (const status of ALL_STATUSES) {
+            for (const status of STATUS_PRECEDENCE) {
               if (matchesAnyStatus(item, locales, [status])) counts[status]++;
             }
           }
@@ -121,13 +120,14 @@ export function withTranslationsFeature<_>() {
         }),
 
         /**
-         * Resources with anything unfinished in the filtered locales. Counted as a
-         * union rather than `new + stale`, because a resource that is new in one
-         * locale and stale in another is one row, not two.
+         * Resources with anything unfinished in the filtered locales: the rows the
+         * needs-work shortcut (`new` + `stale`) shows, a locale with no metadata
+         * included. Counted as a union rather than `new + stale`, because a resource
+         * that is new in one locale and stale in another is one row, not two.
          */
         needsWorkCount: computed(() => {
           const items = isSearchMode() ? searchResults() : translations();
-          const locales = selectedLocales().length > 0 ? selectedLocales() : availableLocales();
+          const locales = _statusLocales();
           return items.filter((item) => matchesAnyStatus(item, locales, NEEDS_WORK_STATUSES)).length;
         }),
       }),
@@ -135,18 +135,21 @@ export function withTranslationsFeature<_>() {
     withMethods((store) => {
       const api = inject(BrowserApiService);
       const transloco = inject(TranslocoService);
+      const notifications = inject(NotificationService);
 
       return {
         selectFolder: rxMethod<string>(
           pipe(
-            tap((path) =>
+            // The folder whose list is on screen, to go back to if the index is not ready (see below).
+            map((path) => ({ path, shownFolderPath: store.currentFolderPath() })),
+            tap(({ path }) =>
               patchState(store, {
                 currentFolderPath: path,
                 isTranslationsLoading: true,
                 error: null,
               }),
             ),
-            switchMap((path) => {
+            switchMap(({ path, shownFolderPath }) => {
               const collection = store.selectedCollection();
               const includeNested = store.showNestedResources();
               if (!collection) {
@@ -155,25 +158,27 @@ export function withTranslationsFeature<_>() {
               }
 
               return api.getResourceTree(collection, path, includeNested).pipe(
-                tap((tree) => {
-                  if ('resources' in tree) {
-                    patchState(store, {
-                      translations: tree.resources,
-                      isTranslationsLoading: false,
-                      error: null,
-                    });
-                  } else {
-                    patchState(store, { isTranslationsLoading: false });
-                  }
-                }),
-                catchError((error: unknown) => {
+                tap((tree) =>
                   patchState(store, {
+                    translations: tree.resources,
                     isTranslationsLoading: false,
-                    error: toErrorMessage(
-                      error,
-                      transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADTRANSLATIONSFAILED),
-                    ),
-                  });
+                    error: null,
+                  }),
+                ),
+                catchError((error: unknown) => {
+                  const message = toErrorMessage(
+                    error,
+                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADTRANSLATIONSFAILED),
+                  );
+                  // The index can go not-ready mid-session. selectFolder only runs once a tree is on
+                  // screen (the first load is loadRootFolders), so keep the list and the folder it shows,
+                  // and toast: the `error` state would replace the tree.
+                  if (error instanceof CollectionIndexNotReadyError) {
+                    patchState(store, { isTranslationsLoading: false, currentFolderPath: shownFolderPath });
+                    notifications.error(message);
+                    return of(null);
+                  }
+                  patchState(store, { isTranslationsLoading: false, error: message });
                   return of(null);
                 }),
               );
@@ -189,39 +194,6 @@ export function withTranslationsFeature<_>() {
           if (value === store.showNestedResources()) return;
           patchState(store, { showNestedResources: value });
           this.selectFolder(store.currentFolderPath());
-        },
-
-        removeResourceFromCache(resourceKey: string): void {
-          const updatedTranslations = store.translations().filter((resource) => resource.key !== resourceKey);
-          patchState(store, { translations: updatedTranslations });
-
-          if (store.isSearchMode()) {
-            const updatedSearchResults = store.searchResults().filter((resource) => resource.key !== resourceKey);
-            patchState(store, { searchResults: updatedSearchResults });
-          }
-        },
-
-        updateTranslationInCache(resource: ResourceSummaryDto): void {
-          const currentTranslations = store.translations();
-          const translationIndex = currentTranslations.findIndex((t) => t.key === resource.key);
-          if (translationIndex !== -1) {
-            const updatedTranslations = [...currentTranslations];
-            updatedTranslations[translationIndex] = resource;
-            patchState(store, { translations: updatedTranslations });
-          }
-
-          if (store.isSearchMode()) {
-            const currentSearchResults = store.searchResults();
-            const searchIndex = currentSearchResults.findIndex((t) => t.key === resource.key);
-            if (searchIndex !== -1) {
-              const updatedSearchResults = [...currentSearchResults];
-              updatedSearchResults[searchIndex] = {
-                ...currentSearchResults[searchIndex],
-                ...resource,
-              };
-              patchState(store, { searchResults: updatedSearchResults });
-            }
-          }
         },
       };
     }),

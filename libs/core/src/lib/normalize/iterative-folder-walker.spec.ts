@@ -3,6 +3,7 @@ import * as fs from 'fs';
 
 import { walkFolders } from './iterative-folder-walker';
 import type { FolderVisit } from './iterative-folder-walker';
+import { mockedReaddirSync } from '../../testing/mocked-fs.spec-helpers';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -31,7 +32,7 @@ type MockFilesystem = Record<string, FakeDirent[]>;
 function installMockFilesystem(mockFs: MockFilesystem): void {
   vi.mocked(fs.existsSync).mockImplementation((p) => posix(p.toString()) in mockFs);
 
-  vi.mocked(fs.readdirSync).mockImplementation((p, _opts) => {
+  mockedReaddirSync().mockImplementation((p, _opts) => {
     const entries = mockFs[posix(p.toString())];
     if (entries === undefined) {
       const error = new Error(`ENOENT: no such file or directory, scandir '${p}'`);

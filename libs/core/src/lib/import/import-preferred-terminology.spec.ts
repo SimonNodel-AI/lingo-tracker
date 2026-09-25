@@ -2,10 +2,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { importFromJson } from './import-from-json';
-import { importFromXliff } from './import-from-xliff';
-import type { ImportOptions } from './types';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { type Collection, openCollection } from '../config/open-collection';
+import { importResources } from './import-resources';
+import { parseJsonImport } from './parse-json-import';
+import { parseXliffImport } from './parse-xliff-import';
+import type { ImportRunOptions } from './types';
 
 const rules: PreferredTermRule[] = [
   { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' },
@@ -30,16 +32,16 @@ ${Object.entries(units)
 describe('preferred terminology on import', () => {
   let projectDir: string;
   let translationsFolder: string;
+  let collection: Collection;
 
   beforeEach(() => {
     projectDir = mkdtempSync(join(tmpdir(), 'lingo-import-terminology-'));
     translationsFolder = join(projectDir, 'translations');
     mkdirSync(translationsFolder, { recursive: true });
-    vi.spyOn(process, 'cwd').mockReturnValue(projectDir);
+    collection = makeCollection('en');
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
     rmSync(projectDir, { recursive: true, force: true });
   });
 
@@ -49,10 +51,21 @@ describe('preferred terminology on import', () => {
     return filePath;
   };
 
-  const baseOptions = (source: string, overrides: Partial<ImportOptions> = {}): ImportOptions => ({
-    source,
+  const makeCollection = (baseLocale: string): Collection =>
+    openCollection(
+      {
+        baseLocale: 'en',
+        locales: ['en', 'es', 'fr'],
+        exportFolder: 'dist/export',
+        importFolder: 'dist/import',
+        collections: { main: { translationsFolder: 'translations', baseLocale } },
+      },
+      'main',
+      { cwd: projectDir },
+    );
+
+  const baseOptions = (overrides: Partial<ImportRunOptions> = {}): ImportRunOptions => ({
     locale: 'en',
-    baseLocale: 'en',
     strategy: 'migration',
     preferredTerminology: rules,
     ...overrides,
@@ -78,7 +91,7 @@ describe('preferred terminology on import', () => {
       }),
     );
 
-    const result = importFromJson(translationsFolder, baseOptions(source));
+    const result = importResources(collection, parseJsonImport(source), baseOptions());
 
     expect(result.warnings).toEqual(
       expect.arrayContaining([
@@ -97,7 +110,7 @@ describe('preferred terminology on import', () => {
     seedExisting();
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Operating expenditure' }));
 
-    const result = importFromJson(translationsFolder, baseOptions(source));
+    const result = importResources(collection, parseJsonImport(source), baseOptions());
 
     expect(result.warnings).toContain(
       'Preferred terminology: key "budget.title" — consider "Investment" instead of "Expenditure". Finance style guide',
@@ -109,7 +122,7 @@ describe('preferred terminology on import', () => {
   it('warns during a dry run without writing anything', () => {
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Expenditure' }));
 
-    const result = importFromJson(translationsFolder, baseOptions(source, { dryRun: true }));
+    const result = importResources(collection, parseJsonImport(source), baseOptions({ dryRun: true }));
 
     expect(result.warnings.filter((w) => w.startsWith('Preferred terminology'))).toHaveLength(1);
     expect(result.filesModified).toEqual([]);
@@ -119,9 +132,10 @@ describe('preferred terminology on import', () => {
     seedExisting();
     const source = writeSource('es.json', JSON.stringify({ 'budget.title': 'Expenditure de capital' }));
 
-    const result = importFromJson(
-      translationsFolder,
-      baseOptions(source, { locale: 'es', strategy: 'translation-service' }),
+    const result = importResources(
+      collection,
+      parseJsonImport(source),
+      baseOptions({ locale: 'es', strategy: 'translation-service' }),
     );
 
     expect(result.warnings.some((w) => w.startsWith('Preferred terminology'))).toBe(false);
@@ -131,7 +145,11 @@ describe('preferred terminology on import', () => {
   it('skips the check when no rules are given', () => {
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Expenditure' }));
 
-    const result = importFromJson(translationsFolder, baseOptions(source, { preferredTerminology: undefined }));
+    const result = importResources(
+      collection,
+      parseJsonImport(source),
+      baseOptions({ preferredTerminology: undefined }),
+    );
 
     expect(result.warnings.some((w) => w.startsWith('Preferred terminology'))).toBe(false);
   });
@@ -142,7 +160,7 @@ describe('preferred terminology on import', () => {
       xliff('en', { 'budget.title': { source: 'Expenditure', target: 'Capital expenditure' } }),
     );
 
-    const result = await importFromXliff(translationsFolder, baseOptions(source));
+    const result = importResources(collection, await parseXliffImport(source), baseOptions());
 
     expect(result.warnings).toContain(
       'Preferred terminology: key "budget.title" — consider "Investment" instead of "Expenditure". Finance style guide',
@@ -154,7 +172,8 @@ describe('preferred terminology on import', () => {
     it('warns on an import into that base locale', () => {
       const source = writeSource('fr.json', JSON.stringify({ 'budget.title': 'Expenditure du mois' }));
 
-      const result = importFromJson(translationsFolder, baseOptions(source, { locale: 'fr', baseLocale: 'fr' }));
+      const french = makeCollection('fr');
+      const result = importResources(french, parseJsonImport(source), baseOptions({ locale: 'fr' }));
 
       expect(result.warnings).toContain(
         'Preferred terminology: key "budget.title" — consider "Investment" instead of "Expenditure". Finance style guide',
@@ -167,9 +186,11 @@ describe('preferred terminology on import', () => {
       seedExisting();
       const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Capital expenditure' }));
 
-      const result = importFromJson(
-        translationsFolder,
-        baseOptions(source, { locale: 'en', baseLocale: 'fr', strategy: 'translation-service' }),
+      const french = makeCollection('fr');
+      const result = importResources(
+        french,
+        parseJsonImport(source),
+        baseOptions({ locale: 'en', strategy: 'translation-service' }),
       );
 
       expect(result.warnings.some((w) => w.startsWith('Preferred terminology'))).toBe(false);
@@ -185,9 +206,10 @@ describe('preferred terminology on import', () => {
       xliff('es', { 'budget.title': { source: 'Capital expenditure', target: 'Expenditure de capital' } }),
     );
 
-    const result = await importFromXliff(
-      translationsFolder,
-      baseOptions(source, { locale: 'es', strategy: 'translation-service' }),
+    const result = importResources(
+      collection,
+      await parseXliffImport(source),
+      baseOptions({ locale: 'es', strategy: 'translation-service' }),
     );
 
     expect(result.warnings.some((w) => w.startsWith('Preferred terminology'))).toBe(false);

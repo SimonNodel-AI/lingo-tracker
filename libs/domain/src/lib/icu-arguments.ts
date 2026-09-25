@@ -19,7 +19,8 @@ import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
  */
 
 /**
- * Collects the names of every argument a message interpolates.
+ * Collects the names of every argument a message interpolates, or reports that
+ * it could not be parsed.
  *
  * Counts plain arguments (`{name}`), formatted ones (`{count, number}`), and
  * the argument a `plural`, `selectordinal` or `select` switches on — each of
@@ -36,43 +37,13 @@ import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
  * translation may legitimately mention an argument more times than the base
  * value does, or fewer, provided it mentions the same ones.
  *
- * Values that do not parse yield an empty set. An unparseable value is the ICU
- * compile check's business, and reporting one defect as two helps nobody. Use
- * `compareIcuArguments` rather than comparing two of these sets by hand: it
- * tells an unparseable value apart from one that genuinely has no arguments.
- *
  * Accepts either syntax: Transloco's `{{ name }}` is normalized to `{name}`
  * first, so stored values and bundled values give the same answer.
  *
- * @param value - The translation string, in ICU or Transloco syntax.
- * @returns The distinct argument names the value interpolates.
- *
- * @example
- * ```typescript
- * findIcuArguments('Folder {name}');
- * // → Set { 'name' }
- *
- * findIcuArguments('Folder {{ name }}');
- * // → Set { 'name' } — same answer in either syntax
- *
- * findIcuArguments('{count, plural, one {1 file in {dir}} other {# files in {dir}}}');
- * // → Set { 'count', 'dir' }
- *
- * findIcuArguments('No placeholders here');
- * // → Set {}
- * ```
- */
-export function findIcuArguments(value: string): ReadonlySet<string> {
-  return parseArguments(value) ?? new Set();
-}
-
-/**
- * Collects a value's arguments, or reports that it could not be parsed.
- *
- * The distinction matters to `compareIcuArguments` and nowhere else: a value
- * that does not parse has no arguments to speak of, which is not the same as a
- * value that parses and interpolates none. Treating the two alike makes every
- * malformed translation look as though it had dropped every placeholder.
+ * Returns null for a value that does not parse. A value that does not parse has
+ * no arguments to speak of, which is not the same as a value that parses and
+ * interpolates none. Treating the two alike makes every malformed translation
+ * look as though it had dropped every placeholder.
  *
  * @internal
  */

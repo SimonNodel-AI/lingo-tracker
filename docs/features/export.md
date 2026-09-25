@@ -24,7 +24,7 @@ lingo-tracker export --format <format> [options]
 |--------|-------------|---------|
 | `-f, --format <format>` | Export format (`xliff` or `json`). | Required (or interactive) |
 | `-c, --collection <names>` | Comma-separated list of collections to export. | All collections |
-| `-l, --locale <locales>` | Comma-separated list of target locales. The base locale is always excluded. | All target locales |
+| `-l, --locale <locales>` | Comma-separated list of target locales. The base locale is always excluded. | All target locales of the exported collections |
 | `-s, --status <statuses>` | Filter by status (`new`, `translated`, `stale`, `verified`). | `new,stale` |
 | `-t, --tags <tags>` | Filter by tags (comma-separated). Matches against the resource's *effective tags* — the union of per-resource tags and the collection's inherited tags. | None |
 | `-o, --output <path>` | Output directory. Defaults to `exportFolder` from config if set. | `dist/lingo-export` |
@@ -58,6 +58,10 @@ You can use the following placeholders in `--filename`. If no file extension is 
 lingo-tracker export --format json --filename "translations-{source}-to-{target}-{date}"
 # Generates: translations-en-to-es-2025-12-13.json
 ```
+
+### Target locales
+
+A collection's target locales are its `locales` (or the global `locales` when it has none) without its base locale. The export writes one file per target locale of the exported collections, and each file holds only the resources of the collections that have that locale. The collections in one export must share a base locale, because an export file has one source language. To export collections with different base locales, run one export per collection with `--collection`.
 
 ## Examples
 
@@ -126,11 +130,13 @@ In rich JSON, the terms appear under `doNotTranslate`:
 }
 ```
 
-In XLIFF, they become a note on the trans-unit:
+In XLIFF, they become a note on the trans-unit, after the comment note:
 
 ```xml
 <note>Do not translate: iPhone</note>
 ```
+
+When you import the translated file, LingoTracker ignores this note. The entry keeps its comment unchanged.
 
 The terms that apply come from two files. LingoTracker combines the global protected-terms file with the exported collection's own file.
 

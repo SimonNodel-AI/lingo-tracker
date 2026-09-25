@@ -2,11 +2,16 @@ import { Controller, Delete, Param, HttpException, HttpStatus, Post, Body, Put }
 import {
   addCollection,
   deleteCollectionByName,
+  openCollection,
+  reindexMutation,
+  type ResourceMutation,
   setCollectionProtectedTerms,
   updateCollection,
 } from '@simoncodes-ca/core';
 import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
+import { CollectionIndex } from '../cache/collection-index.service';
+import { ConfigService } from '../config/config.service';
 import { mapDtoToCollection } from '../mappers/collection.mapper';
 
 /**
@@ -26,11 +31,39 @@ function writeCollectionProtectedTerms(collectionName: string, terms: string[] |
 
 @Controller('collections')
 export class CollectionsController {
+  readonly #configService: ConfigService;
+  readonly #index: CollectionIndex;
+
+  constructor(configService: ConfigService, index: CollectionIndex) {
+    this.#configService = configService;
+    this.#index = index;
+  }
+
+  /**
+   * The collection's absolute translations folder per the current config, or `undefined`
+   * when it cannot be resolved (the core call that follows reports that error).
+   */
+  #translationsFolderOf(collectionName: string): string | undefined {
+    try {
+      return openCollection(this.#configService.getConfig(), collectionName).translationsFolder;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Drops the index entries for the given folders; a config change is too broad to patch. */
+  #reindex(folders: ReadonlyArray<string | undefined>, mutations: readonly ResourceMutation[] = []): void {
+    const unique = [...new Set(folders.filter((folder): folder is string => folder !== undefined))];
+    this.#index.apply([...mutations, ...unique.map((folder) => reindexMutation(folder))]);
+  }
+
   @Delete(':collectionName')
   async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
     try {
       const decodedCollectionName = decodeURIComponent(collectionName);
+      const translationsFolder = this.#translationsFolderOf(decodedCollectionName);
       deleteCollectionByName(decodedCollectionName);
+      this.#reindex([translationsFolder]);
       return {
         message: `Collection "${decodedCollectionName}" deleted successfully`,
       };
@@ -73,7 +106,12 @@ export class CollectionsController {
     try {
       const decodedCollectionName = decodeURIComponent(collectionName);
       const { name, collection } = body;
+      const oldTranslationsFolder = this.#translationsFolderOf(decodedCollectionName);
       const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
+      this.#reindex(
+        [oldTranslationsFolder, this.#translationsFolderOf(name || decodedCollectionName)],
+        result.mutations,
+      );
       writeCollectionProtectedTerms(name ?? decodedCollectionName, collection.protectedTerms);
       return { message: result.message };
     } catch (error: unknown) {

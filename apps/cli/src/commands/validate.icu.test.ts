@@ -1,30 +1,25 @@
-import * as fs from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateCommand } from './validate';
 
-const fsMocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-}));
-
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Collection resolution runs for real against the mocked config.
+    loadConfig: vi.fn(),
+    openCollection: actual.openCollection,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    CONFIG_FILENAME: '.lingo-tracker.json',
+    validateResources: vi.fn(),
+    generateValidationSummary: vi.fn(),
+    loadPreferredTerminology: vi.fn(() => ({
+      rules: [],
+      filePath: '/project/.lingo-tracker-preferred-terminology.json',
+    })),
+  };
 });
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-
-vi.mock('@simoncodes-ca/core', () => ({
-  CONFIG_FILENAME: '.lingo-tracker.json',
-  validateResources: vi.fn(),
-  generateValidationSummary: vi.fn(),
-  loadPreferredTerminology: vi.fn(() => ({
-    rules: [],
-    filePath: '/project/.lingo-tracker-preferred-terminology.json',
-  })),
-}));
 
 import * as core from '@simoncodes-ca/core';
 
@@ -32,6 +27,8 @@ const mockValidateResources = vi.mocked(core.validateResources);
 const mockGenerateValidationSummary = vi.mocked(core.generateValidationSummary);
 
 const CONFIG = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'fr', 'es'],
   collections: { common: { translationsFolder: 'translations/common' } },
@@ -39,21 +36,20 @@ const CONFIG = {
 
 /** The ICU options `validateResources` was called with. */
 function icuOptions() {
-  return mockValidateResources.mock.calls[0]?.[2].icu;
+  return mockValidateResources.mock.calls[0]?.[1].icu;
 }
 
 describe('validateCommand ICU options', () => {
   const originalLog = console.log;
-  const originalExit = process.exit;
 
   beforeEach(() => {
     vi.clearAllMocks();
     console.log = vi.fn();
     console.warn = vi.fn();
-    process.exit = vi.fn() as unknown as (code?: number | string | null | undefined) => never;
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
 
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(CONFIG));
+    vi.mocked(core.loadConfig).mockReturnValue(CONFIG);
     mockGenerateValidationSummary.mockReturnValue('summary');
     mockValidateResources.mockReturnValue({
       totalResourcesValidated: 0,
@@ -70,7 +66,7 @@ describe('validateCommand ICU options', () => {
 
   afterEach(() => {
     console.log = originalLog;
-    process.exit = originalExit;
+    process.exitCode = undefined;
   });
 
   it('checks ICU by default', async () => {
@@ -79,10 +75,11 @@ describe('validateCommand ICU options', () => {
     expect(icuOptions()).toBeDefined();
   });
 
-  it('includes the base locale, whose value is copied into every translation slot', async () => {
+  it('leaves base-locale compilation to each collection in core', async () => {
     await validateCommand({});
 
-    expect(icuOptions()?.baseLocale).toBe('en');
+    // Core compiles each collection's base values under that collection's own base locale.
+    expect(icuOptions()).not.toHaveProperty('baseLocale');
   });
 
   it('leaves the portability rule off unless asked', async () => {
@@ -121,13 +118,14 @@ describe('validateCommand ICU options', () => {
     // the ICU pass still covers the source value every translation copies.
     await validateCommand({ skipLocales: ['en'] });
 
-    expect(icuOptions()?.baseLocale).toBe('en');
-    expect(mockValidateResources.mock.calls[0]?.[1]).toEqual(['fr', 'es']);
+    expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual([]);
+    expect(mockValidateResources.mock.calls[0]?.[0]?.[0]?.targetLocales).toEqual(['fr', 'es']);
   });
 
   it('does not check a skipped target locale', async () => {
     await validateCommand({ skipLocales: ['es'] });
 
-    expect(mockValidateResources.mock.calls[0]?.[1]).toEqual(['fr']);
+    expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual(['es']);
+    expect(mockValidateResources.mock.calls[0]?.[0]?.[0]?.targetLocales).toEqual(['fr', 'es']);
   });
 });

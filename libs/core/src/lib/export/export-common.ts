@@ -1,25 +1,19 @@
 import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { readJsonFile } from '../file-io/json-file-operations';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
-import { walkFolders } from '../normalize/iterative-folder-walker';
-import type { ResourceEntries } from '../../resource/resource-entry';
-import type { TrackerMetadata } from '../../resource/tracker-metadata';
-import {
-  effectiveTags,
-  effectiveProtectedTerms,
-  findProtectedTerms,
-  type TranslationStatus,
-} from '@simoncodes-ca/domain';
+import type { Collection } from '../config/open-collection';
+import { type CollectionReadProblem, readCollection } from '../resource/read-collection';
+import { effectiveProtectedTerms, findProtectedTerms, type TranslationStatus } from '@simoncodes-ca/domain';
 import type { FilteredResource } from './types';
 
+/** A stored resource flattened for the export and validate passes, with the collection it came from. */
 export interface LoadedResource {
   key: string;
   fullKey: string;
   source: string;
   translations: Record<string, string>;
+  /** The entry's own tags. */
   tags?: string[];
-  collectionTags?: string[];
+  /** The collection's tags united with the entry's own (from the Collection Reader). */
+  effectiveTags: readonly string[];
   collectionProtectedTerms?: string[];
   comment?: string;
   status: Record<string, TranslationStatus>;
@@ -57,89 +51,37 @@ export function validateOutputDirectory(directory: string): void {
 }
 
 /**
- * Loads all resources and metadata from a list of collections.
+ * Reads one collection through the Collection Reader and flattens each entry for the export and
+ * validate passes. Folders the reader could not read are returned as `problems`.
  */
-export function loadResourcesFromCollections(
-  collections: { name: string; path: string; tags?: string[]; protectedTerms?: string[] }[],
-): LoadedResource[] {
-  const allResources: Map<string, LoadedResource> = new Map();
+export function loadResources(
+  collection: Pick<Collection, 'name' | 'translationsFolder' | 'baseLocale' | 'tags'>,
+  protectedTerms?: string[],
+): { resources: LoadedResource[]; problems: CollectionReadProblem[] } {
+  const { resources, problems } = readCollection(collection);
 
-  for (const collection of collections) {
-    if (!fs.existsSync(collection.path)) {
-      console.warn(`Collection path not found: ${collection.path}`);
-      continue;
-    }
-
-    // The collection.path should point directly to where translations are stored
-    loadFolderResources(collection.path, collection.name, allResources, collection.tags, collection.protectedTerms);
-  }
-
-  return Array.from(allResources.values());
-}
-
-function loadFolderResources(
-  collectionPath: string,
-  collectionName: string,
-  allResources: Map<string, LoadedResource>,
-  collectionTags?: string[],
-  collectionProtectedTerms?: string[],
-): void {
-  for (const visit of walkFolders(collectionPath, { skipHidden: false })) {
-    const entriesPath = path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME);
-    const metaPath = path.join(visit.absolutePath, TRACKER_META_FILENAME);
-
-    if (!fs.existsSync(entriesPath) || !fs.existsSync(metaPath)) continue;
-
-    try {
-      const entries = readJsonFile<ResourceEntries>({ filePath: entriesPath });
-      const metadata = readJsonFile<TrackerMetadata>({ filePath: metaPath });
-
-      for (const [key, entry] of Object.entries(entries)) {
-        const fullKey = visit.keyPrefix ? `${visit.keyPrefix}.${key}` : key;
-        const meta = metadata[key];
-
-        if (!meta) {
-          // Skip if no metadata (will be reported as omitted in summary if we track it)
-          continue;
-        }
-
-        const loadedResource: LoadedResource = {
-          key,
-          fullKey,
-          source: entry.source,
-          translations: {},
-          tags: entry.tags,
-          collectionTags,
-          collectionProtectedTerms,
-          comment: entry.comment,
-          status: {},
-          collection: collectionName,
-        };
-
-        // Extract translations and status
-        // We assume the entry has keys for locales like 'es', 'fr', etc.
-        // But ResourceEntry type is flexible.
-        // We'll iterate over keys that are not source, tags, comment
-        for (const [prop, value] of Object.entries(entry)) {
-          if (prop !== 'source' && prop !== 'tags' && prop !== 'comment' && typeof value === 'string') {
-            loadedResource.translations[prop] = value;
-          }
-        }
-
-        // Extract status
-        for (const [locale, localeMeta] of Object.entries(meta)) {
-          if (localeMeta && typeof localeMeta === 'object' && 'status' in localeMeta) {
-            loadedResource.status[locale] = localeMeta.status as TranslationStatus;
-          }
-        }
-
-        // Add to map (last write wins for same fullKey)
-        allResources.set(fullKey, loadedResource);
+  return {
+    resources: resources.map(({ fullKey, entryKey, entry, effectiveTags }) => {
+      const status: Record<string, TranslationStatus> = {};
+      for (const [locale, localeMeta] of Object.entries(entry.metadata)) {
+        if (localeMeta?.status) status[locale] = localeMeta.status;
       }
-    } catch (e) {
-      console.warn(`Error loading files in ${visit.absolutePath}: ${(e as Error).message}`);
-    }
-  }
+
+      return {
+        key: entryKey,
+        fullKey,
+        source: entry.source,
+        translations: { ...entry.translations },
+        tags: entry.tags,
+        effectiveTags,
+        collectionProtectedTerms: protectedTerms,
+        comment: entry.comment,
+        status,
+        collection: collection.name,
+      };
+    }),
+    problems,
+  };
 }
 
 /**
@@ -173,8 +115,7 @@ export function filterResources(
 
       // Tag filter — use effective tags (collection-level union resource-level)
       if (tagFilter && tagFilter.length > 0) {
-        const tags = effectiveTags(res.collectionTags, res.tags);
-        const hasMatch = tagFilter.some((tag) => tags.includes(tag));
+        const hasMatch = tagFilter.some((tag) => res.effectiveTags.includes(tag));
         if (!hasMatch) {
           return false;
         }

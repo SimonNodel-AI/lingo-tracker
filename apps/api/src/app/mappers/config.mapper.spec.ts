@@ -80,6 +80,19 @@ describe('config.mapper', () => {
       });
     });
 
+    it('passes bundle definitions through as written, including unknown and deprecated fields', () => {
+      // GET /config reports the file as it is; `typeDist` migrates to `typeDistFile` only when
+      // the bundle is saved (the domain `normalizeBundleDefinition`), and the Tracker form reads
+      // the definition through that same function.
+      const legacy = { bundleName: '{locale}', dist: './dist', collections: 'All', typeDist: './src/t.ts', extra: 1 };
+      const dto = mapConfigToDto({
+        ...config,
+        bundles: { legacy: legacy as unknown as NonNullable<LingoTrackerConfig['bundles']>[string] },
+      });
+
+      expect(dto.bundles?.['legacy']).toEqual(legacy);
+    });
+
     it('omits bundles when the config has none', () => {
       const dto = mapConfigToDto(config);
 

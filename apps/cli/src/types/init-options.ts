@@ -1,4 +1,4 @@
-import type { TokenCasing } from '@simoncodes-ca/core';
+import type { TokenCasing } from '@simoncodes-ca/domain';
 
 /**
  * Configuration options for the init command

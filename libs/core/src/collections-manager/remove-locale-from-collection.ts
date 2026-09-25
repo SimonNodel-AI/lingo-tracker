@@ -1,11 +1,13 @@
 import * as path from 'node:path';
-import * as fs from 'node:fs';
-import { validateLocale } from '@simoncodes-ca/domain';
+import { existsSync } from 'node:fs';
 import { updateConfig } from '../lib/config/config-file-operations';
+import { openCollection } from '../lib/config/open-collection';
 import { walkFolders } from '../lib/normalize/iterative-folder-walker';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../lib/file-io/json-file-operations';
-import { ErrorMessages } from '../lib/errors/error-messages';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import { openResourceFolder } from '../lib/resource/resource-folder';
+import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
+import { BaseLocaleImmutableError, LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
+import { assertValidLocale } from './assert-valid-locale';
+import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 
 export interface RemoveLocaleFromCollectionOptions {
   readonly cwd?: string;
@@ -15,6 +17,8 @@ export interface RemoveLocaleFromCollectionResult {
   readonly message: string;
   readonly entriesPurged: number;
   readonly filesUpdated: number;
+  /** A `reindex` of the collection: every folder's metadata changed. */
+  readonly mutations: ResourceMutation[];
 }
 
 export async function removeLocaleFromCollection(
@@ -24,24 +28,22 @@ export async function removeLocaleFromCollection(
 ): Promise<RemoveLocaleFromCollectionResult> {
   const cwd = options.cwd ?? process.cwd();
 
-  validateLocale(locale);
+  assertValidLocale(locale);
 
   const updatedConfig = updateConfig((config) => {
-    if (!config.collections?.[collectionName]) {
-      throw new Error(ErrorMessages.collectionNotFound(collectionName));
-    }
-
-    const collection = config.collections[collectionName];
-    const baseLocale = collection.baseLocale ?? config.baseLocale;
+    // `writable` throws inside the updater, so nothing is written for a read-only collection.
+    const {
+      baseLocale,
+      locales: effectiveLocales,
+      config: collection,
+    } = openCollection(config, collectionName, { cwd, writable: true });
 
     if (locale === baseLocale) {
-      throw new Error(ErrorMessages.cannotModifyBaseLocale(locale));
+      throw new BaseLocaleImmutableError(locale);
     }
 
-    const effectiveLocales = collection.locales ?? config.locales ?? [];
-
     if (!effectiveLocales.includes(locale)) {
-      throw new Error(ErrorMessages.localeNotFound(locale, collectionName));
+      throw new LocaleNotFoundError(locale, collectionName);
     }
 
     const newLocales = effectiveLocales.filter((l) => l !== locale);
@@ -58,52 +60,20 @@ export async function removeLocaleFromCollection(
     };
   }, cwd);
 
-  const collection = updatedConfig.collections[collectionName];
-  const translationsFolderPath = path.resolve(cwd, collection.translationsFolder);
+  const collection = openCollection(updatedConfig, collectionName, { cwd });
 
   let entriesPurged = 0;
   let filesUpdated = 0;
 
-  for (const visit of walkFolders(translationsFolderPath)) {
-    const resourceEntriesPath = path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME);
-    const trackerMetaPath = path.join(visit.absolutePath, TRACKER_META_FILENAME);
+  for (const visit of walkFolders(collection.translationsFolder)) {
+    if (!existsSync(path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME))) continue;
 
-    if (!fs.existsSync(resourceEntriesPath)) continue;
+    const folder = openResourceFolder(visit.absolutePath);
 
-    const resourceEntries = readResourceEntries(resourceEntriesPath);
-
-    const trackerMetadata = readTrackerMetadata(trackerMetaPath, {});
-
-    let folderModified = false;
-
-    for (const entryKey of Object.keys(resourceEntries)) {
-      const entry = resourceEntries[entryKey];
-
-      if (typeof entry !== 'object' || entry === null) {
-        continue;
-      }
-
-      let entryModified = false;
-
-      if (locale in entry) {
-        delete entry[locale];
-        entryModified = true;
-      }
-
-      if (trackerMetadata[entryKey] && locale in trackerMetadata[entryKey]) {
-        delete trackerMetadata[entryKey][locale];
-        entryModified = true;
-      }
-
-      if (entryModified) {
-        entriesPurged++;
-        folderModified = true;
-      }
-    }
-
-    if (folderModified) {
-      writeJsonFile({ filePath: resourceEntriesPath, data: resourceEntries });
-      writeJsonFile({ filePath: trackerMetaPath, data: trackerMetadata });
+    const purged = folder.dropLocale(locale);
+    if (purged > 0) {
+      folder.save();
+      entriesPurged += purged;
       filesUpdated++;
     }
   }
@@ -112,5 +82,6 @@ export async function removeLocaleFromCollection(
     message: `Locale "${locale}" removed from collection "${collectionName}" successfully`,
     entriesPurged,
     filesUpdated,
+    mutations: [reindexMutation(collection.translationsFolder)],
   };
 }

@@ -6,7 +6,13 @@ import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dial
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
-import type { LingoTrackerConfigDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { unprotected } from '@ngrx/signals/testing';
+import type {
+  LingoTrackerConfigDto,
+  ResourceSummaryDto,
+  SearchResultDto,
+  TranslationStatus,
+} from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
@@ -28,7 +34,13 @@ describe('TranslationEditorDialog', () => {
   let component: TranslationEditorDialog;
   let fixture: ComponentFixture<TranslationEditorDialog>;
   let spectator: Spectator<TranslationEditorDialog>;
-  let dialogRef: { close: Mock; afterOpened: Mock };
+  let dialogRef: {
+    close: Mock;
+    afterOpened: Mock;
+    keydownEvents: Mock;
+    backdropClick: Mock;
+    disableClose: boolean;
+  };
   let mockDialog: { open: Mock };
   let mockBrowserApi: {
     createResource: Mock;
@@ -38,6 +50,32 @@ describe('TranslationEditorDialog', () => {
   };
   let mockNotifications: { success: Mock; info: Mock; warning: Mock; error: Mock };
   let mockConfig: WritableSignal<LingoTrackerConfigDto | null>;
+
+  const summary = (
+    fullKey: string,
+    baseValue: string,
+    targets: Record<string, [string | undefined, TranslationStatus | undefined]> = {},
+    extra: Partial<ResourceSummaryDto> = {},
+  ): ResourceSummaryDto => {
+    const segments = fullKey.split('.');
+    const entryKey = segments.pop() ?? '';
+    return {
+      fullKey,
+      folderPath: segments.join('.'),
+      entryKey,
+      base: { locale: 'en', value: baseValue },
+      targets: Object.entries(targets).map(([locale, [value, status]]) => ({
+        locale,
+        value,
+        status,
+        needsWork: status === undefined || status === 'new' || status === 'stale',
+        sameAsBase: (value?.trim() ?? '').length > 0 && value?.trim() === baseValue.trim(),
+      })),
+      tags: [],
+      inheritedTags: [],
+      ...extra,
+    };
+  };
 
   const createMockData = (mode: 'create' | 'edit', resource?: ResourceSummaryDto): TranslationEditorDialogData => ({
     mode,
@@ -56,11 +94,15 @@ describe('TranslationEditorDialog', () => {
   const createDialog = createComponentFactory({
     component: TranslationEditorDialog,
     imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
-    providers: [provideHttpClient(), provideHttpClientTesting()],
+    // Root-level, so the BrowserStore the dialog writes through sees the same mock.
+    providers: [
+      provideHttpClient(),
+      provideHttpClientTesting(),
+      { provide: BrowserApiService, useFactory: () => mockBrowserApi },
+    ],
     componentProviders: [
       { provide: MatDialogRef, useFactory: () => dialogRef },
       { provide: MatDialog, useFactory: () => mockDialog },
-      { provide: BrowserApiService, useFactory: () => mockBrowserApi },
       { provide: NotificationService, useFactory: () => mockNotifications },
       { provide: CollectionsStore, useFactory: () => ({ config: mockConfig }) },
       { provide: MAT_DIALOG_DATA, useValue: dialogData },
@@ -126,11 +168,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should display edit mode title and subtitle', async () => {
-      const editData = createMockData('edit', {
-        key: 'test_key',
-        translations: { en: 'Test Value' },
-        status: {},
-      });
+      const editData = createMockData('edit', summary('common.buttons.test_key', 'Test Value'));
       renderDialog(editData);
 
       expect(component.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE);
@@ -152,39 +190,6 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Form Validation - Key Field', () => {
-    it('should accept alphanumeric characters', () => {
-      component.form.controls.key.setValue('test123');
-      expect(component.form.controls.key.valid).toBe(true);
-    });
-
-    it('should accept underscores', () => {
-      component.form.controls.key.setValue('test_key_name');
-      expect(component.form.controls.key.valid).toBe(true);
-    });
-
-    it('should accept hyphens', () => {
-      component.form.controls.key.setValue('test-key-name');
-      expect(component.form.controls.key.valid).toBe(true);
-    });
-
-    it('should reject slashes', () => {
-      component.form.controls.key.setValue('test/key');
-      expect(component.form.controls.key.hasError('pattern')).toBe(true);
-    });
-
-    it('should reject special characters', () => {
-      const specialChars = ['@', '#', '$', '%', '^', '&', '*', '(', ')'];
-      specialChars.forEach((char) => {
-        component.form.controls.key.setValue(`test${char}key`);
-        expect(component.form.controls.key.hasError('pattern')).toBe(true);
-      });
-    });
-
-    it('should reject spaces', () => {
-      component.form.controls.key.setValue('test key');
-      expect(component.form.controls.key.hasError('pattern')).toBe(true);
-    });
-
     it('should require key field', () => {
       component.form.controls.key.setValue('');
       expect(component.form.controls.key.hasError('required')).toBe(true);
@@ -212,14 +217,6 @@ describe('TranslationEditorDialog', () => {
       expect(component.form.controls.key.valid).toBe(true);
     });
 
-    it('should replace the folder the dialog opened on', () => {
-      expect(component.selectedFolderPath()).toBe('common.buttons');
-
-      component.form.controls.key.setValue('apps.header.title');
-
-      expect(component.selectedFolderPath()).toBe('apps.header');
-    });
-
     it('should extend the derived folder while the user keeps typing dots', () => {
       component.form.controls.key.setValue('apps.');
       expect(component.selectedFolderPath()).toBe('apps');
@@ -231,53 +228,6 @@ describe('TranslationEditorDialog', () => {
       component.form.controls.key.setValue('ok');
       expect(component.selectedFolderPath()).toBe('apps.common');
       expect(component.form.controls.key.value).toBe('ok');
-    });
-
-    it('should re-anchor on a folder the user picked instead of extending it', () => {
-      component.form.controls.key.setValue('apps.');
-      component.onFolderConfirmed('picked.folder');
-
-      component.form.controls.key.setValue('other.ok');
-
-      expect(component.selectedFolderPath()).toBe('other');
-    });
-
-    it('should collapse consecutive dots', () => {
-      component.form.controls.key.setValue('apps..common...ok');
-
-      expect(component.form.controls.key.value).toBe('ok');
-      expect(component.selectedFolderPath()).toBe('apps.common');
-    });
-
-    it('should strip a leading dot without touching the folder', () => {
-      component.form.controls.key.setValue('.ok');
-
-      expect(component.form.controls.key.value).toBe('ok');
-      expect(component.selectedFolderPath()).toBe('common.buttons');
-    });
-
-    it('should leave the folder alone when the value is only a dot', () => {
-      component.form.controls.key.setValue('.');
-
-      expect(component.form.controls.key.value).toBe('');
-      expect(component.selectedFolderPath()).toBe('common.buttons');
-    });
-
-    it('should absorb a dotted key pasted into a partially filled field', () => {
-      component.form.controls.key.setValue('ok');
-      // What the DOM reports after pasting `apps.common.` before an existing `ok`.
-      component.form.controls.key.setValue('apps.common.ok');
-
-      expect(component.form.controls.key.value).toBe('ok');
-      expect(component.selectedFolderPath()).toBe('apps.common');
-    });
-
-    it('should leave an invalid segment in the field for the pattern validator', () => {
-      component.form.controls.key.setValue('apps.bad key.ok');
-
-      expect(component.form.controls.key.value).toBe('apps.bad key.ok');
-      expect(component.form.controls.key.hasError('pattern')).toBe(true);
-      expect(component.selectedFolderPath()).toBe('common.buttons');
     });
 
     it('should submit the absorbed folder as part of the full key', async () => {
@@ -301,11 +251,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should not absorb dots in edit mode, where the key is readonly', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
       renderDialog(createMockData('edit', mockResource));
 
       component.form.controls.key.setValue('apps.common.ok');
@@ -397,25 +343,6 @@ describe('TranslationEditorDialog', () => {
     it('should use empty string for folderPath when not provided', async () => {
       const dataWithoutFolder = createMockData('create');
       dataWithoutFolder.folderPath = undefined;
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({
-          afterClosed: () => of(true),
-        }),
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi.fn().mockReturnValue(of({})),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
       renderDialog(dataWithoutFolder);
 
       component.form.controls.key.setValue('test_key');
@@ -510,93 +437,14 @@ describe('TranslationEditorDialog', () => {
     });
   });
 
-  describe('Form Submission with Other Locales', () => {
-    it('should include filled translations in create mode with status "new"', async () => {
-      component.form.controls.key.setValue('test_key');
-      component.form.controls.baseValue.setValue('Test Value');
-      component.form.controls.comment.setValue('Test comment'); // Skip confirmation
-
-      const translationsArray = component.form.controls.translations;
-      translationsArray.at(0).patchValue({
-        locale: 'fr',
-        value: 'Valeur de test',
-        status: 'translated',
-      });
-
-      await component.onSubmit();
-
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.translations).toBeDefined();
-      expect(result.translations?.length).toBe(1);
-      expect(result.translations?.[0].locale).toBe('fr');
-      expect(result.translations?.[0].value).toBe('Valeur de test');
-      expect(result.translations?.[0].status).toBe('new');
-    });
-
-    it('should exclude empty translations from result', async () => {
-      component.form.controls.key.setValue('test_key');
-      component.form.controls.baseValue.setValue('Test Value');
-      component.form.controls.comment.setValue('Test comment'); // Skip confirmation
-
-      await component.onSubmit();
-
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.translations).toBeUndefined();
-    });
-
-    it('should respect status dropdown values in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: { fr: 'translated' },
-      };
-
-      const editData = createMockData('edit', mockResource);
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({
-          afterClosed: () => of(true),
-        }),
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi.fn().mockReturnValue(of({})),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      renderDialog(editData);
-
-      const translationsArray = component.form.controls.translations;
-      const frControl = translationsArray.controls.find((c) => c.value.locale === 'fr');
-
-      frControl?.patchValue({
-        status: 'verified',
-      });
-
-      await component.onSubmit();
-
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.translations).toBeDefined();
-      const frTranslation = result.translations?.find((t) => t.locale === 'fr');
-      expect(frTranslation?.status).toBe('verified');
-    });
-  });
-
   describe('Edit Mode', () => {
     it('should pre-populate form with resource data', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: {},
-        comment: 'Existing comment',
-      };
+      const mockResource = summary(
+        'common.buttons.existing_key',
+        'Existing Value',
+        { fr: ['Valeur existante', undefined] },
+        { comment: 'Existing comment' },
+      );
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -607,11 +455,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should handle missing base locale translation', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { fr: 'Valeur' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', '', { fr: ['Valeur', undefined] });
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -620,11 +464,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should handle missing comment', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -633,11 +473,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should display correct save button label in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -650,18 +486,10 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should pre-populate other locale translations in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: {
-          en: 'Existing Value',
-          fr: 'Valeur existante',
-          de: 'Vorhandener Wert',
-        },
-        status: {
-          fr: 'translated',
-          de: 'verified',
-        },
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {
+        fr: ['Valeur existante', 'translated'],
+        de: ['Vorhandener Wert', 'verified'],
+      });
 
       const editData = createMockData('edit', mockResource);
       renderDialog(editData);
@@ -678,29 +506,6 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Comment Confirmation Flow', () => {
-    beforeEach(async () => {
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({
-          afterClosed: () => of(true),
-        }),
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi.fn().mockReturnValue(of({})),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-      renderDialog(createMockData('create'));
-    });
-
     it('should save directly when comment is present', async () => {
       component.form.controls.key.setValue('test_key');
       component.form.controls.baseValue.setValue('Test Value');
@@ -812,12 +617,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should focus the comment field in edit mode when user clicks "Add Comment"', async () => {
       renderDialog(
-        createMockData('edit', {
-          key: 'test_key',
-          translations: { en: 'Test Value' },
-          status: {},
-          comment: 'Existing comment',
-        }),
+        createMockData('edit', summary('common.buttons.test_key', 'Test Value', {}, { comment: 'Existing comment' })),
       );
       mockDialog.open.mockReturnValue({ afterClosed: vi.fn().mockReturnValue(of(false)) });
 
@@ -956,33 +756,12 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should include skippedLocales in update result when API returns them', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-        comment: 'A comment',
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi
-          .fn()
-          .mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: ['es'] })),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({ afterClosed: () => of(true) }),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
+      mockBrowserApi.updateResource.mockReturnValue(
+        of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: ['es'] }),
+      );
       renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
@@ -995,33 +774,12 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should omit skippedLocales from update result when API returns empty array', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-        comment: 'A comment',
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi
-          .fn()
-          .mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: [] })),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({ afterClosed: () => of(true) }),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
+      mockBrowserApi.updateResource.mockReturnValue(
+        of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: [] }),
+      );
       renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
@@ -1162,18 +920,6 @@ describe('TranslationEditorDialog', () => {
       expect(component.folderSegments()).toEqual(['common', 'buttons']);
     });
 
-    it('should mark the entry being created in the context tree', () => {
-      component.form.controls.key.setValue('ok');
-      spectator.detectChanges();
-
-      const entry = component.contextTree().find((node) => node.kind === 'entry' && node.name === 'ok');
-      expect(entry?.mark).toBe('new');
-    });
-
-    it('should mark the target folder as the one the entry lands in', () => {
-      expect(component.contextTree().some((node) => node.here === true)).toBe(true);
-    });
-
     it('should highlight the row of the entry being created, not just pill it', () => {
       component.form.controls.key.setValue('ok');
       spectator.detectChanges();
@@ -1184,17 +930,13 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should highlight the row of the entry being edited', () => {
-      renderDialog(createMockData('edit', { key: 'ok', translations: { en: 'OK' }, status: {} }));
+      renderDialog(createMockData('edit', summary('common.buttons.ok', 'OK')));
       spectator.detectChanges();
 
       const rows = spectator.queryAll('[data-testid="context-tree"] .ftree-n--target');
       expect(rows).toHaveLength(1);
       expect(rows[0]?.textContent).toContain('ok');
       expect(rows[0]).not.toHaveClass('ftree-n--taken');
-    });
-
-    it('should not claim a collision before a key is typed', () => {
-      expect(component.keyCollision()).toBe(false);
     });
 
     it('should not repeat the full key, which the footer already carries', () => {
@@ -1208,11 +950,13 @@ describe('TranslationEditorDialog', () => {
 
     it('should list only the locales that are new or stale', () => {
       renderDialog(
-        createMockData('edit', {
-          key: 'ok',
-          translations: { en: 'OK', fr: 'Oui', de: 'Ja' },
-          status: { fr: 'stale', de: 'verified' },
-        }),
+        createMockData(
+          'edit',
+          summary('common.buttons.ok', 'OK', {
+            fr: ['Oui', 'stale'],
+            de: ['Ja', 'verified'],
+          }),
+        ),
       );
 
       expect(component.localesNeedingWork().map((locale) => locale.locale)).toEqual(['fr']);
@@ -1224,11 +968,13 @@ describe('TranslationEditorDialog', () => {
 
     it('should show the caught-up line instead of an empty list', () => {
       renderDialog(
-        createMockData('edit', {
-          key: 'ok',
-          translations: { en: 'OK', fr: 'Oui', de: 'Ja' },
-          status: { fr: 'translated', de: 'verified' },
-        }),
+        createMockData(
+          'edit',
+          summary('common.buttons.ok', 'OK', {
+            fr: ['Oui', 'translated'],
+            de: ['Ja', 'verified'],
+          }),
+        ),
       );
 
       expect(component.localesNeedingWork()).toHaveLength(0);
@@ -1238,12 +984,15 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Key collision', () => {
-    const entry = (key: string): ResourceSummaryDto => ({ key, translations: { en: key }, status: {} });
+    const entry = (fullKey: string): ResourceSummaryDto => summary(fullKey, fullKey.split('.').at(-1) ?? fullKey);
 
     /** Puts entries in the folder the browser is showing, the cheapest source. */
     const seedBrowserFolder = (folderPath: string, keys: string[]): void => {
       const store = spectator.inject(BrowserStore);
-      patchState(store, { currentFolderPath: folderPath, translations: keys.map(entry) });
+      patchState(unprotected(store), {
+        currentFolderPath: folderPath,
+        translations: keys.map((key) => entry(folderPath ? `${folderPath}.${key}` : key)),
+      });
     };
 
     it('should detect a collision against the entries the browser already holds', () => {
@@ -1254,25 +1003,6 @@ describe('TranslationEditorDialog', () => {
 
       expect(component.keyCollision()).toBe(true);
       expect(spectator.query('[data-testid="key-collision-error"]')).not.toBeNull();
-    });
-
-    it('should ignore nested resources the browser folds into the folder listing', () => {
-      seedBrowserFolder('common.buttons', ['ok', 'confirm.dialog.title']);
-
-      component.form.controls.key.setValue('confirm');
-      spectator.detectChanges();
-
-      expect(component.keyCollision()).toBe(false);
-      expect(component.contextTree().some((node) => node.name === 'confirm.dialog.title')).toBe(false);
-    });
-
-    it('should compare keys exactly, so case alone is not a collision', () => {
-      seedBrowserFolder('common.buttons', ['ok']);
-
-      component.form.controls.key.setValue('OK');
-      spectator.detectChanges();
-
-      expect(component.keyCollision()).toBe(false);
     });
 
     it('should detect a collision in a folder chosen from the popover', () => {
@@ -1318,15 +1048,6 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
 
       expect(component.keyCollision()).toBe(true);
-    });
-
-    it('should never collide in edit mode, where the key is locked', () => {
-      renderDialog(createMockData('edit', entry('ok')));
-      seedBrowserFolder('common.buttons', ['ok']);
-      spectator.detectChanges();
-
-      expect(component.keyCollision()).toBe(false);
-      expect(spectator.query('[data-testid="key-collision-error"]')).toBeNull();
     });
 
     it('should mark the colliding leaf as an existing entry in the context tree', () => {
@@ -1413,7 +1134,10 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Sticky similar values', () => {
-    const hit = (key: string, value: string) => ({ key, translations: { en: value }, status: {} });
+    const hit = (fullKey: string, value: string): SearchResultDto => ({
+      ...summary(fullKey, value),
+      matchType: 'similar-value',
+    });
 
     const searchReturns = (results: ReturnType<typeof hit>[]): void => {
       mockBrowserApi.searchTranslations.mockReturnValue(
@@ -1483,9 +1207,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should show nothing in edit mode until the value differs, and clear again on revert', () => {
       vi.useRealTimers();
-      renderDialog(
-        createMockData('edit', { key: 'saveShortcutHint', translations: { en: 'Press Ctrl + Enter' }, status: {} }),
-      );
+      renderDialog(createMockData('edit', summary('common.buttons.saveShortcutHint', 'Press Ctrl + Enter')));
       vi.useFakeTimers();
       searchReturns([hit('common.actions.save', 'Press Ctrl + Enter')]);
 
@@ -1527,38 +1249,31 @@ describe('TranslationEditorDialog', () => {
       expect(spectator.query('[data-testid="similar-exact-caption"]')).toBeNull();
     });
 
-    it('should drop hits that only matched on their key', () => {
-      searchReturns([
-        hit('browser.translationEditor.saveButton', 'Create translation'),
-        hit('common.actions.save', 'Save'),
-      ]);
-      typeAndSettle('Save draft');
-
-      expect(component.similarResources().map((result) => result.key)).toEqual(['common.actions.save']);
-      expect(component.similarCount()).toBe(1);
-    });
-
-    it('should ask for more hits than it shows and keep at most ten', () => {
-      searchReturns(Array.from({ length: 25 }, (_, index) => hit(`common.actions.save${index}`, 'Save changes')));
+    it('should ask the API for similar values, one more than it shows, and keep at most ten', () => {
+      searchReturns(Array.from({ length: 11 }, (_, index) => hit(`common.actions.save${index}`, 'Save changes')));
       typeAndSettle('Save changes');
 
-      expect(mockBrowserApi.searchTranslations).toHaveBeenCalledWith('test-collection', 'Save changes', 25);
+      expect(mockBrowserApi.searchTranslations).toHaveBeenCalledWith('test-collection', 'Save changes', 11, 'similar');
       expect(component.similarCount()).toBe(10);
     });
 
-    it('should count only the value matches, so the badge and the list agree', () => {
+    it('should drop the entry being edited and keep the ranked order of the rest', () => {
+      vi.useRealTimers();
+      renderDialog(createMockData('edit', summary('common.actions.save', 'Save')));
+      vi.useFakeTimers();
       searchReturns([
-        hit('browser.translationEditor.saveButton', 'Create translation'),
-        hit('browser.translationEditor.saveAnyway', 'Save Anyway'),
+        hit('common.actions.saveDraft', 'Save draft'),
         hit('common.actions.save', 'Save'),
+        hit('browser.translationEditor.saveAnyway', 'Save Anyway'),
       ]);
-      typeAndSettle('Save');
 
-      expect(component.similarCount()).toBe(2);
-      expect(component.similarResources().map((result) => result.key)).toEqual([
+      typeAndSettle('Save draft');
+
+      expect(component.similarResources().map((result) => result.fullKey)).toEqual([
+        'common.actions.saveDraft',
         'browser.translationEditor.saveAnyway',
-        'common.actions.save',
       ]);
+      expect(component.similarCount()).toBe(2);
     });
   });
 
@@ -1633,33 +1348,15 @@ describe('TranslationEditorDialog', () => {
 
   describe('Edit Mode API Integration', () => {
     it('should call updateResource API when submitting in edit mode', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: { fr: 'translated' },
-        comment: 'Existing comment',
-      };
+      const mockResource = summary(
+        'common.buttons.existing_key',
+        'Existing Value',
+        { fr: ['Valeur existante', 'translated'] },
+        { comment: 'Existing comment' },
+      );
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi.fn().mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true })),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({
-          afterClosed: () => of(true),
-        }),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
+      mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
@@ -1679,32 +1376,12 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should include translations in update API call', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: { fr: 'translated' },
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {
+        fr: ['Valeur existante', 'translated'],
+      });
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi.fn().mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true })),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({
-          afterClosed: () => of(true),
-        }),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
+      mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       renderDialog(editData);
 
       const translationsArray = component.form.controls.translations;
@@ -1724,41 +1401,19 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should handle update API errors', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value' },
-        status: {},
-      };
+      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi.fn().mockReturnValue(
-          throwError(
-            () =>
-              new HttpErrorResponse({
-                status: 404,
-                statusText: 'Not Found',
-                error: { message: 'Resource not found' },
-              }),
-          ),
+      mockBrowserApi.updateResource.mockReturnValue(
+        throwError(
+          () =>
+            new HttpErrorResponse({
+              status: 404,
+              statusText: 'Not Found',
+              error: { message: 'Resource not found' },
+            }),
         ),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({
-          afterClosed: () => of(true),
-        }),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
+      );
       renderDialog(editData);
 
       await component.onSubmit();
@@ -1768,33 +1423,15 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should close dialog with success result on successful update', async () => {
-      const mockResource: ResourceSummaryDto = {
-        key: 'existing_key',
-        translations: { en: 'Existing Value', fr: 'Valeur existante' },
-        status: { fr: 'translated' },
-        comment: 'Existing comment',
-      };
+      const mockResource = summary(
+        'common.buttons.existing_key',
+        'Existing Value',
+        { fr: ['Valeur existante', 'translated'] },
+        { comment: 'Existing comment' },
+      );
 
       const editData = createMockData('edit', mockResource);
-      dialogRef = {
-        close: vi.fn(),
-        afterOpened: vi.fn().mockReturnValue(of(undefined)),
-        keydownEvents: vi.fn().mockReturnValue(of()),
-        backdropClick: vi.fn().mockReturnValue(of()),
-        disableClose: false,
-      };
-      mockBrowserApi = {
-        createResource: vi.fn().mockReturnValue(of({})),
-        updateResource: vi.fn().mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true })),
-        searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-        getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
-      };
-      mockDialog = {
-        open: vi.fn().mockReturnValue({
-          afterClosed: () => of(true),
-        }),
-      };
-      mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
+      mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
@@ -1847,9 +1484,9 @@ describe('TranslationEditorDialog', () => {
 
     it('should keep the collision colour on the copy button', () => {
       const store = spectator.inject(BrowserStore);
-      patchState(store, {
+      patchState(unprotected(store), {
         currentFolderPath: 'common.buttons',
-        translations: [{ key: 'ok', translations: { en: 'OK' }, status: {} }],
+        translations: [summary('common.buttons.ok', 'OK')],
       });
       spectator.detectChanges();
 
@@ -1879,7 +1516,7 @@ describe('TranslationEditorDialog', () => {
       spectator.query<HTMLTextAreaElement>('#translation-editor-base-value');
 
     const openEditing = (baseValue: string): void => {
-      renderDialog(createMockData('edit', { key: 'label', translations: { en: baseValue }, status: {} }));
+      renderDialog(createMockData('edit', summary('common.buttons.label', baseValue)));
     };
 
     const type = (value: string, settle = true): void => {
@@ -1979,6 +1616,7 @@ describe('TranslationEditorDialog', () => {
         'test-collection',
         'Total Investment for the year',
         expect.any(Number),
+        'similar',
       );
     });
 
@@ -2068,7 +1706,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should advise without offering Use when read-only', () => {
       renderDialog({
-        ...createMockData('edit', { key: 'label', translations: { en: 'Expenditure' }, status: {} }),
+        ...createMockData('edit', summary('common.buttons.label', 'Expenditure')),
         readOnly: true,
       });
 

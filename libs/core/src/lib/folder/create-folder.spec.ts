@@ -1,8 +1,24 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { createFolder } from './create-folder';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Collection } from '../config/open-collection';
 import * as directoryOps from '../file-io/directory-operations';
+import { createFolder } from './create-folder';
+
+function collection(translationsFolder: string): Collection {
+  return {
+    name: 'main',
+    translationsFolder,
+    baseLocale: 'en',
+    locales: ['en'],
+    targetLocales: [],
+    translationConfig: undefined,
+    tags: [],
+    protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
+    readOnly: false,
+    config: { translationsFolder },
+  };
+}
 
 vi.mock('node:fs');
 vi.mock('../file-io/directory-operations');
@@ -24,7 +40,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/apps'));
       expect(result.created).toBe(true);
@@ -43,7 +59,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName, parentPath });
+      const result = createFolder(collection(translationsFolder), { folderName, parentPath });
 
       expect(result.folderPath).toBe(resolve('/app/translations/apps/common/buttons'));
       expect(result.created).toBe(true);
@@ -61,7 +77,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/apps/common/buttons'));
       expect(result.created).toBe(true);
@@ -74,7 +90,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/apps'));
       expect(result.created).toBe(false);
@@ -87,7 +103,7 @@ describe('createFolder', () => {
       const translationsFolder = '/app/translations';
       const folderName = 'invalid!name';
 
-      expect(() => createFolder(translationsFolder, { folderName })).toThrow(
+      expect(() => createFolder(collection(translationsFolder), { folderName })).toThrow(
         'Invalid folder name segment "invalid!name". Segments must match pattern [A-Za-z0-9_-]+',
       );
     });
@@ -96,7 +112,7 @@ describe('createFolder', () => {
       const translationsFolder = '/app/translations';
       const folderName = 'apps.common.bad@segment';
 
-      expect(() => createFolder(translationsFolder, { folderName })).toThrow(
+      expect(() => createFolder(collection(translationsFolder), { folderName })).toThrow(
         'Invalid folder name segment "bad@segment". Segments must match pattern [A-Za-z0-9_-]+',
       );
     });
@@ -106,7 +122,7 @@ describe('createFolder', () => {
       const folderName = 'buttons';
       const parentPath = 'apps.invalid#path';
 
-      expect(() => createFolder(translationsFolder, { folderName, parentPath })).toThrow(
+      expect(() => createFolder(collection(translationsFolder), { folderName, parentPath })).toThrow(
         'Invalid parent path segment "invalid#path". Segments must match pattern [A-Za-z0-9_-]+',
       );
     });
@@ -118,7 +134,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/abc123'));
     });
@@ -130,7 +146,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/my-folder'));
     });
@@ -142,7 +158,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/my_folder'));
     });
@@ -154,7 +170,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/my-complex_Folder123'));
     });
@@ -169,7 +185,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName, parentPath });
+      const result = createFolder(collection(translationsFolder), { folderName, parentPath });
 
       expect(result.folderPath).toBe(resolve('/app/translations/apps'));
     });
@@ -182,7 +198,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName, parentPath });
+      const result = createFolder(collection(translationsFolder), { folderName, parentPath });
 
       expect(result.folderPath).toBe(resolve('/app/translations/apps'));
     });
@@ -195,7 +211,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName, parentPath });
+      const result = createFolder(collection(translationsFolder), { folderName, parentPath });
 
       expect(result.folderPath).toBe(resolve('/app/translations/apps/common/buttons/ok'));
     });
@@ -207,7 +223,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('translations', 'apps'));
     });
@@ -221,7 +237,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      createFolder(translationsFolder, { folderName });
+      createFolder(collection(translationsFolder), { folderName });
 
       expect(existsSync).toHaveBeenCalledWith(resolve('/app/translations/apps'));
     });
@@ -233,7 +249,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(true);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      createFolder(translationsFolder, { folderName });
+      createFolder(collection(translationsFolder), { folderName });
 
       expect(directoryOps.ensureDirectoryExists).toHaveBeenCalled();
     });
@@ -247,7 +263,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/project/translations/apps'));
       expect(result.created).toBe(true);
@@ -261,7 +277,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName, parentPath });
+      const result = createFolder(collection(translationsFolder), { folderName, parentPath });
 
       expect(result.folderPath).toBe(resolve('/project/translations/apps/common/components/forms/inputs'));
       expect(result.created).toBe(true);
@@ -274,7 +290,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/workspace/i18n/common'));
       expect(result.created).toBe(true);
@@ -294,7 +310,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve('/app/translations/a'));
       expect(result.created).toBe(true);
@@ -307,7 +323,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName });
+      const result = createFolder(collection(translationsFolder), { folderName });
 
       expect(result.folderPath).toBe(resolve(`/app/translations/${'a'.repeat(100)}`));
       expect(result.created).toBe(true);
@@ -321,7 +337,7 @@ describe('createFolder', () => {
       vi.mocked(existsSync).mockReturnValue(false);
       vi.mocked(directoryOps.ensureDirectoryExists).mockImplementation(() => undefined);
 
-      const result = createFolder(translationsFolder, { folderName, parentPath });
+      const result = createFolder(collection(translationsFolder), { folderName, parentPath });
 
       expect(result.folderPath).toBe(resolve('/app/translations/level1/level2/level3/level4/level5'));
       expect(result.created).toBe(true);

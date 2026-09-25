@@ -1,41 +1,34 @@
-import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { editResource, loadPreferredTerminology } from '@simoncodes-ca/core';
+import { ConfigNotFoundError, editResource, loadConfig, loadPreferredTerminology } from '@simoncodes-ca/core';
 import prompts from 'prompts';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isInteractiveTerminal } from '../runner/terminal';
 import { editResourceCommand } from './edit-resource';
 
-const fsMocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-}));
-
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
 vi.mock('prompts');
-vi.mock('@simoncodes-ca/core', async () => {
-  const actual = await vi.importActual('@simoncodes-ca/core');
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
     ...actual,
+    loadConfig: vi.fn(),
     editResource: vi.fn(),
     loadPreferredTerminology: vi.fn(() => ({ rules: [], filePath: '/test/project/terms.json' })),
   };
 });
 
-const mockExistsSync = vi.mocked(existsSync);
-const mockReadFileSync = vi.mocked(readFileSync);
 const mockEditResource = vi.mocked(editResource);
 
 describe('editResourceCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.INIT_CWD = '/test/project';
+    process.exitCode = undefined;
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    process.exitCode = undefined;
   });
 
   const mockConfig = {
@@ -52,11 +45,11 @@ describe('editResourceCommand', () => {
   };
 
   it('should update a resource successfully', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     const options = {
@@ -68,22 +61,25 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
       expect.objectContaining({
-        key: 'apps.common.buttons.ok',
-        baseValue: 'OK Updated',
+        name: 'default',
+        translationsFolder: resolve('/test/project', 'src/i18n'),
         baseLocale: 'en',
+      }),
+      'apps.common.buttons.ok',
+      expect.objectContaining({
+        baseValue: 'OK Updated',
       }),
     );
   });
 
   it('should handle no changes detected', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: false,
       message: 'No changes detected',
+      mutations: [],
     });
 
     const options = {
@@ -98,11 +94,11 @@ describe('editResourceCommand', () => {
   });
 
   it('should update comment and tags', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     const options = {
@@ -115,7 +111,8 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      'apps.common.buttons.ok',
       expect.objectContaining({
         comment: 'New comment',
         tags: ['ui', 'buttons'],
@@ -124,11 +121,11 @@ describe('editResourceCommand', () => {
   });
 
   it('should update locale value', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     const options = {
@@ -141,9 +138,10 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      'apps.common.buttons.ok',
       expect.objectContaining({
-        locales: {
+        translations: {
           fr: { value: "D'accord" },
         },
       }),
@@ -151,10 +149,9 @@ describe('editResourceCommand', () => {
   });
 
   it('should warn if locale provided without value', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
 
-    const consoleSpy = vi.spyOn(console, 'log');
+    const stderrSpy = vi.spyOn(console, 'error');
 
     const options = {
       collection: 'default',
@@ -165,20 +162,19 @@ describe('editResourceCommand', () => {
 
     await editResourceCommand(options);
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Both --locale and --localeValue must be provided'),
-    );
+    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Both --locale and --localeValue must be provided'));
     expect(mockEditResource).toHaveBeenCalledWith(
-      expect.any(String),
+      expect.objectContaining({ name: 'default' }),
+      'apps.common.buttons.ok',
       expect.not.objectContaining({
-        locales: expect.anything(),
+        translations: expect.anything(),
       }),
     );
   });
 
   it('should not update if config does not exist', async () => {
-    mockReadFileSync.mockImplementation(() => {
-      throw new Error('ENOENT: no such file or directory');
+    vi.mocked(loadConfig).mockImplementation(() => {
+      throw new ConfigNotFoundError('/test/project/.lingo-tracker.json');
     });
 
     const options = {
@@ -189,11 +185,11 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 
   it('should not update if collection does not exist', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
 
     const options = {
       collection: 'nonexistent',
@@ -203,14 +199,15 @@ describe('editResourceCommand', () => {
     await editResourceCommand(options);
 
     expect(mockEditResource).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
   });
 
   it('should prompt for baseValue if not provided', async () => {
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
     mockEditResource.mockResolvedValue({
       resolvedKey: 'apps.common.buttons.ok',
       updated: true,
+      mutations: [],
     });
 
     // Mock prompts to return baseValue
@@ -224,30 +221,8 @@ describe('editResourceCommand', () => {
       key: 'apps.common.buttons.ok',
     };
 
-    // Mock isTTY to true to trigger prompts (both stdin and stdout)
-    const originalStdinIsTTY = process.stdin.isTTY;
-    const originalStdoutIsTTY = process.stdout.isTTY;
-    Object.defineProperty(process.stdin, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
-    Object.defineProperty(process.stdout, 'isTTY', {
-      value: true,
-      configurable: true,
-    });
-
-    try {
-      await editResourceCommand(options);
-    } finally {
-      Object.defineProperty(process.stdin, 'isTTY', {
-        value: originalStdinIsTTY,
-        configurable: true,
-      });
-      Object.defineProperty(process.stdout, 'isTTY', {
-        value: originalStdoutIsTTY,
-        configurable: true,
-      });
-    }
+    vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+    await editResourceCommand(options);
 
     expect(promptsMock).toHaveBeenCalledWith(
       expect.arrayContaining([
@@ -260,39 +235,76 @@ describe('editResourceCommand', () => {
     );
 
     expect(mockEditResource).toHaveBeenCalledWith(
-      resolve('/test/project', 'src/i18n'),
+      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
+      'apps.common.buttons.ok',
       expect.objectContaining({
         baseValue: 'Promped Value',
       }),
     );
   });
 
+  it('maps --target-folder to moveTo', async () => {
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
+    mockEditResource.mockResolvedValue({ resolvedKey: 'shared.ok', updated: true, mutations: [] });
+
+    await editResourceCommand({
+      collection: 'default',
+      key: 'apps.common.buttons.ok',
+      targetFolder: 'shared',
+    });
+
+    expect(mockEditResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'default' }),
+      'apps.common.buttons.ok',
+      expect.objectContaining({ moveTo: 'shared' }),
+    );
+  });
+
+  it('prints the core error and exits 1 when core throws', async () => {
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
+    mockEditResource.mockRejectedValue(new Error('Resource not found: apps.missing'));
+
+    await editResourceCommand({ collection: 'default', key: 'apps.missing', baseValue: 'x' });
+
+    expect(console.error).toHaveBeenCalledWith('❌ Resource not found: apps.missing');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('exits 1 when --key is missing in non-interactive mode', async () => {
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
+
+    await editResourceCommand({ collection: 'default', baseValue: 'x' });
+
+    expect(mockEditResource).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
+    expect(process.exitCode).toBe(1);
+  });
+
   describe('preferred terminology', () => {
     const rules = [{ discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' }];
 
     beforeEach(() => {
-      mockExistsSync.mockReturnValue(true);
-      mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
+      vi.mocked(loadConfig).mockReturnValue(mockConfig);
       vi.mocked(loadPreferredTerminology).mockReturnValue({ rules, filePath: '/test/project/terms.json' });
     });
 
     const logged = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.map((call) => String(call[0]));
 
     it('warns about the new base value after a successful edit', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
-      expect(logged(logSpy)).toContain('⚠️  Preferred terminology: consider "Investment" instead of "Expenditure"');
-      expect(logged(logSpy)).toContain('  Finance style guide');
-      expect(process.exitCode ?? 0).toBe(0);
-      logSpy.mockRestore();
+      expect(logged(stderrSpy)).toContain('⚠️  Preferred terminology: consider "Investment" instead of "Expenditure"');
+      expect(logged(stderrSpy)).toContain('  Finance style guide');
+      expect(process.exitCode).toBe(0);
+      stderrSpy.mockRestore();
     });
 
     it('does not check when the base value was not part of the edit', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
       await editResourceCommand({
         collection: 'default',
@@ -303,39 +315,40 @@ describe('editResourceCommand', () => {
       });
 
       expect(loadPreferredTerminology).not.toHaveBeenCalled();
-      expect(logged(logSpy).some((line) => line.includes('Preferred terminology'))).toBe(false);
-      logSpy.mockRestore();
+      expect(logged(stderrSpy).some((line) => line.includes('Preferred terminology'))).toBe(false);
+      stderrSpy.mockRestore();
     });
 
     it('does not check when nothing changed', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       mockEditResource.mockResolvedValue({
         resolvedKey: 'budget.title',
         updated: false,
         message: 'No changes detected',
+        mutations: [],
       });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
       expect(loadPreferredTerminology).not.toHaveBeenCalled();
-      logSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
 
     it('prints one config warning and skips the check when the rule file is broken', async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       vi.mocked(loadPreferredTerminology).mockReturnValue({
         rules: [],
         filePath: '/test/project/terms.json',
         error: 'not valid JSON',
       });
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
+      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
-      const lines = logged(logSpy);
+      const lines = logged(stderrSpy);
       expect(lines).toContain('⚠️  Preferred terminology checks skipped: not valid JSON');
       expect(lines.filter((line) => line.includes('Preferred terminology'))).toHaveLength(1);
-      logSpy.mockRestore();
+      stderrSpy.mockRestore();
     });
   });
 });

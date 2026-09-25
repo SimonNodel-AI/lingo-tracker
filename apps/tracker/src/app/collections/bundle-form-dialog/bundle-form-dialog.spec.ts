@@ -313,6 +313,36 @@ describe('BundleFormDialog — create mode', () => {
     component.onCancel();
     expect(harness.dialogRef.close).toHaveBeenCalledWith(undefined);
   });
+
+  it('should not close when the domain rules reject what the field validators allowed', () => {
+    fillOutput(component);
+    component.form.controls.collections.at(0).controls.name.setValue('ghost');
+
+    component.onSubmit();
+    harness.fixture.detectChanges();
+
+    expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    expect(component.submitErrors()).toEqual(["Collection 'ghost' does not exist in the configuration."]);
+    const errors = (harness.fixture.nativeElement as HTMLElement).querySelector('[data-testid="submit-errors"]');
+    expect(errors?.getAttribute('role')).toBe('alert');
+    expect(errors?.textContent).toContain("Collection 'ghost' does not exist in the configuration.");
+
+    component.form.controls.collections.at(0).controls.name.setValue('trackerResources');
+    expect(component.submitErrors()).toEqual([]);
+    component.onSubmit();
+    expect(harness.dialogRef.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('should preview the output paths with the domain output-file rule', () => {
+    component.form.controls.dist.setValue(' ./dist//i18n/ ');
+    component.form.controls.bundleName.setValue('{locale}/admin');
+
+    expect(component.outputSummary()).toBe('dist/i18n/{locale}/admin.json');
+    expect(component.patternFiles()).toEqual(['en/admin.json', 'fr-ca/admin.json', 'es/admin.json']);
+    expect(
+      component.localTree().flatMap((folder) => folder.files.map((file) => `${folder.path}/${file.name}`)),
+    ).toEqual(['dist/i18n/en/admin.json', 'dist/i18n/fr-ca/admin.json', 'dist/i18n/es/admin.json']);
+  });
 });
 
 describe('BundleFormDialog — all collections', () => {
@@ -447,6 +477,26 @@ describe('BundleFormDialog — dry run', () => {
     const error = (fixture.nativeElement as HTMLElement).querySelector('[data-testid="hierarchical-conflicts"]');
     expect(error).toBeTruthy();
     expect(error?.getAttribute('role')).toBe('alert');
+  });
+});
+
+describe('BundleFormDialog — legacy typeDist', () => {
+  it('should show a legacy typeDist as the types file and save it as typeDistFile', () => {
+    const legacy = {
+      ...trackerBundle,
+      typeDistFile: undefined,
+      typeDist: './src/legacy-tokens.ts',
+    } as BundleDefinitionDto;
+    const { component, dialogRef } = buildHarness({ mode: 'edit', name: 'tracker', bundle: legacy });
+
+    expect(component.form.controls.typesEnabled.value).toBe(true);
+    expect(component.form.controls.typeDistFile.value).toBe('./src/legacy-tokens.ts');
+
+    component.onSubmit();
+
+    const bundle = dialogRef.close.mock.calls[0][0].bundle as BundleDefinitionDto;
+    expect(bundle.typeDistFile).toBe('./src/legacy-tokens.ts');
+    expect(bundle).not.toHaveProperty('typeDist');
   });
 });
 

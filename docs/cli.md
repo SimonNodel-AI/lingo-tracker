@@ -359,7 +359,8 @@ lingo-tracker delete-collection [options]
 
 **Options:**
 
-- `--collection-name <name>` - Name of the collection to delete (required in non-interactive mode)
+- `--collection-name <name>` - Name of the collection to delete (required in non-interactive mode when there are several collections)
+- `--yes` - Skip the confirmation prompt
 
 **Examples:**
 
@@ -376,7 +377,8 @@ lingo-tracker delete-collection --collection-name Mobile
 **Notes:**
 - Removes the collection entry from `.lingo-tracker.json`
 - Does NOT delete translation files from disk (data is preserved)
-- Will prompt for confirmation before deletion (in interactive mode)
+- In interactive mode, asks for confirmation (naming the collection and its translations folder) unless `--yes` is given, also when the only collection was selected for you. Declining cancels with exit code 0
+- In non-interactive mode, it does not ask: the flags are the consent
 
 ---
 
@@ -720,7 +722,7 @@ Translating locale 'fr' in collection 'playground'...
 Done.
 
 Translated: 45 resources
-Skipped (ICU): 3 resources
+Skipped (needs human translation): 3 resources
 Failed: 0 resources
 ```
 
@@ -734,7 +736,8 @@ Failed: 0 resources
 
 **Notes:**
 - Only resources with status `new` or `stale` are translated; `translated` and `verified` resources are left unchanged
-- Resources whose base value uses complex ICU syntax are skipped and reported in the "Skipped (ICU)" count
+- Resources whose base value uses complex ICU syntax, and translations that lose a placeholder or drop a [protected term](./features/protected-terms.md), are skipped and reported in the "Skipped (needs human translation)" count
+- Translations are stored in ICU format (`{{ name }}` becomes `{name}`)
 - Throttling is controlled by `batchSize` and `delayMs` in the `translation` config block; see [Auto-Translation](./auto-translation.md) for recommended settings
 - Requires `translation.enabled: true` in `.lingo-tracker.json`
 
@@ -752,11 +755,11 @@ lingo-tracker move [options]
 
 **Options:**
 
-- `--collection <name>` - Collection to move resources in (required in non-interactive mode)
+- `--collection <name>` - Collection to move resources in (required in non-interactive mode when several collections are configured)
 - `--source <key>` - Source key or pattern (e.g., `common.buttons.ok` or `common.buttons.*`) (required in non-interactive mode)
 - `--dest <key>` - Destination key (e.g., `common.actions.ok` or `common.actions`) (required in non-interactive mode)
+- `--dest-collection <name>` - Move into another collection; the destination key is relative to that collection. The collection must exist and must not be read-only. Never prompted for.
 - `--override` - Overwrite destination if it already exists
-- `--verbose` - Print detailed output for each moved resource
 
 **Examples:**
 
@@ -782,6 +785,16 @@ lingo-tracker move \
 ```
 *Result: `common.buttons.ok` -> `common.actions.ok`, `common.buttons.cancel` -> `common.actions.cancel`*
 
+Move a resource into another collection:
+```bash
+lingo-tracker move \
+  --collection Main \
+  --source common.buttons.ok \
+  --dest shared.buttons.ok \
+  --dest-collection Shared
+```
+*Result: `common.buttons.ok` is removed from `Main` and stored as `shared.buttons.ok` in `Shared`.*
+
 Force move (overwrite destination):
 ```bash
 lingo-tracker move \
@@ -795,6 +808,7 @@ lingo-tracker move \
 - When using wildcard patterns, the suffix matched by `*` is appended to the destination key.
 - Moving a resource preserves its comments, tags, and translations.
 - The source resource is deleted after a successful move.
+- A cross-collection move copies the entry and its metadata as they are. If the two collections have different base locales, the stored source text and checksums still belong to the source collection's base locale, and target locales are neither added nor removed.
 
 ---
 
@@ -1193,7 +1207,8 @@ When matches are found:
 ```
 Similar values found for "Save":
   buttons.save → "Save" (similarity: 100%)
-  buttons.saveAndClose → "Save and Close" (similarity: 89%)
+  labels.saved → "Saved" (similarity: 80%)
+  buttons.saveDraft → "Save draft" (similarity: 40%)
 ```
 
 When no matches meet the similarity threshold:
@@ -1203,15 +1218,16 @@ No similar values found for "Save draft".
 
 **How It Works:**
 
-1. Runs a broad substring pre-filter via `searchTranslations` (up to 50 candidates)
-2. Scores each candidate using normalised Levenshtein distance (case-insensitive)
-3. Keeps only results with a similarity score ≥ 80%
-4. Returns top N results sorted by score descending
+1. Reads every resource of the collection
+2. Scores each base value against `--value` with normalised Levenshtein similarity (case-insensitive, trimmed)
+3. Keeps a value when its similarity is ≥ 80%, or when it contains `--value` or is contained in it as whole words with a similarity of at least 40% (for example `Save` and `Save draft`; a fragment inside a word, such as `connect` in `connection` or `don` in `don't`, does not count, nor does a short label inside a long sentence)
+4. Ranks every match by similarity (a key that contains `--value` wins a tie), then prints the top N
 
 **Notes:**
-- Only the base locale value is compared (not translations)
-- Only `exact-value` and `partial-value` match types are considered; key-based matches are excluded
-- Similarity threshold is fixed at 80% — results below this are not shown
+- Only the base locale value is compared (not translations or keys)
+- A whole-word containment match is shown with its real similarity, which can be between 40% and 80% (`Save draft` for `Save` is 40%; `Save and Close` at 29% is not shown)
+- Folders that cannot be read are reported as `⚠️  Skipped unreadable folder: …` lines; the rest of the collection is still searched
+- The same rule backs the Tracker's "Similar values" list and `GET /api/collections/:name/resources/search?mode=similar`
 - Non-interactive only; does not prompt for missing options
 
 ---
@@ -1308,15 +1324,15 @@ lingo-tracker validate [options]
 **Options:**
 
 - `--allow-translated` - Treat 'translated' status as warning instead of failure (default: false)
-- `--skip-locales <locales>` - Comma-separated list of target locales to exclude from validation (e.g. `fr` or `fr,de`). Useful when a locale has been added to the config but its translations are still in progress. Unknown locales (not in `config.locales`) emit a warning and are ignored. The base locale is silently ignored, and is still compiled by the ICU check. If all target locales are skipped, the command exits with code `1`.
+- `--skip-locales <locales>` - Comma-separated list of target locales to exclude from validation (e.g. `fr` or `fr,de`). Useful when a locale has been added to the config but its translations are still in progress. Locales that are no collection's target locale emit a warning and are ignored. A collection's base locale is silently ignored, and is still compiled by the ICU check. If all target locales are skipped, the command exits with code `1`.
 - `--skip-icu` - Do not compile values as ICU for their own locale (default: false). Does not disable `--require-portable-plurals`, which parses rather than compiles.
 - `--require-portable-plurals` - Warn when a base-locale plural selects a branch by category (`one`, `few`, …) instead of an exact `=N` match (default: false). Warnings never fail the run.
 
 **What Validate Does:**
 
 1. **Loads all resources** from all configured collections
-2. **Checks translation status** for every resource in every target locale
-3. **Compiles every value as ICU** under the locale it is stored under, including the base locale (unless `--skip-icu`)
+2. **Checks translation status** for every resource in every target locale of its collection. Each collection uses its own `baseLocale` and `locales` when it overrides them. A key that two collections share is checked in both.
+3. **Compiles every value as ICU** under the locale it is stored under, including each collection's base locale (unless `--skip-icu`)
 4. **Collects all validation results** (does not stop at first error)
 5. **Categorizes findings** into failures, warnings, and successes
 6. **Reports comprehensive results** grouped by locale
@@ -1335,7 +1351,9 @@ A value that does not compile as ICU for its own locale is a failure whatever it
 **Exit Codes:**
 
 - `0` - All validations passed (all resources verified)
-- `1` - Validation failures found (new/stale resources, translated without `--allow-translated`, or values that fail to compile as ICU), or the preferred terminology file exists but cannot be loaded
+- `1` - Validation failures found (new/stale resources, translated without `--allow-translated`, values that fail to compile as ICU, or a resource folder whose files are not valid JSON), or the preferred terminology file exists but cannot be loaded
+
+A resource without metadata counts as `new`. A folder whose `resource_entries.json` or `tracker_meta.json` is not valid JSON is listed under **Unreadable Folders**. Its resources are not checked, and validation fails.
 
 [Preferred terminology](./features/preferred-terminology.md) findings in base-locale values are warnings. They never change the exit code.
 
@@ -1739,13 +1757,13 @@ Every export generates an `export-summary.md` file in the output directory conta
 - **Status filtering** is per-locale: a resource is included in a locale if it matches the filter for that locale
 - **Tag filtering** uses OR logic: resource must have at least one of the specified tags
 - **Base locale** is never exported (only target locales)
-- Resources without metadata are omitted and logged in errors
+- Resources without metadata are exported as `new`
 - Empty export results don't create files (warning logged)
 
 **Error Handling:**
 
-- Malformed files: Skipped with detailed warning, export continues
-- Missing metadata: Resource omitted, logged in errors
+- Malformed files: the folder is skipped and listed under "Malformed Files" in the summary; export continues
+- Missing metadata: the resource is exported with status `new`
 - Hierarchical conflicts: Logged when a key is both a parent and leaf value (JSON hierarchical only)
 - Non-writable output directory: Fails with clear error message
 - Empty results: No files created, warning shown
@@ -2129,5 +2147,6 @@ jobs:
 ### Error Handling
 
 - Commands report errors clearly with actionable messages
+- Errors (`❌`) and warnings (`⚠️`) go to stderr; results go to stdout. So `glossary --stdout` and `normalize --json` output can be piped safely
 - Bulk operations (like `delete-resource` with multiple keys) use best-effort approach
 - Check exit codes in scripts: 0 for success, non-zero for errors

@@ -62,6 +62,7 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'browser.similarTranslations.loading': 'Searching for similar translations...',
         'browser.similarTranslations.empty': 'No similar translations found',
         'browser.similarTranslations.showMoreX': 'Show {{ count }} more',
+        'browser.similarTranslations.similarityX': '{{ percent }}% similar',
         'browser.status.new': 'New',
         'browser.status.stale': 'Stale',
         'browser.status.translated': 'Translated',

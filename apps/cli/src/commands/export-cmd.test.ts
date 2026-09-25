@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { join } from 'node:path';
-import { exportCommand } from './export-cmd';
 import * as fs from 'node:fs';
+import { join } from 'node:path';
 import prompts from 'prompts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { isInteractiveTerminal } from '../runner/terminal';
+import { exportCommand } from './export-cmd';
 
 const fsMocks = vi.hoisted(() => ({
   existsSync: vi.fn(),
@@ -15,7 +16,7 @@ vi.mock('node:fs', async (importOriginal) => {
   return {
     ...actual,
     ...fsMocks,
-    default: { ...actual.default, ...fsMocks },
+    default: { ...actual, ...fsMocks },
   };
 });
 vi.mock('fs', async (importOriginal) => {
@@ -23,36 +24,67 @@ vi.mock('fs', async (importOriginal) => {
   return {
     ...actual,
     ...fsMocks,
-    default: { ...actual.default, ...fsMocks },
+    default: { ...actual, ...fsMocks },
   };
 });
 vi.mock('prompts');
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
-vi.mock('@simoncodes-ca/core', () => ({
-  CONFIG_FILENAME: '.lingo-tracker.json',
-  loadResourcesFromCollections: vi.fn(),
-  filterResources: vi.fn(),
-  validateOutputDirectory: vi.fn(),
-  validateBasePropertyName: vi.fn(),
-  exportToJson: vi.fn(),
-  exportToXliff: vi.fn(),
-  generateExportSummary: vi.fn(),
-  readGlobalProtectedTerms: vi.fn(() => []),
-  readCollectionProtectedTerms: vi.fn(() => []),
-}));
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  return {
+    // Collection resolution runs for real against the mocked config.
+    loadConfig: vi.fn(),
+    openCollection: actual.openCollection,
+    exportTargetLocales: actual.exportTargetLocales,
+    ConfigNotFoundError: actual.ConfigNotFoundError,
+    ConfigParseError: actual.ConfigParseError,
+    CollectionNotFoundError: actual.CollectionNotFoundError,
+    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    CONFIG_FILENAME: '.lingo-tracker.json',
+    runExport: vi.fn(),
+    validateOutputDirectory: vi.fn(),
+    validateBasePropertyName: vi.fn(),
+    readGlobalProtectedTerms: vi.fn(() => ['Acme']),
+    readCollectionProtectedTerms: vi.fn(() => []),
+  };
+});
 
+import type { ExportRunResult } from '@simoncodes-ca/core';
 import * as core from '@simoncodes-ca/core';
-const mockLoadResourcesFromCollections = vi.mocked(core.loadResourcesFromCollections);
-const mockFilterResources = vi.mocked(core.filterResources);
+
+const mockRunExport = vi.mocked(core.runExport);
 const mockValidateOutputDirectory = vi.mocked(core.validateOutputDirectory);
 const mockValidateBasePropertyName = vi.mocked(core.validateBasePropertyName);
-const mockExportToJson = vi.mocked(core.exportToJson);
-const mockExportToXliff = vi.mocked(core.exportToXliff);
-const mockGenerateExportSummary = vi.mocked(core.generateExportSummary);
+
+/** A run that exported fr and es; override any field. */
+const runResult = (overrides: Partial<ExportRunResult> = {}): ExportRunResult => ({
+  format: 'json',
+  filesCreated: ['fr.json', 'es.json'],
+  resourcesExported: 10,
+  warnings: [],
+  errors: [],
+  collections: ['common', 'admin'],
+  locales: ['fr', 'es'],
+  outputDirectory: '/out',
+  omittedResources: [],
+  malformedFiles: [],
+  hierarchicalConflicts: [],
+  localeResults: [
+    { locale: 'fr', outcome: 'exported', resourcesExported: 5, filesCreated: ['fr.json'] },
+    { locale: 'es', outcome: 'exported', resourcesExported: 5, filesCreated: ['es.json'] },
+  ],
+  summary: '# Export Summary',
+  ...overrides,
+});
+
+/** Names of the collections passed to runExport. */
+const exportedCollections = (): string[] | undefined => mockRunExport.mock.calls[0]?.[0].map((c) => c.name);
 
 describe('exportCommand', () => {
   const mockConfig = {
     exportFolder: 'dist/export',
+    importFolder: 'dist/import',
     baseLocale: 'en',
     locales: ['en', 'fr', 'es'],
     collections: {
@@ -65,127 +97,81 @@ describe('exportCommand', () => {
     },
   };
 
-  const originalStdout = process.stdout.isTTY;
   const originalLog = console.log;
   const originalError = console.error;
   const originalWarn = console.warn;
-  const originalExit = process.exit;
-  const originalExitCode = process.exitCode;
 
   beforeEach(() => {
     vi.clearAllMocks();
     console.log = vi.fn();
     console.error = vi.fn();
     console.warn = vi.fn();
-    process.exit = vi.fn() as unknown as (code?: number | string | null | undefined) => never;
-    process.exitCode = 0;
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
 
-    // Set to non-TTY by default to avoid prompts
-    Object.defineProperty(process.stdout, 'isTTY', {
-      value: false,
-      writable: true,
-      configurable: true,
-    });
+    // Non-interactive by default to avoid prompts
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
 
+    vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
     vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockConfig));
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
     mockValidateOutputDirectory.mockReturnValue(undefined);
-    mockLoadResourcesFromCollections.mockReturnValue([]);
-    mockFilterResources.mockReturnValue([]);
-    mockGenerateExportSummary.mockReturnValue('# Export Summary');
-    mockExportToJson.mockReturnValue({
-      filesCreated: ['fr.json', 'es.json'],
-      resourcesExported: 10,
-      warnings: [],
-      errors: [],
-      omittedResources: [],
-      malformedFiles: [],
-      hierarchicalConflicts: [],
-    });
-    mockExportToXliff.mockResolvedValue({
-      filesCreated: ['fr.xliff', 'es.xliff'],
-      resourcesExported: 10,
-      warnings: [],
-      errors: [],
-      omittedResources: [],
-      malformedFiles: [],
-      hierarchicalConflicts: [],
-    });
+    mockRunExport.mockResolvedValue(runResult());
   });
 
   afterEach(() => {
-    Object.defineProperty(process.stdout, 'isTTY', {
-      value: originalStdout,
-      writable: true,
-      configurable: true,
-    });
     console.log = originalLog;
     console.error = originalError;
     console.warn = originalWarn;
-    process.exit = originalExit;
-    process.exitCode = originalExitCode;
+    process.exitCode = undefined;
   });
 
   describe('configuration validation', () => {
     it('should error when config file is missing', async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(false);
-      // Make process.exit actually throw to prevent further execution
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
+      vi.mocked(core.loadConfig).mockImplementation(() => {
+        throw new core.ConfigNotFoundError('/project/.lingo-tracker.json');
       });
 
-      await expect(exportCommand({ format: 'json' })).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
 
       expect(console.error).toHaveBeenCalledWith('❌ Configuration file .lingo-tracker.json not found.');
     });
 
     it('should error when config file is malformed', async () => {
-      vi.mocked(fs.readFileSync).mockReturnValue('invalid json');
-      // Make process.exit actually throw to prevent further execution
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
+      vi.mocked(core.loadConfig).mockImplementation(() => {
+        throw new core.ConfigParseError('/project/.lingo-tracker.json', 'Unexpected token i in JSON');
       });
 
-      await expect(exportCommand({ format: 'json' })).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
 
       expect(console.error).toHaveBeenCalledWith(expect.stringContaining('❌ Failed to parse configuration file'));
     });
 
     it('should error when format is missing in non-TTY mode', async () => {
-      // In non-TTY mode without format, promptForMissing throws an error directly
-      await expect(exportCommand({})).rejects.toThrow('❌ Missing required option: --format');
+      await exportCommand({});
+
+      expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --format');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('should handle validateOutputDirectory errors', async () => {
       mockValidateOutputDirectory.mockImplementation(() => {
         throw new Error('Invalid output directory');
       });
-      // Make process.exit actually throw to prevent further execution
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
-      });
 
-      await expect(exportCommand({ format: 'json' })).rejects.toThrow('process.exit called with code 1');
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
 
-      expect(console.log).toHaveBeenCalledWith('❌ Invalid output directory');
+      expect(console.error).toHaveBeenCalledWith('❌ Invalid output directory');
     });
   });
 
   describe('non-interactive mode', () => {
-    it('should export to JSON with all required options', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
+    it('should export the chosen collection and locale to JSON', async () => {
       await exportCommand({
         format: 'json',
         collection: 'common',
@@ -193,31 +179,20 @@ describe('exportCommand', () => {
         status: 'new,stale',
       });
 
-      expect(mockLoadResourcesFromCollections).toHaveBeenCalledWith(
-        expect.arrayContaining([expect.objectContaining({ name: 'common' })]),
+      expect(exportedCollections()).toEqual(['common']);
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          format: 'json',
+          locales: ['fr'],
+          status: ['new', 'stale'],
+          augmentProtectedTerms: true,
+          protectedTerms: { global: ['Acme'], collections: { common: [] } },
+        }),
       );
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        'fr',
-        ['new', 'stale'],
-        undefined,
-        expect.objectContaining({ augmentProtectedTerms: true, baseLocale: 'en' }),
-      );
-      expect(mockExportToJson).toHaveBeenCalled();
     });
 
     it('should export to XLIFF with all required options', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
       await exportCommand({
         format: 'xliff',
         collection: 'common',
@@ -225,211 +200,122 @@ describe('exportCommand', () => {
         status: 'new,stale',
       });
 
-      expect(mockLoadResourcesFromCollections).toHaveBeenCalled();
-      expect(mockExportToXliff).toHaveBeenCalled();
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ format: 'xliff' }));
     });
 
     it('should export all collections when none specified', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
       await exportCommand({
         format: 'json',
       });
 
-      expect(mockLoadResourcesFromCollections).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ name: 'common' }),
-          expect.objectContaining({ name: 'admin' }),
-        ]),
-      );
+      expect(exportedCollections()).toEqual(['common', 'admin']);
     });
 
-    it('should export all target locales when none specified', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
+    it('should export all target locales (never the base locale) when none specified', async () => {
       await exportCommand({
         format: 'json',
       });
 
-      // Should filter for fr and es (not base locale 'en')
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        'fr',
-        undefined,
-        undefined,
-        expect.objectContaining({ augmentProtectedTerms: true, baseLocale: 'en' }),
-      );
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        'es',
-        undefined,
-        undefined,
-        expect.objectContaining({ augmentProtectedTerms: true, baseLocale: 'en' }),
-      );
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ locales: ['fr', 'es'] }));
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Locales: fr, es'));
     });
 
-    it('should use default status filter when not provided', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
+    it('should not filter by status when not provided', async () => {
       await exportCommand({
         format: 'json',
       });
 
-      // When status is not provided, it defaults to undefined (not filtered)
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        expect.any(String),
-        undefined,
-        undefined,
-        expect.objectContaining({ augmentProtectedTerms: true, baseLocale: 'en' }),
-      );
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ status: undefined }));
     });
 
     it('should handle dry run mode', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
       await exportCommand({
         format: 'json',
         dryRun: true,
       });
 
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('[DRY RUN]'));
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ dryRun: true }));
       // In dry run mode, summary is not written to file
       expect(fs.writeFileSync).not.toHaveBeenCalled();
     });
 
     it('should use custom output directory when provided', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
       await exportCommand({
         format: 'json',
         output: 'custom/output',
       });
 
       expect(mockValidateOutputDirectory).toHaveBeenCalledWith(expect.stringContaining(join('custom', 'output')));
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ outputDirectory: expect.stringContaining(join('custom', 'output')) }),
+      );
     });
 
     it('should filter by tags when provided', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
       await exportCommand({
         format: 'json',
         tags: 'ui,buttons',
       });
 
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        expect.any(String),
-        undefined,
-        ['ui', 'buttons'],
-        expect.objectContaining({ augmentProtectedTerms: true, baseLocale: 'en' }),
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ tags: ['ui', 'buttons'] }),
       );
     });
 
     it('should disable augmentation when --no-protect-notes is used', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-
       await exportCommand({
         format: 'json',
         protectNotes: false,
       });
 
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        expect.any(String),
-        undefined,
-        undefined,
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
         expect.objectContaining({ augmentProtectedTerms: false }),
-      );
-      expect(mockExportToJson).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ augmentProtectedTerms: false }),
-        'en',
       );
     });
 
-    it('should skip locales with no matching resources', async () => {
-      mockFilterResources.mockReturnValue([]);
+    it('should print progress messages indented in verbose mode', async () => {
+      mockRunExport.mockImplementation(async (_collections, options) => {
+        options.onProgress?.('Skipping fr: No matching resources.');
+        return runResult();
+      });
 
       await exportCommand({
         format: 'json',
         verbose: true,
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Skipping fr: No matching resources.'));
-      expect(mockExportToJson).not.toHaveBeenCalled();
+      expect(console.log).toHaveBeenCalledWith('   Skipping fr: No matching resources.');
     });
 
-    it('should warn when no collections found', async () => {
+    it('should exit 1 for an unknown collection', async () => {
       await exportCommand({
         format: 'json',
-        collection: 'nonexistent',
+        collection: 'common,nonexistent',
       });
 
-      expect(console.log).toHaveBeenCalledWith('⚠️  No matching collections found.');
+      expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('should exit 1 when no collections are configured', async () => {
+      vi.mocked(core.loadConfig).mockReturnValue({ ...mockConfig, collections: {} });
+
+      await exportCommand({ format: 'json' });
+
+      expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('should export a collection named twice only once', async () => {
+      await exportCommand({ format: 'json', collection: 'common,common' });
+
+      expect(exportedCollections()).toEqual(['common']);
     });
 
     it('should warn when no target locales selected', async () => {
@@ -438,27 +324,14 @@ describe('exportCommand', () => {
         locale: 'en', // base locale is filtered out
       });
 
-      expect(console.log).toHaveBeenCalledWith('⚠️  No target locales selected.');
+      expect(console.error).toHaveBeenCalledWith('⚠️  No target locales selected.');
+      expect(mockRunExport).not.toHaveBeenCalled();
     });
   });
 
   describe('interactive mode', () => {
     beforeEach(() => {
-      Object.defineProperty(process.stdout, 'isTTY', {
-        value: true,
-        writable: true,
-        configurable: true,
-      });
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     });
 
     it('should prompt for format when not provided', async () => {
@@ -489,14 +362,18 @@ describe('exportCommand', () => {
     });
 
     it('should handle user cancellation gracefully', async () => {
-      vi.mocked(prompts).mockImplementation(() => {
-        throw new Error('Export cancelled');
+      // The user presses Esc: prompts calls onCancel.
+      vi.mocked(prompts).mockImplementation(async (questions, options) => {
+        const [question] = Array.isArray(questions) ? questions : [questions];
+        options?.onCancel?.(question, {});
+        return {};
       });
 
       await exportCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ ❌ Export cancelled.');
-      expect(process.exit).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith('❌ Export cancelled.');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
     });
 
     it('should prompt for collections when not provided', async () => {
@@ -547,12 +424,7 @@ describe('exportCommand', () => {
 
       await exportCommand({});
 
-      expect(mockLoadResourcesFromCollections).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          expect.objectContaining({ name: 'common' }),
-          expect.objectContaining({ name: 'admin' }),
-        ]),
-      );
+      expect(exportedCollections()).toEqual(['common', 'admin']);
     });
 
     it('should handle specific collection selection', async () => {
@@ -576,9 +448,7 @@ describe('exportCommand', () => {
 
       await exportCommand({});
 
-      expect(mockLoadResourcesFromCollections).toHaveBeenCalledWith(
-        expect.arrayContaining([expect.objectContaining({ name: 'common' })]),
-      );
+      expect(exportedCollections()).toEqual(['common']);
     });
 
     it('should prompt for JSON-specific options when JSON format is selected', async () => {
@@ -615,10 +485,10 @@ describe('exportCommand', () => {
 
       // Type functions should return proper types for JSON format
       if (structureQuestion && typeof structureQuestion.type === 'function') {
-        expect(structureQuestion.type(null, { format: 'json' })).toBe('select');
+        expect(structureQuestion.type(null, { format: 'json' }, structureQuestion)).toBe('select');
       }
       if (richQuestion && typeof richQuestion.type === 'function') {
-        expect(richQuestion.type(null, { format: 'json' })).toBe('toggle');
+        expect(richQuestion.type(null, { format: 'json' }, richQuestion)).toBe('toggle');
       }
     });
 
@@ -643,13 +513,7 @@ describe('exportCommand', () => {
 
       await exportCommand({});
 
-      expect(mockExportToJson).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          richJson: false,
-        }),
-        expect.anything(),
-      );
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ richJson: false }));
     });
 
     it('should not prompt for already provided options', async () => {
@@ -704,93 +568,39 @@ describe('exportCommand', () => {
 
       // These questions should have type functions that return null for XLIFF
       if (structureQuestion && typeof structureQuestion.type === 'function') {
-        expect(structureQuestion.type(null, { format: 'xliff' })).toBeNull();
+        expect(structureQuestion.type(null, { format: 'xliff' }, structureQuestion)).toBeNull();
       }
       if (richQuestion && typeof richQuestion.type === 'function') {
-        expect(richQuestion.type(null, { format: 'xliff' })).toBeNull();
+        expect(richQuestion.type(null, { format: 'xliff' }, richQuestion)).toBeNull();
       }
     });
   });
 
-  describe('export execution', () => {
-    beforeEach(() => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'test',
-          locale: 'fr',
-          value: 'test-fr',
-          baseValue: '',
-          status: 'translated',
-          collection: '',
-        },
-      ]);
-    });
-
-    it('should skip base locale when exporting', async () => {
+  describe('rendering the run', () => {
+    it('should write the summary returned by the run', async () => {
       await exportCommand({
         format: 'json',
       });
 
-      // Should export for fr and es, but not en (base locale)
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        'fr',
-        undefined,
-        undefined,
-        expect.objectContaining({ augmentProtectedTerms: true, baseLocale: 'en' }),
-      );
-      expect(mockFilterResources).toHaveBeenCalledWith(
-        [],
-        'es',
-        undefined,
-        undefined,
-        expect.objectContaining({ augmentProtectedTerms: true, baseLocale: 'en' }),
-      );
-      expect(mockFilterResources).not.toHaveBeenCalledWith([], 'en', expect.anything(), expect.anything());
-    });
-
-    it('should call export function for each locale with resources', async () => {
-      await exportCommand({
-        format: 'json',
-      });
-
-      // Called twice (once for fr, once for es)
-      expect(mockExportToJson).toHaveBeenCalledTimes(2);
-    });
-
-    it('should generate export summary', async () => {
-      await exportCommand({
-        format: 'json',
-      });
-
-      expect(mockGenerateExportSummary).toHaveBeenCalled();
       expect(fs.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining('lingo-tracker-export-summary'),
         '# Export Summary',
       );
     });
 
-    it('should not write summary in dry run mode', async () => {
+    it('should print the summary instead of writing it in dry run mode', async () => {
       await exportCommand({
         format: 'json',
         dryRun: true,
       });
 
-      expect(mockGenerateExportSummary).toHaveBeenCalled();
       expect(fs.writeFileSync).not.toHaveBeenCalled();
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Summary (Dry Run)'));
+      expect(console.log).toHaveBeenCalledWith('# Export Summary');
     });
 
     it('should set exit code when errors occur', async () => {
-      mockExportToJson.mockReturnValue({
-        filesCreated: [],
-        resourcesExported: 0,
-        warnings: [],
-        errors: ['Export failed'],
-        omittedResources: [],
-        malformedFiles: [],
-        hierarchicalConflicts: [],
-      });
+      mockRunExport.mockResolvedValue(runResult({ errors: ['Export failed'] }));
 
       await exportCommand({
         format: 'json',
@@ -800,15 +610,7 @@ describe('exportCommand', () => {
     });
 
     it('should not set exit code in dry run mode even with errors', async () => {
-      mockExportToJson.mockReturnValue({
-        filesCreated: [],
-        resourcesExported: 0,
-        warnings: [],
-        errors: ['Export failed'],
-        omittedResources: [],
-        malformedFiles: [],
-        hierarchicalConflicts: [],
-      });
+      mockRunExport.mockResolvedValue(runResult({ errors: ['Export failed'] }));
 
       await exportCommand({
         format: 'json',
@@ -819,143 +621,105 @@ describe('exportCommand', () => {
     });
 
     it('should display warnings when present', async () => {
-      mockExportToJson.mockReturnValue({
-        filesCreated: ['fr.json'],
-        resourcesExported: 5,
-        warnings: ['Warning 1', 'Warning 2'],
-        errors: [],
-        omittedResources: [],
-        malformedFiles: [],
-        hierarchicalConflicts: [],
-      });
+      mockRunExport.mockResolvedValue(runResult({ warnings: ['Warning 1', 'Warning 2'] }));
 
       await exportCommand({
         format: 'json',
       });
 
-      // Warnings are collected from both locales (fr and es), so 2 warnings * 2 locales = 4 total
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warnings (4)'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warning 1'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Warning 2'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warnings (2)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warning 1'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Warning 2'));
     });
 
     it('should display errors when present', async () => {
-      mockExportToJson.mockReturnValue({
-        filesCreated: [],
-        resourcesExported: 0,
-        warnings: [],
-        errors: ['Error 1', 'Error 2'],
-        omittedResources: [],
-        malformedFiles: [],
-        hierarchicalConflicts: [],
-      });
+      mockRunExport.mockResolvedValue(runResult({ errors: ['Error 1', 'Error 2'] }));
 
       await exportCommand({
         format: 'json',
       });
 
-      // Errors are collected from both locales (fr and es), so 2 errors * 2 locales = 4 total
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Errors (4)'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Error 1'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Error 2'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Errors (2)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Error 1'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Error 2'));
     });
 
     it('should handle hierarchical conflicts as errors', async () => {
-      mockExportToJson.mockReturnValue({
-        filesCreated: [],
-        resourcesExported: 0,
-        warnings: [],
-        errors: [],
-        omittedResources: [],
-        malformedFiles: [],
-        hierarchicalConflicts: ['Conflict at key.path'],
-      });
+      mockRunExport.mockResolvedValue(runResult({ hierarchicalConflicts: ['[fr] Conflict at key.path'] }));
 
       await exportCommand({
         format: 'json',
       });
 
-      // Hierarchical conflicts are collected from both locales (fr and es), so 1 conflict * 2 locales = 2 total
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Errors (2)'));
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Conflict at key.path'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Errors (1)'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Conflict at key.path'));
+      expect(process.exitCode).toBe(1);
     });
 
-    it('should handle export exceptions and continue with other locales', async () => {
-      mockExportToJson
-        .mockImplementationOnce(() => {
-          throw new Error('Export failed for fr');
-        })
-        .mockReturnValueOnce({
-          filesCreated: ['es.json'],
-          resourcesExported: 5,
-          warnings: [],
-          errors: [],
-          omittedResources: [],
-          malformedFiles: [],
-          hierarchicalConflicts: [],
-        });
+    it('should display a locale whose export threw', async () => {
+      mockRunExport.mockResolvedValue(
+        runResult({
+          localeResults: [
+            { locale: 'fr', outcome: 'failed', resourcesExported: 0, filesCreated: [], error: 'Export failed for fr' },
+            { locale: 'es', outcome: 'exported', resourcesExported: 5, filesCreated: ['es.json'] },
+          ],
+        }),
+      );
 
       await exportCommand({
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('fr: Export failed - Export failed for fr'));
-      expect(mockExportToJson).toHaveBeenCalledTimes(2);
+      expect(console.error).toHaveBeenCalledWith('❌ fr: Export failed - Export failed for fr');
+      expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('fr: Export failed'));
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('es: Exported 5 resources to es.json'));
     });
 
-    it('should display verbose progress messages', async () => {
+    it('should pass verbose and a progress callback to the run', async () => {
       await exportCommand({
         format: 'json',
         verbose: true,
       });
 
-      expect(mockExportToJson).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({
-          verbose: true,
-          onProgress: expect.any(Function),
-        }),
-        expect.anything(),
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ verbose: true, onProgress: expect.any(Function) }),
       );
     });
 
     it('should display success message for each exported locale', async () => {
-      mockExportToJson.mockReturnValue({
-        filesCreated: ['fr.json'],
-        resourcesExported: 10,
-        warnings: [],
-        errors: [],
-        omittedResources: [],
-        malformedFiles: [],
-        hierarchicalConflicts: [],
+      await exportCommand({
+        format: 'json',
       });
+
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('fr: Exported 5 resources to fr.json'));
+    });
+
+    it('should display failure message when a locale created no file', async () => {
+      mockRunExport.mockResolvedValue(
+        runResult({ localeResults: [{ locale: 'fr', outcome: 'failed', resourcesExported: 0, filesCreated: [] }] }),
+      );
 
       await exportCommand({
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('fr: Exported 10 resources to fr.json'));
+      expect(console.error).toHaveBeenCalledWith('❌ fr: Failed');
     });
 
-    it('should display failure message when no files created', async () => {
-      mockExportToJson.mockReturnValue({
-        filesCreated: [],
-        resourcesExported: 0,
-        warnings: [],
-        errors: ['Export error'],
-        omittedResources: [],
-        malformedFiles: [],
-        hierarchicalConflicts: [],
-      });
+    it('should say nothing per locale for a skipped locale', async () => {
+      mockRunExport.mockResolvedValue(
+        runResult({ localeResults: [{ locale: 'fr', outcome: 'skipped', resourcesExported: 0, filesCreated: [] }] }),
+      );
 
       await exportCommand({
         format: 'json',
       });
 
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('fr: Failed'));
+      expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('fr:'));
     });
 
-    it('should pass correct options to exportToJson', async () => {
+    it('should pass the JSON options to the run', async () => {
       await exportCommand({
         format: 'json',
         structure: 'flat',
@@ -967,8 +731,8 @@ describe('exportCommand', () => {
         filename: 'custom-{locale}.json',
       });
 
-      expect(mockExportToJson).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
         expect.objectContaining({
           format: 'json',
           jsonStructure: 'flat',
@@ -979,60 +743,50 @@ describe('exportCommand', () => {
           includeTags: true,
           filenamePattern: 'custom-{locale}.json',
         }),
-        expect.any(String),
       );
     });
 
-    it('should pass correct options to exportToXliff', async () => {
+    it('should pass the XLIFF options to the run', async () => {
       await exportCommand({
         format: 'xliff',
         filename: 'custom-{locale}.xliff',
       });
 
-      expect(mockExportToXliff).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
         expect.objectContaining({
           format: 'xliff',
           filenamePattern: 'custom-{locale}.xliff',
         }),
-        expect.any(String),
       );
     });
 
     it('should display total files and resources in summary', async () => {
-      mockExportToJson
-        .mockReturnValueOnce({
-          filesCreated: ['fr.json'],
-          resourcesExported: 10,
-          warnings: [],
-          errors: [],
-          omittedResources: [],
-          malformedFiles: [],
-          hierarchicalConflicts: [],
-        })
-        .mockReturnValueOnce({
-          filesCreated: ['es.json'],
-          resourcesExported: 15,
-          warnings: [],
-          errors: [],
-          omittedResources: [],
-          malformedFiles: [],
-          hierarchicalConflicts: [],
-        });
+      mockRunExport.mockResolvedValue(runResult({ filesCreated: ['fr.json', 'es.json'], resourcesExported: 25 }));
 
       await exportCommand({
         format: 'json',
       });
 
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Export Summary'));
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Files Created: 2'));
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Resources Exported: 25'));
+    });
+
+    it('should report a run that cannot start and exit with an error', async () => {
+      mockRunExport.mockRejectedValue(new Error('Cannot export collections with different base locales together'));
+
+      await exportCommand({ format: 'json' });
+      expect(process.exitCode).toBe(1);
+
+      expect(console.error).toHaveBeenCalledWith(
+        expect.stringContaining('Cannot export collections with different base locales together'),
+      );
     });
   });
 
   describe('--base-property-name option', () => {
     it('should warn when --base-property-name is set without --include-base', async () => {
-      mockFilterResources.mockReturnValue([]);
-
       await exportCommand({
         format: 'json',
         locale: 'fr',
@@ -1040,43 +794,29 @@ describe('exportCommand', () => {
         includeBase: false,
       });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('--base-property-name has no effect without --include-base'),
       );
     });
 
     it('should exit with error when --base-property-name validation fails', async () => {
-      mockValidateBasePropertyName.mockImplementation(() => {
+      mockValidateBasePropertyName.mockImplementationOnce(() => {
         throw new Error('basePropertyName "value" is a reserved key');
       });
-      vi.mocked(process.exit).mockImplementation((code?: string | number | null | undefined) => {
-        throw new Error(`process.exit called with code ${code}`);
+
+      await exportCommand({
+        format: 'json',
+        locale: 'fr',
+        basePropertyName: 'value',
+        includeBase: true,
       });
+      expect(process.exitCode).toBe(1);
+      expect(mockRunExport).not.toHaveBeenCalled();
 
-      await expect(
-        exportCommand({
-          format: 'json',
-          locale: 'fr',
-          basePropertyName: 'value',
-          includeBase: true,
-        }),
-      ).rejects.toThrow('process.exit called with code 1');
-
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('basePropertyName "value" is a reserved key'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('basePropertyName "value" is a reserved key'));
     });
 
-    it('should pass basePropertyName through to exportToJson', async () => {
-      mockFilterResources.mockReturnValue([
-        {
-          key: 'hello',
-          value: 'Bonjour',
-          baseValue: 'Hello',
-          status: 'translated',
-          collection: 'common',
-          locale: 'fr',
-        },
-      ]);
-
+    it('should pass basePropertyName through to the run', async () => {
       await exportCommand({
         format: 'json',
         locale: 'fr',
@@ -1084,10 +824,9 @@ describe('exportCommand', () => {
         includeBase: true,
       });
 
-      expect(mockExportToJson).toHaveBeenCalledWith(
-        expect.anything(),
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
         expect.objectContaining({ basePropertyName: 'original' }),
-        expect.anything(),
       );
     });
   });

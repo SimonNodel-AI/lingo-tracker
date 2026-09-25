@@ -2,6 +2,12 @@ import { findIcuCompileError, findUnportablePluralCases, isIcuLocaleSupported } 
 import type { LoadedResource } from '../export/export-common';
 import type { IcuValidationOptions, IcuValidationDetail, IcuValidationResult } from './types';
 
+/** {@link IcuValidationOptions} for one collection. */
+export interface IcuPassOptions extends IcuValidationOptions {
+  /** The collection's base locale, whose `source` values are compiled alongside the targets. Omit to check targets only. */
+  readonly baseLocale?: string;
+}
+
 /**
  * Compiles every stored value under the locale it is stored under.
  *
@@ -28,7 +34,7 @@ import type { IcuValidationOptions, IcuValidationDetail, IcuValidationResult } f
 export function validateIcuValues(
   resources: readonly LoadedResource[],
   targetLocales: readonly string[],
-  options: IcuValidationOptions,
+  options: IcuPassOptions,
 ): IcuValidationResult {
   const { baseLocale } = options;
 

@@ -1,39 +1,31 @@
 /**
  * Bulk locale translation.
  *
- * Translates all `new` and `stale` resources in a translations folder for a
- * single target locale. Resources are processed in batches so that the number
- * of API calls is bounded regardless of how many resources exist.
+ * Translates every resource of a collection that needs work for one target locale (the Staleness
+ * rule: status `new` or `stale`, or no metadata for the locale) through the Translator. Resources
+ * are sent in batches so that the number of provider calls is bounded regardless of how many
+ * resources exist.
  *
- * Complex ICU resources (plural, select, etc.) are automatically skipped by
- * the underlying {@link TranslationOrchestrator} and reported in `skippedKeys`.
+ * Resources the Translator skips (complex ICU, a lost placeholder, a dropped protected term) are
+ * reported in `skippedKeys` and left as they are.
  *
  * @module translate-locale
  */
 
-import * as path from 'node:path';
-import { loadResourceTree } from '../resource/load-resource-tree';
-import { extractResourcesRecursively } from '../resource/extract-subtree';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
-import { calculateChecksum } from '../../resource/checksum';
-import { createTranslationProvider } from './translation-provider-factory';
-import { TranslationOrchestrator } from './translation-orchestrator';
-import { TranslationError } from './translation-provider';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
-import type { TranslationConfig } from '../../config/translation-config';
-import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import { needsTranslation } from '@simoncodes-ca/domain';
+import type { Collection } from '../config/open-collection';
+import { readCollection } from '../resource/read-collection';
+import { resolveResourcePaths } from '../resource/resource-file-paths';
+import { openResourceFolder } from '../resource/resource-folder';
+import { type OpenTranslatorOptions, openTranslator, type TranslatedValue } from './translator';
 
 // ---------------------------------------------------------------------------
 // Public interfaces
 // ---------------------------------------------------------------------------
 
-export interface TranslateLocaleParams {
-  readonly translationsFolder: string;
-  readonly translationConfig: TranslationConfig;
+export interface TranslateLocaleParams extends OpenTranslatorOptions {
+  /** One of the collection's target locales. */
   readonly targetLocale: string;
-  readonly baseLocale: string;
-  readonly allLocales: string[];
-  readonly cwd?: string;
   readonly onProgress?: (progress: TranslateLocaleProgress) => void;
 }
 
@@ -63,6 +55,8 @@ export interface TranslateLocaleResult {
   readonly skippedCount: number;
   readonly failures: ReadonlyArray<{ key: string; error: string }>;
   readonly skippedKeys: string[];
+  /** One line per folder the Collection Reader could not read (its resources were not translated). */
+  readonly warnings: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -74,98 +68,29 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Returns true when a resource needs translation for `targetLocale`.
- * A resource needs translation when its status is `new`, `stale`,
- * or when there is no metadata at all for the locale.
+ * Opens a folder once, stores every translated value for it, and saves once.
+ * Values whose entry is no longer on disk are not written.
  */
-function needsTranslation(resource: ResourceTreeEntry, targetLocale: string): boolean {
-  const meta = resource.metadata[targetLocale];
-  if (!meta) return true;
-  return meta.status === 'new' || meta.status === 'stale';
-}
-
-/**
- * Converts a dot-delimited composite key (e.g. `apps.common.buttons.ok`)
- * into the filesystem folder path (e.g. `apps/common/buttons`) and the
- * entry key (`ok`).
- */
-function resolveResourcePath(
-  compositeKey: string,
-  absoluteTranslationsFolder: string,
-): { folderPath: string; entryKey: string } {
-  const segments = compositeKey.split('.');
-  const entryKey = segments[segments.length - 1];
-  const folderSegments = segments.slice(0, -1);
-  const folderPath =
-    folderSegments.length > 0 ? path.join(absoluteTranslationsFolder, ...folderSegments) : absoluteTranslationsFolder;
-
-  return { folderPath, entryKey };
-}
-
-// ---------------------------------------------------------------------------
-// Internal types
-// ---------------------------------------------------------------------------
-
-interface FolderWriteEntry {
-  readonly entryKey: string;
-  readonly result: { kind: string; value: string };
-  readonly source: string;
-  readonly resourceKey: string;
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers (continued)
-// ---------------------------------------------------------------------------
-
-/**
- * Reads the entries and metadata files for a folder once, applies all
- * translated resources for that folder, and writes both files back once.
- * Resources whose entry key is missing from disk are silently skipped.
- *
- * @returns How many entries were actually written (missing entries are 0).
- */
-function writeTranslatedResources(
+function writeTranslatedValues(
   folderPath: string,
-  entries: readonly FolderWriteEntry[],
-  targetLocale: string,
+  values: readonly { readonly entryKey: string; readonly value: TranslatedValue }[],
   baseLocale: string,
-): {
-  writtenKeys: string[];
-  skippedKeys: string[];
-} {
-  const entriesFilePath = path.join(folderPath, RESOURCE_ENTRIES_FILENAME);
-  const metaFilePath = path.join(folderPath, TRACKER_META_FILENAME);
-
-  const resourceEntries = readResourceEntries(entriesFilePath, {});
-  const trackerMeta = readTrackerMetadata(metaFilePath, {});
-
+): { writtenKeys: string[]; skippedKeys: string[] } {
+  const folder = openResourceFolder(folderPath, { baseLocale });
   const writtenKeys: string[] = [];
   const skippedKeys: string[] = [];
 
-  for (const entry of entries) {
-    if (!resourceEntries[entry.entryKey]) {
-      skippedKeys.push(entry.resourceKey);
+  for (const { entryKey, value } of values) {
+    if (!folder.has(entryKey)) {
+      skippedKeys.push(value.key);
       continue;
     }
-
-    (resourceEntries[entry.entryKey] as Record<string, unknown>)[targetLocale] = entry.result.value;
-
-    const baseChecksum = trackerMeta[entry.entryKey]?.[baseLocale]?.checksum ?? calculateChecksum(entry.source);
-    trackerMeta[entry.entryKey] = {
-      ...trackerMeta[entry.entryKey],
-      [targetLocale]: {
-        checksum: calculateChecksum(entry.result.value),
-        baseChecksum,
-        status: 'translated',
-      },
-    };
-
-    writtenKeys.push(entry.resourceKey);
+    folder.setTranslation(entryKey, value.locale, value.value, 'translated');
+    writtenKeys.push(value.key);
   }
 
   if (writtenKeys.length > 0) {
-    writeJsonFile({ filePath: entriesFilePath, data: resourceEntries });
-    writeJsonFile({ filePath: metaFilePath, data: trackerMeta });
+    folder.save();
   }
 
   return { writtenKeys, skippedKeys };
@@ -176,32 +101,40 @@ function writeTranslatedResources(
 // ---------------------------------------------------------------------------
 
 /**
- * Translates all `new` and `stale` resources in `translationsFolder` for the
- * given `targetLocale`, writing the results back to disk.
+ * Translates every resource of `collection` that needs work for `targetLocale`, writing the
+ * results back to disk with status `translated` (values ICU-normalised by the Translator).
  *
- * Resources are processed in batches of `translationConfig.batchSize` (default 5).
- * A configurable delay (`translationConfig.delayMs`, default 1000 ms) is inserted
- * between batches to avoid hitting provider rate limits.
+ * Resources are read with the Collection Reader (a folder it cannot read is not translated and is
+ * reported in `warnings`) and
+ * processed in batches of `translationConfig.batchSize` (default 5). A configurable delay
+ * (`translationConfig.delayMs`, default 1000 ms) is inserted between batches to avoid hitting
+ * provider rate limits.
  *
- * Complex ICU messages (plural, select, etc.) are silently skipped and their keys
- * are included in `TranslateLocaleResult.skippedKeys`. Provider-level errors mark
- * all resources in the failing batch as failed but do not abort the run.
+ * When nothing needs translation, returns zeros without opening the Translator (so without
+ * needing an API key). Skipped resources are listed in `skippedKeys`. A provider error marks
+ * every resource in the failing batch as failed but does not abort the run.
  *
- * @param params - Translation parameters.
+ * @param collection - The opened collection.
+ * @param params - The target locale, an optional progress callback, and optional `provider` /
+ *   `protectedTerms` to use instead of the collection's (see {@link openTranslator}).
  * @returns A summary of how many resources were translated, skipped, or failed.
- * @throws {TranslationError} with code `MISSING_API_KEY` when the env var is absent.
+ * @throws {AutoTranslationDisabledError} There is work and the collection has no enabled translation config.
+ * @throws {TranslationError} There is work, no provider was injected, and the API key env var is unset
+ *   (`MISSING_API_KEY`).
+ * @throws {ProtectedTermsFileError} There is work and a protected-terms file is malformed.
  */
-export async function translateLocale(params: TranslateLocaleParams): Promise<TranslateLocaleResult> {
-  const { translationConfig, targetLocale, baseLocale, cwd = process.cwd(), onProgress } = params;
+export async function translateLocale(
+  collection: Collection,
+  params: TranslateLocaleParams,
+): Promise<TranslateLocaleResult> {
+  const { targetLocale, onProgress } = params;
+  const { baseLocale, translationsFolder } = collection;
 
-  const absoluteFolder = path.resolve(cwd, params.translationsFolder);
-
-  // Load the entire resource tree.
-  const tree = loadResourceTree({ translationsFolder: absoluteFolder, depth: 999, cwd });
-  const allResources = extractResourcesRecursively(tree);
-
-  // Filter to only those that need translating for the target locale.
-  const resourcesToTranslate = allResources.filter((resource) => needsTranslation(resource, targetLocale));
+  const { resources, problems } = readCollection(collection);
+  const warnings = problems.map(
+    ({ folderPath, message }) => `Folder '${folderPath || '(root)'}' was not translated: ${message}`,
+  );
+  const resourcesToTranslate = resources.filter((resource) => needsTranslation(resource.entry.metadata[targetLocale]));
 
   if (resourcesToTranslate.length === 0) {
     return {
@@ -211,24 +144,14 @@ export async function translateLocale(params: TranslateLocaleParams): Promise<Tr
       skippedCount: 0,
       failures: [],
       skippedKeys: [],
+      warnings,
     };
   }
 
-  // Resolve the API key once — fail fast before doing any I/O.
-  const apiKey = process.env[translationConfig.apiKeyEnv];
-  if (!apiKey) {
-    throw new TranslationError(
-      `Translation API key not found. Set the ${translationConfig.apiKeyEnv} environment variable.`,
-      'MISSING_API_KEY',
-      false,
-    );
-  }
+  const translator = openTranslator(collection, params);
 
-  const provider = createTranslationProvider(translationConfig.provider, apiKey);
-  const orchestrator = new TranslationOrchestrator(provider);
-
-  const batchSize = translationConfig.batchSize ?? 5;
-  const delayMs = translationConfig.delayMs ?? 1000;
+  const batchSize = collection.translationConfig?.batchSize ?? 5;
+  const delayMs = collection.translationConfig?.delayMs ?? 1000;
 
   const totalResources = resourcesToTranslate.length;
   const totalBatches = Math.ceil(totalResources / batchSize);
@@ -242,46 +165,37 @@ export async function translateLocale(params: TranslateLocaleParams): Promise<Tr
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
     const batchStart = batchIndex * batchSize;
     const batch = resourcesToTranslate.slice(batchStart, batchStart + batchSize);
-    const sourceTexts = batch.map((resource) => resource.source);
 
     try {
-      const batchResults = await orchestrator.translateBatchForLocale(sourceTexts, baseLocale, targetLocale);
+      const { values, skipped } = await translator.translate(
+        batch.map((resource) => ({ key: resource.fullKey, source: resource.entry.source })),
+        [targetLocale],
+      );
 
-      // Group translated results by folder so each folder's files are read and
-      // written only once, even when multiple resources share the same folder.
-      const byFolder = new Map<string, FolderWriteEntry[]>();
-
-      for (let i = 0; i < batch.length; i++) {
-        const resource = batch[i];
-        const result = batchResults[i];
-
-        if (result.kind === 'skipped') {
-          skippedKeys.push(resource.key);
-          skippedCount++;
-          continue;
-        }
-
-        const { folderPath, entryKey } = resolveResourcePath(resource.key, absoluteFolder);
-        const folderEntries = byFolder.get(folderPath) ?? [];
-        folderEntries.push({ entryKey, result, source: resource.source, resourceKey: resource.key });
-        byFolder.set(folderPath, folderEntries);
+      for (const { key } of skipped) {
+        skippedKeys.push(key);
+        skippedCount++;
       }
 
-      for (const [folderPath, folderEntries] of byFolder) {
-        const { writtenKeys, skippedKeys: folderSkippedKeys } = writeTranslatedResources(
-          folderPath,
-          folderEntries,
-          targetLocale,
-          baseLocale,
-        );
-        translatedCount += writtenKeys.length;
-        skippedCount += folderSkippedKeys.length;
-        skippedKeys.push(...folderSkippedKeys);
+      // Group by folder so each folder's files are read and written only once per batch.
+      const byFolder = new Map<string, { entryKey: string; value: TranslatedValue }[]>();
+      for (const value of values) {
+        const { folderPath, entryKey } = resolveResourcePaths({ key: value.key, translationsFolder });
+        const folderValues = byFolder.get(folderPath) ?? [];
+        folderValues.push({ entryKey, value });
+        byFolder.set(folderPath, folderValues);
+      }
+
+      for (const [folderPath, folderValues] of byFolder) {
+        const written = writeTranslatedValues(folderPath, folderValues, baseLocale);
+        translatedCount += written.writtenKeys.length;
+        skippedCount += written.skippedKeys.length;
+        skippedKeys.push(...written.skippedKeys);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       for (const resource of batch) {
-        failures.push({ key: resource.key, error: errorMessage });
+        failures.push({ key: resource.fullKey, error: errorMessage });
         failedCount++;
       }
     }
@@ -301,5 +215,5 @@ export async function translateLocale(params: TranslateLocaleParams): Promise<Tr
     }
   }
 
-  return { totalResources, translatedCount, failedCount, skippedCount, failures, skippedKeys };
+  return { totalResources, translatedCount, failedCount, skippedCount, failures, skippedKeys, warnings };
 }

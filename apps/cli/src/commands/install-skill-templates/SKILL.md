@@ -40,7 +40,7 @@ Before calling `add-resource` for any detected string, run:
 npx lingo-tracker find-similar --collection {{PRIMARY_COLLECTION}} --value "<the string value>"
 ```
 
-**If the command returns any results, evaluate each match** (the tool already filters to ≥ 80% similarity):
+**If the command returns any results, evaluate each match** (the tool shows values that are ≥ 80% similar, or that contain the string or are contained in it as whole words with ≥ 40% similarity; such a containment match shows its real similarity, between 40% and 80%):
 
 - **Reuse the existing key if**:
   - The stored value is identical or nearly identical (≥ 95% similarity)

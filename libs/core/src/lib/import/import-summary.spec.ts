@@ -1,14 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { generateImportSummary } from './import-summary';
-import type { ImportResult, ImportOptions } from './types';
+import type { ImportResult, ImportSummaryOptions } from './types';
 
 describe('import-summary', () => {
   describe('generateImportSummary', () => {
     it('should generate basic summary for successful import', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'translation-service',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 10,
@@ -27,11 +25,14 @@ describe('import-summary', () => {
         ],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'translation-service',
         validateBase: true,
@@ -58,9 +59,7 @@ describe('import-summary', () => {
 
     it('should generate dry-run summary', () => {
       const result: ImportResult = {
-        format: 'xliff',
         strategy: 'verification',
-        sourceFile: '/test/import.xliff',
         locale: 'fr',
         collection: 'TestCollection',
         resourcesImported: 5,
@@ -73,11 +72,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: true,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.xliff',
+        format: 'xliff',
         locale: 'fr',
         strategy: 'verification',
         dryRun: true,
@@ -92,9 +94,7 @@ describe('import-summary', () => {
 
     it('should include warnings section when warnings exist', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'migration',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 8,
@@ -107,11 +107,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: ['Base value mismatch for key: common.title', 'Duplicate key in import file: common.subtitle'],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'migration',
       };
@@ -125,9 +128,7 @@ describe('import-summary', () => {
 
     it('should include errors section when errors exist', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'translation-service',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 8,
@@ -140,11 +141,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: ['Invalid key format: common..invalid', 'Hierarchical conflict: common'],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'translation-service',
       };
@@ -158,9 +162,7 @@ describe('import-summary', () => {
 
     it('should format detailed changes for created resources', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'migration',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 3,
@@ -192,11 +194,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'migration',
         createMissing: true,
@@ -212,9 +217,7 @@ describe('import-summary', () => {
 
     it('should format detailed changes for updated resources', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'translation-service',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 2,
@@ -244,11 +247,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'translation-service',
       };
@@ -262,9 +268,7 @@ describe('import-summary', () => {
 
     it('should format detailed changes for skipped resources', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'translation-service',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 0,
@@ -288,11 +292,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'translation-service',
       };
@@ -306,9 +313,7 @@ describe('import-summary', () => {
 
     it('should format detailed changes for failed resources', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'migration',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 0,
@@ -332,11 +337,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'migration',
       };
@@ -354,9 +362,7 @@ describe('import-summary', () => {
       const files = Array.from({ length: 20 }, (_, i) => `/test/file${i + 1}.json`);
 
       const result: ImportResult = {
-        format: 'json',
         strategy: 'migration',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 100,
@@ -369,11 +375,14 @@ describe('import-summary', () => {
         filesModified: files,
         warnings: warnings,
         errors: errors,
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'migration',
       };
@@ -398,9 +407,7 @@ describe('import-summary', () => {
       }));
 
       const result: ImportResult = {
-        format: 'json',
         strategy: 'migration',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 50,
@@ -413,11 +420,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'migration',
       };
@@ -430,9 +440,7 @@ describe('import-summary', () => {
 
     it('should format flags section correctly', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'migration',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 10,
@@ -445,11 +453,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'migration',
         updateComments: true,
@@ -472,9 +483,7 @@ describe('import-summary', () => {
 
     it('should handle status transitions with same from/to status', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'update',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 10,
@@ -487,11 +496,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'update',
       };
@@ -503,9 +515,7 @@ describe('import-summary', () => {
 
     it('should handle created resources in status transitions', () => {
       const result: ImportResult = {
-        format: 'json',
         strategy: 'migration',
-        sourceFile: '/test/import.json',
         locale: 'es',
         collection: 'TestCollection',
         resourcesImported: 5,
@@ -518,11 +528,14 @@ describe('import-summary', () => {
         filesModified: [],
         warnings: [],
         errors: [],
+        icuAutoFixes: [],
+        icuAutoFixErrors: [],
         dryRun: false,
       };
 
-      const options: ImportOptions = {
+      const options: ImportSummaryOptions = {
         source: '/test/import.json',
+        format: 'json',
         locale: 'es',
         strategy: 'migration',
         createMissing: true,

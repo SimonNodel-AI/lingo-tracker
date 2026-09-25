@@ -1,48 +1,54 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { clearPreferredTerminologyCache } from '@simoncodes-ca/core';
+import { type LingoTrackerConfig, loadConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConsoleFormatter } from '../utils';
 import { preferredTerminologyCommand } from './preferred-terminology';
 
-vi.mock('../utils', () => ({
-  loadConfiguration: vi.fn(),
-  ConsoleFormatter: {
-    section: vi.fn(),
-    keyValue: vi.fn(),
-    indent: vi.fn(),
-    error: vi.fn(),
-    warning: vi.fn(),
-    success: vi.fn(),
-  },
+vi.mock('@simoncodes-ca/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@simoncodes-ca/core')>()),
+  loadConfig: vi.fn(),
 }));
 
-import { ConsoleFormatter, loadConfiguration } from '../utils';
+// Spy on the real formatter object, which the runner prints errors through too.
+for (const method of ['section', 'keyValue', 'indent', 'error', 'warning', 'success'] as const) {
+  vi.spyOn(ConsoleFormatter, method).mockImplementation(() => undefined);
+}
 
 const FILE_NAME = '.lingo-tracker-preferred-terminology.json';
 
 describe('preferredTerminologyCommand', () => {
-  const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
   let projectDir: string;
   let filePath: string;
-  let config: Record<string, unknown>;
+  let config: LingoTrackerConfig;
 
   const writeRules = (content: unknown) =>
     writeFileSync(filePath, typeof content === 'string' ? content : `${JSON.stringify(content, null, 2)}\n`);
   const readRules = () => JSON.parse(readFileSync(filePath, 'utf8'));
   const indented = () => vi.mocked(ConsoleFormatter.indent).mock.calls.map((call) => call[0]);
+  const errorDetails = (message: string) =>
+    vi.mocked(ConsoleFormatter.error).mock.calls.find(([line]) => line === message)?.[1] ?? [];
 
   beforeEach(() => {
     vi.clearAllMocks();
-    clearPreferredTerminologyCache();
     projectDir = mkdtempSync(join(tmpdir(), 'lingo-preferred-terminology-'));
     filePath = join(projectDir, FILE_NAME);
-    config = { baseLocale: 'en', locales: ['en', 'es'], collections: {} };
-    vi.mocked(loadConfiguration).mockImplementation(() => ({ config, cwd: projectDir }) as never);
+    config = {
+      exportFolder: 'dist/lingo-export',
+      importFolder: 'dist/lingo-import',
+      baseLocale: 'en',
+      locales: ['en', 'es'],
+      collections: {},
+    };
+    process.env.INIT_CWD = projectDir;
+    process.exitCode = undefined;
+    vi.mocked(loadConfig).mockImplementation(() => config);
   });
 
   afterEach(() => {
     rmSync(projectDir, { recursive: true, force: true });
+    process.exitCode = undefined;
   });
 
   describe('argument checks', () => {
@@ -52,14 +58,14 @@ describe('preferredTerminologyCommand', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         'Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>',
       );
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
     });
 
     it('rejects --add combined with --remove', async () => {
       await preferredTerminologyCommand({ add: 'Expenditure', preferred: 'Investment', remove: 'Spend' });
 
       expect(ConsoleFormatter.error).toHaveBeenCalledWith('--add and --remove cannot be combined; run them separately');
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       expect(existsSync(filePath)).toBe(false);
     });
 
@@ -67,7 +73,7 @@ describe('preferredTerminologyCommand', () => {
       await preferredTerminologyCommand({ add: 'Expenditure' });
 
       expect(ConsoleFormatter.error).toHaveBeenCalledWith('--add requires --preferred <preferred>');
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       expect(existsSync(filePath)).toBe(false);
     });
 
@@ -75,7 +81,7 @@ describe('preferredTerminologyCommand', () => {
       await preferredTerminologyCommand({ list: true, preferred: 'Investment' });
 
       expect(ConsoleFormatter.error).toHaveBeenCalledWith('--preferred and --reason can only be used with --add');
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -85,7 +91,7 @@ describe('preferredTerminologyCommand', () => {
 
       expect(ConsoleFormatter.keyValue).toHaveBeenCalledWith('File', FILE_NAME);
       expect(indented()).toEqual(['(none)']);
-      expect(exitSpy).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
     });
 
     it('prints one rule per line, with the reason only when present', async () => {
@@ -107,7 +113,7 @@ describe('preferredTerminologyCommand', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         expect.stringContaining('Preferred terminology file is not valid JSON'),
       );
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
     });
 
     it('prints a warning for a missing explicit file and continues', async () => {
@@ -120,7 +126,7 @@ describe('preferredTerminologyCommand', () => {
       );
       expect(ConsoleFormatter.keyValue).toHaveBeenCalledWith('File', join('config', 'terms.json'));
       expect(indented()).toEqual(['(none)']);
-      expect(exitSpy).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
     });
   });
 
@@ -132,7 +138,7 @@ describe('preferredTerminologyCommand', () => {
       expect(ConsoleFormatter.success).toHaveBeenCalledWith(
         `Added preferred terminology rule: Expenditure → Investment — Brand voice (${FILE_NAME})`,
       );
-      expect(exitSpy).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
     });
 
     it('updates an existing rule matched case-insensitively, replacing it entirely', async () => {
@@ -160,10 +166,11 @@ describe('preferredTerminologyCommand', () => {
       // Investment → Capital would make "Investment" both preferred and discouraged: a chain.
       await preferredTerminologyCommand({ add: 'Investment', preferred: 'Capital' });
 
-      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Preferred terminology not saved:');
-      expect(indented().length).toBeGreaterThan(0);
-      expect(indented()[0]).toContain('"Expenditure → Investment":');
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Preferred terminology not saved:', expect.any(Array));
+      const details = errorDetails('Preferred terminology not saved:');
+      expect(details.length).toBeGreaterThan(0);
+      expect(details[0]).toContain('"Expenditure → Investment":');
+      expect(process.exitCode).toBe(1);
       expect(ConsoleFormatter.success).not.toHaveBeenCalled();
       expect(readFileSync(filePath, 'utf8')).toBe(before);
     });
@@ -177,7 +184,7 @@ describe('preferredTerminologyCommand', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         expect.stringContaining('Preferred terminology file has invalid rules'),
       );
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       expect(readFileSync(filePath, 'utf8')).toBe(before);
     });
   });
@@ -206,7 +213,7 @@ describe('preferredTerminologyCommand', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         `No preferred terminology rule for "Expenditure" (${FILE_NAME})`,
       );
-      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(process.exitCode).toBe(1);
       expect(readFileSync(filePath, 'utf8')).toBe(before);
     });
   });

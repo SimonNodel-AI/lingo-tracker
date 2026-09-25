@@ -25,21 +25,19 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type {
-  CreateResourceDto,
   CreateResourceResponseDto,
   FolderNodeDto,
   ResourceSummaryDto,
   SearchResultDto,
   TranslationStatus,
-  UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 import {
   applyPreferredTerm,
   findPreferredTermFindings,
-  isValidSegment,
-  normalizeTag,
   type PreferredTermRule,
+  resolveResourceKey,
+  summaryTarget,
 } from '@simoncodes-ca/domain';
 import { of, Subject } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap, takeUntil, tap } from 'rxjs/operators';
@@ -48,12 +46,30 @@ import { CollectionsStore } from '../../../collections/store/collections.store';
 import { ConfirmationDialog } from '../../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import { NotificationService } from '../../../shared/notification';
+import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
+import { segmentValidator } from '../../../shared/validators/segment.validator';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../../store/browser.store';
+import { filterFolderTree } from '../../store/folder-tree.utils';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
+import {
+  absorbDottedKey,
+  addTag,
+  type ContextTreeNode,
+  collisionFor,
+  contextTree,
+  editedLocales,
+  folderEntryKeys,
+  hasUnsavedChanges,
+  type KnownEntries,
+  type LocaleDraft,
+  removeTag,
+  type ResourceEntryDraft,
+  toCreateDto,
+  toUpdateDto,
+} from './resource-entry-draft';
 import { SimilarTranslations } from './similar-translations';
-import { filterSimilarByValue, SIMILAR_SEARCH_MAX_RESULTS } from './similar-value-filter';
 
 /**
  * The id of the dialog's heading. The MatDialog container is labelled by this id
@@ -68,6 +84,9 @@ export const PREFERRED_TERM_ADVISORIES_ID = 'translation-editor-preferred-terms'
 /** Typing pause before preferred-terminology findings refresh; matches the similar search. */
 export const PREFERRED_TERM_DEBOUNCE_MS = 300;
 
+/** How many similar values the context column ever pins. */
+export const SIMILAR_DISPLAY_LIMIT = 10;
+
 export interface TranslationEditorDialogData {
   mode: 'create' | 'edit';
   resource?: ResourceSummaryDto;
@@ -79,38 +98,12 @@ export interface TranslationEditorDialogData {
   readOnly?: boolean;
 }
 
-interface TranslationFormValue {
-  key: string;
-  baseValue: string;
-  comment: string;
-  translations: LocaleTranslation[];
-}
-
-interface LocaleTranslation {
-  locale: string;
-  value: string;
-  status: TranslationStatus;
-}
-
-/** One row of the context column's "Where it lands" tree. */
-export interface ContextTreeNode {
-  kind: 'folder' | 'entry' | 'more';
-  name: string;
-  path: string;
-  depth: number;
-  /** The folder the entry lands in. */
-  here?: boolean;
-  expanded?: boolean;
-  /** The entry this dialog is writing, and what it is doing to it. */
-  mark?: 'new' | 'editing' | 'exists';
-}
-
 export interface TranslationEditorResult {
   key: string;
   baseValue: string;
   comment?: string;
   folderPath: string;
-  translations?: LocaleTranslation[];
+  translations?: LocaleDraft[];
   success?: boolean;
   shouldOpenEdit?: boolean;
   existingResourceKey?: string;
@@ -144,9 +137,6 @@ export interface TranslationEditorResult {
   ],
 })
 export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit {
-  /** How many sibling entries the context tree lists before it counts the rest. */
-  private static readonly CONTEXT_TREE_ENTRY_LIMIT = 8;
-
   private readonly dialogRef = inject(MatDialogRef<TranslationEditorDialog>);
   private readonly dialog = inject(MatDialog);
   private readonly browserApi = inject(BrowserApiService);
@@ -175,9 +165,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   @ViewChild('drawerFirstControl') drawerFirstControl?: ElementRef<HTMLElement>;
 
   #commentConfirmationShown = false;
-  #originalBaseValue = '';
-  #originalTags: string[] = [];
-  #originalFolderPath = '';
+  /** The draft as the dialog opened, for the unsaved-work check and the similar search. */
+  #initialDraft: ResourceEntryDraft | undefined;
   /**
    * The folder path this dialog last derived from a dotted key. Typing `a.` then
    * `b.` has to extend `a`, not re-anchor on `b`; a folder the user picked on the
@@ -262,12 +251,12 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   });
 
   readonly tagInputText = signal('');
-  readonly tagsList = signal<string[]>([]);
+  readonly tagsList = signal<readonly string[]>([]);
   readonly inheritedTagsList = computed(() => this.data.resource?.inheritedTags ?? []);
 
   readonly form = new FormGroup({
     key: new FormControl<string>('', {
-      validators: [Validators.required, Validators.pattern(/^[a-zA-Z0-9_-]+$/)],
+      validators: [Validators.required, segmentValidator],
       nonNullable: true,
     }),
     baseValue: new FormControl<string>('', {
@@ -323,25 +312,23 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly formRevision = signal(0);
 
   /**
-   * Live "this key is already taken in the target folder" state.
-   *
-   * Matches the rule the writer uses: `addResource` resolves the key to a folder
-   * and a single entry key, then asks whether that entry key is already a
-   * property of the folder's `resource_entries.json` — an exact, case-sensitive
-   * string match. So does this. In edit mode the key is locked, so there is
-   * nothing to collide with; while a folder's entries are still loading nothing
-   * is claimed either way.
+   * The entry being edited, by its own key. Edit mode locks the key, so the
+   * draft module never lets it collide with itself and marks it `editing`.
    */
+  readonly #ownKey = this.data.mode === 'edit' ? this.data.resource?.entryKey : undefined;
+
+  /** Everything the draft module needs to know which entries a folder holds. */
+  readonly #knownEntries = computed<KnownEntries>(() => ({
+    rootFolders: this.rootFolders(),
+    browserFolderPath: this.browserStore.currentFolderPath(),
+    browserEntries: this.browserStore.translations(),
+    fetched: this.#loadedFolderEntries(),
+  }));
+
+  /** Live "this key is already taken in the target folder" state; see `collisionFor`. */
   readonly keyCollision = computed(() => {
     this.formRevision();
-    if (this.isEditMode()) {
-      return false;
-    }
-    const key = this.form.controls.key.value.trim();
-    if (!key) {
-      return false;
-    }
-    return this.#folderEntryKeys(this.selectedFolderPath())?.has(key) === true;
+    return collisionFor(this.form.controls.key.value, this.selectedFolderPath(), this.#knownEntries(), this.#ownKey);
   });
 
   /** Live form validity, for the footer's earned check glyph. */
@@ -362,13 +349,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     return this.form.controls.baseValue.invalid && (this.form.controls.baseValue.touched || this.submitAttempted());
   });
 
-  /** Localized label for a translation status, so the spine never shows raw enum text. */
-  readonly statusLabels: Record<TranslationStatus, string> = {
-    new: TRACKER_TOKENS.BROWSER.STATUS.NEW,
-    translated: TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED,
-    stale: TRACKER_TOKENS.BROWSER.STATUS.STALE,
-    verified: TRACKER_TOKENS.BROWSER.STATUS.VERIFIED,
-  };
+  /** Transloco token for a status label, from the shared status presentation, so the spine never shows raw enum text. */
+  readonly statusLabelToken = statusLabelTokenFor;
 
   /** Explains a disabled Other locales row instead of leaving it silently grey. */
   readonly otherLocalesDisabledTooltip = computed(() =>
@@ -387,10 +369,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.formRevision();
     const folder = this.selectedFolderPath();
     const key = this.form.controls.key.value.trim();
-    if (!key) {
-      return folder;
-    }
-    return folder ? `${folder}.${key}` : key;
+    return key ? resolveResourceKey(key, folder) : folder;
   });
 
   /** The base locale under a name a reader recognises ("English"), for the value label. */
@@ -404,7 +383,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   );
 
   /** Every non-base locale with the value and status the form currently holds. */
-  readonly localeSummaries = computed<LocaleTranslation[]>(() => {
+  readonly localeSummaries = computed<LocaleDraft[]>(() => {
     this.formRevision();
     return this.form.controls.translations.controls.map((group) => group.getRawValue());
   });
@@ -413,7 +392,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * The locales a reviewer still owes work on. The context column lists these
    * alone: a locale that is already translated or verified is not news.
    */
-  readonly localesNeedingWork = computed<LocaleTranslation[]>(() =>
+  readonly localesNeedingWork = computed<LocaleDraft[]>(() =>
     this.localeSummaries().filter((locale) => locale.status === 'new' || locale.status === 'stale'),
   );
 
@@ -449,13 +428,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     if (!typed) {
       return undefined;
     }
-    return this.similarResources().find(
-      (result) => (result.translations[this.data.baseLocale] ?? '').trim().toLowerCase() === typed,
-    );
+    return this.similarResources().find((result) => result.base.value.trim().toLowerCase() === typed);
   });
 
   /** The key carrying the exact same text, or '' when no hit matches verbatim. */
-  readonly exactMatchKey = computed(() => this.exactMatch()?.key ?? '');
+  readonly exactMatchKey = computed(() => this.exactMatch()?.fullKey ?? '');
 
   /** The one-line summary the narrow "Context" disclosure carries. */
   readonly contextSummary = computed(() => {
@@ -474,77 +451,23 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     return parts.join(' · ');
   });
 
-  /**
-   * The mini tree in "Where it lands": the target folder's siblings under their
-   * shared parent, with the target expanded over the entries it already holds and
-   * the entry being written marked. Entries are only known for folders the tree
-   * has loaded; an unloaded folder shows as a folder node and nothing more.
-   */
+  /** The mini tree in "Where it lands"; see `contextTree` in the draft module. */
   readonly contextTree = computed<ContextTreeNode[]>(() => {
     this.formRevision();
-    const roots = this.rootFolders();
-    const segments = this.folderSegments();
-    const targetPath = this.selectedFolderPath();
-    const nodes: ContextTreeNode[] = [];
-
-    if (segments.length === 0) {
-      roots.forEach((folder) => {
-        nodes.push({ kind: 'folder', name: folder.name, path: folder.fullPath, depth: 0 });
-      });
-      nodes.push(...this.#entryNodes(targetPath, 0));
-      return nodes;
-    }
-
-    const parentPath = segments.slice(0, -1).join('.');
-    const siblings = parentPath ? (this.#findFolder(roots, parentPath)?.tree?.children ?? []) : roots;
-    let depth = 0;
-
-    if (parentPath) {
-      nodes.push({
-        kind: 'folder',
-        name: segments[segments.length - 2],
-        path: parentPath,
-        depth: 0,
-        expanded: true,
-      });
-      depth = 1;
-    }
-
-    let placed = false;
-    for (const sibling of siblings) {
-      const here = sibling.fullPath === targetPath;
-      placed = placed || here;
-      nodes.push({ kind: 'folder', name: sibling.name, path: sibling.fullPath, depth, here, expanded: here });
-      if (here) {
-        nodes.push(...this.#entryNodes(targetPath, depth + 1));
-      }
-    }
-
-    // The folder may not be in the tree yet — a path absorbed from a dotted key,
-    // or one the user has not expanded. It is still where the entry lands.
-    if (!placed) {
-      nodes.push({
-        kind: 'folder',
-        name: segments[segments.length - 1],
-        path: targetPath,
-        depth,
-        here: true,
-        expanded: true,
-      });
-      nodes.push(...this.#entryNodes(targetPath, depth + 1));
-    }
-
-    return nodes;
+    return contextTree(
+      {
+        folderPath: this.selectedFolderPath(),
+        key: this.form.controls.key.value,
+        known: this.#knownEntries(),
+        loadingFolders: this.#loadingFolders(),
+        ownKey: this.#ownKey,
+      },
+      (count) => this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
+    );
   });
 
   /** Root folders narrowed by the popover's filter, pruned to the matching subtrees. */
-  readonly filteredRootFolders = computed(() => {
-    const filter = this.folderFilter().trim().toLowerCase();
-    if (!filter) {
-      return this.rootFolders();
-    }
-    return this.#filterFolders(this.rootFolders(), filter);
-  });
+  readonly filteredRootFolders = computed(() => filterFolderTree(this.rootFolders(), this.folderFilter()));
 
   /** The folder the popover's primary button would commit. */
   readonly popoverFolderPath = computed(() => this.stagedFolderPath() ?? this.selectedFolderPath());
@@ -559,7 +482,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly allTagSuggestions = computed(() => {
     const seen = new Set<string>();
     for (const resource of this.browserStore.translations()) {
-      for (const tag of resource.tags ?? []) {
+      for (const tag of resource.tags) {
         seen.add(tag);
       }
     }
@@ -578,24 +501,21 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.#initializeOtherLocaleFormControls();
 
     if (this.isEditMode() && this.data.resource) {
-      const baseValue = this.data.resource.translations[this.data.baseLocale] || '';
+      const baseValue = this.data.resource.base.value;
       const comment = this.data.resource.comment || '';
 
       this.form.patchValue({
-        key: this.data.resource.key,
+        key: this.data.resource.entryKey,
         baseValue,
         comment,
       });
 
-      this.tagsList.set(this.data.resource.tags ?? []);
-
-      this.#originalBaseValue = baseValue;
+      this.tagsList.set([...this.data.resource.tags]);
 
       this.#populateOtherLocaleTranslations();
     }
 
-    this.#originalTags = [...this.tagsList()];
-    this.#originalFolderPath = this.selectedFolderPath();
+    this.#initialDraft = this.#draft();
 
     this.#setupSimilarResourcesSearch();
     this.#setupPreferredTermCheck();
@@ -646,20 +566,21 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   /** True when closing now would throw away work the user has done. */
   hasUnsavedChanges(): boolean {
-    if (this.isReadOnly() || this.isSubmitting()) {
+    if (this.isReadOnly() || this.isSubmitting() || !this.#initialDraft) {
       return false;
     }
+    return hasUnsavedChanges(this.#draft(), this.#initialDraft, this.form.dirty);
+  }
 
-    if (this.form.dirty) {
-      return true;
-    }
+  /** The form, the target folder and the tags as one plain draft. */
+  #draft(): ResourceEntryDraft {
+    const { key, baseValue, comment, translations } = this.form.getRawValue();
+    return { key, baseValue, comment, translations, folderPath: this.selectedFolderPath(), tags: this.tagsList() };
+  }
 
-    if (this.selectedFolderPath() !== this.#originalFolderPath) {
-      return true;
-    }
-
-    const tags = this.tagsList();
-    return tags.length !== this.#originalTags.length || tags.some((tag, i) => tag !== this.#originalTags[i]);
+  /** The entry an edit started from, or undefined in create mode. */
+  #originalEntry(): ResourceSummaryDto | undefined {
+    return this.isEditMode() ? this.data.resource : undefined;
   }
 
   ngOnDestroy(): void {
@@ -708,8 +629,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       if (!locale) {
         return;
       }
-      const value = this.data.resource?.translations[locale] || '';
-      const status = this.data.resource?.status[locale] || 'new';
+      const target = this.data.resource ? summaryTarget(this.data.resource, locale) : undefined;
+      const value = target?.value ?? '';
+      const status = target?.status ?? 'new';
 
       control.patchValue({ value, status });
     });
@@ -747,33 +669,31 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
             });
           }
 
-          return this.browserApi.searchTranslations(this.data.collectionName, query, SIMILAR_SEARCH_MAX_RESULTS).pipe(
-            catchError(() =>
-              of({
-                query: '',
-                results: [],
-                totalFound: 0,
-                limited: false,
-              }),
-            ),
-          );
+          // The API ranks by similarity. One extra hit, so a full list survives dropping the entry being edited.
+          return this.browserApi
+            .searchTranslations(this.data.collectionName, query, SIMILAR_DISPLAY_LIMIT + 1, 'similar')
+            .pipe(
+              catchError(() =>
+                of({
+                  query: '',
+                  results: [],
+                  totalFound: 0,
+                  limited: false,
+                }),
+              ),
+            );
         }),
         tap(() => this.isSearchingSimilar.set(false)),
         takeUntil(this.destroy$),
       )
       .subscribe((searchResults) => {
-        // Filter out current resource in edit mode
-        const withoutSelf =
-          this.isEditMode() && this.data.resource
-            ? searchResults.results.filter((r) => r.key !== this.#buildOriginalFullKey())
-            : searchResults.results;
+        // In edit mode the entry itself is not a similar value.
+        const original = this.#originalEntry();
+        const withoutSelf = original
+          ? searchResults.results.filter((r) => r.fullKey !== original.fullKey)
+          : searchResults.results;
 
-        // The API matches keys too, and reports a key match ahead of a value one.
-        // Everything downstream — the count, the exact-duplicate caption, what
-        // stays pinned — reads this signal, so the key-only hits go before it.
-        this.similarResources.set(
-          filterSimilarByValue(withoutSelf, searchResults.query || this.baseValueText(), this.data.baseLocale),
-        );
+        this.similarResources.set(withoutSelf.slice(0, SIMILAR_DISPLAY_LIMIT));
       });
   }
 
@@ -811,49 +731,28 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   /**
-   * The primary user arrives holding a full dotted key — `apps.common.buttons.ok` —
-   * and the key control only accepts a single segment. Rather than rejecting the
-   * one string they have, take the dotted prefix as the folder and keep the leaf.
+   * A dotted key typed into the single-segment key field moves its prefix into the
+   * location pill; `absorbDottedKey` holds the rule.
    *
    * Listening on `valueChanges` covers every way text arrives: typed, pasted,
-   * dropped, or completed by the browser. The pattern validator stays on as the
+   * dropped, or completed by the browser. The segment validator stays on as the
    * backstop for characters that are invalid in any position.
    */
   #setupDottedKeyAbsorption(): void {
     this.form.controls.key.valueChanges.pipe(takeUntil(this.destroy$)).subscribe((value) => {
-      this.#absorbDottedKey(value);
+      const absorbed = absorbDottedKey(value, this.selectedFolderPath(), this.#folderFromKey);
+      if (!absorbed) {
+        return;
+      }
+
+      this.#setKeyControl(absorbed.leaf);
+
+      if (absorbed.folder !== undefined) {
+        this.#folderFromKey = absorbed.folder;
+        this.#setSelectedFolder(absorbed.folder);
+        this.#announceLocationAbsorbed(absorbed.folder);
+      }
     });
-  }
-
-  #absorbDottedKey(rawValue: string): void {
-    if (!rawValue.includes('.')) {
-      return;
-    }
-
-    // Empty segments cover leading, trailing and consecutive dots in one pass;
-    // a trailing dot means the user has finished a folder but not started a leaf.
-    const segments = rawValue.split('.').filter((segment) => segment.length > 0);
-    const leaf = rawValue.endsWith('.') ? '' : (segments.pop() ?? '');
-
-    // Anything the pattern validator would reject is left in the field verbatim,
-    // so the error names the real problem instead of a silently mangled key.
-    if (segments.some((segment) => !isValidSegment(segment))) {
-      return;
-    }
-
-    this.#setKeyControl(leaf);
-
-    if (segments.length === 0) {
-      return;
-    }
-
-    const prefix = segments.join('.');
-    const isContinuation = this.#folderFromKey !== null && this.selectedFolderPath() === this.#folderFromKey;
-    const nextFolder = isContinuation ? `${this.#folderFromKey}.${prefix}` : prefix;
-
-    this.#folderFromKey = nextFolder;
-    this.#setSelectedFolder(nextFolder);
-    this.#announceLocationAbsorbed(nextFolder);
   }
 
   /** Writes the leaf back without re-entering the subscription that produced it. */
@@ -887,7 +786,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     }
 
     if (this.isEditMode()) {
-      return currentValue !== this.#originalBaseValue;
+      return currentValue !== this.#initialDraft?.baseValue;
     }
 
     return true;
@@ -918,7 +817,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * `selectFolder` would navigate the list behind the dialog.
    */
   #ensureFolderEntries(folderPath: string): void {
-    if (this.isEditMode() || this.#folderEntryKeys(folderPath) || this.#loadingFolders().has(folderPath)) {
+    if (
+      this.isEditMode() ||
+      folderEntryKeys(folderPath, this.#knownEntries()) ||
+      this.#loadingFolders().has(folderPath)
+    ) {
       return;
     }
 
@@ -929,10 +832,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (tree) => {
-          if ('resources' in tree) {
-            const keys = tree.resources.map((resource) => resource.key);
-            this.#loadedFolderEntries.update((entries) => new Map(entries).set(folderPath, keys));
-          }
+          const keys = tree.resources.map((resource) => resource.entryKey);
+          this.#loadedFolderEntries.update((entries) => new Map(entries).set(folderPath, keys));
           this.#finishFolderLoad(folderPath);
         },
         // A folder we cannot read claims nothing. The save path still guards.
@@ -947,124 +848,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       return next;
     });
     this.formRevision.update((revision) => revision + 1);
-  }
-
-  /**
-   * The entry keys known for a folder, or undefined when they are not known at
-   * all. Three sources, cheapest first: a folder already expanded in the tree,
-   * the folder the browser is showing, then anything this dialog fetched.
-   */
-  #folderEntryKeys(folderPath: string): ReadonlySet<string> | undefined {
-    const expanded = folderPath ? this.#findFolder(this.rootFolders(), folderPath)?.tree?.resources : undefined;
-    const known =
-      expanded ?? (this.browserStore.currentFolderPath() === folderPath ? this.browserStore.translations() : undefined);
-
-    if (known) {
-      return this.#ownEntryKeys(known.map((resource) => resource.key));
-    }
-
-    const loaded = this.#loadedFolderEntries().get(folderPath);
-    return loaded ? this.#ownEntryKeys(loaded) : undefined;
-  }
-
-  /**
-   * An entry key is a single segment. The browser lists a folder with its nested
-   * resources folded in, and those arrive under keys relative to the folder —
-   * `translationEditor.saveButton`, not `saveButton`. They live somewhere else,
-   * so they neither collide with this key nor belong in the folder's own row.
-   */
-  #ownEntryKeys(keys: readonly string[]): ReadonlySet<string> {
-    return new Set(keys.filter((key) => !key.includes('.')));
-  }
-
-  #findFolder(folders: FolderNodeDto[], path: string): FolderNodeDto | undefined {
-    for (const folder of folders) {
-      if (folder.fullPath === path) {
-        return folder;
-      }
-      if (path.startsWith(`${folder.fullPath}.`) && folder.tree?.children) {
-        const found = this.#findFolder(folder.tree.children, path);
-        if (found) {
-          return found;
-        }
-      }
-    }
-    return undefined;
-  }
-
-  /**
-   * The entries already in a folder, plus the one this dialog is about to write.
-   * A folder can hold hundreds of keys and this is a glance, not a browser, so
-   * the list is a window around the entry being written; the rest is one count.
-   */
-  #entryNodes(folderPath: string, depth: number): ContextTreeNode[] {
-    const key = this.form.controls.key.value.trim();
-    const loaded = this.#folderEntryKeys(folderPath);
-
-    // A folder still loading shows as a folder and nothing else: listing the new
-    // entry alone would claim the folder is empty before we know that it is.
-    if (!loaded && this.#loadingFolders().has(folderPath)) {
-      return [];
-    }
-
-    const names = new Set(loaded ?? []);
-    const taken = key.length > 0 && names.has(key);
-    if (key) {
-      names.add(key);
-    }
-
-    const sorted = [...names].sort((a, b) => a.localeCompare(b));
-    const window = TranslationEditorDialog.CONTEXT_TREE_ENTRY_LIMIT;
-    let shown = sorted;
-    if (sorted.length > window) {
-      const anchor = key ? Math.max(0, sorted.indexOf(key)) : 0;
-      const start = Math.min(Math.max(0, anchor - Math.floor(window / 2)), sorted.length - window);
-      shown = sorted.slice(start, start + window);
-    }
-
-    const nodes: ContextTreeNode[] = shown.map((name) => ({
-      kind: 'entry' as const,
-      name,
-      path: folderPath ? `${folderPath}.${name}` : name,
-      depth,
-      mark:
-        name === key && key.length > 0
-          ? this.isEditMode()
-            ? ('editing' as const)
-            : taken || this.keyCollision()
-              ? ('exists' as const)
-              : ('new' as const)
-          : undefined,
-    }));
-
-    const hidden = sorted.length - shown.length;
-    if (hidden > 0) {
-      nodes.push({
-        kind: 'more',
-        name: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, {
-          count: hidden,
-        }),
-        path: `${folderPath}::more`,
-        depth,
-      });
-    }
-
-    return nodes;
-  }
-
-  /** Keeps a folder when it or any loaded descendant matches, and prunes the rest. */
-  #filterFolders(folders: FolderNodeDto[], filter: string): FolderNodeDto[] {
-    const kept: FolderNodeDto[] = [];
-    for (const folder of folders) {
-      const children = folder.tree?.children ? this.#filterFolders(folder.tree.children, filter) : [];
-      const selfMatches = folder.fullPath.toLowerCase().includes(filter);
-      if (selfMatches) {
-        kept.push(folder);
-      } else if (children.length > 0 && folder.tree) {
-        kept.push({ ...folder, tree: { ...folder.tree, children } });
-      }
-    }
-    return kept;
   }
 
   // ── Location popover ──────────────────────────────────────────────────────
@@ -1242,10 +1025,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   addTagValue(rawValue: string): void {
-    const normalized = normalizeTag(rawValue);
-    if (normalized && !this.tagsList().includes(normalized)) {
-      this.tagsList.update((tags) => [...tags, normalized]);
-    }
+    this.tagsList.update((tags) => addTag(tags, rawValue));
     this.tagInputText.set('');
   }
 
@@ -1255,8 +1035,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   removeTag(tag: string): void {
-    if (this.inheritedTagsList().includes(tag)) return;
-    this.tagsList.update((tags) => tags.filter((t) => t !== tag));
+    this.tagsList.update((tags) => removeTag(tags, tag, this.inheritedTagsList()));
   }
 
   onTagInputChange(event: Event): void {
@@ -1269,7 +1048,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * other way out of the dialog.
    */
   async openExistingResource(): Promise<void> {
-    const existingKey = this.#buildFullKey(this.form.controls.key.value.trim());
+    const existingKey = resolveResourceKey(this.form.controls.key.value.trim(), this.selectedFolderPath());
 
     if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
       return;
@@ -1286,8 +1065,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   onSimilarResourceClick(result: SearchResultDto): void {
-    const fullKey = result.key;
-    this.#copyToClipboard(fullKey, this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYCOPIED));
+    this.#copyToClipboard(result.fullKey, this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYCOPIED));
   }
 
   /**
@@ -1344,14 +1122,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     // than refuse it. Stop before the network and offer the same two ways out
     // the save-time conflict offers, so both routes end in the same place.
     if (this.keyCollision()) {
-      this.#showKeyConflictDialog(this.#buildFullKey(this.form.controls.key.value.trim()));
+      this.#showKeyConflictDialog(resolveResourceKey(this.form.controls.key.value.trim(), this.selectedFolderPath()));
       return;
     }
 
-    const formValue = this.form.getRawValue() as TranslationFormValue;
-    const commentValue = formValue.comment.trim();
-
-    if (!commentValue && !this.#commentConfirmationShown) {
+    if (!this.form.controls.comment.value.trim() && !this.#commentConfirmationShown) {
       const shouldProceed = await this.#showCommentConfirmation();
 
       if (!shouldProceed) {
@@ -1359,10 +1134,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       }
     }
 
+    const draft = this.#draft();
     if (this.isEditMode()) {
-      this.#handleEditSubmit(formValue, commentValue);
+      this.#handleEditSubmit(draft);
     } else {
-      this.#handleCreateSubmit(formValue, commentValue);
+      this.#handleCreateSubmit(draft);
     }
   }
 
@@ -1386,8 +1162,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     });
   }
 
-  #handleEditSubmit(formValue: TranslationFormValue, commentValue: string): void {
-    if (!this.data.resource) {
+  #handleEditSubmit(draft: ResourceEntryDraft): void {
+    const original = this.#originalEntry();
+    if (!original) {
       this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.MISSINGRESOURCE));
       return;
     }
@@ -1395,50 +1172,18 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.isSubmitting.set(true);
     this.errorMessage.set(null);
 
-    const originalKey = this.#buildOriginalFullKey();
-    const newKey = formValue.key;
-    const newFolderPath = this.selectedFolderPath();
-    const originalFolderPath = this.data.folderPath || '';
-
-    // The key control is readonly in edit mode (`html`), so `newKey` can only
+    // The key control is readonly in edit mode (`html`), so `draft.key` can only
     // ever equal the original; renaming is a move, handled by the CLI.
-    const hasFolderChanged = newFolderPath !== originalFolderPath;
+    const edited = editedLocales(draft, original);
 
-    const filledTranslations = formValue.translations.filter((translation) => {
-      const hasValue = translation.value.trim().length > 0;
-      const originalStatus = this.data.resource?.status[translation.locale] ?? 'new';
-      const hasStatusChange = translation.status !== originalStatus;
-      return hasValue || hasStatusChange;
-    });
-
-    const locales: Record<string, { value: string; status: TranslationStatus }> = {};
-    filledTranslations.forEach((translation) => {
-      locales[translation.locale] = { value: translation.value, status: translation.status };
-    });
-
-    const updateDto: UpdateResourceDto = {
-      key: originalKey,
-      baseValue: formValue.baseValue,
-      comment: commentValue || undefined,
-      tags: this.tagsList(),
-    };
-
-    if (hasFolderChanged) {
-      updateDto.targetFolder = newFolderPath || undefined;
-    }
-
-    if (Object.keys(locales).length > 0) {
-      updateDto.locales = locales;
-    }
-
-    this.browserApi.updateResource(this.data.collectionName, updateDto).subscribe({
+    this.browserStore.updateResource(this.data.collectionName, toUpdateDto(draft, original)).subscribe({
       next: (response: UpdateResourceResponseDto) => {
         this.dialogRef.close({
-          key: newKey,
-          baseValue: formValue.baseValue,
-          comment: commentValue || undefined,
-          folderPath: newFolderPath,
-          translations: filledTranslations.length > 0 ? filledTranslations : undefined,
+          key: draft.key,
+          baseValue: draft.baseValue,
+          comment: draft.comment.trim() || undefined,
+          folderPath: draft.folderPath,
+          translations: edited.length > 0 ? edited : undefined,
           success: true,
           resource: response.resource,
           skippedLocales: response.skippedLocales?.length ? response.skippedLocales : undefined,
@@ -1451,66 +1196,29 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     });
   }
 
-  #handleCreateSubmit(formValue: TranslationFormValue, commentValue: string): void {
+  #handleCreateSubmit(draft: ResourceEntryDraft): void {
     this.isSubmitting.set(true);
     this.errorMessage.set(null);
 
-    const fullKey = this.#buildFullKey(formValue.key);
+    const createDto = toCreateDto(draft);
 
-    const filledTranslations = formValue.translations
-      .filter((translation) => translation.value.trim().length > 0)
-      .map((translation) => ({
-        locale: translation.locale,
-        value: translation.value,
-        status: 'new' as TranslationStatus,
-      }));
-
-    const createDto: CreateResourceDto = {
-      key: fullKey,
-      baseValue: formValue.baseValue,
-      comment: commentValue || undefined,
-      tags: this.tagsList().length > 0 ? this.tagsList() : undefined,
-      baseLocale: this.data.baseLocale,
-      translations: filledTranslations.length > 0 ? filledTranslations : undefined,
-    };
-
-    this.browserApi.createResource(this.data.collectionName, createDto).subscribe({
+    this.browserStore.createResource(this.data.collectionName, createDto).subscribe({
       next: (response: CreateResourceResponseDto) => {
         this.dialogRef.close({
-          key: formValue.key,
-          baseValue: formValue.baseValue,
-          comment: commentValue || undefined,
-          folderPath: this.selectedFolderPath(),
-          translations: filledTranslations.length > 0 ? filledTranslations : undefined,
+          key: draft.key,
+          baseValue: draft.baseValue,
+          comment: createDto.comment,
+          folderPath: draft.folderPath,
+          translations: createDto.translations,
           success: true,
           skippedLocales: response.skippedLocales?.length ? response.skippedLocales : undefined,
         });
       },
       error: (error: unknown) => {
         this.isSubmitting.set(false);
-        this.#handleCreateError(error, fullKey);
+        this.#handleCreateError(error, createDto.key);
       },
     });
-  }
-
-  #buildFullKey(key: string): string {
-    const folderPath = this.selectedFolderPath();
-    if (!folderPath) {
-      return key;
-    }
-    return `${folderPath}.${key}`;
-  }
-
-  #buildOriginalFullKey(): string {
-    if (!this.data.resource) {
-      return '';
-    }
-    const folderPath = this.data.folderPath || '';
-    const key = this.data.resource.key;
-    if (!folderPath) {
-      return key;
-    }
-    return `${folderPath}.${key}`;
   }
 
   #handleCreateError(error: unknown, fullKey: string): void {

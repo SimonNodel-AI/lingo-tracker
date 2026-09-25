@@ -11,7 +11,7 @@ import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from './with-bun
 
 describe('withBundlesFeature', () => {
   let store: InstanceType<typeof CollectionsStore>;
-  let spectator: SpectatorService<CollectionsStore>;
+  let spectator: SpectatorService<InstanceType<typeof CollectionsStore>>;
   let reloadInjector: EnvironmentInjector | undefined;
 
   const api = {
@@ -150,6 +150,32 @@ describe('withBundlesFeature', () => {
       expect(store.error()).toBe('A bundle named tracker already exists.');
       expect(store.isLoading()).toBe(false);
       expect(api.getConfig).not.toHaveBeenCalled();
+    });
+
+    it('createBundle appends the validation errors of an invalid definition', () => {
+      api.createBundle.mockReturnValue(
+        throwError(
+          () =>
+            new HttpErrorResponse({
+              status: 400,
+              error: {
+                statusCode: 400,
+                message: 'Invalid bundle definition',
+                error: 'Bad Request',
+                errors: [
+                  'dist (output folder) is required.',
+                  "Collection 'ghost' does not exist in the configuration.",
+                ],
+              },
+            }),
+        ),
+      );
+
+      store.createBundle({ name: 'tracker', bundle: trackerBundle });
+
+      expect(store.error()).toBe(
+        "Invalid bundle definition: dist (output folder) is required.; Collection 'ghost' does not exist in the configuration.",
+      );
     });
 
     it('createBundle falls back to a generic message when the error has none', () => {

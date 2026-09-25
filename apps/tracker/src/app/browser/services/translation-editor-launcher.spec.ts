@@ -3,6 +3,7 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
@@ -11,6 +12,7 @@ import { BrowserStore } from '../store/browser.store';
 import { BrowserApiService } from './browser-api.service';
 import { TRANSLATION_EDITOR_TITLE_ID } from '../dialogs/translation-editor';
 import { TranslationEditorLauncher } from './translation-editor-launcher';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 
 describe('TranslationEditorLauncher', () => {
   let launcher: TranslationEditorLauncher;
@@ -19,11 +21,21 @@ describe('TranslationEditorLauncher', () => {
   let mockApi: { getResourceTree: Mock };
   let notifications: { success: Mock; info: Mock; warning: Mock; error: Mock };
 
-  const resource = { key: 'backButton', translations: { en: 'Back' }, status: {} };
+  const resource: ResourceSummaryDto = {
+    fullKey: 'browser.header.backButton',
+    folderPath: 'browser.header',
+    entryKey: 'backButton',
+    base: { locale: 'en', value: 'Back' },
+    targets: [{ locale: 'fr', needsWork: true, sameAsBase: false }],
+    tags: [],
+    inheritedTags: [],
+  };
 
   beforeEach(() => {
     mockDialog = { open: vi.fn().mockReturnValue({ afterClosed: () => of(undefined) }) };
-    mockApi = { getResourceTree: vi.fn().mockReturnValue(of({ resources: [resource], folders: [] })) };
+    mockApi = {
+      getResourceTree: vi.fn().mockReturnValue(of({ path: 'browser.header', resources: [resource], children: [] })),
+    };
     notifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
 
     TestBed.configureTestingModule({
@@ -39,7 +51,7 @@ describe('TranslationEditorLauncher', () => {
 
     launcher = TestBed.inject(TranslationEditorLauncher);
     store = TestBed.inject(BrowserStore);
-    patchState(store, { availableLocales: ['en', 'fr'], baseLocale: 'en' });
+    patchState(unprotected(store), { availableLocales: ['en', 'fr'], baseLocale: 'en' });
   });
 
   describe('openByFullKey', () => {
@@ -54,7 +66,7 @@ describe('TranslationEditorLauncher', () => {
         mode: 'edit',
         collectionName: 'test-collection',
         folderPath: 'browser.header',
-        resource: { key: 'backButton' },
+        resource: { fullKey: 'browser.header.backButton', entryKey: 'backButton' },
       });
       expect(config.panelClass).toBe('translation-editor-dialog-panel');
       expect(config.ariaLabelledBy).toBe(TRANSLATION_EDITOR_TITLE_ID);
@@ -67,7 +79,7 @@ describe('TranslationEditorLauncher', () => {
     });
 
     it('should leave search mode before navigating, so the list matches the dialog', () => {
-      patchState(store, { isSearchMode: true, searchQuery: 'back' });
+      patchState(unprotected(store), { isSearchMode: true, searchQuery: 'back' });
 
       launcher.openByFullKey('browser.header.backButton', 'test-collection');
 
@@ -75,6 +87,10 @@ describe('TranslationEditorLauncher', () => {
     });
 
     it('should resolve a root-level key against the collection root', () => {
+      mockApi.getResourceTree.mockReturnValue(
+        of({ path: '', resources: [{ ...resource, fullKey: 'backButton', folderPath: '' }], children: [] }),
+      );
+
       launcher.openByFullKey('backButton', 'test-collection');
 
       expect(mockApi.getResourceTree).toHaveBeenCalledWith('test-collection', '', false);
@@ -82,7 +98,7 @@ describe('TranslationEditorLauncher', () => {
     });
 
     it('should report a key the folder no longer holds instead of opening an empty editor', () => {
-      mockApi.getResourceTree.mockReturnValue(of({ resources: [], folders: [] }));
+      mockApi.getResourceTree.mockReturnValue(of({ path: 'browser.header', resources: [], children: [] }));
 
       launcher.openByFullKey('browser.header.backButton', 'test-collection');
 
@@ -101,54 +117,46 @@ describe('TranslationEditorLauncher', () => {
   });
 
   describe('openEditor', () => {
-    it('should update the cache under the store key and flash the row after a save', () => {
-      patchState(store, { translations: [{ ...resource, key: 'backButton' }] });
+    const savedInto = (folderPath: string) => ({
+      afterClosed: () =>
+        of({
+          key: 'backButton',
+          baseValue: 'Back',
+          folderPath,
+          success: true,
+          resource: { ...resource, base: { locale: 'en', value: 'Go back' } },
+        }),
+    });
+
+    // The save itself, and the cache patch that follows it, belong to
+    // BrowserStore.updateResource; the launcher only reports on it.
+    it('should flash the row under its full key and confirm the save', () => {
+      patchState(unprotected(store), { translations: [resource] });
       const onUpdated = vi.fn();
-      mockDialog.open.mockReturnValue({
-        afterClosed: () =>
-          of({
-            key: 'backButton',
-            baseValue: 'Back',
-            folderPath: 'browser.header',
-            success: true,
-            resource: { ...resource, translations: { en: 'Go back' } },
-          }),
-      });
+      mockDialog.open.mockReturnValue(savedInto('browser.header'));
 
       launcher.openEditor({
         resource,
         collectionName: 'test-collection',
-        folderPath: 'browser.header',
-        storeKey: 'backButton',
         onUpdated,
       });
 
-      expect(store.translations()[0].translations['en']).toBe('Go back');
-      expect(onUpdated).toHaveBeenCalledWith('backButton');
+      expect(onUpdated).toHaveBeenCalledWith('browser.header.backButton');
       expect(notifications.success).toHaveBeenCalled();
+      expect(store.translations()).toEqual([resource]);
     });
 
-    it('should drop the entry from the cache when it was saved into another folder', () => {
-      patchState(store, { translations: [{ ...resource, key: 'backButton' }] });
-      mockDialog.open.mockReturnValue({
-        afterClosed: () =>
-          of({
-            key: 'backButton',
-            baseValue: 'Back',
-            folderPath: 'browser.footer',
-            success: true,
-            resource,
-          }),
-      });
+    it('should stay quiet when the entry was saved into another folder', () => {
+      const onUpdated = vi.fn();
+      mockDialog.open.mockReturnValue(savedInto('browser.footer'));
 
       launcher.openEditor({
         resource,
         collectionName: 'test-collection',
-        folderPath: 'browser.header',
-        storeKey: 'backButton',
+        onUpdated,
       });
 
-      expect(store.translations()).toEqual([]);
+      expect(onUpdated).not.toHaveBeenCalled();
       expect(notifications.success).not.toHaveBeenCalled();
     });
   });

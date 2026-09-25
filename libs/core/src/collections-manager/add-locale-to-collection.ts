@@ -1,12 +1,13 @@
 import * as path from 'node:path';
-import * as fs from 'node:fs';
-import { validateLocale } from '@simoncodes-ca/domain';
+import { existsSync } from 'node:fs';
 import { updateConfig } from '../lib/config/config-file-operations';
+import { openCollection } from '../lib/config/open-collection';
 import { walkFolders } from '../lib/normalize/iterative-folder-walker';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../lib/file-io/json-file-operations';
-import { calculateChecksum } from '../resource/checksum';
-import { ErrorMessages } from '../lib/errors/error-messages';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import { openResourceFolder } from '../lib/resource/resource-folder';
+import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
+import { BaseLocaleImmutableError, LocaleAlreadyExistsError } from '../lib/errors/lingo-tracker-error';
+import { assertValidLocale } from './assert-valid-locale';
+import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 
 export interface AddLocaleToCollectionOptions {
   readonly cwd?: string;
@@ -16,6 +17,8 @@ export interface AddLocaleToCollectionResult {
   readonly message: string;
   readonly entriesBackfilled: number;
   readonly filesUpdated: number;
+  /** A `reindex` of the collection: every folder's metadata changed. */
+  readonly mutations: ResourceMutation[];
 }
 
 export async function addLocaleToCollection(
@@ -25,24 +28,22 @@ export async function addLocaleToCollection(
 ): Promise<AddLocaleToCollectionResult> {
   const cwd = options.cwd ?? process.cwd();
 
-  validateLocale(locale);
+  assertValidLocale(locale);
 
   const updatedConfig = updateConfig((config) => {
-    if (!config.collections?.[collectionName]) {
-      throw new Error(ErrorMessages.collectionNotFound(collectionName));
-    }
-
-    const collection = config.collections[collectionName];
-    const baseLocale = collection.baseLocale ?? config.baseLocale;
+    // `writable` throws inside the updater, so nothing is written for a read-only collection.
+    const {
+      baseLocale,
+      locales: effectiveLocales,
+      config: collection,
+    } = openCollection(config, collectionName, { cwd, writable: true });
 
     if (locale === baseLocale) {
-      throw new Error(ErrorMessages.cannotModifyBaseLocale(locale));
+      throw new BaseLocaleImmutableError(locale);
     }
 
-    const effectiveLocales = collection.locales ?? config.locales ?? [];
-
     if (effectiveLocales.includes(locale)) {
-      throw new Error(ErrorMessages.localeAlreadyExists(locale, collectionName));
+      throw new LocaleAlreadyExistsError(locale, collectionName);
     }
 
     const newLocales = [...effectiveLocales, locale];
@@ -59,59 +60,22 @@ export async function addLocaleToCollection(
     };
   }, cwd);
 
-  const collection = updatedConfig.collections[collectionName];
-  const translationsFolderPath = path.resolve(cwd, collection.translationsFolder);
+  const collection = openCollection(updatedConfig, collectionName, { cwd });
 
   let entriesBackfilled = 0;
   let filesUpdated = 0;
 
-  for (const visit of walkFolders(translationsFolderPath)) {
-    const resourceEntriesPath = path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME);
-    const trackerMetaPath = path.join(visit.absolutePath, TRACKER_META_FILENAME);
+  for (const visit of walkFolders(collection.translationsFolder)) {
+    if (!existsSync(path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME))) continue;
 
-    if (!fs.existsSync(resourceEntriesPath)) continue;
+    const folder = openResourceFolder(visit.absolutePath, { baseLocale: collection.baseLocale });
 
-    const resourceEntries = readResourceEntries(resourceEntriesPath);
-
-    const trackerMetadata = readTrackerMetadata(trackerMetaPath, {});
-
-    let folderModified = false;
-
-    for (const entryKey of Object.keys(resourceEntries)) {
-      const entry = resourceEntries[entryKey];
-
-      if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') {
-        continue;
-      }
-
-      if (typeof entry[locale] === 'string') {
-        continue;
-      }
-
-      // Seed the new locale with the base (source) value and status 'new' —
-      // this matches the convention used by normalizeEntry/ensureLocaleEntryExists,
-      // which also seeds missing locales with baseValue and marks them 'new'.
-      const baseValue = entry.source;
-      const checksum = calculateChecksum(baseValue);
-
-      entry[locale] = baseValue;
-
-      if (!trackerMetadata[entryKey]) {
-        trackerMetadata[entryKey] = {};
-      }
-      trackerMetadata[entryKey][locale] = {
-        checksum,
-        baseChecksum: checksum,
-        status: 'new',
-      };
-
-      entriesBackfilled++;
-      folderModified = true;
-    }
-
-    if (folderModified) {
-      writeJsonFile({ filePath: resourceEntriesPath, data: resourceEntries });
-      writeJsonFile({ filePath: trackerMetaPath, data: trackerMetadata });
+    // Seed the new locale with the base (source) value and status 'new' — the same
+    // convention normalize uses for missing locales.
+    const seeded = folder.seedLocale(locale);
+    if (seeded > 0) {
+      folder.save();
+      entriesBackfilled += seeded;
       filesUpdated++;
     }
   }
@@ -120,5 +84,6 @@ export async function addLocaleToCollection(
     message: `Locale "${locale}" added to collection "${collectionName}" successfully`,
     entriesBackfilled,
     filesUpdated,
+    mutations: [reindexMutation(collection.translationsFolder)],
   };
 }

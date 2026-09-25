@@ -12,34 +12,22 @@ import {
 } from '../dialogs/translation-editor';
 import { BrowserApiService } from './browser-api.service';
 import { BrowserStore } from '../store/browser.store';
-import { splitKey } from '../translations/list/store/key-resolution';
+import { splitResolvedKey } from '@simoncodes-ca/domain';
 
 /** What the caller knows about the entry it wants opened in the editor. */
 export interface OpenEditorParams {
-  /** The resource as the dialog wants it: `key` is the entry name inside `folderPath`. */
+  /** The resource; its explicit address (`fullKey`, `folderPath`, `entryKey`) says where it lives. */
   resource: ResourceSummaryDto;
   collectionName: string;
-  /** Dot-delimited folder the entry lives in; '' for the collection root. */
-  folderPath: string;
-  /**
-   * The key the browser store files this resource under — the list caches by the
-   * key it renders, which is relative in folder mode and full in search mode.
-   */
-  storeKey: string;
-  /**
-   * The key to drop from the cache when the entry moves out of `folderPath`.
-   * Defaults to the saved key, which is what a same-folder rename produces.
-   */
-  originalKey?: string;
-  /** Called with the store key after an in-place update, for the row's flash. */
-  onUpdated?: (storeKey: string) => void;
+  /** Called with the resource's full key after an in-place update, for the row's flash. */
+  onUpdated?: (fullKey: string) => void;
 }
 
 /**
  * Opens the translation editor in edit mode, from wherever the request came.
  *
  * The list's row menu and the create dialog's "Open existing" both need the same
- * dialog with the same post-save bookkeeping, and they sit in different injector
+ * dialog with the same post-save feedback, and they sit in different injector
  * branches — the list store is component-scoped, the header is its sibling. The
  * launcher is the one place that knows the dialog's configuration, so neither
  * call site carries a copy of it.
@@ -54,7 +42,8 @@ export class TranslationEditorLauncher {
 
   /** Opens the editor for a resource the caller already holds. */
   openEditor(params: OpenEditorParams): void {
-    const { resource, collectionName, folderPath, storeKey, originalKey, onUpdated } = params;
+    const { resource, collectionName, onUpdated } = params;
+    const { folderPath } = resource;
 
     const dialogData: TranslationEditorDialogData = {
       mode: 'edit',
@@ -80,18 +69,15 @@ export class TranslationEditorLauncher {
       restoreFocus: false,
     });
 
+    // The save went through `BrowserStore.updateResource`, which has already
+    // brought the list in line; what is left here is telling the user.
     dialogRef.afterClosed().subscribe((result: TranslationEditorResult | undefined) => {
       if (!result?.success) return;
       if (!result.resource) return;
+      // Saved into another folder: the entry has left this list, so there is no row to flash.
+      if (result.folderPath !== folderPath) return;
 
-      const cacheKey = originalKey ?? result.key;
-      if (result.folderPath !== folderPath) {
-        this.#browserStore.removeResourceFromCache(cacheKey);
-        return;
-      }
-
-      this.#browserStore.updateTranslationInCache({ ...result.resource, key: storeKey });
-      onUpdated?.(storeKey);
+      onUpdated?.(resource.fullKey);
       this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.TRANSLATIONUPDATED));
 
       if (result.skippedLocales?.length) {
@@ -112,12 +98,12 @@ export class TranslationEditorLauncher {
    * The browser is moved to the entry's folder first, so the dialog closes onto the
    * list the entry is actually in rather than back onto an unrelated folder.
    */
-  openByFullKey(fullKey: string, collectionName: string, onUpdated?: (storeKey: string) => void): void {
-    const { folderPath, entryKey } = splitKey(fullKey);
+  openByFullKey(fullKey: string, collectionName: string, onUpdated?: (fullKey: string) => void): void {
+    const folderPath = splitResolvedKey(fullKey).folderPath.join('.');
 
     this.#api.getResourceTree(collectionName, folderPath, false).subscribe({
       next: (tree) => {
-        const resource = 'resources' in tree ? tree.resources.find((item) => item.key === entryKey) : undefined;
+        const resource = tree.resources.find((item) => item.fullKey === fullKey);
         if (!resource) {
           this.#notifyNotFound();
           return;
@@ -130,7 +116,7 @@ export class TranslationEditorLauncher {
         }
         this.#browserStore.selectFolder(folderPath);
 
-        this.openEditor({ resource, collectionName, folderPath, storeKey: entryKey, onUpdated });
+        this.openEditor({ resource, collectionName, onUpdated });
       },
       error: () => this.#notifyNotFound(),
     });

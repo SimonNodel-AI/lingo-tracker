@@ -4,7 +4,7 @@ import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, switchMap, interval, startWith, takeWhile, catchError, of, tap } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
 import { BrowserApiService } from '../../services/browser-api.service';
-import type { CacheStatusType, FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import type { CacheStatusType } from '@simoncodes-ca/data-transfer';
 import { toErrorMessage } from '../async-error.utils';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
@@ -23,7 +23,7 @@ const initialCacheStatusState: CacheStatusState = {
 export function withCacheStatusFeature<_>() {
   return signalStoreFeature(
     {
-      state: type<{ selectedCollection: string | null; rootFolders: FolderNodeDto[] }>(),
+      state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean }>(),
       methods: type<{ loadRootFolders(): void }>(),
     },
     withState(initialCacheStatusState),
@@ -67,7 +67,7 @@ export function withCacheStatusFeature<_>() {
                       : null,
                   });
 
-                  if (statusDto.status === 'ready' && store.rootFolders().length === 0) {
+                  if (statusDto.status === 'ready' && !store.folderTreeLoaded()) {
                     store.loadRootFolders();
                   }
                 }),

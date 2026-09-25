@@ -1,18 +1,15 @@
 import type {
-  BundleDefinition,
   LingoTrackerCollection,
   LingoTrackerConfig,
   LoadPreferredTerminologyResult,
   ResolvedProtectedTerms,
 } from '@simoncodes-ca/core';
 import type {
-  BundleDefinitionDto,
   LingoTrackerCollectionDto,
   LingoTrackerConfigDto,
   PreferredTermRuleDto,
   UpdateConfigDto,
 } from '@simoncodes-ca/data-transfer';
-import { mapBundleDefinitionToDto } from './bundle.mapper';
 import { mapCollectionToDto } from './collection.mapper';
 
 function mapConfigCollections(
@@ -22,10 +19,6 @@ function mapConfigCollections(
   return Object.fromEntries(
     Object.entries(collections).map(([name, col]) => [name, mapCollectionToDto(col, resolved?.collections[name])]),
   );
-}
-
-function mapConfigBundles(bundles: Record<string, BundleDefinition>): Record<string, BundleDefinitionDto> {
-  return Object.fromEntries(Object.entries(bundles).map(([name, bundle]) => [name, mapBundleDefinitionToDto(bundle)]));
 }
 
 /**
@@ -73,7 +66,8 @@ export function mapConfigToDto(
     baseLocale: config.baseLocale,
     locales: [...config.locales],
     collections: mapConfigCollections(config.collections, resolved),
-    ...(config.bundles && { bundles: mapConfigBundles(config.bundles) }),
+    // The DTO is the domain Bundle Definition type, so bundles pass through unmapped.
+    ...(config.bundles && { bundles: { ...config.bundles } }),
     ...(config.tokenCasing && { tokenCasing: config.tokenCasing }),
     ...(config.transformICUToTransloco !== undefined && { transformICUToTransloco: config.transformICUToTransloco }),
     translation: config.translation,

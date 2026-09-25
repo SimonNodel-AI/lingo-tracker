@@ -12,6 +12,38 @@ describe('generateValidationSummary', () => {
     allowTranslated: false,
   };
 
+  describe('unreadable folders', () => {
+    it('lists each unreadable folder with its message and counts them in the summary', () => {
+      const result: ResourceValidationResult = {
+        totalResourcesValidated: 0,
+        totalUniqueKeys: 0,
+        localesValidated: 1,
+        collectionsValidated: 1,
+        statusCounts: { new: 0, translated: 0, stale: 0, verified: 0 },
+        failures: [],
+        warnings: [],
+        successes: [],
+        unreadableFolders: [
+          {
+            collection: 'main',
+            folderPath: 'apps.bad',
+            message: 'Failed to parse JSON file /t/apps/bad/tracker_meta.json',
+          },
+          { collection: 'main', folderPath: '', message: 'Failed to parse JSON file /t/resource_entries.json' },
+        ],
+        passed: false,
+      };
+
+      const summary = generateValidationSummary(result, defaultOptions);
+
+      expect(summary).toContain('❌ Unreadable Folders (2):');
+      expect(summary).toContain('  [main] apps.bad\n    Failed to parse JSON file /t/apps/bad/tracker_meta.json');
+      expect(summary).toContain('  [main] (root)');
+      expect(summary).toContain('Unreadable Folders: 2');
+      expect(summary).toContain('❌ Validation failed.');
+    });
+  });
+
   describe('successful validation', () => {
     it('should generate summary for all verified resources', () => {
       const result: ResourceValidationResult = {
@@ -888,7 +920,7 @@ describe('generateValidationSummary', () => {
     const rules = [{ discouraged: 'Expenditure', preferred: 'Investment' }];
     const options: ValidationOptions = {
       allowTranslated: false,
-      terminology: { rules, baseLocaleByCollection: { main: 'en' } },
+      terminology: { rules },
     };
 
     const finding = (key: string, reason?: string): TerminologyValidationDetail => ({
@@ -942,7 +974,7 @@ describe('generateValidationSummary', () => {
           passed: false,
           terminology: { warnings: [], configError: 'Preferred terminology file is not valid JSON', valuesChecked: 0 },
         },
-        { allowTranslated: false, terminology: { rules: [], loadError: 'x', baseLocaleByCollection: {} } },
+        { allowTranslated: false, terminology: { rules: [], loadError: 'x' } },
       );
 
       expect(summary).toContain('❌ Preferred terminology file error:');
@@ -955,7 +987,7 @@ describe('generateValidationSummary', () => {
     it('adds nothing when there are no rules and no load error', () => {
       const summary = generateValidationSummary(
         { ...baseResult, terminology: { warnings: [], valuesChecked: 0 } },
-        { allowTranslated: false, terminology: { rules: [], baseLocaleByCollection: {} } },
+        { allowTranslated: false, terminology: { rules: [] } },
       );
 
       expect(summary).not.toMatch(/terminology/i);

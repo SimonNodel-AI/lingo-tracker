@@ -1,6 +1,6 @@
-import prompts from 'prompts';
-import { translateLocale } from '@simoncodes-ca/core';
-import { loadConfiguration, resolveWritableCollection, ConsoleFormatter, ErrorMessages } from '../utils';
+import { type Collection, translateLocale } from '@simoncodes-ca/core';
+import { defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter } from '../utils';
 
 export interface TranslateLocaleOptions {
   collection?: string;
@@ -12,153 +12,73 @@ export interface TranslateLocaleOptions {
  * CLI command that auto-translates all `new` and `stale` resources for a
  * single target locale within a collection.
  *
- * In TTY mode, missing `collection` and `locale` options trigger interactive
- * prompts. In non-TTY mode both flags are required.
+ * When interactive, a missing `locale` is prompted for (the runner prompts for the
+ * collection). When non-interactive, `--locale` is required, and `--collection` too
+ * when several collections are configured.
  */
-export async function translateLocaleCommand(options: TranslateLocaleOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
+  name: 'Translate locale',
+  collection: 'writable',
+  // Called in both modes before `required` is checked, so a collection that cannot be
+  // translated is reported as such rather than as a missing --locale.
+  prompts: (options, { collection }) => {
+    assertTranslatable(collection);
+    return options.locale
+      ? []
+      : [
+          {
+            type: 'select',
+            name: 'locale',
+            message: 'Select target locale to translate',
+            choices: collection.targetLocales.map((locale) => ({ title: locale, value: locale })),
+          },
+        ];
+  },
+  required: ['locale'],
+  run: async ({ collection, answers }) => {
+    const { name: collectionName, baseLocale, locales: allLocales } = collection;
+    const targetLocale = answers.locale;
 
-  // -------------------------------------------------------------------------
-  // Resolve collection
-  // -------------------------------------------------------------------------
-
-  let collectionName = options.collection;
-
-  if (!collectionName) {
-    const collectionNames = Object.keys(config.collections ?? {});
-
-    if (collectionNames.length === 0) {
-      ConsoleFormatter.error(ErrorMessages.NO_COLLECTIONS);
-      return;
+    if (targetLocale === baseLocale) {
+      throw new Error(`Cannot translate to the base locale "${baseLocale}".`);
     }
 
-    if (!process.stdout.isTTY) {
-      ConsoleFormatter.error(ErrorMessages.MISSING_OPTION('collection'));
-      return;
+    if (!allLocales.includes(targetLocale)) {
+      throw new Error(`Locale "${targetLocale}" is not configured. Available locales: ${allLocales.join(', ')}`);
     }
 
-    const answer = await prompts(
-      {
-        type: 'select',
-        name: 'collection',
-        message: 'Select collection to translate',
-        choices: collectionNames.map((name) => ({ title: name, value: name })),
-      },
-      { onCancel: () => process.exit(0) },
-    );
+    console.log('');
+    ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);
 
-    collectionName = answer.collection as string;
-  }
-
-  const collection = resolveWritableCollection(collectionName, config, cwd);
-  if (!collection) return;
-
-  // -------------------------------------------------------------------------
-  // Validate translation is enabled
-  // -------------------------------------------------------------------------
-
-  const translationEnabled = collection.config.translation?.enabled ?? config.translation?.enabled ?? false;
-  if (!translationEnabled) {
-    ConsoleFormatter.error(
-      `Auto-translation is not enabled for collection "${collectionName}". ` +
-        `Set translation.enabled = true in your configuration.`,
-    );
-    return;
-  }
-
-  const baseLocale = collection.config.baseLocale ?? config.baseLocale ?? 'en';
-  const allLocales = collection.config.locales ?? config.locales ?? [];
-
-  const nonBaseLocales = allLocales.filter((locale) => locale !== baseLocale);
-
-  if (nonBaseLocales.length === 0) {
-    ConsoleFormatter.error(`No target locales configured. Add locales other than the base locale "${baseLocale}".`);
-    return;
-  }
-
-  // -------------------------------------------------------------------------
-  // Resolve target locale
-  // -------------------------------------------------------------------------
-
-  let targetLocale = options.locale;
-
-  if (!targetLocale) {
-    if (!process.stdout.isTTY) {
-      ConsoleFormatter.error(ErrorMessages.MISSING_OPTION('locale'));
-      return;
+    let result: Awaited<ReturnType<typeof translateLocale>>;
+    try {
+      result = await translateLocale(collection, {
+        targetLocale,
+        onProgress: answers.verbose
+          ? (progress) => {
+              ConsoleFormatter.indent(
+                `[batch ${progress.currentBatch}/${progress.totalBatches}] ` +
+                  `translated: ${progress.translatedCount}, skipped: ${progress.skippedCount}, failed: ${progress.failedCount}`,
+              );
+            }
+          : undefined,
+      });
+    } catch (error) {
+      throw new Error(`Translation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    const answer = await prompts(
-      {
-        type: 'select',
-        name: 'locale',
-        message: 'Select target locale to translate',
-        choices: nonBaseLocales.map((locale) => ({ title: locale, value: locale })),
-      },
-      { onCancel: () => process.exit(0) },
-    );
-
-    targetLocale = answer.locale as string;
-  }
-
-  if (targetLocale === baseLocale) {
-    ConsoleFormatter.error(`Cannot translate to the base locale "${baseLocale}".`);
-    return;
-  }
-
-  if (!allLocales.includes(targetLocale)) {
-    ConsoleFormatter.error(`Locale "${targetLocale}" is not configured. Available locales: ${allLocales.join(', ')}`);
-    return;
-  }
-
-  // -------------------------------------------------------------------------
-  // Resolve translation config
-  // -------------------------------------------------------------------------
-
-  const translationConfig = collection.config.translation ?? config.translation;
-  if (!translationConfig) {
-    ConsoleFormatter.error('Translation configuration is missing. Check your .lingo-tracker.json.');
-    return;
-  }
-
-  // -------------------------------------------------------------------------
-  // Run translation
-  // -------------------------------------------------------------------------
-
-  const translationsFolder = collection.config.translationsFolder;
-
-  console.log('');
-  ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);
-
-  try {
-    const result = await translateLocale({
-      translationsFolder,
-      translationConfig,
-      targetLocale,
-      baseLocale,
-      allLocales,
-      cwd,
-      onProgress: options.verbose
-        ? (progress) => {
-            ConsoleFormatter.indent(
-              `[batch ${progress.currentBatch}/${progress.totalBatches}] ` +
-                `translated: ${progress.translatedCount}, skipped: ${progress.skippedCount}, failed: ${progress.failedCount}`,
-            );
-          }
-        : undefined,
-    });
-
-    // -------------------------------------------------------------------------
-    // Summary
-    // -------------------------------------------------------------------------
 
     console.log('');
     ConsoleFormatter.success(`Translated locale '${targetLocale}' in collection '${collectionName}'`);
     ConsoleFormatter.keyValue('Translated', result.translatedCount);
-    ConsoleFormatter.keyValue('Skipped (ICU)', result.skippedCount);
+    ConsoleFormatter.keyValue('Skipped (needs human translation)', result.skippedCount);
     ConsoleFormatter.keyValue('Failed', result.failedCount);
+
+    if (result.warnings.length > 0) {
+      console.log('');
+      for (const warning of result.warnings) {
+        ConsoleFormatter.warning(warning);
+      }
+    }
 
     if (result.failures.length > 0) {
       console.log('');
@@ -168,12 +88,19 @@ export async function translateLocaleCommand(options: TranslateLocaleOptions): P
       }
     }
 
-    if (result.failedCount > 0) {
-      process.exit(1);
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ConsoleFormatter.error(`Translation failed: ${message}`);
-    process.exit(1);
+    return result.failedCount > 0 ? { exitCode: 1 } : undefined;
+  },
+});
+
+/** Auto-translation must be enabled, and there must be a locale other than the base locale. */
+function assertTranslatable(collection: Collection): void {
+  if (!collection.translationConfig?.enabled) {
+    throw new Error(
+      `Auto-translation is not enabled for collection "${collection.name}". ` +
+        `Set translation.enabled = true in your configuration.`,
+    );
+  }
+  if (collection.targetLocales.length === 0) {
+    throw new Error(`No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`);
   }
 }

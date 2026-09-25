@@ -1,64 +1,37 @@
-import type {
-  ResourceTreeDto,
-  ResourceSummaryDto,
-  FolderNodeDto,
-  TranslationStatus,
-} from '@simoncodes-ca/data-transfer';
-import type { ResourceTreeNode, ResourceTreeEntry } from '@simoncodes-ca/core';
+import type { FolderNodeDto, ResourceSummaryDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
+import type { Collection, FolderChild, ResourceTreeEntry, ResourceTreeNode } from '@simoncodes-ca/core';
+import { buildResourceSummary, resolveResourceKey } from '@simoncodes-ca/domain';
 
-export function mapResourceTreeToDto(node: ResourceTreeNode, collectionTags?: string[]): ResourceTreeDto {
+/** Maps a tree node to its DTO. Every resource becomes a Resource Summary of `collection`. */
+export function mapResourceTreeToDto(node: ResourceTreeNode, collection: Collection): ResourceTreeDto {
+  const path = node.folderPathSegments.join('.');
   return {
-    path: node.folderPathSegments.join('.'),
-    resources: node.resources.map((e) => mapResourceEntryToSummary(e, collectionTags)),
-    children: node.children.map((c) => mapFolderChildToDto(c, collectionTags)),
+    path,
+    resources: node.resources.map((entry) => mapResourceEntryToSummary(entry, path, collection)),
+    children: node.children.map((child) => mapFolderChildToDto(child, collection)),
   };
 }
 
-export function mapResourceEntryToSummary(entry: ResourceTreeEntry, collectionTags?: string[]): ResourceSummaryDto {
-  // Find base locale (the one without status/baseChecksum in metadata)
-  let baseLocale: string | undefined;
-  for (const [locale, meta] of Object.entries(entry.metadata)) {
-    if (meta.status === undefined && meta.baseChecksum === undefined) {
-      baseLocale = locale;
-      break;
-    }
-  }
-
-  // Combine source and translations
-  const translations: Record<string, string> = { ...entry.translations };
-  if (baseLocale) {
-    translations[baseLocale] = entry.source;
-  }
-
-  // Extract status from metadata for each locale
-  const status: Record<string, TranslationStatus | undefined> = {};
-  for (const [locale, meta] of Object.entries(entry.metadata)) {
-    status[locale] = meta.status;
-  }
-
-  return {
-    key: entry.key,
-    translations,
-    status,
-    comment: entry.comment,
-    tags: entry.tags,
-    inheritedTags: collectionTags && collectionTags.length > 0 ? collectionTags : undefined,
-  };
+/**
+ * Maps a stored entry to its Resource Summary.
+ *
+ * @param entry - The entry; its `key` is relative to `folderPath` (a single segment, or a
+ *   sub-path for entries collected from nested folders).
+ * @param folderPath - Dot-delimited folder `entry.key` is relative to; `''` for the root.
+ */
+export function mapResourceEntryToSummary(
+  entry: ResourceTreeEntry,
+  folderPath: string,
+  collection: Collection,
+): ResourceSummaryDto {
+  return buildResourceSummary(resolveResourceKey(entry.key, folderPath), entry, collection);
 }
 
-function mapFolderChildToDto(
-  child: {
-    name: string;
-    fullPathSegments: string[];
-    loaded: boolean;
-    tree?: ResourceTreeNode;
-  },
-  collectionTags?: string[],
-): FolderNodeDto {
+function mapFolderChildToDto(child: FolderChild, collection: Collection): FolderNodeDto {
   return {
     name: child.name,
     fullPath: child.fullPathSegments.join('.'),
     loaded: child.loaded,
-    tree: child.tree ? mapResourceTreeToDto(child.tree, collectionTags) : undefined,
+    tree: child.tree ? mapResourceTreeToDto(child.tree, collection) : undefined,
   };
 }

@@ -141,6 +141,6 @@ export class TranslationList {
 
   /** Track function for virtual scroll performance. */
   trackByKey(_index: number, item: ResourceSummaryDto): string {
-    return item.key;
+    return item.fullKey;
   }
 }

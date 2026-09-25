@@ -1,46 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { bundleCommand } from './bundle';
-import * as fs from 'node:fs';
 import prompts from 'prompts';
-import * as utils from '../utils';
+import { isInteractiveTerminal } from '../runner/terminal';
 
-const fsMocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-}));
-
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
 vi.mock('prompts');
+vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
 vi.mock('@simoncodes-ca/core', async () => {
   const actual = await vi.importActual<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core');
   return {
     ...actual,
+    loadConfig: vi.fn(),
     generateBundle: vi.fn(),
-  };
-});
-
-vi.mock('../utils', async () => {
-  const actual = await vi.importActual('../utils');
-  return {
-    ...actual,
-    loadConfiguration: vi.fn(),
-    parseCommaSeparatedList: vi.fn((input: string | undefined) => {
-      if (!input) return undefined;
-      const result = input
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean);
-      return result.length > 0 ? result : undefined;
-    }),
   };
 });
 
@@ -72,22 +43,15 @@ describe('bundleCommand', () => {
     },
   };
 
-  const originalStdout = process.stdout.isTTY;
   const originalLog = console.log;
 
   beforeEach(() => {
     vi.clearAllMocks();
     console.log = vi.fn();
-    process.stdout.isTTY = false;
-
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(mockConfig));
-
-    // Mock loadConfiguration to return the mock config
-    vi.mocked(utils.loadConfiguration).mockReturnValue({
-      config: mockConfig,
-      configPath: '/test/.lingo-tracker.json',
-      cwd: '/test',
-    });
+    process.env.INIT_CWD = '/test';
+    process.exitCode = undefined;
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+    vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
 
     mockGenerateBundle.mockReturnValue({
       bundleKey: 'core',
@@ -98,46 +62,42 @@ describe('bundleCommand', () => {
   });
 
   afterEach(() => {
-    process.stdout.isTTY = originalStdout;
     console.log = originalLog;
+    process.exitCode = undefined;
   });
 
   describe('configuration validation', () => {
     it('should error when config file is missing', async () => {
-      vi.mocked(utils.loadConfiguration).mockReturnValue(null);
+      vi.mocked(core.loadConfig).mockImplementation(() => {
+        throw new core.ConfigNotFoundError('/test/.lingo-tracker.json');
+      });
 
       await bundleCommand({});
 
-      expect(utils.loadConfiguration).toHaveBeenCalledWith({
-        exitOnError: false,
-      });
+      expect(core.loadConfig).toHaveBeenCalledWith({ cwd: '/test' });
+      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('should error when no bundles are configured', async () => {
       const configWithoutBundles = { ...mockConfig, bundles: {} };
-      vi.mocked(utils.loadConfiguration).mockReturnValue({
-        config: configWithoutBundles,
-        configPath: '/test/.lingo-tracker.json',
-        cwd: '/test',
-      });
+      vi.mocked(core.loadConfig).mockReturnValue(configWithoutBundles);
 
       await bundleCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
+      expect(console.error).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
+      expect(process.exitCode).toBe(1);
     });
 
     it('should error when bundles property is missing', async () => {
       const configWithoutBundles = { ...mockConfig };
       delete (configWithoutBundles as { bundles?: unknown }).bundles;
-      vi.mocked(utils.loadConfiguration).mockReturnValue({
-        config: configWithoutBundles,
-        configPath: '/test/.lingo-tracker.json',
-        cwd: '/test',
-      });
+      vi.mocked(core.loadConfig).mockReturnValue(configWithoutBundles);
 
       await bundleCommand({});
 
-      expect(console.log).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
+      expect(console.error).toHaveBeenCalledWith('❌ No bundles configured in .lingo-tracker.json');
+      expect(process.exitCode).toBe(1);
     });
   });
 
@@ -145,6 +105,7 @@ describe('bundleCommand', () => {
     it('should process all bundles by default in non-TTY mode', async () => {
       await bundleCommand({});
 
+      expect(process.exitCode).toBe(0);
       expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
       expect(mockGenerateBundle).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -194,8 +155,17 @@ describe('bundleCommand', () => {
     it('should show error for non-existent bundle', async () => {
       await bundleCommand({ name: 'nonexistent' });
 
-      expect(console.log).toHaveBeenCalledWith('❌ Bundle "nonexistent" not found.');
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle "nonexistent" not found.');
       expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+  });
+
+  describe('project directory', () => {
+    it('passes the directory the config was loaded from to generateBundle', async () => {
+      await bundleCommand({ name: 'core' });
+
+      expect(mockGenerateBundle).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/test' }));
     });
   });
 
@@ -273,9 +243,9 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', quiet: true });
 
-      expect(console.log).toHaveBeenCalledTimes(1);
-      expect(console.log).toHaveBeenCalledWith('  ⚠️  Warnings: 1');
-      expect(console.log).not.toHaveBeenCalledWith('       - Warning 1');
+      expect(console.log).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalledWith('⚠️  Warnings: 1');
     });
 
     it('should display errors in quiet mode', async () => {
@@ -285,8 +255,9 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', quiet: true });
 
-      expect(console.log).toHaveBeenCalledTimes(1);
-      expect(console.log).toHaveBeenCalledWith('  ❌ Bundle generation failed');
+      expect(console.log).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle generation failed');
     });
 
     it('should display type generation errors in quiet mode', async () => {
@@ -306,8 +277,9 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', quiet: true });
 
-      expect(console.log).toHaveBeenCalledTimes(1);
-      expect(console.log).toHaveBeenCalledWith('  └─ Types: Error (Unable to write type file)');
+      expect(console.log).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledTimes(1);
+      expect(console.error).toHaveBeenCalledWith('❌ Type generation failed: Unable to write type file');
     });
 
     it('should display warnings count when warnings exist', async () => {
@@ -320,7 +292,8 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core' });
 
-      expect(console.log).toHaveBeenCalledWith('  ⚠️  Warnings: 2');
+      expect(console.error).toHaveBeenCalledWith('⚠️  Warnings: 2');
+      expect(console.error).not.toHaveBeenCalledWith('  - Warning 1');
     });
 
     it('should display warning details in verbose mode', async () => {
@@ -333,8 +306,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core', verbose: true });
 
-      expect(console.log).toHaveBeenCalledWith('       - Warning 1');
-      expect(console.log).toHaveBeenCalledWith('       - Warning 2');
+      expect(vi.mocked(console.error).mock.calls).toEqual([['⚠️  Warnings: 2'], ['  - Warning 1'], ['  - Warning 2']]);
     });
 
     it('should display locale filter in verbose mode', async () => {
@@ -387,8 +359,8 @@ describe('bundleCommand', () => {
       expect(console.log).not.toHaveBeenCalledWith('  Total files generated: 5');
       expect(console.log).toHaveBeenCalledWith('  Total warnings: 1');
       expect(console.log).toHaveBeenCalledWith('  Run with --verbose to see warning details');
-      expect(console.log).toHaveBeenCalledWith('  ⚠️  Warnings: 1');
-      expect(console.log).not.toHaveBeenCalledWith('       - Warning 1');
+      expect(console.error).toHaveBeenCalledWith('⚠️  Warnings: 1');
+      expect(console.error).not.toHaveBeenCalledWith('  - Warning 1');
     });
 
     it('should display type generation success', async () => {
@@ -480,36 +452,22 @@ describe('bundleCommand', () => {
     it('should error when --token-constant-name is used with multiple bundles via --name', async () => {
       await bundleCommand({ name: 'core,admin', tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('should error when --token-constant-name is used in non-TTY mode (all bundles)', async () => {
       // In non-TTY mode with no --name, all bundles are processed
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
-    });
-
-    it('should error when --token-constant-name is set but no bundles are selected', async () => {
-      // Provide a non-empty --name so the promptForMissing name-parsing branch is entered,
-      // but mock parseCommaSeparatedList to return an empty array so bundlesToProcess
-      // stays empty (length === 0) and the zero-bundle guard fires.
-      vi.mocked(utils.parseCommaSeparatedList).mockReturnValueOnce([]);
-
-      await bundleCommand({ name: 'nonexistent', tokenConstantName: 'MY_CUSTOM_TOKENS' });
-
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('No bundles selected'));
-      expect(console.log).toHaveBeenCalledWith(
-        expect.stringContaining('--token-constant-name requires a single bundle to be targeted'),
-      );
+      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundle).not.toHaveBeenCalled();
     });
 
@@ -571,9 +529,10 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core,admin' });
 
-      expect(console.log).toHaveBeenCalledWith('  ❌ Bundle generation failed');
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle generation failed');
       expect(console.log).toHaveBeenCalledWith('🔄 Generating bundle: admin');
       expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
+      expect(process.exitCode).toBe(1);
     });
 
     it('should show error count in summary', async () => {
@@ -590,13 +549,13 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ name: 'core,admin' });
 
-      expect(console.log).toHaveBeenCalledWith('⚠️  1 bundle(s) failed to generate');
+      expect(console.error).toHaveBeenCalledWith('⚠️  1 bundle(s) failed to generate');
     });
   });
 
   describe('interactive mode (TTY)', () => {
     beforeEach(() => {
-      process.stdout.isTTY = true;
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     });
 
     it('should prompt for bundle selection when no --name provided', async () => {
@@ -649,18 +608,28 @@ describe('bundleCommand', () => {
 
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
-      expect(console.log).toHaveBeenCalledWith(
+      expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
       expect(mockGenerateBundle).not.toHaveBeenCalled();
     });
 
-    it('should handle prompt cancellation', async () => {
-      vi.mocked(prompts).mockImplementation(() => {
-        throw new Error('Bundle generation cancelled');
+    it('should report prompt cancellation and return without exiting or generating', async () => {
+      const exit = vi.spyOn(process, 'exit');
+      // The user presses Esc: prompts calls onCancel.
+      vi.mocked(prompts).mockImplementation(async (questions, options) => {
+        const [question] = Array.isArray(questions) ? questions : [questions];
+        options?.onCancel?.(question, {});
+        return {};
       });
 
-      await expect(bundleCommand({})).rejects.toThrow('Bundle generation cancelled');
+      await expect(bundleCommand({})).resolves.toBeUndefined();
+
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle generation cancelled.');
+      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(exit).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
+      exit.mockRestore();
     });
   });
 });

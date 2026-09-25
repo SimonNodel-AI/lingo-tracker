@@ -1,39 +1,3 @@
-import { isJavaScriptReservedWord, JS_IDENTIFIER_PATTERN } from '@simoncodes-ca/domain';
-
-/**
- * Validates that a string is a legal JavaScript identifier.
- * Returns `undefined` when valid, or an error message string when invalid.
- *
- * Only ASCII identifiers are accepted: letters A-Z and a-z, digits 0-9,
- * underscore `_`, and dollar sign `$`. Unicode letters are not permitted.
- *
- * Accepts any casing: camelCase, PascalCase, SCREAMING_SNAKE_CASE, snake_case.
- *
- * Examples of valid identifiers: `MY_KEYS`, `myKeys`, `MyKeys`, `_internal`
- * Examples of invalid identifiers: `1bad`, `my-key`, `my key`, `class`
- */
-export function validateJavaScriptIdentifier(name: string): string | undefined {
-  if (name.length === 0) {
-    return 'Identifier must not be empty.';
-  }
-
-  // Must start with a letter, underscore, or dollar sign
-  if (!/^[A-Za-z_$]/.test(name)) {
-    return `"${name}" is not a valid JavaScript identifier: must start with a letter, underscore, or dollar sign.`;
-  }
-
-  // Remaining characters: letters, digits, underscore, dollar sign
-  if (!JS_IDENTIFIER_PATTERN.test(name)) {
-    return `"${name}" is not a valid JavaScript identifier: may only contain letters, digits, underscores, and dollar signs.`;
-  }
-
-  if (isJavaScriptReservedWord(name)) {
-    return `"${name}" is a JavaScript reserved word and cannot be used as an identifier.`;
-  }
-
-  return undefined;
-}
-
 /**
  * Derives a PascalCase type name from an arbitrary constant name.
  * Handles all common casing conventions as input.

@@ -1,8 +1,11 @@
-import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, rmSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
-import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
+import type { Collection } from '../config/open-collection';
+import { FolderNotFoundError, InvalidFolderPathError } from '../errors/lingo-tracker-error';
+import { openResourceFolder } from '../resource/resource-folder';
+import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface DeleteFolderParams {
   /** The folder path to delete (dot-delimited path like "apps.common.buttons") */
@@ -12,16 +15,14 @@ export interface DeleteFolderParams {
 export interface DeleteFolderResult {
   /** The dot-delimited folder path that was deleted */
   readonly folderPath: string;
-  /** Whether the folder was successfully deleted */
-  readonly deleted: boolean;
   /** Number of resource entries that were deleted */
   readonly resourcesDeleted: number;
-  /** Error message if deletion failed */
-  readonly error?: string;
+  /** The `remove-folder` for the deleted folder. */
+  readonly mutations: ResourceMutation[];
 }
 
 /**
- * Deletes a folder and all its contents from the translations directory structure.
+ * Deletes a folder and all its contents from a collection's translations folder.
  *
  * This function:
  * 1. Validates the folder path segments
@@ -29,85 +30,43 @@ export interface DeleteFolderResult {
  * 3. Counts all resource entries in the folder tree
  * 4. Recursively deletes the folder and all its contents
  *
- * @param translationsFolder - Root translations folder path
+ * @param collection - The collection to delete the folder from
  * @param params - Folder deletion parameters
- * @returns Object containing deletion status and resource count
+ * @returns The deleted folder and how many resource entries went with it
+ * @throws {InvalidFolderPathError} The folder path has a malformed segment.
+ * @throws {FolderNotFoundError} No folder exists at the path.
  *
  * @example
  * ```typescript
- * // Delete a folder
- * const result = deleteFolder('/app/translations', {
- *   folderPath: 'apps.common.buttons'
- * });
- * // Result: { folderPath: 'apps.common.buttons', deleted: true, resourcesDeleted: 5 }
- *
- * // Attempt to delete non-existent folder
- * const result = deleteFolder('/app/translations', {
- *   folderPath: 'apps.nonexistent'
- * });
- * // Result: { folderPath: 'apps.nonexistent', deleted: false, resourcesDeleted: 0, error: '...' }
+ * const result = deleteFolder(collection, { folderPath: 'apps.common.buttons' });
+ * // Result: { folderPath: 'apps.common.buttons', resourcesDeleted: 5, mutations: [...] }
  * ```
  */
-export function deleteFolder(translationsFolder: string, params: DeleteFolderParams): DeleteFolderResult {
+export function deleteFolder(collection: Collection, params: DeleteFolderParams): DeleteFolderResult {
   const { folderPath } = params;
+  const { translationsFolder } = collection;
 
-  try {
-    // Validate folder path segments
-    const pathSegments = folderPath.split('.');
-    for (const segment of pathSegments) {
-      if (!isValidSegment(segment)) {
-        throw new Error(`Invalid folder path segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`);
-      }
+  const pathSegments = folderPath.split('.');
+  for (const segment of pathSegments) {
+    if (!isValidSegment(segment)) {
+      throw new InvalidFolderPathError('folder path', segment);
     }
-
-    // Convert dot-delimited path to filesystem path
-    const relativeFolderPath = pathSegments.length ? join(translationsFolder, ...pathSegments) : translationsFolder;
-
-    // Resolve to absolute path
-    const absoluteFolderPath = resolve(relativeFolderPath);
-
-    // Check if folder exists
-    if (!existsSync(absoluteFolderPath)) {
-      return {
-        folderPath,
-        deleted: false,
-        resourcesDeleted: 0,
-        error: `Folder not found: ${absoluteFolderPath}`,
-      };
-    }
-
-    // Verify it's a directory
-    const stats = statSync(absoluteFolderPath);
-    if (!stats.isDirectory()) {
-      return {
-        folderPath,
-        deleted: false,
-        resourcesDeleted: 0,
-        error: `Path is not a directory: ${absoluteFolderPath}`,
-      };
-    }
-
-    // Count resources before deletion
-    const resourcesDeleted = countResourcesInFolder(absoluteFolderPath);
-
-    // Delete the folder recursively
-    rmSync(absoluteFolderPath, { recursive: true, force: true });
-
-    return {
-      folderPath,
-      deleted: true,
-      resourcesDeleted,
-    };
-  } catch (error) {
-    return {
-      folderPath,
-      deleted: false,
-      resourcesDeleted: 0,
-      error: error instanceof Error ? error.message : String(error),
-    };
   }
-}
 
+  const absoluteFolderPath = resolve(join(translationsFolder, ...pathSegments));
+  if (!existsSync(absoluteFolderPath) || !statSync(absoluteFolderPath).isDirectory()) {
+    throw new FolderNotFoundError(folderPath);
+  }
+
+  const resourcesDeleted = countResourcesInFolder(absoluteFolderPath);
+  rmSync(absoluteFolderPath, { recursive: true, force: true });
+
+  return {
+    folderPath,
+    resourcesDeleted,
+    mutations: [folderMutation('remove-folder', translationsFolder, folderPath)],
+  };
+}
 /**
  * Counts all resource entries in a folder tree.
  *
@@ -118,13 +77,8 @@ function countResourcesInFolder(folderPath: string): number {
   let totalResources = 0;
 
   for (const visit of walkFolders(folderPath, { skipHidden: false })) {
-    const entriesPath = join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME);
-    if (!existsSync(entriesPath)) continue;
-
     try {
-      const entriesContent = readFileSync(entriesPath, 'utf8');
-      const entries = JSON.parse(entriesContent);
-      totalResources += Object.keys(entries).length;
+      totalResources += openResourceFolder(visit.absolutePath).keys().length;
     } catch {
       // Malformed JSON or read error, skip counting
     }

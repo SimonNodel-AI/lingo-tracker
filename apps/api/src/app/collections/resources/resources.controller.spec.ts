@@ -1,13 +1,22 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { resolve } from 'node:path';
 import { HttpException, NotFoundException } from '@nestjs/common';
-import { TranslationError } from '@simoncodes-ca/core';
-import type { TranslationStatus, LocaleMetadata } from '@simoncodes-ca/domain';
-import type { ResourceTreeDto } from '@simoncodes-ca/data-transfer';
-import { ResourcesController } from './resources.controller';
-import { ConfigService } from '../../config/config.service';
-import { CollectionCacheService, CacheStatus } from '../../cache/collection-cache.service';
-import { TranslationJobService } from '../../translation-job/translation-job.service';
+import { Test, type TestingModule } from '@nestjs/testing';
+import type { Response } from 'express';
 import * as core from '@simoncodes-ca/core';
+import { TranslationError } from '@simoncodes-ca/core';
+import type { ResourceTreeDto, SearchTranslationsDto } from '@simoncodes-ca/data-transfer';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
+import { CollectionIndex } from '../../cache/collection-index.service';
+import { ConfigService } from '../../config/config.service';
+import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
+import { TranslationJobService } from '../../translation-job/translation-job.service';
+import { ResourcesController } from './resources.controller';
+
+/** What the handler rejects with, as the HTTP exception the global exception filter answers with. */
+const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
+  promise.then(() => {
+    throw new Error('expected the handler to reject');
+  }, toHttpException);
 
 // Mock the core module
 jest.mock('@simoncodes-ca/core', () => {
@@ -20,80 +29,14 @@ jest.mock('@simoncodes-ca/core', () => {
     moveResourcesByPattern: jest.fn(),
     editResource: jest.fn(),
     translateExistingResource: jest.fn(),
-    loadResourceTree: jest.fn(),
-    extractSubtree: jest.fn(),
-    createDefaultTranslations: jest.fn(),
     extractResourcesRecursively: jest.fn(),
-    searchResourceTree: jest.fn(),
-    searchTranslations: jest.fn(),
   };
 });
-
-// Mock the mapper
-jest.mock('../../mappers/resource.mapper', () => ({
-  mapDtoToAddResourceParams: jest.fn((dto) => dto),
-}));
-
-// Mock the resource tree mapper
-jest.mock('../../mappers/resource-tree.mapper', () => ({
-  mapResourceEntryToSummary: jest.fn((entry) => ({
-    key: entry.key,
-    translations: { en: entry.source, ...entry.translations },
-    status: Object.fromEntries(
-      Object.entries(entry.metadata).map(([locale, meta]: [string, any]) => [locale, meta.status]),
-    ),
-    comment: entry.comment,
-    tags: entry.tags,
-  })),
-  mapResourceTreeToDto: jest.fn((treeNode) => {
-    // Simple pass-through mapper for tests that mimics the real mapper
-    return {
-      path: treeNode.folderPathSegments.join('.'),
-      resources: treeNode.resources.map((r: any) => {
-        // Find base locale
-        let baseLocale: string | undefined;
-        for (const [locale, meta] of Object.entries<LocaleMetadata>(r.metadata)) {
-          if (meta.status === undefined && meta.baseChecksum === undefined) {
-            baseLocale = locale;
-            break;
-          }
-        }
-
-        // Combine source and translations
-        const translations: Record<string, string> = { ...r.translations };
-        if (baseLocale) {
-          translations[baseLocale] = r.source;
-        }
-
-        // Extract status
-        const status: Record<string, any> = {};
-        for (const [locale, meta] of Object.entries<LocaleMetadata>(r.metadata)) {
-          status[locale] = meta.status;
-        }
-
-        return {
-          key: r.key,
-          translations,
-          status,
-          comment: r.comment,
-          tags: r.tags,
-        };
-      }),
-      children: treeNode.children.map((c: any) => ({
-        name: c.name,
-        fullPath: c.fullPathSegments.join('.'),
-        loaded: c.loaded,
-        tree: c.tree ? { path: c.fullPathSegments.join('.'), resources: [], children: [] } : undefined,
-      })),
-    };
-  }),
-}));
 
 describe('ResourcesController', () => {
   let resourcesModule: TestingModule;
   let resourcesController: ResourcesController;
   let configService: ConfigService;
-  let cacheService: CollectionCacheService;
 
   const mockConfig = {
     exportFolder: 'dist/lingo-export',
@@ -109,16 +52,11 @@ describe('ResourcesController', () => {
     },
   };
 
-  const mockCacheService = {
-    getCacheStatus: jest.fn(),
-    getCache: jest.fn(),
-    getCacheMetadata: jest.fn(),
-    getCacheStats: jest.fn(),
-    indexCollection: jest.fn(),
-    clearCache: jest.fn(),
-    revalidate: jest.fn().mockReturnValue(false),
-    addResourceToCache: jest.fn().mockReturnValue(true),
-    removeResourceFromCache: jest.fn().mockReturnValue(true),
+  const mockIndex = {
+    tree: jest.fn(),
+    search: jest.fn(),
+    status: jest.fn(),
+    apply: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -132,8 +70,8 @@ describe('ResourcesController', () => {
           },
         },
         {
-          provide: CollectionCacheService,
-          useValue: mockCacheService,
+          provide: CollectionIndex,
+          useValue: mockIndex,
         },
         {
           provide: TranslationJobService,
@@ -147,7 +85,6 @@ describe('ResourcesController', () => {
 
     resourcesController = resourcesModule.get<ResourcesController>(ResourcesController);
     configService = resourcesModule.get<ConfigService>(ConfigService);
-    cacheService = resourcesModule.get<CollectionCacheService>(CollectionCacheService);
   });
 
   afterEach(() => {
@@ -174,12 +111,19 @@ describe('ResourcesController', () => {
         created: true,
       });
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
         expect.objectContaining({
-          key: 'app.button.ok',
-          baseValue: 'OK',
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
           baseLocale: 'en',
         }),
+        {
+          key: 'app.button.ok',
+          baseValue: 'OK',
+          comment: undefined,
+          tags: undefined,
+          targetFolder: undefined,
+          translations: undefined,
+        },
       );
     });
 
@@ -249,62 +193,6 @@ describe('ResourcesController', () => {
       expect(addResource).toHaveBeenCalledTimes(3);
     });
 
-    it('should use collection baseLocale when provided', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const configWithCustomBaseLocale = {
-        ...mockConfig,
-        collections: {
-          'test-collection': {
-            translationsFolder: './translations/test',
-            baseLocale: 'fr-ca',
-          },
-        },
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithCustomBaseLocale);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
-        expect.objectContaining({
-          baseLocale: 'fr-ca',
-        }),
-      );
-    });
-
-    it('should use DTO baseLocale when explicitly provided', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-        baseLocale: 'es',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
-        expect.objectContaining({
-          baseLocale: 'es',
-        }),
-      );
-    });
-
     it('should URI decode collection names with special characters', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource.mockReturnValue({
@@ -329,7 +217,13 @@ describe('ResourcesController', () => {
 
       await resourcesController.createResources('My%20Collection', dto);
 
-      expect(addResource).toHaveBeenCalledWith('./translations/my-collection', expect.any(Object));
+      expect(addResource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'My Collection',
+          translationsFolder: resolve('./translations/my-collection'),
+        }),
+        expect.any(Object),
+      );
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
@@ -351,10 +245,11 @@ describe('ResourcesController', () => {
       await expect(resourcesController.createResources('test-collection', [])).rejects.toThrow(HttpException);
     });
 
-    it('should throw HttpException (400) for invalid key validation', async () => {
+    it('should answer 400 for invalid key validation', async () => {
+      const message = 'Key validation: Invalid key segment "invalid@key". Segments must match pattern [A-Za-z0-9_-]+';
       const addResource = core.addResource as jest.Mock;
       addResource.mockImplementation(() => {
-        throw new Error('Invalid key segment "invalid@key". Segments must match pattern [A-Za-z0-9_-]+');
+        throw new core.InvalidResourceKeyError('invalid@key', message);
       });
 
       const dto = {
@@ -362,20 +257,19 @@ describe('ResourcesController', () => {
         baseValue: 'OK',
       };
 
-      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(HttpException);
+      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(
+        core.InvalidResourceKeyError,
+      );
 
-      try {
-        await resourcesController.createResources('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-        expect(error.message).toContain('Validation error');
-      }
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      expect(error.getStatus()).toBe(400);
+      expect(error.message).toBe(message);
     });
 
-    it('should throw HttpException (400) for empty key', async () => {
+    it('should answer 400 for empty key', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource.mockImplementation(() => {
-        throw new Error('Key cannot be empty');
+        throw new core.InvalidResourceKeyError('', 'Key validation: Key cannot be empty');
       });
 
       const dto = {
@@ -383,16 +277,23 @@ describe('ResourcesController', () => {
         baseValue: 'OK',
       };
 
-      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.createResources('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-      }
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      expect(error.getStatus()).toBe(400);
     });
 
-    it('should throw HttpException (500) for unexpected errors', async () => {
+    it('should answer 502 when the translation provider fails during auto-translation', async () => {
+      const addResource = core.addResource as jest.Mock;
+      addResource.mockImplementation(() => {
+        throw new TranslationError('Google Translate server error: backend down', 'SERVER_ERROR', true);
+      });
+
+      const error = await httpErrorOf(
+        resourcesController.createResources('test-collection', { key: 'app.button.ok', baseValue: 'OK' }),
+      );
+      expect(error.getStatus()).toBe(502);
+    });
+
+    it('should answer a generic 500 that hides the message for unexpected errors', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource.mockImplementation(() => {
         throw new Error('Unexpected file system error');
@@ -403,13 +304,13 @@ describe('ResourcesController', () => {
         baseValue: 'OK',
       };
 
-      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(HttpException);
+      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(
+        'Unexpected file system error',
+      );
 
-      try {
-        await resourcesController.createResources('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(500);
-      }
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      expect(error.getStatus()).toBe(500);
+      expect(error.message).toBe('Internal server error');
     });
 
     it('should handle resource with all optional fields', async () => {
@@ -434,7 +335,11 @@ describe('ResourcesController', () => {
         created: true,
       });
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        expect.objectContaining({
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
+          baseLocale: 'en',
+        }),
         expect.objectContaining({
           key: 'cancel',
           baseValue: 'Cancel',
@@ -472,130 +377,12 @@ describe('ResourcesController', () => {
       await resourcesController.createResources('test-collection', dto);
 
       expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           translations: [
             { locale: 'fr-ca', value: "D'accord", status: 'translated' },
             { locale: 'es', value: 'De acuerdo', status: 'translated' },
           ],
-        }),
-      );
-    });
-
-    it('should automatically create entries for all non-base locales when translations are not provided', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const createDefaultTranslations = core.createDefaultTranslations as jest.Mock;
-      createDefaultTranslations.mockReturnValue([
-        { locale: 'fr-ca', value: 'OK', status: 'new' },
-        { locale: 'es', value: 'OK', status: 'new' },
-      ]);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-        // No translations provided
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
-        expect.objectContaining({
-          key: 'app.button.ok',
-          baseValue: 'OK',
-          baseLocale: 'en',
-          translations: [
-            { locale: 'fr-ca', value: 'OK', status: 'new' },
-            { locale: 'es', value: 'OK', status: 'new' },
-          ],
-        }),
-      );
-    });
-
-    it('should use collection locales when available, fall back to global locales', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const createDefaultTranslations = core.createDefaultTranslations as jest.Mock;
-      createDefaultTranslations.mockReturnValue([
-        { locale: 'fr-ca', value: 'OK', status: 'new' },
-        { locale: 'es', value: 'OK', status: 'new' },
-        { locale: 'de', value: 'OK', status: 'new' },
-      ]);
-
-      const configWithCollectionLocales = {
-        ...mockConfig,
-        collections: {
-          'test-collection': {
-            translationsFolder: './translations/test',
-            baseLocale: 'en',
-            locales: ['en', 'fr-ca', 'es', 'de'],
-          },
-        },
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithCollectionLocales);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
-        expect.objectContaining({
-          translations: [
-            { locale: 'fr-ca', value: 'OK', status: 'new' },
-            { locale: 'es', value: 'OK', status: 'new' },
-            { locale: 'de', value: 'OK', status: 'new' },
-          ],
-        }),
-      );
-    });
-
-    it('should not create translations if locales array is empty', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
-
-      const createDefaultTranslations = core.createDefaultTranslations as jest.Mock;
-      createDefaultTranslations.mockReturnValue(undefined);
-
-      const configWithNoLocales = {
-        ...mockConfig,
-        collections: {
-          'test-collection': {
-            translationsFolder: './translations/test',
-            baseLocale: 'en',
-            // No locales property
-          },
-        },
-        locales: [], // Empty global locales
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithNoLocales);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        './translations/test',
-        expect.objectContaining({
-          translations: undefined,
         }),
       );
     });
@@ -619,9 +406,10 @@ describe('ResourcesController', () => {
         entriesDeleted: 1,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith('./translations/test', {
-        keys: ['app.button.ok'],
-      });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        { keys: ['app.button.ok'] },
+      );
     });
 
     it('should successfully delete multiple resources (bulk operation)', async () => {
@@ -641,9 +429,10 @@ describe('ResourcesController', () => {
         entriesDeleted: 3,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith('./translations/test', {
-        keys: ['app.button.ok', 'app.button.cancel', 'app.button.save'],
-      });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        { keys: ['app.button.ok', 'app.button.cancel', 'app.button.save'] },
+      );
     });
 
     it('should handle partial failures with errors array', async () => {
@@ -696,7 +485,10 @@ describe('ResourcesController', () => {
 
       await resourcesController.delete('My%20Collection', dto);
 
-      expect(deleteResource).toHaveBeenCalledWith('./translations/my-collection', { keys: ['app.button.ok'] });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'My Collection', translationsFolder: resolve('./translations/my-collection') }),
+        { keys: ['app.button.ok'] },
+      );
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
@@ -740,7 +532,7 @@ describe('ResourcesController', () => {
       }
     });
 
-    it('should throw HttpException (500) for unexpected errors', async () => {
+    it('should answer 500 for unexpected errors', async () => {
       const deleteResource = core.deleteResource as jest.Mock;
       deleteResource.mockImplementation(() => {
         throw new Error('Unexpected file system error');
@@ -750,13 +542,8 @@ describe('ResourcesController', () => {
         keys: ['app.button.ok'],
       };
 
-      await expect(resourcesController.delete('test-collection', dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.delete('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(500);
-      }
+      const error = await httpErrorOf(resourcesController.delete('test-collection', dto));
+      expect(error.getStatus()).toBe(500);
     });
 
     it('should successfully delete nested resource', async () => {
@@ -776,9 +563,10 @@ describe('ResourcesController', () => {
         entriesDeleted: 1,
         errors: undefined,
       });
-      expect(deleteResource).toHaveBeenCalledWith('./translations/test', {
-        keys: ['apps.common.buttons.ok'],
-      });
+      expect(deleteResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        { keys: ['apps.common.buttons.ok'] },
+      );
     });
   });
 
@@ -803,7 +591,7 @@ describe('ResourcesController', () => {
         errors: [],
       });
       expect(moveResource).toHaveBeenCalledWith(
-        './translations/test',
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
@@ -832,7 +620,7 @@ describe('ResourcesController', () => {
       await resourcesController.move('test-collection', dto);
 
       expect(moveResource).toHaveBeenCalledWith(
-        './translations/test',
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
@@ -907,11 +695,14 @@ describe('ResourcesController', () => {
 
       expect(result.movedCount).toBe(1);
       expect(moveResource).toHaveBeenCalledWith(
-        './translations/test',
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         expect.objectContaining({
           source: 'app.button.ok',
           destination: 'app.actions.ok',
-          destinationTranslationsFolder: './translations/other',
+          destinationCollection: expect.objectContaining({
+            name: 'other-collection',
+            translationsFolder: resolve('./translations/other'),
+          }),
         }),
       );
     });
@@ -932,6 +723,26 @@ describe('ResourcesController', () => {
 
       expect(result.movedCount).toBe(0);
       expect(result.errors).toContain('Destination collection "non-existent" not found');
+      expect(moveResource).not.toHaveBeenCalled();
+    });
+
+    it('should report error if destination collection is read-only', async () => {
+      const moveResource = core.moveResource as jest.Mock;
+      jest.spyOn(configService, 'getConfig').mockReturnValue({
+        ...mockConfig,
+        collections: {
+          ...mockConfig.collections,
+          vendor: { translationsFolder: './translations/vendor', readOnly: true },
+        },
+      });
+
+      const dto = {
+        moves: [{ source: 'app.button.ok', destination: 'app.actions.ok', toCollection: 'vendor' }],
+      };
+      const result = await resourcesController.move('test-collection', dto);
+
+      expect(result.movedCount).toBe(0);
+      expect(result.errors).toContain('Collection "vendor" is read-only. Its resources cannot be modified.');
       expect(moveResource).not.toHaveBeenCalled();
     });
   });
@@ -957,13 +768,65 @@ describe('ResourcesController', () => {
         message: undefined,
       });
       expect(editResource).toHaveBeenCalledWith(
-        './translations/test',
         expect.objectContaining({
-          key: 'app.button.ok',
-          baseValue: 'OK Updated',
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
           baseLocale: 'en',
         }),
+        'app.button.ok',
+        {
+          baseValue: 'OK Updated',
+          comment: undefined,
+          tags: undefined,
+          translations: undefined,
+          moveTo: undefined,
+        },
       );
+    });
+
+    it('should return the updated resource addressed at its resolved key', async () => {
+      const editResource = core.editResource as jest.Mock;
+      editResource.mockReturnValue({
+        resolvedKey: 'shared.ok',
+        updated: true,
+        entry: { key: 'ok', source: 'OK', translations: {}, metadata: { en: { checksum: 'a' } } },
+      });
+
+      const result = await resourcesController.update('test-collection', { key: 'app.button.ok', moveTo: 'shared' });
+
+      expect(result.resource).toMatchObject({
+        fullKey: 'shared.ok',
+        folderPath: 'shared',
+        entryKey: 'ok',
+        base: { locale: 'en', value: 'OK' },
+      });
+    });
+
+    it('should pass moveTo through to core', async () => {
+      const editResource = core.editResource as jest.Mock;
+      editResource.mockReturnValue({ resolvedKey: 'shared.ok', updated: true });
+
+      await resourcesController.update('test-collection', {
+        key: 'app.button.ok',
+        moveTo: 'shared',
+      });
+
+      expect(editResource).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection' }),
+        'app.button.ok',
+        expect.objectContaining({ moveTo: 'shared' }),
+      );
+    });
+
+    it('should answer 409 when the destination resource already exists', async () => {
+      const editResource = core.editResource as jest.Mock;
+      editResource.mockRejectedValue(new core.ResourceAlreadyExistsError('shared.ok'));
+
+      const error = await httpErrorOf(
+        resourcesController.update('test-collection', { key: 'app.button.ok', moveTo: 'shared' }),
+      );
+
+      expect(error.getStatus()).toBe(409);
     });
 
     it('should return no-op message when no changes detected', async () => {
@@ -988,36 +851,35 @@ describe('ResourcesController', () => {
       });
     });
 
-    it('should throw NotFoundException when resource not found', async () => {
+    it('should answer 404 when resource not found', async () => {
       const editResource = core.editResource as jest.Mock;
       editResource.mockImplementation(() => {
-        throw new Error('Resource not found: app.button.missing');
+        throw new core.ResourceNotFoundError('app.button.missing');
       });
 
       const dto = {
         key: 'app.button.missing',
       };
 
-      await expect(resourcesController.update('test-collection', dto)).rejects.toThrow(NotFoundException);
+      await expect(resourcesController.update('test-collection', dto)).rejects.toThrow(core.ResourceNotFoundError);
+
+      const error = await httpErrorOf(resourcesController.update('test-collection', dto));
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect(error.message).toBe('Resource not found: app.button.missing');
     });
 
-    it('should throw BadRequestException for validation errors', async () => {
+    it('should answer 400 for validation errors', async () => {
       const editResource = core.editResource as jest.Mock;
       editResource.mockImplementation(() => {
-        throw new Error('Invalid key segment');
+        throw new core.InvalidResourceKeyError('invalid..key', 'Key validation: Invalid key format "invalid..key"');
       });
 
       const dto = {
         key: 'invalid..key',
       };
 
-      await expect(resourcesController.update('test-collection', dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.update('test-collection', dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-      }
+      const error = await httpErrorOf(resourcesController.update('test-collection', dto));
+      expect(error.getStatus()).toBe(400);
     });
   });
 
@@ -1038,36 +900,62 @@ describe('ResourcesController', () => {
       children: [],
     };
 
-    it('should return full cached tree when cache is READY and no path provided', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCache = cacheService.getCache as jest.Mock;
+    const mockResponse = () => ({ status: jest.fn().mockReturnThis() });
 
-      getCacheStatus.mockReturnValue(CacheStatus.READY);
-      getCache.mockReturnValue(mockTreeNode);
+    it('should return the tree read from the index', async () => {
+      mockIndex.tree.mockReturnValue({ status: 'ready', tree: mockTreeNode });
+      const response = mockResponse();
 
-      const result = await resourcesController.getTree('test-collection', '');
-      const tree = result as ResourceTreeDto;
+      const tree = (await resourcesController.getTree(
+        'test-collection',
+        undefined,
+        undefined,
+        response as any,
+      )) as ResourceTreeDto;
 
-      expect(tree).toHaveProperty('path', '');
-      expect(tree).toHaveProperty('resources');
-      expect(tree.resources).toHaveLength(1);
-      expect(tree.resources[0].key).toBe('title');
-      expect(getCacheStatus).toHaveBeenCalledWith('test-collection');
-      expect(getCache).toHaveBeenCalledWith('test-collection');
+      expect(tree.path).toBe('');
+      expect(tree.resources).toEqual([
+        {
+          fullKey: 'title',
+          folderPath: '',
+          entryKey: 'title',
+          base: { locale: 'en', value: 'Title' },
+          targets: [
+            { locale: 'fr-ca', value: undefined, status: undefined, needsWork: true, sameAsBase: false },
+            { locale: 'es', value: 'Título', status: 'new', needsWork: true, sameAsBase: false },
+          ],
+          tags: [],
+          inheritedTags: [],
+        },
+      ]);
+      expect(mockIndex.tree).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), '');
+      expect(response.status).not.toHaveBeenCalled();
     });
 
-    it('should list every resource recursively at the root when includeNested is set', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCache = cacheService.getCache as jest.Mock;
-      const extractSubtree = core.extractSubtree as jest.Mock;
-      const extractResourcesRecursively = core.extractResourcesRecursively as jest.Mock;
+    it('should pass the path to the index', async () => {
+      mockIndex.tree.mockReturnValue({ status: 'ready', tree: { ...mockTreeNode, folderPathSegments: ['apps'] } });
 
-      getCacheStatus.mockReturnValue(CacheStatus.READY);
-      getCache.mockReturnValue(mockTreeNode);
+      const tree = (await resourcesController.getTree(
+        'test-collection',
+        'apps',
+        undefined,
+        mockResponse() as any,
+      )) as ResourceTreeDto;
+
+      expect(tree.path).toBe('apps');
+      expect(tree.resources.map((r) => [r.fullKey, r.folderPath, r.entryKey])).toEqual([
+        ['apps.title', 'apps', 'title'],
+      ]);
+      expect(mockIndex.tree).toHaveBeenCalledWith(expect.anything(), 'apps');
+    });
+
+    it('should list every resource recursively when includeNested is set', async () => {
+      const extractResourcesRecursively = core.extractResourcesRecursively as jest.Mock;
+      mockIndex.tree.mockReturnValue({ status: 'ready', tree: mockTreeNode });
       extractResourcesRecursively.mockReturnValue([
         ...mockTreeNode.resources,
         {
-          key: 'save',
+          key: 'dialog.save',
           source: 'Save',
           translations: { es: 'Guardar' },
           metadata: {
@@ -1077,325 +965,207 @@ describe('ResourcesController', () => {
         },
       ]);
 
-      const result = await resourcesController.getTree('test-collection', '', 'true');
-      const tree = result as ResourceTreeDto;
+      const tree = (await resourcesController.getTree(
+        'test-collection',
+        '',
+        'true',
+        mockResponse() as any,
+      )) as ResourceTreeDto;
 
-      // The root is a folder like any other: it honours includeNested and never goes
-      // through extractSubtree, which has no path to extract.
-      expect(extractSubtree).not.toHaveBeenCalled();
       expect(extractResourcesRecursively).toHaveBeenCalledWith(mockTreeNode);
-      expect(tree.resources.map((r) => r.key)).toEqual(['title', 'save']);
+      expect(tree.resources.map((r) => r.fullKey)).toEqual(['title', 'dialog.save']);
     });
 
-    it('should extract and return subtree when cache is READY and path is provided', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCache = cacheService.getCache as jest.Mock;
-      const extractSubtree = core.extractSubtree as jest.Mock;
+    it('should give nested resources their full address below a non-root path', async () => {
+      const extractResourcesRecursively = core.extractResourcesRecursively as jest.Mock;
+      const appsNode = { ...mockTreeNode, folderPathSegments: ['apps'] };
+      mockIndex.tree.mockReturnValue({ status: 'ready', tree: appsNode });
+      extractResourcesRecursively.mockReturnValue([
+        ...appsNode.resources,
+        { key: 'dialog.save', source: 'Save', translations: {}, metadata: { en: { checksum: 'b' } } },
+      ]);
 
-      const mockSubtree = {
-        folderPathSegments: ['apps'],
-        resources: [
-          {
-            key: 'test',
-            source: 'Test',
-            translations: { es: 'Prueba' },
-            metadata: {
-              en: { checksum: 't' },
-            },
-          },
-        ],
-        children: [],
-      };
+      const tree = (await resourcesController.getTree(
+        'test-collection',
+        'apps',
+        'true',
+        mockResponse() as unknown as Response,
+      )) as ResourceTreeDto;
 
-      getCacheStatus.mockReturnValue(CacheStatus.READY);
-      getCache.mockReturnValue(mockTreeNode);
-      extractSubtree.mockReturnValue(mockSubtree);
-
-      const result = await resourcesController.getTree('test-collection', 'apps');
-      const tree = result as ResourceTreeDto;
-
-      expect(tree.path).toBe('apps');
-      expect(tree.resources).toHaveLength(1);
-      expect(tree.resources[0].key).toBe('test');
-      expect(extractSubtree).toHaveBeenCalledWith(mockTreeNode, 'apps');
+      expect(tree.resources.map((r) => [r.fullKey, r.folderPath, r.entryKey])).toEqual([
+        ['apps.title', 'apps', 'title'],
+        ['apps.dialog.save', 'apps.dialog', 'save'],
+      ]);
     });
 
-    it('should return 202 when cache is NOT_STARTED and trigger indexing', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const indexCollection = cacheService.indexCollection as jest.Mock;
+    it.each([
+      ['not-started', { status: 'not-ready', message: expect.stringContaining('indexing started') }],
+      ['error', { status: 'not-ready', message: expect.stringContaining('re-indexing') }],
+      ['indexing', { status: 'indexing', message: expect.stringContaining('currently being indexed') }],
+    ])('should return 202 when the index is %s', async (status, expected) => {
+      mockIndex.tree.mockReturnValue({ status });
+      const response = mockResponse();
 
-      getCacheStatus.mockReturnValue(CacheStatus.NOT_STARTED);
-      indexCollection.mockResolvedValue(undefined);
+      const result = await resourcesController.getTree('test-collection', '', undefined, response as any);
 
-      const mockResponse = {
-        status: jest.fn().mockReturnThis(),
-        json: jest.fn().mockReturnThis(),
-      };
-
-      await resourcesController.getTree('test-collection', '', mockResponse as any);
-
-      expect(indexCollection).toHaveBeenCalledWith('test-collection', './translations/test', 3);
-      expect(mockResponse.status).toHaveBeenCalledWith(202);
-      expect(mockResponse.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'not-ready',
-          message: expect.stringContaining('indexing started'),
-        }),
-      );
+      expect(response.status).toHaveBeenCalledWith(202);
+      expect(result).toEqual(expected);
     });
 
-    it('should return 202 when cache is INDEXING', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
+    it('should return 404 when the path is not in the tree', async () => {
+      mockIndex.tree.mockReturnValue({ status: 'ready', tree: null });
 
-      getCacheStatus.mockReturnValue(CacheStatus.INDEXING);
-
-      const mockResponse = {
-        status: jest.fn().mockReturnThis(),
-        json: jest.fn().mockReturnThis(),
-      };
-
-      await resourcesController.getTree('test-collection', '', mockResponse as any);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(202);
-      expect(mockResponse.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'indexing',
-          message: expect.stringContaining('currently being indexed'),
-        }),
-      );
+      await expect(
+        resourcesController.getTree('test-collection', 'nonexistent.path', undefined, mockResponse() as any),
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('should return 202 when cache is ERROR and trigger re-indexing', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const indexCollection = cacheService.indexCollection as jest.Mock;
+    it('should return 404 for non-existent collection', async () => {
+      jest.spyOn(configService, 'getConfig').mockReturnValue({ ...mockConfig, collections: {} });
 
-      getCacheStatus.mockReturnValue(CacheStatus.ERROR);
-      indexCollection.mockResolvedValue(undefined);
-
-      const mockResponse = {
-        status: jest.fn().mockReturnThis(),
-        json: jest.fn().mockReturnThis(),
-      };
-
-      await resourcesController.getTree('test-collection', '', mockResponse as any);
-
-      expect(indexCollection).toHaveBeenCalledWith('test-collection', './translations/test', 3);
-      expect(mockResponse.status).toHaveBeenCalledWith(202);
-      expect(mockResponse.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'not-ready',
-          message: expect.stringContaining('re-indexing'),
-        }),
-      );
-    });
-
-    it('should return 404 when path is not found in cached tree', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCache = cacheService.getCache as jest.Mock;
-      const extractSubtree = core.extractSubtree as jest.Mock;
-
-      getCacheStatus.mockReturnValue(CacheStatus.READY);
-      getCache.mockReturnValue(mockTreeNode);
-      extractSubtree.mockReturnValue(null);
-
-      await expect(resourcesController.getTree('test-collection', 'nonexistent.path')).rejects.toThrow(
+      await expect(resourcesController.getTree('nonexistent', '', undefined, mockResponse() as any)).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should return 404 for non-existent collection', async () => {
-      const configWithoutCollection = {
-        ...mockConfig,
-        collections: {},
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithoutCollection);
+    it('should return a generic 500 when reading the index throws', async () => {
+      mockIndex.tree.mockImplementationOnce(() => {
+        throw new Error('boom');
+      });
 
-      await expect(resourcesController.getTree('nonexistent', '')).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw error when cache is READY but tree is null', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCache = cacheService.getCache as jest.Mock;
-
-      getCacheStatus.mockReturnValue(CacheStatus.READY);
-      getCache.mockReturnValue(null);
-
-      await expect(resourcesController.getTree('test-collection', '')).rejects.toThrow(HttpException);
+      const error = await httpErrorOf(
+        resourcesController.getTree('test-collection', '', undefined, mockResponse() as any),
+      );
+      expect(error.getStatus()).toBe(500);
+      expect(error.message).toBe('Internal server error');
     });
   });
 
   describe('getCacheStatus', () => {
-    it('should return cache status READY with indexedAt', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCacheMetadata = cacheService.getCacheMetadata as jest.Mock;
-      const getCacheStats = cacheService.getCacheStats as jest.Mock;
+    it('should return the index status', async () => {
+      const status = { status: 'ready', collectionName: 'test-collection', stats: { totalKeys: 42, localeCount: 3 } };
+      mockIndex.status.mockReturnValue(status);
 
-      const indexedAt = new Date('2026-01-21T12:00:00Z');
-      getCacheStatus.mockReturnValue(CacheStatus.READY);
-      getCacheMetadata.mockReturnValue({ indexedAt, error: undefined });
-      getCacheStats.mockReturnValue({ totalKeys: 42, localeCount: 3 });
-
-      const result = await resourcesController.getCacheStatus('test-collection');
-
-      expect(result).toEqual({
-        status: 'ready',
-        collectionName: 'test-collection',
-        indexedAt: indexedAt.toISOString(),
-        stats: {
-          totalKeys: 42,
-          localeCount: 3,
-        },
-      });
-      expect(getCacheStatus).toHaveBeenCalledWith('test-collection');
-      expect(getCacheMetadata).toHaveBeenCalledWith('test-collection');
-      expect(getCacheStats).toHaveBeenCalledWith('test-collection');
-    });
-
-    it('should return cache status INDEXING', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCacheMetadata = cacheService.getCacheMetadata as jest.Mock;
-
-      getCacheStatus.mockReturnValue(CacheStatus.INDEXING);
-      getCacheMetadata.mockReturnValue({ indexedAt: null, error: undefined });
-
-      const result = await resourcesController.getCacheStatus('test-collection');
-
-      expect(result).toEqual({
-        status: 'indexing',
-        collectionName: 'test-collection',
-      });
-    });
-
-    it('should return cache status ERROR with error message', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCacheMetadata = cacheService.getCacheMetadata as jest.Mock;
-
-      getCacheStatus.mockReturnValue(CacheStatus.ERROR);
-      getCacheMetadata.mockReturnValue({
-        indexedAt: null,
-        error: 'Failed to load tree',
-      });
-
-      const result = await resourcesController.getCacheStatus('test-collection');
-
-      expect(result).toEqual({
-        status: 'error',
-        collectionName: 'test-collection',
-        error: 'Failed to load tree',
-      });
-    });
-
-    it('should trigger indexing when status is NOT_STARTED', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCacheMetadata = cacheService.getCacheMetadata as jest.Mock;
-      const indexCollection = cacheService.indexCollection as jest.Mock;
-
-      getCacheStatus.mockReturnValue(CacheStatus.NOT_STARTED);
-      getCacheMetadata.mockReturnValue(null);
-      indexCollection.mockResolvedValue(undefined);
-
-      const result = await resourcesController.getCacheStatus('test-collection');
-
-      expect(result).toEqual({
-        status: 'not-started',
-        collectionName: 'test-collection',
-      });
-      expect(indexCollection).toHaveBeenCalledWith('test-collection', './translations/test', 3);
+      await expect(resourcesController.getCacheStatus('test-collection')).resolves.toEqual(status);
     });
 
     it('should return 404 for non-existent collection', async () => {
-      const configWithoutCollection = {
-        ...mockConfig,
-        collections: {},
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithoutCollection);
+      jest.spyOn(configService, 'getConfig').mockReturnValue({ ...mockConfig, collections: {} });
 
       await expect(resourcesController.getCacheStatus('nonexistent')).rejects.toThrow(NotFoundException);
     });
 
     it('should URI decode collection names with special characters', async () => {
-      const getCacheStatus = cacheService.getCacheStatus as jest.Mock;
-      const getCacheMetadata = cacheService.getCacheMetadata as jest.Mock;
-      const getCacheStats = cacheService.getCacheStats as jest.Mock;
-
-      const configWithEncodedName = {
+      jest.spyOn(configService, 'getConfig').mockReturnValue({
         ...mockConfig,
-        collections: {
-          'My Collection': {
-            translationsFolder: './translations/my-collection',
-          },
-        },
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithEncodedName);
-
-      getCacheStatus.mockReturnValue(CacheStatus.READY);
-      getCacheMetadata.mockReturnValue({
-        indexedAt: new Date(),
-        error: undefined,
+        collections: { 'My Collection': { translationsFolder: './translations/my-collection' } },
       });
-      getCacheStats.mockReturnValue({ totalKeys: 10, localeCount: 2 });
+      mockIndex.status.mockReturnValue({ status: 'ready', collectionName: 'My Collection' });
 
-      const result = await resourcesController.getCacheStatus('My%20Collection');
+      await resourcesController.getCacheStatus('My%20Collection');
 
-      expect(result.collectionName).toBe('My Collection');
-      expect(getCacheStatus).toHaveBeenCalledWith('My Collection');
+      expect(mockIndex.status).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Collection' }));
     });
   });
 
   describe('search', () => {
-    it('should successfully search for translations using cache', async () => {
-      const searchResourceTree = core.searchResourceTree as jest.Mock;
-      const mockResults = [
+    it('should map the search results from the index', async () => {
+      mockIndex.search.mockReturnValue([
         {
           key: 'app.title',
           source: 'LingoTracker',
           translations: { es: 'LingoTracker' },
           metadata: { en: { checksum: 'a' }, es: { status: 'translated', checksum: 'b', baseChecksum: 'a' } },
         },
-      ];
-      searchResourceTree.mockReturnValue(mockResults);
-      (cacheService.getCache as jest.Mock).mockReturnValue({ resources: [], children: [] });
+      ]);
 
       const result = await resourcesController.search('test-collection', { query: 'lingo' });
 
       expect(result.query).toBe('lingo');
-      expect(result.results).toHaveLength(1);
-      expect(result.results[0].key).toBe('app.title');
-      expect(searchResourceTree).toHaveBeenCalled();
-    });
-
-    it('should fall back to disk-based search when cache is not available', async () => {
-      const searchTranslations = core.searchTranslations as jest.Mock;
-      searchTranslations.mockReturnValue([]);
-      (cacheService.getCache as jest.Mock).mockReturnValue(null);
-
-      await resourcesController.search('test-collection', { query: 'lingo' });
-
-      expect(searchTranslations).toHaveBeenCalledWith(
-        expect.objectContaining({
-          translationsFolder: './translations/test',
-          query: 'lingo',
-        }),
-      );
+      expect(result.results.map((r) => [r.fullKey, r.folderPath, r.entryKey])).toEqual([['app.title', 'app', 'title']]);
+      expect(result.results[0].base).toEqual({ locale: 'en', value: 'LingoTracker' });
+      expect(result.results[0].targets.map((t) => [t.locale, t.status, t.sameAsBase])).toEqual([
+        ['fr-ca', undefined, false],
+        ['es', 'translated', true],
+      ]);
+      expect(result.limited).toBe(false);
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), 'lingo', {
+        mode: 'text',
+        limit: 101,
+      });
     });
 
     it('should return empty results for empty query', async () => {
       const result = await resourcesController.search('test-collection', { query: '' });
       expect(result.results).toEqual([]);
+      expect(mockIndex.search).not.toHaveBeenCalled();
     });
 
-    it('should cap maxResults at 500', async () => {
-      const searchResourceTree = core.searchResourceTree as jest.Mock;
-      searchResourceTree.mockReturnValue([]);
-      (cacheService.getCache as jest.Mock).mockReturnValue({ resources: [], children: [] });
-
-      await resourcesController.search('test-collection', { query: 'test', maxResults: 1000 });
-
-      expect(searchResourceTree).toHaveBeenCalledWith(
-        expect.objectContaining({
-          maxResults: 501, // 500 + 1 for limited detection
-        }),
+    it('should cap maxResults at 500 and report limited results', async () => {
+      mockIndex.search.mockReturnValue(
+        Array.from({ length: 501 }, (_, i) => ({ key: `k${i}`, source: 'x', translations: {}, metadata: {} })),
       );
+
+      const result = await resourcesController.search('test-collection', { query: 'test', maxResults: 1000 });
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'test', { mode: 'text', limit: 501 });
+      expect(result.limited).toBe(true);
+      expect(result.results).toHaveLength(500);
+    });
+
+    it('should run a similar-value search for mode=similar and return the similarity', async () => {
+      mockIndex.search.mockReturnValue([
+        {
+          key: 'common.save',
+          source: 'Save',
+          translations: {},
+          metadata: {},
+          matchType: 'similar-value',
+          matchedLocales: ['en'],
+          similarity: 0.4,
+        },
+      ]);
+
+      const result = await resourcesController.search('test-collection', {
+        query: 'Save draft',
+        maxResults: 11,
+        mode: 'similar',
+      });
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'Save draft', {
+        mode: 'similar-value',
+        limit: 12,
+      });
+      expect(result.results.map((r) => [r.fullKey, r.matchType, r.similarity])).toEqual([
+        ['common.save', 'similar-value', 0.4],
+      ]);
+    });
+
+    it.each(['abc', '-2', '0', '2.5'])('should fall back to 100 results for maxResults=%s', async (maxResults) => {
+      mockIndex.search.mockReturnValue([]);
+      const dto = { query: 'save', maxResults } as unknown as SearchTranslationsDto;
+
+      await resourcesController.search('test-collection', dto);
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 101 });
+    });
+
+    it('should read maxResults from its query-string form', async () => {
+      mockIndex.search.mockReturnValue([]);
+      const dto = { query: 'save', maxResults: '7' } as unknown as SearchTranslationsDto;
+
+      await resourcesController.search('test-collection', dto);
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 8 });
+    });
+
+    it('should run a text search for an unknown mode', async () => {
+      mockIndex.search.mockReturnValue([]);
+      const dto = { query: 'save', mode: 'fuzzy' } as unknown as SearchTranslationsDto;
+
+      await resourcesController.search('test-collection', dto);
+
+      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 101 });
     });
   });
 
@@ -1421,17 +1191,14 @@ describe('ResourcesController', () => {
     };
 
     it('should return 422 when translation is not enabled for the collection', async () => {
-      // mockConfig has no translation config — auto-translation is disabled
-      await expect(resourcesController.translateResource('test-collection', { key: 'buttons.save' })).rejects.toThrow(
-        HttpException,
+      const translateExistingResource = core.translateExistingResource as jest.Mock;
+      translateExistingResource.mockRejectedValue(new core.AutoTranslationDisabledError('test-collection'));
+
+      const error = await httpErrorOf(
+        resourcesController.translateResource('test-collection', { key: 'buttons.save' }),
       );
 
-      try {
-        await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(422);
-      }
+      expect(error.getStatus()).toBe(422);
     });
 
     it('should return 404 when the collection does not exist', async () => {
@@ -1446,25 +1213,27 @@ describe('ResourcesController', () => {
       (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
 
       const translateExistingResource = core.translateExistingResource as jest.Mock;
-      translateExistingResource.mockRejectedValue(new Error('Resource not found: buttons.save'));
+      translateExistingResource.mockRejectedValue(new core.ResourceNotFoundError('buttons.save'));
 
-      await expect(resourcesController.translateResource('test-collection', { key: 'buttons.save' })).rejects.toThrow(
-        NotFoundException,
+      const error = await httpErrorOf(
+        resourcesController.translateResource('test-collection', { key: 'buttons.save' }),
       );
+      expect(error).toBeInstanceOf(NotFoundException);
     });
 
     it('should return 502 when the translation provider throws a TranslationError', async () => {
       (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
 
       const translateExistingResource = core.translateExistingResource as jest.Mock;
-      translateExistingResource.mockRejectedValue(new TranslationError('Rate limit exceeded', 'RATE_LIMIT', true));
+      translateExistingResource.mockRejectedValue(
+        new TranslationError('Google Translate server error: backend down', 'SERVER_ERROR', true),
+      );
 
-      try {
-        await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(502);
-      }
+      const error = await httpErrorOf(
+        resourcesController.translateResource('test-collection', { key: 'buttons.save' }),
+      );
+      expect(error.getStatus()).toBe(502);
+      expect(error.message).toBe('Translation provider error: Google Translate server error: backend down');
     });
 
     it('should return a TranslateResourceResponseDto with translated resource on success', async () => {
@@ -1481,27 +1250,12 @@ describe('ResourcesController', () => {
 
       expect(result.translatedCount).toBe(2);
       expect(result.skippedLocales).toEqual([]);
-      expect(result.resource.key).toBe('save');
+      expect(result.resource).toMatchObject({ fullKey: 'buttons.save', folderPath: 'buttons', entryKey: 'save' });
+      expect(result.resource.targets.map((t) => t.status)).toEqual(['translated', 'translated']);
     });
 
-    it('should pass translation config from collection when collection overrides global', async () => {
-      const collectionTranslationConfig = {
-        enabled: true,
-        provider: 'google-translate',
-        apiKeyEnv: 'COLLECTION_API_KEY',
-      };
-      const configWithCollectionTranslation = {
-        ...mockConfig,
-        translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'GLOBAL_API_KEY' },
-        collections: {
-          'test-collection': {
-            ...mockConfig.collections['test-collection'],
-            translation: collectionTranslationConfig,
-          },
-        },
-      };
-      (configService.getConfig as jest.Mock).mockReturnValue(configWithCollectionTranslation);
-
+    it('should pass the opened collection and resource key to core', async () => {
+      (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
       const translateExistingResource = core.translateExistingResource as jest.Mock;
       translateExistingResource.mockResolvedValue({
         translatedCount: 1,
@@ -1513,24 +1267,28 @@ describe('ResourcesController', () => {
 
       expect(translateExistingResource).toHaveBeenCalledWith(
         expect.objectContaining({
-          translationConfig: collectionTranslationConfig,
+          name: 'test-collection',
+          translationsFolder: resolve('./translations/test'),
         }),
+        'buttons.save',
       );
     });
 
-    it('should update the cache after a successful translation', async () => {
+    it('should hand the translation mutations to the index', async () => {
       (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
 
+      const mutations = [{ kind: 'upsert', translationsFolder: '/t', key: 'buttons.save', entry: mockEntry }];
       const translateExistingResource = core.translateExistingResource as jest.Mock;
       translateExistingResource.mockResolvedValue({
         translatedCount: 1,
         skippedLocales: [],
         entry: mockEntry,
+        mutations,
       });
 
       await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
 
-      expect(mockCacheService.addResourceToCache).toHaveBeenCalledWith('test-collection', mockEntry, 'buttons');
+      expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
     });
 
     it('should include skipped locales in the response', async () => {
@@ -1584,6 +1342,10 @@ describe('ResourcesController', () => {
 
       await resourcesController.translateLocale('test-collection', { locale: 'fr-ca' }, mockResponse as any);
 
+      expect(translationJobService.startJob).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationConfig: configWithTranslation.translation }),
+        'fr-ca',
+      );
       expect(mockResponse.status).toHaveBeenCalledWith(202);
       expect(mockResponse.json).toHaveBeenCalledWith(mockJobDto);
     });

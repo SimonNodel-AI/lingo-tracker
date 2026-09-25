@@ -9,8 +9,9 @@ import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { KeyMarkupPipe, hasKeyLeaf } from '../../../../shared/pipes/key-markup.pipe';
 import { TagList } from '../../../../shared/tag-list/tag-list.component';
-import { TranslationRollup, type LocaleState } from './translation-rollup';
-import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { TranslationRollup } from './translation-rollup';
+import type { RowView } from './row-view';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
 
@@ -50,11 +51,14 @@ export class TranslationItemHeader {
   /** Active collection name — always set when this component is rendered. */
   readonly #collectionName = computed(() => this.#browserStore.selectedCollection() ?? '');
 
-  /** Full translation key to display */
-  fullKey = input.required<string>();
-
-  /** Translation data for deriving comment, tags, and locale states */
+  /** The resource: its key, comment and tags, and what the row actions act on. */
   translation = input.required<ResourceSummaryDto>();
+
+  /** What the row shows (see `row-view.ts`); the header reads the rollup and the translate verdict. */
+  view = input.required<RowView>();
+
+  /** Full translation key to display */
+  readonly fullKey = computed(() => this.translation().fullKey);
 
   /**
    * How the header composes itself.
@@ -83,21 +87,8 @@ export class TranslationItemHeader {
 
   readonly TOKENS = TRACKER_TOKENS;
 
-  /** Locale states for the rollup component — derived from the translation status map */
-  readonly localeStates = computed<LocaleState[]>(() => {
-    const statusMap = this.translation().status || {};
-    const base = this.#browserStore.baseLocale();
-
-    return Object.entries(statusMap)
-      .filter(([locale, status]) => locale !== base && status)
-      .map(([locale, status]) => ({
-        code: locale,
-        status: status as TranslationStatus,
-      }));
-  });
-
-  /** Base locale code from the browser store */
-  readonly baseLocale = this.#browserStore.baseLocale;
+  /** Target locales that carry a status — the rollup's input. */
+  readonly rollupLocales = computed(() => this.view().rollupLocales);
 
   /** Whether the active collection is read-only (mutating actions are disabled). */
   readonly isReadOnly = this.#browserStore.isReadOnly;
@@ -150,25 +141,16 @@ export class TranslationItemHeader {
   readonly searchQuery = this.#browserStore.searchQuery;
 
   /** Tags derived from the translation input */
-  readonly tags = computed(() => this.translation().tags ?? []);
+  readonly tags = computed(() => this.translation().tags);
 
   /** Tags inherited from the parent collection */
-  readonly inheritedTags = computed(() => this.translation().inheritedTags ?? []);
+  readonly inheritedTags = computed(() => this.translation().inheritedTags);
 
   /** Whether this specific item is currently being auto-translated */
-  readonly isTranslating = computed(() => this.#listStore.isTranslating(this.translation().key));
+  readonly isTranslating = computed(() => this.#listStore.isTranslating(this.translation().fullKey));
 
-  /**
-   * Returns true when at least one non-base locale has a 'new' or 'stale' status,
-   * indicating there is work for the auto-translator to do.
-   */
-  readonly hasTranslatableLocales = computed(() => {
-    const statusMap = this.translation().status || {};
-    const base = this.#browserStore.baseLocale();
-    return Object.entries(statusMap)
-      .filter(([locale]) => locale !== base)
-      .some(([, status]) => status === 'new' || status === 'stale');
-  });
+  /** True when some target locale needs work, so the auto-translator has something to do. */
+  readonly hasTranslatableLocales = computed(() => this.view().canTranslate);
 
   /** Whether the translate action is disabled */
   readonly translateDisabled = computed(

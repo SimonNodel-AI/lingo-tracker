@@ -15,7 +15,9 @@ When auto-translation is enabled, adding or editing a resource automatically tri
 - **Simple placeholders** (`{name}`, `{{ count }}`) are protected with markers before translation, then restored afterward.
 - **Complex ICU** (plural, select, number, date, time) is skipped entirely -- these strings cannot be translated reliably with Google Cloud Translate as of yet.
 
-Translated entries receive the `translated` status. Skipped entries retain their current status (typically `new` or `stale`) so they surface clearly in the UI and CLI for manual handling.
+A translation is also skipped when the provider loses a placeholder marker, or when it drops a [protected term](./features/protected-terms.md) that is in the source (the same check that import applies).
+
+Translated entries receive the `translated` status and are stored in ICU format. Skipped entries retain their current status (typically `new` or `stale`) so they surface clearly in the UI and CLI for manual handling.
 
 ## Supported Providers
 
@@ -101,19 +103,19 @@ If the environment variable is not set when a translation is requested, the syst
 
 ## How It Works
 
-### Translation Orchestrator
+### The Translator
 
-The translation orchestrator sits between callers and the translation provider. For each string, it:
+Every auto-translation (add-resource, edit-resource, translate one resource, translate a locale) goes through one Translator, opened for the collection. It reads the API key, and then for each string it:
 
 1. **Classifies** the string using the ICU classifier (see below).
 2. **Routes** the string based on classification:
    1. `plain` -- sends to the provider directly.
    2. `simple-placeholders` -- protects placeholders, sends, then restores.
-   3. `complex-icu` -- returns the original value unchanged with `kind: 'skipped'`.
-3. **Returns** a result with `kind` indicating what happened:
-   - `'translated'` -- plain text was translated.
-   - `'translated-with-placeholders'` -- simple-placeholder text was translated with marker protection.
-   - `'skipped'` -- complex ICU or a marker restoration failure; the value is unchanged.
+   3. `complex-icu` -- does not send it; the string is skipped.
+3. **Checks** the translation: a lost or duplicated placeholder marker, or a dropped protected term, skips the string.
+4. **Normalizes** the translation to ICU (`{{ name }}` becomes `{name}`).
+
+For add-resource, edit-resource and translating one resource, all strings for one locale go to the provider in one request. `translate-locale` sends one request per batch of `batchSize` resources (default 5), with `delayMs` between batches. The provider may split a request further (Google: chunks of 128).
 
 ### Placeholder Protection
 
@@ -181,7 +183,7 @@ For this reason, complex ICU strings are always skipped and left for human trans
 
 #### Transloco double-brace format
 
-The classifier normalizes Transloco's double-brace format (`{{ name }}`) to single-brace (`{name}`) before analysis. Both formats are treated identically for classification purposes. The placeholder protector preserves the original format in the translated output -- if your source uses `{{ name }}`, the translated string will too.
+The classifier normalizes Transloco's double-brace format (`{{ name }}`) to single-brace (`{name}`) before analysis. Both formats are treated identically for classification purposes. Translations are always stored in ICU format: if your source uses `{{ name }}`, the stored translation uses `{name}`.
 
 ## Usage
 
@@ -192,7 +194,7 @@ Auto-translation runs automatically during the `add-resource` and `edit-resource
 - **add-resource**: When no explicit translations are provided (interactively or via flags), the command delegates all target locales to the translation provider instead of populating them with the base value.
 - **edit-resource**: When the base value is updated, the command triggers translation for any locale whose status is `new` or `stale`.
 
-Skipped locales (complex ICU strings) are left at their current status and surfaced in the CLI output for manual handling.
+Skipped locales (complex ICU, a lost placeholder, or a dropped protected term) are surfaced in the CLI output for manual handling. On add, a skipped locale gets a copy of the base value with status `new`. On edit, a skipped locale that has no value, or only an untranslated copy of the old base value, gets the new base value with status `new`; a locale that holds a real translation keeps it, marked `stale`.
 
 ### Translating existing resources via the API
 
@@ -217,7 +219,7 @@ The response includes the updated resource, the number of locales translated, an
 }
 ```
 
-If the base value uses complex ICU, `skippedLocales` will list the locales that could not be auto-translated:
+If the base value uses complex ICU (or a translation lost a placeholder or a protected term), `skippedLocales` will list the locales that could not be auto-translated:
 
 ```json
 {
@@ -250,7 +252,7 @@ Translating locale 'fr' in collection 'playground'...
 Done.
 
 Translated: 45 resources
-Skipped (ICU): 3 resources
+Skipped (needs human translation): 3 resources
 Failed: 0 resources
 ```
 
@@ -314,7 +316,7 @@ The Google Translate v2 provider:
 
 1. **Always review auto-translated strings.** Machine translation provides a starting point, not a final result. Use the `translated` status to distinguish auto-translated strings from human-`verified` ones.
 
-2. **Translate complex ICU strings manually.** When `skippedLocales` is non-empty, those strings need a human translator who understands plural rules, gender selection, and other ICU constructs for the target language.
+2. **Translate skipped strings manually.** When `skippedLocales` is non-empty, those strings need a human translator: complex ICU needs someone who understands plural rules, gender selection, and other ICU constructs for the target language, and a translation that lost a protected term must keep it.
 
 3. **Use environment variables for API keys.** Never commit API keys to `.lingo-tracker.json` or any other file in version control.
 

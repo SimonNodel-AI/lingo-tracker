@@ -4,6 +4,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
@@ -100,7 +101,7 @@ describe('TranslationMainHeader', () => {
   describe('handleAddTranslation — "Open existing"', () => {
     it('should open the editor on the existing key the create dialog handed back', () => {
       const store = spectator.inject(BrowserStore);
-      patchState(store, { selectedCollection: 'test-collection' });
+      patchState(unprotected(store), { selectedCollection: 'test-collection' });
       const result: TranslationEditorResult = {
         key: 'backButton',
         baseValue: 'Back',
@@ -198,7 +199,9 @@ describe('TranslationMainHeader', () => {
       expect(notificationsSpy.warning).not.toHaveBeenCalled();
     });
 
-    it('should reload the current folder before showing snackbars', async () => {
+    // BrowserStore.createResource reloads the folder as the save succeeds
+    // (with-entry-writes.feature.spec.ts), so the header must not do it twice.
+    it('should leave reloading the folder to the store', async () => {
       const store = spectator.inject(BrowserStore);
       const selectFolderSpy = vi.spyOn(store, 'selectFolder');
 
@@ -214,7 +217,8 @@ describe('TranslationMainHeader', () => {
       component.handleAddTranslation();
       await vi.advanceTimersByTimeAsync(3200);
 
-      expect(selectFolderSpy).toHaveBeenCalled();
+      expect(selectFolderSpy).not.toHaveBeenCalled();
+      expect(notificationsSpy.success).toHaveBeenCalled();
     });
   });
 

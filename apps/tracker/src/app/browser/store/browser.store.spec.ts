@@ -1,10 +1,16 @@
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
-import type { CacheStatusDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
+import type {
+  CacheStatusDto,
+  ResourceSummaryDto,
+  ResourceTreeDto,
+  TranslationStatus,
+} from '@simoncodes-ca/data-transfer';
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
-import { BrowserApiService } from '../services/browser-api.service';
+import { NotificationService } from '../../shared/notification';
+import { BrowserApiService, CollectionIndexNotReadyError } from '../services/browser-api.service';
 import { BrowserStore } from './browser.store';
 
 /**
@@ -15,20 +21,38 @@ import { BrowserStore } from './browser.store';
  */
 const waitForSignals = () => new Promise<void>((resolve) => setTimeout(resolve, 10));
 
+const summary = (
+  fullKey: string,
+  baseValue: string,
+  targets: Record<string, [string | undefined, TranslationStatus | undefined]> = {},
+): ResourceSummaryDto => {
+  const segments = fullKey.split('.');
+  const entryKey = segments.pop() ?? '';
+  return {
+    fullKey,
+    folderPath: segments.join('.'),
+    entryKey,
+    base: { locale: 'en', value: baseValue },
+    targets: Object.entries(targets).map(([locale, [value, status]]) => ({
+      locale,
+      value,
+      status,
+      needsWork: status === undefined || status === 'new' || status === 'stale',
+      sameAsBase: (value?.trim() ?? '').length > 0 && value?.trim() === baseValue.trim(),
+    })),
+    tags: [],
+    inheritedTags: [],
+  };
+};
+
 describe('BrowserStore', () => {
   let store: InstanceType<typeof BrowserStore>;
-  let spectator: SpectatorService<BrowserStore>;
+  let spectator: SpectatorService<InstanceType<typeof BrowserStore>>;
   let apiService: BrowserApiService;
 
   const mockTreeRoot: ResourceTreeDto = {
     path: '',
-    resources: [
-      {
-        key: 'welcome',
-        translations: { en: 'Welcome', es: 'Bienvenido' },
-        status: { es: 'translated' as const },
-      },
-    ],
+    resources: [summary('welcome', 'Welcome', { es: ['Bienvenido', 'translated'] })],
     children: [
       { name: 'common', fullPath: 'common', loaded: false },
       { name: 'errors', fullPath: 'errors', loaded: false },
@@ -37,13 +61,7 @@ describe('BrowserStore', () => {
 
   const mockTreeCommon: ResourceTreeDto = {
     path: 'common',
-    resources: [
-      {
-        key: 'save',
-        translations: { en: 'Save', es: 'Guardar' },
-        status: { es: 'translated' as const },
-      },
-    ],
+    resources: [summary('common.save', 'Save', { es: ['Guardar', 'translated'] })],
     children: [{ name: 'buttons', fullPath: 'common.buttons', loaded: false }],
   };
 
@@ -234,6 +252,78 @@ describe('BrowserStore', () => {
       expect(store.error()).toBe('Collection not found');
     });
 
+    it('should keep the already-loaded root folders when the index is still not ready after the retries', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      const getTree = vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+      const notifyError = vi.spyOn(spectator.inject(NotificationService), 'error').mockImplementation(() => undefined);
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en', 'es'] });
+      await waitForSignals();
+      expect(store.rootFolders()).toEqual(mockTreeRoot.children);
+
+      getTree.mockReturnValue(throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')));
+      store.loadRootFolders();
+      await waitForSignals();
+
+      expect(store.rootFolders()).toEqual(mockTreeRoot.children);
+      expect(store.translations()).toEqual(mockTreeRoot.resources);
+      expect(store.isFolderTreeLoading()).toBe(false);
+      expect(store.error()).toBeNull();
+      expect(notifyError).toHaveBeenCalledWith('Collection is being indexed.');
+    });
+
+    it('should keep a loaded tree with root resources and no folders when the index goes not ready', async () => {
+      const rootOnlyTree: ResourceTreeDto = {
+        path: '',
+        resources: [summary('welcome', 'Welcome', { es: ['Bienvenido', 'translated'] })],
+        children: [],
+      };
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      const getTree = vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(rootOnlyTree));
+      const notifyError = vi.spyOn(spectator.inject(NotificationService), 'error').mockImplementation(() => undefined);
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en', 'es'] });
+      await waitForSignals();
+      expect(store.rootFolders()).toEqual([]);
+      expect(store.folderTreeLoaded()).toBe(true);
+
+      getTree.mockReturnValue(throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')));
+      store.loadRootFolders();
+      await waitForSignals();
+
+      expect(store.translations()).toEqual(rootOnlyTree.resources);
+      expect(store.isFolderTreeLoading()).toBe(false);
+      expect(store.error()).toBeNull();
+      expect(notifyError).toHaveBeenCalledWith('Collection is being indexed.');
+    });
+
+    it('should show the error state when the first root load finds the index not ready', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(
+        throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')),
+      );
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en', 'es'] });
+      await waitForSignals();
+
+      expect(store.folderTreeLoaded()).toBe(false);
+      expect(store.error()).toBe('Collection is being indexed.');
+    });
+
+    it('should forget the loaded tree when the collection changes', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      const getTree = vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en', 'es'] });
+      await waitForSignals();
+      expect(store.folderTreeLoaded()).toBe(true);
+
+      getTree.mockReturnValue(NEVER);
+      store.setSelectedCollection({ collectionName: 'website-translations', locales: ['en', 'fr'] });
+
+      expect(store.folderTreeLoaded()).toBe(false);
+    });
+
     it('should set loading state during folder tree fetch', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
@@ -347,6 +437,27 @@ describe('BrowserStore', () => {
       expect(store.currentFolderPath()).toBe('common');
       expect(store.isTranslationsLoading()).toBe(false);
       expect(store.error()).toBe('api error: load translations');
+    });
+
+    it('should keep the tree and the shown list, and notify, when the index is still not ready after the retries', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree')
+        .mockReturnValueOnce(of(mockTreeRoot))
+        .mockReturnValueOnce(throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')));
+      const notifyError = vi.spyOn(spectator.inject(NotificationService), 'error').mockImplementation(() => undefined);
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: [] });
+      await waitForSignals();
+
+      store.selectFolder('common');
+      await waitForSignals();
+
+      expect(store.rootFolders()).toEqual(mockTreeRoot.children);
+      expect(store.translations()).toEqual(mockTreeRoot.resources);
+      expect(store.currentFolderPath()).toBe('');
+      expect(store.isTranslationsLoading()).toBe(false);
+      expect(store.error()).toBeNull();
+      expect(notifyError).toHaveBeenCalledWith('Collection is being indexed.');
     });
 
     it('should set loading state during translation fetch', async () => {
@@ -527,7 +638,9 @@ describe('BrowserStore', () => {
     it('should prune expanded paths under a deleted folder', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeWithNesting));
-      vi.spyOn(apiService, 'deleteFolder').mockReturnValue(of({ deleted: true, path: 'common' }));
+      vi.spyOn(apiService, 'deleteFolder').mockReturnValue(
+        of({ deleted: true, folderPath: 'common', resourcesDeleted: 0 }),
+      );
 
       store.setSelectedCollection({ collectionName: 'app-translations', locales: [] });
       await waitForSignals();
@@ -950,6 +1063,28 @@ describe('BrowserStore', () => {
     });
   });
 
+  describe('moveResource', () => {
+    it('should optimistically remove a non-root folder row by its full key', async () => {
+      const row = summary('common.buttons.save', 'Save');
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation((_collection, path) =>
+        of({ path: path ?? '', resources: path === 'common.buttons' ? [row] : [], children: [] }),
+      );
+      vi.spyOn(apiService, 'moveResource').mockReturnValue(NEVER);
+
+      store.setSelectedCollection({ collectionName: 'app-translations', locales: ['en'] });
+      await waitForSignals();
+      store.selectFolder('common.buttons');
+      await waitForSignals();
+      expect(store.translations()).toEqual([row]);
+
+      store.moveResource({ sourceKey: 'common.buttons.save', destinationFolderPath: 'archive' });
+
+      expect(store.translations()).toEqual([]);
+      expect(apiService.moveResource).toHaveBeenCalledWith('app-translations', 'common.buttons.save', 'archive.save');
+    });
+  });
+
   describe('Locale Filtering', () => {
     beforeEach(async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
@@ -1179,12 +1314,7 @@ describe('BrowserStore', () => {
 
       it('should return search results when in search mode', () => {
         const mockSearchResults = [
-          {
-            key: 'found',
-            translations: { en: 'Found', es: 'Encontrado' },
-            status: { es: 'verified' as const },
-            matchType: 'exact-key' as const,
-          },
+          { ...summary('found', 'Found', { es: ['Encontrado', 'verified'] }), matchType: 'exact-key' as const },
         ];
 
         store.setSearchQuery('found');
@@ -1212,9 +1342,7 @@ describe('BrowserStore', () => {
       it('should search translations and update results', async () => {
         const mockSearchResults = [
           {
-            key: 'common.save',
-            translations: { en: 'Save', es: 'Guardar' },
-            status: { es: 'verified' as const },
+            ...summary('common.save', 'Save', { es: ['Guardar', 'verified'] }),
             matchType: 'partial-key' as const,
           },
         ];
@@ -1287,21 +1415,21 @@ describe('BrowserStore', () => {
     const mockStatusTree: ResourceTreeDto = {
       path: '',
       resources: [
-        {
-          key: 'alpha',
-          translations: { en: 'Alpha', es: 'Alfa', fr: 'Alpha', de: 'Alpha' },
-          status: { es: 'stale' as const, fr: 'new' as const, de: 'verified' as const },
-        },
-        {
-          key: 'beta',
-          translations: { en: 'Beta', es: 'Beta', fr: 'Beta', de: 'Beta' },
-          status: { es: 'new' as const, fr: 'translated' as const, de: 'translated' as const },
-        },
-        {
-          key: 'gamma',
-          translations: { en: 'Gamma', es: 'Gamma', fr: 'Gamma', de: 'Gamma' },
-          status: { es: 'verified' as const, fr: 'verified' as const, de: 'verified' as const },
-        },
+        summary('alpha', 'Alpha', {
+          es: ['Alfa', 'stale'],
+          fr: ['Alpha', 'new'],
+          de: ['Alpha', 'verified'],
+        }),
+        summary('beta', 'Beta', {
+          es: ['Beta', 'new'],
+          fr: ['Beta', 'translated'],
+          de: ['Beta', 'translated'],
+        }),
+        summary('gamma', 'Gamma', {
+          es: ['Gamma', 'verified'],
+          fr: ['Gamma', 'verified'],
+          de: ['Gamma', 'verified'],
+        }),
       ],
       children: [],
     };
@@ -1317,6 +1445,25 @@ describe('BrowserStore', () => {
       store.setDensityMode('full');
       store.clearAllLocales();
     });
+
+    // `delta`'s only unfinished locale has no metadata (no stored status, `needsWork`).
+    async function loadWithMetadataLessRow(): Promise<void> {
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(
+        of({
+          ...mockStatusTree,
+          resources: [
+            ...mockStatusTree.resources,
+            summary('delta', 'Delta', {
+              es: ['Delta', 'verified'],
+              fr: [undefined, undefined],
+              de: ['Delta', 'verified'],
+            }),
+          ],
+        }),
+      );
+      store.loadRootFolders();
+      await waitForSignals();
+    }
 
     it('should count resources, not status cells', () => {
       // `gamma` is verified in all three target locales but is one resource.
@@ -1340,8 +1487,11 @@ describe('BrowserStore', () => {
       }
     });
 
-    it('should agree with the list the needs-work shortcut produces', () => {
+    it('should agree with the list the needs-work shortcut produces', async () => {
+      await loadWithMetadataLessRow();
+
       store.selectNeedsWorkStatuses();
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['alpha', 'beta', 'delta']);
       expect(store.sortedTranslations().length).toBe(store.needsWorkCount());
     });
 
@@ -1356,140 +1506,48 @@ describe('BrowserStore', () => {
       expect(store.needsWorkCount()).toBe(0);
     });
 
+    it('should count and filter a locale with no metadata as new', async () => {
+      await loadWithMetadataLessRow();
+
+      expect(store.needsWorkCount()).toBe(3);
+      expect(store.statusCounts()).toEqual({ new: 3, stale: 1, translated: 1, verified: 3 });
+      store.setSelectedStatuses(['new']);
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toContain('delta');
+      expect(store.sortedTranslations().length).toBe(store.statusCounts().new);
+    });
+
+    it('should sort a locale with no metadata as new', async () => {
+      await loadWithMetadataLessRow();
+
+      store.setSelectedLocales(['fr']);
+      store.setSortField('status');
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['alpha', 'delta', 'beta', 'gamma']);
+    });
+
+    it('should sort by status over every locale when no locale is selected', async () => {
+      // Key order puts `able` first; only `zulu` needs work, in one locale.
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(
+        of({
+          path: '',
+          resources: [
+            summary('able', 'Able', { es: ['Able', 'verified'], fr: ['Able', 'verified'], de: ['Able', 'verified'] }),
+            summary('zulu', 'Zulu', { es: ['Zulu', 'verified'], fr: ['Zulu', 'new'], de: ['Zulu', 'verified'] }),
+          ],
+          children: [],
+        }),
+      );
+      store.loadRootFolders();
+      await waitForSignals();
+
+      expect(store.selectedLocales()).toEqual([]);
+      store.setSortField('status');
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['zulu', 'able']);
+    });
+
     it('should report zero for every status when the folder is empty', () => {
       store.reset();
       expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 0, verified: 0 });
       expect(store.needsWorkCount()).toBe(0);
-    });
-  });
-
-  describe('Resource Deletion', () => {
-    it('should remove resource from translations cache', async () => {
-      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
-
-      store.setSelectedCollection({
-        collectionName: 'test',
-        locales: ['en', 'es'],
-      });
-
-      await waitForSignals();
-
-      expect(store.translations().length).toBe(1);
-      expect(store.translations()[0].key).toBe('welcome');
-
-      store.removeResourceFromCache('welcome');
-
-      expect(store.translations().length).toBe(0);
-    });
-
-    it('should remove resource from search results when in search mode', async () => {
-      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
-
-      store.setSelectedCollection({
-        collectionName: 'test',
-        locales: ['en', 'es'],
-      });
-
-      await waitForSignals();
-
-      const mockSearchResults = [
-        {
-          key: 'common.save',
-          translations: { en: 'Save', es: 'Guardar' },
-          status: { es: 'verified' as const },
-          matchType: 'partial-key' as const,
-        },
-        {
-          key: 'common.cancel',
-          translations: { en: 'Cancel', es: 'Cancelar' },
-          status: { es: 'verified' as const },
-          matchType: 'partial-key' as const,
-        },
-      ];
-
-      vi.spyOn(apiService, 'searchTranslations').mockReturnValue(
-        of({
-          query: 'common',
-          results: mockSearchResults,
-          totalFound: 2,
-          limited: false,
-        }),
-      );
-
-      store.setSearchQuery('common');
-      store.searchTranslations('common');
-
-      await waitForSignals();
-
-      expect(store.searchResults().length).toBe(2);
-      expect(store.isSearchMode()).toBe(true);
-
-      store.removeResourceFromCache('common.save');
-
-      expect(store.searchResults().length).toBe(1);
-      expect(store.searchResults()[0].key).toBe('common.cancel');
-    });
-
-    it('should not affect other resources when removing one', async () => {
-      const mockMultipleResources: ResourceTreeDto = {
-        path: '',
-        resources: [
-          {
-            key: 'first',
-            translations: { en: 'First' },
-            status: {},
-          },
-          {
-            key: 'second',
-            translations: { en: 'Second' },
-            status: {},
-          },
-          {
-            key: 'third',
-            translations: { en: 'Third' },
-            status: {},
-          },
-        ],
-        children: [],
-      };
-
-      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockMultipleResources));
-
-      store.setSelectedCollection({
-        collectionName: 'test',
-        locales: ['en', 'es'],
-      });
-
-      await waitForSignals();
-
-      expect(store.translations().length).toBe(3);
-
-      store.removeResourceFromCache('second');
-
-      expect(store.translations().length).toBe(2);
-      expect(store.translations()[0].key).toBe('first');
-      expect(store.translations()[1].key).toBe('third');
-    });
-
-    it('should handle removal of non-existent resource gracefully', async () => {
-      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
-
-      store.setSelectedCollection({
-        collectionName: 'test',
-        locales: ['en', 'es'],
-      });
-
-      await waitForSignals();
-
-      const initialCount = store.translations().length;
-
-      store.removeResourceFromCache('nonexistent-key');
-
-      expect(store.translations().length).toBe(initialCount);
     });
   });
 });

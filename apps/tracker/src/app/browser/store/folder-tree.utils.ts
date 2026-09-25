@@ -68,7 +68,7 @@ export function removeFolderFromTree(folders: FolderNodeDto[], pathToRemove: str
  * Finds a folder node in the tree by its full path.
  * Returns the folder node or undefined if not found.
  */
-export function findFolderInTree(folders: FolderNodeDto[], fullPath: string): FolderNodeDto | undefined {
+export function findFolderInTree(folders: readonly FolderNodeDto[], fullPath: string): FolderNodeDto | undefined {
   for (const folder of folders) {
     if (folder.fullPath === fullPath) return folder;
     if (folder.tree?.children) {
@@ -77,6 +77,28 @@ export function findFolderInTree(folders: FolderNodeDto[], fullPath: string): Fo
     }
   }
   return undefined;
+}
+
+/**
+ * Narrows a folder tree to the folders whose path contains `filter` (trimmed,
+ * case-insensitive), keeping an unmatched folder only as the ancestor of a match.
+ *
+ * A matching folder is kept whole: its descendants' paths start with its own, so
+ * they match too. An unmatched ancestor is copied with its children pruned. An
+ * empty filter returns the tree as it is.
+ */
+export function filterFolderTree(folders: FolderNodeDto[], filter: string): FolderNodeDto[] {
+  const needle = filter.trim().toLowerCase();
+  if (!needle) return folders;
+
+  const prune = (nodes: readonly FolderNodeDto[]): FolderNodeDto[] =>
+    nodes.flatMap((folder) => {
+      if (folder.fullPath.toLowerCase().includes(needle)) return [folder];
+      const children = folder.tree ? prune(folder.tree.children) : [];
+      return folder.tree && children.length > 0 ? [{ ...folder, tree: { ...folder.tree, children } }] : [];
+    });
+
+  return prune(folders);
 }
 
 /**

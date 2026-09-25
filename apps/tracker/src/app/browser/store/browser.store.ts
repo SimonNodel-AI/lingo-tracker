@@ -6,7 +6,6 @@ import { TranslocoService } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { NotificationService } from '../../shared/notification';
 import { BrowserApiService } from '../services/browser-api.service';
-import { splitResolvedKey } from '../utils/folder-path.utils';
 import { toErrorMessage } from './async-error.utils';
 import { resolveCompactLocale } from './density-mode.utils';
 import { withSearchFeature } from './features/with-search.feature';
@@ -15,7 +14,9 @@ import { withFilterFeature } from './features/with-filter.feature';
 import { withViewPreferencesFeature } from './features/with-view-preferences.feature';
 import { withTranslationsFeature } from './features/with-translations.feature';
 import { withFolderTreeFeature } from './features/with-folder-tree.feature';
+import { withEntryWritesFeature } from './features/with-entry-writes.feature';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { splitResolvedKey } from '@simoncodes-ca/domain';
 import type { DensityMode } from '../types/density-mode';
 
 /**
@@ -63,6 +64,7 @@ export const BrowserStore = signalStore(
   withSearchFeature(),
   withFilterFeature(),
   withTranslationsFeature(),
+  withEntryWritesFeature(),
   withFolderTreeFeature(),
   withCacheStatusFeature(),
   withViewPreferencesFeature(),
@@ -113,6 +115,7 @@ export const BrowserStore = signalStore(
           isTranslationsLoading: false,
           showNestedResources: true,
           rootFolders: [],
+          folderTreeLoaded: false,
           expandedFolders: new Set<string>(),
           folderTreeFilter: '',
           isFolderTreeLoading: false,
@@ -161,6 +164,7 @@ export const BrowserStore = signalStore(
           sortDirection: loaded?.sortDirection ?? 'asc',
           selectedStatuses: loaded?.selectedStatuses ?? ([] as TranslationStatus[]),
           rootFolders: [],
+          folderTreeLoaded: false,
           folderTreeFilter: '',
           translations: [],
           error: null,
@@ -208,7 +212,7 @@ export const BrowserStore = signalStore(
             const destinationKey = destinationFolderPath ? `${destinationFolderPath}.${entryName}` : entryName;
 
             const currentTranslations = store.translations();
-            const optimisticTranslations = currentTranslations.filter((r) => r.key !== sourceKey);
+            const optimisticTranslations = currentTranslations.filter((r) => r.fullKey !== sourceKey);
             patchState(store, { translations: optimisticTranslations });
 
             return api.moveResource(collection, sourceKey, destinationKey).pipe(

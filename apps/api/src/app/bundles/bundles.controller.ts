@@ -1,6 +1,5 @@
 import {
   Body,
-  ConflictException,
   Controller,
   Delete,
   Get,
@@ -12,14 +11,15 @@ import {
   Put,
   Res,
 } from '@nestjs/common';
-import type { BundleDefinition, LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import {
   addBundleDefinition,
+  BundleNotFoundError,
   deleteBundleDefinition,
+  InvalidBundleDefinitionError,
+  LingoTrackerError,
   planBundle,
   updateBundleDefinition,
-  validateBundleDefinition,
-  validateBundleKey,
 } from '@simoncodes-ca/core';
 import type {
   BundleDefinitionDto,
@@ -30,13 +30,18 @@ import type {
   GenerateBundleRequestDto,
   UpdateBundleDto,
 } from '@simoncodes-ca/data-transfer';
+import { type BundleDefinition, checkBundleDefinition, findBundleDefinition } from '@simoncodes-ca/domain';
 import type { Response } from 'express';
 import { ConfigService } from '../config/config.service';
-import { mapBundlePlanToDto, mapDtoToBundleDefinition } from '../mappers/bundle.mapper';
+import { mapBundlePlanToDto } from '../mappers/bundle.mapper';
 import { BundleJobService } from './bundle-job.service';
 
-const INVALID_DEFINITION_MESSAGE = 'Invalid bundle definition';
-
+/**
+ * Bundle definitions are checked by the domain Bundle Definition rules: core's add/update
+ * operations normalise and validate them, and the dry run (which writes nothing) runs the
+ * same rules here. Invalid, missing and duplicate bundles surface as typed core errors that
+ * `LingoTrackerExceptionFilter` maps to 400 (with `errors`), 404 and 409.
+ */
 @Controller('bundles')
 export class BundlesController {
   readonly #configService: ConfigService;
@@ -52,8 +57,8 @@ export class BundlesController {
   dryRun(@Body() body: BundleDryRunRequestDto): BundleDryRunResultDto {
     try {
       const config = this.#configService.getConfig();
-      const name = requireName(body?.name);
-      const definition = this.#validatedDefinition(name, body?.bundle, config);
+      const name = nameOf(body?.name);
+      const definition = validatedDefinition(name, body?.bundle, config);
       const locales = this.#validatedLocales(body?.locales, config);
 
       const plan = planBundle({
@@ -66,7 +71,7 @@ export class BundlesController {
 
       return mapBundlePlanToDto(plan);
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error planning bundle');
+      this.#rethrow(error, 'Error planning bundle');
     }
   }
 
@@ -84,50 +89,32 @@ export class BundlesController {
   @Post()
   createBundle(@Body() body: CreateBundleDto): { message: string } {
     try {
-      const config = this.#configService.getConfig();
-      const name = requireName(body?.name);
-      const definition = this.#validatedDefinition(name, body?.bundle, config);
-
-      return addBundleDefinition(name, definition, { cwd: process.cwd() });
+      return addBundleDefinition(nameOf(body?.name), requireDefinition(body?.bundle), { cwd: process.cwd() });
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error creating bundle');
+      this.#rethrow(error, 'Error creating bundle');
     }
   }
 
   @Put(':name')
   updateBundle(@Param('name') name: string, @Body() body: UpdateBundleDto): { message: string } {
     try {
-      const decodedName = decodeURIComponent(name);
-      const config = this.#configService.getConfig();
-      this.#requireExistingBundle(decodedName, config);
+      const newName = typeof body?.name === 'string' && body.name.trim().length > 0 ? body.name : undefined;
 
-      const newName = typeof body?.name === 'string' && body.name.trim().length > 0 ? body.name.trim() : undefined;
-      const targetName = newName ?? decodedName;
-      const definition = this.#validatedDefinition(targetName, body?.bundle, config);
-
-      if (newName !== undefined && newName !== decodedName && config.bundles?.[newName]) {
-        throw new ConflictException(`Bundle "${newName}" already exists`);
-      }
-
-      return updateBundleDefinition(decodedName, definition, {
+      return updateBundleDefinition(decodeURIComponent(name), requireDefinition(body?.bundle), {
         cwd: process.cwd(),
-        ...(newName !== undefined && newName !== decodedName && { newKey: newName }),
+        ...(newName !== undefined && { newKey: newName }),
       });
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error updating bundle');
+      this.#rethrow(error, 'Error updating bundle');
     }
   }
 
   @Delete(':name')
   deleteBundle(@Param('name') name: string): { message: string } {
     try {
-      const decodedName = decodeURIComponent(name);
-      const config = this.#configService.getConfig();
-      this.#requireExistingBundle(decodedName, config);
-
-      return deleteBundleDefinition(decodedName, { cwd: process.cwd() });
+      return deleteBundleDefinition(decodeURIComponent(name), { cwd: process.cwd() });
     } catch (error: unknown) {
-      throw this.#toHttpException(error, 'Error deleting bundle');
+      this.#rethrow(error, 'Error deleting bundle');
     }
   }
 
@@ -136,7 +123,10 @@ export class BundlesController {
   generateBundle(@Param('name') name: string, @Body() body: GenerateBundleRequestDto, @Res() response: Response): void {
     const decodedName = decodeURIComponent(name);
     const config = this.#configService.getConfig();
-    const bundleDefinition = this.#requireExistingBundle(decodedName, config);
+    const bundleDefinition = findBundleDefinition(config.bundles, decodedName);
+    if (!bundleDefinition) {
+      throw new BundleNotFoundError(decodedName);
+    }
     const locales = this.#validatedLocales(body?.locales, config);
 
     const jobId = this.#jobService.startJob({
@@ -148,39 +138,6 @@ export class BundlesController {
 
     const job = this.#jobService.getJob(jobId);
     response.status(HttpStatus.ACCEPTED).json(job);
-  }
-
-  #requireExistingBundle(name: string, config: LingoTrackerConfig): BundleDefinition {
-    const definition = config.bundles?.[name];
-
-    if (!definition) {
-      throw new NotFoundException(`Bundle "${name}" not found`);
-    }
-
-    return definition;
-  }
-
-  /** Maps and validates a definition body; throws 400 with every message when invalid. */
-  #validatedDefinition(
-    name: string,
-    dto: BundleDefinitionDto | undefined,
-    config: LingoTrackerConfig,
-  ): BundleDefinition {
-    if (!dto || typeof dto !== 'object') {
-      throw new HttpException(
-        { message: INVALID_DEFINITION_MESSAGE, errors: ['bundle definition is required.'] },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
-
-    const definition = mapDtoToBundleDefinition(dto);
-    const errors = [...validateBundleKey(name), ...validateBundleDefinition(definition, config)];
-
-    if (errors.length > 0) {
-      throw new HttpException({ message: INVALID_DEFINITION_MESSAGE, errors }, HttpStatus.BAD_REQUEST);
-    }
-
-    return definition;
   }
 
   /** Accepts an optional locale subset; every entry must be a configured locale. */
@@ -204,31 +161,46 @@ export class BundlesController {
     return [...locales];
   }
 
-  #toHttpException(error: unknown, fallback: string): HttpException {
-    if (error instanceof HttpException) {
-      return error;
+  /**
+   * Rethrows HTTP and typed core errors (`LingoTrackerExceptionFilter` maps the latter:
+   * missing bundle 404, duplicate 409, invalid definition 400). Any other failure of a
+   * bundle route answers 400.
+   */
+  #rethrow(error: unknown, fallback: string): never {
+    if (error instanceof HttpException || error instanceof LingoTrackerError) {
+      throw error;
     }
-
-    const message = error instanceof Error ? error.message : fallback;
-
-    if (message.includes('not found')) {
-      return new NotFoundException(message);
-    }
-
-    if (message.includes('already exists')) {
-      return new ConflictException(message);
-    }
-
-    return new HttpException(message, HttpStatus.BAD_REQUEST);
+    throw new HttpException(error instanceof Error ? error.message : fallback, HttpStatus.BAD_REQUEST);
   }
 }
 
-function requireName(name: unknown): string {
-  if (typeof name !== 'string' || name.trim().length === 0) {
-    throw new HttpException(
-      { message: INVALID_DEFINITION_MESSAGE, errors: ['Bundle name is required.'] },
-      HttpStatus.BAD_REQUEST,
-    );
+/** The trimmed name, or `''` (which the key rule reports as required) when it is not a string. */
+function nameOf(name: unknown): string {
+  return typeof name === 'string' ? name.trim() : '';
+}
+
+function requireDefinition(dto: BundleDefinitionDto | undefined): BundleDefinition {
+  if (!dto || typeof dto !== 'object') {
+    throw new InvalidBundleDefinitionError(['bundle definition is required.']);
   }
-  return name.trim();
+  return dto;
+}
+
+/** The domain `checkBundleDefinition`, as core's add/update operations run it; throws every problem at once. */
+function validatedDefinition(
+  name: string,
+  dto: BundleDefinitionDto | undefined,
+  config: LingoTrackerConfig,
+): BundleDefinition {
+  const { definition, errors } = checkBundleDefinition(
+    requireDefinition(dto),
+    Object.keys(config.collections ?? {}),
+    name,
+  );
+
+  if (errors.length > 0) {
+    throw new InvalidBundleDefinitionError(errors);
+  }
+
+  return definition;
 }

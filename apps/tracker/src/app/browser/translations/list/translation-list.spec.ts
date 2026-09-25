@@ -1,9 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import type { Provider } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import { createComponentFactory } from '@ngneat/spectator/vitest';
+import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +27,24 @@ const createList = createComponentFactory({
   detectChanges: false,
 });
 
-const renderList = (providers: unknown[] = []): ComponentFixture<TranslationList> => createList({ providers }).fixture;
+const renderList = (providers: Provider[] = []): ComponentFixture<TranslationList> => createList({ providers }).fixture;
+
+const summary = (fullKey: string, baseValue: string, fr?: [string, 'new' | 'translated']): ResourceSummaryDto => {
+  const segments = fullKey.split('.');
+  const entryKey = segments.pop() ?? '';
+  return {
+    fullKey,
+    folderPath: segments.join('.'),
+    entryKey,
+    base: { locale: 'en', value: baseValue },
+    targets:
+      fr === undefined
+        ? []
+        : [{ locale: 'fr', value: fr[0], status: fr[1], needsWork: fr[1] === 'new', sameAsBase: false }],
+    tags: [],
+    inheritedTags: [],
+  };
+};
 
 describe('TranslationList', () => {
   let component: TranslationList;
@@ -40,10 +60,6 @@ describe('TranslationList', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
-  });
-
-  it('should inject translation browser store', () => {
-    expect(component.store).toBeTruthy();
   });
 
   it('should accept collectionName input', () => {
@@ -267,10 +283,7 @@ describe('TranslationList - Virtual Scrolling', () => {
     const folderReq = httpMock.expectOne('/api/collections/test/resources/tree?path=test-folder&includeNested=true');
     folderReq.flush({
       path: 'test-folder',
-      resources: [
-        { key: 'key1', translations: { en: 'Value 1' }, status: {} },
-        { key: 'key2', translations: { en: 'Value 2' }, status: {} },
-      ],
+      resources: [summary('test-folder.key1', 'Value 1'), summary('test-folder.key2', 'Value 2')],
       children: [],
     });
 
@@ -282,16 +295,12 @@ describe('TranslationList - Virtual Scrolling', () => {
     // Virtual scroll doesn't always render items in test environment
     // Instead, verify the data is loaded in the store
     expect(store.translations()).toHaveLength(2);
-    expect(store.translations()[0].key).toBe('key1');
-    expect(store.translations()[1].key).toBe('key2');
+    expect(store.translations()[0].fullKey).toBe('test-folder.key1');
+    expect(store.translations()[1].fullKey).toBe('test-folder.key2');
   });
 
   it('should use trackByKey for performance', () => {
-    const translation: ResourceSummaryDto = {
-      key: 'test.key',
-      translations: { en: 'Test' },
-      status: {},
-    };
+    const translation = summary('test.key', 'Test');
 
     const result = component.trackByKey(0, translation);
     expect(result).toBe('test.key');
@@ -309,11 +318,7 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
   let mockDialogRef: { afterClosed: ReturnType<typeof vi.fn> };
   let mockDialog: { open: ReturnType<typeof vi.fn> };
 
-  const mockResource: ResourceSummaryDto = {
-    key: 'common.test',
-    translations: { en: 'Test Value', fr: 'Valeur test' },
-    status: { fr: 'translated' },
-  };
+  const mockResource = summary('common.test', 'Test Value', ['Valeur test', 'translated']);
 
   beforeEach(async () => {
     notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
@@ -360,7 +365,7 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
   it('should not show warning snackbar when skippedLocales is empty or absent', async () => {
     vi.useFakeTimers();
 
-    for (const skippedLocales of [[], undefined] as const) {
+    for (const skippedLocales of [[], undefined] as Array<string[] | undefined>) {
       notificationsSpy.warning.mockClear();
 
       const result: TranslationEditorResult = {
@@ -392,10 +397,7 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
     expect(notificationsSpy.error).not.toHaveBeenCalled();
   });
 
-  it('should update the store cache when the edit result contains skippedLocales', () => {
-    const store = fixture.debugElement.injector.get(BrowserStore);
-    const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
-
+  it('should flash the edited row when the edit result contains skippedLocales', () => {
     const result: TranslationEditorResult = {
       key: 'common.test',
       baseValue: 'Test Value',
@@ -409,11 +411,11 @@ describe('TranslationList - skippedLocales warning snackbar', () => {
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
     listStore.editTranslation(mockResource, 'test-collection');
 
-    expect(updateCacheSpy).toHaveBeenCalledWith({ ...mockResource, key: mockResource.key });
+    expect(listStore.recentlyUpdatedKey()).toBe(mockResource.fullKey);
   });
 });
 
-describe('TranslationList - handleEdit key rewrite', () => {
+describe('TranslationList - handleEdit full key', () => {
   let fixture: ComponentFixture<TranslationList>;
   let notificationsSpy: {
     success: ReturnType<typeof vi.fn>;
@@ -437,27 +439,15 @@ describe('TranslationList - handleEdit key rewrite', () => {
     fixture.detectChanges();
   });
 
-  it('should rewrite key to the store key when calling updateTranslationInCache on edit success', () => {
+  // The cache itself is patched by BrowserStore.updateResource (see
+  // with-entry-writes.feature.spec.ts); the list only has to flash the right row.
+  it('should flash the row under its full key', () => {
     const store = fixture.debugElement.injector.get(BrowserStore);
-    const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
 
-    // Activate search mode so the store key contains the full path ("buttons.save")
-    // while the API returns only the bare entry key ("save").
     store.setSearchQuery('buttons');
 
-    // The store-level resource uses the full-path key as it appears in search results.
-    const storeResource: ResourceSummaryDto = {
-      key: 'buttons.save',
-      translations: { en: 'Save', fr: '' },
-      status: { fr: 'new' },
-    };
-
-    // The dialog returns the bare entry key that the API echoes back.
-    const apiResource: ResourceSummaryDto = {
-      key: 'save',
-      translations: { en: 'Save', fr: 'Enregistrer' },
-      status: { fr: 'translated' },
-    };
+    const storeResource = summary('buttons.save', 'Save', ['', 'new']);
+    const apiResource = summary('buttons.save', 'Save', ['Enregistrer', 'translated']);
 
     const result: TranslationEditorResult = {
       key: 'save',
@@ -474,9 +464,7 @@ describe('TranslationList - handleEdit key rewrite', () => {
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
     listStore.editTranslation(storeResource, 'test-collection');
 
-    // updateTranslationInCache must be called with the full-path key that the
-    // store uses ("buttons.save"), not the bare API key ("save").
-    expect(updateCacheSpy).toHaveBeenCalledWith({ ...apiResource, key: storeResource.key });
+    expect(listStore.recentlyUpdatedKey()).toBe(storeResource.fullKey);
   });
 });
 
@@ -529,11 +517,7 @@ describe('TranslationList - deleteTranslation', () => {
   let mockDialog: { open: ReturnType<typeof vi.fn> };
   let store: InstanceType<typeof BrowserStore>;
 
-  const mockResource: ResourceSummaryDto = {
-    key: 'button.delete',
-    translations: { en: 'Delete', fr: 'Supprimer' },
-    status: { fr: 'translated' },
-  };
+  const mockResource = summary('button.delete', 'Delete', ['Supprimer', 'translated']);
 
   beforeEach(async () => {
     notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
@@ -556,14 +540,13 @@ describe('TranslationList - deleteTranslation', () => {
   it('should call API and show success notification when dialog is confirmed', () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(of({ entriesDeleted: 1 }));
-
-    const removeFromCacheSpy = vi.spyOn(store, 'removeResourceFromCache');
+    patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.deleteTranslation(mockResource, 'my-collection');
 
     expect(mockBrowserApi.deleteResource).toHaveBeenCalledWith('my-collection', ['button.delete']);
-    expect(removeFromCacheSpy).toHaveBeenCalledWith('button.delete');
+    expect(store.translations()).toEqual([]);
     expect(notificationsSpy.success).toHaveBeenCalled();
     expect(notificationsSpy.error).not.toHaveBeenCalled();
   });
@@ -571,13 +554,12 @@ describe('TranslationList - deleteTranslation', () => {
   it('should show error notification when API throws', () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(throwError(() => new Error('Network failure')));
-
-    const removeFromCacheSpy = vi.spyOn(store, 'removeResourceFromCache');
+    patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.deleteTranslation(mockResource, 'my-collection');
 
-    expect(removeFromCacheSpy).not.toHaveBeenCalled();
+    expect(store.translations()).toEqual([mockResource]);
     expect(notificationsSpy.error).toHaveBeenCalledWith('Network failure');
   });
 
@@ -604,20 +586,9 @@ describe('TranslationList - handleTranslate', () => {
   let mockBrowserApi: { translateResource: ReturnType<typeof vi.fn>; deleteResource: ReturnType<typeof vi.fn> };
   let store: InstanceType<typeof BrowserStore>;
 
-  const mockResource: ResourceSummaryDto = {
-    key: 'button.save',
-    translations: { en: 'Save', fr: '' },
-    status: { fr: 'new' },
-  };
+  const mockResource = summary('button.save', 'Save', ['', 'new']);
 
-  // The API returns only the bare entry key ("save"), not the relative-path key
-  // ("button.save") that the store uses. The store must rewrite it before
-  // passing the resource to updateTranslationInCache.
-  const mockUpdatedResource: ResourceSummaryDto = {
-    key: 'save',
-    translations: { en: 'Save', fr: 'Enregistrer' },
-    status: { fr: 'translated' },
-  };
+  const mockUpdatedResource = summary('button.save', 'Save', ['Enregistrer', 'translated']);
 
   beforeEach(async () => {
     notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
@@ -642,7 +613,7 @@ describe('TranslationList - handleTranslate', () => {
     vi.useRealTimers();
   });
 
-  it('should add the key to translatingKeys during the request and call store.updateTranslationInCache on success', () => {
+  it('should add the key to translatingKeys during the request and patch the store on success', () => {
     vi.useFakeTimers();
 
     mockBrowserApi.translateResource.mockReturnValue(
@@ -653,7 +624,7 @@ describe('TranslationList - handleTranslate', () => {
       }),
     );
 
-    const updateCacheSpy = vi.spyOn(store, 'updateTranslationInCache');
+    patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.translateResource(mockResource, 'my-collection');
@@ -661,9 +632,7 @@ describe('TranslationList - handleTranslate', () => {
     // The key is removed synchronously from translatingKeys after the observable emits
     expect(listStore.translatingKeys().has('button.save')).toBe(false);
 
-    // Store was updated with the key rewritten from the bare API key ("save")
-    // back to the relative-path key that the store indexes by ("button.save").
-    expect(updateCacheSpy).toHaveBeenCalledWith({ ...mockUpdatedResource, key: mockResource.key });
+    expect(store.translations()).toEqual([mockUpdatedResource]);
 
     // Success notification shown
     expect(notificationsSpy.success).toHaveBeenCalledWith('1 locale translated successfully');
@@ -738,10 +707,13 @@ describe('TranslationList - openResourceByKey', () => {
   it('should open the row editor through the same launcher', () => {
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
-    listStore.editTranslation({ key: 'backButton', translations: { en: 'Back' }, status: {} }, 'my-collection');
+    listStore.editTranslation(summary('browser.header.backButton', 'Back'), 'my-collection');
 
     expect(launcherSpy.openEditor).toHaveBeenCalledWith(
-      expect.objectContaining({ collectionName: 'my-collection', storeKey: 'backButton' }),
+      expect.objectContaining({
+        collectionName: 'my-collection',
+        resource: expect.objectContaining({ fullKey: 'browser.header.backButton' }),
+      }),
     );
   });
 });

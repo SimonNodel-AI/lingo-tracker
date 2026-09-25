@@ -1,455 +1,311 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
+import type { TranslationConfig } from '../config/translation-config';
+import { type Collection, openCollection } from '../lib/config/open-collection';
+import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../lib/config/protected-terms-file';
+import { InvalidResourceKeyError, LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
+import { InMemoryTranslationProvider } from '../lib/translation/in-memory-translation-provider';
+import { TranslationError } from '../lib/translation/translation-provider';
 import { addResource } from './add-resource';
-import * as fs from 'node:fs';
-import { resolve } from 'node:path';
-import type { SafeAny } from '../constants';
+import { calculateChecksum as md5 } from './checksum';
 
-vi.mock('node:fs');
+const AUTO: TranslationConfig = { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' };
 
-describe('addResource', () => {
+describe('addResource (real fs)', () => {
+  let root: string;
+
+  function collection(options: { translation?: TranslationConfig; locales?: string[]; baseLocale?: string } = {}) {
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: options.baseLocale ?? 'en',
+      locales: options.locales ?? ['en', 'fr', 'de'],
+      collections: { main: { translationsFolder: join(root, 'translations') } },
+      ...(options.translation && { translation: options.translation }),
+    };
+    return openCollection(config, 'main', { cwd: root });
+  }
+
+  function read(file: 'resource_entries.json' | 'tracker_meta.json', ...segments: string[]) {
+    return JSON.parse(readFileSync(join(root, 'translations', ...segments, file), 'utf8'));
+  }
+
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    vi.mocked(fs.mkdirSync).mockImplementation(() => '');
-    vi.mocked(fs.readFileSync).mockImplementation(() => JSON.stringify({}));
-    vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+    root = mkdtempSync(join(tmpdir(), 'add-resource-'));
   });
 
-  it('should create a new resource with base value only', async () => {
-    const result = await addResource(
-      'translations',
-      {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      },
-      { cwd: '/test' },
-    );
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
 
-    expect(result.resolvedKey).toBe('app.button.ok');
-    expect(result.created).toBe(true);
+  describe('locale seeding', () => {
+    it('copies the base value as `new` into every target locale when auto-translation is off', async () => {
+      const provider = new InMemoryTranslationProvider();
 
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-    expect(writeCall.length).toBe(2); // resource_entries.json and tracker_meta.json
+      const result = await addResource(collection(), { key: 'common.ok', baseValue: 'OK' }, { provider });
 
-    const resourceContent = JSON.parse(writeCall[0][1] as string);
-    expect(resourceContent.ok).toEqual({
-      source: 'OK',
+      expect(read('resource_entries.json', 'common')).toEqual({ ok: { source: 'OK', fr: 'OK', de: 'OK' } });
+      expect(read('tracker_meta.json', 'common').ok).toEqual({
+        en: { checksum: md5('OK') },
+        fr: { checksum: md5('OK'), baseChecksum: md5('OK'), status: 'new' },
+        de: { checksum: md5('OK'), baseChecksum: md5('OK'), status: 'new' },
+      });
+      expect(result.translations.map(({ locale, status }) => [locale, status])).toEqual([
+        ['fr', 'new'],
+        ['de', 'new'],
+      ]);
+      expect(result.skippedLocales).toBeUndefined();
+      expect(provider.calls).toEqual([]);
     });
-  });
 
-  it('should include optional comment and tags in entry', async () => {
-    await addResource(
-      'translations',
-      {
-        key: 'button.cancel',
-        baseValue: 'Cancel',
-        comment: 'Button to cancel operations',
-        tags: ['ui', 'buttons'],
-      },
-      { cwd: '/test' },
-    );
+    it('keeps supplied translations and seeds only the missing locales', async () => {
+      await addResource(collection(), {
+        key: 'common.save',
+        baseValue: 'Save',
+        translations: [{ locale: 'fr', value: 'Enregistrer', status: 'translated' }],
+      });
 
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-    const resourceContent = JSON.parse(writeCall[0][1] as string);
-    expect(resourceContent.cancel).toEqual({
-      source: 'Cancel',
-      comment: 'Button to cancel operations',
-      tags: ['ui', 'buttons'],
+      expect(read('resource_entries.json', 'common').save).toEqual({ source: 'Save', fr: 'Enregistrer', de: 'Save' });
+      const meta = read('tracker_meta.json', 'common').save;
+      expect(meta.fr.status).toBe('translated');
+      expect(meta.de.status).toBe('new');
     });
-  });
 
-  it('should resolve key with target folder', async () => {
-    const result = await addResource(
-      'translations',
-      {
-        key: 'ok',
-        baseValue: 'OK',
-        targetFolder: 'app.button',
-      },
-      { cwd: '/test' },
-    );
+    it('auto-translates the missing locales when the collection enables it', async () => {
+      const provider = new InMemoryTranslationProvider(() => 'Speichern');
 
-    expect(result.resolvedKey).toBe('app.button.ok');
-  });
-
-  it('should create nested folder structure', async () => {
-    await addResource(
-      'translations',
-      {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      },
-      { cwd: '/test' },
-    );
-
-    const mkdirCall = vi.mocked(fs.mkdirSync).mock.calls[0];
-    expect(mkdirCall[0]).toBe(resolve('/test', 'translations/app/button'));
-    expect(mkdirCall[1]).toEqual({ recursive: true });
-  });
-
-  it('should create tracker metadata with checksums', async () => {
-    await addResource(
-      'translations',
-      {
-        key: 'button.ok',
-        baseValue: 'OK',
-      },
-      { cwd: '/test' },
-    );
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-    const metaContent = JSON.parse(writeCall[1][1] as string);
-    expect(metaContent.ok).toHaveProperty('en');
-    expect(metaContent.ok.en).toHaveProperty('checksum');
-    expect(metaContent.ok.en.checksum).toHaveLength(32); // MD5 is 32 chars
-    expect(metaContent.ok.en.status).toBeUndefined(); // Base locale has no status
-  });
-
-  it('should add translations with status and baseChecksum using array format', async () => {
-    await addResource(
-      'translations',
-      {
-        key: 'button.ok',
-        baseValue: 'OK',
-        translations: [
-          { locale: 'fr-ca', value: "D'accord", status: 'translated' },
-          { locale: 'es', value: 'Aceptar', status: 'verified' },
-        ],
-      },
-      { cwd: '/test' },
-    );
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-    const resourceContent = JSON.parse(writeCall[0][1] as string);
-    expect(resourceContent.ok['fr-ca']).toBe("D'accord");
-    expect(resourceContent.ok.es).toBe('Aceptar');
-
-    const metaContent = JSON.parse(writeCall[1][1] as string);
-    expect(metaContent.ok['fr-ca']).toHaveProperty('checksum');
-    expect(metaContent.ok['fr-ca']).toHaveProperty('baseChecksum');
-    expect(metaContent.ok['fr-ca'].status).toBe('translated');
-    expect(metaContent.ok.es.status).toBe('verified');
-  });
-
-  it('should override status to "new" when translation checksum matches base checksum', async () => {
-    await addResource(
-      'translations',
-      {
-        key: 'button.ok',
-        baseValue: 'OK',
-        translations: [
-          { locale: 'fr-ca', value: 'OK', status: 'translated' }, // Same as base value
-        ],
-      },
-      { cwd: '/test' },
-    );
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-    const metaContent = JSON.parse(writeCall[1][1] as string);
-    expect(metaContent.ok['fr-ca'].status).toBe('new'); // Should be overridden to 'new'
-    expect(metaContent.ok['fr-ca'].checksum).toBe(metaContent.ok.en.checksum);
-  });
-
-  it('should validate key and throw on invalid format', async () => {
-    await expect(
-      addResource(
-        'translations',
+      const result = await addResource(
+        collection({ translation: AUTO }),
         {
-          key: 'invalid..key',
-          baseValue: 'Value',
+          key: 'common.save',
+          baseValue: 'Save',
+          translations: [{ locale: 'fr', value: 'Enregistrer', status: 'verified' }],
         },
-        { cwd: '/test' },
-      ),
-    ).rejects.toThrow();
-  });
+        { provider },
+      );
 
-  it('should validate target folder and throw on invalid format', async () => {
-    await expect(
-      addResource(
-        'translations',
+      expect(provider.calls).toEqual([[{ text: 'Save', sourceLocale: 'en', targetLocale: 'de' }]]);
+      expect(read('resource_entries.json', 'common').save).toEqual({
+        source: 'Save',
+        fr: 'Enregistrer',
+        de: 'Speichern',
+      });
+      const meta = read('tracker_meta.json', 'common').save;
+      expect(meta.fr.status).toBe('verified');
+      expect(meta.de.status).toBe('translated');
+      expect(result.skippedLocales).toEqual([]);
+    });
+
+    it('stores auto-translations normalised to ICU', async () => {
+      const provider = new InMemoryTranslationProvider(({ text }) => text.replace('Hello', 'Hallo'));
+
+      await addResource(
+        collection({ translation: AUTO }),
+        { key: 'greet', baseValue: 'Hello {{ name }}' },
+        { provider },
+      );
+
+      expect(read('resource_entries.json').greet).toEqual({
+        source: 'Hello {name}',
+        fr: 'Hallo {name}',
+        de: 'Hallo {name}',
+      });
+    });
+
+    it('copies the base value as `new` into every locale when the base value is complex ICU, and reports them', async () => {
+      const provider = new InMemoryTranslationProvider();
+
+      const result = await addResource(
+        collection({ translation: AUTO }),
+        { key: 'items', baseValue: '{count, plural, other {# items}}' },
+        { provider },
+      );
+
+      const entry = read('resource_entries.json').items;
+      expect(entry.fr).toBe('{count, plural, other {# items}}');
+      expect(entry.de).toBe('{count, plural, other {# items}}');
+      expect(read('tracker_meta.json').items.de.status).toBe('new');
+      expect(result.skippedLocales).toEqual(['fr', 'de']);
+      expect(provider.calls).toEqual([]);
+    });
+
+    it('copies the base value as `new` into a locale whose translation dropped a protected term', async () => {
+      // The global terms file beside the config (root is the config directory).
+      writeFileSync(join(root, DEFAULT_PROTECTED_TERMS_FILENAME), JSON.stringify(['iPhone']), 'utf8');
+      const provider = new InMemoryTranslationProvider(({ targetLocale }) =>
+        targetLocale === 'fr' ? 'Acheter un téléphone' : 'iPhone kaufen',
+      );
+
+      const result = await addResource(
+        collection({ translation: AUTO }),
+        { key: 'buy', baseValue: 'Buy an iPhone' },
+        { provider },
+      );
+
+      expect(read('resource_entries.json').buy).toEqual({
+        source: 'Buy an iPhone',
+        fr: 'Buy an iPhone',
+        de: 'iPhone kaufen',
+      });
+      expect(read('tracker_meta.json').buy.fr.status).toBe('new');
+      expect(read('tracker_meta.json').buy.de.status).toBe('translated');
+      expect(result.skippedLocales).toEqual(['fr']);
+    });
+
+    it('does not call the provider when every target locale was supplied', async () => {
+      const provider = new InMemoryTranslationProvider();
+
+      await addResource(
+        collection({ translation: AUTO }),
         {
           key: 'ok',
           baseValue: 'OK',
-          targetFolder: 'invalid@folder',
+          translations: [
+            { locale: 'fr', value: "D'accord", status: 'translated' },
+            { locale: 'de', value: 'Okay', status: 'translated' },
+          ],
         },
-        { cwd: '/test' },
-      ),
-    ).rejects.toThrow();
-  });
-
-  it('should detect new entry when resource file does not exist', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-
-    const result = await addResource(
-      'translations',
-      {
-        key: 'button.ok',
-        baseValue: 'OK',
-      },
-      { cwd: '/test' },
-    );
-
-    expect(result.created).toBe(true);
-  });
-
-  it('should detect update when entry already exists', async () => {
-    // Simulate existing file
-    vi.mocked(fs.existsSync).mockImplementation((path: SafeAny) => {
-      return (path as string).includes('resource_entries.json');
-    });
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ ok: { source: 'OK' } }));
-
-    const result = await addResource(
-      'translations',
-      {
-        key: 'button.ok',
-        baseValue: 'OK - Updated',
-      },
-      { cwd: '/test' },
-    );
-
-    expect(result.created).toBe(false);
-  });
-
-  it('should merge with existing entries in file', async () => {
-    const existingContent = { another: { source: 'Another' } };
-    vi.mocked(fs.existsSync).mockImplementation((path: SafeAny) => {
-      return (path as string).includes('resource_entries.json');
-    });
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(existingContent));
-
-    await addResource(
-      'translations',
-      {
-        key: 'button.ok',
-        baseValue: 'OK',
-      },
-      { cwd: '/test' },
-    );
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-    const resourceContent = JSON.parse(writeCall[0][1] as string);
-    expect(resourceContent.another).toBeDefined();
-    expect(resourceContent.ok).toBeDefined();
-  });
-
-  it('should use custom base locale', async () => {
-    await addResource(
-      'translations',
-      {
-        key: 'button.ok',
-        baseValue: 'OK',
-        baseLocale: 'fr',
-      },
-      { cwd: '/test' },
-    );
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-    const metaContent = JSON.parse(writeCall[1][1] as string);
-    expect(metaContent.ok).toHaveProperty('fr');
-    expect(metaContent.ok.fr.status).toBeUndefined();
-  });
-
-  it('should use process.cwd() when cwd not provided', async () => {
-    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue('/default');
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-
-    await addResource('translations', {
-      key: 'button.ok',
-      baseValue: 'OK',
-    });
-
-    expect(cwdSpy).toHaveBeenCalled();
-    cwdSpy.mockRestore();
-  });
-
-  it('should handle single-level key', async () => {
-    const result = await addResource(
-      'translations',
-      {
-        key: 'cancel',
-        baseValue: 'Cancel',
-      },
-      { cwd: '/test' },
-    );
-
-    expect(result.resolvedKey).toBe('cancel');
-
-    const mkdirCall = vi.mocked(fs.mkdirSync).mock.calls;
-    // Should not create nested folders for single-level keys
-    expect(mkdirCall.length > 0).toBe(true);
-  });
-
-  it('should allow overlapping segments between target folder and key (no de-dup)', async () => {
-    const result = await addResource(
-      'translations',
-      {
-        key: 'app.ok',
-        baseValue: 'OK',
-        targetFolder: 'app.button',
-      },
-      { cwd: '/test' },
-    );
-
-    // app.button + app.ok = app.button.app.ok (no de-duplication)
-    expect(result.resolvedKey).toBe('app.button.app.ok');
-  });
-
-  describe('idempotency', () => {
-    it('should handle repeated calls with same parameters', async () => {
-      const existingContent = {
-        ok: { source: 'OK', checksum: 'abc123' },
-      };
-      vi.mocked(fs.existsSync).mockImplementation((path: SafeAny) => {
-        return (path as string).includes('resource_entries.json');
-      });
-      vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(existingContent));
-
-      // First call
-      const result1 = await addResource(
-        'translations',
-        {
-          key: 'button.ok',
-          baseValue: 'OK',
-        },
-        { cwd: '/test' },
+        { provider },
       );
 
-      // Second call with same params
-      const result2 = await addResource(
-        'translations',
-        {
-          key: 'button.ok',
-          baseValue: 'OK',
-        },
-        { cwd: '/test' },
-      );
-
-      // Both should produce same resolved key
-      expect(result1.resolvedKey).toBe(result2.resolvedKey);
+      expect(provider.calls).toEqual([]);
     });
-  });
 
-  describe('integration: base value change detection', () => {
-    it('should create new checksum when base value changes', async () => {
-      const existingContent = {
-        ok: { source: 'OK', 'fr-ca': "D'accord" },
-      };
-      const existingMeta = {
-        ok: {
-          en: { checksum: 'old-base-hash' },
-          'fr-ca': {
-            checksum: 'trans-hash',
-            baseChecksum: 'old-base-hash',
-            status: 'translated',
-          },
-        },
-      };
-
-      vi.mocked(fs.existsSync).mockImplementation((path: SafeAny) => {
-        return (path as string).includes('resource');
-      });
-      vi.mocked(fs.readFileSync).mockImplementation((path: SafeAny) => {
-        if ((path as string).includes('resource_entries.json')) {
-          return JSON.stringify(existingContent);
-        }
-        return JSON.stringify(existingMeta);
-      });
+    it('does not auto-translate when the collection translation config is disabled', async () => {
+      const provider = new InMemoryTranslationProvider();
 
       await addResource(
-        'translations',
-        {
-          key: 'button.ok',
-          baseValue: 'OK - NEW VALUE',
-          translations: [{ locale: 'fr-ca', value: "D'accord", status: 'translated' }],
-        },
-        { cwd: '/test' },
+        collection({ translation: { ...AUTO, enabled: false } }),
+        { key: 'ok', baseValue: 'OK' },
+        { provider },
       );
 
-      const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-      const metaContent = JSON.parse(writeCall[1][1] as string);
-
-      // Base checksum should be different
-      expect(metaContent.ok.en.checksum).not.toBe('old-base-hash');
-      // Translations should still be there but might be stale in real usage
-      expect(metaContent.ok['fr-ca']).toBeDefined();
-    });
-  });
-
-  describe('Security', () => {
-    it('should reject invalid keys with path traversal characters', async () => {
-      await expect(
-        addResource('translations', {
-          key: '../secret.key',
-          baseValue: 'test',
-        }),
-      ).rejects.toThrow('Key validation: Invalid key format');
+      expect(provider.calls).toEqual([]);
+      expect(read('tracker_meta.json').ok.fr.status).toBe('new');
     });
 
-    it('should reject invalid targetFolder with path traversal characters', async () => {
-      await expect(
-        addResource('translations', {
-          key: 'valid.key',
-          targetFolder: '../secret',
-          baseValue: 'test',
-        }),
-      ).rejects.toThrow('Invalid targetFolder segment');
-    });
-
-    it('should NOT create folders for invalid paths', async () => {
-      try {
-        await addResource('translations', {
-          key: 'valid.key',
-          targetFolder: '../secret',
-          baseValue: 'test',
-        });
-      } catch (_e) {
-        // Ignore error
-      }
-
-      const mkdirCall = vi.mocked(fs.mkdirSync).mock.calls;
-      const _secretPath = resolve('translations', '..', 'secret');
-      // Check that no call was made with the secret path
-      const callWithSecret = mkdirCall.find((call) => call[0].toString().includes('secret'));
-      expect(callWithSecret).toBeUndefined();
-    });
-  });
-
-  describe('auto-translation', () => {
-    it('should return translations from auto-translate when enabled and no explicit translations provided', async () => {
-      const mockAutoTranslate = vi.fn().mockResolvedValue({
-        translations: [
-          { locale: 'fr-ca', value: "D'accord", status: 'translated' },
-          { locale: 'es', value: 'Aceptar', status: 'translated' },
-        ],
-        skippedLocales: [],
+    it('writes nothing when the provider fails', async () => {
+      const provider = new InMemoryTranslationProvider(() => {
+        throw new TranslationError('quota', 'RATE_LIMIT', true);
       });
 
-      vi.doMock('../lib/translation/auto-translate-resources', () => ({
-        autoTranslateResource: mockAutoTranslate,
-      }));
+      await expect(
+        addResource(collection({ translation: AUTO }), { key: 'common.ok', baseValue: 'OK' }, { provider }),
+      ).rejects.toThrow(TranslationError);
+      expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
+    });
 
-      // Since we cannot easily re-mock within the same test file after initial vi.mock,
-      // we verify the behavior through the absence of auto-translation when config is disabled.
-      const result = await addResource(
-        'translations',
-        {
-          key: 'button.ok',
+    it('writes nothing when the API key is not set', async () => {
+      await expect(
+        addResource(collection({ translation: { ...AUTO, apiKeyEnv: 'ADD_RESOURCE_SPEC_UNSET_KEY' } }), {
+          key: 'common.ok',
           baseValue: 'OK',
-          allLocales: ['en', 'fr-ca', 'es'],
-        },
-        {
-          cwd: '/test',
-          translationConfig: { enabled: false, provider: 'google-translate', apiKeyEnv: 'GOOGLE_API_KEY' },
-        },
-      );
+        }),
+      ).rejects.toMatchObject({ code: 'MISSING_API_KEY' });
+      expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
+    });
 
-      // With disabled config, no auto-translation should happen
-      expect(result.resolvedKey).toBe('button.ok');
-      const writeCall = vi.mocked(fs.writeFileSync).mock.calls;
-      const resourceContent = JSON.parse(writeCall[0][1] as string);
-      // No locale keys added because translation is disabled
-      expect(resourceContent.ok['fr-ca']).toBeUndefined();
+    it('stores an untranslated copy of the base value as `new`, whatever status was requested', async () => {
+      await addResource(collection(), {
+        key: 'ok',
+        baseValue: 'OK',
+        translations: [{ locale: 'fr', value: 'OK', status: 'verified' }],
+      });
+
+      expect(read('tracker_meta.json').ok.fr.status).toBe('new');
+    });
+
+    it('takes base and target locales from the collection only', async () => {
+      await addResource(collection({ baseLocale: 'fr', locales: ['fr', 'en'] }), {
+        key: 'ok',
+        baseValue: "D'accord",
+        translations: [{ locale: 'fr', value: 'ignored: base locale', status: 'translated' }],
+      });
+
+      expect(read('resource_entries.json').ok).toEqual({ source: "D'accord", en: "D'accord" });
+      expect(Object.keys(read('tracker_meta.json').ok)).toEqual(['fr', 'en']);
+    });
+
+    it('rejects a translation for a locale the collection does not have', async () => {
+      await expect(
+        addResource(collection(), {
+          key: 'ok',
+          baseValue: 'OK',
+          translations: [{ locale: 'ja', value: 'OK', status: 'translated' }],
+        }),
+      ).rejects.toThrow(LocaleNotFoundError);
+      expect(existsSync(join(root, 'translations'))).toBe(false);
+    });
+  });
+
+  describe('entry', () => {
+    it('stores comment and normalized tags', async () => {
+      await addResource(collection({ locales: ['en'] }), {
+        key: 'ok',
+        baseValue: 'OK',
+        comment: 'Button',
+        tags: ['UI', 'ui', ' forms '],
+      });
+
+      expect(read('resource_entries.json').ok).toEqual({ source: 'OK', comment: 'Button', tags: ['ui', 'forms'] });
+    });
+
+    it('places the key under targetFolder', async () => {
+      const result = await addResource(collection(), {
+        key: 'buttons.ok',
+        baseValue: 'OK',
+        targetFolder: 'apps.common',
+      });
+
+      expect(result.resolvedKey).toBe('apps.common.buttons.ok');
+      expect(read('resource_entries.json', 'apps', 'common', 'buttons').ok.source).toBe('OK');
+    });
+
+    it('normalizes Transloco placeholders to ICU in base and translations', async () => {
+      await addResource(collection(), {
+        key: 'hello',
+        baseValue: 'Hello {{ name }}',
+        translations: [{ locale: 'fr', value: 'Bonjour {{name}}', status: 'translated' }],
+      });
+
+      expect(read('resource_entries.json').hello).toEqual({
+        source: 'Hello {name}',
+        fr: 'Bonjour {name}',
+        de: 'Hello {name}',
+      });
+    });
+
+    it('replaces an existing entry, keeps its position, and reports created: false', async () => {
+      const target = collection();
+      await addResource(target, { key: 'a', baseValue: 'A', comment: 'old' });
+      await addResource(target, { key: 'b', baseValue: 'B' });
+
+      const result = await addResource(target, { key: 'a', baseValue: 'A2' });
+
+      expect(result.created).toBe(false);
+      expect(Object.keys(read('resource_entries.json'))).toEqual(['a', 'b']);
+      expect(read('resource_entries.json').a).toEqual({ source: 'A2', fr: 'A2', de: 'A2' });
+    });
+
+    it('returns an upsert mutation for the stored entry', async () => {
+      const target: Collection = collection();
+      const result = await addResource(target, { key: 'common.ok', baseValue: 'OK' });
+
+      expect(result.created).toBe(true);
+      expect(result.mutations).toEqual([
+        expect.objectContaining({ kind: 'upsert', translationsFolder: target.translationsFolder, key: 'common.ok' }),
+      ]);
+    });
+
+    it.each([
+      ['a key with path traversal', { key: '../evil', baseValue: 'x' }],
+      ['a malformed targetFolder', { key: 'ok', baseValue: 'x', targetFolder: '../evil' }],
+    ])('rejects %s and creates nothing', async (_label, params) => {
+      await expect(addResource(collection(), params)).rejects.toThrow(InvalidResourceKeyError);
+      expect(existsSync(join(root, 'translations'))).toBe(false);
     });
   });
 });

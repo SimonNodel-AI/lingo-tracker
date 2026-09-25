@@ -36,6 +36,9 @@ describe('WritableCollectionGuard', () => {
 
   it('blocks mutating requests against a read-only collection', () => {
     expect(() => guard.canActivate(createContext('DELETE', { collectionName: 'vendor' }))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(createContext('DELETE', { collectionName: 'vendor' }))).toThrow(
+      'Collection "vendor" is read-only. Its resources cannot be modified.',
+    );
   });
 
   it('decodes the collection name from the route param', () => {

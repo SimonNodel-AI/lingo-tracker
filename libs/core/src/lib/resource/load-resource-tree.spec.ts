@@ -1,117 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { loadResourceTree } from './load-resource-tree';
-import type * as fs from 'node:fs';
 
-const mockFs = vi.hoisted(() => {
-  return new Map<string, string | 'directory'>([
-    // Root directory and files
-    ['/test/translations', 'directory'],
-    [
-      '/test/translations/resource_entries.json',
-      JSON.stringify({
-        title: {
-          source: 'App Title',
-          es: 'Título de la Aplicación',
-          fr: "Titre de l'Application",
-        },
-      }),
-    ],
-    [
-      '/test/translations/tracker_meta.json',
-      JSON.stringify({
-        title: {
-          en: { checksum: 'abc123' },
-          es: {
-            status: 'translated',
-            checksum: 'def456',
-            baseChecksum: 'abc123',
-          },
-          fr: { status: 'stale', checksum: 'ghi789', baseChecksum: 'abc123' },
-        },
-      }),
-    ],
+const FIXTURE_ROOT = '/test/translations';
 
-    // apps directory
-    ['/test/translations/apps', 'directory'],
-
-    // apps/common directory and files
-    ['/test/translations/apps/common', 'directory'],
-    [
-      '/test/translations/apps/common/resource_entries.json',
-      JSON.stringify({
-        header: {
-          source: 'Common Header',
-          es: 'Encabezado Común',
-          fr: 'En-tête Commun',
-          tags: ['ui', 'common'],
-          comment: 'Main header text',
-        },
-      }),
-    ],
-    [
-      '/test/translations/apps/common/tracker_meta.json',
-      JSON.stringify({
-        header: {
-          en: { checksum: 'aaa111' },
-          es: {
-            status: 'verified',
-            checksum: 'bbb222',
-            baseChecksum: 'aaa111',
-          },
-          fr: {
-            status: 'translated',
-            checksum: 'ccc333',
-            baseChecksum: 'aaa111',
-          },
-        },
-      }),
-    ],
-
-    // apps/common/buttons directory and files
-    ['/test/translations/apps/common/buttons', 'directory'],
-    [
-      '/test/translations/apps/common/buttons/resource_entries.json',
-      JSON.stringify({
-        ok: {
-          source: 'OK',
-          es: 'Aceptar',
-          fr: "D'accord",
-        },
-        cancel: {
-          source: 'Cancel',
-          es: 'Cancelar',
-          fr: 'Annuler',
-          tags: ['button'],
-        },
-      }),
-    ],
-    [
-      '/test/translations/apps/common/buttons/tracker_meta.json',
-      JSON.stringify({
-        ok: {
-          en: { checksum: 'ok111' },
-          es: { status: 'verified', checksum: 'ok222', baseChecksum: 'ok111' },
-          fr: {
-            status: 'translated',
-            checksum: 'ok333',
-            baseChecksum: 'ok111',
-          },
-        },
-        cancel: {
-          en: { checksum: 'can111' },
-          es: {
-            status: 'translated',
-            checksum: 'can222',
-            baseChecksum: 'can111',
-          },
-          fr: { status: 'new', checksum: '', baseChecksum: 'can111' },
-        },
-      }),
-    ],
-  ]);
-});
-
-const createMockFileSystem = () => {
+/** The fixture tree, keyed by POSIX path under `/test/translations`; written to a temp dir per test. */
+const createFixture = () => {
   return new Map<string, string | 'directory'>([
     // Root directory and files
     ['/test/translations', 'directory'],
@@ -220,84 +116,36 @@ const createMockFileSystem = () => {
   ]);
 };
 
-/**
- * The fixture map in this suite is keyed on POSIX paths, while the code under test resolves to
- * platform-native form. Stripping a drive letter and backslashes is the identity on POSIX.
- */
-const toFixtureKey = vi.hoisted(
-  () =>
-    (p: { toString(): string }): string =>
-      p
-        .toString()
-        .replace(/^[A-Za-z]:/, '')
-        .replace(/\\/g, '/'),
-);
+describe('loadResourceTree (real fs)', () => {
+  const tempDir = useTempDir('load-resource-tree-');
+  let translationsFolder: string;
 
-vi.mock('node:fs', () => ({
-  existsSync: vi.fn((filePath: fs.PathLike) => {
-    return mockFs.has(toFixtureKey(filePath));
-  }),
-  readFileSync: vi.fn((filePath: fs.PathLike) => {
-    const content = mockFs.get(toFixtureKey(filePath));
-    if (content === 'directory' || content === undefined) {
-      throw new Error(`ENOENT: no such file or directory, open '${filePath}'`);
-    }
-    return content;
-  }),
-  realpathSync: vi.fn((filePath: fs.PathLike) => {
-    return filePath.toString();
-  }),
-  readdirSync: vi.fn((dirPath: fs.PathLike, _options?: any) => {
-    const dirPathStr = toFixtureKey(dirPath);
-    const entries: fs.Dirent[] = [];
-
-    for (const [fsPath, type] of mockFs.entries()) {
-      const pathParts = fsPath.split('/').filter(Boolean);
-      const dirParts = dirPathStr.split('/').filter(Boolean);
-
-      // Check if this is a direct child of dirPath
-      if (pathParts.length === dirParts.length + 1 && fsPath.startsWith(`${dirPathStr}/`)) {
-        const name = pathParts[pathParts.length - 1];
-        const isDirectory = type === 'directory';
-
-        entries.push({
-          name,
-          isDirectory: () => isDirectory,
-          isFile: () => !isDirectory,
-          isBlockDevice: () => false,
-          isCharacterDevice: () => false,
-          isSymbolicLink: () => false,
-          isFIFO: () => false,
-          isSocket: () => false,
-          parentPath: dirPathStr,
-          path: dirPathStr,
-        } as fs.Dirent);
+  /** Writes fixture entries (keyed under `/test/translations`) into the temp translations folder. */
+  function materialize(entries: Iterable<[string, string]>): void {
+    for (const [fixturePath, content] of entries) {
+      const target = join(translationsFolder, ...fixturePath.replace(FIXTURE_ROOT, '').split('/').filter(Boolean));
+      if (content === 'directory') {
+        mkdirSync(target, { recursive: true });
+      } else {
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, content);
       }
     }
-
-    return entries;
-  }),
-}));
-
-describe('loadResourceTree', () => {
-  const translationsFolder = '/test/translations';
+  }
 
   beforeEach(() => {
-    // Reset the mock filesystem to initial state
-    mockFs.clear();
-    const initialFs = createMockFileSystem();
-    for (const [key, value] of initialFs.entries()) {
-      mockFs.set(key, value);
-    }
+    translationsFolder = join(tempDir(), 'translations');
+    materialize(createFixture());
   });
 
   describe('depth=0 (current folder only)', () => {
     it('should load root folder resources with children marked unloaded', () => {
       const result = loadResourceTree({
         translationsFolder,
+        baseLocale: 'en',
         path: '',
         depth: 0,
-        cwd: '/',
+        cwd: tempDir(),
       });
 
       // Should have root resources
@@ -323,9 +171,10 @@ describe('loadResourceTree', () => {
     it('should recursively load folders up to depth 2', () => {
       const result = loadResourceTree({
         translationsFolder,
+        baseLocale: 'en',
         path: '',
         depth: 2,
-        cwd: '/',
+        cwd: tempDir(),
       });
 
       // Root level
@@ -371,9 +220,10 @@ describe('loadResourceTree', () => {
     it('should load from nested folder path', () => {
       const result = loadResourceTree({
         translationsFolder,
+        baseLocale: 'en',
         path: 'apps.common',
         depth: 1,
-        cwd: '/',
+        cwd: tempDir(),
       });
 
       // Should load apps/common as root
@@ -402,38 +252,40 @@ describe('loadResourceTree', () => {
       // Add two sibling subdirectories under apps/common: buttons and forms
       // They are inserted in alphabetical (readdir) order so the mock returns them
       // in that order — the iterative implementation must preserve it.
-      mockFs.set('/test/translations/apps/common/forms', 'directory');
-      mockFs.set(
-        '/test/translations/apps/common/forms/resource_entries.json',
-        JSON.stringify({
-          email: { source: 'Email', es: 'Correo', fr: 'E-mail' },
-        }),
-      );
-      mockFs.set(
-        '/test/translations/apps/common/forms/tracker_meta.json',
-        JSON.stringify({
-          email: {
-            en: { checksum: 'form111' },
-            es: { status: 'translated', checksum: 'form222', baseChecksum: 'form111' },
-            fr: { status: 'new', checksum: '', baseChecksum: 'form111' },
-          },
-        }),
-      );
+      materialize([
+        ['/test/translations/apps/common/forms', 'directory'],
+        [
+          '/test/translations/apps/common/forms/resource_entries.json',
+          JSON.stringify({ email: { source: 'Email', es: 'Correo', fr: 'E-mail' } }),
+        ],
+        [
+          '/test/translations/apps/common/forms/tracker_meta.json',
+          JSON.stringify({
+            email: {
+              en: { checksum: 'form111' },
+              es: { status: 'translated', checksum: 'form222', baseChecksum: 'form111' },
+              fr: { status: 'new', checksum: '', baseChecksum: 'form111' },
+            },
+          }),
+        ],
+      ]);
+      const readdirOrder = readdirSync(join(translationsFolder, 'apps', 'common'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => entry.name);
 
       const result = loadResourceTree({
         translationsFolder,
+        baseLocale: 'en',
         path: 'apps.common',
         depth: 1,
-        cwd: '/',
+        cwd: tempDir(),
       });
 
       // Both children should be loaded
       expect(result.children).toHaveLength(2);
 
-      // The Map iterates insertion order: buttons was inserted before forms,
-      // so readdir returns ["buttons", "forms"] — the tree must preserve that order.
-      expect(result.children[0].name).toBe('buttons');
-      expect(result.children[1].name).toBe('forms');
+      // The tree keeps the order the filesystem lists the folders in.
+      expect(result.children.map((child) => child.name)).toEqual(readdirOrder);
     });
   });
 
@@ -442,9 +294,10 @@ describe('loadResourceTree', () => {
       expect(() =>
         loadResourceTree({
           translationsFolder,
+          baseLocale: 'en',
           path: 'nonexistent.folder',
           depth: 1,
-          cwd: '/',
+          cwd: tempDir(),
         }),
       ).toThrow('Folder not found');
     });
@@ -453,9 +306,10 @@ describe('loadResourceTree', () => {
       // Use the apps folder which has no resource files at the root level
       const result = loadResourceTree({
         translationsFolder,
+        baseLocale: 'en',
         path: 'apps',
         depth: 0,
-        cwd: '/',
+        cwd: tempDir(),
       });
 
       expect(result.resources).toHaveLength(0);
@@ -467,9 +321,10 @@ describe('loadResourceTree', () => {
     it('should extract metadata for all locales', () => {
       const result = loadResourceTree({
         translationsFolder,
+        baseLocale: 'en',
         path: '',
         depth: 0,
-        cwd: '/',
+        cwd: tempDir(),
       });
 
       const titleResource = result.resources[0];
@@ -486,6 +341,43 @@ describe('loadResourceTree', () => {
       expect(titleResource.metadata['fr'].checksum).toBe('ghi789');
       expect(titleResource.metadata['fr'].baseChecksum).toBe('abc123');
       expect(titleResource.metadata['fr'].status).toBe('stale');
+    });
+  });
+  describe('Collection Reader rules', () => {
+    it('includes an entry without metadata, with empty metadata', () => {
+      writeFolderFiles(translationsFolder, 'loose', { entries: { orphan: { source: 'Orphan' } } });
+
+      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'loose', depth: 0 });
+
+      expect(result.resources).toEqual([{ key: 'orphan', source: 'Orphan', translations: {}, metadata: {} }]);
+    });
+
+    it('keeps an unreadable folder in the tree without resources, and logs it', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      writeFolderFiles(translationsFolder, 'apps.broken', { entries: '{ nope' });
+
+      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'apps', depth: 1 });
+
+      const broken = result.children.find((child) => child.name === 'broken');
+      expect(broken?.loaded).toBe(true);
+      expect(broken?.tree?.resources).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('resource_entries.json'));
+      warn.mockRestore();
+    });
+
+    it('throws when the translations folder is a file', () => {
+      const file = join(tempDir(), 'file');
+      writeFileSync(file, 'not a folder');
+
+      expect(() => loadResourceTree({ translationsFolder: file, baseLocale: 'en' })).toThrow('Not a folder');
+    });
+
+    it('treats a missing translations folder as an empty tree', () => {
+      expect(loadResourceTree({ translationsFolder: join(tempDir(), 'missing'), baseLocale: 'en' })).toEqual({
+        folderPathSegments: [],
+        resources: [],
+        children: [],
+      });
     });
   });
 });

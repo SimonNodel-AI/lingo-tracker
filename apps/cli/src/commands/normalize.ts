@@ -1,13 +1,6 @@
-import prompts from 'prompts';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { normalize } from '@simoncodes-ca/core';
-import {
-  loadConfiguration,
-  resolveCollection,
-  ConsoleFormatter,
-  ErrorMessages,
-  aggregateNumericFields,
-} from '../utils';
+import { normalize, openCollection, ReadOnlyCollectionError } from '@simoncodes-ca/core';
+import { CommandCancelledError, defineCommand, NO_COLLECTIONS_MESSAGE } from '../runner/command-runner';
+import { ALL_ITEMS_SENTINEL, aggregateNumericFields, ConsoleFormatter } from '../utils';
 
 export interface NormalizeOptions {
   collection?: string;
@@ -41,250 +34,168 @@ interface NormalizeCommandResult {
   };
 }
 
-export async function normalizeCommand(options: NormalizeOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
-
-  const answers = await promptForMissing(options, config);
-
-  // Determine which collections to process
-  const collectionsToProcess: string[] = [];
-
-  if (answers.all) {
-    const collections = Object.keys(config.collections || {});
-    if (collections.length === 0) {
-      ConsoleFormatter.error(ErrorMessages.NO_COLLECTIONS);
-      return;
+export const normalizeCommand = defineCommand<NormalizeOptions>()({
+  name: 'Normalize',
+  // `--collection` or `--all`: the command opens the collections itself.
+  collection: 'none',
+  prompts: (options, { config }) => {
+    const collections = Object.keys(config.collections ?? {});
+    if (options.collection || options.all || collections.length === 0) {
+      return [];
     }
-    collectionsToProcess.push(...collections);
-  } else if (answers.collection) {
-    collectionsToProcess.push(answers.collection);
-  }
+    return [
+      {
+        type: 'select',
+        name: 'collectionOrAll',
+        message: 'Select collection to normalize',
+        choices: [
+          ...collections.map((c) => ({ title: c, value: c })),
+          { title: 'All collections', value: ALL_ITEMS_SENTINEL },
+        ],
+      },
+    ];
+  },
+  run: async ({ config, cwd, answers, interactive, ask }) => {
+    const selected = typeof answers.collectionOrAll === 'string' ? answers.collectionOrAll : undefined;
+    const all = answers.all === true || selected === ALL_ITEMS_SENTINEL;
+    const collectionName = answers.collection ?? (selected !== ALL_ITEMS_SENTINEL ? selected : undefined);
+    const collectionNames = Object.keys(config.collections ?? {});
 
-  // Process each collection
-  const collectionResults: CollectionNormalizeResult[] = [];
-
-  for (const collectionName of collectionsToProcess) {
-    const collection = resolveCollection(collectionName, config, cwd);
-
-    if (!collection) {
-      continue;
+    if (collectionNames.length === 0) {
+      throw new Error(NO_COLLECTIONS_MESSAGE);
+    }
+    if (!all && !collectionName) {
+      throw new Error('Missing required option in non-interactive mode: --collection or --all');
     }
 
-    // Read-only collections cannot be normalized (it rewrites resource files).
-    // In a bulk `--all` run, skip them without failing; when one is explicitly targeted, fail.
-    if (collection.config.readOnly) {
-      if (answers.all) {
-        if (!options.json) {
-          console.log('');
-          ConsoleFormatter.info(`Skipping read-only collection: ${collectionName}`);
+    if (all && interactive) {
+      ConsoleFormatter.warning('This will normalize ALL collections in your project.');
+      const confirmed = await ask({ type: 'confirm', name: 'confirmed', message: 'Are you sure?', initial: false });
+      if (confirmed.confirmed !== true) {
+        throw new CommandCancelledError();
+      }
+    }
+
+    // An explicitly named collection that does not exist throws CollectionNotFoundError (exit 1).
+    const collections = all
+      ? collectionNames.map((name) => openCollection(config, name, { cwd }))
+      : [openCollection(config, collectionName ?? '', { cwd })];
+
+    let failed = false;
+    const collectionResults: CollectionNormalizeResult[] = [];
+
+    for (const collection of collections) {
+      const { name } = collection;
+
+      // Read-only collections cannot be normalized (it rewrites resource files).
+      // In a bulk `--all` run, skip them without failing; when one is explicitly targeted, fail.
+      if (collection.readOnly) {
+        if (all) {
+          if (!answers.json) {
+            console.log('');
+            ConsoleFormatter.info(`Skipping read-only collection: ${name}`);
+          }
+        } else {
+          // stderr, so it is reported with --json too.
+          ConsoleFormatter.error(new ReadOnlyCollectionError(name).message);
+          failed = true;
         }
-      } else {
-        if (!options.json) {
-          console.log(ErrorMessages.COLLECTION_READ_ONLY(collectionName));
+        continue;
+      }
+
+      const { translationsFolder, baseLocale, locales } = collection;
+
+      if (!answers.json) {
+        console.log('');
+        ConsoleFormatter.progress(`Normalizing collection: ${name}`);
+        if (answers.dryRun) {
+          ConsoleFormatter.indent('(Dry run - no changes will be made)');
         }
-        process.exitCode = 1;
       }
-      continue;
-    }
 
-    const translationsFolder = collection.translationsFolderPath;
-    const baseLocale = collection.config.baseLocale ?? config.baseLocale;
-    const locales = collection.config.locales ?? config.locales;
+      try {
+        const result = await normalize({
+          translationsFolder,
+          baseLocale,
+          locales,
+          dryRun: answers.dryRun ?? false,
+        });
 
-    if (!options.json) {
-      console.log('');
-      ConsoleFormatter.progress(`Normalizing collection: ${collectionName}`);
-      if (options.dryRun) {
-        ConsoleFormatter.indent('(Dry run - no changes will be made)');
-      }
-    }
+        collectionResults.push({
+          collectionName: name,
+          entriesProcessed: result.entriesProcessed,
+          localesAdded: result.localesAdded,
+          valuesConverted: result.valuesConverted,
+          tagsNormalized: result.tagsNormalized,
+          filesCreated: result.filesCreated,
+          filesUpdated: result.filesUpdated,
+          foldersRemoved: result.foldersRemoved,
+        });
 
-    try {
-      const result = await normalize({
-        translationsFolder,
-        baseLocale,
-        locales,
-        dryRun: options.dryRun ?? false,
-      });
-
-      collectionResults.push({
-        collectionName,
-        entriesProcessed: result.entriesProcessed,
-        localesAdded: result.localesAdded,
-        valuesConverted: result.valuesConverted,
-        tagsNormalized: result.tagsNormalized,
-        filesCreated: result.filesCreated,
-        filesUpdated: result.filesUpdated,
-        foldersRemoved: result.foldersRemoved,
-      });
-
-      if (!options.json) {
-        ConsoleFormatter.indent(`✅ Entries processed: ${result.entriesProcessed}`);
-        ConsoleFormatter.indent(`✅ Locales added: ${result.localesAdded}`);
-        ConsoleFormatter.indent(`✅ Values converted to ICU: ${result.valuesConverted}`);
-        if (result.tagsNormalized > 0) {
-          ConsoleFormatter.indent(`✅ Tags normalized: ${result.tagsNormalized}`);
+        if (!answers.json) {
+          ConsoleFormatter.indent(`✅ Entries processed: ${result.entriesProcessed}`);
+          ConsoleFormatter.indent(`✅ Locales added: ${result.localesAdded}`);
+          ConsoleFormatter.indent(`✅ Values converted to ICU: ${result.valuesConverted}`);
+          if (result.tagsNormalized > 0) {
+            ConsoleFormatter.indent(`✅ Tags normalized: ${result.tagsNormalized}`);
+          }
+          ConsoleFormatter.indent(`✅ Files created: ${result.filesCreated}`);
+          ConsoleFormatter.indent(`✅ Files updated: ${result.filesUpdated}`);
+          ConsoleFormatter.indent(`✅ Folders removed: ${result.foldersRemoved}`);
         }
-        ConsoleFormatter.indent(`✅ Files created: ${result.filesCreated}`);
-        ConsoleFormatter.indent(`✅ Files updated: ${result.filesUpdated}`);
-        ConsoleFormatter.indent(`✅ Folders removed: ${result.foldersRemoved}`);
-      }
-    } catch (e: unknown) {
-      if (!options.json) {
-        ConsoleFormatter.indent(`❌ ${e instanceof Error ? e.message : 'Failed to normalize collection'}`);
+      } catch (e: unknown) {
+        failed = true;
+        // stderr, so it is reported with --json too.
+        ConsoleFormatter.error(
+          `Failed to normalize collection "${name}": ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     }
-  }
 
-  // Output results
+    printSummary(collectionResults, collections.length, answers);
+    return failed ? { exitCode: 1 } : undefined;
+  },
+});
+
+function printSummary(
+  collectionResults: CollectionNormalizeResult[],
+  collectionCount: number,
+  options: NormalizeOptions,
+): void {
+  const totals = () => ({
+    ...aggregateNumericFields(collectionResults, [
+      'entriesProcessed',
+      'localesAdded',
+      'valuesConverted',
+      'tagsNormalized',
+      'filesCreated',
+      'filesUpdated',
+      'foldersRemoved',
+    ]),
+    collectionsProcessed: collectionResults.length,
+  });
+
   if (options.json) {
-    const totals = {
-      ...aggregateNumericFields(collectionResults, [
-        'entriesProcessed',
-        'localesAdded',
-        'valuesConverted',
-        'tagsNormalized',
-        'filesCreated',
-        'filesUpdated',
-        'foldersRemoved',
-      ]),
-      collectionsProcessed: collectionResults.length,
-    };
-
-    const output: NormalizeCommandResult = {
-      collections: collectionResults,
-      totals,
-    };
-
+    const output: NormalizeCommandResult = { collections: collectionResults, totals: totals() };
     console.log(JSON.stringify(output, null, 2));
-  } else if (collectionsToProcess.length > 1) {
-    // Show summary for multiple collections
-    const totals = {
-      ...aggregateNumericFields(collectionResults, [
-        'entriesProcessed',
-        'localesAdded',
-        'valuesConverted',
-        'tagsNormalized',
-        'filesCreated',
-        'filesUpdated',
-        'foldersRemoved',
-      ]),
-      collectionsProcessed: collectionResults.length,
-    };
+    return;
+  }
 
-    ConsoleFormatter.section(`Summary (${totals.collectionsProcessed} collections)`);
-    ConsoleFormatter.keyValue('Total entries processed', totals.entriesProcessed);
-    ConsoleFormatter.keyValue('Total locales added', totals.localesAdded);
-    ConsoleFormatter.keyValue('Total values converted to ICU', totals.valuesConverted);
-    if (totals.tagsNormalized > 0) {
-      ConsoleFormatter.keyValue('Total tags normalized', totals.tagsNormalized);
+  if (collectionCount > 1) {
+    const summary = totals();
+    ConsoleFormatter.section(`Summary (${summary.collectionsProcessed} collections)`);
+    ConsoleFormatter.keyValue('Total entries processed', summary.entriesProcessed);
+    ConsoleFormatter.keyValue('Total locales added', summary.localesAdded);
+    ConsoleFormatter.keyValue('Total values converted to ICU', summary.valuesConverted);
+    if (summary.tagsNormalized > 0) {
+      ConsoleFormatter.keyValue('Total tags normalized', summary.tagsNormalized);
     }
-    ConsoleFormatter.keyValue('Total files created', totals.filesCreated);
-    ConsoleFormatter.keyValue('Total files updated', totals.filesUpdated);
-    ConsoleFormatter.keyValue('Total folders removed', totals.foldersRemoved);
+    ConsoleFormatter.keyValue('Total files created', summary.filesCreated);
+    ConsoleFormatter.keyValue('Total files updated', summary.filesUpdated);
+    ConsoleFormatter.keyValue('Total folders removed', summary.foldersRemoved);
+  }
 
-    if (options.dryRun) {
-      console.log('');
-      ConsoleFormatter.warning('Dry run completed - no changes were made.');
-    }
-  } else if (options.dryRun) {
-    console.log('');
+  if (options.dryRun) {
     ConsoleFormatter.warning('Dry run completed - no changes were made.');
   }
-}
-
-async function promptForMissing(
-  options: NormalizeOptions,
-  config: LingoTrackerConfig,
-): Promise<{
-  collection?: string;
-  all: boolean;
-}> {
-  const responses: Partial<{
-    collection: string;
-    all: boolean;
-  }> = {};
-
-  const collections = Object.keys(config.collections || {});
-
-  const questions: prompts.PromptObject[] = [];
-
-  // If neither collection nor all flag provided, prompt for selection
-  if (!options.collection && !options.all) {
-    if (collections.length === 0) {
-      ConsoleFormatter.error(ErrorMessages.NO_COLLECTIONS);
-      throw new Error('No collections available');
-    }
-
-    // Create choices array with individual collections and "All collections" option
-    const choices = [
-      ...collections.map((c) => ({ title: c, value: c })),
-      { title: 'All collections', value: '__ALL__' },
-    ];
-
-    questions.push({
-      type: 'select',
-      name: 'collectionOrAll',
-      message: 'Select collection to normalize',
-      choices,
-    });
-  }
-
-  if (questions.length > 0 && process.stdout.isTTY) {
-    const result = await prompts(questions, {
-      onCancel: () => {
-        throw new Error('Normalize cancelled');
-      },
-    });
-
-    if (result.collectionOrAll === '__ALL__') {
-      responses.all = true;
-
-      // Show confirmation for --all mode
-      console.log('');
-      ConsoleFormatter.warning('This will normalize ALL collections in your project.');
-      const confirmed = await prompts({
-        type: 'confirm',
-        name: 'confirmed',
-        message: 'Are you sure?',
-        initial: false,
-      });
-
-      if (!confirmed.confirmed) {
-        ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Normalize'));
-        process.exit(0);
-      }
-    } else {
-      responses.collection = result.collectionOrAll as string;
-    }
-  } else if (questions.length > 0) {
-    // Non-TTY mode - require explicit flags
-    if (!options.collection && !options.all) {
-      throw new Error(ErrorMessages.MISSING_OPTIONS(['collection', 'all']));
-    }
-  }
-
-  // Handle --all flag with confirmation
-  if (options.all && process.stdout.isTTY && !responses.all) {
-    console.log('');
-    ConsoleFormatter.warning('This will normalize ALL collections in your project.');
-    const confirmed = await prompts({
-      type: 'confirm',
-      name: 'confirmed',
-      message: 'Are you sure?',
-      initial: false,
-    });
-
-    if (!confirmed.confirmed) {
-      ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Normalize'));
-      process.exit(0);
-    }
-  }
-
-  return {
-    collection: options.collection ?? responses.collection,
-    all: options.all ?? responses.all ?? false,
-  };
 }

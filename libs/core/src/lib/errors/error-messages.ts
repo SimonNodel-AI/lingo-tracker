@@ -20,7 +20,18 @@ export const ErrorMessages = {
 
   resourceNotFound: (key: string) => `Resource not found: ${key}`,
 
+  resourceAlreadyExists: (key: string) => `Resource already exists: ${key}`,
+
+  folderNotFound: (folderPath: string) => `Folder not found: ${folderPath}`,
+
+  folderMoveIntoDescendant: (source: string, destination: string) =>
+    `Cannot move folder "${source}" into its own descendant "${destination}"`,
+
+  autoTranslationDisabled: (collection: string) => `Auto-translation is not enabled for collection "${collection}"`,
+
   collectionNotFound: (name: string) => `Collection "${name}" not found`,
+
+  collectionReadOnly: (name: string) => `Collection "${name}" is read-only. Its resources cannot be modified.`,
 
   collectionAlreadyExists: (name: string) => `Collection "${name}" already exists`,
 
@@ -37,5 +48,16 @@ export const ErrorMessages = {
 
   bundleAlreadyExists: (name: string) => `Bundle "${name}" already exists`,
 
-  invalidBundleDefinition: (errors: string[]) => `Invalid bundle definition: ${errors.join('; ')}`,
+  invalidBundleDefinition: (errors: readonly string[]) => `Invalid bundle definition: ${errors.join('; ')}`,
+
+  invalidFolderSegment: (part: FolderPathPart, segment: string) =>
+    `Invalid ${part} segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`,
 } as const;
+
+/** Which part of a folder operation's input a malformed segment came from. */
+export type FolderPathPart =
+  | 'folder name'
+  | 'parent path'
+  | 'folder path'
+  | 'source folder path'
+  | 'destination folder path';

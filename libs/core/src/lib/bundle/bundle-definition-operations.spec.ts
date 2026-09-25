@@ -2,9 +2,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { BundleDefinition } from '../../config/bundle-definition';
+import type { BundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
+import { InvalidBundleDefinitionError } from '../errors/lingo-tracker-error';
 import { addBundleDefinition, deleteBundleDefinition, updateBundleDefinition } from './bundle-definition-operations';
 
 const baseConfig = (overrides: Partial<LingoTrackerConfig> = {}): LingoTrackerConfig => ({
@@ -94,6 +95,32 @@ describe('bundle-definition-operations', () => {
       });
     });
 
+    it('trims strings and drops empty optionals before writing', () => {
+      writeConfig(baseConfig());
+
+      addBundleDefinition(
+        'main',
+        validDefinition({
+          bundleName: ' main.{locale} ',
+          dist: ' ./dist/i18n ',
+          typeDistFile: '',
+          tokenConstantName: ' ',
+        }),
+        { cwd },
+      );
+
+      expect(readConfig().bundles?.['main']).toEqual(validDefinition());
+    });
+
+    it('reports key and definition problems together', () => {
+      writeConfig(baseConfig());
+
+      expect(() => addBundleDefinition('my bundle', validDefinition({ dist: '' }), { cwd })).toThrow(
+        'Invalid bundle definition: Bundle name may only contain letters, numbers, hyphens and underscores.; ' +
+          'dist (output folder) is required.',
+      );
+    });
+
     it('trims the key', () => {
       writeConfig(baseConfig());
 
@@ -106,6 +133,25 @@ describe('bundle-definition-operations', () => {
       writeConfig(baseConfig({ bundles: { main: validDefinition() } }));
 
       expect(() => addBundleDefinition('main', validDefinition(), { cwd })).toThrow('Bundle "main" already exists');
+    });
+
+    it('reports an invalid definition before an existing key (400 before 409)', () => {
+      writeConfig(baseConfig({ bundles: { main: validDefinition() } }));
+
+      expect(() => addBundleDefinition('main', validDefinition({ dist: '' }), { cwd })).toThrow(
+        InvalidBundleDefinitionError,
+      );
+    });
+
+    it('treats a key that names an Object.prototype member as an ordinary new bundle', () => {
+      writeConfig(baseConfig({ bundles: { main: validDefinition() } }));
+
+      expect(addBundleDefinition('constructor', validDefinition(), { cwd }).message).toBe(
+        'Bundle "constructor" added successfully',
+      );
+      const bundles = readConfig().bundles ?? {};
+      expect(Object.keys(bundles)).toEqual(['main', 'constructor']);
+      expect(bundles['constructor']).toEqual(validDefinition());
     });
 
     it('rejects an invalid key without writing', () => {
@@ -205,11 +251,45 @@ describe('bundle-definition-operations', () => {
       expect(readConfig()).toEqual(config);
     });
 
+    it('reports an invalid definition before a rename collision (400 before 409)', () => {
+      writeConfig(baseConfig({ bundles: { a: validDefinition(), b: validDefinition() } }));
+
+      expect(() => updateBundleDefinition('a', validDefinition({ dist: '' }), { cwd, newKey: 'b' })).toThrow(
+        InvalidBundleDefinitionError,
+      );
+    });
+
+    it('updates a stored key that fails the key rule when no newKey is given', () => {
+      writeConfig(baseConfig({ bundles: { 'legacy key': validDefinition() } }));
+
+      expect(updateBundleDefinition('legacy key', validDefinition({ dist: './x' }), { cwd }).message).toBe(
+        'Bundle "legacy key" updated successfully',
+      );
+      expect(readConfig().bundles?.['legacy key']?.dist).toBe('./x');
+    });
+
+    it('does not find a bundle on Object.prototype', () => {
+      writeConfig(baseConfig({ bundles: { main: validDefinition() } }));
+
+      expect(() => updateBundleDefinition('constructor', validDefinition(), { cwd })).toThrow(
+        'Bundle "constructor" not found',
+      );
+      expect(() => deleteBundleDefinition('constructor', { cwd })).toThrow('Bundle "constructor" not found');
+    });
+
     it('validates the new key', () => {
       writeConfig(baseConfig({ bundles: { a: validDefinition() } }));
 
       expect(() => updateBundleDefinition('a', validDefinition(), { cwd, newKey: 'bad key' })).toThrow(
         'Invalid bundle definition:',
+      );
+    });
+
+    it('reports a missing bundle before an invalid new key', () => {
+      writeConfig(baseConfig({ bundles: { a: validDefinition() } }));
+
+      expect(() => updateBundleDefinition('ghost', validDefinition(), { cwd, newKey: 'bad key' })).toThrow(
+        'Bundle "ghost" not found',
       );
     });
 

@@ -11,7 +11,21 @@ describe('LocaleFilter', () => {
   let component: LocaleFilter;
   let fixture: ComponentFixture<LocaleFilter>;
   let spectator: Spectator<LocaleFilter>;
-  let mockStore: any;
+  let mockStore: ReturnType<typeof createMockStore>;
+
+  /** The slice of `BrowserStore` the filter reads. */
+  const createMockStore = () => ({
+    availableLocales: signal(['en', 'es', 'fr', 'de']),
+    filterableLocales: signal(['es', 'fr', 'de']), // Excludes base locale 'en'
+    selectedLocales: signal<string[]>([]),
+    compactDisplayLocale: signal('en'),
+    localeFilterText: signal('All locales'),
+    isShowingAllLocales: signal(true),
+    toggleLocale: vi.fn(),
+    selectAllLocales: vi.fn(),
+    clearAllLocales: vi.fn(),
+    setSelectedLocales: vi.fn(),
+  });
 
   const createComponent = createComponentFactory({
     component: LocaleFilter,
@@ -20,18 +34,7 @@ describe('LocaleFilter', () => {
   });
 
   beforeEach(() => {
-    mockStore = {
-      availableLocales: signal(['en', 'es', 'fr', 'de']),
-      filterableLocales: signal(['es', 'fr', 'de']), // Excludes base locale 'en'
-      selectedLocales: signal([]),
-      compactDisplayLocale: signal('en'),
-      localeFilterText: signal('All locales'),
-      isShowingAllLocales: signal(true),
-      toggleLocale: vi.fn(),
-      selectAllLocales: vi.fn(),
-      clearAllLocales: vi.fn(),
-      setSelectedLocales: vi.fn(),
-    };
+    mockStore = createMockStore();
 
     spectator = createComponent();
     fixture = spectator.fixture;

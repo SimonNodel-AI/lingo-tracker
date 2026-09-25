@@ -31,8 +31,8 @@
       annotation is a state that asks for work: new, stale, or identical to source.
     -->
     <app-translation-item-header
-      [fullKey]="fullKey()"
       [translation]="translation()"
+      [view]="view()"
       [translationEnabled]="translationEnabled()"
       layout="inline"
     >
@@ -73,8 +73,8 @@
   } @else {
     <!-- Full density: expanded details with overflow handling -->
     <app-translation-item-header
-      [fullKey]="fullKey()"
       [translation]="translation()"
+      [view]="view()"
       [hideCommentButton]="true"
       [translationEnabled]="translationEnabled()"
     />

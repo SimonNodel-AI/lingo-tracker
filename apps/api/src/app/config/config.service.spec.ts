@@ -1,20 +1,17 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ConfigService } from './config.service';
-import * as fs from 'fs';
-import * as path from 'path';
-
-jest.mock('fs');
-jest.mock('path');
-jest.mock('@simoncodes-ca/core', () => ({
-  CONFIG_FILENAME: '.lingo-tracker.json',
-}));
-
-const mockFs = fs as jest.Mocked<typeof fs>;
-const mockPath = path as jest.Mocked<typeof path>;
 
 describe('ConfigService', () => {
   let service: ConfigService;
+  let projectDir: string;
+
+  function writeConfig(content: string): void {
+    writeFileSync(join(projectDir, '.lingo-tracker.json'), content, 'utf8');
+  }
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -23,9 +20,13 @@ describe('ConfigService', () => {
 
     service = module.get<ConfigService>(ConfigService);
 
-    // Reset mocks
-    jest.clearAllMocks();
-    mockPath.join.mockReturnValue('/mock/path/.lingo-tracker.json');
+    projectDir = mkdtempSync(join(tmpdir(), 'lingo-api-config-'));
+    jest.spyOn(process, 'cwd').mockReturnValue(projectDir);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    rmSync(projectDir, { recursive: true, force: true });
   });
 
   it('should be defined', () => {
@@ -50,51 +51,42 @@ describe('ConfigService', () => {
         },
       };
 
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(mockConfig));
+      writeConfig(JSON.stringify(mockConfig));
 
       const result = service.getConfig();
 
-      expect(mockFs.readFileSync).toHaveBeenCalledWith('/mock/path/.lingo-tracker.json', 'utf8');
       expect(result).toEqual(mockConfig);
     });
 
     it('should throw NotFoundException when file does not exist', () => {
-      const notFoundError = new Error('ENOENT: no such file or directory');
-      (notFoundError as any).code = 'ENOENT';
-      mockFs.readFileSync.mockImplementation(() => {
-        throw notFoundError;
-      });
-
       expect(() => service.getConfig()).toThrow(NotFoundException);
+      expect(() => service.getConfig()).toThrow('Configuration file not found');
     });
 
-    it('should throw InternalServerErrorException when file cannot be read due to permissions', () => {
-      const permissionError = new Error('EACCES: permission denied');
-      (permissionError as any).code = 'EACCES';
-      mockFs.readFileSync.mockImplementation(() => {
-        throw permissionError;
-      });
+    it('should throw InternalServerErrorException when the file cannot be read', () => {
+      // A directory in place of the file: it exists, but reading it fails (EISDIR).
+      mkdirSync(join(projectDir, '.lingo-tracker.json'));
 
       expect(() => service.getConfig()).toThrow(InternalServerErrorException);
       expect(() => service.getConfig()).toThrow('Failed to read configuration file');
     });
 
     it('should throw InternalServerErrorException when file contains invalid JSON', () => {
-      mockFs.readFileSync.mockReturnValue('invalid json content {');
+      writeConfig('invalid json content {');
 
       expect(() => service.getConfig()).toThrow(InternalServerErrorException);
       expect(() => service.getConfig()).toThrow('Invalid configuration file format');
     });
 
     it('should throw InternalServerErrorException when file is empty', () => {
-      mockFs.readFileSync.mockReturnValue('');
+      writeConfig('');
 
       expect(() => service.getConfig()).toThrow(InternalServerErrorException);
       expect(() => service.getConfig()).toThrow('Invalid configuration file format');
     });
 
     it('should throw InternalServerErrorException when file contains non-JSON content', () => {
-      mockFs.readFileSync.mockReturnValue('This is not JSON at all');
+      writeConfig('This is not JSON at all');
 
       expect(() => service.getConfig()).toThrow(InternalServerErrorException);
       expect(() => service.getConfig()).toThrow('Invalid configuration file format');
@@ -113,7 +105,7 @@ describe('ConfigService', () => {
         },
       };
 
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(minimalConfig));
+      writeConfig(JSON.stringify(minimalConfig));
 
       const result = service.getConfig();
 
@@ -142,7 +134,7 @@ describe('ConfigService', () => {
         },
       };
 
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(configWithOverrides));
+      writeConfig(JSON.stringify(configWithOverrides));
 
       const result = service.getConfig();
 
@@ -158,7 +150,7 @@ describe('ConfigService', () => {
         collections: {},
       };
 
-      mockFs.readFileSync.mockReturnValue(JSON.stringify(configWithEmptyCollections));
+      writeConfig(JSON.stringify(configWithEmptyCollections));
 
       const result = service.getConfig();
 

@@ -14,8 +14,8 @@ export interface ValidationOptions {
   readonly allowTranslated: boolean;
 
   /**
-   * Locales that were excluded from validation by the caller.
-   * Used only for reporting — not for filtering (filtering happens before validateResources is called).
+   * Locales not to validate. Each collection validates its own target locales minus these.
+   * The summary also lists them.
    */
   readonly skippedLocales?: readonly string[];
 
@@ -31,8 +31,8 @@ export interface ValidationOptions {
   readonly icu?: IcuValidationOptions;
 
   /**
-   * When present, every translation is checked against its base value for the
-   * arguments it interpolates.
+   * When true, every translation is checked against its base value (in the
+   * collection's base locale) for the arguments it interpolates.
    *
    * A third question again: a translation can be approved by a reviewer and
    * compile cleanly while interpolating an argument nobody passes, because a
@@ -41,7 +41,7 @@ export interface ValidationOptions {
    *
    * Omit to skip the check.
    */
-  readonly placeholders?: PlaceholderValidationOptions;
+  readonly placeholders?: boolean;
 
   /**
    * When present, base-locale values are scanned for discouraged terms from the
@@ -71,13 +71,6 @@ export interface TerminologyValidationOptions {
    * failure: a broken file means no value was checked.
    */
   readonly loadError?: string;
-
-  /**
-   * Effective base locale of each collection, by collection name. Findings are
-   * reported under this locale; a collection missing from the map is reported
-   * under an empty locale.
-   */
-  readonly baseLocaleByCollection: Readonly<Record<string, string>>;
 }
 
 /**
@@ -142,19 +135,6 @@ export interface TerminologyValidationResult {
 }
 
 /**
- * Options controlling the placeholder-agreement pass.
- */
-export interface PlaceholderValidationOptions {
-  /**
-   * The locale whose value defines the arguments a translation must interpolate.
-   *
-   * The base value is the contract: it is what the calling code passes
-   * arguments for, so it is what every translation has to agree with.
-   */
-  readonly baseLocale: string;
-}
-
-/**
  * A translation whose interpolated arguments disagree with its base value.
  */
 export interface PlaceholderValidationDetail {
@@ -210,17 +190,10 @@ export interface PlaceholderValidationResult {
  */
 export interface IcuValidationOptions {
   /**
-   * The base locale, whose `source` values are compiled alongside the targets.
-   *
-   * The base value is the one copied into every translation slot, so leaving
-   * it unchecked misses the failures that propagate furthest. Omit to check
-   * target locales only.
-   */
-  readonly baseLocale?: string;
-
-  /**
    * When true, every stored value is compiled under the locale it is stored
-   * under, and any value that fails to compile is a validation failure.
+   * under, and any value that fails to compile is a validation failure. Base
+   * values are compiled under their collection's base locale: the base value is
+   * the one copied into every translation slot, so its failures propagate furthest.
    *
    * Set false to run the portability rule alone, without compiling.
    */
@@ -327,6 +300,18 @@ export interface StatusCounts {
 }
 
 /**
+ * A folder that could not be read, so none of its resources were validated.
+ */
+export interface UnreadableFolderDetail {
+  /** The collection the folder belongs to. */
+  readonly collection: string;
+  /** Dot-delimited folder path in the collection; `''` for the translations folder itself. */
+  readonly folderPath: string;
+  /** Why the folder could not be read; names the file. */
+  readonly message: string;
+}
+
+/**
  * Comprehensive validation result containing counts, categorized failures, and warnings.
  */
 export interface ResourceValidationResult {
@@ -336,12 +321,13 @@ export interface ResourceValidationResult {
   readonly totalResourcesValidated: number;
 
   /**
-   * Total number of unique resource keys checked (before multiplying by locale count).
+   * Number of resources checked (before multiplying by locale count). Keys are unique within a
+   * collection; a key present in two collections counts once for each.
    */
   readonly totalUniqueKeys: number;
 
   /**
-   * Number of locales validated.
+   * Number of distinct locales validated across all collections.
    */
   readonly localesValidated: number;
 
@@ -391,8 +377,15 @@ export interface ResourceValidationResult {
   readonly terminology?: TerminologyValidationResult;
 
   /**
+   * Folders that could not be read (malformed JSON, or an entry that is not an object).
+   * Their resources were not validated, so any entry here fails validation.
+   * Absent or empty when every folder was read.
+   */
+  readonly unreadableFolders?: readonly UnreadableFolderDetail[];
+
+  /**
    * Whether the validation passed overall (no status failures, no ICU compile
-   * failures, no placeholder mismatches, and no unreadable terminology file).
+   * failures, no placeholder mismatches, no unreadable folder, and no unreadable terminology file).
    * Note: warnings, including terminology findings, do not cause validation to fail.
    */
   readonly passed: boolean;

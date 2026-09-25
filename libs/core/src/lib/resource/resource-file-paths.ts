@@ -1,6 +1,7 @@
 import { resolve, join } from 'node:path';
 import { validateKey, validateTargetFolder, resolveResourceKey, splitResolvedKey } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
 
 export interface ResolvedResourcePaths {
   /** The fully resolved key (targetFolder.key) */
@@ -83,13 +84,18 @@ export function resolveResourcePaths(params: ResourcePathResolutionParams): Reso
 
 /**
  * Validates a key and resolves all paths in one operation.
- * Throws if key or targetFolder are invalid.
+ * Throws `InvalidResourceKeyError` (with the domain validator's message) if the key or
+ * targetFolder is invalid.
  */
 export function validateAndResolvePaths(params: ResourcePathResolutionParams): ResolvedResourcePaths {
-  validateKey(params.key);
+  try {
+    validateKey(params.key);
 
-  if (params.targetFolder) {
-    validateTargetFolder(params.targetFolder);
+    if (params.targetFolder) {
+      validateTargetFolder(params.targetFolder);
+    }
+  } catch (error: unknown) {
+    throw new InvalidResourceKeyError(params.key, error instanceof Error ? error.message : String(error));
   }
 
   return resolveResourcePaths(params);

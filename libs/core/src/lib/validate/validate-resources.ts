@@ -1,32 +1,44 @@
 import type { TranslationStatus } from '@simoncodes-ca/domain';
-import { type LoadedResource, loadResourcesFromCollections } from '../export/export-common';
-import type { ResourceValidationDetail, ResourceValidationResult, StatusCounts, ValidationOptions } from './types';
+import type { Collection } from '../config/open-collection';
+import { type LoadedResource, loadResources } from '../export/export-common';
+import type {
+  IcuValidationResult,
+  PlaceholderValidationResult,
+  ResourceValidationDetail,
+  ResourceValidationResult,
+  StatusCounts,
+  UnreadableFolderDetail,
+  ValidationOptions,
+} from './types';
 import { validateIcuValues } from './validate-icu';
 import { validatePlaceholders } from './validate-placeholders';
 import { validateTerminology } from './validate-terminology';
 
 /**
- * Validates translation resources across all collections and locales.
+ * Validates translation resources collection by collection.
  *
- * This function performs comprehensive validation by:
- * 1. Loading ALL resources from ALL specified collections
- * 2. Checking translation status for EVERY resource in EVERY target locale
- * 3. Collecting ALL validation results (does NOT stop at first error)
- * 4. Categorizing resources into failures, warnings, and successes
+ * Each collection is read through the Collection Reader and validated with its own
+ * base locale and target locales (minus `options.skippedLocales`). A key present in
+ * two collections is validated in both.
  *
- * Validation logic:
+ * Status validation, per resource and target locale:
  * - 'new' status → failure (resource not yet translated)
  * - 'stale' status → failure (translation out of sync with source)
  * - 'translated' status → failure (default) or warning (if allowTranslated=true)
  * - 'verified' status → success (translation reviewed and approved)
  * - Missing status/metadata → treated as 'new' (failure)
  *
- * When `options.icu` is provided, a second pass compiles every stored value
- * under the locale it is stored under. Any value that fails to compile is a
- * failure regardless of its status — plural categories are per-language, so a
- * value approved by a reviewer can still throw for its own locale.
+ * A folder the reader could not read (malformed JSON, or an entry that is not an
+ * object) is listed in `unreadableFolders` and fails validation: its resources were
+ * not checked.
  *
- * When `options.placeholders` is provided, a third pass checks that every
+ * When `options.icu` is provided, a second pass compiles every stored value
+ * under the locale it is stored under, base values under the collection's base
+ * locale. Any value that fails to compile is a failure regardless of its status —
+ * plural categories are per-language, so a value approved by a reviewer can still
+ * throw for its own locale.
+ *
+ * When `options.placeholders` is set, a third pass checks that every
  * translation interpolates the same arguments as its base value. A renamed
  * argument renders as empty text rather than raising, so neither of the other
  * two passes can see it.
@@ -35,54 +47,37 @@ import { validateTerminology } from './validate-terminology';
  * base-locale values for discouraged terms. Its findings are advisory and never
  * fail validation; only a rule file that could not be loaded does.
  *
- * The function validates ALL resources comprehensively before returning results.
- * This ensures teams have complete visibility into translation status across
- * their entire project.
+ * Every resource is validated before returning; the function never stops at the first failure.
  *
- * @param collections - Array of collections to validate with name and path
- * @param targetLocales - Array of locale codes to validate (e.g., ['es', 'fr', 'de'])
+ * @param collections - The opened collections to validate (see `openCollection`)
  * @param options - Validation configuration options
  * @returns Comprehensive validation result with counts, failures, warnings, and successes
  *
  * @example
  * ```typescript
- * // Validate all resources with strict requirements (translated = failure)
- * const result = validateResources(
- *   [{ name: 'main', path: '/project/src/translations' }],
- *   ['es', 'fr'],
- *   { allowTranslated: false }
- * );
+ * const collections = Object.keys(config.collections).map((name) => openCollection(config, name, { cwd }));
+ * const result = validateResources(collections, { allowTranslated: false, skippedLocales: ['de'] });
  *
  * if (!result.passed) {
  *   console.error(`Validation failed: ${result.failures.length} failures`);
- *   for (const failure of result.failures) {
- *     console.error(`  ${failure.locale}/${failure.key}: ${failure.status}`);
- *   }
  * }
- *
- * // Validate with relaxed requirements (translated = warning)
- * const relaxedResult = validateResources(
- *   collections,
- *   targetLocales,
- *   { allowTranslated: true }
- * );
- *
- * console.log(`Warnings: ${relaxedResult.warnings.length}`);
- * console.log(`Passed: ${relaxedResult.passed}`);
  * ```
  */
 export function validateResources(
-  collections: Array<{ name: string; path: string }>,
-  targetLocales: readonly string[],
+  collections: readonly Collection[],
   options: ValidationOptions,
 ): ResourceValidationResult {
-  // Load all resources from all collections
-  const loadedResources = loadResourcesFromCollections(collections);
+  const skipped = new Set(options.skippedLocales ?? []);
 
   // Initialize result accumulators
   const failures: ResourceValidationDetail[] = [];
   const warnings: ResourceValidationDetail[] = [];
   const successes: ResourceValidationDetail[] = [];
+  const unreadableFolders: UnreadableFolderDetail[] = [];
+  const icuResults: IcuValidationResult[] = [];
+  const placeholderResults: PlaceholderValidationResult[] = [];
+  const allResources: LoadedResource[] = [];
+  const validatedLocales = new Set<string>();
 
   const statusCounts: StatusCounts = {
     new: 0,
@@ -93,37 +88,56 @@ export function validateResources(
 
   let totalResourcesValidated = 0;
 
-  // Validate each resource for each target locale
-  for (const resource of loadedResources) {
-    for (const locale of targetLocales) {
-      totalResourcesValidated++;
+  for (const collection of collections) {
+    const { resources, problems } = loadResources(collection);
+    const targetLocales = collection.targetLocales.filter((locale) => !skipped.has(locale));
+    allResources.push(...resources);
+    for (const locale of targetLocales) validatedLocales.add(locale);
+    unreadableFolders.push(
+      ...problems.map(({ folderPath, message }) => ({ collection: collection.name, folderPath, message })),
+    );
 
-      const validationDetail = validateSingleResourceInLocale(resource, locale);
+    // Validate each resource for each of the collection's target locales
+    for (const resource of resources) {
+      for (const locale of targetLocales) {
+        totalResourcesValidated++;
 
-      // Update status counts
-      statusCounts[validationDetail.status]++;
+        const validationDetail = validateSingleResourceInLocale(resource, locale);
+        statusCounts[validationDetail.status]++;
+        categorizeValidationDetail(validationDetail, options, failures, warnings, successes);
+      }
+    }
 
-      // Categorize based on status and options
-      categorizeValidationDetail(validationDetail, options, failures, warnings, successes);
+    // ICU compilation is a separate question from translation status: it asks
+    // whether the stored value renders at all, not whether anyone approved it.
+    if (options.icu) {
+      icuResults.push(
+        validateIcuValues(resources, targetLocales, { ...options.icu, baseLocale: collection.baseLocale }),
+      );
+    }
+
+    // And placeholder agreement is a third: a value can be approved and compile
+    // cleanly while interpolating an argument the caller never passes.
+    if (options.placeholders) {
+      placeholderResults.push(validatePlaceholders(resources, targetLocales, collection.baseLocale));
     }
   }
 
-  // ICU compilation is a separate question from translation status: it asks
-  // whether the stored value renders at all, not whether anyone approved it.
-  const icu = options.icu ? validateIcuValues(loadedResources, targetLocales, options.icu) : undefined;
-
-  // And placeholder agreement is a third: a value can be approved and compile
-  // cleanly while interpolating an argument the caller never passes.
-  const placeholders = options.placeholders
-    ? validatePlaceholders(loadedResources, targetLocales, options.placeholders.baseLocale)
-    : undefined;
+  const icu = options.icu ? mergeIcuResults(icuResults) : undefined;
+  const placeholders = options.placeholders ? mergePlaceholderResults(placeholderResults) : undefined;
 
   // Terminology is advisory: findings suggest wording and never block. A rule
   // file that failed to load does block, because then nothing was checked.
-  const terminology = options.terminology ? validateTerminology(loadedResources, options.terminology) : undefined;
+  const terminology = options.terminology
+    ? validateTerminology(allResources, {
+        ...options.terminology,
+        baseLocaleByCollection: Object.fromEntries(collections.map(({ name, baseLocale }) => [name, baseLocale])),
+      })
+    : undefined;
 
   const passed =
     failures.length === 0 &&
+    unreadableFolders.length === 0 &&
     (icu?.failures.length ?? 0) === 0 &&
     (placeholders?.failures.length ?? 0) === 0 &&
     terminology?.configError === undefined;
@@ -132,15 +146,32 @@ export function validateResources(
     icu,
     placeholders,
     terminology,
+    unreadableFolders,
     totalResourcesValidated,
-    totalUniqueKeys: loadedResources.length,
-    localesValidated: targetLocales.length,
+    totalUniqueKeys: allResources.length,
+    localesValidated: validatedLocales.size,
     collectionsValidated: collections.length,
     statusCounts,
     failures,
     warnings,
     successes,
     passed,
+  };
+}
+
+function mergeIcuResults(results: readonly IcuValidationResult[]): IcuValidationResult {
+  return {
+    failures: results.flatMap((result) => result.failures),
+    warnings: results.flatMap((result) => result.warnings),
+    unsupportedLocales: [...new Set(results.flatMap((result) => result.unsupportedLocales))],
+    valuesChecked: results.reduce((total, result) => total + result.valuesChecked, 0),
+  };
+}
+
+function mergePlaceholderResults(results: readonly PlaceholderValidationResult[]): PlaceholderValidationResult {
+  return {
+    failures: results.flatMap((result) => result.failures),
+    valuesChecked: results.reduce((total, result) => total + result.valuesChecked, 0),
   };
 }
 

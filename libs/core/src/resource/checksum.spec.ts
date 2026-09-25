@@ -1,4 +1,4 @@
-import { calculateChecksum, verifyChecksum } from './checksum';
+import { calculateChecksum } from './checksum';
 
 describe('Checksum Utilities', () => {
   describe('calculateChecksum', () => {
@@ -31,27 +31,6 @@ describe('Checksum Utilities', () => {
       const checksum = calculateChecksum('特殊文字');
       expect(typeof checksum).toBe('string');
       expect(checksum).toHaveLength(32); // MD5 produces 32 hex chars
-    });
-  });
-
-  describe('verifyChecksum', () => {
-    it('should verify matching checksums', () => {
-      const value = 'test value';
-      const checksum = calculateChecksum(value);
-      expect(verifyChecksum(value, checksum)).toBe(true);
-    });
-
-    it('should reject mismatching checksums', () => {
-      const value = 'test value';
-      const wrongChecksum = calculateChecksum('different value');
-      expect(verifyChecksum(value, wrongChecksum)).toBe(false);
-    });
-
-    it('should be case-insensitive for stored checksums', () => {
-      const value = 'test value';
-      const checksum = calculateChecksum(value).toUpperCase();
-      // Note: lowercase comparison should work
-      expect(verifyChecksum(value, checksum.toLowerCase())).toBe(true);
     });
   });
 });

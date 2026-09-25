@@ -1,4 +1,4 @@
-import type { PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain';
+import type { ImportStrategy, PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain';
 
 /**
  * Supported import formats
@@ -6,42 +6,34 @@ import type { PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain
 export type ImportFormat = 'xliff' | 'json';
 
 /**
- * Import strategies determine how imported data is processed and merged
+ * Import strategies determine how imported data is processed and merged.
+ * Defined in domain next to the status rule that depends on it (`resolveImportStatus`).
  */
-export type ImportStrategy = 'translation-service' | 'verification' | 'migration' | 'update';
+export type { ImportStrategy };
 
 /**
- * Options for importing translations
+ * Options for one import run ({@link importResources}). The collection supplies the
+ * translations folder and the base locale; these options say what to do with the resources.
  */
-export interface ImportOptions {
-  /** Import format (auto-detected from file extension if omitted) */
-  format?: ImportFormat;
-  /** Path to import file (required) */
-  source: string;
-  /** Target locale for import (e.g., 'es', 'fr-ca') */
+export interface ImportRunOptions {
+  /** Target locale (e.g. 'es', 'fr-ca'). The collection's base locale needs the `migration` strategy. */
   locale: string;
-  /** Target collection to import into */
-  collection?: string;
-  /** Import strategy */
+  /** Import strategy. Default: `translation-service`. */
   strategy?: ImportStrategy;
-  /** Update resource comments from import data */
+  /** Update resource comments from import data. Default: from the strategy. */
   updateComments?: boolean;
-  /** Update resource tags from rich JSON */
+  /** Update resource tags from rich JSON. Default: from the strategy. */
   updateTags?: boolean;
   /** Allow rich JSON to specify status (advanced) */
   preserveStatus?: boolean;
-  /** Create new resources if they don't exist */
+  /** Create new resources if they don't exist. Default: from the strategy. */
   createMissing?: boolean;
   /** Warn if source base value differs from existing */
   validateBase?: boolean;
   /** Show what would be imported without modifying files */
   dryRun?: boolean;
-  /** Show detailed import progress (each resource) */
+  /** Report each resource through `onProgress` */
   verbose?: boolean;
-  /** Create backup before importing (.bak files) */
-  backup?: boolean;
-  /** Base locale code (e.g., 'en'). Defaults to 'en' when not specified. */
-  baseLocale?: string;
   /**
    * Protected terms (union of global + collection) that must survive translation
    * verbatim. On import, an entry whose source contains such a term but whose
@@ -58,6 +50,18 @@ export interface ImportOptions {
 
   /** Callbacks */
   onProgress?: (message: string) => void;
+}
+
+/** Options for the format adapters (`parseJsonImport`, `parseXliffImport`). */
+export interface ImportParseOptions {
+  onProgress?: (message: string) => void;
+}
+
+/** Options for {@link generateImportSummary}: the run's options plus where the resources came from. */
+export interface ImportSummaryOptions extends ImportRunOptions {
+  format: ImportFormat;
+  /** Path of the import file, as the user gave it. */
+  source: string;
 }
 
 /**
@@ -149,12 +153,8 @@ export interface ICUAutoFixError {
  * Result of an import operation
  */
 export interface ImportResult {
-  /** Import format used */
-  format: ImportFormat;
   /** Import strategy used */
   strategy: ImportStrategy;
-  /** Source file path */
-  sourceFile: string;
   /** Target locale */
   locale: string;
   /** Target collection */

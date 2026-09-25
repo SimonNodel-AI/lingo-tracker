@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { normalize, resolve } from 'node:path';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
 import { groupResourcesByFolder } from './resource-grouping';
 import type { ImportedResource } from './types';
 
@@ -11,19 +11,19 @@ describe('groupResourcesByFolder', () => {
       { key: 'errors.notFound', value: 'Not Found' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(2);
-    expect(groups.has(normalize('src/translations/common'))).toBe(true);
-    expect(groups.has(normalize('src/translations/errors'))).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations/common'))).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations/errors'))).toBe(true);
 
-    const commonGroup = groups.get(normalize('src/translations/common'));
+    const commonGroup = groups.get(resolve('/project', 'src/translations/common'));
     expect(commonGroup).toBeDefined();
     expect(commonGroup?.resources).toHaveLength(2);
     expect(commonGroup?.resources[0].entryKey).toBe('ok');
     expect(commonGroup?.resources[1].entryKey).toBe('cancel');
 
-    const errorsGroup = groups.get(normalize('src/translations/errors'));
+    const errorsGroup = groups.get(resolve('/project', 'src/translations/errors'));
     expect(errorsGroup).toBeDefined();
     expect(errorsGroup?.resources).toHaveLength(1);
     expect(errorsGroup?.resources[0].entryKey).toBe('notFound');
@@ -35,12 +35,12 @@ describe('groupResourcesByFolder', () => {
       { key: 'goodbye', value: 'Goodbye' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(1);
-    expect(groups.has('src/translations')).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations'))).toBe(true);
 
-    const rootGroup = groups.get('src/translations');
+    const rootGroup = groups.get(resolve('/project', 'src/translations'));
     expect(rootGroup).toBeDefined();
     expect(rootGroup?.resources).toHaveLength(2);
     expect(rootGroup?.resources[0].entryKey).toBe('welcome');
@@ -54,13 +54,13 @@ describe('groupResourcesByFolder', () => {
       { key: 'apps.admin.settings.general.title', value: 'General Settings' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(2);
-    expect(groups.has(normalize('src/translations/apps/admin/users/list'))).toBe(true);
-    expect(groups.has(normalize('src/translations/apps/admin/settings/general'))).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations/apps/admin/users/list'))).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations/apps/admin/settings/general'))).toBe(true);
 
-    const usersListGroup = groups.get(normalize('src/translations/apps/admin/users/list'));
+    const usersListGroup = groups.get(resolve('/project', 'src/translations/apps/admin/users/list'));
     expect(usersListGroup).toBeDefined();
     expect(usersListGroup?.resources).toHaveLength(2);
     expect(usersListGroup?.resources[0].entryKey).toBe('title');
@@ -70,17 +70,15 @@ describe('groupResourcesByFolder', () => {
   it('should create correct file paths', () => {
     const resources: ImportedResource[] = [{ key: 'common.ok', value: 'OK' }];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
-    const commonGroup = groups.get(normalize('src/translations/common'));
+    const commonGroup = groups.get(resolve('/project', 'src/translations/common'));
     expect(commonGroup).toBeDefined();
-    expect(commonGroup?.folderPath).toBe(normalize('src/translations/common'));
+    expect(commonGroup?.folderPath).toBe(resolve('/project', 'src/translations/common'));
     expect(commonGroup?.entryResourcePath).toBe(
-      resolve('/project', normalize('src/translations/common'), 'resource_entries.json'),
+      resolve('/project', 'src/translations/common', 'resource_entries.json'),
     );
-    expect(commonGroup?.entryMetaPath).toBe(
-      resolve('/project', normalize('src/translations/common'), 'tracker_meta.json'),
-    );
+    expect(commonGroup?.entryMetaPath).toBe(resolve('/project', 'src/translations/common', 'tracker_meta.json'));
   });
 
   it('should handle mixed levels of nesting', () => {
@@ -90,12 +88,12 @@ describe('groupResourcesByFolder', () => {
       { key: 'apps.admin.title', value: 'Admin' },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
     expect(groups.size).toBe(3);
-    expect(groups.has('src/translations')).toBe(true);
-    expect(groups.has(normalize('src/translations/common'))).toBe(true);
-    expect(groups.has(normalize('src/translations/apps/admin'))).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations'))).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations/common'))).toBe(true);
+    expect(groups.has(resolve('/project', 'src/translations/apps/admin'))).toBe(true);
   });
 
   it('should preserve resource metadata', () => {
@@ -110,9 +108,9 @@ describe('groupResourcesByFolder', () => {
       },
     ];
 
-    const groups = groupResourcesByFolder(resources, 'src/translations', '/project');
+    const groups = groupResourcesByFolder(resources, resolve('/project', 'src/translations'));
 
-    const commonGroup = groups.get(normalize('src/translations/common'));
+    const commonGroup = groups.get(resolve('/project', 'src/translations/common'));
     expect(commonGroup).toBeDefined();
     const groupedResource = commonGroup?.resources[0].resource;
 

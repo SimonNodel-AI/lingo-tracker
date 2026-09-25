@@ -1,7 +1,9 @@
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { createConfigFileOperations, updateConfig } from '../lib/config/config-file-operations';
-import { ErrorMessages } from '../lib/errors/error-messages';
+import { openCollection } from '../lib/config/open-collection';
+import { CollectionAlreadyExistsError, CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { addLocaleToCollection } from './add-locale-to-collection';
 import { removeLocaleFromCollection } from './remove-locale-from-collection';
 
@@ -18,44 +20,42 @@ export interface UpdateCollectionOptions {
  * `exportFolder`, `importFolder`, `locales`) is therefore dropped from the entry. Callers
  * performing a partial update must send the full desired collection config, not just the
  * changed fields.
+ *
+ * `mutations` holds what the locale changes (if any) wrote to the translation files. The
+ * config change itself is not a resource mutation; callers that cache a collection's tree
+ * must also drop it for the old and new translations folders.
  */
 export async function updateCollection(
   collectionName: string,
   newCollectionName: string | undefined,
   collection: LingoTrackerCollection,
   options: UpdateCollectionOptions = {},
-): Promise<{ message: string }> {
+): Promise<{ message: string; mutations: ResourceMutation[] }> {
   if (!collection || !collection.translationsFolder || !collection.translationsFolder.trim()) {
     throw new Error('translationsFolder is required');
   }
 
   const { cwd } = options;
   const newLocales = collection.locales;
+  const mutations: ResourceMutation[] = [];
 
   // Only diff when caller provides an explicit, non-empty locales array.
   // An empty/undefined list means "inherit from global" — no translation files are touched.
   if (newLocales !== undefined && newLocales.length > 0) {
     // Read config here only to diff existing vs new locales; updateConfig below will re-read the already-mutated file.
-    const config = createConfigFileOperations({ cwd }).read();
-    const existingCollection = config.collections?.[collectionName];
-
-    if (!existingCollection) {
-      throw new Error(ErrorMessages.collectionNotFound(collectionName));
-    }
-
-    const existingLocales = existingCollection.locales ?? config.locales ?? [];
-    const baseLocale = existingCollection.baseLocale ?? config.baseLocale;
+    const existing = openCollection(createConfigFileOperations({ cwd }).read(), collectionName, { cwd });
+    const { locales: existingLocales, baseLocale } = existing;
 
     const addedLocales = newLocales.filter((l) => !existingLocales.includes(l));
     // Never try to remove the base locale — it can only be set at create time.
     const removedLocales = existingLocales.filter((l) => !newLocales.includes(l) && l !== baseLocale);
 
     for (const locale of removedLocales) {
-      await removeLocaleFromCollection(collectionName, locale, { cwd });
+      mutations.push(...(await removeLocaleFromCollection(collectionName, locale, { cwd })).mutations);
     }
 
     for (const locale of addedLocales) {
-      await addLocaleToCollection(collectionName, locale, { cwd });
+      mutations.push(...(await addLocaleToCollection(collectionName, locale, { cwd })).mutations);
     }
   }
 
@@ -65,11 +65,11 @@ export async function updateCollection(
 
   updateConfig((config) => {
     if (!config.collections || !config.collections[collectionName]) {
-      throw new Error(ErrorMessages.collectionNotFound(collectionName));
+      throw new CollectionNotFoundError(collectionName);
     }
 
     if (isRename && config.collections[targetName]) {
-      throw new Error(ErrorMessages.collectionAlreadyExists(targetName));
+      throw new CollectionAlreadyExistsError(targetName);
     }
 
     const minimalCollection: LingoTrackerCollection = {
@@ -123,7 +123,8 @@ export async function updateCollection(
   if (isRename) {
     return {
       message: `Collection "${collectionName}" renamed to "${targetName}" and updated successfully`,
+      mutations,
     };
   }
-  return { message: `Collection "${collectionName}" updated successfully` };
+  return { message: `Collection "${collectionName}" updated successfully`, mutations };
 }

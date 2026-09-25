@@ -1,62 +1,37 @@
-import prompts from 'prompts';
 import { removeLocaleFromCollection } from '@simoncodes-ca/core';
-import { loadConfiguration, promptForCollection, resolveWritableCollection, ConsoleFormatter } from '../utils';
+import { defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter } from '../utils';
 
 export interface RemoveLocaleOptions {
   collection?: string;
   locale?: string;
 }
 
-export async function removeLocaleCommand(options: RemoveLocaleOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
-
-  const collectionName = await promptForCollection(config, options.collection);
-  if (!collectionName) return;
-
-  const collection = resolveWritableCollection(collectionName, config, cwd);
-  if (!collection) return;
-
-  const baseLocale = collection.config.baseLocale ?? config.baseLocale;
-  const effectiveLocales = (collection.config.locales ?? config.locales ?? []).filter(
-    (l) => baseLocale === undefined || l !== baseLocale,
-  );
-
-  let locale = options.locale;
-
-  if (!locale) {
-    if (!process.stdout.isTTY) {
-      ConsoleFormatter.error('Missing required option: --locale');
-      return;
+export const removeLocaleCommand = defineCommand<RemoveLocaleOptions>()({
+  name: 'Remove locale',
+  collection: 'writable',
+  prompts: (options, { collection }) => {
+    if (options.locale) {
+      return [];
     }
-
-    if (effectiveLocales.length === 0) {
-      ConsoleFormatter.error(`No removable locales in collection "${collectionName}".`);
-      return;
+    // Called before `required` is checked, so this reason wins over "missing --locale".
+    if (collection.targetLocales.length === 0) {
+      throw new Error(`No removable locales in collection "${collection.name}".`);
     }
-
-    const answer = await prompts(
+    return [
       {
         type: 'select',
         name: 'locale',
         message: 'Select locale to remove',
-        choices: effectiveLocales.map((l) => ({ title: l, value: l })),
+        choices: collection.targetLocales.map((locale) => ({ title: locale, value: locale })),
       },
-      { onCancel: () => process.exit(0) },
-    );
-
-    locale = answer.locale as string;
-  }
-
-  if (!locale) return;
-
-  try {
-    const result = await removeLocaleFromCollection(collectionName, locale, { cwd });
+    ];
+  },
+  required: ['locale'],
+  run: async ({ collection, cwd, answers }) => {
+    const result = await removeLocaleFromCollection(collection.name, answers.locale, { cwd });
     ConsoleFormatter.success(result.message);
     ConsoleFormatter.keyValue('Entries purged', result.entriesPurged);
     ConsoleFormatter.keyValue('Files updated', result.filesUpdated);
-  } catch (e: unknown) {
-    ConsoleFormatter.error(e instanceof Error ? e.message : 'Failed to remove locale');
-  }
-}
+  },
+});

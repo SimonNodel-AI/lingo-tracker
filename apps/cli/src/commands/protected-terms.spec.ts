@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { protectedTermsCommand } from './protected-terms';
 
-vi.mock('@simoncodes-ca/core', () => ({
+vi.mock('@simoncodes-ca/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@simoncodes-ca/core')>()),
+  loadConfig: vi.fn(),
   setGlobalProtectedTerms: vi.fn(() => ({ message: 'ok', filePath: '/project/.lingo-tracker-protected-terms.json' })),
   setCollectionProtectedTerms: vi.fn(() => ({ message: 'ok', filePath: '/project/i18n/terms.json' })),
   setGlobalProtectedTermsFile: vi.fn(() => ({ message: 'file set', filePath: '/project/custom.json' })),
@@ -12,18 +14,14 @@ vi.mock('@simoncodes-ca/core', () => ({
   resolveCollectionProtectedTermsFilePath: vi.fn(() => undefined),
 }));
 
-vi.mock('../utils', () => ({
-  loadConfiguration: vi.fn(),
-  ConsoleFormatter: {
-    section: vi.fn(),
-    keyValue: vi.fn(),
-    error: vi.fn(),
-    success: vi.fn(),
-  },
-}));
+import { ConsoleFormatter } from '../utils';
 
-import { loadConfiguration, ConsoleFormatter } from '../utils';
+// Spy on the real formatter object, which the runner prints errors through too.
+for (const method of ['section', 'keyValue', 'error', 'success'] as const) {
+  vi.spyOn(ConsoleFormatter, method).mockImplementation(() => undefined);
+}
 import {
+  loadConfig,
   readCollectionProtectedTerms,
   readGlobalProtectedTerms,
   resolveCollectionProtectedTermsFilePath,
@@ -34,6 +32,8 @@ import {
 } from '@simoncodes-ca/core';
 
 const BASE_CONFIG = {
+  exportFolder: 'dist/lingo-export',
+  importFolder: 'dist/lingo-import',
   baseLocale: 'en',
   locales: ['en', 'es'],
   collections: {
@@ -41,28 +41,26 @@ const BASE_CONFIG = {
   },
 };
 
-const loaded = () => ({ config: BASE_CONFIG, cwd: '/project' });
-
 describe('protectedTermsCommand', () => {
-  const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(loadConfiguration).mockReturnValue(loaded() as never);
+    process.env.INIT_CWD = '/project';
+    process.exitCode = undefined;
+    vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
     vi.mocked(readGlobalProtectedTerms).mockReturnValue([]);
     vi.mocked(readCollectionProtectedTerms).mockReturnValue([]);
     vi.mocked(resolveCollectionProtectedTermsFilePath).mockReturnValue(undefined);
   });
 
   afterEach(() => {
-    exitSpy.mockClear();
+    process.exitCode = undefined;
   });
 
   it('errors when --set is combined with --add', async () => {
     await protectedTermsCommand({ set: 'iPhone', add: ['C++'] });
 
     expect(ConsoleFormatter.error).toHaveBeenCalledWith('--set cannot be combined with --add or --remove');
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 
   it('errors when no operation is given', async () => {
@@ -71,13 +69,14 @@ describe('protectedTermsCommand', () => {
     expect(ConsoleFormatter.error).toHaveBeenCalledWith(
       'Provide at least one of --add, --remove, --set, --list, or --file',
     );
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 
   it('adds globally when no --collection is present, storing terms verbatim', async () => {
     await protectedTermsCommand({ add: [' iPhone ', 'iPhone'] });
 
     expect(setGlobalProtectedTerms).toHaveBeenCalledWith(['iPhone'], { cwd: '/project' });
+    expect(process.exitCode).toBe(0);
   });
 
   it('adds to a collection when --collection is present', async () => {
@@ -112,7 +111,7 @@ describe('protectedTermsCommand', () => {
     await protectedTermsCommand({ collection: 'missing', add: ['iPhone'] });
 
     expect(ConsoleFormatter.error).toHaveBeenCalledWith('Collection "missing" not found');
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
     expect(setCollectionProtectedTerms).not.toHaveBeenCalled();
   });
 
@@ -162,6 +161,8 @@ describe('protectedTermsCommand', () => {
     const fileOrder = vi.mocked(setGlobalProtectedTermsFile).mock.invocationCallOrder[0];
     const termsOrder = vi.mocked(setGlobalProtectedTerms).mock.invocationCallOrder[0];
     expect(fileOrder).toBeLessThan(termsOrder);
+    // The config is read again after the pointer change.
+    expect(loadConfig).toHaveBeenCalledTimes(2);
   });
 
   it('reports a malformed terms file instead of writing over it', async () => {
@@ -172,7 +173,7 @@ describe('protectedTermsCommand', () => {
     await protectedTermsCommand({ add: ['iPhone'] });
 
     expect(ConsoleFormatter.error).toHaveBeenCalledWith('Protected terms file is not valid JSON: /project/terms.json');
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
     expect(setGlobalProtectedTerms).not.toHaveBeenCalled();
   });
 
@@ -186,6 +187,6 @@ describe('protectedTermsCommand', () => {
     expect(ConsoleFormatter.error).toHaveBeenCalledWith(
       'Collection "main" has no protected terms file. Set one first with --file <path>.',
     );
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(process.exitCode).toBe(1);
   });
 });

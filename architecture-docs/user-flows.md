@@ -37,38 +37,38 @@ sequenceDiagram
 
     Note over Dev,FS: 1. Create resource
     Dev->>CLI: add-resource apps.common.ok "OK"
-    CLI->>Core: addResource(translationsFolder, params)
+    CLI->>Core: addResource(collection, params)
     Core->>Domain: validateKey("apps.common.ok")
     Domain-->>Core: valid
     Core->>Domain: resolveResourceKey() → folderPath
     Core->>FS: ensureDirectoryExists(folderPath)
-    Core->>FS: readResourceEntries() + readTrackerMetadata()
+    Core->>FS: openResourceFolder(folderPath) — reads resource_entries.json + tracker_meta.json
     Core->>Domain: translocoToICU("OK") → "OK"
-    Core->>Core: autoTranslateResource() [if translationConfig.enabled]
+    Core->>Core: seedLocales() — auto-translate if collection.translationConfig is enabled, else copy base as new
     Core->>Provider: translate("OK", en→fr, en→de, ...)
     Provider-->>Core: { fr: "OK", de: "OK", ... }
-    Core->>Core: createResourceMetadata() — MD5 checksums, status=translated
-    Core->>FS: writeJsonFile(resource_entries.json)
-    Core->>FS: writeJsonFile(tracker_meta.json)
+    Core->>Core: ResourceFolder.setBase() + setTranslation() — MD5 checksums, status=translated
+    Core->>FS: ResourceFolder.save() — writes resource_entries.json + tracker_meta.json
     Core-->>CLI: AddResourceResult
     CLI-->>Dev: "Resource created"
 
     Note over Dev,FS: 2. Edit base value — triggers stale
     Dev->>CLI: edit-resource apps.common.ok "OK" --base "Confirm"
-    CLI->>Core: editResource(translationsFolder, options)
-    Core->>FS: readResourceEntries() + readTrackerMetadata()
+    CLI->>Core: editResource(collection, key, changes)
+    Core->>FS: openResourceFolder(folderPath) — reads resource_entries.json + tracker_meta.json
     Core->>Domain: translocoToICU("Confirm") → "Confirm"
-    Core->>Core: updateMetadataForBaseValueChange()
+    Core->>Core: ResourceFolder.setBase() — applies the Staleness rule
     Note right of Core: new baseChecksum ≠ stored baseChecksum<br/>for each locale → status = "stale"
-    Core->>FS: writeJsonFile() — persists stale status before API call
-    Core->>Core: autoTranslateResource() [on base value change]
+    Core->>Core: ResourceFolder.setTranslation() / setStatus() [explicit locale edits]
+    Core->>FS: ResourceFolder.save() — persists stale status before API call
+    Core->>Core: seedLocales() [on base value change; auto-translate when enabled]
     Core->>Provider: translate("Confirm", en→fr, ...)
     Provider-->>Core: { fr: "Confirmer", ... }
-    Core->>FS: writeJsonFile() — second pass with translated values
+    Core->>FS: ResourceFolder.setTranslation() + save() — second pass with translated values
 
     Note over Dev,FS: 3. Manual re-translate (UI trigger)
     Dev->>CLI: translate-resource apps.common.ok
-    CLI->>Core: translateExistingResource(translationsFolder, key)
+    CLI->>Core: translateExistingResource(collection, key)
     Core->>FS: read current entries + metadata
     Note right of Core: Only translates locales with status<br/>"new" or "stale"
     Core->>Provider: translate(baseValue, ...)
@@ -77,18 +77,19 @@ sequenceDiagram
 
     Note over Dev,FS: 4. Verify
     Dev->>CLI: edit-resource apps.common.ok --locale fr --status verified
-    CLI->>Core: editResource(..., { locales: [{ locale: "fr", status: "verified" }] })
+    CLI->>Core: editResource(collection, key, { translations: { fr: { value, status: "verified" } } })
     Core->>FS: write tracker_meta.json (fr.status = "verified")
     Core-->>CLI: EditResourceResult
 
     Note over Dev,FS: 5. Bundle
     Dev->>CLI: bundle
-    CLI->>Core: generateBundle(params)
-    Core->>FS: loadCollectionResources() — reads resource_entries.json per folder
-    Core->>Domain: icuToTransloco(value) — per entry
+    CLI->>Core: generateBundle({ ..., cwd })
+    Core->>Core: resolveBundleCollections() — open each collection once
+    Core->>FS: selectBundleEntries() per locale — readCollection(), once per collection
+    Core->>Domain: icuToTransloco(value) — per selected entry
     Core->>Core: buildHierarchy() — dot-keys → nested object
     Core->>FS: writeBundleFile(dist/i18n/en.json, dist/i18n/fr.json, ...)
-    Core->>Core: generateBundleTypes() [if typeDist configured]
+    Core->>Core: generateBundleTypes(base keys) [if typeDistFile configured]
     Core->>FS: write TRACKER_TOKENS type file
     Core-->>CLI: BundleResult
     CLI-->>Dev: "Bundle written"
@@ -102,9 +103,9 @@ sequenceDiagram
 
 ### Export
 
-Export serializes the current resource tree for one locale to a JSON or XLIFF file for offline translator work. Core functions are documented in [core-library.md — Export Pipeline](core-library.md#export-pipeline).
+Export writes the resources of the chosen collections to one JSON or XLIFF file per target locale, for offline translator work. The CLI opens the collections and calls one core function, `runExport`. Core functions are documented in [core-library.md — Export Pipeline](core-library.md#export-pipeline).
 
-<!-- Export: filter resources → serialize → write file -->
+<!-- Export: open collections → runExport (load → filter per locale → serialize) → render → write summary -->
 
 ```mermaid
 sequenceDiagram
@@ -113,29 +114,30 @@ sequenceDiagram
     participant Core as @simoncodes-ca/core
     participant FS as Filesystem
 
-    Dev->>CLI: export --locale fr --format json --output ./exports/fr.json
-    CLI->>Core: exportToJson(options)
-    Core->>Core: loadResourcesFromCollections()
-    Note right of Core: walkFolders() traverses translationsFolder<br/>reads resource_entries.json + tracker_meta.json per folder
-    Core->>FS: read resource_entries.json (per folder)
-    Core->>FS: read tracker_meta.json (per folder)
-    FS-->>Core: LoadedResource[] — key, source, translations, status, tags, comment
-    Core->>Core: filter by tag / key pattern [if options.filter]
-    Core->>Core: serialize: flat {key: value} map for locale "fr"
-    Note right of Core: Falls back to base locale value<br/>when translation is absent
-    Core->>FS: validateOutputDirectory(outputDir)
-    Core->>FS: write fr.json
-    Core-->>CLI: ExportResult { resourcesExported, outputPath }
-    CLI-->>Dev: Export summary
+    Dev->>CLI: export --locale fr --format json --output ./exports
+    CLI->>FS: read .lingo-tracker.json → openCollection() per collection
+    CLI->>Core: validateOutputDirectory(outputDir)
+    CLI->>Core: exportTargetLocales(collections, ["fr"]) → print the plan
+    CLI->>Core: runExport(collections, options + protected terms)
+    Core->>Core: loadResources(collection) for each collection
+    Note right of Core: readCollection() (Collection Reader) walks each translationsFolder<br/>and opens every folder through ResourceFolder
+    Core->>FS: read resource_entries.json + tracker_meta.json (per folder)
+    loop For each target locale
+        Core->>Core: filterResources() — collections with this target locale,<br/>status and tag filters, protected-term annotation
+        Core->>FS: write fr.json (JSON or XLIFF exporter; skipped in a dry run)
+    end
+    Core-->>CLI: ExportRunResult { totals, localeResults, summary }
+    CLI-->>Dev: Per-locale lines + export summary
+    CLI->>FS: write the summary file (printed instead in a dry run)
 ```
 
 ---
 
 ### Import
 
-Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
+Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). A format adapter parses the file; `importResources` does the rest. Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
 
-<!-- Import: parse file → ICU auto-fix → merge per strategy → write files → report status transitions -->
+<!-- Import: parse file → resolve / normalize / auto-fix → validate → merge per strategy per folder → report -->
 
 ```mermaid
 sequenceDiagram
@@ -145,40 +147,37 @@ sequenceDiagram
     participant Domain as @simoncodes-ca/domain
     participant FS as Filesystem
 
-    Translator->>CLI: import --locale fr --file ./exports/fr.json --strategy translation-service
-    CLI->>Core: importFromJson(options)
+    Translator->>CLI: import --locale fr --source ./exports/fr.json --strategy translation-service
+    CLI->>FS: read .lingo-tracker.json → openCollection() → Collection (baseLocale "en")
+    CLI->>Core: detectImportFormat("./exports/fr.json") → json
 
-    Note over Core: setupImportWorkflow(options)
-    Core->>FS: read .lingo-tracker.json → baseLocale = "en"
-    Core->>Core: getStrategyDefaults("translation-service")<br/>createMissing=false, updateComments=false
-
-    Note over Core: Parse source file
+    Note over Core: Format adapter
+    CLI->>Core: parseJsonImport(path)
     Core->>FS: read fr.json
-    Core->>Core: detectJsonStructure() — flat vs hierarchical
-    Core->>Core: flatten hierarchical keys if needed
+    Core->>Core: detectJsonStructure() — flat vs hierarchical, flatten
+    Core-->>CLI: ImportedResource[]
 
-    Note over Core: Normalize and auto-fix
+    CLI->>Core: importResources(collection, resources, options)
+    Note over Core: openImportSession() — strategy defaults,<br/>base-locale guard, reads no config
+    Core->>Domain: resolveAllReferences() [migration only]
     Core->>Core: normalizeTranslocoSyntaxInResources()<br/>{{ x }} → {x} in imported values
-    Core->>Domain: applyICUAutoFixToResources()<br/>repairs malformed placeholder syntax
+    Core->>Domain: applyICUAutoFixToResources()<br/>repairs placeholders against the stored base value
     Domain-->>Core: fixed resources + ICUAutoFix[] records
-
-    Note over Core: Validate
-    Core->>Core: validateImportResources() — duplicate key check
+    Core->>Core: validateImportResources() — keys, conflicts, empty values, duplicates
 
     Note over Core: Group and write per folder
-    Core->>Core: groupResourcesByFolder() — batch by resource_entries.json path
-    loop For each folder batch
-        Core->>FS: readResourceEntries() + readTrackerMetadata()
-        Core->>Core: determineUpdatedResourceStatus(strategy, resource, oldStatus)
+    Core->>Core: groupResourcesByFolder() — batch by resource folder
+    loop For each folder batch: processResourceGroup(session, group)
+        Core->>FS: openResourceFolder() — read both files
+        Core->>Domain: resolveImportStatus(strategy, oldStatus, …)
         Note right of Core: translation-service → "translated"<br/>verification → "verified"<br/>migration → preserves source status<br/>update → preserves old status
-        Core->>Core: recompute checksums (MD5)
-        Core->>FS: writeJsonFile(resource_entries.json)
-        Core->>FS: writeJsonFile(tracker_meta.json)
+        Core->>FS: folder.save() — both files, once, if changed (not in a dry run)
     end
 
-    Core->>Core: buildImportResult() — consolidate counts, transitions, warnings
+    Core->>Core: sessionResult() — counts, transitions, warnings, errors
     Core-->>CLI: ImportResult
     CLI-->>Translator: Import summary (created / updated / skipped / failed, ICU fixes applied)
+    CLI->>FS: write generateImportSummary(result, { format, source, … })
 ```
 
 ---
@@ -286,19 +285,22 @@ sequenceDiagram
     Note over Dev,Dialog: E. Edit a resource
     Dev->>TB: double-click TranslationItem (or press E)
     TB->>TLS: editTranslation(translation, collectionName)
-    TLS->>Dialog: MatDialog.open(TranslationEditorDialog, data)
+    TLS->>Dialog: MatDialog.open(TranslationEditorDialog, data) [via TranslationEditorLauncher]
     Dev->>Dialog: edit values, click Save
-    Dialog->>API: PATCH /api/collections/{name}/resources
-    API-->>Dialog: UpdateResourceResponseDto { resource: ResourceSummaryDto }
-    Dialog-->>TLS: afterClosed() → { success: true, resource, folderPath }
+    Dialog->>Dialog: toUpdateDto(draft, original) [resource-entry-draft.ts]
+    Dialog->>BS: updateResource(collectionName, dto) [withEntryWritesFeature]
+    BS->>API: PATCH /api/collections/{name}/resources
+    API-->>BS: UpdateResourceResponseDto { resource: ResourceSummaryDto }
 
-    Note over TLS,BS: F. Optimistic cache update (no re-fetch)
-    TLS->>BS: updateTranslationInCache(resource)
-    Note right of BS: Replaces the stale entry in translations[]<br/>in-place using the API response payload.<br/>No second HTTP request.
+    Note over BS: F. Cache patch (no re-fetch)
+    BS->>BS: patch translations[] and searchResults[] (both by fullKey)
+    Note right of BS: Uses the API response payload.<br/>No second HTTP request.
+    BS-->>Dialog: response
+    Dialog-->>TLS: afterClosed() → { success: true, resource, folderPath }
     TLS->>TLS: flashRecentlyUpdated(key) — 1.5 s highlight
 
-    Note over TLS,BS: G. Rollback path (API error)
-    Note right of TLS: If PATCH fails, Dialog closes<br/>with result.success = false.<br/>translations[] is never mutated —<br/>no rollback needed for edit.
+    Note over BS,Dialog: G. Error path
+    Note right of BS: If PATCH fails, the store does not<br/>change the caches. The error reaches<br/>the dialog, which shows it and stays open.<br/>No rollback is needed.
 ```
 
 ---
@@ -328,7 +330,7 @@ sequenceDiagram
 
     BS->>BS: patchState({ isSearchLoading: true, searchError: null })
     BS->>API: GET /api/collections/{name}/resources/search?query=confirm
-    Note right of API: searchTranslations() in @simoncodes-ca/core<br/>walks cached ResourceTreeNode in memory<br/>or falls back to disk if cache not ready
+    Note right of API: CollectionIndex.search() runs searchResources (text mode)<br/>over the indexed tree (treeResources)<br/>or the disk (readCollection) if not indexed;<br/>every match is ranked, then maxResults applies
 
     API-->>BS: SearchResultsDto { results: SearchResultDto[] }
     BS->>BS: patchState({ searchResults, isSearchLoading: false })
@@ -360,9 +362,9 @@ sequenceDiagram
     participant FN as FolderNode (drop target)
     participant BS as BrowserStore
     participant API as ResourcesController / FoldersController
-    participant Cache as CollectionCacheService
+    participant Index as CollectionIndex
 
-    Note over Dev,Cache: A. Drag a resource
+    Note over Dev,Index: A. Drag a resource
     Dev->>TI: dragStart on TranslationItem
     TI->>TB: dragStarted output → activeDragData = { type: "resource", key, folderPath }
     TB->>FN: pass activeDragData as input → FolderNode highlights valid drop targets
@@ -380,8 +382,7 @@ sequenceDiagram
     BS->>BS: patchState({ isDisabled: true })
 
     BS->>API: POST /api/collections/{name}/resources/move<br/>{ source: "apps.common.ok", destination: "apps.navigation.ok" }
-    API->>Cache: clearCache() — wildcard-safe full clear
-    Cache-->>API: cache state = NOT_STARTED
+    API->>Index: apply(moveResult.mutations)<br/>— upsert at destination, remove at source
     API-->>BS: MoveResourceResponseDto { success: true }
 
     Note over BS: Success path
@@ -398,7 +399,7 @@ sequenceDiagram
         BS->>BS: notifications.error(errorMessage)
     end
 
-    Note over Dev,Cache: C. Drag a folder (abbreviated — same pattern)
+    Note over Dev,Index: C. Drag a folder (abbreviated — same pattern)
     Dev->>FN: dragStart on FolderNode (type: "folder")
     Dev->>FN: drop on destination FolderNode
     FN->>BS: moveFolder({ sourceFolderPath, destinationFolderPath })
@@ -409,8 +410,8 @@ sequenceDiagram
     BS->>API: POST /api/collections/{name}/folders/move
     API-->>BS: MoveFolderResponseDto
     BS->>BS: rebaseFolderPaths(sourceNode, destinationFolderPath)<br/>insertFolderIntoTree(rootFolders, rebasedFolder, dest)
-    BS->>BS: retry GET /tree for movedFolderPath (up to 5×, 1 s delay)
-    Note right of BS: Folder move clears API cache;<br/>retry waits for READY before loading translations.
+    BS->>BS: GET /tree for movedFolderPath via BrowserApiService
+    Note right of BS: Folder move clears API cache;<br/>BrowserApiService retries a 202 (up to 5×, 1 s delay)<br/>before handing the tree over.
     alt API call fails
         API-->>BS: HTTP error
         BS->>BS: patchState({ rootFolders: snapshotFolders })<br/>isDisabled=false, isDeletingFolder=false
@@ -422,7 +423,7 @@ sequenceDiagram
 
 ## 6. Cache Indexing Flow
 
-The sequence from opening a collection to having a fully populated resource tree in the browser store. This flow is driven by `withCacheStatusFeature.checkCacheStatus` (which polls every 2 seconds using `interval(2000)`) and `CollectionCacheService` on the API. The cache state machine is documented in [api.md — Cache State Machine](api.md#cache-state-machine).
+The sequence from opening a collection to having a fully populated resource tree in the browser store. This flow is driven by `withCacheStatusFeature.checkCacheStatus` (which polls every 2 seconds using `interval(2000)`) and the [Collection Index](glossary.md#collection-index) (`CollectionIndex`) on the API. The state machine is documented in [api.md — Index State Machine](api.md#index-state-machine).
 
 <!-- Cache indexing flowchart: app opens collection → poll cache status → wait for READY → load tree into store -->
 
@@ -441,7 +442,7 @@ flowchart TD
     STATUS_CHECK -- "not-started" --> TRIGGER_INDEX
     STATUS_CHECK -- "indexing" --> WAIT_LOOP
 
-    TRIGGER_INDEX["CollectionCacheService.indexCollection()\n[API fires, does not await]\nCore.loadResourceTree() starts async"]
+    TRIGGER_INDEX["CollectionIndex.status() found no entry\nand indexed the collection\n(core.loadResourceTree())"]
 
     TRIGGER_INDEX --> WAIT_LOOP
 
@@ -450,7 +451,7 @@ flowchart TD
     WAIT_LOOP --> POLL_START
 
     STATUS_CHECK -- "error" --> SHOW_ERROR
-    SHOW_ERROR["patchState({ cacheStatus: 'error', cacheError })\nError shown in UI\nNext /tree request will re-trigger indexCollection()"]
+    SHOW_ERROR["patchState({ cacheStatus: 'error', cacheError })\nError shown in UI\nNext /tree request will retry indexing"]
 
     STATUS_CHECK -- "ready" --> MARK_READY["patchState({ cacheStatus: 'ready', collectionStats })\ntakeWhile stops the interval — polling ends"]
 
@@ -465,7 +466,7 @@ flowchart TD
 
     TREE_RESPONSE -- "ResourceTreeDto\n(200 OK, cache READY)" --> POPULATE["patchState({\n  rootFolders: treeData.children,\n  translations: treeData.resources,\n  currentFolderPath: ''\n})\nIndexingOverlay hidden"]
 
-    TREE_RESPONSE -- "TreeStatusResponseDto\n(202, not ready yet)" --> LOAD_TREE_RETRY["No-op — status still 'indexing'\nNext interval tick will retry"]
+    TREE_RESPONSE -- "TreeStatusResponseDto\n(202, not ready yet)" --> LOAD_TREE_RETRY["BrowserApiService.getResourceTree\nasks again (up to 5×, 1 s apart);\nthe store only ever receives a tree"]
 
     LOAD_TREE_RETRY --> POLL_START
 
@@ -481,4 +482,4 @@ flowchart TD
 - Poll interval: `2000 ms` (hard-coded in `withCacheStatusFeature` via `interval(2000)`)
 - The interval uses `takeWhile(..., true)` — the final `"ready"` emission is included before the stream completes, which is what triggers `loadRootFolders()`
 - There is no WebSocket or server-sent event. The retry loop is entirely client-driven.
-- `CollectionCacheService` holds at most one collection at a time. Switching collections immediately discards the previous collection's tree from memory. See [api.md — Single-Collection Design](api.md#single-collection-design).
+- `CollectionIndex` holds up to `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` (default 4) collections and evicts the least recently used one. Switching back to a recently opened collection does not re-index it. See [api.md — Bounded Multi-Collection Design](api.md#bounded-multi-collection-design).

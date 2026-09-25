@@ -1,22 +1,124 @@
-export * from './lib/escape-regexp';
-export * from './lib/translation-status';
-export * from './lib/locale-metadata';
-export * from './lib/resource-key';
-export * from './lib/status-helpers';
-export * from './lib/icu-auto-fixer';
-export * from './lib/icu-to-transloco';
-export * from './lib/transloco-to-icu';
-export * from './lib/transloco-brace-scan';
-export * from './lib/validation-utils';
-export * from './lib/normalize-transloco-syntax';
-export * from './lib/icu-classifier';
-export * from './lib/node-modules';
-export * from './lib/normalize-tags';
-export * from './lib/effective-tags';
-export * from './lib/protected-terms';
-export * from './lib/normalized-levenshtein';
-export * from './lib/icu-locale-validation';
-export * from './lib/portable-plural-categories';
-export * from './lib/icu-arguments';
-export * from './lib/js-identifier';
-export * from './lib/preferred-terminology';
+// The public surface of @simoncodes-ca/domain: browser-safe rules shared by core, the API, the CLI and the Tracker.
+// Only names with a consumer outside this library are listed; everything else is a module-level detail.
+
+// Shared types
+export type { LocaleMetadata } from './lib/locale-metadata';
+export type { TokenCasing } from './lib/token-casing';
+export type { TranslationStatus } from './lib/translation-status';
+
+// Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
+export {
+  type BundleDefinition,
+  type BundleDefinitionCheck,
+  bundleOutputFile,
+  checkBundleDefinition,
+  type CollectionBundleDefinition,
+  type EntrySelectionRule,
+  findBundleDefinition,
+  hasLocalePlaceholder,
+  hasTypeDistConfigured,
+  isTypeScriptFile,
+  normalizeBundleDefinition,
+  validateBundleDefinition,
+  validateBundleKey,
+} from './lib/bundle-definition';
+
+// Keys: resource keys and generated-token identifiers
+export {
+  isJavaScriptReservedWord,
+  isValidJavaScriptIdentifier,
+  JS_IDENTIFIER_PATTERN,
+  validateJavaScriptIdentifier,
+} from './lib/js-identifier';
+export {
+  isValidSegment,
+  type KeyValidationOptions,
+  resolveResourceKey,
+  splitResolvedKey,
+  validateKey,
+  validateTargetFolder,
+} from './lib/resource-key';
+
+// Staleness: how edits and imports move a locale's status
+export {
+  applyBaseChange,
+  type EntryLocaleMetadata,
+  type ImportStrategy,
+  isUntranslatedCopy,
+  needsTranslation,
+  recordTranslation,
+  type ResolveImportStatusParams,
+  resolveImportStatus,
+} from './lib/staleness';
+
+// Resource Summary: one entry with an explicit address and per-target verdicts
+export {
+  buildResourceSummary,
+  type ResourceSummary,
+  type ResourceSummaryCollection,
+  type ResourceSummaryEntry,
+  type ResourceSummaryTarget,
+  summaryTarget,
+} from './lib/resource-summary';
+
+// Status summary: roll-ups over many statuses
+export { countByStatus, STATUS_PRECEDENCE, type StatusCounts, worstStatus } from './lib/translation-status-summary';
+
+// ICU/Transloco: conversion, classification, placeholder repair and ICU checks
+export { compareIcuArguments, type ArgumentMismatch } from './lib/icu-arguments';
+export {
+  autoFixICUPlaceholders,
+  autoFixTranslocoPlaceholders,
+  hasICUPlaceholders,
+  hasTranslocoPlaceholders,
+  type ICUAutoFixResult,
+  validateICUSyntax,
+} from './lib/icu-auto-fixer';
+export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
+export { findIcuCompileError, isIcuLocaleSupported } from './lib/icu-locale-validation';
+export { icuToTransloco } from './lib/icu-to-transloco';
+export { normalizeTranslocoSyntax } from './lib/normalize-transloco-syntax';
+export { findUnportablePluralCases, type UnportablePluralCase } from './lib/portable-plural-categories';
+export { hasUnbundlableBranchBody } from './lib/transloco-brace-scan';
+export { translocoToICU } from './lib/transloco-to-icu';
+
+// Validation: import keys, locales, values and key-set conflicts
+export {
+  detectDuplicateKeys,
+  detectHierarchicalConflicts,
+  isEmptyValue,
+  isKeyTooLong,
+  validateImportKey,
+  validateLocale,
+} from './lib/validation-utils';
+
+// Terminology: protected terms, preferred terminology and similarity
+export { normalizedLevenshtein } from './lib/normalized-levenshtein';
+export {
+  applyPreferredTerm,
+  findPreferredTermFindings,
+  normalizePreferredTermRules,
+  type PreferredTermFinding,
+  type PreferredTermRange,
+  type PreferredTermRule,
+  type PreferredTermRuleError,
+  sortPreferredTermRules,
+  validatePreferredTermRules,
+} from './lib/preferred-terminology';
+export {
+  effectiveProtectedTerms,
+  findProtectedTerms,
+  findProtectedTermViolations,
+  normalizeProtectedTerms,
+} from './lib/protected-terms';
+
+// References: resolving `{{t('other.key')}}` references across a key set
+export { type KeyedValue, resolveAllReferences } from './lib/reference-resolver';
+
+// Tags
+export { effectiveTags } from './lib/effective-tags';
+export { normalizeTag, normalizeTags } from './lib/normalize-tags';
+
+// Utilities
+export { escapeRegExp } from './lib/escape-regexp';
+export { isUnderNodeModules } from './lib/node-modules';

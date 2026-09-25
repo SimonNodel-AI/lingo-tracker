@@ -1,30 +1,27 @@
-import * as path from 'path';
-import * as fs from 'fs';
-import prompts from 'prompts';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
 import {
-  type LingoTrackerConfig,
-  type ExportOptions,
+  type Collection,
   type ExportFormat,
-  loadResourcesFromCollections,
-  filterResources,
-  validateOutputDirectory,
-  validateBasePropertyName,
-  exportToJson,
-  exportToXliff,
-  generateExportSummary,
-  type ExportResult,
+  type ExportRunResult,
+  exportTargetLocales,
+  type LingoTrackerConfig,
+  openCollection,
   readCollectionProtectedTerms,
   readGlobalProtectedTerms,
+  runExport,
+  validateBasePropertyName,
+  validateOutputDirectory,
 } from '@simoncodes-ca/core';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
+import * as fs from 'fs';
+import * as path from 'path';
+import type prompts from 'prompts';
+import { type Answers, defineCommand, NO_COLLECTIONS_MESSAGE } from '../runner/command-runner';
 import {
-  loadConfiguration,
+  buildSummaryPath,
+  ConsoleFormatter,
+  multiselectResultToString,
   parseCommaSeparatedList,
   processMultiselectWithAll,
-  multiselectResultToString,
-  ConsoleFormatter,
-  ErrorMessages,
-  buildSummaryPath,
 } from '../utils';
 
 export interface ExportCommandOptions {
@@ -48,279 +45,138 @@ export interface ExportCommandOptions {
   protectNotes?: boolean;
 }
 
-export async function exportCommand(options: ExportCommandOptions): Promise<void> {
-  const loaded = loadConfiguration();
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+export const exportCommand = defineCommand<ExportCommandOptions>()({
+  name: 'Export',
+  // `--collection` takes a comma-separated list here (default: every collection), so the command opens them.
+  collection: 'none',
+  // The locale choices need the opened collections; only build them when they will be asked.
+  prompts: (options, { config, cwd, interactive }) =>
+    interactive ? buildQuestions(options, config, exportTargetLocales(openCollections(config, cwd))) : [],
+  required: ['format'],
+  run: async ({ config, cwd, answers }) => {
+    const options = resolveAnswers(answers);
+    const { format } = options;
 
-  let answers: Partial<ExportCommandOptions>;
-  try {
-    answers = await promptForMissing(options, config);
-  } catch (error) {
-    if ((error as Error).message === 'Export cancelled') {
-      ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Export'));
+    // Warn if --base-property-name was set without --include-base
+    if (options.basePropertyName && !options.includeBase) {
+      ConsoleFormatter.warning('--base-property-name has no effect without --include-base');
+    }
+
+    // Validate --base-property-name if provided (throws a message the runner prints)
+    if (options.basePropertyName) {
+      validateBasePropertyName(options.basePropertyName);
+    }
+
+    // Resolve output directory
+    const outputDir = options.output
+      ? path.resolve(cwd, options.output)
+      : path.resolve(cwd, config.exportFolder || 'dist/lingo-export');
+
+    validateOutputDirectory(outputDir);
+
+    // An unknown name throws CollectionNotFoundError; none configured fails like every other command.
+    const collections = openCollections(config, cwd, parseCommaSeparatedList(options.collection));
+
+    const targetLocales = exportTargetLocales(collections, parseCommaSeparatedList(options.locale));
+    if (targetLocales.length === 0) {
+      ConsoleFormatter.warning('No target locales selected.');
       return;
     }
-    throw error;
-  }
 
-  if (!answers.format) {
-    ConsoleFormatter.error('Format is required. Use --format or run in interactive mode.');
-    process.exit(1);
-  }
+    ConsoleFormatter.progress(`Exporting to ${format.toUpperCase()}...`);
+    ConsoleFormatter.indent(`Collections: ${collections.map((c) => c.name).join(', ')}`);
+    ConsoleFormatter.indent(`Locales: ${targetLocales.join(', ')}`);
+    ConsoleFormatter.indent(`Output: ${outputDir}`);
+    if (options.dryRun) ConsoleFormatter.indent('[DRY RUN]');
 
-  // Update options with answers
-  options.format = answers.format;
-  options.collection = answers.collection;
-  options.locale = answers.locale;
-  options.status = answers.status;
-  options.tags = answers.tags;
-  options.output = answers.output;
-  options.structure = answers.structure;
-  options.rich = answers.rich;
-  options.includeBase = answers.includeBase;
-  options.includeStatus = answers.includeStatus;
-  options.includeComment = answers.includeComment;
-  options.includeTags = answers.includeTags;
-  options.basePropertyName = answers.basePropertyName;
-  options.filename = answers.filename;
-  options.dryRun = answers.dryRun;
-  options.verbose = answers.verbose;
-
-  // Warn if --base-property-name was set without --include-base
-  if (options.basePropertyName && !options.includeBase) {
-    ConsoleFormatter.warning('--base-property-name has no effect without --include-base');
-  }
-
-  // Validate --base-property-name if provided
-  if (options.basePropertyName) {
-    try {
-      validateBasePropertyName(options.basePropertyName);
-    } catch (error) {
-      ConsoleFormatter.error((error as Error).message);
-      process.exit(1);
-    }
-  }
-
-  // Resolve output directory
-  const outputDir = options.output
-    ? path.resolve(cwd, options.output)
-    : path.resolve(cwd, config.exportFolder || 'dist/lingo-export');
-
-  try {
-    validateOutputDirectory(outputDir);
-  } catch (error) {
-    ConsoleFormatter.error((error as Error).message);
-    process.exit(1);
-  }
-
-  // Resolve collections
-  const collectionNames = parseCommaSeparatedList(options.collection);
-
-  const globalProtectedTerms = readGlobalProtectedTerms(config, cwd);
-
-  const allCollections = Object.entries(config.collections || {}).map(([name, col]) => ({
-    name,
-    path: col.translationsFolder,
-    tags: col.tags,
-    protectedTerms: readCollectionProtectedTerms(col, cwd),
-  }));
-
-  const collectionsToProcess = allCollections.filter((c) => !collectionNames || collectionNames.includes(c.name));
-
-  if (collectionsToProcess.length === 0) {
-    ConsoleFormatter.warning('No matching collections found.');
-    return;
-  }
-
-  // Resolve locales
-  const localeNames = parseCommaSeparatedList(options.locale);
-  const targetLocales = (config.locales || []).filter(
-    (l: string) => l !== config.baseLocale && (!localeNames || localeNames.includes(l)),
-  );
-
-  if (targetLocales.length === 0) {
-    ConsoleFormatter.warning('No target locales selected.');
-    return;
-  }
-
-  // Resolve status and tags
-  const statusFilter = parseCommaSeparatedList(options.status)?.map((s) => s as TranslationStatus);
-  const tagFilter = parseCommaSeparatedList(options.tags);
-
-  ConsoleFormatter.progress(`Exporting to ${options.format.toUpperCase()}...`);
-  ConsoleFormatter.indent(`Collections: ${collectionsToProcess.map((c) => c.name).join(', ')}`);
-  ConsoleFormatter.indent(`Locales: ${targetLocales.join(', ')}`);
-  ConsoleFormatter.indent(`Output: ${outputDir}`);
-  if (options.dryRun) ConsoleFormatter.indent('[DRY RUN]');
-
-  // Load resources
-  const allResources = loadResourcesFromCollections(
-    collectionsToProcess.map((c) => ({
-      name: c.name,
-      path: path.resolve(cwd, c.path),
-      tags: c.tags,
-      protectedTerms: c.protectedTerms,
-    })),
-  );
-
-  const exportOptions: ExportOptions = {
-    format: options.format,
-    outputDirectory: outputDir,
-    collections: collectionsToProcess.map((c) => c.name),
-    locales: targetLocales,
-    status: statusFilter,
-    tags: tagFilter,
-    filenamePattern: options.filename,
-    dryRun: options.dryRun,
-    verbose: options.verbose,
-    jsonStructure: options.structure,
-    richJson: options.rich,
-    includeBase: options.includeBase,
-    includeStatus: options.includeStatus,
-    includeComment: options.includeComment,
-    includeTags: options.includeTags,
-    basePropertyName: options.basePropertyName,
-    augmentProtectedTerms: options.protectNotes !== false,
-    onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
-  };
-
-  const totalFiles = 0;
-  let totalResources = 0;
-  const allWarnings: string[] = [];
-  const allErrors: string[] = [];
-  const allFilesCreated: string[] = [];
-
-  for (const locale of targetLocales) {
-    const filtered = filterResources(allResources, locale, statusFilter, tagFilter, {
-      globalProtectedTerms,
+    const result = await runExport(collections, {
+      format,
+      outputDirectory: outputDir,
+      locales: targetLocales,
+      status: parseCommaSeparatedList(options.status)?.map((s) => s as TranslationStatus),
+      tags: parseCommaSeparatedList(options.tags),
+      filenamePattern: options.filename,
+      dryRun: options.dryRun,
+      verbose: options.verbose,
+      jsonStructure: options.structure,
+      richJson: options.rich,
+      includeBase: options.includeBase,
+      includeStatus: options.includeStatus,
+      includeComment: options.includeComment,
+      includeTags: options.includeTags,
+      basePropertyName: options.basePropertyName,
       augmentProtectedTerms: options.protectNotes !== false,
-      baseLocale: config.baseLocale,
+      protectedTerms: readProtectedTerms(config, collections, cwd),
+      onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
     });
 
-    if (filtered.length === 0) {
-      if (options.verbose) console.log(`   Skipping ${locale}: No matching resources.`);
-      continue;
+    displayResults(result);
+
+    const summaryPath = buildSummaryPath('export');
+    if (!options.dryRun) {
+      fs.writeFileSync(summaryPath, result.summary);
+      console.log(`\n📄 Summary written to: ${summaryPath}`);
+    } else {
+      console.log('\n📄 Summary (Dry Run):');
+      console.log(result.summary);
     }
+    const failed = result.errors.length + result.hierarchicalConflicts.length > 0 && !options.dryRun;
+    return failed ? { exitCode: 1 } : undefined;
+  },
+});
 
-    try {
-      let result: ExportResult;
-      if (options.format === 'xliff') {
-        result = await exportToXliff(filtered, { ...exportOptions, locales: [locale] }, config.baseLocale);
-      } else {
-        result = exportToJson(filtered, { ...exportOptions, locales: [locale] }, config.baseLocale);
-      }
+/** Opens the named collections (default: every one). Throws when none is configured or a name is unknown. */
+function openCollections(config: LingoTrackerConfig, cwd: string, names?: string[]): Collection[] {
+  const configured = Object.keys(config.collections ?? {});
+  if (configured.length === 0) {
+    throw new Error(NO_COLLECTIONS_MESSAGE);
+  }
+  return [...new Set(names ?? configured)].map((name) => openCollection(config, name, { cwd }));
+}
 
-      totalResources += result.resourcesExported;
-      allWarnings.push(...result.warnings);
-      allErrors.push(...result.errors);
-      allErrors.push(...result.hierarchicalConflicts);
-      allFilesCreated.push(...result.filesCreated);
+function readProtectedTerms(config: LingoTrackerConfig, collections: readonly Collection[], cwd: string) {
+  return {
+    global: readGlobalProtectedTerms(config, cwd),
+    collections: Object.fromEntries(collections.map((c) => [c.name, readCollectionProtectedTerms(c.config, cwd)])),
+  };
+}
 
-      if (result.filesCreated.length > 0) {
-        ConsoleFormatter.indent(
-          `✅ ${locale}: Exported ${result.resourcesExported} resources to ${result.filesCreated.join(', ')}`,
-        );
-      } else if (result.errors.length > 0) {
-        ConsoleFormatter.indent(`❌ ${locale}: Failed`);
-      }
-    } catch (error) {
-      ConsoleFormatter.indent(`❌ ${locale}: Export failed - ${(error as Error).message}`);
-      allErrors.push(`Export for locale ${locale} failed: ${(error as Error).message}`);
+function displayResults(result: ExportRunResult): void {
+  for (const { locale, outcome, resourcesExported, filesCreated, error } of result.localeResults) {
+    if (outcome === 'exported') {
+      ConsoleFormatter.indent(`✅ ${locale}: Exported ${resourcesExported} resources to ${filesCreated.join(', ')}`);
+    } else if (outcome === 'failed') {
+      ConsoleFormatter.error(error ? `${locale}: Export failed - ${error}` : `${locale}: Failed`);
     }
   }
 
   ConsoleFormatter.section('Export Summary');
-  ConsoleFormatter.keyValue('Files Created', totalFiles);
-  ConsoleFormatter.keyValue('Resources Exported', totalResources);
+  ConsoleFormatter.keyValue('Files Created', result.filesCreated.length);
+  ConsoleFormatter.keyValue('Resources Exported', result.resourcesExported);
 
-  if (allWarnings.length > 0) {
-    console.log('');
-    ConsoleFormatter.warning(`Warnings (${allWarnings.length}):`);
-    allWarnings.forEach((w) => {
-      ConsoleFormatter.indent(`- ${w}`);
-    });
+  if (result.warnings.length > 0) {
+    ConsoleFormatter.warning(
+      `Warnings (${result.warnings.length}):`,
+      result.warnings.map((w) => `- ${w}`),
+    );
   }
 
-  if (allErrors.length > 0) {
-    console.log('');
-    ConsoleFormatter.error(`Errors (${allErrors.length}):`);
-    allErrors.forEach((e) => {
-      ConsoleFormatter.indent(`- ${e}`);
-    });
-    if (!options.dryRun) process.exitCode = 1;
-  }
-
-  // Generate and write summary
-  const summary = generateExportSummary(
-    {
-      format: options.format,
-      filesCreated: allFilesCreated,
-      resourcesExported: totalResources,
-      warnings: allWarnings,
-      errors: allErrors.filter((e) => !e.includes('Conflict')),
-      collections: collectionsToProcess.map((c) => c.name),
-      locales: targetLocales,
-      outputDirectory: outputDir,
-      omittedResources: [],
-      malformedFiles: [],
-      hierarchicalConflicts: allErrors.filter((e) => e.includes('Conflict')),
-    },
-    exportOptions,
-  );
-
-  const summaryPath = buildSummaryPath('export');
-  if (!options.dryRun) {
-    fs.writeFileSync(summaryPath, summary);
-    console.log(`\n📄 Summary written to: ${summaryPath}`);
-  } else {
-    console.log('\n📄 Summary (Dry Run):');
-    console.log(summary);
+  const errors = [...result.errors, ...result.hierarchicalConflicts];
+  if (errors.length > 0) {
+    ConsoleFormatter.error(
+      `Errors (${errors.length}):`,
+      errors.map((e) => `- ${e}`),
+    );
   }
 }
 
-async function promptForMissing(
+/** The questions for every option the flags left out. */
+function buildQuestions(
   options: ExportCommandOptions,
   config: LingoTrackerConfig,
-): Promise<{
-  format?: ExportFormat;
-  collection?: string;
-  locale?: string;
-  status?: string;
-  tags?: string;
-  output?: string;
-  structure?: 'flat' | 'hierarchical';
-  rich?: boolean;
-  includeBase?: boolean;
-  includeStatus?: boolean;
-  includeComment?: boolean;
-  includeTags?: boolean;
-  basePropertyName?: string;
-  filename?: string;
-  dryRun?: boolean;
-  verbose?: boolean;
-}> {
-  const responses: Partial<{
-    format: ExportFormat;
-    collection: string;
-    locale: string;
-    status: string;
-    tags: string;
-    output: string;
-    structure: 'flat' | 'hierarchical';
-    rich: boolean;
-    includeBase: boolean;
-    includeStatus: boolean;
-    includeComment: boolean;
-    includeTags: boolean;
-    basePropertyName: string;
-    filename: string;
-    dryRun: boolean;
-    verbose: boolean;
-  }> = {};
-
+  targetLocales: string[],
+): prompts.PromptObject[] {
   const collectionNames = Object.keys(config.collections || {});
-  const targetLocales = (config.locales || []).filter((l: string) => l !== config.baseLocale);
 
   const questions: prompts.PromptObject[] = [];
 
@@ -557,52 +413,38 @@ async function promptForMissing(
     });
   }
 
-  if (questions.length > 0 && process.stdout.isTTY) {
-    const result = await prompts(questions, {
-      onCancel: () => {
-        throw new Error('Export cancelled');
-      },
-    });
+  return questions;
+}
 
-    Object.assign(responses, result);
-
-    // Handle multiselect "All" options
-    if (result.collections) {
-      const selected = processMultiselectWithAll(result.collections, collectionNames);
-      responses.collection = multiselectResultToString(selected);
-    }
-
-    if (result.locales) {
-      const selected = processMultiselectWithAll(result.locales, targetLocales);
-      responses.locale = multiselectResultToString(selected);
-    }
-
-    if (result.statusFilter) {
-      responses.status = result.statusFilter.join(',');
-    }
-  } else if (questions.length > 0 && !process.stdout.isTTY) {
-    // Non-TTY mode - require format to be provided
-    if (!options.format) {
-      throw new Error(ErrorMessages.MISSING_OPTION('format'));
-    }
-  }
-
+/**
+ * Flags win over prompt answers; the multiselect answers (`collections`, `locales`,
+ * `statusFilter`) become the comma-separated options; unset options get their defaults.
+ */
+function resolveAnswers(answers: Answers<ExportCommandOptions>): ExportCommandOptions {
+  const collections = stringList(answers.collections);
+  const locales = stringList(answers.locales);
+  const statusFilter = stringList(answers.statusFilter);
   return {
-    format: options.format ?? responses.format,
-    collection: options.collection ?? responses.collection,
-    locale: options.locale ?? responses.locale,
-    status: options.status ?? responses.status,
-    tags: options.tags ?? (responses.tags || undefined),
-    output: options.output ?? (responses.output || undefined),
-    structure: options.structure ?? responses.structure ?? 'hierarchical',
-    rich: options.rich ?? responses.rich ?? false,
-    includeBase: options.includeBase ?? responses.includeBase ?? false,
-    includeStatus: options.includeStatus ?? responses.includeStatus ?? false,
-    includeComment: options.includeComment ?? responses.includeComment ?? false,
-    includeTags: options.includeTags ?? responses.includeTags ?? false,
-    basePropertyName: options.basePropertyName ?? (responses.basePropertyName || undefined),
-    filename: options.filename ?? (responses.filename || undefined),
-    dryRun: options.dryRun ?? responses.dryRun ?? false,
-    verbose: options.verbose ?? responses.verbose ?? false,
+    ...answers,
+    collection:
+      answers.collection ?? (collections && multiselectResultToString(processMultiselectWithAll(collections))),
+    locale: answers.locale ?? (locales && multiselectResultToString(processMultiselectWithAll(locales))),
+    status: answers.status ?? statusFilter?.join(','),
+    tags: answers.tags || undefined,
+    output: answers.output || undefined,
+    structure: answers.structure ?? 'hierarchical',
+    rich: answers.rich ?? false,
+    includeBase: answers.includeBase ?? false,
+    includeStatus: answers.includeStatus ?? false,
+    includeComment: answers.includeComment ?? false,
+    includeTags: answers.includeTags ?? false,
+    basePropertyName: answers.basePropertyName || undefined,
+    filename: answers.filename || undefined,
+    dryRun: answers.dryRun ?? false,
+    verbose: answers.verbose ?? false,
   };
+}
+
+function stringList(value: unknown): string[] | undefined {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined;
 }

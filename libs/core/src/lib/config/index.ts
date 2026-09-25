@@ -1,3 +1,26 @@
-export * from './config-file-operations';
-export * from './preferred-terminology-file';
-export * from './protected-terms-file';
+// Config and collections: load .lingo-tracker.json, open a collection, and read or write its terminology files.
+
+export { type LoadConfigOptions, loadConfig } from './load-config';
+export {
+  type Collection,
+  type OpenCollectionOptions,
+  openCollection,
+  type ProtectedTermsFiles,
+} from './open-collection';
+export {
+  type LoadPreferredTerminologyResult,
+  loadPreferredTerminology,
+  PreferredTerminologyValidationError,
+  resolvePreferredTerminologyFilePath,
+  writePreferredTerminology,
+} from './preferred-terminology-file';
+export {
+  type ResolvedProtectedTerms,
+  readCollectionProtectedTerms,
+  readEffectiveProtectedTerms,
+  readGlobalProtectedTerms,
+  readProtectedTermsInForce,
+  resolveCollectionProtectedTermsFilePath,
+  resolveGlobalProtectedTermsFilePath,
+  resolveProtectedTermsForConfig,
+} from './protected-terms-file';

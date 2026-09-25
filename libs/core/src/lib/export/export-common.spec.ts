@@ -1,140 +1,102 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import * as fs from 'fs';
-import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import { chmodSync, existsSync, statSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import {
-  loadResourcesFromCollections,
   filterResources,
-  validateOutputDirectory,
-  validateBasePropertyName,
   type LoadedResource,
+  loadResources,
+  validateBasePropertyName,
+  validateOutputDirectory,
 } from './export-common';
 
-// Mock fs module
-vi.mock('fs');
-
 describe('export-common', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
+  const root = useTempDir('export-common-');
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  describe('validateOutputDirectory', () => {
+  describe('validateOutputDirectory (real fs)', () => {
     it('should create directory if it does not exist', () => {
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-      vi.spyOn(fs, 'mkdirSync').mockReturnValue(undefined);
-      vi.spyOn(fs, 'accessSync').mockReturnValue(undefined);
+      const directory = join(root(), 'dist', 'export');
 
-      validateOutputDirectory('/dist/export');
+      validateOutputDirectory(directory);
 
-      expect(fs.mkdirSync).toHaveBeenCalledWith('/dist/export', {
-        recursive: true,
-      });
+      expect(statSync(directory).isDirectory()).toBe(true);
     });
 
     it('should throw error if directory cannot be created', () => {
-      vi.spyOn(fs, 'existsSync').mockReturnValue(false);
-      vi.spyOn(fs, 'mkdirSync').mockImplementation(() => {
-        throw new Error('Permission denied');
-      });
+      writeFileSync(join(root(), 'file'), '');
 
-      expect(() => validateOutputDirectory('/dist/export')).toThrow('Could not create output directory');
+      expect(() => validateOutputDirectory(join(root(), 'file', 'export'))).toThrow(
+        'Could not create output directory',
+      );
     });
 
-    it('should throw error if directory is not writable', () => {
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'accessSync').mockImplementation(() => {
-        throw new Error('Not writable');
-      });
+    it.skipIf(process.getuid?.() === 0)('should throw error if directory is not writable', () => {
+      const directory = join(root(), 'read-only');
+      validateOutputDirectory(directory);
+      chmodSync(directory, 0o500);
 
-      expect(() => validateOutputDirectory('/dist/export')).toThrow('not writable');
+      try {
+        expect(() => validateOutputDirectory(directory)).toThrow('not writable');
+      } finally {
+        chmodSync(directory, 0o700);
+      }
     });
   });
 
-  describe('loadResourcesFromCollections', () => {
-    it('should load resources from multiple collections', () => {
-      const collections = [
-        { name: 'Core', path: '/libs/core' },
-        { name: 'App', path: '/apps/app' },
-      ];
-
-      vi.spyOn(fs, 'existsSync').mockImplementation((p) => {
-        if (typeof p === 'string') {
-          return (
-            p.includes('translations') ||
-            p.endsWith(RESOURCE_ENTRIES_FILENAME) ||
-            p.endsWith(TRACKER_META_FILENAME) ||
-            p === '/libs/core' ||
-            p === '/apps/app'
-          );
-        }
-        return false;
+  describe('loadResources (real fs)', () => {
+    it('flattens each entry with its collection, translations, status and tags', () => {
+      const collection = testCollection(root(), { name: 'Core', tags: ['shared'] });
+      seedResources(collection, {
+        'button.ok': {
+          source: 'OK',
+          comment: 'Confirm',
+          tags: ['ui'],
+          translations: { es: { value: 'Vale', status: 'translated' } },
+        },
       });
 
-      vi.spyOn(fs, 'readFileSync').mockImplementation((p) => {
-        if (typeof p === 'string') {
-          if (p.includes('core')) {
-            if (p.endsWith(RESOURCE_ENTRIES_FILENAME)) {
-              return JSON.stringify({
-                'button.ok': { source: 'OK', es: 'Vale' },
-              });
-            }
-            if (p.endsWith(TRACKER_META_FILENAME)) {
-              return JSON.stringify({
-                'button.ok': { es: { status: 'translated' } },
-              });
-            }
-          }
-          if (p.includes('app')) {
-            if (p.endsWith(RESOURCE_ENTRIES_FILENAME)) {
-              return JSON.stringify({
-                title: { source: 'Title', es: 'Título' },
-              });
-            }
-            if (p.endsWith(TRACKER_META_FILENAME)) {
-              return JSON.stringify({
-                title: { es: { status: 'new' } },
-              });
-            }
-          }
-        }
-        return '{}';
-      });
+      const { resources, problems } = loadResources(collection, ['Acme']);
 
-      vi.spyOn(fs, 'readdirSync').mockReturnValue([]);
-
-      const result = loadResourcesFromCollections(collections);
-
-      expect(result).toHaveLength(2);
-      const okBtn = result.find((r) => r.key === 'button.ok');
-      expect(okBtn).toBeDefined();
-      expect(okBtn?.collection).toBe('Core');
-      expect(okBtn?.translations['es']).toBe('Vale');
-
-      const title = result.find((r) => r.key === 'title');
-      expect(title).toBeDefined();
-      expect(title?.collection).toBe('App');
+      expect(problems).toEqual([]);
+      expect(resources).toEqual([
+        {
+          key: 'ok',
+          fullKey: 'button.ok',
+          source: 'OK',
+          translations: { es: 'Vale' },
+          tags: ['ui'],
+          effectiveTags: ['shared', 'ui'],
+          collectionProtectedTerms: ['Acme'],
+          comment: 'Confirm',
+          status: { es: 'translated' },
+          collection: 'Core',
+        },
+      ]);
     });
 
-    it('should handle missing metadata gracefully (skip resource)', () => {
-      const collections = [{ name: 'Core', path: '/libs/core' }];
+    it('includes an entry without metadata, with no status', () => {
+      writeFolderFiles(root(), '', { entries: { key: { source: 'val' } }, meta: {} });
 
-      vi.spyOn(fs, 'existsSync').mockReturnValue(true);
-      vi.spyOn(fs, 'readFileSync').mockImplementation((p) => {
-        if (typeof p === 'string' && p.endsWith(RESOURCE_ENTRIES_FILENAME)) {
-          return JSON.stringify({ key: { source: 'val' } });
-        }
-        if (typeof p === 'string' && p.endsWith(TRACKER_META_FILENAME)) {
-          return JSON.stringify({}); // No metadata for 'key'
-        }
-        return '{}';
-      });
-      vi.spyOn(fs, 'readdirSync').mockReturnValue([]);
+      const { resources } = loadResources(testCollection(root()));
 
-      const result = loadResourcesFromCollections(collections);
-      expect(result).toHaveLength(0);
+      expect(resources).toHaveLength(1);
+      expect(resources[0]?.status).toEqual({});
+    });
+
+    it('returns unreadable folders as problems', () => {
+      writeFolderFiles(root(), 'bad', { entries: '{ nope' });
+
+      const { resources, problems } = loadResources(testCollection(root()));
+
+      expect(resources).toEqual([]);
+      expect(problems.map((problem) => problem.folderPath)).toEqual(['bad']);
+    });
+
+    it('reads nothing from a missing translations folder', () => {
+      const missing = join(root(), 'missing');
+
+      expect(loadResources(testCollection(missing))).toEqual({ resources: [], problems: [] });
+      expect(existsSync(missing)).toBe(false);
     });
   });
 
@@ -148,6 +110,7 @@ describe('export-common', () => {
         status: { es: 'translated' },
         collection: 'Core',
         tags: ['ui'],
+        effectiveTags: ['ui'],
       },
       {
         key: 'key2',
@@ -157,6 +120,7 @@ describe('export-common', () => {
         status: { es: 'new' },
         collection: 'Core',
         tags: ['backend'],
+        effectiveTags: ['backend'],
       },
       {
         key: 'key3',
@@ -165,6 +129,7 @@ describe('export-common', () => {
         translations: { es: 'Val 3' },
         status: { es: 'verified' },
         collection: 'App',
+        effectiveTags: [],
       },
     ];
 
@@ -200,6 +165,7 @@ describe('export-common', () => {
           translations: { es: 'Bienvenido' },
           status: { es: 'new' },
           collection: 'Core',
+          effectiveTags: [],
           collectionProtectedTerms: ['iPhone'],
         },
       ];
@@ -221,6 +187,7 @@ describe('export-common', () => {
           translations: { es: 'Bienvenido' },
           status: { es: 'new' },
           collection: 'Core',
+          effectiveTags: [],
           collectionProtectedTerms: ['iPhone'],
         },
       ];
@@ -250,6 +217,7 @@ describe('export-common', () => {
           translations: { es: 'Bienvenido' },
           status: { es: 'new' },
           collection: 'Core',
+          effectiveTags: [],
         },
       ];
 

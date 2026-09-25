@@ -4,6 +4,7 @@ import type {
   ResourceValidationDetail,
   ResourceValidationResult,
   TerminologyValidationResult,
+  UnreadableFolderDetail,
   ValidationOptions,
 } from './types';
 
@@ -54,6 +55,10 @@ export function generateValidationSummary(result: ResourceValidationResult, opti
   sections.push(buildHeaderSection(result));
   sections.push(buildStatisticsSection(result, options));
   sections.push(buildStatusBreakdownSection(result));
+
+  if (result.unreadableFolders && result.unreadableFolders.length > 0) {
+    sections.push(buildUnreadableFoldersSection(result.unreadableFolders));
+  }
 
   if (result.failures.length > 0) {
     sections.push(buildFailuresSection(result.failures));
@@ -266,6 +271,28 @@ function buildUnsupportedLocalesSection(locales: readonly string[]): string {
 }
 
 /**
+ * Builds the list of folders the Collection Reader could not read.
+ *
+ * Each one fails validation: its resources were never checked, so a clean
+ * result would otherwise hide them.
+ *
+ * @param folders - The unreadable folders, with their collection and message
+ * @returns Formatted section string
+ * @internal
+ */
+function buildUnreadableFoldersSection(folders: readonly UnreadableFolderDetail[]): string {
+  const lines = [`❌ Unreadable Folders (${folders.length}):`, '─'.repeat(50)];
+
+  for (const folder of folders) {
+    lines.push(`  [${folder.collection}] ${folder.folderPath || '(root)'}`);
+    lines.push(`    ${folder.message}`);
+  }
+
+  lines.push('  The resources in these folders were not validated. Fix the files and run validate again.');
+  return lines.join('\n');
+}
+
+/**
  * Builds the status breakdown section showing counts by translation status.
  *
  * @param result - The validation result
@@ -387,6 +414,9 @@ function buildFooterSection(result: ResourceValidationResult, options: Validatio
   }
   if (result.placeholders && result.placeholders.failures.length > 0) {
     lines.push(`  Total Placeholder Failures: ${result.placeholders.failures.length}`);
+  }
+  if (result.unreadableFolders && result.unreadableFolders.length > 0) {
+    lines.push(`  Unreadable Folders: ${result.unreadableFolders.length}`);
   }
   if (result.terminology?.configError !== undefined) {
     lines.push('  Preferred Terminology File: failed to load');

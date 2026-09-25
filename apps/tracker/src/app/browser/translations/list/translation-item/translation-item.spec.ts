@@ -3,7 +3,8 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
-import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { buildResourceSummary } from '@simoncodes-ca/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
@@ -42,18 +43,32 @@ function renderTranslationItem(): {
   };
 }
 
-const mockTranslation: ResourceSummaryDto = {
-  key: 'common.buttons.save',
-  translations: {
-    en: 'Save',
-    es: 'Guardar',
-    fr: 'Enregistrer',
-  },
-  status: {
-    es: 'translated',
-    fr: 'verified',
-  },
-};
+/**
+ * A Resource Summary with base locale `en`. The collection's target locales are the keys
+ * of `targets`, in order; each is `[value, status]` (either may be absent).
+ */
+function summary(
+  fullKey: string,
+  base: string,
+  targets: Record<string, readonly [string | undefined, TranslationStatus | undefined]> = {},
+): ResourceSummaryDto {
+  const translations: Record<string, string> = {};
+  const metadata: Record<string, { checksum: string; status?: TranslationStatus }> = { en: { checksum: 'base' } };
+  for (const [locale, [value, status]] of Object.entries(targets)) {
+    if (value !== undefined) translations[locale] = value;
+    if (status !== undefined) metadata[locale] = { checksum: locale, status };
+  }
+  return buildResourceSummary(
+    fullKey,
+    { source: base, translations, metadata },
+    { baseLocale: 'en', targetLocales: Object.keys(targets), tags: [] },
+  );
+}
+
+const mockTranslation = summary('common.buttons.save', 'Save', {
+  es: ['Guardar', 'translated'],
+  fr: ['Enregistrer', 'verified'],
+});
 
 describe('TranslationItem', () => {
   let component: TranslationItem;
@@ -77,11 +92,7 @@ describe('TranslationItem', () => {
   });
 
   it('should render placeholder for empty selected locale value', () => {
-    const t: ResourceSummaryDto = {
-      key: 'k-empty',
-      translations: { en: 'en', es: '' },
-      status: { es: 'new' },
-    } as any;
+    const t = summary('k-empty', 'en', { es: ['', 'new'] });
 
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
     store.setDensityMode('compact');
@@ -147,11 +158,7 @@ describe('TranslationItem', () => {
     });
 
     it('shows the status chip only for new and stale rows', () => {
-      const needsWork: ResourceSummaryDto = {
-        key: 'common.buttons.save',
-        translations: { en: 'Save', es: 'Guardar viejo', fr: '' },
-        status: { es: 'stale', fr: 'new' },
-      } as ResourceSummaryDto;
+      const needsWork = summary('common.buttons.save', 'Save', { es: ['Guardar viejo', 'stale'], fr: ['', 'new'] });
 
       store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
       store.setDensityMode('compact');
@@ -169,11 +176,10 @@ describe('TranslationItem', () => {
 
     it('falls back to the first locale when the collection carries no base locale', () => {
       // A vendored collection can ship translations with no base locale at all.
-      const noBase: ResourceSummaryDto = {
-        key: 'agGrid.addToLabels',
-        translations: { ar: 'إضافة', de: 'Hinzufügen' },
-        status: { ar: 'translated', de: 'translated' },
-      } as ResourceSummaryDto;
+      const noBase = summary('agGrid.addToLabels', '', {
+        ar: ['إضافة', 'translated'],
+        de: ['Hinzufügen', 'translated'],
+      });
 
       store.setSelectedCollection({ collectionName: 'ds', locales: ['ar', 'de'], baseLocale: 'en' });
       store.setDensityMode('compact');
@@ -185,11 +191,7 @@ describe('TranslationItem', () => {
     });
 
     it('marks a translation that is the source text verbatim', () => {
-      const untouched: ResourceSummaryDto = {
-        key: 'common.buttons.add',
-        translations: { en: 'Add', 'fr-ca': 'Add' },
-        status: { 'fr-ca': 'translated' },
-      } as ResourceSummaryDto;
+      const untouched = summary('common.buttons.add', 'Add', { 'fr-ca': ['Add', 'translated'] });
 
       store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' });
       store.setDensityMode('compact');
@@ -205,11 +207,7 @@ describe('TranslationItem', () => {
     });
 
     it('shows one marker at most: the status chip wins over same-as-source', () => {
-      const untouchedNew: ResourceSummaryDto = {
-        key: 'common.buttons.add',
-        translations: { en: 'Add', 'fr-ca': 'Add' },
-        status: { 'fr-ca': 'new' },
-      } as ResourceSummaryDto;
+      const untouchedNew = summary('common.buttons.add', 'Add', { 'fr-ca': ['Add', 'new'] });
 
       store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' });
       store.setDensityMode('compact');
@@ -222,22 +220,6 @@ describe('TranslationItem', () => {
       expect(fixture.nativeElement.querySelector('.compact-annotation .status-chip.status-new')).not.toBeNull();
       expect(fixture.nativeElement.querySelector('.compact-annotation .same-as-source')).toBeNull();
     });
-  });
-
-  it('rollupStatus should reflect all verified state as verified', () => {
-    const t: ResourceSummaryDto = {
-      key: 'k-all-verified',
-      translations: { en: 'a', es: 'b' },
-      status: { en: 'verified', es: 'verified' },
-    } as any;
-
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
-    fixture.componentRef.setInput('translation', t);
-    fixture.detectChanges();
-
-    const roll = component.rollupStatus();
-    expect(roll[0]).toBe('verified');
-    expect(roll[1]).toBe(2);
   });
 
   it('should use filteredLocales from store (replaces locales input)', () => {
@@ -268,57 +250,28 @@ describe('TranslationItem - Compact helpers', () => {
     ({ fixture, component, store } = renderTranslationItem());
   });
 
-  it('should show the base locale in compact until a locale is picked', () => {
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
-    store.setDensityMode('compact');
-    fixture.componentRef.setInput('translation', mockTranslation);
-    fixture.detectChanges();
-
-    expect(component.compactDisplay().locale).toBe('en');
-    expect(component.compactDisplay().isBase).toBe(true);
-  });
-
   it('should follow the single compact selection', () => {
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
     store.setDensityMode('compact');
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
 
-    expect(component.compactDisplay().value).toBe('Save');
+    // The store's compact locale (the base locale until one is picked) is what the row view gets.
+    expect(store.compactDisplayLocale()).toBe('en');
+    expect(component.compactDisplay()).toMatchObject({ locale: 'en', isBase: true, value: 'Save' });
 
     store.setSelectedLocales(['es']);
     fixture.detectChanges();
-    expect(component.compactDisplay().value).toBe('Guardar');
+    expect(store.compactDisplayLocale()).toBe('es');
+    expect(component.compactDisplay()).toMatchObject({ locale: 'es', isBase: false, value: 'Guardar' });
 
     store.setSelectedLocales(['en']);
     fixture.detectChanges();
     expect(component.compactDisplay().value).toBe('Save');
   });
 
-  it('rollupStatus should calculate worst status across all locales', () => {
-    const t: ResourceSummaryDto = {
-      key: 'k',
-      translations: { en: 'a', es: 'b', fr: 'c' },
-      status: { en: 'verified', es: 'translated', fr: 'stale' },
-    };
-
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
-    store.setDensityMode('full');
-    store.clearAllLocales();
-    fixture.componentRef.setInput('translation', t);
-    fixture.detectChanges();
-
-    const roll = component.rollupStatus();
-    expect(roll[0]).toBe('stale');
-    expect(roll[1]).toBe(1);
-  });
-
   it('statusBreakdown should return human readable counts in priority order', () => {
-    const t: ResourceSummaryDto = {
-      key: 'k3',
-      translations: { en: 'a', es: 'b', fr: 'c', de: 'd' },
-      status: { en: 'stale', es: 'stale', fr: 'verified', de: 'new' },
-    } as any;
+    const t = summary('k3', 'a', { es: ['b', 'stale'], fr: ['c', 'verified'], de: ['d', 'new'] });
 
     store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr', 'de'], baseLocale: 'en' });
     store.setDensityMode('full');
@@ -356,11 +309,7 @@ describe('TranslationItem - Full density expansion', () => {
   });
 
   it('needsExpansion should be false for short values', () => {
-    const t: ResourceSummaryDto = {
-      key: 'k-short',
-      translations: { en: 'short', es: 'corto', fr: 'court' },
-      status: {},
-    } as any;
+    const t = summary('k-short', 'short', { es: ['corto', undefined], fr: ['court', undefined] });
 
     fixture.componentRef.setInput('translation', t);
     fixture.detectChanges();
@@ -376,11 +325,13 @@ describe('TranslationItem - Full density expansion', () => {
     });
     store.clearAllLocales();
 
-    const t: ResourceSummaryDto = {
-      key: 'k-many-locales',
-      translations: { en: 'short', es: 'corto', fr: 'court', de: 'kurz', ja: '短い', ru: 'коротко' },
-      status: {},
-    } as any;
+    const t = summary('k-many-locales', 'short', {
+      es: ['corto', undefined],
+      fr: ['court', undefined],
+      de: ['kurz', undefined],
+      ja: ['短い', undefined],
+      ru: ['коротко', undefined],
+    });
 
     fixture.componentRef.setInput('translation', t);
     fixture.detectChanges();
@@ -398,27 +349,9 @@ describe('TranslationItem - Full density expansion', () => {
     expect(component.needsExpansion()).toBe(true);
   });
 
-  it('needsExpansion should be true when base long', () => {
-    const long = 'a'.repeat(201);
-    const t: ResourceSummaryDto = {
-      key: 'k-long-base',
-      translations: { en: long, es: 'es', fr: 'fr' },
-      status: {},
-    } as any;
-
-    fixture.componentRef.setInput('translation', t);
-    fixture.detectChanges();
-
-    expect(component.needsExpansion()).toBe(true);
-  });
-
   it('needsExpansion should be true when any locale value long', () => {
     const long = 'b'.repeat(205);
-    const t: ResourceSummaryDto = {
-      key: 'k-long-locale',
-      translations: { en: 'en', es: long, fr: 'fr' },
-      status: {},
-    } as any;
+    const t = summary('k-long-locale', 'en', { es: [long, undefined], fr: ['fr', undefined] });
 
     fixture.componentRef.setInput('translation', t);
     fixture.detectChanges();
@@ -427,11 +360,7 @@ describe('TranslationItem - Full density expansion', () => {
   });
 
   it('isExpanded should toggle when toggleExpansion called', () => {
-    fixture.componentRef.setInput('translation', {
-      key: 'k',
-      translations: { en: 'en' },
-      status: {},
-    } as any);
+    fixture.componentRef.setInput('translation', summary('k', 'en'));
     fixture.detectChanges();
 
     expect(component.isExpanded()).toBe(false);
@@ -470,11 +399,7 @@ describe('TranslationItem - Full density expansion', () => {
     });
 
     it('should omit the source row when the collection has no base value', () => {
-      const t: ResourceSummaryDto = {
-        key: 'k-no-base',
-        translations: { es: 'Guardar' },
-        status: { es: 'translated' },
-      } as any;
+      const t = summary('k-no-base', '', { es: ['Guardar', 'translated'] });
 
       store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
       store.setDensityMode('full');
@@ -596,11 +521,7 @@ describe('TranslationItem - compact key chip', () => {
   let spectator: Spectator<TranslationItem>;
   let store: InstanceType<typeof BrowserStore>;
 
-  const longKey: ResourceSummaryDto = {
-    key: 'browser.translationEditor.context.allUpToDate',
-    translations: { en: 'Everything is up to date' },
-    status: {},
-  };
+  const longKey = summary('browser.translationEditor.context.allUpToDate', 'Everything is up to date');
 
   beforeEach(() => {
     ({ fixture, store, spectator } = renderTranslationItem());
@@ -712,7 +633,7 @@ describe('TranslationItem - compact key chip', () => {
     trigger?.click();
     fixture.detectChanges();
 
-    return [...document.querySelectorAll('.mat-mdc-menu-item')].map((item) => item.textContent?.trim() ?? '');
+    return Array.from(document.querySelectorAll('.mat-mdc-menu-item'), (item) => item.textContent?.trim() ?? '');
   }
 
   it('drops Edit from the compact overflow menu now that the rail shows it', () => {
@@ -742,7 +663,7 @@ describe('TranslationItem - compact key chip', () => {
       expect(tail?.textContent).toBe('.allUpToDate');
       expect(head?.textContent).toBe('browser.translationEditor.context');
       // Nothing is elided in the string itself — the column width decides.
-      expect(`${head?.textContent}${tail?.textContent}`).toBe(longKey.key);
+      expect(`${head?.textContent}${tail?.textContent}`).toBe(longKey.fullKey);
     });
 
     it('leaves a short key whole, with no ellipsis of its own', () => {
@@ -756,7 +677,7 @@ describe('TranslationItem - compact key chip', () => {
     });
 
     it('renders a key with no separator as a head alone', () => {
-      render({ key: 'standalone', translations: { en: 'Alone' }, status: {} });
+      render(summary('standalone', 'Alone'));
 
       expect(fixture.nativeElement.querySelector('.key-text__head')?.textContent).toBe('standalone');
       expect(fixture.nativeElement.querySelector('.key-text__tail')).toBeNull();

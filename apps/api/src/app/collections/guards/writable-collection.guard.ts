@@ -1,4 +1,5 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { CollectionNotFoundError, openCollection, ReadOnlyCollectionError } from '@simoncodes-ca/core';
 import { ConfigService } from '../../config/config.service';
 
 interface CollectionRequest {
@@ -10,9 +11,9 @@ interface CollectionRequest {
  * Blocks mutating requests (anything other than GET) against a read-only collection.
  *
  * Read requests always pass. For mutating requests, the collection named by the
- * `:collectionName` route param is looked up in config; if it is flagged `readOnly`,
- * a 403 is thrown. Unknown collections are allowed through so the controller can
- * return its own 404.
+ * `:collectionName` route param is opened with core `openCollection(..., { writable: true })`;
+ * a `ReadOnlyCollectionError` becomes a 403. Unknown collections are allowed through so
+ * the controller can return its own 404.
  *
  * Apply at controller level to the resources/locales/folders controllers. Do NOT
  * apply to the collections controller — editing or unregistering a collection's
@@ -44,10 +45,16 @@ export class WritableCollectionGuard implements CanActivate {
     // file read+parse on mutating requests only — negligible at this app's scale, and
     // not worth threading request-scoped state through every controller call site.
     const config = this.#configService.getConfig();
-    const collection = config.collections?.[collectionName];
 
-    if (collection?.readOnly) {
-      throw new ForbiddenException(`Collection "${collectionName}" is read-only. Its resources cannot be modified.`);
+    try {
+      openCollection(config, collectionName, { writable: true });
+    } catch (error: unknown) {
+      if (error instanceof ReadOnlyCollectionError) {
+        throw new ForbiddenException(error.message);
+      }
+      if (!(error instanceof CollectionNotFoundError)) {
+        throw error;
+      }
     }
 
     return true;

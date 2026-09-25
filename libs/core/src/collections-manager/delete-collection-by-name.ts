@@ -1,5 +1,5 @@
 import { updateConfig } from '../lib/config/config-file-operations';
-import { ErrorMessages } from '../lib/errors/error-messages';
+import { CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
 
 export interface DeleteCollectionOptions {
   cwd?: string;
@@ -11,7 +11,7 @@ export function deleteCollectionByName(
 ): { message: string } {
   updateConfig((config) => {
     if (!config.collections || !config.collections[collectionName]) {
-      throw new Error(ErrorMessages.collectionNotFound(collectionName));
+      throw new CollectionNotFoundError(collectionName);
     }
 
     delete config.collections[collectionName];

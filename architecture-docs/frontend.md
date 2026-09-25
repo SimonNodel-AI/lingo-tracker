@@ -1,6 +1,6 @@
 # Frontend Architecture — Tracker UI
 
-The Tracker UI is a standalone Angular 20 SPA served by the NestJS API process. It provides two feature areas — a **collections manager** for creating and configuring translation collections, and a **translation browser** for browsing, filtering, editing, and reorganising resources within a collection. State is managed exclusively with NgRx Signal Store (`signalStore` / `signalStoreFeature`). All components are standalone, signal-based, and use `OnPush` change detection.
+The Tracker UI is a standalone Angular 21 SPA served by the NestJS API process. It provides two feature areas — a **collections manager** for creating and configuring translation collections, and a **translation browser** for browsing, filtering, editing, and reorganising resources within a collection. State is managed exclusively with NgRx Signal Store (`signalStore` / `signalStoreFeature`). All components are standalone, signal-based, and use `OnPush` change detection.
 
 Return to [architecture README](README.md).
 
@@ -23,8 +23,14 @@ Return to [architecture README](README.md).
   - [Optimistic Updates with Rollback](#optimistic-updates-with-rollback)
   - [Drag-and-Drop — Move Resource and Folder](#drag-and-drop--move-resource-and-folder)
   - [Lazy-Loaded Dialogs](#lazy-loaded-dialogs)
+  - [Translation Editor and the Resource Entry Draft](#translation-editor-and-the-resource-entry-draft)
+  - [Translation Status Summary](#translation-status-summary)
+  - [Translation Rows and the Row View](#translation-rows-and-the-row-view)
+  - [Writing a Resource Entry](#writing-a-resource-entry)
+  - [Bundle Form Dialog](#bundle-form-dialog)
 - [Theming System](#theming-system)
 - [i18n — Transloco Integration](#i18n--transloco-integration)
+- [Testing](#testing)
 - [Cross-Links](#cross-links)
 
 ---
@@ -109,8 +115,8 @@ flowchart TD
     TranslationItem -. "lazy on edit (double-click / E key)" .-> TranslationEditorDialog
     TranslationItem -. "lazy on delete (Del key)" .-> ConfirmationDialog2["ConfirmationDialog\n(shared/components/confirmation-dialog)"]
 
-    TranslationEditorDialog["TranslationEditorDialog\n(browser/dialogs/translation-editor)\nCreate / edit resource. Tabbed locale\nfields, similar-translation sidebar,\nfolder picker, status controls.\nChip input for tag editing with\nper-collection autocomplete."]
-    TranslationEditorDialog --> SimilarTranslations["SimilarTranslations\n(dialogs/translation-editor/similar-translations.ts)\nLive similarity search as user types"]
+    TranslationEditorDialog["TranslationEditorDialog\n(browser/dialogs/translation-editor)\nCreate / edit resource. Tabbed locale\nfields, similar-translation sidebar,\nfolder picker, status controls.\nChip input for tag editing with\nper-collection autocomplete.\nRules: resource-entry-draft.ts"]
+    TranslationEditorDialog --> SimilarTranslations["SimilarTranslations\n(dialogs/translation-editor/similar-translations.ts)\nSimilar values as the user types\n(API search, mode=similar),\neach with its similarity %"]
     TranslationEditorDialog --> FolderPicker["FolderPicker\n(dialogs/translation-editor/folder-picker)\nTree picker for changing resource folder"]
 
     TranslationBrowser -. "lazy on folder delete" .-> ConfirmationDialog3["ConfirmationDialog\n(shared/components/confirmation-dialog)"]
@@ -125,7 +131,7 @@ flowchart TD
 
 ### BrowserStore — Feature Composition
 
-`BrowserStore` is a single `signalStore` provided in root. Its state is split across six `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call; each feature adds its own slice.
+`BrowserStore` is a single `signalStore` provided in root. Its state is split across seven `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call; each feature adds its own slice.
 
 <!-- BrowserStore feature composition — how with-* files build up the root store -->
 
@@ -137,7 +143,9 @@ flowchart TD
 
     Root --> WF["withFilterFeature\n(with-filter.feature.ts)\nAdds: selectedLocales, selectedStatuses,\nsortField, sortDirection\nComputed: filteredLocales, filterableLocales,\nlocaleFilterText, statusFilterText\nMethods: toggleLocale, setSortField,\ntoggleStatus, selectNeedsWorkStatuses, …"]
 
-    Root --> WT["withTranslationsFeature\n(with-translations.feature.ts)\nAdds: translations, isTranslationsLoading,\nshowNestedResources\nComputed: sortedTranslations, displayedTranslations,\nisEmpty, translationCount\nMethods: selectFolder (rxMethod),\nupdateTranslationInCache, removeResourceFromCache,\nsetNestedResources"]
+    Root --> WT["withTranslationsFeature\n(with-translations.feature.ts)\nAdds: translations, isTranslationsLoading,\nshowNestedResources\nComputed: sortedTranslations, displayedTranslations,\nisEmpty, translationCount, _statusLocales (private)\nMethods: selectFolder (rxMethod),\nsetNestedResources"]
+
+    Root --> WEW["withEntryWritesFeature\n(with-entry-writes.feature.ts)\nNo new state\nMethods: createResource, updateResource,\ndeleteResource, translateResource\n(return the API Observable; patch\ntranslations / searchResults on success)"]
 
     Root --> WFT["withFolderTreeFeature\n(with-folder-tree.feature.ts)\nAdds: rootFolders, expandedFolders,\nfolderTreeFilter, isFolderTreeLoading,\nisAddingFolder, addFolderParentPath,\nnewlyCreatedFolderPath, isDeletingFolder\nComputed: filteredFolders, breadcrumbs, isLoading\nMethods: loadRootFolders, loadFolderChildren,\ncreateFolder, deleteFolder, moveFolder (rxMethods)"]
 
@@ -148,10 +156,11 @@ flowchart TD
     WS -.->|"isSearchMode, searchResults\nread by"| WT
     WF -.->|"selectedLocales, selectedStatuses\nread by"| WT
     WFT -.->|"calls selectFolder\nprovided by"| WT
+    WEW -.->|"calls selectFolder,\npatches translations"| WT
     WCS -.->|"calls loadRootFolders\nprovided by"| WFT
 ```
 
-**Composition order matters.** `withFolderTreeFeature` requires `selectFolder` and `setTranslationsLoading` from `withTranslationsFeature`, so `withTranslationsFeature` must appear first. `withCacheStatusFeature` requires `loadRootFolders` from `withFolderTreeFeature`, so it follows. `withViewPreferencesFeature` reads from every other feature's state and is last.
+**Composition order matters.** `withEntryWritesFeature` and `withFolderTreeFeature` require `selectFolder` (and the folder tree also `setTranslationsLoading`) from `withTranslationsFeature`, so `withTranslationsFeature` must appear first. `withCacheStatusFeature` requires `loadRootFolders` from `withFolderTreeFeature`, so it follows. `withViewPreferencesFeature` reads from every other feature's state and is last.
 
 ---
 
@@ -161,7 +170,8 @@ flowchart TD
 |---|---|---|---|
 | `with-search.feature.ts` | `searchQuery`, `isSearchMode`, `searchResults`, `isSearchLoading`, `searchError` | — | `setSearchQuery`, `clearSearch`, `searchTranslations` |
 | `with-filter.feature.ts` | `selectedLocales`, `selectedStatuses`, `sortField`, `sortDirection` | `filteredLocales`, `filterableLocales`, `localeFilterText`, `statusFilterText`, `isShowingAllLocales`, `isShowingAllStatuses` | `toggleLocale`, `setSelectedLocales`, `setSortField`, `toggleSortDirection`, `toggleStatus`, `selectNeedsWorkStatuses` |
-| `with-translations.feature.ts` | `translations`, `isTranslationsLoading`, `showNestedResources` | `sortedTranslations`, `displayedTranslations`, `isEmpty`, `translationCount`, `hasTranslations` | `selectFolder`, `setTranslationsLoading`, `setNestedResources`, `updateTranslationInCache`, `removeResourceFromCache` |
+| `with-translations.feature.ts` | `translations`, `isTranslationsLoading`, `showNestedResources` | `sortedTranslations`, `displayedTranslations`, `isEmpty`, `translationCount`, `hasTranslations` | `selectFolder`, `setTranslationsLoading`, `setNestedResources` |
+| `with-entry-writes.feature.ts` | (no new state) | — | `createResource`, `updateResource`, `deleteResource`, `translateResource` — see [Writing a Resource Entry](#writing-a-resource-entry) |
 | `with-folder-tree.feature.ts` | `rootFolders`, `expandedFolders`, `folderTreeFilter`, `isFolderTreeLoading`, `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath` | `filteredFolders`, `breadcrumbs`, `isLoading` | `loadRootFolders`, `loadFolderChildren`, `createFolder`, `createFolderAt`, `deleteFolder`, `moveFolder`, `toggleFolderExpanded`, `startAddingFolder`, `cancelAddingFolder` |
 | `with-cache-status.feature.ts` | `cacheStatus`, `cacheError`, `collectionStats` | `isCacheReady`, `isCacheIndexing`, `collectionTotalKeys`, `collectionLocaleCount`, `hasCollectionStats` | `checkCacheStatus` (polls every 2 s via `interval`, stops when `status === 'ready'`) |
 | `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `loadViewPreferences` (reads `localStorage`) |
@@ -171,7 +181,7 @@ Root-level methods on `BrowserStore` (not in a feature):
 | Method | Purpose |
 |---|---|
 | `setSelectedCollection` | Switches active collection, restores view preferences from `localStorage`, triggers cache polling |
-| `moveResource` | Optimistic remove from `translations` → API call → re-fetch on success, rollback on error |
+| `moveResource` | Optimistic remove from `translations` (matched by `fullKey`, so it works for rows in any folder) → API call → re-fetch on success, rollback on error |
 | `reset` | Clears all state slices back to initial values |
 | `setBaseLocale`, `setDisabled`, `clearError` | Simple `patchState` helpers |
 
@@ -181,8 +191,8 @@ Root-level methods on `BrowserStore` (not in a feature):
 
 `TranslationListStore` is a lightweight store provided at the `TranslationList` component level (not root). It composes two features:
 
-- **`withItemUiState`** — tracks `translatingKeys: Set<string>` (in-progress auto-translate calls) and `recentlyUpdatedKey: string | undefined` (drives the 1.5 s flash highlight after a save). Exposes `addTranslatingKey`, `removeTranslatingKey`, `flashRecentlyUpdated`, `isTranslating(key)`, `isRecentlyUpdated(key)`. Cleans up the flash timer `onDestroy`.
-- **`withItemActions`** — exposes `editTranslation`, `deleteTranslation`, `translateResource`, `copyKey`. Opens `TranslationEditorDialog` or `ConfirmationDialog` via `MatDialog`. On edit success, delegates cache updates to `BrowserStore.updateTranslationInCache()`.
+- **`withItemUiState`** — tracks `translatingKeys: Set<string>` (in-progress auto-translate calls) and `recentlyUpdatedKey: string | undefined` (drives the 1.5 s flash highlight after a save). Both are keyed by each resource's `fullKey`. Exposes `addTranslatingKey`, `removeTranslatingKey`, `flashRecentlyUpdated`, `isTranslating(key)`, `isRecentlyUpdated(key)`. Cleans up the flash timer `onDestroy`.
+- **`withItemActions`** — exposes `editTranslation`, `deleteTranslation`, `translateResource`, `copyKey`. Edit goes through `TranslationEditorLauncher`; delete opens `ConfirmationDialog`. Delete and translate take the row's `fullKey` and call `BrowserStore.deleteResource` / `BrowserStore.translateResource`, which update the caches. The feature keeps the per-row feedback: the translating spinner, the flash, and the toasts.
 
 Because `TranslationListStore` is component-provided, each `TranslationList` instance gets its own store. `TranslationItem` injects it via `inject(TranslationListStore)` — no prop drilling needed.
 
@@ -247,7 +257,7 @@ The viewport recalculates its size via `viewport.checkViewportSize()` inside `re
 
 **Edit translation** (via `TranslationListStore.withItemActions`):
 
-Editing happens inside the dialog. On dialog close with `result.success`, `BrowserStore.updateTranslationInCache` replaces the stale entry in the `translations` array in-place. There is no server round-trip for the cache update — the API response from the save is embedded in `result.resource`. `TranslationListStore.flashRecentlyUpdated` then sets `recentlyUpdatedKey` for 1.5 s to drive the highlight animation.
+Editing happens inside the dialog, which saves through `BrowserStore.updateResource`. When the `PATCH` succeeds, the store replaces the stale entry in `translations` (and in `searchResults` during a search) with the resource in the response. There is no second request. The dialog then closes with `result.success`, and `TranslationListStore.flashRecentlyUpdated` sets `recentlyUpdatedKey` for 1.5 s to drive the highlight animation. If the `PATCH` fails, the caches do not change and the dialog shows the error.
 
 ---
 
@@ -290,6 +300,86 @@ This keeps dialog modules out of the initial bundle entirely. The pattern is use
 `TranslationEditorDialog` opens the `FolderPicker` (a nested dialog via `MatDialog`) if the user wants to move the resource to a different folder. `FolderPicker` in turn calls `BrowserStore.createFolderAt` to create folders inline without leaving the dialog.
 
 The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autocomplete`) in the Base Info tab. Autocomplete suggestions are derived client-side as a `computed()` over `BrowserStore.translations()`, scoped to the current collection. Tags are normalized on chip commit (`normalizeTag` from `@simoncodes-ca/domain`) and sent as `tags: string[]` on the existing `PATCH /collections/:name/resources` endpoint.
+
+### Translation Editor and the Resource Entry Draft
+
+`TranslationEditorDialog` (`browser/dialogs/translation-editor/`) creates and edits one resource entry. It has two parts:
+
+- **The component** owns the Angular parts: the reactive form, focus choreography, the location popover and the other-locales drawer, clipboard, flash timers, the confirmation dialogs, and the RxJS wiring for the similar-values search.
+- **`resource-entry-draft.ts`** owns the rules. It is a pure module with no Angular imports. The dialog turns its form, target folder and tags into a plain `ResourceEntryDraft` and asks the module for every decision.
+
+| Function | Rule |
+|---|---|
+| `absorbDottedKey(rawKey, currentFolder, folderFromKey)` | A dotted key typed in the key field moves its prefix to the folder and keeps the leaf. The next dotted key extends the folder only while the folder is still the one the last absorption set. |
+| `folderEntryKeys(folderPath, known)` / `collisionFor(key, folderPath, known, ownKey?)` | Which entry keys a folder holds, from three sources in order: the expanded folder tree, the folder the browser shows, then folders the dialog fetched. Only resources whose `folderPath` is the folder count (nested resources the list folds in do not). The match is exact and case-sensitive, the same as `addResource`. The entry being edited never collides with itself. |
+| `contextTree(input, moreLabel)` | The "Where it lands" tree: the target folder among its siblings, and an 8-entry window of its entries around the key. The remaining entries are one "more" row. |
+| `addTag` / `removeTag` | Tag list operations. Tags are normalized with `normalizeTag`. Inherited tags cannot be removed. |
+| `toCreateDto(draft)` | The create request. Every typed translation is sent with status `new`. Locales left empty are not sent; the server seeds them by the collection's rule ([locale seeding](glossary.md#locale-seeding)). The request has no base locale: the collection's applies. |
+| `toUpdateDto(draft, original)` / `editedLocales` | The update request. `original` is the Resource Summary the edit started from; `key` is its `fullKey`. A change of folder (the collection root included) is sent as `moveTo`, the destination folder. A locale is sent when it has a value or when its status changed. |
+| `hasUnsavedChanges(draft, initial, fieldsEdited)` | Closing loses work when a form field was edited, the folder moved, or the tags changed. |
+
+The key field validator is `segmentValidator` (`shared/validators/segment.validator.ts`). It uses the domain `isValidSegment` rule and reports under the `pattern` error key. The bundle name and the inline new-folder name use the same validator. The folder filter in the location popover uses `filterFolderTree` from `browser/store/folder-tree.utils.ts`, the same function as `BrowserStore.filteredFolders`.
+
+The dialog reads two things directly from `BrowserApiService`: `searchTranslations` for similar values, and `getResourceTree` for the entries of a folder picked in the popover. Both are dialog-local reads. The store's `selectFolder` would move the browser list behind the dialog, so the dialog does not use it.
+
+**Similar values.** After a 300 ms typing pause, and when the base value has at least 3 characters (and, in edit mode, differs from the stored value), the dialog calls `searchTranslations(collectionName, value, SIMILAR_DISPLAY_LIMIT + 1, 'similar')`. The API answers with [Resource Search](glossary.md#resource-search)'s similar-value mode: base values at least 80% similar to the typed text, or that contain it or are contained in it as whole words with a similarity of at least 40%, ranked by similarity. The dialog does no matching of its own. It drops the entry being edited (by `fullKey`) and keeps the first `SIMILAR_DISPLAY_LIMIT` (10) hits in the API's order. It asks for one extra hit so that a full list of 10 remains after it drops the entry itself. The count badge, the exact-duplicate caption and the pinned list all read this one signal. Before, the dialog ran a 25-hit text search and kept the hits whose base value contained the typed text (or was contained in it) by substring, so the list was in text-search order and a key-only hit could use up the 25. The header full-text search (`with-search.feature.ts`) still uses the default text mode. Each row shows the hit's `similarity` (0..1, sent in similar mode) as a quiet percentage chip at the end of its key line: `Math.round(similarity * 100)%`, computed in the row view (`displayedRows`). A hit without `similarity` shows no chip. The visible number is `aria-hidden`; screen readers get `browser.similarTranslations.similarityX` ("85% similar") instead.
+
+Status labels in the editor (the status pill, its menu and the context column dots) come from `statusLabelTokenFor` in the shared translation-status presentation module, the same tokens the rows use.
+
+### Translation Status Summary
+
+Each status roll-up in the browser uses the domain [translation status summary](glossary.md#translation-status-summary) (`countByStatus`, `worstStatus`, `STATUS_PRECEDENCE`). These roll-ups are the `TranslationRollup` ring and its accessible name, the item's screen-reader breakdown, the locale column's single-status chip, the `StatusFilter` counts and `matchesAnyStatus`, and sort by status. The components only render the result. The Tracker keeps the presentation in one table, `shared/translation-status/translation-status-presentation.ts`. `STATUS_PRESENTATION` gives the chip icon, the ring-centre glyph, the label token and the count token for each status. `rollupCenter(counts)` gives the ring centre: the worst status, or `mixed` when `new` and `stale` are both present. The module also has `STATUS_DISPLAY_ORDER` (`new`, `stale`, `translated`, `verified`), which the filter rail, the rollup tooltip rows and sort by status use. The ring draws its arcs in the reverse of this order. The breakdown text and a card's locale rows use the worst-first `STATUS_PRECEDENCE` instead. A per-folder roll-up can use the same functions if `FolderNodeDto` gets status data in the future.
+
+Every status the Tracker shows, filters, counts or sorts by is the display status: `displayStatus(target)` in `shared/translation-status/display-status.ts`. It is the stored status or, for a target that needs work and has no stored status, `new`. This follows the rule that an entry without metadata is `new` everywhere. The rule is presentation only: no DTO gets a status, and nothing is written. So a locale with no metadata shows a `new` chip in both densities. It is also counted as `new` in the rollup and in the status filter counts. The `new` filter and the "Needs work" shortcut show it, and sort by status ranks it as `new`. `needsWorkCount` counts the rows that the "Needs work" shortcut (`new` + `stale`) shows, once each. These are the rows where some target has `needsWork`, the same test as the translate action.
+
+The status filter, its counts, `needsWorkCount` and sort by status all read one list of locales: the private `_statusLocales` computed in `with-translations.feature.ts`. It is the selected locales or, when none is selected (the UI's "All locales"), every available locale. Before, sort by status got the empty selection, so every row ranked as `verified` and the list fell back to key order.
+
+### Translation Rows and the Row View
+
+Every row in the list shows one [Resource Summary](glossary.md#resource-summary) (`ResourceSummaryDto`). The summary already carries the explicit address (`fullKey`, `folderPath`, `entryKey`), the base locale and value, and one target row per collection locale with `needsWork` and `sameAsBase`. So no row module works out a key, filters out the base locale, or re-implements "new or stale".
+
+The pure module `browser/translations/list/translation-item/row-view.ts` (no Angular imports, like the Resource Entry Draft) turns a summary and the list's selection (`visibleLocales` from `filteredLocales`, `compactLocale` from `compactDisplayLocale`) into a `RowView`:
+
+| Field | Rule |
+|---|---|
+| `baseRow` | The source row for full density; absent when the base value is blank. |
+| `localeRows` | The visible target locales with their display status, worst status first (`STATUS_PRECEDENCE`), then by locale code. A missing value is `''`. |
+| `compact` | The single compact line: the base value, or the chosen locale's value in its place. `needsAttention` (the status chip) is set when the locale's target has `needsWork`: `new`, `stale`, or no metadata. The chip names the display status, so a locale with no metadata is `new`. `isSameAsBase` is set only when there is no chip, so a row has at most one marker. |
+| `rollupLocales` / `statusCounts` | Every target locale with a display status, whatever the filter shows, and their `countByStatus`. The rollup ring, its tooltip and the screen-reader breakdown read these. |
+| `canTranslate` | Some target `needsWork`: the same test `translateExistingResource` uses, so the translate action is enabled exactly when the server has work to do. |
+| `hasLongValue` | The base or a visible locale value is longer than `LONG_VALUE_THRESHOLD` (200) and is clipped. |
+
+`sharedStatus(rows)` gives the locale grid's single chip when every rendered row shares one status. `TranslationItem` computes the view once and passes it to `TranslationItemHeader`; `TranslationItemLocales` and `TranslationRollup` receive rows. The components keep only the DOM parts: expansion, overlays, drag, touch and keyboard handling. The rules are tested in `row-view.spec.ts` as pure functions.
+
+`BrowserApiService.getResourceTree` hides the collection index's "not ready" answer (HTTP 202): it retries and gives the stores only a tree, so `selectFolder`, `loadRootFolders`, `loadFolderChildren`, `moveFolder`, the launcher and the editor have no retry or shape check of their own. If the index is still not ready after the retries, the error is a `CollectionIndexNotReadyError`. When a root tree has already loaded for the collection (`folderTreeLoaded`), the folder tree loads keep the tree and show a toast; `selectFolder` keeps the list and the folder it shows. On the first load, the store goes to the `error` state. `folderTreeLoaded` is not the same as "some root folders": a collection with only root resources has no folders. It is reset when the collection changes.
+
+### Writing a Resource Entry
+
+All UI writes of a resource entry go through `withEntryWritesFeature` on `BrowserStore`:
+
+| Method | Caller | After a successful write |
+|---|---|---|
+| `createResource(collectionName, dto)` | `TranslationEditorDialog` (create) | Reloads the current folder with `selectFolder`. |
+| `updateResource(collectionName, dto)` | `TranslationEditorDialog` (edit) | Patches the entry in place. If the DTO has a `moveTo` property, removes the entry from the list instead, whatever the destination. |
+| `deleteResource(collectionName, fullKey)` | `withItemActions.deleteTranslation` | Removes the entry when `entriesDeleted > 0`. |
+| `translateResource(collectionName, fullKey)` | `withItemActions.translateResource` | Patches the entry in place. |
+
+Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling, for example the dialog's 409 conflict dialog and its 400 and 404 messages. The store changes its caches only on success.
+
+`toUpdateDto` includes `moveTo` only when the entry changes folder, and `''` means the collection root. The server edits the entry, then moves it there (core `editResource` with `moveTo`). The store then drops the row, and it does not check whether the destination is still in the list's scope. The store rule and the DTO rule use the same test: the `moveTo` property is present or absent. Limitation: with nested resources on (`includeNested`), the list shows a folder and its descendants. An entry that moves from one descendant to another stays in scope, but its row disappears until the next reload of the folder.
+
+Both caches (`translations` and `searchResults`) are keyed by each resource's `fullKey`, in folder mode, nested mode and search mode alike. The API returns the updated resource with its own full address, so the store swaps it in by `fullKey`; there is no key conversion anywhere. A drag carries the row's `fullKey` and its real `folderPath`, also for nested rows.
+
+`TranslationEditorLauncher` and `TranslationMainHeader` only give feedback after the dialog closes: the row flash and the toasts.
+
+### Bundle Form Dialog
+
+`BundleFormDialog` (`collections/bundle-form-dialog/`) creates and edits a bundle definition. It builds a `BundleDefinitionDto`, which is an alias of the domain [Bundle Definition](glossary.md#bundle-definition) type, so the Tracker, the API and core share one type and one set of rules:
+
+- **Field validators** give live feedback on each control: required fields, the unique name, `segmentValidator` for the name, a non-empty collection list and rule list. The rules the server also applies call the domain predicates: `hasLocalePlaceholder` for the file name pattern, `isTypeScriptFile` for the types file and `isValidJavaScriptIdentifier` for the constant name.
+- **On populate**, the dialog reads the definition through `normalizeBundleDefinition`, so a legacy `typeDist` shows as the types file and is saved as `typeDistFile`.
+- **On submit**, after the field validators pass, the dialog runs the domain `checkBundleDefinition(definition, collectionNames, name)` (the name only while it can be edited), the same check core and the API dry run apply. Any message stops the submit and shows above the footer (`submitErrors`, an alert, in the domain's English text). The next edit clears it. So the dialog does not close on a definition the server would reject. If a server 400 still happens, `withBundlesFeature` shows `Invalid bundle definition: <errors joined by "; ">`.
+- **Output paths** come from the domain `bundleOutputFile`: the rail summary (with the `{locale}` placeholder kept), the "writes" hint and the local "Will write" tree. The dry-run tree comes from the API plan, which uses the same rule, so both trees show the paths core writes.
 
 ---
 
@@ -358,6 +448,18 @@ The token file provides compile-time safety: a missing key is a TypeScript error
 **UI language switching**
 
 `LocaleService` (`shared/services/locale.service.ts`) holds the active UI locale as a signal. `LocalePickerComponent` in the app header calls `TranslocoService.setActiveLang()` to switch languages at runtime without a page reload. The bundle loader fetches the new locale JSON on demand.
+
+---
+
+## Testing
+
+Specs are co-located `*.spec.ts` files run by Vitest (jsdom, `globals: true`) through the Analog Angular plugin, with `src/test-setup.ts` as the setup file. `nx test tracker` depends on `generate-tokens`, because specs import `TRACKER_TOKENS`.
+
+`nx typecheck tracker` covers the specs. Its inferred command (`tsc --build tsconfig.json`) checks the app only, so `project.json` adds a `typecheck-spec` target (`tsc --noEmit -p tsconfig.spec.json`) and makes `typecheck` depend on it. `tsconfig.spec.json` cannot be a composite project reference, as domain's is: with `composite` set, the Analog plugin, which reads the same file, compiles no specs ("No test suite found"). Spec conventions the typecheck enforces:
+
+- Update a store's protected state with `patchState(unprotected(store), …)` (`@ngrx/signals/testing`).
+- Type a `SpectatorService` over a signal store as `SpectatorService<InstanceType<typeof Store>>`.
+- Mocks carry the real DTO shape (a `ResourceSummaryDto` has `tags` and `inheritedTags`). A partial fake of a DOM or library type takes one `as unknown as` cast with a comment at the point where it is handed over.
 
 ---
 

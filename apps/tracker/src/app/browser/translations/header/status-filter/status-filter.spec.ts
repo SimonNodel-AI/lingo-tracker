@@ -13,7 +13,18 @@ describe('StatusFilter', () => {
   let fixture: ComponentFixture<StatusFilter>;
   let spectator: Spectator<StatusFilter>;
   let selectedStatuses: ReturnType<typeof signal<TranslationStatus[]>>;
-  let mockStore: any;
+  let mockStore: ReturnType<typeof createMockStore>;
+
+  /** The slice of `BrowserStore` the filter reads. */
+  const createMockStore = () => ({
+    selectedStatuses,
+    statusCounts: signal({ new: 6, stale: 4, translated: 7, verified: 8 }),
+    needsWorkCount: signal(9),
+    hasStatusFilter: computed(() => selectedStatuses().length > 0),
+    toggleStatus: vi.fn(),
+    selectNeedsWorkStatuses: vi.fn(),
+    clearAllStatuses: vi.fn(),
+  });
 
   const toggleFor = (id: string): HTMLButtonElement | null =>
     fixture.nativeElement.querySelector(`[data-testid="status-toggle-${id}"]`);
@@ -27,15 +38,7 @@ describe('StatusFilter', () => {
   beforeEach(() => {
     selectedStatuses = signal<TranslationStatus[]>([]);
 
-    mockStore = {
-      selectedStatuses,
-      statusCounts: signal({ new: 6, stale: 4, translated: 7, verified: 8 }),
-      needsWorkCount: signal(9),
-      hasStatusFilter: computed(() => selectedStatuses().length > 0),
-      toggleStatus: vi.fn(),
-      selectNeedsWorkStatuses: vi.fn(),
-      clearAllStatuses: vi.fn(),
-    };
+    mockStore = createMockStore();
 
     spectator = createComponent();
     fixture = spectator.fixture;

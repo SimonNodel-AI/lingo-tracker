@@ -131,7 +131,7 @@ XLIFF (XML Localization Interchange File Format) is the industry standard for pr
 - `<trans-unit>` IDs are interpreted as full dot-delimited keys (e.g., `common.buttons.cancel`)
 - `<source>` contains base locale value (used for validation/creation)
 - `<target>` contains translation to import
-- `<note>` contains comment (optional)
+- `<note>` contains comment (optional). A trans-unit with several notes gets one comment, one note per line. LingoTracker ignores a note that starts with `Do not translate:`, because export adds that note to list the protected terms. It is not part of the comment.
 
 **Example**:
 ```xml

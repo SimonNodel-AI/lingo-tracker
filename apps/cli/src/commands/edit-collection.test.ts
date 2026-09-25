@@ -1,36 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { loadConfig, updateCollection } from '@simoncodes-ca/core';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { editCollectionCommand } from './edit-collection';
-import { updateCollection } from '@simoncodes-ca/core';
 
-const fsMocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-}));
-
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual.default, ...fsMocks } };
-});
-vi.mock('@simoncodes-ca/core', async () => {
-  const actual = await vi.importActual('@simoncodes-ca/core');
+vi.mock('@simoncodes-ca/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
     ...actual,
+    loadConfig: vi.fn(),
     updateCollection: vi.fn().mockResolvedValue({ message: 'updated' }),
   };
 });
 
-const mockExistsSync = vi.mocked(existsSync);
-const mockReadFileSync = vi.mocked(readFileSync);
 const mockUpdateCollection = vi.mocked(updateCollection);
 
 describe('editCollectionCommand', () => {
   const mockConfig = {
+    exportFolder: 'dist/lingo-export',
+    importFolder: 'dist/lingo-import',
     baseLocale: 'en',
     locales: ['en', 'fr'],
     collections: {
@@ -44,9 +30,25 @@ describe('editCollectionCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.INIT_CWD = '/test/project';
-    mockExistsSync.mockReturnValue(true);
-    mockReadFileSync.mockReturnValue(JSON.stringify(mockConfig));
-    vi.mocked(writeFileSync).mockImplementation(() => undefined);
+    process.exitCode = undefined;
+    vi.mocked(loadConfig).mockReturnValue(mockConfig);
+  });
+
+  afterEach(() => {
+    process.exitCode = undefined;
+  });
+
+  it('passes the stored collection with the new tags and the project root', async () => {
+    await editCollectionCommand('myApp', { addTag: ['new-feature'] });
+
+    expect(mockUpdateCollection).toHaveBeenCalledWith(
+      'myApp',
+      undefined,
+      { translationsFolder: './src/i18n', tags: ['existing-tag', 'new-feature'] },
+      { cwd: '/test/project' },
+    );
+    expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag, new-feature');
+    expect(process.exitCode).toBe(0);
   });
 
   it('adds a new tag to the collection', async () => {
@@ -95,31 +97,31 @@ describe('editCollectionCommand', () => {
     expect(collectionArg.tags).toEqual([]);
   });
 
-  it('exits with error when --set-tags is combined with --add-tag', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+  it('exits 1 when --set-tags is combined with --add-tag', async () => {
     await editCollectionCommand('myApp', { setTags: 'foo', addTag: ['bar'] });
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
+    expect(mockUpdateCollection).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
+    expect(process.exitCode).toBe(1);
   });
 
-  it('exits with error when --set-tags is combined with --remove-tag', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+  it('exits 1 when --set-tags is combined with --remove-tag', async () => {
     await editCollectionCommand('myApp', { setTags: 'foo', removeTag: ['existing-tag'] });
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
+    expect(mockUpdateCollection).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
+    expect(process.exitCode).toBe(1);
   });
 
-  it('exits with error when no options provided', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+  it('exits 1 when no options provided', async () => {
     await editCollectionCommand('myApp', {});
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
+    expect(mockUpdateCollection).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ Provide at least one of --add-tag, --remove-tag, or --set-tags');
+    expect(process.exitCode).toBe(1);
   });
 
-  it('exits with error when collection is not found', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+  it('exits 1 when collection is not found', async () => {
     await editCollectionCommand('nonexistent', { addTag: ['foo'] });
-    expect(exitSpy).toHaveBeenCalledWith(1);
-    exitSpy.mockRestore();
+    expect(mockUpdateCollection).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
+    expect(process.exitCode).toBe(1);
   });
 });

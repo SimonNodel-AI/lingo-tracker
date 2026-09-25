@@ -1,8 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { loadResourcesFromCollections } from '@simoncodes-ca/core';
-import type { LingoTrackerCollection, LingoTrackerConfig } from '@simoncodes-ca/core';
-import { ConsoleFormatter, loadConfiguration, parseCommaSeparatedList, resolveCollection } from '../utils';
+import { openCollection, readCollection } from '@simoncodes-ca/core';
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { hasPipedStdin } from '../runner/terminal';
+import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
 import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
 import { matchGlossary, type FlatEntry } from './glossary-matcher';
 
@@ -44,7 +46,7 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
   }
 
   // Fall back to piped stdin when not attached to a terminal.
-  if (!process.stdin.isTTY) {
+  if (hasPipedStdin()) {
     try {
       const piped = fs.readFileSync(0, 'utf8');
       if (piped.trim().length > 0) return piped;
@@ -58,37 +60,30 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
 }
 
 /**
- * Loads entries from the requested collection(s) via the shared core loader,
- * mapping each `LoadedResource` to the matcher's `FlatEntry`. Each collection's
- * effective base locale is stripped from `translations` (it lives in `source`).
- * Returns null if a named collection cannot be resolved.
+ * Loads entries from the requested collection(s) through the core Collection Reader,
+ * mapping each stored resource to the matcher's `FlatEntry`. A folder that cannot be read
+ * is reported as a warning and its entries are left out.
+ * A named collection that does not exist throws CollectionNotFoundError (the runner exits 1).
  */
-function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): FlatEntry[] | null {
-  const globalBase = config.baseLocale;
-
-  let targets: { name: string; collection: LingoTrackerCollection }[];
-  if (options.collection) {
-    const resolved = resolveCollection(options.collection, config, cwd);
-    if (!resolved) return null;
-    targets = [{ name: resolved.name, collection: resolved.config }];
-  } else {
-    targets = Object.entries(config.collections ?? {}).map(([name, collection]) => ({ name, collection }));
-  }
+function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): FlatEntry[] {
+  const names = options.collection ? [options.collection] : Object.keys(config.collections ?? {});
+  const targets = names.map((name) => openCollection(config, name, { cwd }));
 
   const entries: FlatEntry[] = [];
-  for (const { name, collection } of targets) {
-    const base = collection.baseLocale ?? globalBase;
-    const loaded = loadResourcesFromCollections([{ name, path: path.resolve(cwd, collection.translationsFolder) }]);
-    for (const resource of loaded) {
-      const translations = { ...resource.translations };
-      if (base) delete translations[base];
-      entries.push({
-        key: resource.fullKey,
-        collection: resource.collection,
-        source: resource.source,
-        translations,
-        status: resource.status,
-      });
+  for (const collection of targets) {
+    const { resources, problems } = readCollection(collection);
+    // A warning goes to stderr, so --stdout output stays valid JSON.
+    for (const problem of problems) {
+      ConsoleFormatter.warning(`Collection '${collection.name}': skipped unreadable folder: ${problem.message}`);
+    }
+    for (const { fullKey, entry } of resources) {
+      const translations = { ...entry.translations };
+      delete translations[collection.baseLocale];
+      const status: FlatEntry['status'] = {};
+      for (const [locale, meta] of Object.entries(entry.metadata)) {
+        if (meta?.status) status[locale] = meta.status;
+      }
+      entries.push({ key: fullKey, collection: collection.name, source: entry.source, translations, status });
     }
   }
   return entries;
@@ -101,14 +96,17 @@ function buildOutputPath(options: GlossaryCommandOptions, cwd: string): string {
   return path.resolve(cwd, `lingo-tracker-glossary-${timestamp}.json`);
 }
 
-export async function glossaryCommand(options: GlossaryCommandOptions): Promise<void> {
-  const loaded = loadConfiguration();
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
+  name: 'Glossary',
+  // `--collection` is optional here: absent means every collection, so the runner opens nothing.
+  collection: 'none',
+  run: ({ config, cwd, answers }) => runGlossary(answers, config, cwd),
+});
 
+function runGlossary(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const block = resolveInputText(options, cwd);
   if (block === null) {
-    process.exit(1);
+    return { exitCode: 1 };
   }
 
   const baseLocale = config.baseLocale || 'en';
@@ -120,17 +118,7 @@ export async function glossaryCommand(options: GlossaryCommandOptions): Promise<
   }
 
   const entries = loadEntries(options, config, cwd);
-  if (entries === null) {
-    process.exit(1);
-  }
-
-  let extractor: CandidateExtractor;
-  try {
-    extractor = resolveExtractor(options.extractor ?? 'ngram');
-  } catch (error) {
-    ConsoleFormatter.error((error as Error).message);
-    process.exit(1);
-  }
+  const extractor: CandidateExtractor = resolveExtractor(options.extractor ?? 'ngram');
 
   const candidates = extractor(block);
   const terms = matchGlossary(entries, candidates, {

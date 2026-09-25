@@ -1,7 +1,7 @@
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { updateConfig } from '../lib/config/config-file-operations';
-import { ErrorMessages } from '../lib/errors/error-messages';
+import { CollectionAlreadyExistsError } from '../lib/errors/lingo-tracker-error';
 
 export interface AddCollectionOptions {
   cwd?: string;
@@ -24,7 +24,7 @@ export function addCollection(
     }
 
     if (config.collections[collectionName]) {
-      throw new Error(ErrorMessages.collectionAlreadyExists(collectionName));
+      throw new CollectionAlreadyExistsError(collectionName);
     }
 
     const minimalCollection: LingoTrackerCollection = {

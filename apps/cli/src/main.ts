@@ -60,6 +60,7 @@ program
   .command('delete-collection')
   .description('Delete a translation collection from the project')
   .option('--collection-name <name>', 'Name of the collection to delete')
+  .option('--yes', 'Skip confirmation prompt')
   .action(async (options) => {
     const { deleteCollectionCommand } = await import('./delete-collection/delete-collection');
     await deleteCollectionCommand(options);
@@ -100,11 +101,7 @@ program
   )
   .action(async (options) => {
     const { addResourceCommand } = await import('./add-resource/add-resource');
-    const processedOptions = {
-      ...options,
-      translations: options.translations ? JSON.parse(options.translations) : undefined,
-    };
-    await addResourceCommand(processedOptions);
+    await addResourceCommand(options);
   });
 
 program
@@ -115,7 +112,7 @@ program
   .option('--base-value <value>', 'New base value (source text)')
   .option('--comment <comment>', 'New comment')
   .option('--tags <tags>', 'New tags (comma-separated)')
-  .option('--target-folder <folder>', 'New target folder (dot-delimited)')
+  .option('--target-folder <folder>', 'Move the resource into this folder (dot-delimited; "" for the collection root)')
   .option('--locale <locale>', 'Locale to update (requires --locale-value)')
   .option('--locale-value <value>', 'New value for the specified locale')
   .action(async (options) => {
@@ -140,8 +137,11 @@ program
   .option('--collection <name>', 'Name of the collection')
   .option('--source <source>', 'Source key or pattern (e.g., common.buttons.ok or common.buttons.*)')
   .option('--dest <dest>', 'Destination key (e.g., common.actions.ok)')
+  .option(
+    '--dest-collection <name>',
+    'Move into another collection; the destination key is relative to that collection',
+  )
   .option('--override', 'Override destination if it exists')
-  .option('--verbose', 'Show detailed output')
   .action(async (options) => {
     const { moveResourceCommand } = await import('./commands/move');
     await moveResourceCommand(options);
@@ -482,6 +482,7 @@ Notes:
       allowTranslated: options.allowTranslated,
       skipLocales,
       skipIcu: options.skipIcu,
+      skipPlaceholders: options.skipPlaceholders,
       requirePortablePlurals: options.requirePortablePlurals,
     });
   });

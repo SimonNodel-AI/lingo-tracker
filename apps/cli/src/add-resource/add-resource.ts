@@ -1,18 +1,15 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { addResource, createDefaultTranslations } from '@simoncodes-ca/core';
-import { resolveResourceKey, splitResolvedKey, type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
-import prompts from 'prompts';
-import {
-  ConsoleFormatter,
-  ErrorMessages,
-  loadConfiguration,
-  parseCommaSeparatedList,
-  promptForCollection,
-  resolveWritableCollection,
-  warnAboutPreferredTerminology,
-} from '../utils';
+import type { Collection } from '@simoncodes-ca/core';
+import { addResource, openResourceFolder, resolveResourcePaths } from '@simoncodes-ca/core';
+import { type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
+import type prompts from 'prompts';
+import { type Ask, CommandCancelledError, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, parseCommaSeparatedList, warnAboutPreferredTerminology } from '../utils';
+
+interface TranslationInput {
+  locale: string;
+  value: string;
+  status: TranslationStatus;
+}
 
 export interface AddResourceOptions {
   collection?: string;
@@ -21,83 +18,84 @@ export interface AddResourceOptions {
   comment?: string;
   tags?: string;
   targetFolder?: string;
-  translations?: Array<{
-    locale: string;
-    value: string;
-    status: TranslationStatus;
-  }>;
+  /** Raw `--translations` JSON: an array of `{ locale, value, status }`. Parsed in `run`. */
+  translations?: string;
 }
 
-export async function addResourceCommand(options: AddResourceOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config, cwd } = loaded;
+const nonEmpty = (val: string) => (val && val.trim().length > 0 ? true : 'Required');
 
-  const collectionName = await promptForCollection(config, options.collection);
-  if (!collectionName) return;
+export const addResourceCommand = defineCommand<AddResourceOptions>()({
+  name: 'Add resource',
+  collection: 'writable',
+  prompts: (options) => {
+    const questions: prompts.PromptObject[] = [];
+    if (!options.key) {
+      questions.push({
+        type: 'text',
+        name: 'key',
+        message: 'Resource key (dot-delimited, e.g., apps.common.buttons.ok)',
+        validate: nonEmpty,
+      });
+    }
+    if (!options.value) {
+      questions.push({ type: 'text', name: 'value', message: 'Base value (source text)', validate: nonEmpty });
+    }
+    if (!options.comment) {
+      questions.push({ type: 'text', name: 'comment', message: 'Comment (optional, press enter to skip)' });
+    }
+    if (!options.tags) {
+      questions.push({ type: 'text', name: 'tags', message: 'Tags (optional, comma-separated)' });
+    }
+    if (!options.targetFolder) {
+      questions.push({
+        type: 'text',
+        name: 'targetFolder',
+        message: 'Target folder (optional, dot-delimited override)',
+      });
+    }
+    return questions;
+  },
+  required: ['key', 'value'],
+  run: async ({ collection, config, cwd, answers, interactive, ask }) => {
+    const { key, value } = answers;
+    const targetFolder = answers.targetFolder || undefined;
 
-  const collection = resolveWritableCollection(collectionName, config, cwd);
-  if (!collection) return;
+    const translations = answers.translations
+      ? parseTranslations(answers.translations)
+      : interactive
+        ? await promptForTranslations(collection, value, ask)
+        : undefined;
 
-  const answers = await promptForMissing(options, config, collectionName);
+    const { resolvedKey, folderPath, entryKey } = resolveResourcePaths({
+      key,
+      translationsFolder: collection.translationsFolder,
+      targetFolder,
+    });
 
-  try {
-    // Check if resource already exists
-    const resolvedKey = resolveResourceKey(answers.key, answers.targetFolder || undefined);
-    const { folderPath, entryKey } = splitResolvedKey(resolvedKey);
-
-    const fullFolderPath = folderPath.length
-      ? join(collection.config.translationsFolder, ...folderPath)
-      : collection.config.translationsFolder;
-
-    const entryResourcePath = resolve(cwd, fullFolderPath, 'resource_entries.json');
-    const resourceExists = existsSync(entryResourcePath) && hasEntryKey(entryResourcePath, entryKey);
-
-    if (resourceExists) {
-      if (process.stdout.isTTY) {
-        // Interactive mode: prompt for confirmation
-        const confirm = await prompts({
-          type: 'confirm',
-          name: 'value',
-          message: `Resource "${resolvedKey}" already exists. Override?`,
-          initial: false,
-        });
-
-        if (!confirm.value) {
-          ConsoleFormatter.error(ErrorMessages.OPERATION_CANCELLED('Add resource'));
-          return;
-        }
+    // Interactive: an existing entry is only overwritten after confirmation.
+    if (interactive && hasEntryKey(folderPath, entryKey)) {
+      const confirm = await ask({
+        type: 'confirm',
+        name: 'value',
+        message: `Resource "${resolvedKey}" already exists. Override?`,
+        initial: false,
+      });
+      if (confirm.value !== true) {
+        throw new CommandCancelledError();
       }
     }
 
-    const tagsArray = parseCommaSeparatedList(answers.tags) || [];
-    const baseLocale = collection.config.baseLocale || config.baseLocale;
-    const locales = collection.config.locales || config.locales || [];
-    const translationConfig = collection.config.translation ?? config.translation;
+    const tagsArray = parseCommaSeparatedList(answers.tags) ?? [];
 
-    // Build translations: use provided translations or create entries for all non-base locales with base value.
-    // When auto-translation is configured, skip building default translations here — addResource will handle it.
-    const translations =
-      answers.translations && answers.translations.length > 0
-        ? answers.translations
-        : translationConfig?.enabled
-          ? undefined
-          : createDefaultTranslations(locales, baseLocale, answers.value);
-
-    const result = await addResource(
-      collection.translationsFolderPath,
-      {
-        key: answers.key,
-        baseValue: answers.value,
-        comment: answers.comment || undefined,
-        tags: tagsArray.length > 0 ? tagsArray : undefined,
-        targetFolder: answers.targetFolder || undefined,
-        baseLocale,
-        translations: translations && translations.length > 0 ? translations : undefined,
-        allLocales: locales,
-      },
-      { cwd, translationConfig },
-    );
+    // Locales without a supplied translation are seeded by core (auto-translated or copied as `new`).
+    const result = await addResource(collection, {
+      key,
+      baseValue: value,
+      comment: answers.comment || undefined,
+      tags: tagsArray.length > 0 ? tagsArray : undefined,
+      targetFolder,
+      translations,
+    });
 
     ConsoleFormatter.success(`Resource added: ${result.resolvedKey}`);
     if (result.created) {
@@ -106,170 +104,97 @@ export async function addResourceCommand(options: AddResourceOptions): Promise<v
 
     // Advisory: the value is stored either way. Checked against the stored
     // (ICU-normalized) form, which is what validate and the editor see.
-    warnAboutPreferredTerminology(config, cwd, translocoToICU(answers.value));
-  } catch (e: unknown) {
-    ConsoleFormatter.error(e instanceof Error ? e.message : 'Failed to add resource');
+    warnAboutPreferredTerminology(config, cwd, translocoToICU(value));
+  },
+});
+
+const STATUSES: readonly TranslationStatus[] = ['new', 'translated', 'stale', 'verified'];
+
+/** Parses `--translations`; anything but an array of `{ locale, value, status }` fails with one message. */
+function parseTranslations(raw: string): TranslationInput[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`Invalid --translations JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
+  if (!isTranslationList(parsed)) {
+    throw new Error(
+      'Invalid --translations: expected a JSON array of { "locale", "value", "status" } ' +
+        `with status one of ${STATUSES.join(', ')}`,
+    );
+  }
+  return parsed;
 }
 
-async function promptForMissing(
-  options: AddResourceOptions,
-  config: LingoTrackerConfig,
-  collectionName: string,
-): Promise<{
-  key: string;
-  value: string;
-  comment: string;
-  tags: string;
-  targetFolder: string;
-  translations?: Array<{
-    locale: string;
-    value: string;
-    status: TranslationStatus;
-  }>;
-}> {
-  const responses: Partial<{
-    key: string;
-    value: string;
-    comment: string;
-    tags: string;
-    targetFolder: string;
-    translations?: Array<{
-      locale: string;
-      value: string;
-      status: TranslationStatus;
-    }>;
-  }> = {};
+function isTranslationList(value: unknown): value is TranslationInput[] {
+  return Array.isArray(value) && value.every(isTranslationInput);
+}
 
-  const questions: prompts.PromptObject[] = [];
+function isTranslationInput(item: unknown): item is TranslationInput {
+  if (typeof item !== 'object' || item === null) {
+    return false;
+  }
+  const { locale, value, status } = item as Record<string, unknown>;
+  return typeof locale === 'string' && typeof value === 'string' && STATUSES.some((known) => known === status);
+}
 
-  if (!options.key) {
-    questions.push({
-      type: 'text',
-      name: 'key',
-      message: 'Resource key (dot-delimited, e.g., apps.common.buttons.ok)',
-      validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
-    });
+/** Interactive only: offers a translation and a status for each target locale. */
+async function promptForTranslations(
+  collection: Collection,
+  baseValue: string,
+  ask: Ask,
+): Promise<TranslationInput[] | undefined> {
+  if (collection.targetLocales.length === 0) {
+    return undefined;
   }
 
-  if (!options.value) {
-    questions.push({
+  const shouldAddTranslations = await ask({
+    type: 'confirm',
+    name: 'value',
+    message: 'Add translations for other locales?',
+    initial: false,
+  });
+  if (shouldAddTranslations.value !== true) {
+    return undefined;
+  }
+
+  const translations: TranslationInput[] = [];
+  for (const locale of collection.targetLocales) {
+    const translationPrompt = await ask({
       type: 'text',
       name: 'value',
-      message: 'Base value (source text)',
-      validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
+      message: `Translation for ${locale} (press enter to use base value)`,
+    });
+
+    const statusPrompt = await ask({
+      type: 'select',
+      name: 'value',
+      message: `Status for ${locale}`,
+      choices: [
+        { title: 'new', value: 'new' },
+        { title: 'translated', value: 'translated' },
+        { title: 'verified', value: 'verified' },
+      ],
+      initial: 1, // Default to 'translated'
+    });
+
+    translations.push({
+      locale,
+      value:
+        typeof translationPrompt.value === 'string' && translationPrompt.value ? translationPrompt.value : baseValue,
+      status: statusPrompt.value as TranslationStatus,
     });
   }
-
-  if (!options.comment) {
-    questions.push({
-      type: 'text',
-      name: 'comment',
-      message: 'Comment (optional, press enter to skip)',
-    });
-  }
-
-  if (!options.tags) {
-    questions.push({
-      type: 'text',
-      name: 'tags',
-      message: 'Tags (optional, comma-separated)',
-    });
-  }
-
-  if (!options.targetFolder) {
-    questions.push({
-      type: 'text',
-      name: 'targetFolder',
-      message: 'Target folder (optional, dot-delimited override)',
-    });
-  }
-
-  if (questions.length > 0 && process.stdout.isTTY) {
-    const result = await prompts(questions, {
-      onCancel: () => {
-        throw new Error('Add resource cancelled');
-      },
-    });
-    Object.assign(responses, result);
-  } else if (questions.length > 0) {
-    if (!options.key) throw new Error(ErrorMessages.MISSING_OPTION('key'));
-    if (!options.value) throw new Error(ErrorMessages.MISSING_OPTION('value'));
-  }
-
-  // Handle translations in interactive mode
-  let translations: Array<{ locale: string; value: string; status: TranslationStatus }> | undefined;
-  if (!options.translations && process.stdout.isTTY) {
-    const collectionConfig = config.collections?.[collectionName];
-    const baseLocale = collectionConfig?.baseLocale || config.baseLocale;
-    const locales = collectionConfig?.locales || config.locales || [];
-
-    const nonBaseLocales = locales.filter((locale) => locale !== baseLocale);
-
-    if (nonBaseLocales.length > 0) {
-      const shouldAddTranslations = await prompts({
-        type: 'confirm',
-        name: 'value',
-        message: 'Add translations for other locales?',
-        initial: false,
-      });
-
-      if (shouldAddTranslations.value) {
-        translations = [];
-        for (const locale of nonBaseLocales) {
-          const translationPrompt = await prompts({
-            type: 'text',
-            name: 'value',
-            message: `Translation for ${locale} (press enter to use base value)`,
-          });
-
-          const baseValue = options.value ?? (responses.value as string);
-          const translationValue = translationPrompt.value || baseValue;
-
-          const statusPrompt = await prompts({
-            type: 'select',
-            name: 'value',
-            message: `Status for ${locale}`,
-            choices: [
-              { title: 'new', value: 'new' },
-              { title: 'translated', value: 'translated' },
-              { title: 'verified', value: 'verified' },
-            ],
-            initial: 1, // Default to 'translated'
-          });
-
-          translations.push({
-            locale,
-            value: translationValue,
-            status: statusPrompt.value as TranslationStatus,
-          });
-        }
-      }
-    }
-  }
-
-  return {
-    key: options.key ?? (responses.key as string),
-    value: options.value ?? (responses.value as string),
-    comment: options.comment ?? (responses.comment as string) ?? '',
-    tags: options.tags ?? (responses.tags as string) ?? '',
-    targetFolder: options.targetFolder ?? (responses.targetFolder as string) ?? '',
-    translations: options.translations || translations,
-  };
+  return translations;
 }
 
 /**
- * Checks if a resource entry already exists in a file.
+ * Checks if a resource entry already exists in a folder. Unreadable files count as "not found".
  */
-function hasEntryKey(filePath: string, entryKey: string): boolean {
-  if (!existsSync(filePath)) {
-    return false;
-  }
-
+function hasEntryKey(folderPath: string, entryKey: string): boolean {
   try {
-    const content = readFileSync(filePath, 'utf8');
-    const data = JSON.parse(content) as Record<string, unknown>;
-    return entryKey in data;
+    return openResourceFolder(folderPath).has(entryKey);
   } catch {
     return false;
   }

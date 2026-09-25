@@ -1,134 +1,96 @@
-import { existsSync } from 'node:fs';
-import type { TranslationConfig } from '../../config/translation-config';
+import { needsTranslation } from '@simoncodes-ca/domain';
+import type { Collection } from '../config/open-collection';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import { AutoTranslationDisabledError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
-import { calculateChecksum } from '../../resource/checksum';
-import { autoTranslateResource } from './auto-translate-resources';
-
-export interface TranslateExistingResourceOptions {
-  readonly key: string;
-  readonly translationsFolder: string;
-  readonly translationConfig: TranslationConfig;
-  readonly allLocales: string[];
-  readonly baseLocale: string;
-  readonly cwd?: string;
-}
+import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
+import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
+import { type OpenTranslatorOptions, openTranslator } from './translator';
 
 export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
+  /** Locales the Translator skipped (complex ICU, a lost placeholder, or a dropped protected term). */
   readonly skippedLocales: string[];
   readonly entry: ResourceTreeEntry;
+  /** What changed on disk (empty when nothing was translated). */
+  readonly mutations: ResourceMutation[];
 }
 
 /**
- * Translates an existing resource entry for all locales with 'new' or 'stale' status.
+ * Auto-translates an existing resource entry of a collection through the Translator, for every
+ * target locale that needs translation by the Staleness rule (no metadata, or status `new` or
+ * `stale`). Translated values are stored ICU-normalised with status `translated`; skipped locales
+ * are left as they are.
  *
- * Resolves the resource key to its file paths, reads the current state, identifies
- * which locales still need translation (status is 'new' or 'stale'), calls the
- * auto-translate provider, updates the resource entries and tracker metadata, and
- * writes both files to disk.
+ * Returns early with `translatedCount: 0` when no locales require translation, without opening the
+ * Translator (so without needing an API key).
  *
- * Returns early with `translatedCount: 0` when no locales require translation.
- *
- * Throws {@link TranslationError} if the translation provider fails — callers
- * should map this to an appropriate HTTP error (e.g. 502 Bad Gateway).
- *
- * @param options - Resolution and translation parameters for this resource.
- * @returns The updated resource entry along with translation and skip counts.
+ * @param key - The entry's full key.
+ * @param options - `provider` / `protectedTerms`: used instead of the collection's (see {@link openTranslator}).
+ * @throws {AutoTranslationDisabledError} The collection has no enabled translation config.
+ * @throws {InvalidResourceKeyError} The key is malformed.
+ * @throws {ResourceNotFoundError} No entry exists at the key.
+ * @throws {TranslationError} Some locale needs work and the API key is not set, or the provider failed.
+ * @throws {ProtectedTermsFileError} Some locale needs work and a protected-terms file is malformed.
  */
 export async function translateExistingResource(
-  options: TranslateExistingResourceOptions,
+  collection: Collection,
+  key: string,
+  options: OpenTranslatorOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const { key, translationsFolder, translationConfig, allLocales, baseLocale, cwd = process.cwd() } = options;
-
-  const paths = validateAndResolvePaths({ key, translationsFolder, cwd });
-
-  if (!existsSync(paths.resourceEntriesPath) || !existsSync(paths.trackerMetaPath)) {
-    throw new Error(`Resource not found: ${paths.resolvedKey}`);
+  const { baseLocale, translationsFolder } = collection;
+  if (!collection.translationConfig?.enabled) {
+    throw new AutoTranslationDisabledError(collection.name);
   }
 
-  const resourceEntries = readResourceEntries(paths.resourceEntriesPath);
-  const trackerMeta = readTrackerMetadata(paths.trackerMetaPath);
+  const paths = validateAndResolvePaths({ key, translationsFolder });
 
-  if (!resourceEntries[paths.entryKey] || !trackerMeta[paths.entryKey]) {
-    throw new Error(`Resource not found: ${paths.resolvedKey}`);
+  const folder = openResourceFolder(paths.folderPath, { baseLocale });
+  const current = folder.get(paths.entryKey);
+
+  if (!current?.meta) {
+    throw new ResourceNotFoundError(paths.resolvedKey);
   }
 
-  const resourceEntry = resourceEntries[paths.entryKey];
-  const metaEntry = trackerMeta[paths.entryKey];
-  const baseValue = resourceEntry.source;
-
-  const targetLocales = allLocales.filter((locale) => {
-    if (locale === baseLocale) return false;
-    const localeMeta = metaEntry[locale];
-    return !localeMeta || localeMeta.status === 'new' || localeMeta.status === 'stale';
-  });
+  const { entry, meta } = current;
+  const targetLocales = collection.targetLocales.filter((locale) => needsTranslation(meta[locale]));
 
   if (targetLocales.length === 0) {
-    const translations: Record<string, string> = {};
-    for (const [prop, value] of Object.entries(resourceEntry)) {
-      if (prop !== 'source' && prop !== 'tags' && prop !== 'comment' && typeof value === 'string') {
-        translations[prop] = value;
-      }
-    }
-
     return {
       translatedCount: 0,
       skippedLocales: [],
-      entry: {
-        key: paths.entryKey,
-        source: baseValue,
-        translations,
-        metadata: metaEntry,
-        ...(resourceEntry.comment !== undefined && { comment: resourceEntry.comment }),
-        ...(resourceEntry.tags !== undefined && resourceEntry.tags.length > 0 && { tags: resourceEntry.tags }),
-      },
+      entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
+      mutations: [],
     };
   }
 
-  const { translations: translatedEntries, skippedLocales } = await autoTranslateResource({
-    baseValue,
-    baseLocale,
+  const { values, skipped } = await openTranslator(collection, options).translate(
+    [{ key: paths.resolvedKey, source: entry.source }],
     targetLocales,
-    translationConfig,
-  });
+  );
 
-  const baseChecksum = metaEntry[baseLocale]?.checksum ?? calculateChecksum(baseValue);
-
-  for (const { locale, value } of translatedEntries) {
-    resourceEntry[locale] = value;
-
-    const newChecksum = calculateChecksum(value);
-    metaEntry[locale] = {
-      checksum: newChecksum,
-      baseChecksum,
-      status: 'translated',
-    };
+  for (const { locale, value } of values) {
+    folder.setTranslation(paths.entryKey, locale, value, 'translated');
   }
 
-  if (translatedEntries.length > 0) {
-    writeJsonFile({ filePath: paths.resourceEntriesPath, data: resourceEntries });
-    writeJsonFile({ filePath: paths.trackerMetaPath, data: trackerMeta });
+  if (values.length > 0) {
+    folder.save();
   }
 
-  const finalTranslations: Record<string, string> = {};
-  for (const [prop, value] of Object.entries(resourceEntry)) {
-    if (prop !== 'source' && prop !== 'tags' && prop !== 'comment' && typeof value === 'string') {
-      finalTranslations[prop] = value;
-    }
-  }
+  const updatedEntry = requireTreeEntry(folder, paths.entryKey, paths.resolvedKey);
 
   return {
-    translatedCount: translatedEntries.length,
-    skippedLocales,
-    entry: {
-      key: paths.entryKey,
-      source: baseValue,
-      translations: finalTranslations,
-      metadata: metaEntry,
-      ...(resourceEntry.comment !== undefined && { comment: resourceEntry.comment }),
-      ...(resourceEntry.tags !== undefined && resourceEntry.tags.length > 0 && { tags: resourceEntry.tags }),
-    },
+    translatedCount: values.length,
+    skippedLocales: skipped.map(({ locale }) => locale),
+    entry: updatedEntry,
+    mutations: values.length > 0 ? [upsertMutation(translationsFolder, paths.resolvedKey, updatedEntry)] : [],
   };
+}
+
+function requireTreeEntry(folder: ResourceFolder, entryKey: string, resolvedKey: string): ResourceTreeEntry {
+  const treeEntry = folder.treeEntry(entryKey);
+  if (!treeEntry) {
+    throw new ResourceNotFoundError(resolvedKey);
+  }
+  return treeEntry;
 }

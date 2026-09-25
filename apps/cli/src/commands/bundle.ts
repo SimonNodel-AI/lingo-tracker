@@ -1,7 +1,8 @@
-import prompts from 'prompts';
-import type { LingoTrackerConfig, TokenCasing } from '@simoncodes-ca/core';
-import { generateBundle, hasTypeDistConfigured } from '@simoncodes-ca/core';
-import { loadConfiguration, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
+import { generateBundle } from '@simoncodes-ca/core';
+import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
+import { ALL_ITEMS_SENTINEL, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
 
 export interface BundleOptions {
   name?: string;
@@ -36,42 +37,56 @@ interface BundleGenerationResult {
 
 const DEFAULT_DEBUG_KEYS_LOCALE = '99';
 
-export async function bundleCommand(options: BundleOptions): Promise<void> {
-  const loaded = loadConfiguration({ exitOnError: false });
-  if (!loaded) return;
-  const { config } = loaded;
+export const bundleCommand = defineCommand<BundleOptions>()({
+  name: 'Bundle generation',
+  collection: 'none',
+  // Interactive without --name: pick one bundle or all. Non-interactive without --name: all bundles.
+  prompts: (options, { config }) => {
+    const bundleKeys = Object.keys(config.bundles ?? {});
+    if (options.name || bundleKeys.length === 0) {
+      return [];
+    }
+    return [
+      {
+        type: 'select',
+        name: 'bundleOrAll',
+        message: 'Select bundle to generate',
+        choices: [
+          ...bundleKeys.map((key) => ({ title: key, value: key })),
+          { title: 'All bundles', value: ALL_ITEMS_SENTINEL },
+        ],
+      },
+    ];
+  },
+  run: ({ config, cwd, answers }) => run(config, cwd, answers),
+});
 
+async function run(config: LingoTrackerConfig, cwd: string, options: Answers<BundleOptions>): Promise<CommandResult> {
   // Check if bundles are configured
   if (!config.bundles || Object.keys(config.bundles).length === 0) {
-    ConsoleFormatter.error('No bundles configured in .lingo-tracker.json');
-    ConsoleFormatter.indent('Add a "bundles" section to your configuration file.');
-    return;
+    ConsoleFormatter.error('No bundles configured in .lingo-tracker.json', [
+      'Add a "bundles" section to your configuration file.',
+    ]);
+    return { exitCode: 1 };
   }
 
-  const answers = await promptForMissing(options, config);
-
-  // Determine which bundles to process
-  const bundlesToProcess: string[] = [];
-
-  if (answers.all) {
-    bundlesToProcess.push(...Object.keys(config.bundles));
-  } else if (answers.names && answers.names.length > 0) {
-    bundlesToProcess.push(...answers.names);
-  }
+  const picked = typeof options.bundleOrAll === 'string' ? options.bundleOrAll : undefined;
+  const names = options.name ? parseCommaSeparatedList(options.name) : undefined;
+  const bundlesToProcess =
+    names && names.length > 0
+      ? names
+      : picked && picked !== ALL_ITEMS_SENTINEL
+        ? [picked]
+        : Object.keys(config.bundles);
 
   // --token-constant-name is only valid for a single bundle
-  if (options.tokenConstantName && bundlesToProcess.length === 0) {
-    ConsoleFormatter.error('No bundles selected. --token-constant-name requires a single bundle to be targeted.');
-    return;
-  }
-
   if (options.tokenConstantName && bundlesToProcess.length > 1) {
-    ConsoleFormatter.error('Cannot use --token-constant-name with multiple bundles. Please target a single bundle.');
-    return;
+    throw new Error('Cannot use --token-constant-name with multiple bundles. Please target a single bundle.');
   }
 
   // Parse locale filter if provided
-  const localeFilter = answers.locales && answers.locales.length > 0 ? answers.locales : undefined;
+  const locales = parseCommaSeparatedList(options.locale);
+  const localeFilter = locales && locales.length > 0 ? locales : undefined;
 
   const debugKeysLocale = options.debugKeys === true ? DEFAULT_DEBUG_KEYS_LOCALE : options.debugKeys || undefined;
 
@@ -111,6 +126,7 @@ export async function bundleCommand(options: BundleOptions): Promise<void> {
         tokenConstantName: options.tokenConstantName,
         transformICUToTransloco: options.transformICUToTransloco,
         debugKeysLocale,
+        cwd,
       });
 
       bundleResults.push({
@@ -133,7 +149,7 @@ export async function bundleCommand(options: BundleOptions): Promise<void> {
             );
           }
         } else if (result.typeGenerationResult.errorReason) {
-          ConsoleFormatter.indent(`└─ Types: Error (${result.typeGenerationResult.errorReason})`);
+          ConsoleFormatter.error(`Type generation failed: ${result.typeGenerationResult.errorReason}`);
         } else if (result.typeGenerationResult.skippedReason) {
           if (!options.quiet) {
             const skippedReasonMessages: Record<string, string> = {
@@ -148,18 +164,16 @@ export async function bundleCommand(options: BundleOptions): Promise<void> {
         }
       } else if (hasTypeDistConfigured(bundleDefinition)) {
         // Should have result if configured, but just in case
-        ConsoleFormatter.indent(`└─ Types: Failed (No result returned)`);
+        ConsoleFormatter.error('Type generation failed: no result returned');
       } else if (!options.quiet) {
         ConsoleFormatter.indent(`└─ Types: Skipped (no typeDistFile configured)`);
       }
 
       if (result.warnings.length > 0) {
-        ConsoleFormatter.indent(`⚠️  Warnings: ${result.warnings.length}`);
-        if (options.verbose) {
-          result.warnings.forEach((warning) => {
-            ConsoleFormatter.indent(`   - ${warning}`, 2);
-          });
-        }
+        ConsoleFormatter.warning(
+          `Warnings: ${result.warnings.length}`,
+          options.verbose ? result.warnings.map((warning) => `- ${warning}`) : [],
+        );
       }
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to generate bundle';
@@ -171,7 +185,7 @@ export async function bundleCommand(options: BundleOptions): Promise<void> {
         error: errorMessage,
       });
 
-      ConsoleFormatter.indent(`❌ ${errorMessage}`);
+      ConsoleFormatter.error(errorMessage);
     }
   }
 
@@ -205,84 +219,9 @@ export async function bundleCommand(options: BundleOptions): Promise<void> {
 
     const errors = bundleResults.filter((r) => r.error);
     if (errors.length > 0) {
-      if (!options.quiet) {
-        console.log('');
-      }
       ConsoleFormatter.warning(`${errors.length} bundle(s) failed to generate`);
     }
   }
-}
 
-async function promptForMissing(
-  options: BundleOptions,
-  config: LingoTrackerConfig,
-): Promise<{
-  names?: string[];
-  locales?: string[];
-  all: boolean;
-}> {
-  const responses: {
-    names?: string[];
-    locales?: string[];
-    all: boolean;
-  } = {
-    all: false,
-  };
-
-  const bundleKeys = Object.keys(config.bundles || {});
-  const questions: prompts.PromptObject[] = [];
-
-  // Parse comma-separated bundle names if provided
-  if (options.name) {
-    responses.names = parseCommaSeparatedList(options.name);
-  }
-
-  // Parse comma-separated locales if provided
-  if (options.locale) {
-    responses.locales = parseCommaSeparatedList(options.locale);
-  }
-
-  // If no bundle names provided, prompt for selection
-  if (!options.name && process.stdout.isTTY) {
-    if (bundleKeys.length === 0) {
-      ConsoleFormatter.error('No bundles configured. Add bundles to .lingo-tracker.json first.');
-      throw new Error('No bundles available');
-    }
-
-    const choices = [
-      ...bundleKeys.map((key) => ({ title: key, value: key })),
-      { title: 'All bundles', value: '__ALL__' },
-    ];
-
-    questions.push({
-      type: 'select',
-      name: 'bundleOrAll',
-      message: 'Select bundle to generate',
-      choices,
-    });
-  }
-
-  if (questions.length > 0) {
-    const result = await prompts(questions, {
-      onCancel: () => {
-        throw new Error('Bundle generation cancelled');
-      },
-    });
-
-    if (result.bundleOrAll === '__ALL__') {
-      responses.all = true;
-    } else if (result.bundleOrAll) {
-      responses.names = [result.bundleOrAll as string];
-    }
-  } else if (!options.name) {
-    // Non-TTY mode or no prompts - default to all bundles
-    responses.all = true;
-  }
-
-  // If still no bundles selected, default to all
-  if (!responses.names && !responses.all) {
-    responses.all = true;
-  }
-
-  return responses;
+  return bundleResults.some((r) => r.error) ? { exitCode: 1 } : undefined;
 }

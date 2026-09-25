@@ -9,6 +9,7 @@ const resource = (overrides: Partial<LoadedResource> = {}): LoadedResource => ({
   translations: {},
   status: {},
   collection: 'trackerResources',
+  effectiveTags: [],
   ...overrides,
 });
 

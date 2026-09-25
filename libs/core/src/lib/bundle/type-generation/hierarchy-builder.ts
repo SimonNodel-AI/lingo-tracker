@@ -1,5 +1,5 @@
 import { segmentToPropertyName, splitKeyIntoSegments, constantNameToTypeName } from './key-transformer';
-import type { TokenCasing } from '../../../config/bundle-definition';
+import type { TokenCasing } from '@simoncodes-ca/domain';
 
 export interface TypeHierarchyNode {
   children: Record<string, TypeHierarchyNode>;
@@ -28,7 +28,7 @@ export interface TypeHierarchyNode {
  * }
  */
 export function buildTypeHierarchy(keys: string[], casing: TokenCasing = 'upperCase'): TypeHierarchyNode {
-  const root: TypeHierarchyNode = { children: {} };
+  const root = createTypeNode();
 
   for (const key of keys) {
     const segments = splitKeyIntoSegments(key);
@@ -38,11 +38,13 @@ export function buildTypeHierarchy(keys: string[], casing: TokenCasing = 'upperC
       const segment = segments[i];
       const propertyName = segmentToPropertyName(segment, casing);
 
-      if (!currentNode.children[propertyName]) {
-        currentNode.children[propertyName] = { children: {} };
-      }
-
-      currentNode = currentNode.children[propertyName];
+      // Own properties only (lib es2020 has no Object.hasOwn)
+      const existing = Object.getOwnPropertyDescriptor(currentNode.children, propertyName)?.value as
+        | TypeHierarchyNode
+        | undefined;
+      const child = existing ?? createTypeNode();
+      currentNode.children[propertyName] = child;
+      currentNode = child;
 
       // If this is the last segment, set the value
       if (i === segments.length - 1) {
@@ -52,6 +54,14 @@ export function buildTypeHierarchy(keys: string[], casing: TokenCasing = 'upperC
   }
 
   return root;
+}
+
+/**
+ * A node whose `children` has no prototype, so a property named `__proto__` or `constructor` is an
+ * ordinary child rather than a member of `Object.prototype`.
+ */
+function createTypeNode(): TypeHierarchyNode {
+  return { children: Object.create(null) as Record<string, TypeHierarchyNode> };
 }
 
 /**
