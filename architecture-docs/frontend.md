@@ -225,15 +225,18 @@ The dialog returns `protectedTermsFile` unchanged in its submit payload. It incl
 
 ### API Errors — One Adapter at the HTTP Seam
 
-The API clients (`BrowserApiService`, `CollectionsApiService`) never expose Angular's `HttpErrorResponse`. `provideTrackerHttpClient()` (`shared/api-error/api-error.ts`) installs one functional interceptor, `apiErrorInterceptor`, on the app's `HttpClient`. It is the only place in the Tracker that reads a status code or an error body: every failed response becomes an `ApiError`, an `Error` with three fields.
+The API clients (`BrowserApiService`, `CollectionsApiService`) never expose Angular's `HttpErrorResponse`. `provideTrackerHttpClient()` (`shared/api-error/api-error.ts`) installs one functional interceptor, `apiErrorInterceptor`, on the app's `HttpClient`. Every `HttpClient` request goes through it — the API clients and the Transloco loader alike — so it is the only place in the Tracker that reads a status code or an error body: every failed response becomes an `ApiError`, an `Error` with four fields.
 
 | Field | Value |
 |---|---|
-| `kind` | From the status the API's `LingoTrackerExceptionFilter` chose: `network` (status 0), `invalid` (400, 422), `forbidden` (403, the read-only collection answer), `not-found` (404), `conflict` (409), `server` (5xx), `unknown` (anything else). |
-| `serverMessage` | The `message` of the API's `{ statusCode, message, error }` body; `undefined` for a network failure or a non-JSON body (an HTML page from a proxy). |
+| `kind` | Shrunk to what a consumer actually branches on: `invalid` (400, 422), `not-found` (404), `conflict` (409), `other` (everything else — network failures, 403, every 5xx, any other status). |
+| `status` | The real HTTP status (or 0 for a network failure), for logs or for a future consumer that needs more than `kind`. |
+| `serverMessage` | The `message` of the API's `{ statusCode, message, error }` body; `undefined` for a network failure, a non-JSON body (an HTML page from a proxy), or **a status of exactly 500**. |
 | `details` | The body's `errors` array when present: bundle rule messages (`string[]`) or preferred-terminology rule errors (`PreferredTermRuleErrorDto[]`). |
 
-Consumers use two things. `apiErrorMessage(error, fallback)` is the text to show: the server's message when the API sent one, the message of an `Error` the Tracker raised itself (`CollectionIndexNotReadyError`), else the caller's localized fallback for that operation (`browser.toast.loadFoldersFailed` and the like). `kind` drives a decision: the translation editor opens the key-conflict dialog on `conflict` and shows its not-found text on `not-found`; `CollectionsStore` reads the `details` of an `invalid` answer as rule errors; `withBundlesFeature` appends string `details` to the message (`Invalid bundle definition: a; b`). No store, dialog or picker matches on a status or parses a body.
+Consumers use two things. `apiErrorMessage(error, fallback)` is the text to show: the server's message when the API sent one, the message of an `Error` the Tracker raised itself (`CollectionIndexNotReadyError`), else the caller's localized fallback for that operation (`browser.toast.loadFoldersFailed` and the like). `kind` drives a decision: the translation editor opens the key-conflict dialog on `conflict` and shows its not-found text on `not-found`; `CollectionsStore` reads the `details` of an `invalid` answer as rule errors (through a type guard, not a cast — a row missing `index`/`field`/`code`/`message` is dropped); `withBundlesFeature` appends string `details` to the message (`Invalid bundle definition: a; b`). No store, dialog or picker matches on a status or parses a body.
+
+**The 500 rule.** `LingoTrackerExceptionFilter` (`apps/api/src/app/errors/lingo-tracker-exception.filter.ts`) answers every exception it does not otherwise map — anything that is not an `HttpException` or a typed `LingoTrackerError` — with a fixed, undisclosing 500 body: `{ message: 'Internal server error' }`. If `apiErrorMessage` showed that verbatim, every store would show raw English instead of its own localized fallback. So `apiErrorMessage` special-cases `status === 500`: it always uses the caller's fallback, regardless of what the body says. This is a status check, never a message-text match. A 502 is untouched by the rule and still shows its server message — the API answers translation-provider failures and rate limits that way (`translationErrorToHttp` in the same filter), and those messages are worth surfacing.
 
 ## Key UI Patterns
 

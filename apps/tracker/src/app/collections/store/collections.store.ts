@@ -36,14 +36,24 @@ interface CollectionsState {
   configRuleErrors: PreferredTermRuleErrorDto[];
 }
 
+/** True for a value shaped like one row of `PreferredTermRulesErrorResponseDto['errors']`. */
+function isPreferredTermRuleErrorDto(value: unknown): value is PreferredTermRuleErrorDto {
+  if (typeof value !== 'object' || value === null) return false;
+  const { index, field, code, message } = value as Record<string, unknown>;
+  return (
+    typeof index === 'number' && typeof field === 'string' && typeof code === 'string' && typeof message === 'string'
+  );
+}
+
 /**
  * The per-row rule errors of a rejected `PUT /api/config`. The API's config controller is the
  * only source of an `invalid` answer with details on that route, and its `errors` are
- * `PreferredTermRuleErrorDto[]` (`PreferredTermRulesErrorResponseDto`).
+ * `PreferredTermRuleErrorDto[]` (`PreferredTermRulesErrorResponseDto`). Anything that does not
+ * carry the DTO's required fields is dropped rather than trusted.
  */
 function extractRuleErrors(error: unknown): PreferredTermRuleErrorDto[] {
   if (!(error instanceof ApiError) || error.kind !== 'invalid') return [];
-  return error.details as PreferredTermRuleErrorDto[];
+  return error.details.filter(isPreferredTermRuleErrorDto);
 }
 
 /**

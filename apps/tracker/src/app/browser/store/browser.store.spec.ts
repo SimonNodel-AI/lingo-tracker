@@ -9,6 +9,7 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { provideTrackerHttpClient, toApiError } from '../../shared/api-error/api-error';
 import { NotificationService } from '../../shared/notification';
@@ -394,7 +395,7 @@ describe('BrowserStore', () => {
     });
 
     it('should handle folder children loading errors', async () => {
-      const error = serverError(500, 'api error: load folder children');
+      const error = serverError(502, 'api error: load folder children');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree')
         .mockReturnValueOnce(of(mockTreeRoot))
@@ -441,7 +442,7 @@ describe('BrowserStore', () => {
     });
 
     it('should handle translation loading errors', async () => {
-      const error = serverError(500, 'api error: load translations');
+      const error = serverError(502, 'api error: load translations');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree')
         .mockReturnValueOnce(of(mockTreeRoot))
@@ -753,8 +754,23 @@ describe('BrowserStore', () => {
   });
 
   describe('Error Handling', () => {
+    it('should fall back to the load-folders message for a 500, whose body is always the generic "Internal server error" text', async () => {
+      const error = serverError(500, 'Internal server error');
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(throwError(() => error));
+
+      store.setSelectedCollection({
+        collectionName: 'app-translations',
+        locales: [],
+      });
+
+      await waitForSignals();
+
+      expect(store.error()).toBe(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERSFAILED);
+    });
+
     it('should clear error when clearError is called', async () => {
-      const error = serverError(500, 'Test error');
+      const error = serverError(502, 'Test error');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(throwError(() => error));
 
@@ -772,7 +788,7 @@ describe('BrowserStore', () => {
     });
 
     it('should clear error when new operation starts', async () => {
-      const error = serverError(500, 'Test error');
+      const error = serverError(502, 'Test error');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree')
         .mockReturnValueOnce(throwError(() => error))
@@ -1401,7 +1417,7 @@ describe('BrowserStore', () => {
       });
 
       it('should handle search errors', async () => {
-        const error = serverError(500, 'Search failed');
+        const error = serverError(502, 'Search failed');
         vi.spyOn(apiService, 'searchTranslations').mockReturnValue(throwError(() => error));
 
         store.searchTranslations('test');

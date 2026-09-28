@@ -1,4 +1,3 @@
-import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type {
@@ -12,6 +11,7 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError, provideTrackerHttpClient } from '../../shared/api-error/api-error';
 import {
   BrowserApiService,
   CollectionIndexNotReadyError,
@@ -26,7 +26,7 @@ describe('BrowserApiService', () => {
 
   const createService = createServiceFactory({
     service: BrowserApiService,
-    providers: [provideHttpClient(), provideHttpClientTesting()],
+    providers: [provideTrackerHttpClient(), provideHttpClientTesting()],
   });
 
   beforeEach(() => {
@@ -140,8 +140,9 @@ describe('BrowserApiService', () => {
         vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
 
         httpMock.expectNone(url);
-        expect(failure).toBeDefined();
+        expect(failure).toBeInstanceOf(ApiError);
         expect(failure).not.toBeInstanceOf(CollectionIndexNotReadyError);
+        expect((failure as ApiError).kind).toBe('other');
       });
     });
   });

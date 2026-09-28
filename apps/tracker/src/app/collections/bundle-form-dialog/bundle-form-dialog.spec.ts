@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
@@ -7,6 +8,7 @@ import type { BundleDefinitionDto, BundleDryRunResultDto, LingoTrackerConfigDto 
 import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { toApiError } from '../../shared/api-error/api-error';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from '../store/collections.store';
 import { BundleFormDialog } from './bundle-form-dialog';
@@ -400,7 +402,9 @@ describe('BundleFormDialog — dry run', () => {
 
   it('should fall back to the client-side tree when the dry run fails', async () => {
     const { component, api } = buildHarness({ mode: 'create' });
-    api.dryRunBundle.mockReturnValue(throwError(() => new Error('boom')));
+    api.dryRunBundle.mockReturnValue(
+      throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
+    );
     fillOutput(component);
     component.form.controls.typesEnabled.setValue(true);
     component.form.controls.typeDistFile.setValue('./dist/i18n-types/admin.ts');
@@ -428,7 +432,9 @@ describe('BundleFormDialog — dry run', () => {
 
   it('should split tree paths and names after separators so they wrap between segments', async () => {
     const { component, api } = buildHarness({ mode: 'create' });
-    api.dryRunBundle.mockReturnValue(throwError(() => new Error('boom')));
+    api.dryRunBundle.mockReturnValue(
+      throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
+    );
     fillOutput(component);
     vi.advanceTimersByTime(300);
 

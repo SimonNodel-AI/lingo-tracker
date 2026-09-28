@@ -1,4 +1,3 @@
-import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { patchState } from '@ngrx/signals';
@@ -6,6 +5,7 @@ import { unprotected } from '@ngrx/signals/testing';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { ApiError, provideTrackerHttpClient } from '../../../shared/api-error/api-error';
 import { BrowserStore } from '../browser.store';
 
 const RESOURCES_URL = '/api/collections/my-collection/resources';
@@ -57,7 +57,7 @@ describe('BrowserStore entry writes', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       imports: [getTranslocoTestingModule()],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideTrackerHttpClient(), provideHttpClientTesting()],
     });
     store = TestBed.inject(BrowserStore);
     http = TestBed.inject(HttpTestingController);
@@ -110,7 +110,8 @@ describe('BrowserStore entry writes', () => {
         .expectOne({ method: 'POST', url: RESOURCES_URL })
         .flush({ message: 'exists' }, { status: 409, statusText: 'Conflict' });
 
-      expect(error).toHaveBeenCalledWith(expect.objectContaining({ status: 409 }));
+      expect(error).toHaveBeenCalledWith(expect.any(ApiError));
+      expect(error).toHaveBeenCalledWith(expect.objectContaining({ kind: 'conflict', status: 409 }));
       http.expectNone((req) => req.url === `${RESOURCES_URL}/tree`);
     });
   });
@@ -216,7 +217,8 @@ describe('BrowserStore entry writes', () => {
         .expectOne({ method: 'PATCH', url: RESOURCES_URL })
         .flush({ message: 'gone' }, { status: 404, statusText: 'Not Found' });
 
-      expect(error).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }));
+      expect(error).toHaveBeenCalledWith(expect.any(ApiError));
+      expect(error).toHaveBeenCalledWith(expect.objectContaining({ kind: 'not-found', status: 404 }));
       expect(store.translations()).toBe(before);
     });
   });

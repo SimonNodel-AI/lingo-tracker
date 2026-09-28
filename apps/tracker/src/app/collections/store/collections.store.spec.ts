@@ -58,7 +58,7 @@ describe('CollectionsStore', () => {
     api.getConfig.mockReturnValue(
       throwError(() =>
         toApiError(
-          new HttpErrorResponse({ status: 500, error: { statusCode: 500, message: 'Config file is not valid JSON' } }),
+          new HttpErrorResponse({ status: 502, error: { statusCode: 502, message: 'Config file is not valid JSON' } }),
         ),
       ),
     );
@@ -67,6 +67,20 @@ describe('CollectionsStore', () => {
 
     expect(store.error()).toBe('Config file is not valid JSON');
     expect(store.isLoading()).toBe(false);
+  });
+
+  it('loadCollections falls back to the load-failed message for a 500, whose body is always the generic "Internal server error" text', () => {
+    api.getConfig.mockReturnValue(
+      throwError(() =>
+        toApiError(
+          new HttpErrorResponse({ status: 500, error: { statusCode: 500, message: 'Internal server error' } }),
+        ),
+      ),
+    );
+
+    store.loadCollections();
+
+    expect(store.error()).toBe(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED);
   });
 
   it('loadCollections falls back to the load-failed message for a network failure', () => {
@@ -81,7 +95,7 @@ describe('CollectionsStore', () => {
 
   it('updateGlobalConfig sets error state on failure without losing the previous config', () => {
     api.updateConfig.mockReturnValue(
-      throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'save failed' } }))),
+      throwError(() => toApiError(new HttpErrorResponse({ status: 502, error: { message: 'save failed' } }))),
     );
 
     store.updateGlobalConfig({ protectedTerms: ['iPhone'] });
@@ -118,6 +132,23 @@ describe('CollectionsStore', () => {
     store.updateGlobalConfig({ preferredTerminology: [] });
     api.updateConfig.mockReturnValue(of({ message: 'ok' }));
     api.getConfig.mockReturnValue(of(configAfterSave));
+
+    store.updateGlobalConfig({ preferredTerminology: [] });
+
+    expect(store.configRuleErrors()).toEqual([]);
+  });
+
+  it('updateGlobalConfig drops an errors-array entry that is not shaped like a rule error', () => {
+    api.updateConfig.mockReturnValue(
+      throwError(() =>
+        toApiError(
+          new HttpErrorResponse({
+            status: 400,
+            error: { message: 'Invalid preferred terminology rules', errors: [{ index: 0 }, 'not an object', null] },
+          }),
+        ),
+      ),
+    );
 
     store.updateGlobalConfig({ preferredTerminology: [] });
 

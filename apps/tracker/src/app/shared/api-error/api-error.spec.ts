@@ -47,19 +47,20 @@ describe('toApiError', () => {
   });
 
   it.each([
-    [403, 'forbidden'],
+    [403, 'other'],
     [422, 'invalid'],
-    [500, 'server'],
-    [502, 'server'],
-    [429, 'unknown'],
+    [500, 'other'],
+    [502, 'other'],
+    [429, 'other'],
   ] as const)('maps status %i to %s', (status, kind) => {
     expect(toApiError(new HttpErrorResponse({ status, error: { message: 'm' } })).kind).toBe(kind);
   });
 
-  it('maps a network failure (status 0) to network with no server message', () => {
+  it('maps a network failure (status 0) to other with no server message', () => {
     const error = toApiError(new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }));
 
-    expect(error.kind).toBe('network');
+    expect(error.kind).toBe('other');
+    expect(error.status).toBe(0);
     expect(error.serverMessage).toBeUndefined();
     expect(error.message).toContain('0');
   });
@@ -70,7 +71,7 @@ describe('toApiError', () => {
       new HttpErrorResponse({ status: 500, error: { error: new SyntaxError('Unexpected token <'), text: '<html>' } }),
     );
 
-    expect(html.kind).toBe('server');
+    expect(html.kind).toBe('other');
     expect(html.serverMessage).toBeUndefined();
     expect(unparsable.serverMessage).toBeUndefined();
     expect(unparsable.details).toEqual([]);
@@ -94,6 +95,25 @@ describe('apiErrorMessage', () => {
     const error = toApiError(new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }));
 
     expect(apiErrorMessage(error, 'Failed to load folders')).toBe('Failed to load folders');
+  });
+
+  it('uses the caller fallback for a 500 even when the body carries a message, so the generic "Internal server error" the API sends for any unmapped exception never reaches the user', () => {
+    const error = toApiError(
+      new HttpErrorResponse({ status: 500, error: { statusCode: 500, message: 'Internal server error' } }),
+    );
+
+    expect(apiErrorMessage(error, 'Failed to load folders')).toBe('Failed to load folders');
+  });
+
+  it('still shows the server message for a 502, which can carry a real translation-provider error', () => {
+    const error = toApiError(
+      new HttpErrorResponse({
+        status: 502,
+        error: { statusCode: 502, message: 'Translation provider error: timed out' },
+      }),
+    );
+
+    expect(apiErrorMessage(error, 'Failed to translate')).toBe('Translation provider error: timed out');
   });
 
   it('uses the message of any other Error and the fallback for anything else', () => {
@@ -123,7 +143,7 @@ describe('apiErrorInterceptor (through provideTrackerHttpClient)', () => {
     controller.verify();
   });
 
-  it('converts a network failure into a network ApiError', () => {
+  it('converts a network failure into an ApiError', () => {
     const { http, controller } = setup();
     let caught: unknown;
     http.get('/api/config').subscribe({ error: (error: unknown) => (caught = error) });
@@ -131,7 +151,7 @@ describe('apiErrorInterceptor (through provideTrackerHttpClient)', () => {
     controller.expectOne('/api/config').error(new ProgressEvent('error'));
 
     expect(caught).toBeInstanceOf(ApiError);
-    expect(caught).toMatchObject({ kind: 'network', status: 0, serverMessage: undefined });
+    expect(caught).toMatchObject({ kind: 'other', status: 0, serverMessage: undefined });
     controller.verify();
   });
 

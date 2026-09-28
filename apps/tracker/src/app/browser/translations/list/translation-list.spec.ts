@@ -1,5 +1,5 @@
-import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
-import { toApiError } from '../../../shared/api-error/api-error';
+import { HttpErrorResponse } from '@angular/common/http';
+import { provideTrackerHttpClient, toApiError } from '../../../shared/api-error/api-error';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import type { Provider } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
@@ -24,7 +24,7 @@ import { TranslationList } from './translation-list';
 const createList = createComponentFactory({
   component: TranslationList,
   imports: [getTranslocoTestingModule()],
-  providers: [provideHttpClient(), provideHttpClientTesting()],
+  providers: [provideTrackerHttpClient(), provideHttpClientTesting()],
   detectChanges: false,
 });
 

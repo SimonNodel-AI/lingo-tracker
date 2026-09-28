@@ -3,16 +3,17 @@ import type { EnvironmentProviders } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 
 /**
- * What a failed API request means to the Tracker, derived from the HTTP status the API's
- * `LingoTrackerExceptionFilter` chose (`apps/api/src/app/errors`):
+ * What a failed API request means to the Tracker, shrunk to what a consumer actually
+ * branches on (`translation-editor-dialog.ts`, `collections.store.ts`). Anything a
+ * consumer does not decide with — a network failure, a forbidden read-only-collection
+ * answer, a 5xx, or any other status — is `other`; `status` still carries the real code
+ * for logs or for a future consumer that needs it.
  *
- * - `network`: the request never got an HTTP answer (status 0).
  * - `invalid`: 400 or 422, the request was understood but rejected.
- * - `forbidden`: 403; the API answers it only for a read-only collection.
- * - `not-found`: 404. `conflict`: 409. `server`: any 5xx.
- * - `unknown`: any other status.
+ * - `not-found`: 404. `conflict`: 409.
+ * - `other`: everything else (0, 403, 5xx, or any other status).
  */
-export type ApiErrorKind = 'network' | 'invalid' | 'forbidden' | 'not-found' | 'conflict' | 'server' | 'unknown';
+export type ApiErrorKind = 'invalid' | 'not-found' | 'conflict' | 'other';
 
 interface ApiErrorProps {
   kind: ApiErrorKind;
@@ -60,13 +61,10 @@ export function toApiError(response: HttpErrorResponse): ApiError {
 }
 
 function kindOf(status: number): ApiErrorKind {
-  if (status === 0) return 'network';
   if (status === 400 || status === 422) return 'invalid';
-  if (status === 403) return 'forbidden';
   if (status === 404) return 'not-found';
   if (status === 409) return 'conflict';
-  if (status >= 500) return 'server';
-  return 'unknown';
+  return 'other';
 }
 
 /**
@@ -86,9 +84,17 @@ function readErrorBody(body: unknown): { serverMessage?: string; details: readon
  * The text to show a user for a failed operation: the server's message when the API sent
  * one, the message of any other `Error` the Tracker raised itself (for example
  * `CollectionIndexNotReadyError`), else the caller's fallback for that operation.
+ *
+ * A status of exactly 500 is the one exception: `LingoTrackerExceptionFilter` answers
+ * every exception it does not recognise with the fixed, undisclosing body
+ * `{ message: 'Internal server error' }` (`apps/api/src/app/errors/lingo-tracker-exception.filter.ts`),
+ * so a 500's `serverMessage` is never operation-specific and showing it would replace a
+ * localized fallback with raw English. This is a status check, not a text match: a 502
+ * (a translation provider's own error, or a rate limit) still carries a message worth
+ * showing.
  */
 export function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) return error.serverMessage ?? fallback;
+  if (error instanceof ApiError) return error.status === 500 ? fallback : (error.serverMessage ?? fallback);
   return error instanceof Error ? error.message : fallback;
 }
 
