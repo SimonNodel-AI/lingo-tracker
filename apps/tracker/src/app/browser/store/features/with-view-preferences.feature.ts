@@ -77,20 +77,25 @@ export function withViewPreferencesFeature<_>() {
        * Browser Session has just set; a collection without any keeps the initial state. The
        * retired 'medium' density reads as 'compact'. In compact the one displayed locale is
        * resolved against the collection's locales, so a saved locale it no longer has cannot
-       * leave the list blank.
+       * leave the list blank. In full mode, a saved locale the collection no longer has (one
+       * removed since the save) is dropped rather than kept selected, so it cannot leave a
+       * stale column on screen or get written back to storage on the next save.
        */
       restoreViewPreferences(collectionName: string): void {
         const saved = readFromLocalStorage(collectionName);
         if (!saved) return;
 
         const densityMode: DensityMode = saved.densityMode === 'full' ? 'full' : 'compact';
-        const savedSelectedLocales = saved.selectedLocales ?? [];
+        const availableLocales = store.availableLocales();
+        const savedSelectedLocales = (saved.selectedLocales ?? []).filter((locale) =>
+          availableLocales.includes(locale),
+        );
         const selectedLocales =
           densityMode === 'compact'
             ? resolveCompactLocale({
                 savedCompactLocale: saved.compactLocale,
                 currentSelectedLocales: savedSelectedLocales,
-                availableLocales: store.availableLocales(),
+                availableLocales,
                 baseLocale: store.baseLocale(),
               })
             : savedSelectedLocales;

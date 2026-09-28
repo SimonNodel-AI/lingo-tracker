@@ -195,7 +195,8 @@ describe('BrowserStore', () => {
       store.setFolderTreeFilter('test');
       store.selectFolder('common');
       store.startAddingFolder('common');
-      store.setDisabled(true);
+      // The active search already keeps isDisabled true; opening the next collection must clear it.
+      expect(store.isDisabled()).toBe(true);
       expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['common.save']);
 
       store.openCollection(collectionSettings({ name: 'website-translations', locales: ['en', 'fr'] }));
@@ -872,13 +873,13 @@ describe('BrowserStore', () => {
   });
 
   describe('Disabled State', () => {
-    it('should set disabled state', () => {
+    it('should reflect an active search as disabled, and clear it once the search ends', () => {
       expect(store.isDisabled()).toBe(false);
 
-      store.setDisabled(true);
+      store.setSearchQuery('save');
       expect(store.isDisabled()).toBe(true);
 
-      store.setDisabled(false);
+      store.clearSearch();
       expect(store.isDisabled()).toBe(false);
     });
   });
@@ -894,7 +895,7 @@ describe('BrowserStore', () => {
       expect(store.effectiveDisabled()).toBe(true);
 
       store.openCollection(collectionSettings({ name: 'main' }));
-      store.setDisabled(true);
+      store.setSearchQuery('something');
       expect(store.effectiveDisabled()).toBe(true);
     });
 
@@ -974,6 +975,21 @@ describe('BrowserStore', () => {
       expect(store.sortField()).toBe('key');
       expect(store.sortDirection()).toBe('asc');
       expect(store.selectedStatuses()).toEqual([]);
+    });
+
+    it('should drop a full-mode saved locale the collection no longer has', async () => {
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+      localStorage.setItem(
+        'lingo-tracker:view-prefs:shrunk',
+        JSON.stringify({ densityMode: 'full', selectedLocales: ['es', 'fr', 'de'] }),
+      );
+
+      // 'de' was removed from the collection since the preferences were saved.
+      store.openCollection(collectionSettings({ name: 'shrunk', locales: ['en', 'es', 'fr'] }));
+      await waitForSignals();
+
+      expect(store.densityMode()).toBe('full');
+      expect(store.selectedLocales()).toEqual(['es', 'fr']);
     });
 
     it('should read the retired medium density as compact and pick its one locale', async () => {
@@ -1832,7 +1848,7 @@ describe('BrowserStore', () => {
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
     });
 
-    it("should update the open collection's settings in place, keeping the user's place", async () => {
+    it("should patch a readOnly/translationEnabled-only change in place, keeping the user's place", async () => {
       store.openCollection(collectionSettings({ name: 'app', locales: ['en', 'es'] }));
       await waitForSignals();
       store.selectFolder('common');
@@ -1843,17 +1859,14 @@ describe('BrowserStore', () => {
 
       const edited = collectionSettings({
         name: 'app',
-        locales: ['de', 'fr'],
-        baseLocale: 'de',
+        locales: ['en', 'es'],
         readOnly: true,
         translationEnabled: true,
-        translationsFolder: 'moved/i18n',
       });
       store.updateSettings(edited);
 
       expect(store.collectionSettings()).toEqual(edited);
-      expect(store.availableLocales()).toEqual(['de', 'fr']);
-      expect(store.baseLocale()).toBe('de');
+      expect(store.availableLocales()).toEqual(['en', 'es']);
       expect(store.isReadOnly()).toBe(true);
       expect(store.currentFolderPath()).toBe('common');
       expect(store.searchQuery()).toBe('save');
@@ -1874,6 +1887,55 @@ describe('BrowserStore', () => {
       expect(store.collectionSettings()).toBe(opened);
       expect(store.availableLocales()).toBe(locales);
       expect(store.selectedCollection()).toBe('app');
+    });
+
+    it('should reopen when a locale is removed, dropping it from the filter and from storage', async () => {
+      store.openCollection(collectionSettings({ name: 'app', locales: ['en', 'es', 'fr'] }));
+      await waitForSignals();
+      store.setDensityMode('full');
+      store.setSelectedLocales(['es', 'fr']);
+      await waitForSignals();
+      const sessionId = store.sessionId();
+
+      const edited = collectionSettings({ name: 'app', locales: ['en', 'fr'] });
+      store.updateSettings(edited);
+      await waitForSignals();
+
+      expect(store.sessionId()).toBe(sessionId + 1);
+      expect(store.collectionSettings()).toEqual(edited);
+      expect(store.availableLocales()).toEqual(['en', 'fr']);
+      // The removed locale ('es') is gone from the filter, not just hidden.
+      expect(store.selectedLocales()).toEqual(['fr']);
+      expect(store.isShowingAllLocales()).toBe(false);
+
+      const stored = JSON.parse(localStorage.getItem('lingo-tracker:view-prefs:app') ?? '{}');
+      expect(stored.selectedLocales).not.toContain('es');
+    });
+
+    it('should reopen when the translations folder changes, re-checking the cache', async () => {
+      store.openCollection(collectionSettings({ name: 'app', locales: ['en'] }));
+      await waitForSignals();
+      const sessionId = store.sessionId();
+      const statusCallsBefore = vi.mocked(apiService.getCacheStatus).mock.calls.length;
+
+      const edited = collectionSettings({ name: 'app', locales: ['en'], translationsFolder: 'moved/i18n' });
+      store.updateSettings(edited);
+
+      expect(store.sessionId()).toBe(sessionId + 1);
+      expect(store.collectionSettings()).toEqual(edited);
+      expect(vi.mocked(apiService.getCacheStatus).mock.calls.length).toBeGreaterThan(statusCallsBefore);
+    });
+
+    it('should reopen when the base locale changes', async () => {
+      store.openCollection(collectionSettings({ name: 'app', locales: ['en', 'fr'], baseLocale: 'en' }));
+      await waitForSignals();
+      const sessionId = store.sessionId();
+
+      const edited = collectionSettings({ name: 'app', locales: ['en', 'fr'], baseLocale: 'fr' });
+      store.updateSettings(edited);
+
+      expect(store.sessionId()).toBe(sessionId + 1);
+      expect(store.baseLocale()).toBe('fr');
     });
   });
 });

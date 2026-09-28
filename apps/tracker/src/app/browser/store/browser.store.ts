@@ -43,10 +43,6 @@ export const BrowserStore = signalStore(
     const transloco = inject(TranslocoService);
 
     return {
-      setDisabled(disabled: boolean): void {
-        patchState(store, { isDisabled: disabled });
-      },
-
       clearError(): void {
         patchState(store, { error: null });
       },

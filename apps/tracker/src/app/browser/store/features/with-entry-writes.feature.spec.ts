@@ -301,4 +301,81 @@ describe('BrowserStore entry writes', () => {
       ).toBe('Enregistrer');
     });
   });
+
+  describe('session guard', () => {
+    /** Simulates another collection opening while a write is in flight. */
+    const closeSession = (): void => {
+      patchState(unprotected(store), { sessionId: store.sessionId() + 1 });
+    };
+
+    it('should not patch a folder-list entry whose response arrives after the collection was reopened', () => {
+      folderMode();
+
+      store.updateResource('my-collection', { key: 'common.save', baseValue: 'Save now' }).subscribe();
+      closeSession();
+
+      http
+        .expectOne({ method: 'PATCH', url: RESOURCES_URL })
+        .flush({ resolvedKey: 'common.save', updated: true, resource: entry('common.save', 'Save now') });
+
+      expect(englishOf(store.translations(), 'common.save')).toBe('Save');
+    });
+
+    it('should still resolve the caller when the session closes before the response arrives', () => {
+      folderMode();
+      const next = vi.fn();
+
+      store.updateResource('my-collection', { key: 'common.save', baseValue: 'x' }).subscribe(next);
+      closeSession();
+
+      const response = { resolvedKey: 'common.save', updated: true, resource: entry('common.save', 'Save now') };
+      http.expectOne({ method: 'PATCH', url: RESOURCES_URL }).flush(response);
+
+      expect(next).toHaveBeenCalledWith(response);
+      // The store still shows the previous session's data untouched.
+      expect(englishOf(store.translations(), 'common.save')).toBe('Save');
+    });
+
+    it('should not drop an entry deleted in a closed session', () => {
+      folderMode();
+
+      store.deleteResource('my-collection', 'common.save').subscribe();
+      closeSession();
+
+      http.expectOne({ method: 'DELETE', url: RESOURCES_URL }).flush({ entriesDeleted: 1 });
+
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.save', 'common.dialog.title']);
+    });
+
+    it('should not reload the folder for a create whose session has closed', () => {
+      folderMode();
+
+      store.createResource('my-collection', { key: 'common.ok', baseValue: 'OK' }).subscribe();
+      closeSession();
+
+      http.expectOne({ method: 'POST', url: RESOURCES_URL }).flush({ entriesCreated: 1, created: true });
+
+      http.expectNone((req) => req.url === `${RESOURCES_URL}/tree`);
+    });
+
+    it('should not patch a translation result from a closed session', () => {
+      folderMode();
+
+      store.translateResource('my-collection', 'common.save').subscribe();
+      closeSession();
+
+      http.expectOne({ method: 'POST', url: `${RESOURCES_URL}/translate` }).flush({
+        resource: entry('common.save', 'Save', 'Enregistrer'),
+        translatedCount: 1,
+        skippedLocales: [],
+      });
+
+      expect(
+        store
+          .translations()
+          .find((item) => item.fullKey === 'common.save')
+          ?.targets.find((target) => target.locale === 'fr'),
+      ).toBeUndefined();
+    });
+  });
 });

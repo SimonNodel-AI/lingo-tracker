@@ -1,6 +1,6 @@
 import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { describe, expect, it } from 'vitest';
-import { resolveCollectionSettings } from './collection-settings';
+import { type CollectionSettings, collectionNeedsReopen, resolveCollectionSettings } from './collection-settings';
 
 const translation = { enabled: true, provider: 'openai', apiKeyEnv: 'KEY' } as const;
 
@@ -92,5 +92,40 @@ describe('resolveCollectionSettings', () => {
 
   it('reads own keys only, so a prototype member name is not a collection', () => {
     expect(resolveCollectionSettings(config(), 'constructor').translationsFolder).toBe('');
+  });
+});
+
+describe('collectionNeedsReopen', () => {
+  const base: CollectionSettings = {
+    name: 'app',
+    translationsFolder: 'src/i18n',
+    baseLocale: 'en',
+    locales: ['en', 'fr'],
+    translationEnabled: false,
+    readOnly: false,
+  };
+
+  it('is false for identical settings', () => {
+    expect(collectionNeedsReopen(base, { ...base })).toBe(false);
+  });
+
+  it('is false when only readOnly or translationEnabled differ', () => {
+    expect(collectionNeedsReopen(base, { ...base, readOnly: true })).toBe(false);
+    expect(collectionNeedsReopen(base, { ...base, translationEnabled: true })).toBe(false);
+    expect(collectionNeedsReopen(base, { ...base, readOnly: true, translationEnabled: true })).toBe(false);
+  });
+
+  it('is true when the locale list changes, in length or in order', () => {
+    expect(collectionNeedsReopen(base, { ...base, locales: ['en'] })).toBe(true);
+    expect(collectionNeedsReopen(base, { ...base, locales: ['en', 'fr', 'de'] })).toBe(true);
+    expect(collectionNeedsReopen(base, { ...base, locales: ['fr', 'en'] })).toBe(true);
+  });
+
+  it('is true when the base locale changes', () => {
+    expect(collectionNeedsReopen(base, { ...base, baseLocale: 'fr' })).toBe(true);
+  });
+
+  it('is true when the translations folder changes', () => {
+    expect(collectionNeedsReopen(base, { ...base, translationsFolder: 'moved/i18n' })).toBe(true);
   });
 });

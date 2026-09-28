@@ -50,3 +50,20 @@ export function sameCollectionSettings(a: CollectionSettings, b: CollectionSetti
     a.locales.every((locale, index) => locale === b.locales[index])
   );
 }
+
+/**
+ * True when `locales`, `baseLocale` or `translationsFolder` differ between two resolved
+ * settings for the same collection. Any of the three invalidates data the Browser Session
+ * cached under the old settings — the folder tree, translations, and the cache-status
+ * check — so the Browser Session must reopen instead of patching in place. `readOnly` and
+ * `translationEnabled` are not compared here: they change what the UI allows, not what data
+ * is valid, so they are always safe to patch.
+ */
+export function collectionNeedsReopen(a: CollectionSettings, b: CollectionSettings): boolean {
+  return (
+    a.baseLocale !== b.baseLocale ||
+    a.translationsFolder !== b.translationsFolder ||
+    a.locales.length !== b.locales.length ||
+    a.locales.some((locale, index) => locale !== b.locales[index])
+  );
+}

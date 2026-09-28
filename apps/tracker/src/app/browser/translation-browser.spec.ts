@@ -153,11 +153,34 @@ describe('TranslationBrowser - opening the routed collection', () => {
     config.set(configWith({ translationsFolder: 'src/i18n', locales: ['en', 'es'] }));
   });
 
-  it("should refresh the open collection's settings on a config change, keeping the user's place", () => {
+  it("should patch readOnly/translationEnabled in place on a config change, keeping the user's place", () => {
     const spectator = createComponent();
     spectator.detectChanges();
     const store = spectator.component.store;
     expect(store.selectedCollection()).toBe('app');
+    const sessionId = store.sessionId();
+    store.setSearchQuery('save');
+
+    config.set(
+      configWith({
+        translationsFolder: 'src/i18n',
+        locales: ['en', 'es'],
+        readOnly: true,
+        translation: { enabled: true, provider: 'openai', apiKeyEnv: 'KEY' },
+      }),
+    );
+    spectator.detectChanges();
+
+    expect(store.isReadOnly()).toBe(true);
+    expect(spectator.component.translationEnabled()).toBe(true);
+    expect(store.searchQuery()).toBe('save');
+    expect(store.sessionId()).toBe(sessionId);
+  });
+
+  it('should reopen the collection on a config change to locales, baseLocale or translationsFolder', () => {
+    const spectator = createComponent();
+    spectator.detectChanges();
+    const store = spectator.component.store;
     const sessionId = store.sessionId();
     store.setSearchQuery('save');
 
@@ -177,8 +200,9 @@ describe('TranslationBrowser - opening the routed collection', () => {
     expect(store.isReadOnly()).toBe(true);
     expect(spectator.component.translationEnabled()).toBe(true);
     expect(spectator.component.translationsFolder()).toBe('moved/i18n');
-    expect(store.searchQuery()).toBe('save');
-    expect(store.sessionId()).toBe(sessionId);
+    // A reopen is a fresh session: the previous folder's search does not carry over.
+    expect(store.searchQuery()).toBe('');
+    expect(store.sessionId()).toBe(sessionId + 1);
   });
 
   it('should leave the settings untouched when the config reloads unchanged', () => {
