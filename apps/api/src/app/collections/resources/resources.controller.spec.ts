@@ -300,7 +300,7 @@ describe('ResourcesController', () => {
 
       const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
       expect(error.getStatus()).toBe(500);
-      expect(error.message).toBe('Internal server error');
+      expect(error.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
     });
 
     it('should handle resource with all optional fields', async () => {
@@ -1075,7 +1075,7 @@ describe('ResourcesController', () => {
         resourcesController.getTree('test-collection', '', undefined, mockResponse() as any),
       );
       expect(error.getStatus()).toBe(500);
-      expect(error.message).toBe('Internal server error');
+      expect(error.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
     });
   });
 

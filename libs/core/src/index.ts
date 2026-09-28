@@ -137,6 +137,7 @@ export {
   type FolderPathPart,
   InvalidBundleDefinitionError,
   InvalidCollectionError,
+  InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,

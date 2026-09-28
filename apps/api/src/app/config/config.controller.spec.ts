@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
+  InvalidConfigError,
   loadPreferredTerminology,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
@@ -299,14 +300,23 @@ describe('ConfigController', () => {
         expect(messageOf(error)).toBe('Cannot write preferred terminology file — directory does not exist: /nope');
       });
 
-      it('answers a malformed file pointer in the config (a plain Error) with 500 and writes nothing', () => {
+      it('answers a malformed file pointer in the config (InvalidConfigError) with 500, its message, and writes nothing', () => {
+        const message = '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)';
         (resolvePreferredTerminologyFilePath as jest.Mock).mockImplementationOnce(() => {
-          throw new Error('"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)');
+          throw new InvalidConfigError(message);
         });
 
-        const error = catchHttpException(() => controller.updateConfig({ preferredTerminology: rules }));
+        let thrown: unknown;
+        try {
+          controller.updateConfig({ preferredTerminology: rules });
+        } catch (error: unknown) {
+          thrown = error;
+        }
 
+        expect(thrown).toBeInstanceOf(InvalidConfigError);
+        const error = toHttpException(thrown);
         expect(error.getStatus()).toBe(500);
+        expect(messageOf(error)).toBe(message);
         expect(writePreferredTerminology).not.toHaveBeenCalled();
       });
     });

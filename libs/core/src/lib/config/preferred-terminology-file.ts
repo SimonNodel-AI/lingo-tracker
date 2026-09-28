@@ -7,7 +7,7 @@ import {
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { LingoTrackerError } from '../errors/lingo-tracker-error';
+import { InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
 import {
   readTermFile,
   resolveTermFilePath,
@@ -81,7 +81,7 @@ export function resolvePreferredTerminologyFile(
 /**
  * Absolute path of the preferred-terminology file (see {@link resolvePreferredTerminologyFile}).
  *
- * @throws {Error} The pointer is neither a string nor unset.
+ * @throws {InvalidConfigError} The pointer is neither a string nor unset.
  */
 export function resolvePreferredTerminologyFilePath(
   config: Pick<LingoTrackerConfig, 'preferredTerminologyFile'>,
@@ -89,7 +89,7 @@ export function resolvePreferredTerminologyFilePath(
 ): string {
   const file = resolvePreferredTerminologyFile(config, cwd);
   if (file.invalid !== undefined) {
-    throw new Error(file.invalid);
+    throw new InvalidConfigError(file.invalid);
   }
   return file.path;
 }

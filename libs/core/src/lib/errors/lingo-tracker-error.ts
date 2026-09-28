@@ -43,6 +43,17 @@ export class ConfigParseError extends LingoTrackerError {
 }
 
 /**
+ * `.lingo-tracker.json` is a JSON object but cannot be used: a required field is missing or has
+ * the wrong shape, a file pointer in it is not a string, or the file cannot be read or written.
+ * The message names the field or the pointer, so an adapter can show it as is.
+ */
+export class InvalidConfigError extends LingoTrackerError {
+  constructor(message: string) {
+    super(message, 'INVALID_CONFIG');
+  }
+}
+
+/**
  * A protected-terms file exists but cannot be used: it is not valid JSON, or not a JSON array of
  * strings. A corrupt list is an error, not an empty list, so it never protects nothing silently.
  */

@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
+import { InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { loadConfig } from './load-config';
 
@@ -24,6 +25,11 @@ export interface ConfigFileParams {
 /**
  * Creates a configuration file operations object.
  * Provides a clean interface for reading and writing config files.
+ *
+ * Every failure is a typed error: `loadConfig`'s own `ConfigNotFoundError` and
+ * `ConfigParseError` pass through, and everything else (an unreadable or unwritable file,
+ * a required field missing or of the wrong shape) is an `InvalidConfigError` whose message
+ * says what is wrong with `.lingo-tracker.json`.
  */
 export function createConfigFileOperations(params: ConfigFileParams = {}): ConfigFileOperations {
   const cwd = params.cwd ?? process.cwd();
@@ -36,8 +42,9 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
 
       try {
         config = loadConfig({ cwd });
-      } catch (_error) {
-        throw new Error('Failed to read or parse configuration file');
+      } catch (error) {
+        if (error instanceof LingoTrackerError) throw error;
+        throw new InvalidConfigError(`Failed to read ${CONFIG_FILENAME}: ${reasonOf(error)}`);
       }
 
       if (validate) {
@@ -59,8 +66,8 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
           data: config,
           pretty: true,
         });
-      } catch (_error) {
-        throw new Error('Failed to write configuration file');
+      } catch (error) {
+        throw new InvalidConfigError(`Failed to write ${CONFIG_FILENAME}: ${reasonOf(error)}`);
       }
     },
 
@@ -75,20 +82,24 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
 
 /**
  * Validates a LingoTrackerConfig structure.
- * Throws if config is invalid.
+ * Throws `InvalidConfigError` naming the field when the config is invalid.
  */
 function validateConfig(config: LingoTrackerConfig): void {
   if (!config.baseLocale) {
-    throw new Error('Configuration missing required field: baseLocale');
+    throw new InvalidConfigError(`${CONFIG_FILENAME} is missing the required field "baseLocale"`);
   }
 
   if (!Array.isArray(config.locales)) {
-    throw new Error('Configuration field "locales" must be an array');
+    throw new InvalidConfigError(`"locales" in ${CONFIG_FILENAME} must be an array`);
   }
 
   if (!config.collections || typeof config.collections !== 'object') {
-    throw new Error('Configuration field "collections" must be an object');
+    throw new InvalidConfigError(`"collections" in ${CONFIG_FILENAME} must be an object`);
   }
+}
+
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function normalizeCollectionTags(config: LingoTrackerConfig): void {

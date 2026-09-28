@@ -14,6 +14,7 @@ export {
   FolderNotFoundError,
   InvalidBundleDefinitionError,
   InvalidCollectionError,
+  InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,

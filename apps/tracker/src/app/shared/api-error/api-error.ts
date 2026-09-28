@@ -85,16 +85,14 @@ function readErrorBody(body: unknown): { serverMessage?: string; details: readon
  * one, the message of any other `Error` the Tracker raised itself (for example
  * `CollectionIndexNotReadyError`), else the caller's fallback for that operation.
  *
- * A status of exactly 500 is the one exception: `LingoTrackerExceptionFilter` answers
- * every exception it does not recognise with the fixed, undisclosing body
- * `{ message: 'Internal server error' }` (`apps/api/src/app/errors/lingo-tracker-exception.filter.ts`),
- * so a 500's `serverMessage` is never operation-specific and showing it would replace a
- * localized fallback with raw English. This is a status check, not a text match: a 502
- * (a translation provider's own error, or a rate limit) still carries a message worth
- * showing.
+ * No status is special. `LingoTrackerExceptionFilter` answers an exception it does not
+ * recognise with a 500 whose body has no message at all, so that case lands on the
+ * fallback by the same rule; a 500 that does carry a message (an `InvalidConfigError`
+ * naming what is wrong with `.lingo-tracker.json`, a translation provider left
+ * unconfigured) is worth showing as is.
  */
 export function apiErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) return error.status === 500 ? fallback : (error.serverMessage ?? fallback);
+  if (error instanceof ApiError) return error.serverMessage ?? fallback;
   return error instanceof Error ? error.message : fallback;
 }
 

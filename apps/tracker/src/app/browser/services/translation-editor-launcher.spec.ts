@@ -110,7 +110,9 @@ describe('TranslationEditorLauncher', () => {
     it('should report a failed lookup the same way', () => {
       mockApi.getResourceTree.mockReturnValue(
         throwError(() =>
-          toApiError(new HttpErrorResponse({ status: 500, error: { message: 'Internal server error' } })),
+          toApiError(
+            new HttpErrorResponse({ status: 500, error: { statusCode: 500, error: 'Internal Server Error' } }),
+          ),
         ),
       );
 

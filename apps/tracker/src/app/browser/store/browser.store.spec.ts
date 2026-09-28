@@ -808,8 +808,10 @@ describe('BrowserStore', () => {
   });
 
   describe('Error Handling', () => {
-    it('should fall back to the load-folders message for a 500, whose body is always the generic "Internal server error" text', async () => {
-      const error = serverError(500, 'Internal server error');
+    it('should fall back to the load-folders message for the generic 500, whose body carries no message', async () => {
+      const error = toApiError(
+        new HttpErrorResponse({ status: 500, error: { statusCode: 500, error: 'Internal Server Error' } }),
+      );
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(throwError(() => error));
 

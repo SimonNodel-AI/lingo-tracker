@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { deleteCollectionByName } from './delete-collection-by-name';
+import { ConfigParseError, InvalidConfigError } from '../lib/errors/lingo-tracker-error';
 import * as fs from 'node:fs';
 
 vi.mock('node:fs');
@@ -37,13 +38,14 @@ describe('deleteCollectionByName', () => {
     expect(writtenConfig.collections.spanish).toBeUndefined();
   });
 
-  it('should throw an error if config file does not exist', () => {
+  it('should throw a typed error if the config file cannot be read', () => {
     vi.mocked(fs.readFileSync).mockImplementation(() => {
-      throw new Error('ENOENT: no such file or directory');
+      throw new Error('EACCES: permission denied');
     });
 
+    expect(() => deleteCollectionByName('any', { cwd: '/nonexistent' })).toThrow(InvalidConfigError);
     expect(() => deleteCollectionByName('any', { cwd: '/nonexistent' })).toThrow(
-      'Failed to read or parse configuration file',
+      'Failed to read .lingo-tracker.json: EACCES: permission denied',
     );
   });
 
@@ -64,7 +66,7 @@ describe('deleteCollectionByName', () => {
   it('should throw an error if config file is invalid JSON', () => {
     vi.mocked(fs.readFileSync).mockReturnValue('invalid json {');
 
-    expect(() => deleteCollectionByName('any', { cwd: '/test' })).toThrow('Failed to read or parse configuration file');
+    expect(() => deleteCollectionByName('any', { cwd: '/test' })).toThrow(ConfigParseError);
   });
 
   it('should preserve other collections when deleting multiple', () => {

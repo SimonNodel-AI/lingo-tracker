@@ -97,9 +97,16 @@ describe('apiErrorMessage', () => {
     expect(apiErrorMessage(error, 'Failed to load folders')).toBe('Failed to load folders');
   });
 
-  it('uses the caller fallback for a 500 even when the body carries a message, so the generic "Internal server error" the API sends for any unmapped exception never reaches the user', () => {
+  it('shows the message of a 500 that carries one (an invalid config names what to fix)', () => {
+    const message = '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)';
+    const error = toApiError(new HttpErrorResponse({ status: 500, error: { statusCode: 500, message } }));
+
+    expect(apiErrorMessage(error, 'Failed to save settings')).toBe(message);
+  });
+
+  it('uses the fallback for the generic 500 the API sends for an undisclosed failure, whose body has no message', () => {
     const error = toApiError(
-      new HttpErrorResponse({ status: 500, error: { statusCode: 500, message: 'Internal server error' } }),
+      new HttpErrorResponse({ status: 500, error: { statusCode: 500, error: 'Internal Server Error' } }),
     );
 
     expect(apiErrorMessage(error, 'Failed to load folders')).toBe('Failed to load folders');

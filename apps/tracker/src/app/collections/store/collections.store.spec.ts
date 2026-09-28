@@ -69,12 +69,10 @@ describe('CollectionsStore', () => {
     expect(store.isLoading()).toBe(false);
   });
 
-  it('loadCollections falls back to the load-failed message for a 500, whose body is always the generic "Internal server error" text', () => {
+  it('loadCollections falls back to the load-failed message for the generic 500, whose body carries no message', () => {
     api.getConfig.mockReturnValue(
       throwError(() =>
-        toApiError(
-          new HttpErrorResponse({ status: 500, error: { statusCode: 500, message: 'Internal server error' } }),
-        ),
+        toApiError(new HttpErrorResponse({ status: 500, error: { statusCode: 500, error: 'Internal Server Error' } })),
       ),
     );
 

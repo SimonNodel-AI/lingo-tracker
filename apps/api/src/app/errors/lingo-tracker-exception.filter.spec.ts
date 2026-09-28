@@ -12,6 +12,7 @@ import {
   FolderNotFoundError,
   InvalidBundleDefinitionError,
   InvalidCollectionError,
+  InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
@@ -171,16 +172,22 @@ describe('toHttpException', () => {
       },
     ],
     [
+      new InvalidConfigError('"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)'),
+      500,
+      {
+        message: '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    [
       new LingoTrackerError('Unmapped', 'UNMAPPED'),
       500,
       { message: 'Unmapped', error: 'Internal Server Error', statusCode: 500 },
     ],
-    [
-      new Error('Disk write failure'),
-      500,
-      { message: 'Internal server error', error: 'Internal Server Error', statusCode: 500 },
-    ],
-    ['not an error', 500, { message: 'Internal server error', error: 'Internal Server Error', statusCode: 500 }],
+    // Not typed: nothing about it is safe to disclose, so the body carries no message at all.
+    [new Error('Disk write failure'), 500, { error: 'Internal Server Error', statusCode: 500 }],
+    ['not an error', 500, { error: 'Internal Server Error', statusCode: 500 }],
   ])('maps %p to %i', (error, status, response) => {
     const http = toHttpException(error);
 
@@ -294,10 +301,10 @@ describe('LingoTrackerExceptionFilter (registered with APP_FILTER)', () => {
     });
   });
 
-  it('answers an unexpected error with a generic 500 that hides its message, and logs it', async () => {
+  it('answers an unexpected error with a generic 500 that carries no message, and logs it', async () => {
     await expect(get('plain')).resolves.toEqual({
       status: 500,
-      body: { statusCode: 500, message: 'Internal server error', error: 'Internal Server Error' },
+      body: { statusCode: 500, error: 'Internal Server Error' },
     });
     expect(loggerError).toHaveBeenCalledWith('Disk write failure', expect.any(String));
   });

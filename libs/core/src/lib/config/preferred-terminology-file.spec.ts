@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { InvalidConfigError } from '../errors/lingo-tracker-error';
 import {
   DEFAULT_PREFERRED_TERMINOLOGY_FILENAME,
   loadPreferredTerminology,
@@ -83,6 +84,7 @@ describe('preferred-terminology-file', () => {
         explicit: false,
         invalid: message,
       });
+      expect(() => resolvePreferredTerminologyFilePath(config, cwd)).toThrow(InvalidConfigError);
       expect(() => resolvePreferredTerminologyFilePath(config, cwd)).toThrow(message);
     });
   });
