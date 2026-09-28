@@ -701,7 +701,7 @@
     </div>
     <div class="footer-spacer"></div>
     <button mat-button type="button" (click)="onCancel()">{{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}</button>
-    <button mat-flat-button color="primary" type="button" data-testid="submit" (click)="onSubmit()">
+    <button mat-flat-button color="primary" type="button" data-testid="submit" (click)="onSubmit()" [disabled]="saving()">
       {{ (isEditMode ? TOKENS.BUNDLES.DIALOG.FOOTER.SAVECHANGES : TOKENS.BUNDLES.DIALOG.FOOTER.CREATE) | transloco }}
     </button>
   </footer>

@@ -9,19 +9,16 @@ import { getTranslocoTestingModule } from '../../../testing/transloco-testing.mo
 import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from './collections.store';
 
+// The writes are covered in config-write.spec.ts; this file covers the load.
 describe('CollectionsStore', () => {
   let store: InstanceType<typeof CollectionsStore>;
   let spectator: SpectatorService<InstanceType<typeof CollectionsStore>>;
 
   const api = {
     getConfig: vi.fn(),
-    updateConfig: vi.fn(),
-    createCollection: vi.fn(),
-    updateCollection: vi.fn(),
-    deleteCollection: vi.fn(),
   };
 
-  const configAfterSave: LingoTrackerConfigDto = {
+  const config: LingoTrackerConfigDto = {
     exportFolder: 'dist/export',
     importFolder: 'dist/import',
     baseLocale: 'en',
@@ -42,15 +39,13 @@ describe('CollectionsStore', () => {
     store = spectator.service;
   });
 
-  it('updateGlobalConfig calls the API with the DTO and refetches config', () => {
-    api.updateConfig.mockReturnValue(of({ message: 'ok' }));
-    api.getConfig.mockReturnValue(of(configAfterSave));
+  it('loadCollections stores the config and clears the error', () => {
+    api.getConfig.mockReturnValue(of(config));
 
-    store.updateGlobalConfig({ protectedTerms: ['iPhone', 'C++'] });
+    store.loadCollections();
 
-    expect(api.updateConfig).toHaveBeenCalledWith({ protectedTerms: ['iPhone', 'C++'] });
-    expect(api.getConfig).toHaveBeenCalled();
-    expect(store.config()).toEqual(configAfterSave);
+    expect(store.config()).toEqual(config);
+    expect(store.isLoading()).toBe(false);
     expect(store.error()).toBeNull();
   });
 
@@ -89,79 +84,5 @@ describe('CollectionsStore', () => {
     store.loadCollections();
 
     expect(store.error()).toBe(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED);
-  });
-
-  it('updateGlobalConfig sets error state on failure without losing the previous config', () => {
-    api.updateConfig.mockReturnValue(
-      throwError(() => toApiError(new HttpErrorResponse({ status: 502, error: { message: 'save failed' } }))),
-    );
-
-    store.updateGlobalConfig({ protectedTerms: ['iPhone'] });
-
-    expect(store.error()).toBe('save failed');
-    expect(store.config()).toBeNull();
-  });
-
-  it('updateGlobalConfig exposes per-row preferred terminology errors from a 400 body', () => {
-    const errors = [{ index: 1, field: 'discouraged', code: 'duplicate', message: 'dup' }];
-    api.updateConfig.mockReturnValue(
-      throwError(() =>
-        toApiError(
-          new HttpErrorResponse({
-            status: 400,
-            error: { message: 'Invalid preferred terminology rules', errors },
-          }),
-        ),
-      ),
-    );
-
-    store.updateGlobalConfig({ preferredTerminology: [] });
-
-    expect(store.configRuleErrors()).toEqual(errors);
-    expect(store.error()).toBeTruthy();
-  });
-
-  it('updateGlobalConfig clears rule errors when a new save starts', () => {
-    api.updateConfig.mockReturnValueOnce(
-      throwError(() =>
-        toApiError(new HttpErrorResponse({ status: 400, error: { message: 'x', errors: [{ index: 0 }] } })),
-      ),
-    );
-    store.updateGlobalConfig({ preferredTerminology: [] });
-    api.updateConfig.mockReturnValue(of({ message: 'ok' }));
-    api.getConfig.mockReturnValue(of(configAfterSave));
-
-    store.updateGlobalConfig({ preferredTerminology: [] });
-
-    expect(store.configRuleErrors()).toEqual([]);
-  });
-
-  it('updateGlobalConfig drops an errors-array entry that is not shaped like a rule error', () => {
-    api.updateConfig.mockReturnValue(
-      throwError(() =>
-        toApiError(
-          new HttpErrorResponse({
-            status: 400,
-            error: { message: 'Invalid preferred terminology rules', errors: [{ index: 0 }, 'not an object', null] },
-          }),
-        ),
-      ),
-    );
-
-    store.updateGlobalConfig({ preferredTerminology: [] });
-
-    expect(store.configRuleErrors()).toEqual([]);
-  });
-
-  it('updateGlobalConfig leaves rule errors empty for failures without an errors array', () => {
-    api.updateConfig.mockReturnValue(
-      throwError(() =>
-        toApiError(new HttpErrorResponse({ status: 400, error: { message: 'protectedTerms must be…' } })),
-      ),
-    );
-
-    store.updateGlobalConfig({ protectedTerms: ['x'] });
-
-    expect(store.configRuleErrors()).toEqual([]);
   });
 });

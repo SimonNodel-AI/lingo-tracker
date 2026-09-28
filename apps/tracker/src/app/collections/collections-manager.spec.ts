@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -5,9 +6,11 @@ import { Router } from '@angular/router';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
-import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { of, throwError } from 'rxjs';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
+import { toApiError } from '../shared/api-error/api-error';
+import { NotificationService } from '../shared/notification';
 import { CollectionsManager } from './collections-manager';
 import { CollectionsApiService } from './services/collections-api.service';
 import { CollectionsStore } from './store/collections.store';
@@ -49,6 +52,12 @@ const api = {
   getBundleJob: vi.fn(),
 };
 
+const notifications = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
+const dialog = { open: vi.fn() };
+
+/** What `MatDialog.open` answers: a dialog that closes with `result`. */
+const closingWith = (result: unknown) => ({ afterClosed: () => of(result) });
+
 const text = (fixture: ComponentFixture<CollectionsManager>): string =>
   (fixture.nativeElement as HTMLElement).textContent?.replace(/\s+/g, ' ') ?? '';
 
@@ -65,9 +74,12 @@ describe('CollectionsManager', () => {
       provideTranslocoMessageformat(),
       CollectionsStore,
       { provide: CollectionsApiService, useValue: api },
-      { provide: MatDialog, useValue: { open: vi.fn() } },
+      { provide: NotificationService, useValue: notifications },
       { provide: Router, useValue: { navigate: vi.fn() } },
     ],
+    // MatDialogModule in the component's imports provides its own MatDialog, so the mock must
+    // sit in the component injector to be the one the manager gets.
+    componentProviders: [{ provide: MatDialog, useValue: dialog }],
     detectChanges: false,
   });
 
@@ -284,6 +296,84 @@ describe('CollectionsManager', () => {
       '[data-testid="generate-all"]',
     );
     expect(button?.disabled).toBe(true);
+  });
+
+  describe('config write outcomes', () => {
+    const rejection = (status: number, message: string) =>
+      throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, message } })));
+    const dialogOpened = () => vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
+
+    // The manager loads its dialogs lazily; the first import of a dialog module is slow
+    // enough to outlast a waitFor, so load them once up front.
+    beforeAll(async () => {
+      await import('./collection-form-dialog/collection-form-dialog');
+      await import('./bundle-form-dialog/bundle-form-dialog');
+      await import('../shared/components/confirmation-dialog/confirmation-dialog');
+    });
+
+    it('toasts Created only for a collection the dialog saved; the manager writes nothing itself', async () => {
+      dialog.open.mockReturnValue(closingWith({ name: 'new', config: { translationsFolder: 'i18n' } }));
+
+      component.openCreateDialog();
+      await vi.waitFor(() => expect(notifications.success).toHaveBeenCalledWith('Collection created successfully'));
+
+      expect(api.createCollection).not.toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledTimes(1);
+    });
+
+    it('toasts nothing when the collection dialog closes without a save', async () => {
+      dialog.open.mockReturnValue(closingWith(undefined));
+
+      component.openCreateDialog();
+      await dialogOpened();
+
+      expect(notifications.success).not.toHaveBeenCalled();
+      expect(notifications.error).not.toHaveBeenCalled();
+    });
+
+    it('toasts Updated only for a bundle the dialog saved', async () => {
+      dialog.open.mockReturnValue(closingWith({ name: 'main', bundle: config.bundles?.['main'] }));
+
+      component.openEditBundleDialog('main');
+      await vi.waitFor(() => expect(notifications.success).toHaveBeenCalledWith('Bundle updated successfully'));
+
+      expect(api.updateBundle).not.toHaveBeenCalled();
+    });
+
+    it('toasts Deleted once the server has removed the collection', async () => {
+      dialog.open.mockReturnValue(closingWith(true));
+      api.deleteCollection.mockReturnValue(of({ message: 'ok' }));
+      api.getConfig.mockReturnValue(of({ ...config, collections: { alpha: config.collections['alpha'] } }));
+
+      component.openDeleteDialog('zulu');
+      await vi.waitFor(() => expect(notifications.success).toHaveBeenCalledWith('Collection deleted successfully'));
+
+      expect(api.deleteCollection).toHaveBeenCalledWith('zulu');
+      expect(component.cards().map((card) => card.name)).toEqual(['alpha']);
+    });
+
+    it('toasts the server message, and no success, when the delete is refused', async () => {
+      dialog.open.mockReturnValue(closingWith(true));
+      api.deleteCollection.mockReturnValue(rejection(403, 'Collection "Bravo" is read-only.'));
+
+      component.openDeleteDialog('Bravo');
+      await vi.waitFor(() => expect(notifications.error).toHaveBeenCalledWith('Collection "Bravo" is read-only.'));
+
+      expect(notifications.success).not.toHaveBeenCalled();
+      expect(component.cards()).toHaveLength(3);
+    });
+
+    it('toasts the delete-failed fallback for a refused bundle delete without a message', async () => {
+      dialog.open.mockReturnValue(closingWith(true));
+      api.deleteBundle.mockReturnValue(
+        throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { statusCode: 500 } }))),
+      );
+
+      component.openDeleteBundleDialog('main');
+      await vi.waitFor(() => expect(notifications.error).toHaveBeenCalledWith('Failed to delete bundle'));
+
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
   });
 
   it('leaves Generate all enabled when nothing is running', () => {

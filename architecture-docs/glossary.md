@@ -123,6 +123,14 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ---
 
+### Config Write
+
+One write to `.lingo-tracker.json` from the Tracker UI, and the one way its outcome comes back. In code, `configWrite(store, api, write)` in `apps/tracker/src/app/collections/store/config-write.ts`, which every mutation of `CollectionsStore` is: `createCollection`, `updateCollection`, `deleteCollection`, `updateGlobalConfig`, and the bundle feature's `createBundle`, `updateBundle`, `deleteBundle`. Each sends its request, reloads `GET /api/config`, stores the config, and returns an Observable of that config, so the caller hears back only once the store already holds what the server holds; a rejected write errors with the [API Error](#api-error) of the request (`conflict` for a taken name, `invalid` with the rule messages or the per-row preferred-terminology errors as `details`, anything else) and leaves the store as it was. The Observable is cold, like the browser store's entry writes: nothing is sent until the caller subscribes, and the caller owns the reaction. The collection and bundle form dialogs write through the store themselves and close only on success; a taken name lands on the name field, any other refusal on an error line in the dialog (the bundle dialog lists the server's rule messages). The collections manager toasts a create or edit only when a dialog closes with a saved result, and awaits a delete's outcome before it toasts. The settings page handles its save outcome in the subscription: the saved config reseeds both lists and earns one toast; a refusal keeps every edit, shows its message, and maps rule errors onto the rows that were sent. The store's `error` signal now reports only a failed load.
+
+Explained in context: [`frontend.md`](frontend.md#collectionsstore)
+
+---
+
 ## E
 
 ### Export Run

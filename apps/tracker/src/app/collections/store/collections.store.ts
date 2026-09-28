@@ -4,17 +4,16 @@ import { patchState, signalStore, withComputed, withMethods, withState } from '@
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import type {
   CreateCollectionDto,
-  LingoTrackerCollectionDto,
   LingoTrackerConfigDto,
-  PreferredTermRuleErrorDto,
   UpdateCollectionDto,
   UpdateConfigDto,
 } from '@simoncodes-ca/data-transfer';
-import { catchError, of, pipe, switchMap, tap } from 'rxjs';
+import { catchError, type Observable, of, pipe, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
+import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { resolveCollectionSettings } from './collection-settings';
+import { configWrite } from './config-write';
 import { withBundlesFeature } from './features/with-bundles.feature';
 
 /**
@@ -24,37 +23,11 @@ interface CollectionsState {
   /** Full LingoTracker configuration including global settings and collections */
   config: LingoTrackerConfigDto | null;
 
-  /** Loading state for async operations */
+  /** True while `loadCollections` is in flight. */
   isLoading: boolean;
 
-  /** Error message if an operation fails */
+  /** Message of a failed config load. Writes report their outcome to their caller instead. */
   error: string | null;
-
-  /**
-   * Per-row preferred-terminology errors from the last failed `updateGlobalConfig`, indexed
-   * by row of the submitted list. Empty unless the server rejected the rules with a 400.
-   */
-  configRuleErrors: PreferredTermRuleErrorDto[];
-}
-
-/** True for a value shaped like one row of `PreferredTermRulesErrorResponseDto['errors']`. */
-function isPreferredTermRuleErrorDto(value: unknown): value is PreferredTermRuleErrorDto {
-  if (typeof value !== 'object' || value === null) return false;
-  const { index, field, code, message } = value as Record<string, unknown>;
-  return (
-    typeof index === 'number' && typeof field === 'string' && typeof code === 'string' && typeof message === 'string'
-  );
-}
-
-/**
- * The per-row rule errors of a rejected `PUT /api/config`. The API's config controller is the
- * only source of an `invalid` answer with details on that route, and its `errors` are
- * `PreferredTermRuleErrorDto[]` (`PreferredTermRulesErrorResponseDto`). Anything that does not
- * carry the DTO's required fields is dropped rather than trusted.
- */
-function extractRuleErrors(error: unknown): PreferredTermRuleErrorDto[] {
-  if (!(error instanceof ApiError) || error.kind !== 'invalid') return [];
-  return error.details.filter(isPreferredTermRuleErrorDto);
 }
 
 /**
@@ -64,11 +37,16 @@ const initialState: CollectionsState = {
   config: null,
   isLoading: false,
   error: null,
-  configRuleErrors: [],
 };
 
 /**
- * Signal store for managing collections state.
+ * Signal store for the project configuration: the collections, the bundles and the global
+ * settings of `.lingo-tracker.json`.
+ *
+ * `loadCollections` fills `config` and reports a failure in `error`. Every mutation is a
+ * Config Write (`config-write.ts`): it returns an Observable of the reloaded config, which
+ * the store already holds when it resolves, or errors with the `ApiError` of the rejected
+ * write and leaves the store as it was. The caller subscribes and reacts.
  *
  * @example
  * // In component
@@ -155,166 +133,31 @@ export const CollectionsStore = signalStore(
         ),
       ),
 
-      /**
-       * Creates a new collection and reloads the configuration.
-       */
-      createCollection: rxMethod<CreateCollectionDto>(
-        pipe(
-          tap(() => patchState(store, { isLoading: true, error: null })),
-          switchMap((data) =>
-            api.createCollection(data).pipe(
-              tap(() => {
-                // Reload collections after successful creation
-                patchState(store, { isLoading: false });
-              }),
-              switchMap(() => api.getConfig()),
-              tap((configData) => {
-                patchState(store, {
-                  config: configData,
-                  error: null,
-                });
-              }),
-              catchError((error: unknown) => {
-                const errorMessage = apiErrorMessage(
-                  error,
-                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED),
-                );
-                patchState(store, {
-                  isLoading: false,
-                  error: errorMessage,
-                });
-                return of(null);
-              }),
-            ),
-          ),
-        ),
-      ),
-
-      /**
-       * Updates an existing collection and reloads the configuration.
-       */
-      updateCollection: rxMethod<{
-        oldName: string;
-        newName?: string;
-        collection: LingoTrackerCollectionDto;
-      }>(
-        pipe(
-          tap(() => patchState(store, { isLoading: true, error: null })),
-          switchMap(({ oldName, newName, collection }) => {
-            const updateDto: UpdateCollectionDto = {
-              name: newName,
-              collection,
-            };
-            return api.updateCollection(oldName, updateDto).pipe(
-              tap(() => {
-                // Reload collections after successful update
-                patchState(store, { isLoading: false });
-              }),
-              switchMap(() => api.getConfig()),
-              tap((configData) => {
-                patchState(store, {
-                  config: configData,
-                  error: null,
-                });
-              }),
-              catchError((error: unknown) => {
-                const errorMessage = apiErrorMessage(
-                  error,
-                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED),
-                );
-                patchState(store, {
-                  isLoading: false,
-                  error: errorMessage,
-                });
-                return of(null);
-              }),
-            );
-          }),
-        ),
-      ),
-
-      /**
-       * Updates global configuration fields (e.g., protected terms) and reloads.
-       */
-      updateGlobalConfig: rxMethod<UpdateConfigDto>(
-        pipe(
-          tap(() => patchState(store, { isLoading: true, error: null, configRuleErrors: [] })),
-          switchMap((dto) =>
-            api.updateConfig(dto).pipe(
-              tap(() => {
-                patchState(store, { isLoading: false });
-              }),
-              switchMap(() => api.getConfig()),
-              tap((configData) => {
-                patchState(store, {
-                  config: configData,
-                  error: null,
-                });
-              }),
-              catchError((error: unknown) => {
-                const errorMessage = apiErrorMessage(
-                  error,
-                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED),
-                );
-                patchState(store, {
-                  isLoading: false,
-                  error: errorMessage,
-                  configRuleErrors: extractRuleErrors(error),
-                });
-                return of(null);
-              }),
-            ),
-          ),
-        ),
-      ),
-
-      /**
-       * Deletes a collection and reloads the configuration.
-       */
-      deleteCollection: rxMethod<string>(
-        pipe(
-          tap(() => patchState(store, { isLoading: true, error: null })),
-          switchMap((name) =>
-            api.deleteCollection(name).pipe(
-              tap(() => {
-                // Reload collections after successful deletion
-                patchState(store, { isLoading: false });
-              }),
-              switchMap(() => api.getConfig()),
-              tap((configData) => {
-                patchState(store, {
-                  config: configData,
-                  error: null,
-                });
-              }),
-              catchError((error: unknown) => {
-                const errorMessage = apiErrorMessage(
-                  error,
-                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED),
-                );
-                patchState(store, {
-                  isLoading: false,
-                  error: errorMessage,
-                });
-                return of(null);
-              }),
-            ),
-          ),
-        ),
-      ),
-
-      /**
-       * Sets an error message.
-       */
-      setError(message: string): void {
-        patchState(store, { error: message });
+      /** Creates a collection. A taken name errors with a `conflict`. */
+      createCollection(data: CreateCollectionDto): Observable<LingoTrackerConfigDto> {
+        return configWrite(store, api, api.createCollection(data));
       },
 
       /**
-       * Clears the error message.
+       * Updates the collection `name` names; `update.name` renames it. Locale diffing and the
+       * file-system changes happen inside `PUT /collections/:name` on the core side.
        */
-      clearError(): void {
-        patchState(store, { error: null });
+      updateCollection(name: string, update: UpdateCollectionDto): Observable<LingoTrackerConfigDto> {
+        return configWrite(store, api, api.updateCollection(name, update));
+      },
+
+      /** Deletes a collection's record from the config. */
+      deleteCollection(name: string): Observable<LingoTrackerConfigDto> {
+        return configWrite(store, api, api.deleteCollection(name));
+      },
+
+      /**
+       * Writes the global fields `PUT /config` accepts (the protected terms, the preferred
+       * terminology rules). Rejected rules error with an `invalid` whose `details` are the
+       * per-row `PreferredTermRuleErrorDto`s.
+       */
+      updateGlobalConfig(dto: UpdateConfigDto): Observable<LingoTrackerConfigDto> {
+        return configWrite(store, api, api.updateConfig(dto));
       },
     };
   }),

@@ -23,6 +23,7 @@ import type { BundleEntry } from './store/features/with-bundles.feature';
 import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog/bundle-form-dialog-data';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
+import { apiErrorMessage } from '../shared/api-error/api-error';
 import { NotificationService } from '../shared/notification';
 
 /**
@@ -104,7 +105,9 @@ export interface BundleCardView {
  * - Lists the project's bundles in a sticky side column; create, edit, delete and generate them
  * - Hovering a bundle draws connector lines to the collections it consumes
  * - Loading, empty, and no-matches states
- * - Success/error notifications via snackbar
+ * - Success/error notifications via snackbar, after the server has answered: the form dialogs
+ *   write through the store themselves and close only on success, so a result from one is a
+ *   write that happened; a delete is a Config Write whose outcome the manager awaits itself
  */
 @Component({
   selector: 'app-collections-manager',
@@ -366,9 +369,7 @@ export class CollectionsManager {
 
   openCreateBundleDialog(): void {
     this.#openBundleDialog({ mode: 'create' }).then((result) => {
-      if (!result) return;
-      this.store.createBundle({ name: result.name, bundle: result.bundle });
-      this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.CREATED));
+      if (result) this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.CREATED));
     });
   }
 
@@ -380,13 +381,7 @@ export class CollectionsManager {
     }
 
     this.#openBundleDialog({ mode: 'edit', name, bundle }).then((result) => {
-      if (!result) return;
-      this.store.updateBundle({
-        oldName: name,
-        newName: result.name !== name ? result.name : undefined,
-        bundle: result.bundle,
-      });
-      this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.UPDATED));
+      if (result) this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.UPDATED));
     });
   }
 
@@ -404,10 +399,14 @@ export class CollectionsManager {
       });
 
       dialogRef.afterClosed().subscribe((confirmed) => {
-        if (confirmed) {
-          this.store.deleteBundle(name);
-          this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETED));
-        }
+        if (!confirmed) return;
+        this.store.deleteBundle(name).subscribe({
+          next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETED)),
+          error: (error: unknown) =>
+            this.#notifications.error(
+              apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETEFAILED)),
+            ),
+        });
       });
     });
   }
@@ -460,13 +459,7 @@ export class CollectionsManager {
       });
 
       dialogRef.afterClosed().subscribe((result) => {
-        if (result) {
-          this.store.createCollection({
-            name: result.name,
-            collection: result.config,
-          });
-          this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.CREATED));
-        }
+        if (result) this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.CREATED));
       });
     });
   }
@@ -499,14 +492,7 @@ export class CollectionsManager {
       });
 
       dialogRef.afterClosed().subscribe((result) => {
-        if (result) {
-          this.store.updateCollection({
-            oldName: name,
-            newName: result.name !== name ? result.name : undefined,
-            collection: result.config,
-          });
-          this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATED));
-        }
+        if (result) this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATED));
       });
     });
   }
@@ -528,10 +514,14 @@ export class CollectionsManager {
       });
 
       dialogRef.afterClosed().subscribe((confirmed) => {
-        if (confirmed) {
-          this.store.deleteCollection(name);
-          this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETED));
-        }
+        if (!confirmed) return;
+        this.store.deleteCollection(name).subscribe({
+          next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETED)),
+          error: (error: unknown) =>
+            this.#notifications.error(
+              apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED)),
+            ),
+        });
       });
     });
   }

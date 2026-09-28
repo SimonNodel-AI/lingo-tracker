@@ -55,7 +55,12 @@ interface Harness {
   component: BundleFormDialog;
   dialogRef: { close: ReturnType<typeof vi.fn> };
   api: { dryRunBundle: ReturnType<typeof vi.fn> };
+  /** The two Config Writes the dialog makes; both accept by default. */
+  store: { createBundle: ReturnType<typeof vi.fn>; updateBundle: ReturnType<typeof vi.fn> };
 }
+
+const rejection = (status: number, body: object) =>
+  throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } })));
 
 const createComponent = createComponentFactory({
   component: BundleFormDialog,
@@ -72,6 +77,8 @@ const buildHarness = (data: BundleFormDialogData): Harness => {
       Object.entries(config.collections).map(([name, collection]) => ({ name, config: collection })),
     ),
     bundleEntries: signal([{ name: 'tracker', definition: trackerBundle }]),
+    createBundle: vi.fn(() => of(config)),
+    updateBundle: vi.fn(() => of(config)),
   };
 
   const spectator = createComponent({
@@ -84,8 +91,12 @@ const buildHarness = (data: BundleFormDialogData): Harness => {
   });
   spectator.detectChanges();
   const fixture = spectator.fixture;
-  return { fixture, component: fixture.componentInstance, dialogRef, api };
+  return { fixture, component: fixture.componentInstance, dialogRef, api, store };
 };
+
+const submitErrorsText = (harness: Harness): string | null =>
+  (harness.fixture.nativeElement as HTMLElement).querySelector('[data-testid="submit-errors"]')?.textContent?.trim() ??
+  null;
 
 const fillOutput = (component: BundleFormDialog): void => {
   component.form.controls.name.setValue('admin');
@@ -314,6 +325,78 @@ describe('BundleFormDialog — create mode', () => {
   it('should close with undefined on cancel', () => {
     component.onCancel();
     expect(harness.dialogRef.close).toHaveBeenCalledWith(undefined);
+  });
+
+  describe('writing through the store', () => {
+    it('should create the bundle through the store and close only once the server has accepted it', () => {
+      fillOutput(component);
+
+      component.onSubmit();
+
+      expect(harness.store.createBundle).toHaveBeenCalledWith({
+        name: 'admin',
+        bundle: expect.objectContaining({ bundleName: 'admin.{locale}', dist: './dist/i18n' }),
+      });
+      expect(harness.dialogRef.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'admin' }));
+    });
+
+    it('should stay open on a taken name and show the conflict on the name field', () => {
+      harness.store.createBundle.mockReturnValue(
+        rejection(409, { message: 'Bundle "admin" already exists', error: 'Conflict' }),
+      );
+      fillOutput(component);
+      component.activate('types');
+
+      component.onSubmit();
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.close).not.toHaveBeenCalled();
+      expect(component.saving()).toBe(false);
+      expect(component.form.controls.name.hasError('nameExists')).toBe(true);
+      expect(component.activeSection()).toBe('output');
+      expect(harness.fixture.nativeElement.textContent).toContain('A bundle named admin already exists.');
+      expect(submitErrorsText(harness)).toBeNull();
+    });
+
+    it('should stay open and list every rule message of a definition the server rejects', () => {
+      harness.store.createBundle.mockReturnValue(
+        rejection(400, {
+          message: 'Invalid bundle definition',
+          error: 'Bad Request',
+          errors: ['dist (output folder) is required.', "Collection 'ghost' does not exist in the configuration."],
+        }),
+      );
+      fillOutput(component);
+
+      component.onSubmit();
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.close).not.toHaveBeenCalled();
+      expect(component.submitErrors()).toEqual([
+        'dist (output folder) is required.',
+        "Collection 'ghost' does not exist in the configuration.",
+      ]);
+      expect(submitErrorsText(harness)).toContain("Collection 'ghost' does not exist in the configuration.");
+
+      // The next edit clears the server's answer like any other submit error.
+      component.form.controls.dist.setValue('./dist/other');
+      expect(component.submitErrors()).toEqual([]);
+    });
+
+    it('should show the server message, else the create-failed text, for any other refusal', () => {
+      harness.store.createBundle
+        .mockReturnValueOnce(rejection(403, { message: 'Config is read-only', error: 'Forbidden' }))
+        .mockReturnValueOnce(rejection(500, { error: 'Internal Server Error' }));
+      fillOutput(component);
+
+      component.onSubmit();
+      expect(component.submitErrors()).toEqual(['Config is read-only']);
+
+      component.form.controls.dist.setValue('./dist/other');
+      component.onSubmit();
+      expect(component.submitErrors()).toEqual(['Failed to create bundle']);
+      expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    });
   });
 
   it('should not close when the domain rules reject what the field validators allowed', () => {
@@ -549,6 +632,26 @@ describe('BundleFormDialog — edit mode', () => {
         bundle: expect.objectContaining({ collections: trackerBundle.collections, transformICUToTransloco: true }),
       }),
     );
+  });
+
+  it('should update the bundle under its existing name through the store', () => {
+    component.onSubmit();
+
+    expect(harness.store.updateBundle).toHaveBeenCalledWith('tracker', {
+      name: undefined,
+      bundle: expect.objectContaining({ dist: './apps/tracker/src/assets/i18n' }),
+    });
+    expect(harness.store.createBundle).not.toHaveBeenCalled();
+  });
+
+  it('should show a refusal above the footer when the name is locked, so a conflict has no field to land on', () => {
+    harness.store.updateBundle.mockReturnValue(rejection(409, { message: 'Bundle "tracker" already exists' }));
+
+    component.onSubmit();
+    harness.fixture.detectChanges();
+
+    expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    expect(component.submitErrors()).toEqual(['Bundle "tracker" already exists']);
   });
 
   it('should collapse an ICU choice equal to the project default (on) back to inherit', () => {

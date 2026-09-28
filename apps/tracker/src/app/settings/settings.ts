@@ -16,10 +16,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TranslocoModule } from '@jsverse/transloco';
+import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
+import type { LingoTrackerConfigDto, PreferredTermRuleErrorDto } from '@simoncodes-ca/data-transfer';
 import { normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import { CollectionsStore } from '../collections/store/collections.store';
+import { ApiError, apiErrorMessage } from '../shared/api-error/api-error';
+import { NotificationService } from '../shared/notification';
 import { PreferredTerminologyDraft, type RuleField, type RuleFieldError } from './preferred-terminology-draft';
 
 /**
@@ -38,6 +41,26 @@ interface TermEntry {
 const FILTER_THRESHOLD = 8;
 
 const compareTerms = (a: string, b: string): number => a.localeCompare(b, undefined, { sensitivity: 'base' });
+
+/** True for a value shaped like one row of `PreferredTermRulesErrorResponseDto['errors']`. */
+function isPreferredTermRuleErrorDto(value: unknown): value is PreferredTermRuleErrorDto {
+  if (typeof value !== 'object' || value === null) return false;
+  const { index, field, code, message } = value as Record<string, unknown>;
+  return (
+    typeof index === 'number' && typeof field === 'string' && typeof code === 'string' && typeof message === 'string'
+  );
+}
+
+/**
+ * The per-row rule errors of a rejected `PUT /api/config`. The API's config controller is the
+ * only source of an `invalid` answer with details on that route, and its `errors` are
+ * `PreferredTermRuleErrorDto[]` (`PreferredTermRulesErrorResponseDto`). Anything that does not
+ * carry the DTO's required fields is dropped rather than trusted.
+ */
+function extractRuleErrors(error: unknown): PreferredTermRuleErrorDto[] {
+  if (!(error instanceof ApiError) || error.kind !== 'invalid') return [];
+  return error.details.filter(isPreferredTermRuleErrorDto);
+}
 
 /** Translation token for each rule error code. */
 const RULE_ERROR_TOKENS: Record<RuleFieldError['code'], string> = {
@@ -60,6 +83,10 @@ const RULE_ERROR_TOKENS: Record<RuleFieldError['code'], string> = {
  * only reach the API on Save, so every change is visible and reversible first. One
  * save bar covers both lists; a save sends only the lists that changed, so saving
  * protected terms never rewrites a terminology file that failed to load.
+ *
+ * Both lists seed from the first config to arrive and, after that, only from the answer
+ * of the page's own save (a Config Write returns the config as it now is). A config the
+ * store reloads for another reason never reseeds them, so an edit in progress is safe.
  */
 @Component({
   selector: 'app-settings',
@@ -81,6 +108,8 @@ const RULE_ERROR_TOKENS: Record<RuleFieldError['code'], string> = {
 })
 export class Settings {
   readonly store = inject(CollectionsStore);
+  readonly #notifications = inject(NotificationService);
+  readonly #transloco = inject(TranslocoService);
 
   readonly TOKENS = TRACKER_TOKENS;
 
@@ -111,17 +140,17 @@ export class Settings {
   /** Path of the file the terms are stored in, surfaced read-only so the source of a diff is obvious. */
   readonly protectedTermsFilePath = computed(() => this.store.config()?.protectedTermsFilePath);
 
-  /** True once the list has been seeded; prevents a later config refetch from clobbering edits. */
-  readonly #seeded = signal(false);
-  /** Set while a save is in flight so the next config arrival is treated as the new baseline. */
-  readonly #awaitingSave = signal(false);
+  /** True from Save until the server has answered. */
+  readonly saving = signal(false);
+  /** Why the last save was refused; cleared when the next save starts. */
+  readonly saveError = signal<string | null>(null);
+  /** The one error banner: a refused save, else a failed config load. */
+  readonly bannerError = computed(() => this.saveError() ?? this.store.error());
   /**
-   * Locks both editors until the first config seeds them, and while a save is in flight: each
-   * of those config arrivals reseeds both lists, so an edit made in either window would be lost.
-   * The save latch marks the save, not `store.isLoading()`, which clears once the write lands —
-   * before the refetch that reseeds arrives.
+   * Locks both editors until the config has seeded them, and while a save is in flight: the
+   * save's answer reseeds both lists, so an edit made meanwhile would be lost.
    */
-  readonly editingLocked = computed(() => !this.#seeded() || this.#awaitingSave());
+  readonly editingLocked = computed(() => this.store.config() === null || this.saving());
   #nextId = 0;
   /** Row to reveal once it has rendered, so an added term is never added off-screen. */
   readonly #scrollToId = signal<number | null>(null);
@@ -163,8 +192,7 @@ export class Settings {
   readonly showSaveBar = computed(() => !this.isEmpty() || !this.terminology.isEmpty() || this.hasAnyChanges());
   /** Save stays enabled while terminology errors are still hidden, so clicking it can reveal them. */
   readonly canSave = computed(
-    () =>
-      this.hasAnyChanges() && !this.store.isLoading() && !this.editingLocked() && !this.terminology.hasVisibleErrors(),
+    () => this.hasAnyChanges() && !this.editingLocked() && !this.terminology.hasVisibleErrors(),
   );
   readonly showFilter = computed(() => this.entries().length > FILTER_THRESHOLD);
   readonly isFiltering = computed(() => this.filter().trim().length > 0);
@@ -172,26 +200,14 @@ export class Settings {
   readonly canAdd = computed(() => this.addDraft().trim().length > 0);
 
   constructor() {
-    // Seed from the store config as soon as it loads (App loads config on boot), and again
-    // after a save's refetch. A refetch that is not ours must not overwrite in-progress edits.
-    // The latches are read untracked so that arming one on save cannot itself trigger a
-    // reseed from the config still on screen — only a config arrival may reseed.
-    effect(() => {
+    // Seed both lists from the first config to arrive (App loads it on boot), then stop
+    // watching: a save reseeds from its own answer, and a reload this page did not ask for
+    // must not overwrite edits in progress.
+    const seedOnce = effect(() => {
       const config = this.store.config();
       if (!config) return;
-      untracked(() => {
-        if (!this.#seeded() || this.#awaitingSave()) {
-          this.#seed(config.protectedTerms ?? []);
-          this.terminology.seed(config.preferredTerminology ?? []);
-        }
-      });
-    });
-
-    // A save rejected with per-row errors maps them back onto the rows that were sent.
-    effect(() => {
-      const errors = this.store.configRuleErrors();
-      if (errors.length === 0) return;
-      untracked(() => this.terminology.applyServerErrors(errors));
+      untracked(() => this.#seed(config));
+      seedOnce.destroy();
     });
 
     effect(() => {
@@ -200,12 +216,6 @@ export class Settings {
       if (target === null || !input) return;
       input.nativeElement.focus();
       this.#focusRuleInput.set(null);
-    });
-
-    // A failed save never refetches, so release the save latch on the error instead.
-    effect(() => {
-      if (!this.store.error()) return;
-      untracked(() => this.#awaitingSave.set(false));
     });
 
     effect(() => {
@@ -240,21 +250,21 @@ export class Settings {
     this.#scrollToId.set(id);
   }
 
-  #seed(terms: readonly string[]): void {
+  /** Makes `config` the saved baseline of both lists, dropping every pending edit. */
+  #seed(config: LingoTrackerConfigDto): void {
     this.entries.set(
-      normalizeProtectedTerms([...terms]).map((value) => ({
+      normalizeProtectedTerms([...(config.protectedTerms ?? [])]).map((value) => ({
         id: this.#nextId++,
         value,
         original: value,
         removed: false,
       })),
     );
+    this.terminology.seed(config.preferredTerminology ?? []);
     this.#scrollToId.set(null);
     this.editingId.set(null);
     this.addError.set(null);
     this.editError.set(null);
-    this.#seeded.set(true);
-    this.#awaitingSave.set(false);
   }
 
   /** The pending state of a row, used for its badge and tint. */
@@ -348,8 +358,8 @@ export class Settings {
   }
 
   revertAll(): void {
-    this.#seed(this.store.config()?.protectedTerms ?? []);
-    this.terminology.revert();
+    const config = this.store.config();
+    if (config) this.#seed(config);
     this.filter.set('');
   }
 
@@ -377,7 +387,10 @@ export class Settings {
 
   /**
    * Sends every changed list in one request. Invalid terminology blocks the whole save —
-   * nothing is half-applied — and reveals errors still hidden on untouched fields.
+   * nothing is half-applied — and reveals errors still hidden on untouched fields. The
+   * answer decides the rest: the saved config reseeds both lists and earns one toast; a
+   * refusal keeps every edit, shows its message, and maps per-row rule errors (the
+   * `details` of an `invalid` answer) back onto the rows that were sent.
    */
   save(): void {
     if (!this.hasAnyChanges()) return;
@@ -387,12 +400,26 @@ export class Settings {
       return;
     }
     this.cancelEdit();
-    this.#awaitingSave.set(true);
-    // Errors from a failed save surface via the store error signal (rendered in the template).
-    this.store.updateGlobalConfig({
-      ...(this.hasChanges() && { protectedTerms: this.termsToSave() }),
-      ...(this.terminology.hasChanges() && { preferredTerminology: this.terminology.beginSave() }),
-    });
+    this.saving.set(true);
+    this.saveError.set(null);
+    this.store
+      .updateGlobalConfig({
+        ...(this.hasChanges() && { protectedTerms: this.termsToSave() }),
+        ...(this.terminology.hasChanges() && { preferredTerminology: this.terminology.beginSave() }),
+      })
+      .subscribe({
+        next: (config) => {
+          this.saving.set(false);
+          this.#seed(config);
+          this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVESUCCESS));
+        },
+        error: (error: unknown) => {
+          this.saving.set(false);
+          const ruleErrors = extractRuleErrors(error);
+          if (ruleErrors.length > 0) this.terminology.applyServerErrors(ruleErrors);
+          this.saveError.set(apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVEFAILED)));
+        },
+      });
   }
 
   #focusFirstInvalidRule(): void {
