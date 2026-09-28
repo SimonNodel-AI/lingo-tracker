@@ -13,9 +13,8 @@ export interface LocaleFilesResult {
 }
 
 /**
- * Seeds `locale` in every resource folder of `collection` with the base value and status
- * `new` (the same convention normalize uses for a missing locale). Touches only the
- * translation files, never the config.
+ * Seeds `locale` in every resource folder of `collection` through `ResourceFolder.seedLocale`
+ * (the one seeding rule, which normalize shares). Touches only the translation files, never the config.
  */
 export function seedLocaleFiles(collection: Collection, locale: string): LocaleFilesResult {
   return rewriteFolders(collection, (folder) => folder.seedLocale(locale));

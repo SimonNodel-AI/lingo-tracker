@@ -81,6 +81,7 @@ export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } f
 // ResourceFolder: one folder's entries and metadata, loaded and saved as a unit
 export {
   type EntryDetails,
+  type NormalizeEntryReport,
   openResourceFolder,
   type ResolvedResourcePaths,
   type ResourceFolder,
@@ -198,7 +199,7 @@ export type {
   ImportSummaryOptions,
   StatusTransition,
 } from './lib/import';
-export type { NormalizeParams, NormalizeResult } from './lib/normalize';
+export type { NormalizeOptions, NormalizeResult } from './lib/normalize';
 export type {
   ComputeTreeFingerprintOptions,
   LoadResourceTreeOptions,

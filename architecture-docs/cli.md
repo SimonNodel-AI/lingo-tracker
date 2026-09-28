@@ -149,7 +149,7 @@ A destructive command confirms only when interactive, and `--yes` skips the ques
 |---|---|---|
 | `add-resource`, `edit-resource`, `delete-resource`, `move`, `add-locale`, `remove-locale`, `translate-locale`, `import` | `'writable'` | `move` opens an optional destination collection itself, also writable. |
 | `delete-collection`, `edit-collection`, `find-similar` | `'read'` | `delete-collection` and `edit-collection` change the registration, not the resources, so a read-only collection is allowed. |
-| `add-collection`, `normalize`, `bundle`, `export`, `validate`, `glossary`, `protected-terms`, `preferred-terminology` | `'none'` | `normalize` takes `--collection` or `--all`. `export` takes a list. `glossary` and `protected-terms` take an optional `--collection` (absent means every collection, or the global scope). These commands call core `openCollection` themselves; a name that is not configured still ends as `❌ Collection "x" not found`, exit 1. |
+| `add-collection`, `normalize`, `bundle`, `export`, `validate`, `glossary`, `protected-terms`, `preferred-terminology` | `'none'` | `normalize` takes `--collection` or `--all` (an explicit `--collection` is opened `writable`). `export` takes a list. `glossary` and `protected-terms` take an optional `--collection` (absent means every collection, or the global scope). These commands call core `openCollection` themselves; a name that is not configured still ends as `❌ Collection "x" not found`, exit 1. |
 | `init`, `install-skill` | `'none'`, `config: false` | Neither reads `.lingo-tracker.json`. |
 
 ---
@@ -340,7 +340,7 @@ For a command with `collection: 'writable'` or `'read'`, the runner resolves the
 
 It then opens the name with core `openCollection(config, name, { cwd, writable })`, where `writable` is `true` for `'writable'`. The result, `ctx.collection`, is the core `Collection`: the absolute `translationsFolder` and the effective `baseLocale`, `locales`, `targetLocales`, and `translationConfig`. Commands read those fields; none of them applies the collection-then-global fallback itself.
 
-**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for read-only collections: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. Commands do not check `readOnly` themselves, with two exceptions that open collections without the runner: `move` opens its destination with `writable: true`, and `normalize` fails on a read-only `--collection` and skips read-only collections under `--all`.
+**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for read-only collections: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. Commands do not check `readOnly` themselves, with two exceptions that open collections without the runner, both through core's `writable: true`: `move` opens its destination that way, and `normalize` opens an explicitly named `--collection` that way (the `ReadOnlyCollectionError` is printed on stderr, the JSON summary is still printed, exit 1). Under `--all`, `normalize` skips a read-only collection with an info line; core's `normalize(collection)` refuses a read-only collection either way.
 
 ### Resolution Flowchart
 

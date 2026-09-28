@@ -65,8 +65,20 @@ export interface ResourceFolder {
     status: TranslationStatus,
     options?: { readonly refreshBaseChecksum?: boolean },
   ): void;
-  /** Stores an entry and its metadata exactly as given (lossless copy, used by move and normalize). */
+  /** Stores an entry and its metadata exactly as given (lossless copy, used by move). */
   setEntry(key: string, entry: Readonly<ResourceEntry>, meta: Readonly<ResourceEntryMetadata>): void;
+  /**
+   * Replaces an existing entry's values with `values` and makes its metadata true again:
+   * - a stray base-locale property is dropped (the base value lives in `source`),
+   * - every translation is re-recorded with a current checksum and its stored status
+   *   (a translation without metadata counts as `new`, as the reader and validate count it),
+   * - the base value goes through the Staleness rule when it changed, and
+   * - each of `seedLocales` the entry has no value for is seeded as a `new` copy of the base.
+   *
+   * The normalize operation's write path.
+   * @returns the number of locales seeded, and whether the stored entry or its metadata changed
+   */
+  normalizeEntry(key: string, values: Readonly<ResourceEntry>, seedLocales: readonly string[]): NormalizeEntryReport;
   /**
    * Adds `locale` to every entry that has no value for it, as a copy of the base value with status `new`.
    * @returns number of entries seeded
@@ -95,6 +107,12 @@ export interface ResourceFolderEntry {
 export interface EntryDetails {
   readonly comment?: string | null;
   readonly tags?: readonly string[] | null;
+}
+
+export interface NormalizeEntryReport {
+  readonly localesAdded: number;
+  /** True when the stored entry or its metadata differs from what the folder held before the call. */
+  readonly changed: boolean;
 }
 
 export interface ResourceFolderSaveResult {
@@ -278,15 +296,33 @@ class FileResourceFolder implements ResourceFolder {
     this.meta[key] = { ...meta };
   }
 
+  normalizeEntry(key: string, values: Readonly<ResourceEntry>, seedLocales: readonly string[]): NormalizeEntryReport {
+    this.requireEntry(key);
+    const before = JSON.stringify(this.get(key));
+    const previousMeta = this.metaOf(key);
+
+    const entry: ResourceEntry = { ...values };
+    if (this.baseLocale !== 'source') delete entry[this.baseLocale];
+    this.entries[key] = entry;
+
+    // Translations first, so the Staleness rule compares current checksums when the base changed.
+    for (const locale of translationLocales(entry)) {
+      this.setTranslation(key, locale, entry[locale] as string, previousMeta[locale]?.status ?? 'new');
+    }
+    this.setBase(key, entry.source);
+
+    let localesAdded = 0;
+    for (const locale of seedLocales) {
+      if (this.seedEntryLocale(key, locale)) localesAdded++;
+    }
+
+    return { localesAdded, changed: JSON.stringify(this.get(key)) !== before };
+  }
+
   seedLocale(locale: string): number {
     let seeded = 0;
     for (const key of this.keys()) {
-      const entry = this.entries[key];
-      if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') continue;
-      if (typeof entry[locale] === 'string') continue;
-
-      this.setTranslation(key, locale, entry.source, 'new');
-      seeded++;
+      if (this.seedEntryLocale(key, locale)) seeded++;
     }
     return seeded;
   }
@@ -340,6 +376,16 @@ class FileResourceFolder implements ResourceFolder {
       this.metaExists = true;
     }
     return { written: [this.entriesPath, this.metaPath], created, removed: [] };
+  }
+
+  /** The one seeding rule: a missing `locale` becomes a copy of the base value with status `new`. */
+  private seedEntryLocale(key: string, locale: string): boolean {
+    const entry = this.entries[key];
+    if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') return false;
+    if (locale === this.baseLocale || typeof entry[locale] === 'string') return false;
+
+    this.setTranslation(key, locale, entry.source, 'new');
+    return true;
   }
 
   private metaOf(key: string): ResourceEntryMetadata {

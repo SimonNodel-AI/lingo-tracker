@@ -115,8 +115,8 @@ libs/core/src/
     │   └── generate-validation-summary.ts # Human-readable validation result summary
     │
     ├── normalize/                # Normalization pipeline
-    │   ├── normalize.ts          # normalize(): main entry point
-    │   ├── normalize-entry.ts    # normalizeEntry(): single-entry checksum + status repair
+    │   ├── normalize.ts          # normalize(collection): main entry point
+    │   ├── normalize-entry.ts    # normalizeEntryValues(): Transloco → ICU and tag cleanup (pure)
     │   ├── cleanup-empty-folders.ts # cleanupEmptyFolders(): removes empty directories
     │   ├── iterative-folder-walker.ts # walkFolders(): depth-ordered directory traversal
     │   └── folder-utils.ts       # Path helpers for the walker
@@ -331,7 +331,7 @@ Rules:
 
 Resource CRUD is implemented across four functions in `libs/core/src/resource/`, each bound to an opened `Collection`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
 
-**All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. Readers use it too: every whole-collection read goes through the [Collection Reader](#collection-reader), folder move/delete and cleanup open folders directly, and `resolveResourcePaths()` is the only function that maps a key to its folder.
+**All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `normalizeEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. `seedLocale` is the one seeding rule for a locale missing from a stored entry (a `new` copy of the base); add-locale, edit-collection and normalize share it. A locale value with no metadata counts as `new` everywhere: the reader and validate read it so, and `normalizeEntry` records it so. Readers use it too: every whole-collection read goes through the [Collection Reader](#collection-reader), folder move/delete and cleanup open folders directly, and `resolveResourcePaths()` is the only function that maps a key to its folder.
 
 **Writes return what changed.** Every write (add, edit, delete, move, translate-existing-resource, folder create/delete/move, add/remove-locale) returns `mutations: ResourceMutation[]` (`lib/resource/resource-mutation.ts`) next to its other results: an `upsert` with the stored entry as `ResourceFolder.treeEntry()` reads it, a `remove`, an `add-folder` / `remove-folder`, or a `reindex` when the change is too broad to describe. Each mutation carries the absolute translations folder it applies to. A move returns an `upsert` at the destination and a `remove` at the source for each moved key, and a folder move adds a `remove-folder` for the deleted source. The API's [Collection Index](glossary.md#collection-index) uses them to follow the disk without reading it again; the CLI ignores them. See [Resource Mutation](glossary.md#resource-mutation).
 
@@ -478,22 +478,22 @@ Callers: `CollectionIndex.search` in the API (the index tree when the collection
 
 ## Normalization Pipeline
 
-**Entry point:** `normalize(params)` in `lib/normalize/normalize.ts`
+**Entry point:** `normalize(collection, { dryRun? })` in `lib/normalize/normalize.ts`
 
-[Normalization](glossary.md#normalization) is a repair and synchronization pass over the entire `translationsFolder`. It is designed to be idempotent and non-destructive — it never removes existing translation values.
+Normalization is a repair and synchronization pass over a [collection's](glossary.md#collection) `translationsFolder`. It takes the opened `Collection`, like every other write operation, and throws `ReadOnlyCollectionError` for a read-only one (the CLI opens an explicitly named collection with `writable: true`, so the refusal is core's). It is idempotent and non-destructive — it never removes existing translation values.
 
 Steps:
 
-1. **Walk folders** — `walkFolders()` in `iterative-folder-walker.ts` traverses the directory tree iteratively (not recursively), grouping folders by depth level. Folders at the same depth are processed concurrently (`Promise.all`), but since all I/O inside is synchronous (`fs.readFileSync` / `fs.writeFileSync`), there is no interleaving risk.
-2. **Load files per folder** — `loadResourceFiles()` reads `resource_entries.json` and `tracker_meta.json`, skipping folders with invalid JSON and emitting a console warning.
-3. **Normalize each entry** — `normalizeEntry()` in `normalize-entry.ts` performs per-entry normalization:
-   - Recomputes the base locale checksum and updates `tracker_meta.json` if it changed.
-   - For each configured locale: adds a placeholder entry (base value copied, status `new`) if the locale is missing entirely; recomputes the translation checksum; updates status to `stale` if the stored `baseChecksum` no longer matches the current base checksum; converts any Transloco `{{ varName }}` syntax in stored values to ICU via `translocoToICU()` (tracked as `valuesConverted`).
-4. **Persist changes** — if any entry in a folder changed, both JSON files are rewritten. If the files did not exist (orphaned folder), they are created.
-5. **Dry-run mode** — when `dryRun: true`, all file writes are skipped and counters still reflect what *would* change.
-6. **Cleanup empty folders** — after all folders are processed, `cleanupEmptyFolders()` removes any directories that no longer contain `resource_entries.json`.
+1. **Walk folders** — `walkFolders(translationsFolder, { skipHidden: false })` in `iterative-folder-walker.ts` visits every directory, hidden ones included (the [Collection Reader](#collection-reader) skips them; the two walks are not unified yet).
+2. **Open each folder** — `openResourceFolder()`; a folder whose files are not valid JSON is reported on stderr and skipped. A folder with no entries is left alone.
+3. **Normalize each entry** — two steps, with a clear seam between them:
+   - `normalizeEntryValues(entry)` in `normalize-entry.ts` is pure and changes only the values: Transloco `{{ varName }}` becomes ICU `{varName}` in the base value and every translation (`valuesConverted`), and tags are normalized (`tagsNormalized`).
+   - `ResourceFolder.normalizeEntry(key, values, collection.targetLocales)` does the rest with the folder's own rules: it drops a stray base-locale property, re-records every translation with a current checksum and its stored status (no metadata counts as `new`), puts the base through `setBase` (the [staleness rule](glossary.md#staleness-rule) when the stored checksum disagrees with the value; a missing checksum is just recorded), and seeds each missing target locale with `seedLocale`'s rule (`localesAdded`). It reports whether the entry or its metadata changed.
+4. **Persist changes** — a folder is saved when any entry changed, or when one of its two files is missing (normalize guarantees the pair exists wherever there are entries).
+5. **Dry-run mode** — `save({ dryRun: true })` reports the files without writing; counters still reflect what *would* change.
+6. **Cleanup empty folders** — `cleanupEmptyFolders()` removes directories with no entries and no subfolders.
 
-Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `filesCreated`, `filesUpdated`, `foldersRemoved`.
+Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `tagsNormalized`, `filesCreated`, `filesUpdated`, `foldersRemoved`, and `dryRun`.
 
 ---
 

@@ -246,6 +246,86 @@ describe('ResourceFolder', () => {
     });
   });
 
+  describe('normalizeEntry', () => {
+    it('re-records every translation, counting one without metadata as new, and seeds missing locales', () => {
+      writePair(
+        { ok: { source: 'OK', fr: 'Oui', de: 'OK' } },
+        {
+          ok: {
+            en: { checksum: md5('OK') },
+            fr: { checksum: 'outdated', baseChecksum: md5('OK'), status: 'verified' },
+          },
+        },
+      );
+      const folder = openResourceFolder(folderPath);
+
+      const report = folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui', de: 'OK' }, ['fr', 'es']);
+
+      expect(report).toEqual({ localesAdded: 1, changed: true });
+      expect(folder.get('ok')).toEqual({
+        entry: { source: 'OK', fr: 'Oui', de: 'OK', es: 'OK' },
+        meta: {
+          en: { checksum: md5('OK') },
+          fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'verified' },
+          de: { checksum: md5('OK'), baseChecksum: md5('OK'), status: 'new' },
+          es: { checksum: md5('OK'), baseChecksum: md5('OK'), status: 'new' },
+        },
+      });
+    });
+
+    it('applies the staleness rule with current checksums when the base value changed', () => {
+      writePair(
+        { save: { source: 'Save changes', fr: 'Enregistrer', es: 'Save changes' } },
+        {
+          save: {
+            en: { checksum: md5('Save') },
+            fr: { checksum: 'outdated', baseChecksum: md5('Save'), status: 'verified' },
+            es: { checksum: 'outdated', baseChecksum: md5('Save'), status: 'translated' },
+          },
+        },
+      );
+      const folder = openResourceFolder(folderPath);
+
+      folder.normalizeEntry('save', { source: 'Save changes', fr: 'Enregistrer', es: 'Save changes' }, ['fr', 'es']);
+
+      expect(folder.get('save')?.meta).toEqual({
+        en: { checksum: md5('Save changes') },
+        fr: { checksum: md5('Enregistrer'), baseChecksum: md5('Save changes'), status: 'stale' },
+        es: { checksum: md5('Save changes'), baseChecksum: md5('Save changes'), status: 'new' },
+      });
+    });
+
+    it('stores the given values, drops a stray base-locale property and reports no change when consistent', () => {
+      writePair(
+        { ok: { source: 'OK', en: 'OK', fr: 'Oui', tags: ['UI'] } },
+        {
+          ok: {
+            en: { checksum: md5('OK') },
+            fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'translated' },
+          },
+        },
+      );
+      const folder = openResourceFolder(folderPath);
+
+      expect(folder.normalizeEntry('ok', { source: 'OK', en: 'OK', fr: 'Oui', tags: ['ui'] }, ['fr'])).toEqual({
+        localesAdded: 0,
+        changed: true,
+      });
+      expect(folder.get('ok')?.entry).toEqual({ source: 'OK', fr: 'Oui', tags: ['ui'] });
+      expect(folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui', tags: ['ui'] }, ['fr'])).toEqual({
+        localesAdded: 0,
+        changed: false,
+      });
+    });
+
+    it('rejects an unknown key', () => {
+      writePair({}, {});
+      expect(() => openResourceFolder(folderPath).normalizeEntry('nope', { source: 'x' }, [])).toThrow(
+        'Resource entry not found: nope',
+      );
+    });
+  });
+
   describe('treeEntry / translationLocales', () => {
     it('builds the tree entry and lists translation locales', () => {
       writePair({ ok: { source: 'OK', comment: 'c', tags: [], fr: 'Oui' } }, { ok: { en: { checksum: md5('OK') } } });

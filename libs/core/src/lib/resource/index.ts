@@ -22,6 +22,7 @@ export {
 } from './resource-file-paths';
 export {
   type EntryDetails,
+  type NormalizeEntryReport,
   type OpenResourceFolderOptions,
   openResourceFolder,
   type ResourceFolder,

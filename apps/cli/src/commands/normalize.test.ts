@@ -59,12 +59,15 @@ describe('normalizeCommand', () => {
     vi.mocked(normalize).mockResolvedValueOnce({ ...NORMALIZE_RESULT, dryRun: true });
     await normalizeCommand({ collection: 'App', dryRun: true });
 
-    expect(normalize).toHaveBeenCalledWith({
-      translationsFolder: '/p/path/App',
-      baseLocale: 'en',
-      locales: ['en', 'fr'],
-      dryRun: true,
-    });
+    expect(normalize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'App',
+        translationsFolder: '/p/path/App',
+        baseLocale: 'en',
+        locales: ['en', 'fr'],
+      }),
+      { dryRun: true },
+    );
     expect(process.exitCode).toBe(0);
   });
 
