@@ -24,7 +24,6 @@ import {
   FolderNotFoundError,
   InvalidBundleDefinitionError,
   InvalidCollectionError,
-  InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
@@ -51,9 +50,9 @@ import {
  * Every mapped answer has the same `{ statusCode, message, error }` body. An invalid bundle
  * definition also carries `errors`, every problem the domain rules found, under the fixed
  * message `Invalid bundle definition`; invalid preferred-terminology rules carry the per-row
- * `errors` under `Invalid preferred terminology rules`. An `InvalidConfigError` (a
- * `.lingo-tracker.json` the server cannot use) is a 500 that keeps its message, because the
- * message says what to fix in the file.
+ * `errors` under `Invalid preferred terminology rules`. Any other typed error is a 500 that
+ * keeps its message, because a typed message is written to be shown: an `InvalidConfigError`
+ * (a `.lingo-tracker.json` the server cannot use), for example, says what to fix in the file.
  */
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
   const { message } = error;
@@ -103,10 +102,6 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   }
   if (error instanceof TranslationError) {
     return translationErrorToHttp(error);
-  }
-  // A config the server cannot use: the message says what to fix in the file.
-  if (error instanceof InvalidConfigError) {
-    return new InternalServerErrorException(message);
   }
   return new InternalServerErrorException(message);
 }

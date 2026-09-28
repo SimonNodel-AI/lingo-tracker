@@ -171,6 +171,7 @@ describe('toHttpException', () => {
         statusCode: 500,
       },
     ],
+    // Any other typed error is a 500 that keeps its message.
     [
       new InvalidConfigError('"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)'),
       500,
