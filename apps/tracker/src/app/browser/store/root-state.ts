@@ -1,14 +1,21 @@
 import type { DensityMode } from '../types/density-mode';
+import type { CollectionSettings } from '../../collections/store/collection-settings';
 
 /**
  * Root state for signals shared across multiple features.
  * Cross-cutting state lives here to avoid circular type dependencies between features:
- * - selectedCollection, availableLocales, baseLocale, isReadOnly: the open collection's settings,
- *   written only by the Browser Session (`with-browser-session.feature.ts`)
+ * - collectionSettings, and its projections selectedCollection, availableLocales, baseLocale,
+ *   isReadOnly: the open collection's settings, written only by the Browser Session
+ *   (`with-browser-session.feature.ts`)
+ * - sessionId: bumped by every `openCollection`; loaders capture it (`session-guard.ts`) and drop
+ *   a response that arrives after another collection was opened
  * - currentFolderPath: read by withTranslationsFeature (selectFolder) and written by withFolderTreeFeature
  * - densityMode and related: read by withFilterFeature (compact-mode locale tracking) and written by withViewPreferencesFeature
  */
 export interface RootState {
+  sessionId: number;
+  /** The open collection's resolved settings: the one source the browser reads them from. */
+  collectionSettings: CollectionSettings | null;
   selectedCollection: string | null;
   availableLocales: string[];
   baseLocale: string;
@@ -28,6 +35,8 @@ export interface RootState {
 }
 
 export const initialRootState: RootState = {
+  sessionId: 0,
+  collectionSettings: null,
   selectedCollection: null,
   availableLocales: [],
   baseLocale: '',

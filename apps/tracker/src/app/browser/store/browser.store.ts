@@ -17,6 +17,7 @@ import { withFolderTreeFeature } from './features/with-folder-tree.feature';
 import { withEntryWritesFeature } from './features/with-entry-writes.feature';
 import { withBrowserSessionFeature } from './features/with-browser-session.feature';
 import { splitResolvedKey } from '@simoncodes-ca/domain';
+import { captureSession, withinSession } from './session-guard';
 
 export const BrowserStore = signalStore(
   { providedIn: 'root' },
@@ -54,6 +55,7 @@ export const BrowserStore = signalStore(
         pipe(
           tap(() => patchState(store, { isDisabled: true, error: null })),
           switchMap(({ sourceKey, destinationFolderPath }) => {
+            const inSession = captureSession(store);
             const collection = store.selectedCollection();
             if (!collection) {
               patchState(store, { isDisabled: false });
@@ -76,6 +78,7 @@ export const BrowserStore = signalStore(
             patchState(store, { translations: optimisticTranslations });
 
             return api.moveResource(collection, sourceKey, destinationKey).pipe(
+              withinSession(inSession),
               tap(() => {
                 notifications.success(
                   transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEMOVEDX, {

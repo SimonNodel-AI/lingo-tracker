@@ -7,6 +7,7 @@ import { BrowserApiService } from '../../services/browser-api.service';
 import type { SearchResultDto, SearchResultsDto } from '@simoncodes-ca/data-transfer';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { captureSession, withinSession } from '../session-guard';
 
 export interface SearchState {
   searchQuery: string;
@@ -26,7 +27,7 @@ export const initialSearchState: SearchState = {
 
 export function withSearchFeature<_>() {
   return signalStoreFeature(
-    { state: type<{ selectedCollection: string | null; isDisabled: boolean }>() },
+    { state: type<{ sessionId: number; selectedCollection: string | null; isDisabled: boolean }>() },
     withState(initialSearchState),
     withMethods((store) => {
       const api = inject(BrowserApiService);
@@ -56,6 +57,7 @@ export function withSearchFeature<_>() {
           pipe(
             tap(() => patchState(store, { isSearchLoading: true, searchError: null })),
             switchMap((query) => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               if (!collection || query.trim().length === 0) {
                 patchState(store, { isSearchLoading: false });
@@ -63,6 +65,7 @@ export function withSearchFeature<_>() {
               }
 
               return api.searchTranslations(collection, query).pipe(
+                withinSession(inSession),
                 tap((response: SearchResultsDto) =>
                   patchState(store, {
                     searchResults: response.results,

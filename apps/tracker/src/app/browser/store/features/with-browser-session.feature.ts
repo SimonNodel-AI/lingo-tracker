@@ -1,5 +1,5 @@
 import { patchState, signalStoreFeature, type, withMethods } from '@ngrx/signals';
-import type { CollectionSettings } from '../../../collections/store/collection-settings';
+import { type CollectionSettings, sameCollectionSettings } from '../../../collections/store/collection-settings';
 import { initialRootState, type RootState } from '../root-state';
 import { type CacheStatusState, initialCacheStatusState } from './with-cache-status.feature';
 import { type FilterState, initialFilterState } from './with-filter.feature';
@@ -10,6 +10,17 @@ import { initialTranslationsState, type TranslationsState } from './with-transla
 /** Everything the session resets: the root state plus every feature's own slice. */
 type SessionState = RootState & SearchState & FilterState & TranslationsState & FolderTreeState & CacheStatusState;
 
+/** The root fields a collection's settings set: the settings themselves and their projections. */
+function settingsState(settings: CollectionSettings): Partial<RootState> {
+  return {
+    collectionSettings: settings,
+    selectedCollection: settings.name,
+    availableLocales: [...settings.locales],
+    baseLocale: settings.baseLocale,
+    isReadOnly: settings.readOnly,
+  };
+}
+
 /**
  * The Browser Session: the one path that opens a collection in the browser.
  *
@@ -18,6 +29,13 @@ type SessionState = RootState & SearchState & FilterState & TranslationsState & 
  * names another feature's fields), applies the resolved collection settings, restores the
  * collection's saved view preferences, and starts index polling. Composes last, since it
  * calls into the view-preferences and cache-status features.
+ *
+ * Every open bumps `sessionId`. Loaders capture it when they start (`session-guard.ts`), so a
+ * response from a collection that is no longer open, or from an earlier open of this one, is
+ * dropped instead of written into the session that replaced it.
+ *
+ * Re-entering the open collection is not an open: the user keeps their place (folder, search,
+ * expansion). Only its settings are brought up to date, by `updateSettings`.
  */
 export function withBrowserSessionFeature<_>() {
   return signalStoreFeature(
@@ -27,6 +45,7 @@ export function withBrowserSessionFeature<_>() {
     },
     withMethods((store) => ({
       openCollection(settings: CollectionSettings): void {
+        const sessionId = store.sessionId() + 1;
         patchState(
           store,
           initialRootState,
@@ -35,16 +54,23 @@ export function withBrowserSessionFeature<_>() {
           initialTranslationsState,
           initialFolderTreeState,
           initialCacheStatusState,
-          {
-            selectedCollection: settings.name,
-            availableLocales: [...settings.locales],
-            baseLocale: settings.baseLocale,
-            isReadOnly: settings.readOnly,
-          },
+          { sessionId, ...settingsState(settings) },
         );
 
         store.restoreViewPreferences(settings.name);
         store.checkCacheStatus();
+      },
+
+      /**
+       * Brings the open collection's settings up to date after its config changed (locales,
+       * base locale, read-only, translation), keeping everything the user has on screen. Settings
+       * equal to the current ones, as on an unrelated config reload, change nothing. Settings
+       * for another collection are ignored: switching is `openCollection`.
+       */
+      updateSettings(settings: CollectionSettings): void {
+        const current = store.collectionSettings();
+        if (!current || current.name !== settings.name || sameCollectionSettings(current, settings)) return;
+        patchState(store, settingsState(settings));
       },
     })),
   );

@@ -5,6 +5,7 @@ import {
   computed,
   effect,
   signal,
+  untracked,
   viewChild,
   DestroyRef,
 } from '@angular/core';
@@ -80,34 +81,29 @@ export class TranslationBrowser {
    */
   readonly activeLocales = computed(() => this.store.availableLocales());
 
-  /** The open collection's resolved settings, for the values the store does not carry. */
-  readonly #settings = computed(() => {
-    const config = this.#collectionsStore.config();
-    const name = this.store.selectedCollection();
-    return config && name ? resolveCollectionSettings(config, name) : undefined;
-  });
-
-  readonly translationsFolder = computed(() => this.#settings()?.translationsFolder ?? '');
+  readonly translationsFolder = computed(() => this.store.collectionSettings()?.translationsFolder ?? '');
 
   /** Whether auto-translation is enabled for the open collection. */
-  readonly translationEnabled = computed(() => this.#settings()?.translationEnabled ?? false);
+  readonly translationEnabled = computed(() => this.store.collectionSettings()?.translationEnabled ?? false);
 
   constructor() {
-    // Wait for collections to load before opening the routed collection in the browser store
+    // Once the config has loaded, open the routed collection; on every later config change,
+    // bring its settings up to date. Tracks the config only: the store is written, not read.
     effect(() => {
       const config = this.#collectionsStore.config();
       if (!config) return;
 
-      // Read collection name from route params
       const name = this.#route.snapshot.paramMap.get('collectionName');
       if (!name) return;
 
-      const decodedName = decodeURIComponent(name);
+      const settings = resolveCollectionSettings(config, decodeURIComponent(name));
 
-      // Only open if we haven't already
-      if (this.store.selectedCollection() === decodedName) return;
-
-      this.store.openCollection(resolveCollectionSettings(config, decodedName));
+      untracked(() => {
+        // Re-entering the open collection keeps the user's place (folder, search); only its
+        // settings are refreshed, and equal settings are a no-op.
+        if (this.store.selectedCollection() === settings.name) this.store.updateSettings(settings);
+        else this.store.openCollection(settings);
+      });
     });
 
     // Sync collection context to header

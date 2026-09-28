@@ -345,7 +345,8 @@ export class CollectionFormDialog implements OnInit {
         ...(localesArray.length > 0 ? { locales: localesArray } : {}),
         ...(raw.baseLocale ? { baseLocale: raw.baseLocale } : {}),
         readOnly: raw.readOnly,
-        ...(tags.length > 0 ? { tags } : {}),
+        // Always sent: an empty list is how "remove every tag" reaches the API.
+        tags,
         // The pointer round-trips so an edit never drops it; the terms are only sent when
         // there is a file to write them to.
         ...(protectedTermsFile ? { protectedTermsFile, protectedTerms } : {}),

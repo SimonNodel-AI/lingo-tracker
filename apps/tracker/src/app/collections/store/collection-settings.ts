@@ -8,7 +8,7 @@ import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 export interface CollectionSettings {
   readonly name: string;
   readonly translationsFolder: string;
-  /** Collection `baseLocale`, else global `baseLocale`, else `'en'`. */
+  /** Collection `baseLocale`, else global `baseLocale`, else `'en'`; an empty string falls through (`||`). */
   readonly baseLocale: string;
   /** Collection `locales`, else global `locales`, else `[]`. May include the base locale. */
   readonly locales: readonly string[];
@@ -36,4 +36,17 @@ export function resolveCollectionSettings(config: LingoTrackerConfigDto, name: s
     translationEnabled: (raw?.translation ?? config.translation)?.enabled === true,
     readOnly: raw?.readOnly === true,
   };
+}
+
+/** True when two resolved settings are the same, field by field (locales in order). */
+export function sameCollectionSettings(a: CollectionSettings, b: CollectionSettings): boolean {
+  return (
+    a.name === b.name &&
+    a.translationsFolder === b.translationsFolder &&
+    a.baseLocale === b.baseLocale &&
+    a.translationEnabled === b.translationEnabled &&
+    a.readOnly === b.readOnly &&
+    a.locales.length === b.locales.length &&
+    a.locales.every((locale, index) => locale === b.locales[index])
+  );
 }

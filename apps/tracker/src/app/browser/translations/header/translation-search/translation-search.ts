@@ -32,7 +32,11 @@ export class TranslationSearch implements OnDestroy {
   readonly store = inject(BrowserStore);
   readonly TOKENS = TRACKER_TOKENS;
 
-  searchValue = signal('');
+  /**
+   * Starts from the store's query, so re-entering the collection mid-search shows the query
+   * behind the results still on screen instead of an empty box.
+   */
+  searchValue = signal(this.store.searchQuery());
 
   #searchSubject = new Subject<string>();
   #subscription = new Subscription();

@@ -5,7 +5,6 @@ import {
   inject,
   input,
   output,
-  effect,
   signal,
   viewChild,
   type ElementRef,
@@ -46,7 +45,8 @@ const SCROLL_INTERVAL_MS = 50;
  *   list every resource across every folder
  * - Folder selection
  * - Toggle between current folder and nested resources view
- * - Disabled state during search
+ * - Disabled while the store says so (`isDisabled`: a search or a move is in progress). The
+ *   tree only reads it, so remounting it (re-entering the collection mid-search) keeps it disabled.
  */
 @Component({
   selector: 'app-folder-tree',
@@ -75,9 +75,6 @@ export class FolderTree {
 
   /** Name of the collection to browse */
   readonly collectionName = input.required<string>();
-
-  /** Whether the tree is disabled (e.g., during translation search) */
-  readonly disabled = input<boolean>(false);
 
   /** Active drag data from parent (may come from translation items) */
   readonly activeDragDataFromParent = input<DragData | null>(null);
@@ -145,11 +142,6 @@ export class FolderTree {
   readonly #destroyRef = inject(DestroyRef);
 
   constructor() {
-    // Sync disabled state to store
-    effect(() => {
-      this.store.setDisabled(this.disabled());
-    });
-
     // Debounce search input
     this.#searchSubject.pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed()).subscribe((value) => {
       this.store.setFolderTreeFilter(value);

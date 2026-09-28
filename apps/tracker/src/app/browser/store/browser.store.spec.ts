@@ -5,9 +5,10 @@ import type {
   CacheStatusDto,
   ResourceSummaryDto,
   ResourceTreeDto,
+  SearchResultsDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
-import { NEVER, of, throwError } from 'rxjs';
+import { NEVER, of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { collectionSettings } from '../../../testing/collection-settings';
@@ -989,6 +990,20 @@ describe('BrowserStore', () => {
       expect(store.selectedLocales()).toEqual(['fr']);
     });
 
+    it('should read saved preferences without a density as compact and pick its one locale', async () => {
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+      localStorage.setItem(
+        'lingo-tracker:view-prefs:no-density',
+        JSON.stringify({ selectedLocales: ['es', 'fr'], compactLocale: 'fr' }),
+      );
+
+      store.openCollection(collectionSettings({ name: 'no-density', locales: ['en', 'es', 'fr'] }));
+      await waitForSignals();
+
+      expect(store.densityMode()).toBe('compact');
+      expect(store.selectedLocales()).toEqual(['fr']);
+    });
+
     it('should save the restored preferences under the new collection, not the previous one', async () => {
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
 
@@ -1652,6 +1667,213 @@ describe('BrowserStore', () => {
 
       expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 0, verified: 0 });
       expect(store.needsWorkCount()).toBe(0);
+    });
+  });
+
+  describe('Browser Session: responses from a closed session', () => {
+    const treeOf = (collection: string, folders: string[] = []): ResourceTreeDto => ({
+      path: '',
+      resources: [summary(`${collection}.welcome`, 'Welcome')],
+      children: folders.map((name) => ({ name, fullPath: name, loaded: false })),
+    });
+
+    /** Answers the cache status per collection: ready unless the spec holds a collection back. */
+    function cacheStatusFor(pending: Record<string, Subject<CacheStatusDto>> = {}): void {
+      vi.spyOn(apiService, 'getCacheStatus').mockImplementation(
+        (collection) => pending[collection] ?? of(mockCacheReady),
+      );
+    }
+
+    it("should drop A's root tree arriving after B was opened, so B still loads its own tree", async () => {
+      const aTree = new Subject<ResourceTreeDto>();
+      const bStatus = new Subject<CacheStatusDto>();
+      cacheStatusFor({ b: bStatus });
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation((collection) =>
+        collection === 'a' ? aTree : of(treeOf('b', ['b-folder'])),
+      );
+
+      store.openCollection(collectionSettings({ name: 'a' }));
+      await waitForSignals();
+      store.openCollection(collectionSettings({ name: 'b' }));
+      aTree.next(treeOf('a', ['a-folder']));
+      aTree.error(serverError(500, 'late'));
+
+      expect(store.rootFolders()).toEqual([]);
+      expect(store.folderTreeLoaded()).toBe(false);
+      expect(store.translations()).toEqual([]);
+      expect(store.error()).toBeNull();
+
+      bStatus.next(mockCacheReady);
+      await waitForSignals();
+
+      expect(store.rootFolders().map((folder) => folder.fullPath)).toEqual(['b-folder']);
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['b.welcome']);
+    });
+
+    it("should drop A's folder children and folder list arriving after B was opened", async () => {
+      const aChildren = new Subject<ResourceTreeDto>();
+      const aFolder = new Subject<ResourceTreeDto>();
+      cacheStatusFor({ b: new Subject<CacheStatusDto>() });
+      vi.spyOn(apiService, 'getResourceTree')
+        .mockReturnValueOnce(of(treeOf('a', ['common'])))
+        .mockReturnValueOnce(aChildren)
+        .mockReturnValueOnce(aFolder);
+
+      store.openCollection(collectionSettings({ name: 'a' }));
+      await waitForSignals();
+      store.loadFolderChildren('common');
+      store.selectFolder('common');
+      store.openCollection(collectionSettings({ name: 'b' }));
+      aChildren.next(mockTreeCommon);
+      aFolder.error(serverError(500, 'late'));
+
+      expect(store.rootFolders()).toEqual([]);
+      expect(store.translations()).toEqual([]);
+      expect(store.currentFolderPath()).toBe('');
+      expect(store.error()).toBeNull();
+    });
+
+    it("should drop A's search results arriving after B was opened", async () => {
+      const aSearch = new Subject<SearchResultsDto>();
+      cacheStatusFor();
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation((collection) => of(treeOf(collection)));
+      vi.spyOn(apiService, 'searchTranslations').mockReturnValue(aSearch);
+
+      store.openCollection(collectionSettings({ name: 'a' }));
+      await waitForSignals();
+      store.setSearchQuery('save');
+      store.searchTranslations('save');
+      store.openCollection(collectionSettings({ name: 'b' }));
+      await waitForSignals();
+      aSearch.next({
+        query: 'save',
+        results: [{ ...summary('a.save', 'Save'), matchType: 'exact-key' as const }],
+        totalFound: 1,
+        limited: false,
+      });
+
+      expect(store.searchResults()).toEqual([]);
+      expect(store.isSearchMode()).toBe(false);
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['b.welcome']);
+    });
+
+    it("should not roll A's failed resource move back into B's list", async () => {
+      const aMove = new Subject<{ movedCount: number }>();
+      const notifications = spectator.inject(NotificationService);
+      const toastError = vi.spyOn(notifications, 'error');
+      cacheStatusFor();
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation((collection) => of(treeOf(collection)));
+      vi.spyOn(apiService, 'moveResource').mockReturnValue(aMove);
+
+      store.openCollection(collectionSettings({ name: 'a' }));
+      await waitForSignals();
+      store.moveResource({ sourceKey: 'a.welcome', destinationFolderPath: 'archive' });
+      store.openCollection(collectionSettings({ name: 'b' }));
+      await waitForSignals();
+      aMove.error(serverError(500, 'late'));
+
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['b.welcome']);
+      expect(store.error()).toBeNull();
+      expect(toastError).not.toHaveBeenCalled();
+    });
+
+    it("should not apply A's folder delete, nor navigate, after B was opened", async () => {
+      const aDelete = new Subject<{ deleted: boolean; folderPath: string; resourcesDeleted: number }>();
+      cacheStatusFor();
+      const getTree = vi
+        .spyOn(apiService, 'getResourceTree')
+        .mockImplementation((collection) => of(treeOf(collection, ['common'])));
+      vi.spyOn(apiService, 'deleteFolder').mockReturnValue(aDelete);
+
+      store.openCollection(collectionSettings({ name: 'a' }));
+      await waitForSignals();
+      store.deleteFolder('common');
+      store.openCollection(collectionSettings({ name: 'b' }));
+      await waitForSignals();
+      getTree.mockClear();
+      aDelete.next({ deleted: true, folderPath: 'common', resourcesDeleted: 0 });
+      await waitForSignals();
+
+      expect(store.rootFolders().map((folder) => folder.fullPath)).toEqual(['common']);
+      expect(getTree).not.toHaveBeenCalled();
+    });
+
+    it('should not accept the first open of A answering after A was reopened (A, B, A)', async () => {
+      const firstTree = new Subject<ResourceTreeDto>();
+      const secondStatus = new Subject<CacheStatusDto>();
+      vi.spyOn(apiService, 'getCacheStatus')
+        .mockReturnValueOnce(of(mockCacheReady))
+        .mockReturnValueOnce(NEVER)
+        .mockReturnValueOnce(secondStatus);
+      vi.spyOn(apiService, 'getResourceTree')
+        .mockReturnValueOnce(firstTree)
+        .mockReturnValueOnce(of(treeOf('a', ['fresh'])));
+
+      store.openCollection(collectionSettings({ name: 'a' }));
+      await waitForSignals();
+      store.openCollection(collectionSettings({ name: 'b' }));
+      store.openCollection(collectionSettings({ name: 'a' }));
+      firstTree.next(treeOf('a', ['stale']));
+
+      expect(store.rootFolders()).toEqual([]);
+      expect(store.folderTreeLoaded()).toBe(false);
+
+      secondStatus.next(mockCacheReady);
+      await waitForSignals();
+
+      expect(store.rootFolders().map((folder) => folder.fullPath)).toEqual(['fresh']);
+    });
+  });
+
+  describe('Browser Session: updateSettings', () => {
+    beforeEach(() => {
+      localStorage.clear();
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+    });
+
+    it("should update the open collection's settings in place, keeping the user's place", async () => {
+      store.openCollection(collectionSettings({ name: 'app', locales: ['en', 'es'] }));
+      await waitForSignals();
+      store.selectFolder('common');
+      store.setSearchQuery('save');
+      await waitForSignals();
+      const sessionId = store.sessionId();
+      const statusCalls = vi.mocked(apiService.getCacheStatus).mock.calls.length;
+
+      const edited = collectionSettings({
+        name: 'app',
+        locales: ['de', 'fr'],
+        baseLocale: 'de',
+        readOnly: true,
+        translationEnabled: true,
+        translationsFolder: 'moved/i18n',
+      });
+      store.updateSettings(edited);
+
+      expect(store.collectionSettings()).toEqual(edited);
+      expect(store.availableLocales()).toEqual(['de', 'fr']);
+      expect(store.baseLocale()).toBe('de');
+      expect(store.isReadOnly()).toBe(true);
+      expect(store.currentFolderPath()).toBe('common');
+      expect(store.searchQuery()).toBe('save');
+      expect(store.isSearchMode()).toBe(true);
+      expect(store.sessionId()).toBe(sessionId);
+      expect(apiService.getCacheStatus).toHaveBeenCalledTimes(statusCalls);
+    });
+
+    it('should change nothing for equal settings or for another collection', async () => {
+      store.openCollection(collectionSettings({ name: 'app', locales: ['en', 'es'] }));
+      await waitForSignals();
+      const opened = store.collectionSettings();
+      const locales = store.availableLocales();
+
+      store.updateSettings(collectionSettings({ name: 'app', locales: ['en', 'es'] }));
+      store.updateSettings(collectionSettings({ name: 'other', locales: ['ja'] }));
+
+      expect(store.collectionSettings()).toBe(opened);
+      expect(store.availableLocales()).toBe(locales);
+      expect(store.selectedCollection()).toBe('app');
     });
   });
 });

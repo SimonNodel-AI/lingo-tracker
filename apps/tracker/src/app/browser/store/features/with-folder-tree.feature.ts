@@ -19,6 +19,7 @@ import {
   rebaseExpandedPaths,
 } from '../folder-tree.utils';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
+import { captureSession, withinSession } from '../session-guard';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import type { FolderNodeDto, CreateFolderResponseDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import type { Observable } from 'rxjs';
@@ -30,9 +31,10 @@ export interface FolderTreeState {
    * `rootFolders().length > 0`: a collection with only root resources has no folders.
    */
   folderTreeLoaded: boolean;
-  expandedFolders: Set<string>;
+  /** Replaced, never mutated: every change writes a fresh Set. */
+  expandedFolders: ReadonlySet<string>;
   /** Expansion as it stood before a filter took over; restored when the filter clears. */
-  preFilterExpandedFolders: Set<string> | null;
+  preFilterExpandedFolders: ReadonlySet<string> | null;
   isRootExpanded: boolean;
   folderTreeFilter: string;
   isFolderTreeLoading: boolean;
@@ -63,6 +65,7 @@ export function withFolderTreeFeature<_>() {
     {
       // State from root and other features used by this feature's methods
       state: type<{
+        sessionId: number;
         selectedCollection: string | null;
         showNestedResources: boolean;
         isDisabled: boolean;
@@ -210,6 +213,7 @@ export function withFolderTreeFeature<_>() {
           pipe(
             tap(() => patchState(store, { isFolderTreeLoading: true, error: null })),
             switchMap(() => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               const includeNested = store.showNestedResources();
               if (!collection) {
@@ -218,6 +222,7 @@ export function withFolderTreeFeature<_>() {
               }
 
               return api.getResourceTree(collection, '', includeNested).pipe(
+                withinSession(inSession),
                 tap((treeData) =>
                   patchState(store, {
                     rootFolders: treeData.children,
@@ -247,6 +252,7 @@ export function withFolderTreeFeature<_>() {
           pipe(
             tap(() => patchState(store, { isFolderTreeLoading: true, error: null })),
             switchMap((folderPath) => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               const includeNested = store.showNestedResources();
               if (!collection) {
@@ -255,6 +261,7 @@ export function withFolderTreeFeature<_>() {
               }
 
               return api.getResourceTree(collection, folderPath, includeNested).pipe(
+                withinSession(inSession),
                 tap((treeData) => {
                   const updateFolder = (folders: FolderNodeDto[]): FolderNodeDto[] =>
                     folders.map((folder) => {
@@ -295,6 +302,7 @@ export function withFolderTreeFeature<_>() {
           pipe(
             tap(() => patchState(store, { error: null })),
             switchMap((folderName) => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               const parentPath = store.addFolderParentPath();
 
@@ -304,6 +312,7 @@ export function withFolderTreeFeature<_>() {
               }
 
               return api.createFolder(collection, folderName, parentPath || undefined).pipe(
+                withinSession(inSession),
                 tap((response) => {
                   const updatedFolders = insertFolderIntoTree(store.rootFolders(), response.folder, parentPath || null);
 
@@ -331,11 +340,14 @@ export function withFolderTreeFeature<_>() {
         ),
 
         createFolderAt(folderName: string, parentPath: string | null): Observable<CreateFolderResponseDto | null> {
+          const inSession = captureSession(store);
           const collection = store.selectedCollection();
           if (!collection) return of(null);
 
+          // The caller still gets its response; only the store writes are session-guarded.
           return api.createFolder(collection, folderName, parentPath || undefined).pipe(
             tap((response) => {
+              if (!inSession()) return;
               const updatedFolders = insertFolderIntoTree(store.rootFolders(), response.folder, parentPath);
 
               patchState(store, {
@@ -347,9 +359,11 @@ export function withFolderTreeFeature<_>() {
               scheduleNewFolderClear(response.folder.fullPath);
             }),
             catchError((error: unknown) => {
-              patchState(store, {
-                error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
-              });
+              if (inSession()) {
+                patchState(store, {
+                  error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
+                });
+              }
               throw error;
             }),
           );
@@ -375,6 +389,7 @@ export function withFolderTreeFeature<_>() {
               }),
             ),
             switchMap((folderPath) => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               if (!collection) {
                 patchState(store, { isDeletingFolder: false, deletingFolderPath: null });
@@ -382,6 +397,7 @@ export function withFolderTreeFeature<_>() {
               }
 
               return api.deleteFolder(collection, folderPath).pipe(
+                withinSession(inSession),
                 tap((response) => {
                   if (response.deleted) {
                     const updatedFolders = removeFolderFromTree(store.rootFolders(), folderPath);
@@ -416,6 +432,7 @@ export function withFolderTreeFeature<_>() {
           pipe(
             tap(() => patchState(store, { error: null })),
             switchMap(({ sourceFolderPath, destinationFolderPath }) => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               if (!collection) return of(null);
 
@@ -446,6 +463,7 @@ export function withFolderTreeFeature<_>() {
 
                   return dialogRef.afterClosed();
                 }),
+                withinSession(inSession),
                 switchMap((confirmed) => {
                   if (!confirmed) return of(null);
 
@@ -456,6 +474,7 @@ export function withFolderTreeFeature<_>() {
                   patchState(store, { rootFolders: optimisticFolders });
 
                   return api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
+                    withinSession(inSession),
                     switchMap(() => {
                       notifications.success(
                         transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERMOVEDX, {
@@ -508,6 +527,7 @@ export function withFolderTreeFeature<_>() {
                       store.setTranslationsLoading(true);
 
                       return api.getResourceTree(collection, movedFolderPath, includeNested).pipe(
+                        withinSession(inSession),
                         tap((tree) => {
                           patchState(store, {
                             translations: tree.resources,

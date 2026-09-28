@@ -51,6 +51,17 @@ describe('TranslationSearch', () => {
     it('should initialize searchValue signal with empty value', () => {
       expect(component.searchValue()).toBe('');
     });
+
+    it("should start from the store's query when remounted mid-search (re-entering the collection)", () => {
+      mockStore.searchQuery.set('save');
+      mockStore.isSearchMode.set(true);
+
+      const remounted = createComponent();
+
+      expect(remounted.component.searchValue()).toBe('save');
+      const searchInput = remounted.debugElement.query(By.directive(SearchInput)).componentInstance as SearchInput;
+      expect(searchInput.value()).toBe('save');
+    });
   });
 
   describe('Template Rendering', () => {

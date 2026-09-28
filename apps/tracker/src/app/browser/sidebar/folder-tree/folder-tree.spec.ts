@@ -5,6 +5,7 @@ import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { FolderTree } from './folder-tree';
+import { BrowserStore } from '../../store/browser.store';
 
 describe('FolderTree', () => {
   let component: FolderTree;
@@ -44,10 +45,16 @@ describe('FolderTree', () => {
     expect(component.collectionName()).toBe('my-collection');
   });
 
-  it('should accept disabled input', () => {
+  it('should stay disabled when mounted mid-search (re-entering the collection)', () => {
     createComponent();
-    fixture.componentRef.setInput('disabled', true);
-    expect(component.disabled()).toBe(true);
+    const store = spectator.inject(BrowserStore);
+    store.setSearchQuery('save');
+
+    fixture.componentRef.setInput('collectionName', 'my-collection');
+    spectator.detectComponentChanges();
+
+    expect(store.isDisabled()).toBe(true);
+    expect(spectator.query('.folder-tree')?.classList.contains('disabled')).toBe(true);
   });
 
   it('should emit folderSelected when folder is clicked', () => {

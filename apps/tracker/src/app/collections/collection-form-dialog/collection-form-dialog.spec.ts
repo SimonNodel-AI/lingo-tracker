@@ -213,6 +213,15 @@ describe('CollectionFormDialog — create mode', () => {
     expect(closeArg.config).not.toHaveProperty('baseLocale');
   });
 
+  it('should always send tags, as an empty list when there are none', async () => {
+    component.form.controls.name.setValue('my-collection');
+    component.form.controls.translationsFolder.setValue('./i18n');
+
+    await component.onSubmit();
+
+    expect(mockDialogRef.close.mock.calls[0][0].config.tags).toEqual([]);
+  });
+
   it('should add a protected term preserving casing and trimming, deduped case-sensitively', () => {
     component.addProtectedTerm({ value: ' iPhone ', chipInput: { clear: () => undefined } } as never);
     component.addProtectedTerm({ value: 'Node.js', chipInput: { clear: () => undefined } } as never);
@@ -424,5 +433,22 @@ describe('CollectionFormDialog — edit mode with inherited base locale', () => 
 
     const closeArg = mockDialogRef.close.mock.calls[0][0];
     expect(closeArg.config).not.toHaveProperty('baseLocale');
+  });
+});
+
+describe('CollectionFormDialog — edit mode with tags', () => {
+  it('should send an empty tags list when every existing tag is removed, so the API clears them', async () => {
+    const { fixture, mockDialogRef } = buildHarness({
+      mode: 'edit',
+      name: 'my-app',
+      config: { translationsFolder: './i18n', baseLocale: 'en', locales: ['en'], tags: ['ui', 'legacy'] },
+    });
+    const component = fixture.componentInstance;
+
+    component.removeCollectionTag('ui');
+    component.removeCollectionTag('legacy');
+    await component.onSubmit();
+
+    expect(mockDialogRef.close.mock.calls[0][0].config.tags).toEqual([]);
   });
 });
