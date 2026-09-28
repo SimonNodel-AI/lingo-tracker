@@ -10,16 +10,7 @@ export {
   resolvePreferredTerminologyFilePath,
   writePreferredTerminology,
 } from './preferred-terminology-file';
-export {
-  describePreferredTermRule,
-  describeTermFileProblem,
-  type ProjectTerms,
-  readProjectTerms,
-  requireProtectedTerms,
-  type TermFileProblem,
-  type TerminologyFinding,
-  type TerminologyFindings,
-} from './project-terms';
+export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './project-terms';
 export {
   type ResolvedProtectedTerms,
   readCollectionProtectedTerms,
@@ -27,5 +18,6 @@ export {
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFilePath,
   resolveProtectedTermsForConfig,
+  type StoredProtectedTerms,
 } from './protected-terms-file';
 export type { TermFile } from './term-file';

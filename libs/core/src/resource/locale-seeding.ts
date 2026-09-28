@@ -1,5 +1,6 @@
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type { Collection } from '../lib/config/open-collection';
+import type { TerminologyFindings } from '../lib/config/project-terms';
 import { LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
 import { type OpenTranslatorOptions, openTranslator } from '../lib/translation/translator';
 
@@ -32,6 +33,8 @@ export interface LocaleSeeding {
    * Present only when auto-translation ran.
    */
   readonly skippedLocales?: string[];
+  /** Problems that did not stop the Translator (see `Translator.problems`). Present only when auto-translation ran. */
+  readonly problems?: readonly string[];
 }
 
 /**
@@ -62,12 +65,12 @@ export async function seedLocales(
 
   const translations: ResourceTranslation[] = [];
   let skippedLocales: string[] | undefined;
+  let problems: readonly string[] | undefined;
 
   if (collection.translationConfig?.enabled && open.length > 0) {
-    const { values, skipped } = await openTranslator(collection, options).translate(
-      [{ key: 'base', source: request.baseValue }],
-      open,
-    );
+    const translator = openTranslator(collection, options);
+    problems = translator.problems;
+    const { values, skipped } = await translator.translate([{ key: 'base', source: request.baseValue }], open);
     for (const { locale, value } of values) {
       translations.push({ locale, value, status: 'translated' });
     }
@@ -81,7 +84,11 @@ export async function seedLocales(
     }
   }
 
-  return { translations, ...(skippedLocales !== undefined && { skippedLocales }) };
+  return {
+    translations,
+    ...(skippedLocales !== undefined && { skippedLocales }),
+    ...(problems !== undefined && { problems }),
+  };
 }
 
 /**
@@ -96,4 +103,14 @@ export function assertCollectionLocales(collection: Collection, locales: Iterabl
       throw new LocaleNotFoundError(locale, collection.name);
     }
   }
+}
+
+/** A write's terminology outcome with the Translator's problems (when it ran) added to `problems`. */
+export function withTranslatorProblems(
+  terminology: TerminologyFindings,
+  translatorProblems: readonly string[] = [],
+): TerminologyFindings {
+  return translatorProblems.length === 0
+    ? terminology
+    : { ...terminology, problems: [...terminology.problems, ...translatorProblems] };
 }

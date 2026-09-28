@@ -78,7 +78,7 @@ export function setGlobalProtectedTermsFile(
   const cwd = options.cwd ?? process.cwd();
   const pointer = normalizePointer(rawPointer);
   const previousConfig = createConfigFileOperations({ cwd }).read();
-  const carried = readGlobalProtectedTerms(previousConfig, cwd);
+  const carried = readGlobalProtectedTerms(previousConfig, cwd).terms;
 
   // Validate before touching config, so a bad path never leaves a dangling pointer behind.
   if (pointer !== undefined) {
@@ -119,7 +119,7 @@ export function setCollectionProtectedTermsFile(
     throw new CollectionNotFoundError(collectionName);
   }
 
-  const carried = readCollectionProtectedTerms(collection, cwd);
+  const carried = readCollectionProtectedTerms(collection, cwd).terms;
 
   // Validate before touching config, so a bad path never leaves a dangling pointer behind.
   const filePath = pointer === undefined ? undefined : resolveProtectedTermsFilePath(pointer, cwd);

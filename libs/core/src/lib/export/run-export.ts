@@ -41,8 +41,9 @@ export function exportTargetLocales(collections: readonly Collection[], requeste
  *
  * For each locale, the resources of the collections that have that locale as a target are
  * filtered by status and tags (and annotated with the protected terms their source contains,
- * from each collection's Project Terms; a terms-file problem is a warning), then written by the
- * JSON or XLIFF exporter. A locale with no matching resource is skipped; a locale whose exporter
+ * from each collection's Project Terms: a broken protected-terms file is an error, so the run
+ * fails, and a named file that does not exist is a warning), then written by the JSON or XLIFF
+ * exporter. Warnings and errors are deduped (collections share the global terms file). A locale with no matching resource is skipped; a locale whose exporter
  * throws is reported and the run continues with the next locale.
  *
  * @throws {Error} The collections do not share one base locale (an export file has one source language).
@@ -86,7 +87,7 @@ export async function runExport(
             `Collection '${collection.name}': translations folder not found: ${collection.translationsFolder}`,
           );
         }
-        const { resources, problems } = loadResources(collection, protectedTermsOf(collection, totals.warnings));
+        const { resources, problems } = loadResources(collection, protectedTermsOf(collection));
         // A folder the reader could not read is left out of every locale file; the summary lists it.
         totals.malformedFiles.push(...problems.map((problem) => problem.message));
         return [collection.name, resources];
@@ -140,15 +141,24 @@ export async function runExport(
     }
   }
 
+  // Collections share the global terms file, so the same problem would otherwise repeat per collection.
+  totals.warnings = [...new Set(totals.warnings)];
+  totals.errors = [...new Set(totals.errors)];
   return { ...totals, localeResults, summary: generateExportSummary(totals, runOptions) };
 
-  /** The collection's protected terms for the do-not-translate notes; a terms-file problem is a warning. */
-  function protectedTermsOf(collection: Collection, warnings: string[]): string[] | undefined {
+  /**
+   * The collection's protected terms for the do-not-translate notes. A broken terms file is an
+   * error (the run fails: its notes would silently be missing); a named file that does not exist
+   * is a warning.
+   */
+  function protectedTermsOf(collection: Collection): string[] | undefined {
     if (!augmentProtectedTerms) return undefined;
     const terms = readProjectTerms(collection);
-    warnings.push(
-      ...terms.problems.filter((problem) => problem.file === 'protected-terms').map(describeTermFileProblem),
-    );
+    for (const problem of terms.problems) {
+      if (problem.file === 'protected-terms') {
+        (problem.severity === 'error' ? totals.errors : totals.warnings).push(describeTermFileProblem(problem));
+      }
+    }
     return [...terms.protectedTerms];
   }
 }

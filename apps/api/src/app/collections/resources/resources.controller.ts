@@ -83,6 +83,7 @@ export class ResourcesController {
       resource: buildResourceSummary(dto.key, result.entry, collection),
       skippedLocales: result.skippedLocales,
       translatedCount: result.translatedCount,
+      ...(result.warnings.length > 0 && { warnings: result.warnings }),
     };
   }
 

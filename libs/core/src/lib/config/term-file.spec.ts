@@ -17,7 +17,7 @@ interface Kind {
   readonly expected: unknown[];
   readonly invalidItem: string;
   readonly invalidItemMessage: string;
-  readonly read: (file: TermFile) => TermFileRead<unknown[]>;
+  readonly read: (file: TermFile) => TermFileRead<unknown>;
   /** Writes `expected`. */
   readonly writeExpected: (filePath: string) => void;
   /** Writes an unsorted, untrimmed value; `written` is the file it produces. */

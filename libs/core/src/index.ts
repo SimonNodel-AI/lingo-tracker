@@ -69,21 +69,14 @@ export {
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
+  type StoredProtectedTerms,
   type TermFile,
   type TermFiles,
   writePreferredTerminology,
 } from './lib/config';
 
 // Project Terms: the protected terms and preferred terminology in force for an opened collection
-export {
-  describePreferredTermRule,
-  describeTermFileProblem,
-  type ProjectTerms,
-  readProjectTerms,
-  type TermFileProblem,
-  type TerminologyFinding,
-  type TerminologyFindings,
-} from './lib/config';
+export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './lib/config';
 
 // ResourceFolder: one folder's entries and metadata, loaded and saved as a unit
 export {

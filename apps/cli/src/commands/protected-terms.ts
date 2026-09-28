@@ -69,8 +69,14 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
     const currentConfig = hasFile ? loadConfig({ cwd }) : config;
     const currentCollection = collectionName ? currentConfig.collections?.[collectionName] : undefined;
 
-    const globalTerms = readGlobalProtectedTerms(currentConfig, cwd);
-    const collectionTerms = currentCollection ? readCollectionProtectedTerms(currentCollection, cwd) : [];
+    const global = readGlobalProtectedTerms(currentConfig, cwd);
+    const own = currentCollection ? readCollectionProtectedTerms(currentCollection, cwd) : { terms: [] };
+    const globalTerms = global.terms;
+    const collectionTerms = own.terms;
+    // A named file that does not exist reads as empty; say so, since the pointer is usually a typo.
+    for (const warning of new Set([global.warning, own.warning])) {
+      if (warning !== undefined) ConsoleFormatter.warning(warning);
+    }
 
     const globalFile = resolveGlobalProtectedTermsFilePath(currentConfig, cwd);
     const collectionFile = currentCollection

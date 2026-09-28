@@ -110,7 +110,7 @@ function writeTranslatedValues(
  * results back to disk with status `translated` (values ICU-normalised by the Translator).
  *
  * Resources are read with the Collection Reader (a folder it cannot read is not translated and is
- * reported in `warnings`) and
+ * reported in `warnings`, as is a named protected-terms file that does not exist) and
  * processed in batches of `translationConfig.batchSize` (default 5). A configurable delay
  * (`translationConfig.delayMs`, default 1000 ms) is inserted between batches to avoid hitting
  * provider rate limits.
@@ -156,6 +156,7 @@ export async function translateLocale(
   }
 
   const translator = openTranslator(collection, params);
+  warnings.push(...translator.problems);
 
   const batchSize = collection.translationConfig?.batchSize ?? 5;
   const delayMs = collection.translationConfig?.delayMs ?? 1000;

@@ -14,6 +14,7 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CONFIG_FILENAME: '.lingo-tracker.json',
     validateResources: vi.fn(),
     generateValidationSummary: vi.fn(),
+    describeTermFileProblem: actual.describeTermFileProblem,
     readProjectTerms: vi.fn(() => ({
       protectedTerms: [],
       preferredTerminology: [],
@@ -29,11 +30,13 @@ const mockValidateResources = vi.mocked(core.validateResources);
 const mockGenerateValidationSummary = vi.mocked(core.generateValidationSummary);
 const mockReadProjectTerms = vi.mocked(core.readProjectTerms);
 
+type ProjectTerms = ReturnType<typeof core.readProjectTerms>;
+
 /** Project Terms with the given rules and problems; the CLI only reads those two fields here. */
 const projectTerms = (
-  preferredTerminology: core.ProjectTerms['preferredTerminology'] = [],
-  problems: core.TermFileProblem[] = [],
-): core.ProjectTerms => ({
+  preferredTerminology: ProjectTerms['preferredTerminology'] = [],
+  problems: ProjectTerms['problems'] = [],
+): ProjectTerms => ({
   protectedTerms: [],
   preferredTerminology,
   problems,
@@ -1254,8 +1257,9 @@ describe('validateCommand', () => {
 
       await validateCommand({});
 
-      // The rule file is one per project, so the first collection's Project Terms carry it.
+      // Every collection's term files are read; the rule file is one per project, so the first carries it.
       expect(mockReadProjectTerms).toHaveBeenCalledWith(expect.objectContaining({ name: 'common' }));
+      expect(mockReadProjectTerms).toHaveBeenCalledWith(expect.objectContaining({ name: 'legacy' }));
       expect(mockValidateResources).toHaveBeenCalledWith(
         [
           expect.objectContaining({ name: 'common', baseLocale: 'en' }),
@@ -1341,6 +1345,31 @@ describe('validateCommand', () => {
         '⚠️  Preferred terminology file not found: /project/terms.json. Treating as an empty list.',
       );
       expect(mockValidateResources.mock.calls[0]?.[1].terminology).toBeUndefined();
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('warns once about a broken protected-terms file shared by every collection, and still passes', async () => {
+      const broken = projectTerms(
+        [],
+        [
+          {
+            file: 'protected-terms',
+            severity: 'error',
+            filePath: '/project/protected.json',
+            message: 'Protected terms file is not valid JSON: /project/protected.json',
+          },
+        ],
+      );
+      mockReadProjectTerms.mockReturnValueOnce(broken).mockReturnValueOnce(broken);
+      mockValidateResources.mockReturnValue(passingResult);
+
+      await validateCommand({});
+
+      const printed = vi.mocked(console.error).mock.calls.map(([line]) => line);
+      expect(printed).toEqual([
+        '⚠️  Protected terms checks skipped: Protected terms file is not valid JSON: /project/protected.json',
+      ]);
+      expect(mockReadProjectTerms).toHaveBeenCalledTimes(2);
       expect(process.exitCode).toBe(0);
     });
 

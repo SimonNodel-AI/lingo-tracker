@@ -39,8 +39,9 @@ function isNonEmptyString(value: unknown): value is string {
 
 /**
  * The request-shape checks for a collection body, before anything reaches core: `collection`
- * must be an object with a string `translationsFolder`, and `name` a non-empty string (required
- * on create, optional on update; a blank one is refused rather than read as "no rename").
+ * must be an object with a string `translationsFolder` and no `null` field, and `name` a
+ * non-empty string (required on create, optional on update; a blank one is refused rather than
+ * read as "no rename").
  */
 function assertCollectionBody(
   body: unknown,
@@ -52,10 +53,16 @@ function assertCollectionBody(
   if ((nameIs === 'required' || body.name !== undefined) && !isNonEmptyString(body.name)) {
     throw new BadRequestException('name must be a non-empty string');
   }
-  if (!isRecord(body.collection)) {
+  const { collection } = body;
+  if (!isRecord(collection)) {
     throw new BadRequestException('collection must be an object');
   }
-  if (typeof body.collection.translationsFolder !== 'string') {
+  // `null` is no value for any field: leave a field out to keep it, send its empty value to clear it.
+  const nullField = Object.keys(collection).find((key) => collection[key] === null);
+  if (nullField !== undefined) {
+    throw new BadRequestException(`collection.${nullField} must not be null`);
+  }
+  if (typeof collection.translationsFolder !== 'string') {
     throw new BadRequestException('collection.translationsFolder must be a string');
   }
 }

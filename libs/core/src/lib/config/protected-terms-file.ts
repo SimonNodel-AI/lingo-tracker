@@ -21,10 +21,9 @@ import {
 export const DEFAULT_PROTECTED_TERMS_FILENAME = '.lingo-tracker-protected-terms.json';
 
 /** A protected-terms file: a bare JSON array of strings, normalized and deduped. */
-const PROTECTED_TERMS: TermFileKind<string[]> = {
+const PROTECTED_TERMS: TermFileKind<string> = {
   label: 'Protected terms file',
   items: 'strings',
-  empty: () => [],
   parse: (items, filePath) =>
     items.every((term): term is string => typeof term === 'string')
       ? { value: normalizeProtectedTerms([...items]) }
@@ -70,22 +69,29 @@ export function resolveCollectionProtectedTermsFilePath(
  * `warning` when the config names it), a malformed one as an empty list with an `error`.
  * See `readTermFile`.
  */
-export function readProtectedTermsFile(file: TermFile): TermFileRead<string[]> {
+export function readProtectedTermsFile(file: TermFile): TermFileRead<string> {
   return readTermFile(PROTECTED_TERMS, file);
+}
+
+/** The stored list of one protected-terms file, as the file holds it. */
+export interface StoredProtectedTerms {
+  readonly terms: string[];
+  /** Set when the config names the file and it does not exist (the list reads as empty). */
+  readonly warning?: string;
 }
 
 /**
  * The terms of a protected-terms file, for callers that go on to write it or show it as
- * the stored list. A missing file is an empty list.
+ * the stored list. A missing file is an empty list; when the config names it, with a `warning`.
  *
  * @throws {ProtectedTermsFileError} The file exists but is not a JSON array of strings.
  */
-export function requireProtectedTermsFile(file: TermFile): string[] {
+export function requireProtectedTermsFile(file: TermFile): StoredProtectedTerms {
   const read = readProtectedTermsFile(file);
   if (read.error !== undefined) {
     throw new ProtectedTermsFileError(read.filePath, read.error);
   }
-  return read.value;
+  return read.warning === undefined ? { terms: read.value } : { terms: read.value, warning: read.warning };
 }
 
 /**
@@ -108,23 +114,27 @@ export function writeProtectedTermsFile(filePath: string, terms: string[]): void
 }
 
 /**
- * Terms from the global file.
+ * Terms from the global file, and a `warning` when the config names a file that does not exist.
  * @throws {ProtectedTermsFileError} The file is not a JSON array of strings.
  */
-export function readGlobalProtectedTerms(config: LingoTrackerConfig, cwd: string = process.cwd()): string[] {
+export function readGlobalProtectedTerms(
+  config: LingoTrackerConfig,
+  cwd: string = process.cwd(),
+): StoredProtectedTerms {
   return requireProtectedTermsFile(resolveGlobalProtectedTermsFile(config, cwd));
 }
 
 /**
- * Terms from a collection's own file, or an empty list when it names none.
+ * Terms from a collection's own file, or an empty list when it names none; a `warning` when
+ * the file it names does not exist.
  * @throws {ProtectedTermsFileError} The file is not a JSON array of strings.
  */
 export function readCollectionProtectedTerms(
   collection: Pick<LingoTrackerCollection, 'protectedTermsFile'>,
   cwd: string = process.cwd(),
-): string[] {
+): StoredProtectedTerms {
   const path = resolveCollectionProtectedTermsFilePath(collection, cwd);
-  return path === undefined ? [] : requireProtectedTermsFile({ path, explicit: true });
+  return path === undefined ? { terms: [] } : requireProtectedTermsFile({ path, explicit: true });
 }
 
 /** Resolved protected terms for a whole config — what each scope's file actually contains. */
@@ -151,13 +161,13 @@ export function resolveProtectedTermsForConfig(
   const collections: ResolvedProtectedTerms['collections'] = {};
   for (const [name, collection] of Object.entries(config.collections ?? {})) {
     collections[name] = {
-      terms: readCollectionProtectedTerms(collection, cwd),
+      terms: readCollectionProtectedTerms(collection, cwd).terms,
       filePath: resolveCollectionProtectedTermsFilePath(collection, cwd),
     };
   }
 
   return {
-    globalTerms: readGlobalProtectedTerms(config, cwd),
+    globalTerms: readGlobalProtectedTerms(config, cwd).terms,
     globalFilePath: resolveGlobalProtectedTermsFilePath(config, cwd),
     collections,
   };

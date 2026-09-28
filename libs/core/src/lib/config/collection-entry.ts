@@ -20,9 +20,13 @@ import {
  *
  * An existing record is changed by patch: a key the patch sets (to anything but `undefined`)
  * replaces the stored value; a key left out, or set to `undefined`, keeps it. A setting is
- * cleared with its empty value (`tags: []`, `readOnly: false`, `locales: []`,
- * `protectedTermsFile: ''`), which the field rule then drops from the record. So a caller that
- * edits one setting never has to know, or carry over, the others.
+ * cleared with its empty value (`tags: []`, `readOnly: false`, `locales: []`, `''` for
+ * `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`), which the field rule
+ * then drops from the record, so the collection inherits the global setting. `translation` has no
+ * empty value (a `TranslationConfig` needs `enabled`, `provider` and `apiKeyEnv`), so a patch can
+ * replace the override but not clear it. `null` is never a value: a field set to `null` throws
+ * `InvalidCollectionError`. So a caller that edits one setting never has to know, or carry over,
+ * the others.
  */
 
 /** What to store for one field, or `undefined` to leave it out of the record. */
@@ -31,9 +35,9 @@ type StoreRule<K extends keyof LingoTrackerCollection> = (
   config: LingoTrackerConfig,
 ) => LingoTrackerCollection[K] | undefined;
 
-/** Keep the value only when it is set and differs from the global one. */
+/** Keep the value only when it is set, not blank (`''` clears the override), and differs from the global one. */
 function unlessGlobal<K extends 'exportFolder' | 'importFolder' | 'baseLocale'>(key: K): StoreRule<K> {
-  return (value, config) => (value !== undefined && value !== config[key] ? value : undefined);
+  return (value, config) => (value !== undefined && value.trim() !== '' && value !== config[key] ? value : undefined);
 }
 
 function sameLocales(a: readonly string[], b: readonly string[] | undefined): boolean {
@@ -65,12 +69,18 @@ const STORE: { [K in keyof Required<LingoTrackerCollection>]: StoreRule<K> } = {
  * The record to store for `collection`: `translationsFolder` (trimmed) plus every field
  * whose rule keeps it. Pure.
  *
- * @throws {InvalidCollectionError} `translationsFolder` is missing or blank.
+ * @throws {InvalidCollectionError} `translationsFolder` is missing or blank, or a field is `null`.
  */
 export function toCollectionEntry(
   config: LingoTrackerConfig,
   collection: LingoTrackerCollection,
 ): LingoTrackerCollection {
+  // JSON bodies can carry `null`, which the type does not allow and no field rule expects.
+  const nullField = Object.entries(collection).find(([, value]) => value === null)?.[0];
+  if (nullField !== undefined) {
+    throw new InvalidCollectionError(`${nullField} must not be null`);
+  }
+
   const translationsFolder = collection.translationsFolder?.trim();
   if (!translationsFolder) {
     throw new InvalidCollectionError('translationsFolder is required');
@@ -113,13 +123,14 @@ export function addCollectionEntry(
 /**
  * The config with the collection `name` changed by `patch`, and moved to `newName` when that
  * is given and differs. Patch semantics: a key `patch` sets replaces the stored value (so
- * `tags: []`, `readOnly: false`, `locales: []` or `protectedTermsFile: ''` clear a setting),
+ * `tags: []`, `readOnly: false`, `locales: []`, or `''` for `exportFolder`, `importFolder`,
+ * `baseLocale` or `protectedTermsFile` clear a setting; `translation` cannot be cleared),
  * and a key left out or set to `undefined` keeps it. The merged record is then rebuilt by the
  * field rules, so a value that now equals the global one is stored as inherited. Pure.
  *
  * @throws {CollectionNotFoundError} No collection named `name`.
  * @throws {CollectionAlreadyExistsError} A collection named `newName` exists.
- * @throws {InvalidCollectionError} The merged `translationsFolder` is missing or blank.
+ * @throws {InvalidCollectionError} The merged `translationsFolder` is missing or blank, or a field is `null`.
  */
 export function patchCollectionEntry(
   config: LingoTrackerConfig,

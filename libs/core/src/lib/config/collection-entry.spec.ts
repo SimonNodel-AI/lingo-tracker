@@ -159,6 +159,36 @@ describe('patchCollectionEntry', () => {
     });
   });
 
+  it('clears exportFolder, importFolder and baseLocale with "" (the collection inherits the global value)', () => {
+    const withBase: LingoTrackerConfig = { ...GLOBAL, collections: { app: { ...stored, baseLocale: 'es' } } };
+
+    const next = patchCollectionEntry(withBase, 'app', { exportFolder: '', importFolder: ' ', baseLocale: '' });
+
+    expect(next.collections['app']).toEqual({
+      translationsFolder: './i18n',
+      locales: ['en', 'es'],
+      translation,
+      readOnly: true,
+      tags: ['team-x'],
+      protectedTermsFile: 'i18n/terms.json',
+    });
+  });
+
+  it.each([
+    'locales',
+    'translation',
+    'tags',
+    'exportFolder',
+    'readOnly',
+  ])('throws InvalidCollectionError for %s: null (a JSON body), and stores nothing', (field) => {
+    // JSON.parse, as the API would: the type has no null, a request body can.
+    const patch: Partial<LingoTrackerCollection> = JSON.parse(`{ "${field}": null }`);
+
+    expect(() => patchCollectionEntry(config, 'app', patch)).toThrow(
+      new InvalidCollectionError(`${field} must not be null`),
+    );
+  });
+
   it('treats an undefined value like a key left out (the `{ locales }` shorthand of a caller with nothing to say)', () => {
     const next = patchCollectionEntry(config, 'app', {
       locales: undefined,

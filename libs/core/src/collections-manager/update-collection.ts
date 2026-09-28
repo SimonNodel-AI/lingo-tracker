@@ -17,8 +17,8 @@ export interface UpdateCollectionOptions {
  * **Patch** semantics, through the Collection Entry (`lib/config/collection-entry.ts`): a
  * field `patch` sets replaces the stored value, and a field left out (or `undefined`) keeps
  * it. So `{ tags: [] }` clears the tags, `{ readOnly: false }` clears the flag,
- * `{ locales: [] }` returns to the global locales, `{ protectedTermsFile: '' }` drops the
- * pointer, and a patch that does not mention `translation`, `exportFolder` or `importFolder`
+ * `{ locales: [] }` returns to the global locales, `''` clears `exportFolder`, `importFolder`,
+ * `baseLocale` or `protectedTermsFile` (the collection inherits), and a patch that does not mention `translation`, `exportFolder` or `importFolder`
  * leaves them as they are. The stored record is then re-minimized: a value equal to the
  * global one is stored as inherited.
  *
@@ -37,7 +37,7 @@ export interface UpdateCollectionOptions {
  *
  * @throws {CollectionNotFoundError} No collection named `collectionName`.
  * @throws {CollectionAlreadyExistsError} A collection named `newCollectionName` exists.
- * @throws {InvalidCollectionError} The resulting `translationsFolder` is missing or blank.
+ * @throws {InvalidCollectionError} The resulting `translationsFolder` is missing or blank, or a field is `null`.
  * @throws {ReadOnlyCollectionError} The locales change and the collection is read-only.
  * @throws {InvalidLocaleError} An added locale is malformed.
  */

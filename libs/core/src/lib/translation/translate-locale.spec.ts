@@ -207,6 +207,19 @@ describe('translateLocale', () => {
     expect(result.warnings[0]).toContain(RESOURCE_ENTRIES_FILENAME);
   });
 
+  it('reports a named protected-terms file that does not exist in warnings', async () => {
+    const missing = join(dir(), 'typo.json');
+    const named = collection({
+      termFiles: { ...collection().termFiles, protectedTerms: { path: missing, explicit: true } },
+    });
+    seedResources(named, { ok: { source: 'OK' } });
+
+    const result = await translateLocale(named, { targetLocale: 'fr', provider: new InMemoryTranslationProvider() });
+
+    expect(result.translatedCount).toBe(1);
+    expect(result.warnings).toEqual([`Protected terms file not found: ${missing}. Treating as an empty list.`]);
+  });
+
   it('reports unreadable folders in warnings even when nothing needs translating', async () => {
     writeFolderFiles(dir(), 'broken', { entries: '{ not json' });
 

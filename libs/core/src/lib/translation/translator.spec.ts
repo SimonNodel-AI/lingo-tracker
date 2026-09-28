@@ -236,6 +236,38 @@ describe('Translator.translate', () => {
     expect(outcome.skipped).toEqual([{ key: 'buy', locale: 'fr', reason: 'protected-term', terms: ['iPhone'] }]);
   });
 
+  it('reads the terms again on every open, so a file changed on disk is used by the next Translator', async () => {
+    const termsPath = join(dir(), DEFAULT_PROTECTED_TERMS_FILENAME);
+    const provider = new InMemoryTranslationProvider(({ text }) => text.replace('iPhone', 'téléphone'));
+    const entries = [{ key: 'buy', source: 'Buy an iPhone' }];
+
+    writeFileSync(termsPath, JSON.stringify(['iPhone']), 'utf8');
+    const first = await openTranslator(collection(), { provider }).translate(entries, ['fr']);
+    writeFileSync(termsPath, JSON.stringify([]), 'utf8');
+    const second = await openTranslator(collection(), { provider }).translate(entries, ['fr']);
+
+    expect(first.skipped).toEqual([{ key: 'buy', locale: 'fr', reason: 'protected-term', terms: ['iPhone'] }]);
+    expect(second.values).toEqual([{ key: 'buy', locale: 'fr', value: 'Buy an téléphone' }]);
+  });
+
+  it('reports a named protected-terms file that does not exist in problems, and translates unguarded', async () => {
+    const missing = join(dir(), 'typo.json');
+    const named = collection({
+      termFiles: {
+        protectedTerms: { path: missing, explicit: true },
+        preferredTerminology: { path: join(dir(), 'rules.json'), explicit: false },
+      },
+    });
+
+    const translator = openTranslator(named, { provider: new InMemoryTranslationProvider() });
+
+    expect(translator.problems).toEqual([`Protected terms file not found: ${missing}. Treating as an empty list.`]);
+    expect(openTranslator(named, { provider: new InMemoryTranslationProvider(), protectedTerms: [] }).problems).toEqual(
+      [],
+    );
+    expect(openTranslator(collection(), { provider: new InMemoryTranslationProvider() }).problems).toEqual([]);
+  });
+
   it('throws ProtectedTermsFileError on open when a protected-terms file is malformed', () => {
     writeFileSync(join(dir(), DEFAULT_PROTECTED_TERMS_FILENAME), '["iPhone",', 'utf8');
 

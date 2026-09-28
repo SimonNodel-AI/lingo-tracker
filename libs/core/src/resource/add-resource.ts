@@ -6,7 +6,12 @@ import type { OpenTranslatorOptions } from '../lib/translation/translator';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder } from '../lib/resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
-import { assertCollectionLocales, type ResourceTranslation, seedLocales } from './locale-seeding';
+import {
+  assertCollectionLocales,
+  type ResourceTranslation,
+  seedLocales,
+  withTranslatorProblems,
+} from './locale-seeding';
 
 export interface AddResourceParams {
   /** Dot-delimited key, e.g., "apps.common.buttons.ok". */
@@ -38,7 +43,10 @@ export interface AddResourceResult {
   readonly skippedLocales?: string[];
   /** The `upsert` for the stored entry. */
   readonly mutations: ResourceMutation[];
-  /** Advisory: discouraged terms in the stored base value, and any rule-file problem that limited the check. */
+  /**
+   * Advisory: discouraged terms in the stored base value, any rule-file problem that limited the
+   * check, and, when auto-translation ran, a named protected-terms file that does not exist.
+   */
   readonly terminology: TerminologyFindings;
 }
 
@@ -110,6 +118,9 @@ export async function addResource(
     translations,
     ...(seeding.skippedLocales !== undefined && { skippedLocales: seeding.skippedLocales }),
     mutations: [upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey))],
-    terminology: readProjectTerms(collection).checkBaseValue(paths.resolvedKey, baseValue),
+    terminology: withTranslatorProblems(
+      readProjectTerms(collection).checkBaseValue(paths.resolvedKey, baseValue),
+      seeding.problems,
+    ),
   };
 }

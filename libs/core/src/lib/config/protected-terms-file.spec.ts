@@ -81,21 +81,31 @@ describe('protected-terms-file', () => {
       expect(() => requireProtectedTermsFile({ path: filePath, explicit: false })).toThrow(ProtectedTermsFileError);
     });
 
-    it('read a missing file as an empty list', () => {
-      expect(readGlobalProtectedTerms(baseConfig({ protectedTermsFile: 'absent.json' }), cwd)).toEqual([]);
+    it('read a missing file as an empty list, warning when the config names it', () => {
+      expect(readGlobalProtectedTerms(baseConfig({ protectedTermsFile: 'absent.json' }), cwd)).toEqual({
+        terms: [],
+        warning: `Protected terms file not found: ${join(cwd, 'absent.json')}. Treating as an empty list.`,
+      });
+      expect(readGlobalProtectedTerms(baseConfig(), cwd)).toEqual({ terms: [] });
+      expect(readCollectionProtectedTerms({ protectedTermsFile: 'gone.json' }, cwd)).toEqual({
+        terms: [],
+        warning: `Protected terms file not found: ${join(cwd, 'gone.json')}. Treating as an empty list.`,
+      });
     });
 
     it('honour an explicit global pointer over the default path', () => {
       write(DEFAULT_PROTECTED_TERMS_FILENAME, '["Ignored"]');
       write('custom.json', '["Used"]');
 
-      expect(readGlobalProtectedTerms(baseConfig({ protectedTermsFile: 'custom.json' }), cwd)).toEqual(['Used']);
+      expect(readGlobalProtectedTerms(baseConfig({ protectedTermsFile: 'custom.json' }), cwd)).toEqual({
+        terms: ['Used'],
+      });
     });
 
     it('contribute nothing from a collection with no pointer', () => {
       const collection: LingoTrackerCollection = { translationsFolder: './i18n' };
 
-      expect(readCollectionProtectedTerms(collection, cwd)).toEqual([]);
+      expect(readCollectionProtectedTerms(collection, cwd)).toEqual({ terms: [] });
     });
   });
 

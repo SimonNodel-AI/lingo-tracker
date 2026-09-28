@@ -7,7 +7,7 @@ import { CollectionIndex } from '../cache/collection-index.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import * as core from '@simoncodes-ca/core';
 import { CollectionAlreadyExistsError, CollectionNotFoundError } from '@simoncodes-ca/core';
-import type { UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
+import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 
 // Mock the core writes; keep the real config resolution and mutation helpers
 jest.mock('@simoncodes-ca/core', () => {
@@ -134,7 +134,7 @@ describe('CollectionsController', () => {
         },
       };
 
-      const result = await collectionsController.createCollection(dto as any);
+      const result = await collectionsController.createCollection(dto as unknown as CreateCollectionDto);
 
       expect(result).toEqual({
         message: 'Collection "new-collection" created successfully',
@@ -153,8 +153,15 @@ describe('CollectionsController', () => {
         { name: 'new', collection: { translationsFolder: 1 } },
         'collection.translationsFolder must be a string',
       ],
+      [
+        'null tags',
+        { name: 'new', collection: { translationsFolder: './x', tags: null } },
+        'collection.tags must not be null',
+      ],
     ])('answers 400 for %s, before core is called', async (_label, body, message) => {
-      const error = await collectionsController.createCollection(body as any).catch((e: unknown) => e);
+      const error = await collectionsController
+        .createCollection(body as unknown as CreateCollectionDto)
+        .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(BadRequestException);
       expect((error as BadRequestException).message).toBe(message);
@@ -174,7 +181,9 @@ describe('CollectionsController', () => {
         },
       };
 
-      const error = await collectionsController.createCollection(dto as any).catch((e: unknown) => e);
+      const error = await collectionsController
+        .createCollection(dto as unknown as CreateCollectionDto)
+        .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(CollectionAlreadyExistsError);
       expect(toHttpException(error).getStatus()).toBe(409);
@@ -196,7 +205,10 @@ describe('CollectionsController', () => {
         },
       };
 
-      const result = await collectionsController.updateCollectionByName('old-name', dto as any);
+      const result = await collectionsController.updateCollectionByName(
+        'old-name',
+        dto as unknown as UpdateCollectionDto,
+      );
 
       expect(result).toEqual({
         message: 'Collection "old-name" updated to "new-name" successfully',
@@ -218,7 +230,7 @@ describe('CollectionsController', () => {
         },
       };
 
-      await collectionsController.updateCollectionByName('My%20Collection', dto as any);
+      await collectionsController.updateCollectionByName('My%20Collection', dto as unknown as UpdateCollectionDto);
 
       expect(updateCollection).toHaveBeenCalledWith('My Collection', 'My Collection', dto.collection);
     });
@@ -227,14 +239,20 @@ describe('CollectionsController', () => {
       ['a blank name', { name: '', collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
       ['a non-string name', { name: 1, collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
       ['no collection', {}, 'collection must be an object'],
+      ['a null folder', { collection: { translationsFolder: null } }, 'collection.translationsFolder must not be null'],
       [
-        'a non-string folder',
-        { collection: { translationsFolder: null } },
-        'collection.translationsFolder must be a string',
+        'null locales',
+        { collection: { translationsFolder: './x', locales: null } },
+        'collection.locales must not be null',
+      ],
+      [
+        'a null translation',
+        { collection: { translationsFolder: './x', translation: null } },
+        'collection.translation must not be null',
       ],
     ])('answers 400 for %s, before core is called', async (_label, body, message) => {
       const error = await collectionsController
-        .updateCollectionByName('old-name', body as any)
+        .updateCollectionByName('old-name', body as unknown as UpdateCollectionDto)
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(BadRequestException);
@@ -266,7 +284,9 @@ describe('CollectionsController', () => {
         },
       };
 
-      const error = await collectionsController.updateCollectionByName('old-name', dto as any).catch((e: unknown) => e);
+      const error = await collectionsController
+        .updateCollectionByName('old-name', dto as unknown as UpdateCollectionDto)
+        .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(CollectionNotFoundError);
       expect(toHttpException(error).getStatus()).toBe(404);

@@ -289,7 +289,7 @@ describe('addResourceCommand', () => {
     const add = (value: string) => addResourceCommand({ collection: 'TestCollection', key: 'budget.title', value });
 
     /** What core returns for a stored value: the findings are core's, the CLI only renders them. */
-    const added = (terminology: { findings: core.TerminologyFinding[]; problems: string[] }) =>
+    const added = (terminology: core.TerminologyFindings) =>
       vi.mocked(core.addResource).mockResolvedValue({
         resolvedKey: 'budget.title',
         created: true,

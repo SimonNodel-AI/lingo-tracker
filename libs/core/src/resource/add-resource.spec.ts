@@ -1,7 +1,8 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { findPreferredTermFindings } from '@simoncodes-ca/domain';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import type { TranslationConfig } from '../config/translation-config';
 import { type Collection, openCollection } from '../lib/config/open-collection';
@@ -11,6 +12,12 @@ import { InMemoryTranslationProvider } from '../lib/translation/in-memory-transl
 import { TranslationError } from '../lib/translation/translation-provider';
 import { addResource } from './add-resource';
 import { calculateChecksum as md5 } from './checksum';
+
+// Wrapped, not replaced: the specs below check which value the terminology check is given.
+vi.mock('@simoncodes-ca/domain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/domain')>();
+  return { ...actual, findPreferredTermFindings: vi.fn(actual.findPreferredTermFindings) };
+});
 
 const AUTO: TranslationConfig = { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' };
 
@@ -336,6 +343,44 @@ describe('addResource (real fs)', () => {
       const result = await addResource(collection(), { key: 'budget.title', baseValue: 'Capital expenditure' });
 
       expect(result.terminology).toEqual({ findings: [], problems: [] });
+    });
+
+    it('checks the stored ICU value, not the Transloco input', async () => {
+      const termRules = [{ discouraged: 'total', preferred: 'sum' }];
+      writeFileSync(join(root, '.lingo-tracker-preferred-terminology.json'), JSON.stringify(termRules), 'utf8');
+      vi.mocked(findPreferredTermFindings).mockClear();
+
+      const result = await addResource(collection(), { key: 'budget.sum', baseValue: 'The total: {{ total }}' });
+
+      expect(read('resource_entries.json', 'budget').sum.source).toBe('The total: {total}');
+      expect(findPreferredTermFindings).toHaveBeenCalledWith('The total: {total}', termRules);
+      expect(result.terminology.findings.map(({ discouraged }) => discouraged)).toEqual(['total']);
+    });
+
+    it('adds a named protected-terms file that does not exist to problems when auto-translation ran', async () => {
+      const config: LingoTrackerConfig = {
+        exportFolder: 'dist',
+        importFolder: 'import',
+        baseLocale: 'en',
+        locales: ['en', 'fr'],
+        protectedTermsFile: 'typo.json',
+        translation: AUTO,
+        collections: { main: { translationsFolder: join(root, 'translations') } },
+      };
+      const named = openCollection(config, 'main', { cwd: root });
+      const provider = new InMemoryTranslationProvider();
+
+      const translated = await addResource(named, { key: 'a.ok', baseValue: 'OK' }, { provider });
+      const manual = await addResource(openCollection({ ...config, translation: undefined }, 'main', { cwd: root }), {
+        key: 'a.no',
+        baseValue: 'No',
+      });
+
+      expect(translated.terminology.problems).toEqual([
+        `Protected terms file not found: ${join(root, 'typo.json')}. Treating as an empty list.`,
+      ]);
+      // Without auto-translation nothing is guarded, so the missing file limits nothing.
+      expect(manual.terminology.problems).toEqual([]);
     });
 
     it('reports a broken rule file as a problem and skips the check', async () => {

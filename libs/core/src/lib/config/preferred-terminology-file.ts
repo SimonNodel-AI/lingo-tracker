@@ -48,10 +48,9 @@ export class PreferredTerminologyValidationError extends LingoTrackerError {
 }
 
 /** The preferred-terminology file: a bare JSON array of `{ discouraged, preferred, reason? }` rules, in file order. */
-const PREFERRED_TERMINOLOGY: TermFileKind<PreferredTermRule[]> = {
+const PREFERRED_TERMINOLOGY: TermFileKind<PreferredTermRule> = {
   label: 'Preferred terminology file',
   items: 'rules',
-  empty: () => [],
   parse: (items, filePath) => {
     const errors = validatePreferredTermRules(items);
     return errors.length > 0
@@ -114,7 +113,7 @@ export function loadPreferredTerminology(
 }
 
 /** Reads the preferred-terminology file at a resolved location. Never throws. */
-export function readPreferredTerminologyFile(file: TermFile): TermFileRead<PreferredTermRule[]> {
+export function readPreferredTerminologyFile(file: TermFile): TermFileRead<PreferredTermRule> {
   return readTermFile(PREFERRED_TERMINOLOGY, file);
 }
 

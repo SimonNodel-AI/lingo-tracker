@@ -6,8 +6,9 @@
  * Reading never throws. A term file that is missing where the config names it, or that exists
  * but cannot be used, is a {@link TermFileProblem}; the lists read as if the file were empty.
  * Each consumer decides what a problem means for it: the Translator and an import refuse to run
- * unguarded on a broken protected-terms file ({@link requireProtectedTerms}); a write's
- * terminology check reports the problem next to its findings; export and validate warn.
+ * unguarded on a broken protected-terms file ({@link requireProtectedTerms}) and report a missing
+ * named one ({@link protectedTermsWarnings}); a write's terminology check reports the problem next
+ * to its findings; export fails on a broken protected-terms file and warns otherwise; validate warns.
  *
  * @module project-terms
  */
@@ -114,6 +115,16 @@ export function requireProtectedTerms(terms: ProjectTerms): readonly string[] {
     throw new ProtectedTermsFileError(broken.filePath, broken.message);
   }
   return terms.protectedTerms;
+}
+
+/**
+ * The protected-terms problems that do not stop a guarded consumer (a file the config names
+ * that does not exist), as printable lines. A broken file is {@link requireProtectedTerms}'s concern.
+ */
+export function protectedTermsWarnings(terms: ProjectTerms): string[] {
+  return terms.problems
+    .filter((problem) => problem.file === 'protected-terms' && problem.severity === 'warning')
+    .map(describeTermFileProblem);
 }
 
 /**

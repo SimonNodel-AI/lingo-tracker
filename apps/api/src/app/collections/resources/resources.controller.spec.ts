@@ -1282,6 +1282,7 @@ describe('ResourcesController', () => {
         translatedCount: 2,
         skippedLocales: [],
         entry: mockEntry,
+        warnings: [],
       });
 
       const result = await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
@@ -1290,6 +1291,23 @@ describe('ResourcesController', () => {
       expect(result.skippedLocales).toEqual([]);
       expect(result.resource).toMatchObject({ fullKey: 'buttons.save', folderPath: 'buttons', entryKey: 'save' });
       expect(result.resource.targets.map((t) => t.status)).toEqual(['translated', 'translated']);
+      expect(result).not.toHaveProperty('warnings');
+    });
+
+    it('passes on the warnings of the translation, e.g. a named protected-terms file that does not exist', async () => {
+      (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
+      const warning = 'Protected terms file not found: /p/terms.json. Treating as an empty list.';
+      (core.translateExistingResource as jest.Mock).mockResolvedValue({
+        translatedCount: 1,
+        skippedLocales: [],
+        entry: mockEntry,
+        mutations: [],
+        warnings: [warning],
+      });
+
+      const result = await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
+
+      expect(result.warnings).toEqual([warning]);
     });
 
     it('should pass the opened collection and resource key to core', async () => {
@@ -1299,6 +1317,7 @@ describe('ResourcesController', () => {
         translatedCount: 1,
         skippedLocales: [],
         entry: mockEntry,
+        warnings: [],
       });
 
       await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
@@ -1321,6 +1340,7 @@ describe('ResourcesController', () => {
         translatedCount: 1,
         skippedLocales: [],
         entry: mockEntry,
+        warnings: [],
         mutations,
       });
 
@@ -1337,6 +1357,7 @@ describe('ResourcesController', () => {
         translatedCount: 0,
         skippedLocales: ['fr-ca', 'es'],
         entry: mockEntry,
+        warnings: [],
       });
 
       const result = await resourcesController.translateResource('test-collection', { key: 'buttons.save' });

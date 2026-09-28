@@ -38,6 +38,21 @@ describe('translateExistingResource', () => {
     });
   }
 
+  it('reports a named protected-terms file that does not exist in warnings', async () => {
+    const missing = join(dir(), 'typo.json');
+    const named = collection({
+      termFiles: { ...collection().termFiles, protectedTerms: { path: missing, explicit: true } },
+    });
+    seedSave(named);
+
+    const result = await translateExistingResource(named, 'common.save', {
+      provider: new InMemoryTranslationProvider(),
+    });
+
+    expect(result.translatedCount).toBe(2);
+    expect(result.warnings).toEqual([`Protected terms file not found: ${missing}. Treating as an empty list.`]);
+  });
+
   it('throws AutoTranslationDisabledError when auto-translation is disabled', async () => {
     const disabled = collection({ translationConfig: { ...AUTO, enabled: false } });
     seedSave(disabled);
