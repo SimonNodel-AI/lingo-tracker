@@ -342,14 +342,20 @@ export class CollectionFormDialog implements OnInit {
       name: raw.name,
       config: {
         translationsFolder: raw.translationsFolder,
-        ...(localesArray.length > 0 ? { locales: localesArray } : {}),
+        // Always sent: an empty list is how "remove every own locale, inherit global" reaches the API.
+        locales: localesArray,
+        // The base locale is create-time-only and locked once a collection exists (see
+        // `setBaseLocale`/`displayedBaseLocale`), so there is no form path that clears an existing
+        // override — omitting it here when unset is therefore always correct, never a lost edit.
         ...(raw.baseLocale ? { baseLocale: raw.baseLocale } : {}),
         readOnly: raw.readOnly,
         // Always sent: an empty list is how "remove every tag" reaches the API.
         tags,
-        // The pointer round-trips so an edit never drops it; the terms are only sent when
-        // there is a file to write them to.
-        ...(protectedTermsFile ? { protectedTermsFile, protectedTerms } : {}),
+        // Always sent: '' is how "no file for this collection" reaches the API. The pointer
+        // itself isn't user-editable here, so this mirrors whatever was loaded; the terms are
+        // only sent when there is a file to write them to.
+        protectedTermsFile: protectedTermsFile ?? '',
+        ...(protectedTermsFile ? { protectedTerms } : {}),
       },
     };
   }

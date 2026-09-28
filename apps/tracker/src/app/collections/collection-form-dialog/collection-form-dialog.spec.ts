@@ -202,15 +202,33 @@ describe('CollectionFormDialog — create mode', () => {
     );
   });
 
-  it('should omit baseLocale and locales from result when no locales added', async () => {
+  it('should send an empty locales list and omit baseLocale when no locales added', async () => {
     component.form.controls.name.setValue('my-collection');
     component.form.controls.translationsFolder.setValue('./i18n');
 
     await component.onSubmit();
 
     const closeArg = mockDialogRef.close.mock.calls[0][0];
-    expect(closeArg.config).not.toHaveProperty('locales');
+    expect(closeArg.config.locales).toEqual([]);
     expect(closeArg.config).not.toHaveProperty('baseLocale');
+  });
+
+  it('should send the exact create payload when nothing is set beyond the required fields', async () => {
+    component.form.controls.name.setValue('my-collection');
+    component.form.controls.translationsFolder.setValue('./i18n');
+
+    await component.onSubmit();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith({
+      name: 'my-collection',
+      config: {
+        translationsFolder: './i18n',
+        locales: [],
+        readOnly: false,
+        tags: [],
+        protectedTermsFile: '',
+      },
+    });
   });
 
   it('should always send tags, as an empty list when there are none', async () => {
@@ -265,7 +283,7 @@ describe('CollectionFormDialog — create mode', () => {
     expect(component.canEditProtectedTerms()).toBe(false);
   });
 
-  it('should omit protected terms from the submitted config when no terms file is configured', async () => {
+  it('should send an empty protectedTermsFile and omit protected terms when no terms file is configured', async () => {
     component.form.controls.name.setValue('my-collection');
     component.form.controls.translationsFolder.setValue('./i18n');
     component.addProtectedTerm({ value: 'iPhone', chipInput: { clear: () => undefined } } as never);
@@ -274,7 +292,7 @@ describe('CollectionFormDialog — create mode', () => {
 
     const closeArg = mockDialogRef.close.mock.calls[0][0];
     expect(closeArg.config).not.toHaveProperty('protectedTerms');
-    expect(closeArg.config).not.toHaveProperty('protectedTermsFile');
+    expect(closeArg.config.protectedTermsFile).toBe('');
   });
 });
 
@@ -340,6 +358,19 @@ describe('CollectionFormDialog — edit mode', () => {
         }),
       }),
     );
+  });
+
+  it('should send an empty string for protectedTermsFile when the pointer is cleared, so the API drops it', async () => {
+    component.protectedTermsFile.set(undefined);
+    await component.onSubmit();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ protectedTermsFile: '' }),
+      }),
+    );
+    const closeArg = mockDialogRef.close.mock.calls[0][0];
+    expect(closeArg.config).not.toHaveProperty('protectedTerms');
   });
 
   it('should open confirmation dialog when a pre-existing locale is removed on submit', async () => {
@@ -436,8 +467,37 @@ describe('CollectionFormDialog — edit mode with inherited base locale', () => 
   });
 });
 
+describe('CollectionFormDialog — edit mode clearing every locale', () => {
+  it('should send an empty locales array when every locale is removed, so the API can inherit global locales', async () => {
+    // No `effectiveBaseLocale` and no own `baseLocale`: nothing is displayed as base, so every
+    // locale row stays removable and the array can reach zero, same as clearing an override
+    // down to "inherit everything from global".
+    const mockDialog: DialogMock = { open: vi.fn() };
+    const { fixture, mockDialogRef } = buildHarness(
+      {
+        mode: 'edit',
+        name: 'my-app',
+        config: { translationsFolder: './i18n', locales: ['en', 'de'] },
+      },
+      mockDialog,
+    );
+    const component = fixture.componentInstance;
+    mockDialog.open.mockReturnValue({ afterClosed: () => of(true) });
+
+    component.removeLocale(1);
+    component.removeLocale(0);
+    await component.onSubmit();
+
+    expect(mockDialogRef.close).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({ locales: [] }),
+      }),
+    );
+  });
+});
+
 describe('CollectionFormDialog — edit mode with tags', () => {
-  it('should send an empty tags list when every existing tag is removed, so the API clears them', async () => {
+  it('should send the exact payload with an empty tags list when every existing tag is removed, so the API clears them', async () => {
     const { fixture, mockDialogRef } = buildHarness({
       mode: 'edit',
       name: 'my-app',
@@ -449,6 +509,16 @@ describe('CollectionFormDialog — edit mode with tags', () => {
     component.removeCollectionTag('legacy');
     await component.onSubmit();
 
-    expect(mockDialogRef.close.mock.calls[0][0].config.tags).toEqual([]);
+    expect(mockDialogRef.close).toHaveBeenCalledWith({
+      name: 'my-app',
+      config: {
+        translationsFolder: './i18n',
+        locales: ['en'],
+        baseLocale: 'en',
+        readOnly: false,
+        tags: [],
+        protectedTermsFile: '',
+      },
+    });
   });
 });
