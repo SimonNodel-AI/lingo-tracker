@@ -27,9 +27,10 @@ export interface ConfigFileParams {
  * Provides a clean interface for reading and writing config files.
  *
  * Every failure is a typed error: `loadConfig`'s own `ConfigNotFoundError` and
- * `ConfigParseError` pass through, and everything else (an unreadable or unwritable file,
- * a required field missing or of the wrong shape) is an `InvalidConfigError` whose message
- * says what is wrong with `.lingo-tracker.json`.
+ * `ConfigParseError` pass through, and everything else is an `InvalidConfigError` with a fixed
+ * message: `Could not read .lingo-tracker.json` or `Could not write .lingo-tracker.json` for an
+ * I/O failure (the fs error is its `cause`), or the field at fault for a required field that is
+ * missing or of the wrong shape.
  */
 export function createConfigFileOperations(params: ConfigFileParams = {}): ConfigFileOperations {
   const cwd = params.cwd ?? process.cwd();
@@ -44,7 +45,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
         config = loadConfig({ cwd });
       } catch (error) {
         if (error instanceof LingoTrackerError) throw error;
-        throw new InvalidConfigError(`Failed to read ${CONFIG_FILENAME}: ${reasonOf(error)}`);
+        throw new InvalidConfigError(`Could not read ${CONFIG_FILENAME}`, { cause: error });
       }
 
       if (validate) {
@@ -67,7 +68,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
           pretty: true,
         });
       } catch (error) {
-        throw new InvalidConfigError(`Failed to write ${CONFIG_FILENAME}: ${reasonOf(error)}`);
+        throw new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: error });
       }
     },
 
@@ -96,10 +97,6 @@ function validateConfig(config: LingoTrackerConfig): void {
   if (!config.collections || typeof config.collections !== 'object') {
     throw new InvalidConfigError(`"collections" in ${CONFIG_FILENAME} must be an object`);
   }
-}
-
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function normalizeCollectionTags(config: LingoTrackerConfig): void {

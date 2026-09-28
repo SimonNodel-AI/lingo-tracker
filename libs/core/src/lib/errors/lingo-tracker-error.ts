@@ -10,11 +10,16 @@ import { ErrorMessages, type FolderPathPart } from './error-messages';
  */
 export class LingoTrackerError extends Error {
   readonly code: string;
+  /** The underlying error, when this one wraps it. Not part of the message, so it never reaches a client. */
+  readonly cause?: unknown;
 
-  constructor(message: string, code: string) {
+  constructor(message: string, code: string, options?: { readonly cause?: unknown }) {
     super(message);
     this.name = new.target.name;
     this.code = code;
+    if (options && 'cause' in options) {
+      this.cause = options.cause;
+    }
   }
 }
 
@@ -43,13 +48,14 @@ export class ConfigParseError extends LingoTrackerError {
 }
 
 /**
- * `.lingo-tracker.json` is a JSON object but cannot be used: a required field is missing or has
- * the wrong shape, a file pointer in it is not a string, or the file cannot be read or written.
- * The message names the field or the pointer, so an adapter can show it as is.
+ * `.lingo-tracker.json` cannot be used: a required field is missing or has the wrong shape, a
+ * file pointer in it is not a string, or the file cannot be read or written. The message is
+ * fixed text that names only `.lingo-tracker.json` and, for a shape problem, the field; it never
+ * holds a path or an I/O detail, so an adapter can show it as is. An I/O failure is in `cause`.
  */
 export class InvalidConfigError extends LingoTrackerError {
-  constructor(message: string) {
-    super(message, 'INVALID_CONFIG');
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message, 'INVALID_CONFIG', options);
   }
 }
 

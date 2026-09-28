@@ -38,15 +38,33 @@ describe('deleteCollectionByName', () => {
     expect(writtenConfig.collections.spanish).toBeUndefined();
   });
 
-  it('should throw a typed error if the config file cannot be read', () => {
+  it('should throw a typed error with a fixed message if the config file cannot be read', () => {
+    const ioError = new Error("EACCES: permission denied, open '/secret/place/.lingo-tracker.json'");
     vi.mocked(fs.readFileSync).mockImplementation(() => {
-      throw new Error('EACCES: permission denied');
+      throw ioError;
     });
 
-    expect(() => deleteCollectionByName('any', { cwd: '/nonexistent' })).toThrow(InvalidConfigError);
-    expect(() => deleteCollectionByName('any', { cwd: '/nonexistent' })).toThrow(
-      'Failed to read .lingo-tracker.json: EACCES: permission denied',
-    );
+    const thrown = captureError(() => deleteCollectionByName('any', { cwd: '/secret/place' }));
+
+    expect(thrown).toBeInstanceOf(InvalidConfigError);
+    expect(thrown?.message).toBe('Could not read .lingo-tracker.json');
+    expect(thrown?.cause).toBe(ioError);
+  });
+
+  it('should throw a typed error with a fixed message if the config file cannot be written', () => {
+    const config = { baseLocale: 'en', locales: ['en'], collections: { english: { path: './locales/en' } } };
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(config));
+    const ioError = new Error("ENOSPC: no space left on device, write '/secret/place/.lingo-tracker.json'");
+    vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+      throw ioError;
+    });
+
+    const thrown = captureError(() => deleteCollectionByName('english', { cwd: '/secret/place' }));
+
+    expect(thrown).toBeInstanceOf(InvalidConfigError);
+    expect(thrown?.message).toBe('Could not write .lingo-tracker.json');
+    // writeJsonFile wraps the fs error; the wrapper is kept whole as the cause.
+    expect(thrown?.cause).toEqual(expect.objectContaining({ message: expect.stringContaining('ENOSPC') }));
   });
 
   it('should throw an error if collection does not exist', () => {
@@ -119,3 +137,12 @@ describe('deleteCollectionByName', () => {
     cwdSpy.mockRestore();
   });
 });
+
+function captureError(action: () => unknown): InvalidConfigError | undefined {
+  try {
+    action();
+  } catch (error) {
+    return error instanceof InvalidConfigError ? error : undefined;
+  }
+  return undefined;
+}
