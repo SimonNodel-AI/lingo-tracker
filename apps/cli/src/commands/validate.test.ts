@@ -14,9 +14,11 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CONFIG_FILENAME: '.lingo-tracker.json',
     validateResources: vi.fn(),
     generateValidationSummary: vi.fn(),
-    loadPreferredTerminology: vi.fn(() => ({
-      rules: [],
-      filePath: '/project/.lingo-tracker-preferred-terminology.json',
+    readProjectTerms: vi.fn(() => ({
+      protectedTerms: [],
+      preferredTerminology: [],
+      problems: [],
+      checkBaseValue: () => ({ findings: [], problems: [] }),
     })),
   };
 });
@@ -25,7 +27,18 @@ import * as core from '@simoncodes-ca/core';
 
 const mockValidateResources = vi.mocked(core.validateResources);
 const mockGenerateValidationSummary = vi.mocked(core.generateValidationSummary);
-const mockLoadPreferredTerminology = vi.mocked(core.loadPreferredTerminology);
+const mockReadProjectTerms = vi.mocked(core.readProjectTerms);
+
+/** Project Terms with the given rules and problems; the CLI only reads those two fields here. */
+const projectTerms = (
+  preferredTerminology: core.ProjectTerms['preferredTerminology'] = [],
+  problems: core.TermFileProblem[] = [],
+): core.ProjectTerms => ({
+  protectedTerms: [],
+  preferredTerminology,
+  problems,
+  checkBaseValue: () => ({ findings: [], problems: [] }),
+});
 
 describe('validateCommand', () => {
   const mockConfig = {
@@ -1236,15 +1249,13 @@ describe('validateCommand', () => {
           legacy: { translationsFolder: 'translations/legacy', baseLocale: 'en-GB' },
         },
       });
-      mockLoadPreferredTerminology.mockReturnValueOnce({ rules, filePath });
+      mockReadProjectTerms.mockReturnValueOnce(projectTerms(rules));
       mockValidateResources.mockReturnValue(passingResult);
 
       await validateCommand({});
 
-      expect(mockLoadPreferredTerminology).toHaveBeenCalledWith(
-        expect.objectContaining({ baseLocale: 'en' }),
-        expect.any(String),
-      );
+      // The rule file is one per project, so the first collection's Project Terms carry it.
+      expect(mockReadProjectTerms).toHaveBeenCalledWith(expect.objectContaining({ name: 'common' }));
       expect(mockValidateResources).toHaveBeenCalledWith(
         [
           expect.objectContaining({ name: 'common', baseLocale: 'en' }),
@@ -1255,7 +1266,7 @@ describe('validateCommand', () => {
     });
 
     it('does not fail when the only problems are terminology findings', async () => {
-      mockLoadPreferredTerminology.mockReturnValueOnce({ rules, filePath });
+      mockReadProjectTerms.mockReturnValueOnce(projectTerms(rules));
       mockValidateResources.mockReturnValue({
         ...passingResult,
         terminology: {
@@ -1279,7 +1290,9 @@ describe('validateCommand', () => {
     });
 
     it('passes a load error through and exits 1 when validation reports it', async () => {
-      mockLoadPreferredTerminology.mockReturnValueOnce({ rules: [], filePath, error: 'not valid JSON' });
+      mockReadProjectTerms.mockReturnValueOnce(
+        projectTerms([], [{ file: 'preferred-terminology', severity: 'error', filePath, message: 'not valid JSON' }]),
+      );
       mockValidateResources.mockReturnValue({
         ...passingResult,
         passed: false,
@@ -1297,16 +1310,33 @@ describe('validateCommand', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('prints the missing-explicit-file warning and skips the check', async () => {
-      mockLoadPreferredTerminology.mockReturnValueOnce({
-        rules: [],
-        filePath,
-        warning: 'Preferred terminology file not found: /project/terms.json. Treating as an empty list.',
-      });
+    it('prints each missing named term file as a warning and skips the check', async () => {
+      mockReadProjectTerms.mockReturnValueOnce(
+        projectTerms(
+          [],
+          [
+            {
+              file: 'protected-terms',
+              severity: 'warning',
+              filePath: '/project/protected.json',
+              message: 'Protected terms file not found: /project/protected.json. Treating as an empty list.',
+            },
+            {
+              file: 'preferred-terminology',
+              severity: 'warning',
+              filePath,
+              message: 'Preferred terminology file not found: /project/terms.json. Treating as an empty list.',
+            },
+          ],
+        ),
+      );
       mockValidateResources.mockReturnValue(passingResult);
 
       await validateCommand({});
 
+      expect(console.error).toHaveBeenCalledWith(
+        '⚠️  Protected terms file not found: /project/protected.json. Treating as an empty list.',
+      );
       expect(console.error).toHaveBeenCalledWith(
         '⚠️  Preferred terminology file not found: /project/terms.json. Treating as an empty list.',
       );

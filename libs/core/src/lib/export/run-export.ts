@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import type { Collection } from '../config/open-collection';
+import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
 import { filterResources, loadResources } from './export-common';
 import { generateExportSummary } from './export-summary';
 import { exportToJson } from './export-to-json';
@@ -7,13 +8,7 @@ import { exportToXliff } from './export-to-xliff';
 import type { ExportOptions, ExportResult } from './types';
 
 /** Options for {@link runExport}. `locales` narrows the export; unknown and base locales are ignored. */
-export interface ExportRunOptions extends Omit<ExportOptions, 'collections'> {
-  /** Protected terms, read by the caller: the global list, and each collection's own list by collection name. */
-  protectedTerms?: {
-    global?: string[];
-    collections?: Readonly<Record<string, string[]>>;
-  };
-}
+export type ExportRunOptions = Omit<ExportOptions, 'collections'>;
 
 export interface ExportLocaleResult {
   locale: string;
@@ -45,9 +40,10 @@ export function exportTargetLocales(collections: readonly Collection[], requeste
  * Exports the collections' resources, one file per target locale (see {@link exportTargetLocales}).
  *
  * For each locale, the resources of the collections that have that locale as a target are
- * filtered by status and tags (and annotated with the protected terms their source contains),
- * then written by the JSON or XLIFF exporter. A locale with no matching resource is skipped;
- * a locale whose exporter throws is reported and the run continues with the next locale.
+ * filtered by status and tags (and annotated with the protected terms their source contains,
+ * from each collection's Project Terms; a terms-file problem is a warning), then written by the
+ * JSON or XLIFF exporter. A locale with no matching resource is skipped; a locale whose exporter
+ * throws is reported and the run continues with the next locale.
  *
  * @throws {Error} The collections do not share one base locale (an export file has one source language).
  */
@@ -55,11 +51,11 @@ export async function runExport(
   collections: readonly Collection[],
   options: ExportRunOptions,
 ): Promise<ExportRunResult> {
-  const { protectedTerms, ...exportOptions } = options;
   const baseLocale = sharedBaseLocale(collections);
   const targetLocales = exportTargetLocales(collections, options.locales);
+  const augmentProtectedTerms = options.augmentProtectedTerms !== false;
   const runOptions: ExportOptions = {
-    ...exportOptions,
+    ...options,
     collections: collections.map((collection) => collection.name),
     locales: targetLocales,
   };
@@ -90,7 +86,7 @@ export async function runExport(
             `Collection '${collection.name}': translations folder not found: ${collection.translationsFolder}`,
           );
         }
-        const { resources, problems } = loadResources(collection, protectedTerms?.collections?.[collection.name]);
+        const { resources, problems } = loadResources(collection, protectedTermsOf(collection, totals.warnings));
         // A folder the reader could not read is left out of every locale file; the summary lists it.
         totals.malformedFiles.push(...problems.map((problem) => problem.message));
         return [collection.name, resources];
@@ -106,8 +102,7 @@ export async function runExport(
           .map((resource) => [resource.fullKey, resource]),
       );
       const filtered = filterResources([...eligible.values()], locale, options.status, options.tags, {
-        globalProtectedTerms: protectedTerms?.global,
-        augmentProtectedTerms: options.augmentProtectedTerms !== false,
+        augmentProtectedTerms,
         baseLocale,
       });
 
@@ -146,6 +141,16 @@ export async function runExport(
   }
 
   return { ...totals, localeResults, summary: generateExportSummary(totals, runOptions) };
+
+  /** The collection's protected terms for the do-not-translate notes; a terms-file problem is a warning. */
+  function protectedTermsOf(collection: Collection, warnings: string[]): string[] | undefined {
+    if (!augmentProtectedTerms) return undefined;
+    const terms = readProjectTerms(collection);
+    warnings.push(
+      ...terms.problems.filter((problem) => problem.file === 'protected-terms').map(describeTermFileProblem),
+    );
+    return [...terms.protectedTerms];
+  }
 }
 
 function sharedBaseLocale(collections: readonly Collection[]): string {

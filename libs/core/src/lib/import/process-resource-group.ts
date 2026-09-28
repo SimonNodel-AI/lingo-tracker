@@ -1,13 +1,8 @@
 import { dirname } from 'node:path';
-import {
-  findPreferredTermFindings,
-  findProtectedTermViolations,
-  resolveImportStatus,
-  type TranslationStatus,
-} from '@simoncodes-ca/domain';
+import { findProtectedTermViolations, resolveImportStatus, type TranslationStatus } from '@simoncodes-ca/domain';
 import { calculateChecksum } from '../../resource/checksum';
+import type { ProjectTerms } from '../config/project-terms';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import { describePreferredTermRule } from '../validate/validate-terminology';
 import { determineNewResourceStatus, honouredSourceStatus } from './determine-status';
 import type { ImportSession, ResolvedImportOptions } from './import-session';
 import type { ResourceGroup } from './resource-grouping';
@@ -227,14 +222,12 @@ function handleUnchangedTargetLocaleValue(
  * Adds one warning per discouraged term in a base value this import wrote, or would
  * write in a dry run. Advisory: the value is imported regardless.
  */
-function warnAboutPreferredTerminology(change: ImportChange, options: ResolvedImportOptions, warnings: string[]): void {
-  const rules = options.preferredTerminology ?? [];
-  if (rules.length === 0 || change.newValue === undefined) return;
+function warnAboutPreferredTerminology(change: ImportChange, terms: ProjectTerms, warnings: string[]): void {
+  if (change.newValue === undefined) return;
   if (change.type === 'failed' || change.type === 'skipped') return;
 
-  for (const { rule } of findPreferredTermFindings(change.newValue, rules)) {
-    const reason = rule.reason ? `. ${rule.reason}` : '';
-    warnings.push(`Preferred terminology: key "${change.key}" — ${describePreferredTermRule(rule)}${reason}`);
+  for (const { message, reason } of terms.checkBaseValue(change.key, change.newValue).findings) {
+    warnings.push(`Preferred terminology: key "${change.key}" — ${message}${reason ? `. ${reason}` : ''}`);
   }
 }
 
@@ -260,7 +253,7 @@ function warnAboutPreferredTerminology(change: ImportChange, options: ResolvedIm
  * violations) and written files go to the session too.
  */
 export function processResourceGroup(session: ImportSession, group: ResourceGroup): void {
-  const { options, isBaseLocaleImport, changes, warnings, errors } = session;
+  const { options, terms, isBaseLocaleImport, changes, warnings, errors } = session;
   const { baseLocale } = session.collection;
 
   let folder: ResourceFolder;
@@ -288,14 +281,14 @@ export function processResourceGroup(session: ImportSession, group: ResourceGrou
         continue;
       }
       const created = handleNewResource(ctx, resource, entryKey, isBaseLocaleImport);
-      if (isBaseLocaleImport) warnAboutPreferredTerminology(created, options, warnings);
+      if (isBaseLocaleImport) warnAboutPreferredTerminology(created, terms, warnings);
       changes.push(created);
       continue;
     }
 
     if (isBaseLocaleImport) {
       const updated = handleBaseLocaleUpdate(ctx, resource, entryKey);
-      warnAboutPreferredTerminology(updated, options, warnings);
+      warnAboutPreferredTerminology(updated, terms, warnings);
       changes.push(updated);
       continue;
     }
@@ -313,10 +306,9 @@ export function processResourceGroup(session: ImportSession, group: ResourceGrou
 
     // Verify protected terms from the stored source appear verbatim in the incoming value.
     // Base-locale imports never reach here (they are handled by the base-locale branch above).
-    const terms = options.protectedTerms ?? [];
-    if (terms.length > 0) {
+    if (terms.protectedTerms.length > 0) {
       const storedSource = stored.entry.source ?? '';
-      const violations = findProtectedTermViolations(storedSource, resource.value, terms);
+      const violations = findProtectedTermViolations(storedSource, resource.value, [...terms.protectedTerms]);
       if (violations.length > 0) {
         const reason = `Protected term(s) altered: ${violations.join(', ')}`;
         errors.push(`"${resource.key}" ${reason}`);

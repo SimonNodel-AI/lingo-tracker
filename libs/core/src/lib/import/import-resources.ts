@@ -20,11 +20,13 @@ import type { ImportedResource, ImportResult, ImportRunOptions } from './types';
  * 4. Repairs placeholders that differ from the stored base value (ICU auto-fix).
  * 5. Drops invalid resources: bad keys, hierarchical conflicts, empty values. Duplicate keys warn.
  * 6. Applies the resources one folder at a time, with the strategy's rules for creation,
- *    status, comments, tags, protected terms, and preferred terminology.
+ *    status, comments, tags, protected terms, and preferred terminology (the collection's
+ *    Project Terms, read once per run; a rule-file problem is reported in `warnings`).
  *
  * Nothing is written in a dry run; the result says what would change.
  *
  * @throws {Error} The locale is the collection's base locale and the strategy is not `migration`.
+ * @throws {ProtectedTermsFileError} A protected-terms file exists but is not a JSON array of strings.
  */
 export function importResources(
   collection: Collection,

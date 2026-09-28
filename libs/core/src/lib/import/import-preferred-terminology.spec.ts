@@ -38,6 +38,7 @@ describe('preferred terminology on import', () => {
     projectDir = mkdtempSync(join(tmpdir(), 'lingo-import-terminology-'));
     translationsFolder = join(projectDir, 'translations');
     mkdirSync(translationsFolder, { recursive: true });
+    writeFileSync(join(projectDir, '.lingo-tracker-preferred-terminology.json'), JSON.stringify(rules), 'utf8');
     collection = makeCollection('en');
   });
 
@@ -67,7 +68,6 @@ describe('preferred terminology on import', () => {
   const baseOptions = (overrides: Partial<ImportRunOptions> = {}): ImportRunOptions => ({
     locale: 'en',
     strategy: 'migration',
-    preferredTerminology: rules,
     ...overrides,
   });
 
@@ -142,16 +142,41 @@ describe('preferred terminology on import', () => {
     expect(result.resourcesUpdated).toBe(1);
   });
 
-  it('skips the check when no rules are given', () => {
+  it('skips the check when there is no rule file', () => {
+    rmSync(join(projectDir, '.lingo-tracker-preferred-terminology.json'));
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Expenditure' }));
+
+    const result = importResources(collection, parseJsonImport(source), baseOptions());
+
+    expect(result.warnings.some((w) => w.startsWith('Preferred terminology'))).toBe(false);
+  });
+
+  it('opens the warnings with the rule-file problem on a base-locale import, and skips the check', () => {
+    const rulesPath = join(projectDir, '.lingo-tracker-preferred-terminology.json');
+    writeFileSync(rulesPath, 'not json', 'utf8');
+    const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Expenditure' }));
+
+    const result = importResources(collection, parseJsonImport(source), baseOptions());
+
+    expect(result.warnings[0]).toContain(
+      `Preferred terminology checks skipped: Preferred terminology file is not valid JSON: ${rulesPath}`,
+    );
+    expect(result.warnings.filter((w) => w.startsWith('Preferred terminology'))).toHaveLength(1);
+    expect(result.resourcesCreated).toBe(1);
+  });
+
+  it('says nothing about a broken rule file on a target-locale import', () => {
+    seedExisting();
+    writeFileSync(join(projectDir, '.lingo-tracker-preferred-terminology.json'), 'not json', 'utf8');
+    const source = writeSource('es.json', JSON.stringify({ 'budget.title': 'Gasto' }));
 
     const result = importResources(
       collection,
       parseJsonImport(source),
-      baseOptions({ preferredTerminology: undefined }),
+      baseOptions({ locale: 'es', strategy: 'translation-service' }),
     );
 
-    expect(result.warnings.some((w) => w.startsWith('Preferred terminology'))).toBe(false);
+    expect(result.warnings.some((w) => w.includes('Preferred terminology'))).toBe(false);
   });
 
   it('warns for base-locale XLIFF values', async () => {

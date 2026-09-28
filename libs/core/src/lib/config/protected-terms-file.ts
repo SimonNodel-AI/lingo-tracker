@@ -1,10 +1,16 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
-import { effectiveProtectedTerms, normalizeProtectedTerms } from '@simoncodes-ca/domain';
+import { normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { ParentDirectoryMissingError, ProtectedTermsFileError } from '../errors/lingo-tracker-error';
-import type { Collection } from './open-collection';
+import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import {
+  assertWritableTermFilePath,
+  readTermFile,
+  resolveTermFilePath,
+  type TermFile,
+  type TermFileKind,
+  type TermFileRead,
+  writeTermFile,
+} from './term-file';
 
 /**
  * Default location of the global protected-terms file, resolved against the
@@ -14,31 +20,37 @@ import type { Collection } from './open-collection';
  */
 export const DEFAULT_PROTECTED_TERMS_FILENAME = '.lingo-tracker-protected-terms.json';
 
-/** In-process cache keyed by absolute file path; cleared whenever a file is written. */
-const cache = new Map<string, string[]>();
-/**
- * Explicit pointers already warned about as missing. The Translator reads the files on every
- * operation that auto-translates (for the API, on every such request), so warn once per path.
- */
-const warnedMissing = new Set<string>();
-
-/** Drops every cached protected-terms file. Exported for tests and for callers that write out-of-band. */
-export function clearProtectedTermsFileCache(): void {
-  cache.clear();
-  warnedMissing.clear();
-}
+/** A protected-terms file: a bare JSON array of strings, normalized and deduped. */
+const PROTECTED_TERMS: TermFileKind<string[]> = {
+  label: 'Protected terms file',
+  items: 'strings',
+  empty: () => [],
+  parse: (items, filePath) =>
+    items.every((term): term is string => typeof term === 'string')
+      ? { value: normalizeProtectedTerms([...items]) }
+      : { error: `Protected terms file must contain only strings: ${filePath}` },
+  serialize: (terms) => normalizeProtectedTerms(terms).sort((a, b) => a.localeCompare(b)),
+};
 
 /**
  * Resolves a `protectedTermsFile` pointer against `cwd` (the directory holding the
  * config file). Absolute pointers are used as-is.
  */
 export function resolveProtectedTermsFilePath(pointer: string, cwd: string = process.cwd()): string {
-  return isAbsolute(pointer) ? pointer : resolve(cwd, pointer);
+  return resolveTermFilePath(pointer, cwd);
+}
+
+/** The global protected-terms file: the config pointer, else the default file beside the config. */
+export function resolveGlobalProtectedTermsFile(config: LingoTrackerConfig, cwd: string = process.cwd()): TermFile {
+  return {
+    path: resolveProtectedTermsFilePath(config.protectedTermsFile ?? DEFAULT_PROTECTED_TERMS_FILENAME, cwd),
+    explicit: config.protectedTermsFile !== undefined,
+  };
 }
 
 /** Absolute path of the global protected-terms file, falling back to the default filename. */
 export function resolveGlobalProtectedTermsFilePath(config: LingoTrackerConfig, cwd: string = process.cwd()): string {
-  return resolveProtectedTermsFilePath(config.protectedTermsFile ?? DEFAULT_PROTECTED_TERMS_FILENAME, cwd);
+  return resolveGlobalProtectedTermsFile(config, cwd).path;
 }
 
 /**
@@ -54,51 +66,26 @@ export function resolveCollectionProtectedTermsFilePath(
 }
 
 /**
- * Reads a protected-terms file: a bare JSON array of strings, normalized and deduped.
- *
- * A missing file reads as an empty list — the normal state before any term has been
- * added. When the path came from an explicit pointer rather than the default, the
- * absence is also warned about (once per path), since a pointer at nothing is usually a typo.
- * Malformed JSON, a non-array payload, or a non-string element throws
- * {@link ProtectedTermsFileError}: silently
- * treating a corrupt file as "no protected terms" would let bad translations
- * through import or auto-translation unnoticed.
+ * Reads a protected-terms file. Never throws: a missing file reads as an empty list (with a
+ * `warning` when the config names it), a malformed one as an empty list with an `error`.
+ * See `readTermFile`.
  */
-export function readProtectedTermsFile(filePath: string, options: { explicit?: boolean } = {}): string[] {
-  const cached = cache.get(filePath);
-  if (cached) {
-    return [...cached];
-  }
+export function readProtectedTermsFile(file: TermFile): TermFileRead<string[]> {
+  return readTermFile(PROTECTED_TERMS, file);
+}
 
-  if (!existsSync(filePath)) {
-    if (options.explicit && !warnedMissing.has(filePath)) {
-      warnedMissing.add(filePath);
-      console.warn(`Protected terms file not found: ${filePath}. Treating as an empty list.`);
-    }
-    return [];
+/**
+ * The terms of a protected-terms file, for callers that go on to write it or show it as
+ * the stored list. A missing file is an empty list.
+ *
+ * @throws {ProtectedTermsFileError} The file exists but is not a JSON array of strings.
+ */
+export function requireProtectedTermsFile(file: TermFile): string[] {
+  const read = readProtectedTermsFile(file);
+  if (read.error !== undefined) {
+    throw new ProtectedTermsFileError(read.filePath, read.error);
   }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(filePath, 'utf8'));
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new ProtectedTermsFileError(filePath, `Protected terms file is not valid JSON: ${filePath} (${detail})`);
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new ProtectedTermsFileError(
-      filePath,
-      `Protected terms file must contain a JSON array of strings: ${filePath}`,
-    );
-  }
-  if (parsed.some((term) => typeof term !== 'string')) {
-    throw new ProtectedTermsFileError(filePath, `Protected terms file must contain only strings: ${filePath}`);
-  }
-
-  const terms = normalizeProtectedTerms(parsed as string[]);
-  cache.set(filePath, terms);
-  return [...terms];
+  return read.value;
 }
 
 /**
@@ -107,10 +94,7 @@ export function readProtectedTermsFile(filePath: string, options: { explicit?: b
  * stored and can never leave the config aimed at a file that cannot exist.
  */
 export function assertWritableProtectedTermsPath(filePath: string): void {
-  const parent = dirname(filePath);
-  if (!existsSync(parent)) {
-    throw new ParentDirectoryMissingError('protected terms file', filePath, parent);
-  }
+  assertWritableTermFilePath('protected terms file', filePath);
 }
 
 /**
@@ -120,57 +104,27 @@ export function assertWritableProtectedTermsPath(filePath: string): void {
  * The file is created when absent; a missing parent directory is an error.
  */
 export function writeProtectedTermsFile(filePath: string, terms: string[]): void {
-  assertWritableProtectedTermsPath(filePath);
-
-  const normalized = normalizeProtectedTerms(terms).sort((a, b) => a.localeCompare(b));
-  writeFileSync(filePath, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
-  cache.set(filePath, normalized);
+  writeTermFile(PROTECTED_TERMS, filePath, terms);
 }
 
-/** Terms from the global file. */
+/**
+ * Terms from the global file.
+ * @throws {ProtectedTermsFileError} The file is not a JSON array of strings.
+ */
 export function readGlobalProtectedTerms(config: LingoTrackerConfig, cwd: string = process.cwd()): string[] {
-  return readProtectedTermsFile(resolveGlobalProtectedTermsFilePath(config, cwd), {
-    explicit: config.protectedTermsFile !== undefined,
-  });
+  return requireProtectedTermsFile(resolveGlobalProtectedTermsFile(config, cwd));
 }
 
-/** Terms from a collection's own file, or an empty list when it names none. */
+/**
+ * Terms from a collection's own file, or an empty list when it names none.
+ * @throws {ProtectedTermsFileError} The file is not a JSON array of strings.
+ */
 export function readCollectionProtectedTerms(
   collection: Pick<LingoTrackerCollection, 'protectedTermsFile'>,
   cwd: string = process.cwd(),
 ): string[] {
-  const filePath = resolveCollectionProtectedTermsFilePath(collection, cwd);
-  return filePath ? readProtectedTermsFile(filePath, { explicit: true }) : [];
-}
-
-/**
- * Union of the global file and a collection's file — the terms actually in force
- * for that collection. Pass no collection for the global list alone.
- */
-export function readEffectiveProtectedTerms(
-  config: LingoTrackerConfig,
-  collection?: Pick<LingoTrackerCollection, 'protectedTermsFile'>,
-  cwd: string = process.cwd(),
-): string[] {
-  return effectiveProtectedTerms(
-    readGlobalProtectedTerms(config, cwd),
-    collection ? readCollectionProtectedTerms(collection, cwd) : undefined,
-  );
-}
-
-/**
- * The protected terms in force for an opened collection: its global file united with its own file,
- * read from the paths `openCollection` resolved (`Collection.protectedTermsFiles`). The same result
- * as `readEffectiveProtectedTerms(config, collectionConfig, cwd)`.
- *
- * @throws {ProtectedTermsFileError} A file exists but is not a JSON array of strings.
- */
-export function readProtectedTermsInForce(collection: Pick<Collection, 'protectedTermsFiles'>): string[] {
-  const files = collection.protectedTermsFiles;
-  return effectiveProtectedTerms(
-    readProtectedTermsFile(files.global, { explicit: files.globalExplicit }),
-    files.collection === undefined ? undefined : readProtectedTermsFile(files.collection, { explicit: true }),
-  );
+  const path = resolveCollectionProtectedTermsFilePath(collection, cwd);
+  return path === undefined ? [] : requireProtectedTermsFile({ path, explicit: true });
 }
 
 /** Resolved protected terms for a whole config — what each scope's file actually contains. */
@@ -187,6 +141,8 @@ export interface ResolvedProtectedTerms {
  * Reads every protected-terms file referenced by a config in one pass. Intended for
  * read-only consumers such as the API, which need both the terms and the paths they
  * came from. A file that fails to parse throws, exactly as a direct read would.
+ *
+ * @throws {ProtectedTermsFileError} A file is not a JSON array of strings.
  */
 export function resolveProtectedTermsForConfig(
   config: LingoTrackerConfig,

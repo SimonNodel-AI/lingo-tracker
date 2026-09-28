@@ -10,7 +10,7 @@
  * - **Placeholder guard**: simple placeholders (`{name}`, `{{ name }}`) are sent as notranslate
  *   markers and restored afterwards; a translation that loses or duplicates a marker is skipped.
  * - **Protected-term guard**: a translation that drops a protected term present in the source
- *   (the collection's terms in force, read once when the Translator is opened) is skipped, as
+ *   (the collection's Project Terms, read once when the Translator is opened) is skipped, as
  *   import would reject it.
  * - **Normalisation**: every returned value is ICU (`translocoToICU`).
  *
@@ -22,7 +22,7 @@
 import { classifyICUContent, findProtectedTermViolations, translocoToICU } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
-import { readProtectedTermsInForce } from '../config/protected-terms-file';
+import { readProjectTerms, requireProtectedTerms } from '../config/project-terms';
 import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
 import { type ExtractedPlaceholder, protectPlaceholders, restorePlaceholders } from './placeholder-protector';
 import { TranslationError, type TranslationProvider } from './translation-provider';
@@ -77,7 +77,7 @@ export interface Translator {
 export interface OpenTranslatorOptions {
   /** The provider to use instead of the one the collection's translation config names. */
   readonly provider?: TranslationProvider;
-  /** The protected terms to guard instead of the collection's terms files. */
+  /** The protected terms to guard instead of the collection's Project Terms. */
   readonly protectedTerms?: readonly string[];
 }
 
@@ -108,7 +108,7 @@ export function openTranslator(collection: Collection, options: OpenTranslatorOp
   const config = assertAutoTranslationEnabled(collection);
 
   const provider = options.provider ?? createTranslationProvider(config.provider, readApiKey(config.apiKeyEnv));
-  const protectedTerms = options.protectedTerms ?? readProtectedTermsInForce(collection);
+  const protectedTerms = options.protectedTerms ?? requireProtectedTerms(readProjectTerms(collection));
   const { baseLocale } = collection;
 
   return {

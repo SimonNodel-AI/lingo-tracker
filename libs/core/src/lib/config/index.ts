@@ -2,12 +2,7 @@
 
 export { addCollectionEntry, patchCollectionEntry, toCollectionEntry } from './collection-entry';
 export { type LoadConfigOptions, loadConfig } from './load-config';
-export {
-  type Collection,
-  type OpenCollectionOptions,
-  openCollection,
-  type ProtectedTermsFiles,
-} from './open-collection';
+export { type Collection, type OpenCollectionOptions, openCollection, type TermFiles } from './open-collection';
 export {
   type LoadPreferredTerminologyResult,
   loadPreferredTerminology,
@@ -16,12 +11,21 @@ export {
   writePreferredTerminology,
 } from './preferred-terminology-file';
 export {
+  describePreferredTermRule,
+  describeTermFileProblem,
+  type ProjectTerms,
+  readProjectTerms,
+  requireProtectedTerms,
+  type TermFileProblem,
+  type TerminologyFinding,
+  type TerminologyFindings,
+} from './project-terms';
+export {
   type ResolvedProtectedTerms,
   readCollectionProtectedTerms,
-  readEffectiveProtectedTerms,
   readGlobalProtectedTerms,
-  readProtectedTermsInForce,
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFilePath,
   resolveProtectedTermsForConfig,
 } from './protected-terms-file';
+export type { TermFile } from './term-file';

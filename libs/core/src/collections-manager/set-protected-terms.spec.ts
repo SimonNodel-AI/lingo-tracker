@@ -3,7 +3,6 @@ import { noop } from 'lodash';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SafeAny } from '../constants';
-import { clearProtectedTermsFileCache } from '../lib/config/protected-terms-file';
 import {
   setGlobalProtectedTerms,
   setCollectionProtectedTerms,
@@ -59,7 +58,6 @@ describe('set-protected-terms', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    clearProtectedTermsFileCache();
     vi.mocked(fs.writeFileSync).mockImplementation(noop);
     givenFiles({});
   });

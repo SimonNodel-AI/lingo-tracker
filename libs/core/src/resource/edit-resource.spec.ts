@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -323,6 +323,49 @@ describe('editResource (real fs)', () => {
         // The edit itself was saved before the move was attempted.
         expect(read('resource_entries.json', 'common').save.source).toBe('Save all');
       });
+    });
+  });
+
+  describe('terminology (Project Terms)', () => {
+    const rules = [{ discouraged: 'Expenditure', preferred: 'Investment' }];
+
+    beforeEach(() => {
+      writeFileSync(join(root, '.lingo-tracker-preferred-terminology.json'), JSON.stringify(rules), 'utf8');
+    });
+
+    it('checks a supplied base value and returns the findings under the key', async () => {
+      const result = await editResource(collection(), 'common.save', { baseValue: 'Save the expenditure' });
+
+      expect(result.terminology).toEqual({
+        findings: [
+          {
+            key: 'common.save',
+            discouraged: 'Expenditure',
+            preferred: 'Investment',
+            message: 'consider "Investment" instead of "Expenditure"',
+          },
+        ],
+        problems: [],
+      });
+    });
+
+    it('reports the findings under the destination key when the edit also moves the entry', async () => {
+      const result = await editResource(collection(), 'common.save', {
+        baseValue: 'Save the expenditure',
+        moveTo: 'dialogs',
+      });
+
+      expect(result.terminology?.findings.map(({ key }) => key)).toEqual(['dialogs.save']);
+    });
+
+    it('leaves terminology out when the edit supplied no base value, or changed nothing', async () => {
+      const comment = await editResource(collection(), 'common.save', { comment: 'Expenditure' });
+      const unchanged = await editResource(collection(), 'common.save', { baseValue: 'Save' });
+
+      expect(comment.updated).toBe(true);
+      expect(comment.terminology).toBeUndefined();
+      expect(unchanged.updated).toBe(false);
+      expect(unchanged.terminology).toBeUndefined();
     });
   });
 });

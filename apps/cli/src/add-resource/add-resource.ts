@@ -1,9 +1,9 @@
 import type { Collection } from '@simoncodes-ca/core';
 import { addResource, openResourceFolder, resolveResourcePaths } from '@simoncodes-ca/core';
-import { type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { type Ask, CommandCancelledError, defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, parseCommaSeparatedList, warnAboutPreferredTerminology } from '../utils';
+import { ConsoleFormatter, parseCommaSeparatedList, printTerminologyFindings } from '../utils';
 
 interface TranslationInput {
   locale: string;
@@ -56,7 +56,7 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
     return questions;
   },
   required: ['key', 'value'],
-  run: async ({ collection, config, cwd, answers, interactive, ask }) => {
+  run: async ({ collection, answers, interactive, ask }) => {
     const { key, value } = answers;
     const targetFolder = answers.targetFolder || undefined;
 
@@ -102,9 +102,8 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
       ConsoleFormatter.indent('(newly created)');
     }
 
-    // Advisory: the value is stored either way. Checked against the stored
-    // (ICU-normalized) form, which is what validate and the editor see.
-    warnAboutPreferredTerminology(config, cwd, translocoToICU(value));
+    // Advisory: the value is stored either way (core checked the stored, ICU-normalized form).
+    printTerminologyFindings(result.terminology);
   },
 });
 

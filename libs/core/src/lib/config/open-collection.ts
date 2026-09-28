@@ -5,7 +5,9 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { TranslationConfig } from '../../config/translation-config';
 import { DEFAULT_CONFIG } from '../../constants';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
-import { resolveCollectionProtectedTermsFilePath, resolveGlobalProtectedTermsFilePath } from './protected-terms-file';
+import { resolvePreferredTerminologyFile } from './preferred-terminology-file';
+import { resolveCollectionProtectedTermsFilePath, resolveGlobalProtectedTermsFile } from './protected-terms-file';
+import type { TermFile } from './term-file';
 
 /**
  * A collection with every setting resolved: the collection's own value where it has one,
@@ -27,23 +29,23 @@ export interface Collection {
   /** Collection-level tags (normalized), inherited by every resource in the collection. */
   readonly tags: readonly string[];
   /**
-   * Where the collection's protected terms live (absolute paths, resolved but not read). Read them
-   * with `readProtectedTermsInForce`; opening a collection does no file I/O.
+   * Where the collection's Project Terms live (absolute paths, resolved but not read). Read them
+   * with `readProjectTerms`; opening a collection does no file I/O.
    */
-  readonly protectedTermsFiles: ProtectedTermsFiles;
+  readonly termFiles: TermFiles;
   readonly readOnly: boolean;
   /** The collection's raw config entry, for settings not modelled here. */
   readonly config: LingoTrackerCollection;
 }
 
-/** The protected-terms files in force for a collection: the global file and the collection's own. */
-export interface ProtectedTermsFiles {
-  /** The global file: `protectedTermsFile` from the config, else the default file beside it. */
-  readonly global: string;
-  /** True when the config names the global file (a missing named file is warned about). */
-  readonly globalExplicit: boolean;
-  /** The collection's own file, when it names one. */
-  readonly collection?: string;
+/** The term files in force for a collection (see `readProjectTerms`). */
+export interface TermFiles {
+  /** The global protected-terms file: `protectedTermsFile` from the config, else the default file beside it. */
+  readonly protectedTerms: TermFile;
+  /** The collection's own protected-terms file, when it names one. */
+  readonly collectionProtectedTerms?: TermFile;
+  /** The preferred-terminology file: one per project, which a collection cannot override. */
+  readonly preferredTerminology: TermFile;
 }
 
 export interface OpenCollectionOptions {
@@ -82,7 +84,7 @@ export function openCollection(
   const cwd = options.cwd ?? process.cwd();
   const baseLocale = raw.baseLocale || config.baseLocale || DEFAULT_CONFIG.baseLocale;
   const locales = raw.locales ?? config.locales ?? [];
-  const collectionTermsFile = resolveCollectionProtectedTermsFilePath(raw, cwd);
+  const collectionTermsPath = resolveCollectionProtectedTermsFilePath(raw, cwd);
 
   return {
     name,
@@ -92,10 +94,12 @@ export function openCollection(
     targetLocales: locales.filter((locale) => locale !== baseLocale),
     translationConfig: raw.translation ?? config.translation,
     tags: normalizeTags(raw.tags ?? []),
-    protectedTermsFiles: {
-      global: resolveGlobalProtectedTermsFilePath(config, cwd),
-      globalExplicit: config.protectedTermsFile !== undefined,
-      ...(collectionTermsFile !== undefined && { collection: collectionTermsFile }),
+    termFiles: {
+      protectedTerms: resolveGlobalProtectedTermsFile(config, cwd),
+      ...(collectionTermsPath !== undefined && {
+        collectionProtectedTerms: { path: collectionTermsPath, explicit: true },
+      }),
+      preferredTerminology: resolvePreferredTerminologyFile(config, cwd),
     },
     readOnly,
     config: raw,

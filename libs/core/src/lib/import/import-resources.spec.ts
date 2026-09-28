@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { calculateChecksum } from '../../resource/checksum';
 import { type Collection, openCollection } from '../config/open-collection';
+import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
 import { openResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';
 import type { ImportedResource } from './types';
@@ -307,9 +308,12 @@ describe('importResources', () => {
     });
   });
 
-  describe('protected terms', () => {
+  describe("protected terms (the collection's Project Terms)", () => {
+    const termsPath = () => join(projectDir, '.lingo-tracker-protected-terms.json');
+
     it('fails an entry whose translation altered a protected term and keeps its siblings', () => {
       seed('common', { brand: { source: 'Open Acme' }, ok: { source: 'OK' } });
+      writeFileSync(termsPath(), '["Acme"]', 'utf8');
 
       const result = importResources(
         collection,
@@ -317,12 +321,45 @@ describe('importResources', () => {
           { key: 'common.brand', value: 'Abrir Akme' },
           { key: 'common.ok', value: 'Aceptar' },
         ],
-        { locale: 'es', protectedTerms: ['Acme'] },
+        { locale: 'es' },
       );
 
       expect(result.errors).toEqual(['"common.brand" Protected term(s) altered: Acme']);
       expect(result.changes.find((c) => c.key === 'common.brand')).toMatchObject({ type: 'failed' });
       expect(stored('common', 'brand')?.entry['es']).toBeUndefined();
+      expect(stored('common', 'ok')?.entry['es']).toBe('Aceptar');
+    });
+
+    it('refuses to run when a protected-terms file is broken, before anything is written', () => {
+      seed('common', { ok: { source: 'OK' } });
+      writeFileSync(termsPath(), '["Acme",', 'utf8');
+
+      expect(() => importResources(collection, [{ key: 'common.ok', value: 'Aceptar' }], { locale: 'es' })).toThrow(
+        ProtectedTermsFileError,
+      );
+      expect(stored('common', 'ok')?.entry['es']).toBeUndefined();
+    });
+
+    it('opens the warnings with a named protected-terms file that does not exist', () => {
+      seed('common', { ok: { source: 'OK' } });
+      const named = openCollection(
+        {
+          baseLocale: 'en',
+          locales: ['en', 'es'],
+          exportFolder: 'dist/export',
+          importFolder: 'dist/import',
+          protectedTermsFile: 'terms/global.json',
+          collections: { main: { translationsFolder: 'translations' } },
+        },
+        'main',
+        { cwd: projectDir },
+      );
+
+      const result = importResources(named, [{ key: 'common.ok', value: 'Aceptar' }], { locale: 'es' });
+
+      expect(result.warnings).toEqual([
+        `Protected terms file not found: ${join(projectDir, 'terms/global.json')}. Treating as an empty list.`,
+      ]);
       expect(stored('common', 'ok')?.entry['es']).toBe('Aceptar');
     });
   });

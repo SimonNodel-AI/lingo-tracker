@@ -31,8 +31,9 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   return {
     ...actual,
     loadConfig: vi.fn(),
-    addResource: vi.fn().mockResolvedValue({ resolvedKey: 'test.key', created: true }),
-    loadPreferredTerminology: vi.fn(() => ({ rules: [], filePath: '/test/.lingo-tracker-preferred-terminology.json' })),
+    addResource: vi
+      .fn()
+      .mockResolvedValue({ resolvedKey: 'test.key', created: true, terminology: { findings: [], problems: [] } }),
   };
 });
 
@@ -267,7 +268,6 @@ describe('addResourceCommand', () => {
   });
 
   describe('preferred terminology', () => {
-    const filePath = '/test/.lingo-tracker-preferred-terminology.json';
     const config = {
       ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations', baseLocale: 'en', locales: ['en', 'fr'] } },
@@ -288,19 +288,38 @@ describe('addResourceCommand', () => {
 
     const add = (value: string) => addResourceCommand({ collection: 'TestCollection', key: 'budget.title', value });
 
-    it('warns once per matching rule after a successful add, with the reason on its own line', async () => {
-      vi.mocked(core.loadPreferredTerminology).mockReturnValue({
-        rules: [
-          { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' },
-          { discouraged: 'e-mail', preferred: 'email' },
+    /** What core returns for a stored value: the findings are core's, the CLI only renders them. */
+    const added = (terminology: { findings: core.TerminologyFinding[]; problems: string[] }) =>
+      vi.mocked(core.addResource).mockResolvedValue({
+        resolvedKey: 'budget.title',
+        created: true,
+        translations: [],
+        mutations: [],
+        terminology,
+      });
+
+    it('prints one warning per finding after a successful add, with the reason on its own line', async () => {
+      added({
+        findings: [
+          {
+            key: 'budget.title',
+            discouraged: 'Expenditure',
+            preferred: 'Investment',
+            reason: 'Finance style guide',
+            message: 'consider "Investment" instead of "Expenditure"',
+          },
+          {
+            key: 'budget.title',
+            discouraged: 'e-mail',
+            preferred: 'email',
+            message: 'consider "email" instead of "e-mail"',
+          },
         ],
-        filePath,
+        problems: [],
       });
 
       await add('Expenditure and more expenditure, by e-mail');
 
-      expect(core.addResource).toHaveBeenCalled();
-      expect(core.loadPreferredTerminology).toHaveBeenCalledWith(config, '/test');
       const lines = stderrSpy.mock.calls.map((call) => String(call[0]));
       expect(lines).toContain('⚠️  Preferred terminology: consider "Investment" instead of "Expenditure"');
       expect(lines).toContain('  Finance style guide');
@@ -309,19 +328,16 @@ describe('addResourceCommand', () => {
       expect(process.exitCode).toBe(0);
     });
 
-    it('prints nothing when the value uses no discouraged term', async () => {
-      vi.mocked(core.loadPreferredTerminology).mockReturnValue({
-        rules: [{ discouraged: 'Expenditure', preferred: 'Investment' }],
-        filePath,
-      });
+    it('prints nothing when there are no findings', async () => {
+      added({ findings: [], problems: [] });
 
       await add('Investment summary');
 
       expect(stderrSpy.mock.calls.some((call) => String(call[0]).includes('Preferred terminology'))).toBe(false);
     });
 
-    it('prints one config warning and skips the check when the rule file is broken', async () => {
-      vi.mocked(core.loadPreferredTerminology).mockReturnValue({ rules: [], filePath, error: 'not valid JSON' });
+    it('prints each rule-file problem as a warning', async () => {
+      added({ findings: [], problems: ['Preferred terminology checks skipped: not valid JSON'] });
 
       await add('Expenditure');
 
@@ -330,26 +346,12 @@ describe('addResourceCommand', () => {
       expect(lines.filter((line) => line.includes('Preferred terminology'))).toHaveLength(1);
     });
 
-    it('prints the missing-explicit-file warning', async () => {
-      vi.mocked(core.loadPreferredTerminology).mockReturnValue({
-        rules: [],
-        filePath,
-        warning: 'Preferred terminology file not found: /test/terms.json. Treating as an empty list.',
-      });
-
-      await add('Expenditure');
-
-      expect(stderrSpy).toHaveBeenCalledWith(
-        '⚠️  Preferred terminology file not found: /test/terms.json. Treating as an empty list.',
-      );
-    });
-
-    it('does not check when the add fails', async () => {
+    it('prints only the failure when the add fails', async () => {
       vi.mocked(core.addResource).mockRejectedValueOnce(new Error('boom'));
 
       await add('Expenditure');
 
-      expect(core.loadPreferredTerminology).not.toHaveBeenCalled();
+      expect(stderrSpy.mock.calls.some((call) => String(call[0]).includes('Preferred terminology'))).toBe(false);
       expect(stderrSpy).toHaveBeenCalledWith('❌ boom');
       expect(process.exitCode).toBe(1);
     });

@@ -1,4 +1,10 @@
 import type { Collection } from '../config/open-collection';
+import {
+  describeTermFileProblem,
+  type ProjectTerms,
+  readProjectTerms,
+  requireProtectedTerms,
+} from '../config/project-terms';
 import { getStrategyDefaults } from './import-common';
 import { calculateImportStatistics, calculateStatusTransitions } from './import-statistics';
 import type {
@@ -25,6 +31,8 @@ export type ResolvedImportOptions = ImportRunOptions & {
 export interface ImportSession {
   readonly collection: Collection;
   readonly options: ResolvedImportOptions;
+  /** The collection's Project Terms, read once for the run. */
+  readonly terms: ProjectTerms;
   /** The import writes base values (`source`), not translations. Only the `migration` strategy allows it. */
   readonly isBaseLocaleImport: boolean;
   readonly changes: ImportChange[];
@@ -37,10 +45,14 @@ export interface ImportSession {
 
 /**
  * Starts an import run: applies the strategy defaults (`createMissing`, `updateComments`,
- * `updateTags`; explicit options win) and refuses a base-locale import unless the strategy is
- * `migration`.
+ * `updateTags`; explicit options win), refuses a base-locale import unless the strategy is
+ * `migration`, and reads the collection's Project Terms. A protected-terms file that cannot be
+ * used stops the run before anything is written; a preferred-terminology problem only limits the
+ * advisory check, so it opens the run's warnings (on a base-locale import, the only kind that
+ * checks), as does a named protected-terms file that does not exist (on a target-locale import).
  *
  * @throws {Error} The target locale is the collection's base locale and the strategy is not `migration`.
+ * @throws {ProtectedTermsFileError} A protected-terms file exists but is not a JSON array of strings.
  */
 export function openImportSession(collection: Collection, options: ImportRunOptions): ImportSession {
   const strategy = options.strategy ?? 'translation-service';
@@ -54,8 +66,14 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
     );
   }
 
+  const terms = readProjectTerms(collection);
+  requireProtectedTerms(terms);
+  const relevant = isBaseLocaleImport ? 'preferred-terminology' : 'protected-terms';
+  const warnings = terms.problems.filter((problem) => problem.file === relevant).map(describeTermFileProblem);
+
   return {
     collection,
+    terms,
     options: {
       ...options,
       strategy,
@@ -65,7 +83,7 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
     },
     isBaseLocaleImport,
     changes: [],
-    warnings: [],
+    warnings,
     errors: [],
     filesModified: new Set(),
     icuAutoFixes: [],

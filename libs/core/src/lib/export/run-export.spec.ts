@@ -176,16 +176,12 @@ describe('runExport', () => {
     expect(result.summary).toContain('# Export Summary (DRY RUN)');
   });
 
-  it('writes XLIFF with the base locale as source language and do-not-translate notes', async () => {
+  it('writes XLIFF with the base locale as source language and do-not-translate notes from the Project Terms', async () => {
     const common = open('common');
     seed(common, 'g', { brand: { source: 'Open Acme' } });
+    writeFileSync(join(projectDir, '.lingo-tracker-protected-terms.json'), '["Acme"]', 'utf8');
 
-    const result = await runExport([common], {
-      format: 'xliff',
-      outputDirectory,
-      locales: ['fr'],
-      protectedTerms: { global: ['Acme'] },
-    });
+    const result = await runExport([common], { format: 'xliff', outputDirectory, locales: ['fr'] });
 
     expect(result.filesCreated).toEqual(['fr.xliff']);
     const xliff = readFileSync(join(outputDirectory, 'fr.xliff'), 'utf8');
@@ -195,7 +191,15 @@ describe('runExport', () => {
   });
 
   it("uses each collection's own protected terms, and none when augmentation is off", async () => {
-    const common = open('common');
+    writeFileSync(join(projectDir, 'common-terms.json'), '["Widget"]', 'utf8');
+    const common = openCollection(
+      {
+        ...config,
+        collections: { common: { translationsFolder: 'translations/common', protectedTermsFile: 'common-terms.json' } },
+      },
+      'common',
+      { cwd: projectDir },
+    );
     seed(common, 'h', { brand: { source: 'Try Widget' } });
     const options = {
       format: 'json' as const,
@@ -203,7 +207,6 @@ describe('runExport', () => {
       locales: ['fr'],
       jsonStructure: 'flat' as const,
       richJson: true,
-      protectedTerms: { collections: { common: ['Widget'] } },
     };
 
     await runExport([common], options);
@@ -211,6 +214,26 @@ describe('runExport', () => {
 
     await runExport([common], { ...options, augmentProtectedTerms: false });
     expect(readJson('fr.json')).toEqual({ 'h.brand': { value: '' } });
+  });
+
+  it('warns about a protected-terms file it cannot use and exports without notes', async () => {
+    const common = open('common');
+    seed(common, 'i', { brand: { source: 'Open Acme' } });
+    const termsPath = join(projectDir, '.lingo-tracker-protected-terms.json');
+    writeFileSync(termsPath, '["Acme",', 'utf8');
+
+    const result = await runExport([common], {
+      format: 'json',
+      outputDirectory,
+      locales: ['fr'],
+      jsonStructure: 'flat',
+      richJson: true,
+    });
+
+    expect(result.warnings).toEqual([
+      expect.stringContaining(`Protected terms checks skipped: Protected terms file is not valid JSON: ${termsPath}`),
+    ]);
+    expect(readJson('fr.json')).toEqual({ 'i.brand': { value: '' } });
   });
 
   it('reports hierarchical key conflicts separately from errors', async () => {

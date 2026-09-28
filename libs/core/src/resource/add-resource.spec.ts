@@ -308,4 +308,48 @@ describe('addResource (real fs)', () => {
       expect(existsSync(join(root, 'translations'))).toBe(false);
     });
   });
+
+  describe('terminology (Project Terms)', () => {
+    const rules = [{ discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' }];
+
+    it('returns one finding per discouraged term in the stored base value, and still adds it', async () => {
+      writeFileSync(join(root, '.lingo-tracker-preferred-terminology.json'), JSON.stringify(rules), 'utf8');
+
+      const result = await addResource(collection(), { key: 'budget.title', baseValue: 'Capital expenditure' });
+
+      expect(result.terminology).toEqual({
+        findings: [
+          {
+            key: 'budget.title',
+            discouraged: 'Expenditure',
+            preferred: 'Investment',
+            reason: 'Finance style guide',
+            message: 'consider "Investment" instead of "Expenditure"',
+          },
+        ],
+        problems: [],
+      });
+      expect(read('resource_entries.json', 'budget').title.source).toBe('Capital expenditure');
+    });
+
+    it('returns no findings and no problems when there is no rule file', async () => {
+      const result = await addResource(collection(), { key: 'budget.title', baseValue: 'Capital expenditure' });
+
+      expect(result.terminology).toEqual({ findings: [], problems: [] });
+    });
+
+    it('reports a broken rule file as a problem and skips the check', async () => {
+      const rulesPath = join(root, '.lingo-tracker-preferred-terminology.json');
+      writeFileSync(rulesPath, 'not json', 'utf8');
+
+      const result = await addResource(collection(), { key: 'budget.title', baseValue: 'Capital expenditure' });
+
+      expect(result.terminology.findings).toEqual([]);
+      expect(result.terminology.problems).toEqual([
+        expect.stringContaining(
+          `Preferred terminology checks skipped: Preferred terminology file is not valid JSON: ${rulesPath}`,
+        ),
+      ]);
+    });
+  });
 });

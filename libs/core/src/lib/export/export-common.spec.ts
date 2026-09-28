@@ -66,7 +66,7 @@ describe('export-common', () => {
           translations: { es: 'Vale' },
           tags: ['ui'],
           effectiveTags: ['shared', 'ui'],
-          collectionProtectedTerms: ['Acme'],
+          protectedTerms: ['Acme'],
           comment: 'Confirm',
           status: { es: 'translated' },
           collection: 'Core',
@@ -156,46 +156,21 @@ describe('export-common', () => {
       expect(result[0].key).toBe('key2');
     });
 
-    it('computes protectedTermsFound from source for non-base locales', () => {
+    it("computes protectedTermsFound from the source and the resource's protected terms for non-base locales", () => {
       const resources: LoadedResource[] = [
         {
           key: 'k1',
           fullKey: 'k1',
-          source: 'Welcome to iPhone',
+          source: 'iPhone by SimonCodes, not Android',
           translations: { es: 'Bienvenido' },
           status: { es: 'new' },
           collection: 'Core',
           effectiveTags: [],
-          collectionProtectedTerms: ['iPhone'],
+          protectedTerms: ['SimonCodes', 'iPhone'],
         },
       ];
 
-      const result = filterResources(resources, 'es', undefined, undefined, {
-        globalProtectedTerms: ['SimonCodes'],
-        baseLocale: 'en',
-      });
-
-      expect(result[0].protectedTermsFound).toEqual(['iPhone']);
-    });
-
-    it('unions global and collection terms', () => {
-      const resources: LoadedResource[] = [
-        {
-          key: 'k1',
-          fullKey: 'k1',
-          source: 'iPhone by SimonCodes',
-          translations: { es: 'Bienvenido' },
-          status: { es: 'new' },
-          collection: 'Core',
-          effectiveTags: [],
-          collectionProtectedTerms: ['iPhone'],
-        },
-      ];
-
-      const result = filterResources(resources, 'es', undefined, undefined, {
-        globalProtectedTerms: ['SimonCodes'],
-        baseLocale: 'en',
-      });
+      const result = filterResources(resources, 'es', undefined, undefined, { baseLocale: 'en' });
 
       expect(result[0].protectedTermsFound).toEqual(['SimonCodes', 'iPhone']);
     });

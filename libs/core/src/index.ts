@@ -49,7 +49,7 @@ export { exportTargetLocales, runExport } from './lib/export/run-export';
 // Operations: normalize, translate, validate
 export { normalize } from './lib/normalize';
 export { assertAutoTranslationEnabled, translateExistingResource, translateLocale } from './lib/translation';
-export { describePreferredTermRule, generateValidationSummary, validateResources } from './lib/validate';
+export { generateValidationSummary, validateResources } from './lib/validate';
 
 // Collection & config
 export type { LingoTrackerCollection } from './config/lingo-tracker-collection';
@@ -62,16 +62,27 @@ export {
   loadConfig,
   loadPreferredTerminology,
   openCollection,
-  type ProtectedTermsFiles,
   type ResolvedProtectedTerms,
   readCollectionProtectedTerms,
-  readEffectiveProtectedTerms,
   readGlobalProtectedTerms,
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
+  type TermFile,
+  type TermFiles,
   writePreferredTerminology,
+} from './lib/config';
+
+// Project Terms: the protected terms and preferred terminology in force for an opened collection
+export {
+  describePreferredTermRule,
+  describeTermFileProblem,
+  type ProjectTerms,
+  readProjectTerms,
+  type TermFileProblem,
+  type TerminologyFinding,
+  type TerminologyFindings,
 } from './lib/config';
 
 // ResourceFolder: one folder's entries and metadata, loaded and saved as a unit

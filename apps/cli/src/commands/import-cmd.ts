@@ -5,10 +5,8 @@ import {
   type ImportResult,
   type ImportRunOptions,
   importResources,
-  loadPreferredTerminology,
   parseJsonImport,
   parseXliffImport,
-  readEffectiveProtectedTerms,
 } from '@simoncodes-ca/core';
 import type { ImportStrategy } from '@simoncodes-ca/domain';
 import * as fs from 'fs';
@@ -39,9 +37,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
   collection: 'writable',
   prompts: (options, { collection, cwd }) => buildQuestions(options, collection.locales, collection.baseLocale, cwd),
   required: ['source', 'locale'],
-  run: async ({ config, cwd, collection, answers }) => {
-    // The collection's own base locale decides which import writes `source` values.
-    const { baseLocale } = collection;
+  run: async ({ cwd, collection, answers }) => {
     const { source } = answers;
     // A relative --source is relative to the project root, like --output on export.
     const sourcePath = path.resolve(cwd, source);
@@ -62,7 +58,8 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       // File size check is non-critical, continue with import
     }
 
-    const preferredTerminology = loadPreferredTerminology(config, cwd);
+    // The collection carries the base locale and the Project Terms (protected terms, preferred
+    // terminology); a rule-file problem comes back in the result's warnings.
     const runOptions: ImportRunOptions = {
       locale: answers.locale,
       strategy: answers.strategy || 'translation-service',
@@ -73,10 +70,6 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       validateBase: answers.validateBase !== false, // Default true
       dryRun: answers.dryRun || false,
       verbose: answers.verbose || false,
-      protectedTerms: readEffectiveProtectedTerms(config, collection.config, cwd),
-      // Only consulted on base-locale imports. A broken file yields no rules, so the
-      // check is skipped and a config warning is added once the import has run.
-      preferredTerminology: preferredTerminology.rules,
       onProgress: answers.verbose ? (msg: string) => console.log(`  ${msg}`) : undefined,
     };
 
@@ -118,15 +111,6 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       result = importResources(collection, resources, runOptions);
     } catch (error) {
       throw new Error(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
-
-    // Terminology is only checked when importing into the base locale, so a rule file
-    // problem only matters then. Surfaced through the result so it reaches the summary.
-    const terminologyConfigWarning = preferredTerminology.error
-      ? `Preferred terminology checks skipped: ${preferredTerminology.error}`
-      : preferredTerminology.warning;
-    if (terminologyConfigWarning && result.locale === baseLocale) {
-      result = { ...result, warnings: [terminologyConfigWarning, ...result.warnings] };
     }
 
     // Log elapsed time in verbose mode

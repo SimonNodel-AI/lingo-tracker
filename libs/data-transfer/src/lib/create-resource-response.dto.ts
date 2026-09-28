@@ -1,3 +1,5 @@
+import type { TerminologyFindingsDto } from './terminology-findings.dto';
+
 /**
  * DTO for the response when creating a resource entry.
  */
@@ -11,4 +13,9 @@ export interface CreateResourceResponseDto {
    * uses ICU message format, which is not supported by the auto-translator.
    */
   skippedLocales?: string[];
+  /**
+   * Advisory: discouraged terms in the stored base values (one finding per resource and rule,
+   * keyed by resource) and any rule-file problem. Present only when there is something to report.
+   */
+  terminology?: TerminologyFindingsDto;
 }

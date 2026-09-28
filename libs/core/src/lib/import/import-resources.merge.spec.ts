@@ -322,12 +322,13 @@ describe('importResources merge behavior', () => {
   });
 
   describe('protected terms verification', () => {
+    beforeEach(() => {
+      writeFileSync(join(dir, '.lingo-tracker-protected-terms.json'), '["iPhone"]', 'utf8');
+    });
+
     it('flags an altered protected term as failed, skips writing it, and records an error', () => {
       seed({ ok: { source: 'Get iPhone' } });
-      const result = run([{ key: 'common.buttons.ok', value: 'Obtenez iphone' }], {
-        locale: 'es',
-        protectedTerms: ['iPhone'],
-      });
+      const result = run([{ key: 'common.buttons.ok', value: 'Obtenez iphone' }], { locale: 'es' });
       expect(result.changes[0]).toEqual({
         key: 'common.buttons.ok',
         type: 'failed',
@@ -338,10 +339,7 @@ describe('importResources merge behavior', () => {
     });
     it('passes when the term is preserved verbatim', () => {
       seed({ ok: { source: 'Get iPhone' } });
-      const result = run([{ key: 'common.buttons.ok', value: 'Obtenez iPhone' }], {
-        locale: 'es',
-        protectedTerms: ['iPhone'],
-      });
+      const result = run([{ key: 'common.buttons.ok', value: 'Obtenez iPhone' }], { locale: 'es' });
       expect(result.errors).toEqual([]);
       expect(stored('ok')?.entry['es']).toBe('Obtenez iPhone');
     });
@@ -352,7 +350,7 @@ describe('importResources merge behavior', () => {
           { key: 'common.buttons.ok', value: 'Obtenez iphone' },
           { key: 'common.buttons.cancel', value: 'Cancelar' },
         ],
-        { locale: 'es', protectedTerms: ['iPhone'] },
+        { locale: 'es' },
       );
       expect(result.changes.find(({ key }) => key.endsWith('.ok'))?.type).toBe('failed');
       expect(result.changes.find(({ key }) => key.endsWith('.cancel'))?.type).toBe('value-changed');
@@ -361,11 +359,8 @@ describe('importResources merge behavior', () => {
     it('skips the check for base locale imports', () => {
       seed({ ok: { source: 'Get iPhone' } });
       expect(
-        run([{ key: 'common.buttons.ok', value: 'Get iphone' }], {
-          locale: 'en',
-          strategy: 'migration',
-          protectedTerms: ['iPhone'],
-        }).changes[0]?.type,
+        run([{ key: 'common.buttons.ok', value: 'Get iphone' }], { locale: 'en', strategy: 'migration' }).changes[0]
+          ?.type,
       ).toBe('value-changed');
     });
   });

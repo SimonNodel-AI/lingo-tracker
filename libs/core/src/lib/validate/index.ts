@@ -3,4 +3,3 @@
 export { generateValidationSummary } from './generate-validation-summary';
 export type { ResourceValidationResult, ValidationOptions } from './types';
 export { validateResources } from './validate-resources';
-export { describePreferredTermRule } from './validate-terminology';

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import type { Collection } from '../config/open-collection';
 import { type CollectionReadProblem, readCollection } from '../resource/read-collection';
-import { effectiveProtectedTerms, findProtectedTerms, type TranslationStatus } from '@simoncodes-ca/domain';
+import { findProtectedTerms, type TranslationStatus } from '@simoncodes-ca/domain';
 import type { FilteredResource } from './types';
 
 /** A stored resource flattened for the export and validate passes, with the collection it came from. */
@@ -14,7 +14,8 @@ export interface LoadedResource {
   tags?: string[];
   /** The collection's tags united with the entry's own (from the Collection Reader). */
   effectiveTags: readonly string[];
-  collectionProtectedTerms?: string[];
+  /** The protected terms in force for the entry's collection (its Project Terms), when the export annotates them. */
+  protectedTerms?: string[];
   comment?: string;
   status: Record<string, TranslationStatus>;
   collection: string;
@@ -74,7 +75,7 @@ export function loadResources(
         translations: { ...entry.translations },
         tags: entry.tags,
         effectiveTags,
-        collectionProtectedTerms: protectedTerms,
+        protectedTerms,
         comment: entry.comment,
         status,
         collection: collection.name,
@@ -93,7 +94,6 @@ export function filterResources(
   statusFilter: TranslationStatus[] | undefined,
   tagFilter: string[] | undefined,
   protectedTermsOptions?: {
-    globalProtectedTerms?: string[];
     augmentProtectedTerms?: boolean;
     baseLocale?: string;
   },
@@ -127,12 +127,7 @@ export function filterResources(
       const augment =
         protectedTermsOptions?.augmentProtectedTerms !== false &&
         (!protectedTermsOptions?.baseLocale || targetLocale !== protectedTermsOptions.baseLocale);
-      const protectedTermsFound = augment
-        ? findProtectedTerms(
-            res.source,
-            effectiveProtectedTerms(protectedTermsOptions?.globalProtectedTerms, res.collectionProtectedTerms),
-          )
-        : undefined;
+      const protectedTermsFound = augment ? findProtectedTerms(res.source, res.protectedTerms ?? []) : undefined;
 
       return {
         key: res.fullKey,

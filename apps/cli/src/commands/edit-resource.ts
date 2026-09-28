@@ -1,7 +1,6 @@
 import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
-import { translocoToICU } from '@simoncodes-ca/domain';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, parseCommaSeparatedList, warnAboutPreferredTerminology } from '../utils';
+import { ConsoleFormatter, parseCommaSeparatedList, printTerminologyFindings } from '../utils';
 
 export interface EditResourceOptions {
   collection?: string;
@@ -33,7 +32,7 @@ export const editResourceCommand = defineCommand<EditResourceOptions>()({
       : [{ type: 'text' as const, name: 'baseValue', message: 'New base value (leave empty to keep current)' }]),
   ],
   required: ['key'],
-  run: async ({ collection, config, cwd, answers }) => {
+  run: async ({ collection, answers }) => {
     const translations =
       answers.locale && answers.localeValue ? { [answers.locale]: { value: answers.localeValue } } : undefined;
     if (!translations && (answers.locale || answers.localeValue)) {
@@ -53,10 +52,10 @@ export const editResourceCommand = defineCommand<EditResourceOptions>()({
 
     if (result.updated) {
       ConsoleFormatter.success(`Resource "${result.resolvedKey}" updated successfully.`);
-      // Only a base value supplied in this invocation is checked; editing a comment
-      // or a translation should not re-raise advice about untouched wording.
-      if (changes.baseValue !== undefined) {
-        warnAboutPreferredTerminology(config, cwd, translocoToICU(changes.baseValue));
+      // Present only when this invocation supplied a base value (core's rule): editing a
+      // comment or a translation does not re-raise advice about untouched wording.
+      if (result.terminology) {
+        printTerminologyFindings(result.terminology);
       }
     } else {
       ConsoleFormatter.info(result.message || 'No changes detected');

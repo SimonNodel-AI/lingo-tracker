@@ -23,6 +23,7 @@ import {
   translateExistingResource,
   extractResourcesRecursively,
   type Collection,
+  type TerminologyFindings,
 } from '@simoncodes-ca/core';
 import { buildResourceSummary } from '@simoncodes-ca/domain';
 import type {
@@ -44,6 +45,8 @@ import type {
   TranslateResourceResponseDto,
   TranslateLocaleRequestDto,
   TranslateLocaleJobDto,
+  TerminologyFindingsDto,
+  TerminologyFindingDto,
 } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
 import { mapResourceTreeToDto, mapResourceEntryToSummary } from '../../mappers/resource-tree.mapper';
@@ -99,6 +102,8 @@ export class ResourcesController {
 
     let entriesCreated = 0;
     const allSkippedLocales: string[] = [];
+    const findings: TerminologyFindingDto[] = [];
+    const problems = new Set<string>();
 
     for (const resource of resources) {
       const result = await addResource(collection, {
@@ -117,16 +122,20 @@ export class ResourcesController {
       if (result.skippedLocales?.length) {
         allSkippedLocales.push(...result.skippedLocales);
       }
+      findings.push(...result.terminology.findings);
+      for (const problem of result.terminology.problems) problems.add(problem);
 
       this.#index.apply(result.mutations);
     }
 
     const uniqueSkippedLocales = [...new Set(allSkippedLocales)];
+    const terminology = toTerminologyDto({ findings, problems: [...problems] });
 
     return {
       entriesCreated,
       created: entriesCreated > 0,
       ...(uniqueSkippedLocales.length > 0 && { skippedLocales: uniqueSkippedLocales }),
+      ...(terminology && { terminology }),
     };
   }
 
@@ -222,6 +231,7 @@ export class ResourcesController {
     this.#index.apply(result.mutations);
     const resourceDto: ResourceSummaryDto | undefined =
       result.updated && result.entry ? buildResourceSummary(result.resolvedKey, result.entry, collection) : undefined;
+    const terminology = result.terminology && toTerminologyDto(result.terminology);
 
     return {
       resolvedKey: result.resolvedKey,
@@ -229,6 +239,7 @@ export class ResourcesController {
       message: result.message,
       resource: resourceDto,
       skippedLocales: result.skippedLocales,
+      ...(terminology && { terminology }),
     };
   }
 
@@ -363,4 +374,10 @@ export class ResourcesController {
 
     return job;
   }
+}
+
+/** The advisory findings as the response carries them; `undefined` when there is nothing to report. */
+function toTerminologyDto(terminology: TerminologyFindings): TerminologyFindingsDto | undefined {
+  if (terminology.findings.length === 0 && terminology.problems.length === 0) return undefined;
+  return { findings: terminology.findings.map((finding) => ({ ...finding })), problems: [...terminology.problems] };
 }

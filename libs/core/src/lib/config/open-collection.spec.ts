@@ -7,6 +7,7 @@ import { CONFIG_FILENAME } from '../../constants';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { loadConfig } from './load-config';
 import { openCollection } from './open-collection';
+import { DEFAULT_PREFERRED_TERMINOLOGY_FILENAME } from './preferred-terminology-file';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from './protected-terms-file';
 
 const globalTranslation = { enabled: true, provider: 'google-translate', apiKeyEnv: 'GLOBAL_KEY' };
@@ -59,7 +60,10 @@ describe('openCollection', () => {
       targetLocales: ['fr', 'de'],
       translationConfig: globalTranslation,
       tags: [],
-      protectedTermsFiles: { global: join(dir, DEFAULT_PROTECTED_TERMS_FILENAME), globalExplicit: false },
+      termFiles: {
+        protectedTerms: { path: join(dir, DEFAULT_PROTECTED_TERMS_FILENAME), explicit: false },
+        preferredTerminology: { path: join(dir, DEFAULT_PREFERRED_TERMINOLOGY_FILENAME), explicit: false },
+      },
       readOnly: false,
       config: { translationsFolder: 'src/i18n' },
     });
@@ -111,17 +115,28 @@ describe('openCollection', () => {
     expect(openCollection(config, 'inherits').translationsFolder).toBe(resolve(dir, 'src/i18n'));
   });
 
-  it('resolves the protected-terms file paths against cwd without reading them', () => {
+  it('resolves the term file paths against cwd without reading them', () => {
     const withTerms: LingoTrackerConfig = {
       ...config,
       protectedTermsFile: 'terms/global.json',
+      preferredTerminologyFile: 'terms/preferred.json',
       collections: { own: { translationsFolder: 'x', protectedTermsFile: '/abs/own-terms.json' } },
     };
 
-    expect(openCollection(withTerms, 'own', { cwd: dir }).protectedTermsFiles).toEqual({
-      global: join(dir, 'terms', 'global.json'),
-      globalExplicit: true,
-      collection: resolve('/abs/own-terms.json'),
+    expect(openCollection(withTerms, 'own', { cwd: dir }).termFiles).toEqual({
+      protectedTerms: { path: join(dir, 'terms', 'global.json'), explicit: true },
+      collectionProtectedTerms: { path: resolve('/abs/own-terms.json'), explicit: true },
+      preferredTerminology: { path: join(dir, 'terms', 'preferred.json'), explicit: true },
+    });
+  });
+
+  it('opens a collection whose preferred-terminology pointer is not a string, and records why', () => {
+    const broken: LingoTrackerConfig = { ...config, preferredTerminologyFile: 42 as never };
+
+    expect(openCollection(broken, 'inherits', { cwd: dir }).termFiles.preferredTerminology).toEqual({
+      path: join(dir, DEFAULT_PREFERRED_TERMINOLOGY_FILENAME),
+      explicit: false,
+      invalid: '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)',
     });
   });
 

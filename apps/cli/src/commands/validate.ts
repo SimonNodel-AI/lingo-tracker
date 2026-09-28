@@ -1,7 +1,7 @@
 import {
   generateValidationSummary,
-  loadPreferredTerminology,
   openCollection,
+  readProjectTerms,
   type LingoTrackerConfig,
   type ValidationOptions,
   validateResources,
@@ -193,12 +193,20 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
     return { exitCode: 1 };
   }
 
-  // Terminology findings are advisory, but a broken rule file is a failure:
-  // otherwise a typo in the file would silently switch the check off in CI.
-  const preferredTerminology = loadPreferredTerminology(config, cwd);
-  if (preferredTerminology.warning) {
-    ConsoleFormatter.warning(preferredTerminology.warning);
+  // The preferred terminology is one file for the project, so any collection's Project Terms
+  // carry it. Terminology findings are advisory, but a broken rule file is a failure:
+  // otherwise a typo in the file would silently switch the check off in CI. A named
+  // term file that does not exist is a warning.
+  const terms = readProjectTerms(collections[0]);
+  for (const problem of terms.problems) {
+    if (problem.severity === 'warning') {
+      ConsoleFormatter.warning(problem.message);
+    }
   }
+  const ruleFileError = terms.problems.find(
+    (problem) => problem.file === 'preferred-terminology' && problem.severity === 'error',
+  )?.message;
+  const rules = [...terms.preferredTerminology];
 
   const compileValues = !options.skipIcu;
   const requirePortablePlurals = options.requirePortablePlurals ?? false;
@@ -216,10 +224,7 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
     placeholders: !options.skipPlaceholders,
     // Omitted when there is nothing to check, so a project without rules sees
     // no terminology output at all.
-    terminology:
-      preferredTerminology.rules.length > 0 || preferredTerminology.error !== undefined
-        ? { rules: preferredTerminology.rules, loadError: preferredTerminology.error }
-        : undefined,
+    terminology: rules.length > 0 || ruleFileError !== undefined ? { rules, loadError: ruleFileError } : undefined,
   };
 
   const validationResult = validateResources(collections, validationOptions);

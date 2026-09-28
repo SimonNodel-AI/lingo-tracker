@@ -6,6 +6,7 @@ import {
   translocoToICU,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../lib/config/open-collection';
+import { readProjectTerms, type TerminologyFindings } from '../lib/config/project-terms';
 import { ResourceAlreadyExistsError, ResourceNotFoundError } from '../lib/errors/lingo-tracker-error';
 import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
@@ -40,6 +41,12 @@ export interface EditResourceResult {
   readonly skippedLocales?: string[];
   /** What changed on disk (empty when nothing was updated). */
   readonly mutations: ResourceMutation[];
+  /**
+   * Advisory: discouraged terms in the base value, and any rule-file problem that limited the
+   * check. Present only when the edit supplied a base value and updated the entry; editing a
+   * comment or a translation does not re-raise advice about untouched wording.
+   */
+  readonly terminology?: TerminologyFindings;
 }
 
 /**
@@ -174,6 +181,9 @@ export async function editResource(
     entry: updatedEntry,
     mutations: moved?.mutations ?? [upsertMutation(translationsFolder, resolvedKey, updatedEntry)],
     ...(skippedLocales !== undefined && { skippedLocales }),
+    ...(baseValue !== undefined && {
+      terminology: readProjectTerms(collection).checkBaseValue(resolvedKey, baseValue),
+    }),
   };
 }
 
