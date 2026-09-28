@@ -8,7 +8,7 @@ import type { SearchResultDto, SearchResultsDto } from '@simoncodes-ca/data-tran
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
-interface SearchState {
+export interface SearchState {
   searchQuery: string;
   isSearchMode: boolean;
   searchResults: SearchResultDto[];
@@ -16,7 +16,7 @@ interface SearchState {
   searchError: string | null;
 }
 
-const initialSearchState: SearchState = {
+export const initialSearchState: SearchState = {
   searchQuery: '',
   isSearchMode: false,
   searchResults: [],

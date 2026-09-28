@@ -4,6 +4,7 @@ import type { ComponentFixture } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { collectionSettings } from '../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
 import { HeaderContextService } from '../shared/services/header-context.service';
 import { TranslationBrowser } from './translation-browser';
@@ -36,10 +37,12 @@ describe('TranslationBrowser - Integration', () => {
 
   it('should display collection name in sidebar header when set', () => {
     // Set collection through the store since collectionName is a computed signal
-    component.store.setSelectedCollection({
-      collectionName: 'test-collection',
-      locales: ['en', 'es'],
-    });
+    component.store.openCollection(
+      collectionSettings({
+        name: 'test-collection',
+        locales: ['en', 'es'],
+      }),
+    );
 
     // Flush the cache status request to make the browser content visible
     const cacheReq = httpMock.expectOne('/api/collections/test-collection/resources/cache/status');
@@ -58,10 +61,12 @@ describe('TranslationBrowser - Integration', () => {
 
   it('should trigger add folder when Ctrl+Shift+N is pressed', () => {
     // Setup the component with collection
-    component.store.setSelectedCollection({
-      collectionName: 'test-collection',
-      locales: ['en', 'es'],
-    });
+    component.store.openCollection(
+      collectionSettings({
+        name: 'test-collection',
+        locales: ['en', 'es'],
+      }),
+    );
 
     // Initially not adding folder
     expect(component.store.isAddingFolder()).toBe(false);
@@ -84,10 +89,12 @@ describe('TranslationBrowser - Integration', () => {
 
   it('should not trigger add folder when keyboard shortcut is pressed while focused on input', () => {
     // Setup the component
-    component.store.setSelectedCollection({
-      collectionName: 'test-collection',
-      locales: ['en', 'es'],
-    });
+    component.store.openCollection(
+      collectionSettings({
+        name: 'test-collection',
+        locales: ['en', 'es'],
+      }),
+    );
 
     // Create a mock input element and focus it
     const input = document.createElement('input');

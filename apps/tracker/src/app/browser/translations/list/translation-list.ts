@@ -37,9 +37,6 @@ export class TranslationList {
   /** Collection name to load translations from */
   collectionName = input.required<string>();
 
-  /** Base locale (source language) */
-  baseLocale = input<string>('en');
-
   /** Whether auto-translation is enabled for this collection */
   translationEnabled = input<boolean>(false);
 

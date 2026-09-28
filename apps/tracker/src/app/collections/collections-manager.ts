@@ -322,7 +322,7 @@ export class CollectionsManager {
   #toCardView(item: {
     name: string;
     config: { translationsFolder: string; readOnly?: boolean };
-    locales: string[] | undefined;
+    locales: readonly string[] | undefined;
     baseLocale: string | undefined;
   }): CollectionCardView {
     const locales = item.locales ?? [];

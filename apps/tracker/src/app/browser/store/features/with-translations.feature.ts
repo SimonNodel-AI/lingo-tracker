@@ -12,13 +12,13 @@ import { displayStatus } from '../../../shared/translation-status/display-status
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
-interface TranslationsState {
+export interface TranslationsState {
   translations: ResourceSummaryDto[];
   isTranslationsLoading: boolean;
   showNestedResources: boolean;
 }
 
-const initialTranslationsState: TranslationsState = {
+export const initialTranslationsState: TranslationsState = {
   translations: [],
   isTranslationsLoading: false,
   showNestedResources: true,

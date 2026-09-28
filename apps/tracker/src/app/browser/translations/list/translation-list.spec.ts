@@ -12,6 +12,7 @@ import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { collectionSettings } from '../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { NotificationService } from '../../../shared/notification';
 import type { TranslationEditorResult } from '../../dialogs/translation-editor';
@@ -68,10 +69,6 @@ describe('TranslationList', () => {
     fixture.detectChanges();
 
     expect(component.collectionName()).toBe('test-collection');
-  });
-
-  it('should use default baseLocale', () => {
-    expect(component.baseLocale()).toBe('en');
   });
 });
 
@@ -143,10 +140,12 @@ describe('TranslationList - Loading and Error States', () => {
     const store = fixture.debugElement.injector.get(BrowserStore);
 
     // Set up collection first
-    store.setSelectedCollection({
-      collectionName: 'test',
-      locales: ['en'],
-    });
+    store.openCollection(
+      collectionSettings({
+        name: 'test',
+        locales: ['en'],
+      }),
+    );
 
     // Trigger loading state by selecting a folder
     store.selectFolder('test-folder');
@@ -169,10 +168,12 @@ describe('TranslationList - Loading and Error States', () => {
     fixture.detectChanges();
 
     // Set up collection and trigger folder selection to cause an error
-    store.setSelectedCollection({
-      collectionName: 'test',
-      locales: ['en'],
-    });
+    store.openCollection(
+      collectionSettings({
+        name: 'test',
+        locales: ['en'],
+      }),
+    );
 
     // First request for cache status (from setSelectedCollection -> checkCacheStatus)
     const cacheReq = httpMock.expectOne('/api/collections/test/resources/cache/status');
@@ -217,10 +218,12 @@ describe('TranslationList - Loading and Error States', () => {
     fixture.componentRef.setInput('collectionName', 'test');
     fixture.detectChanges();
 
-    store.setSelectedCollection({
-      collectionName: 'test',
-      locales: ['en'],
-    });
+    store.openCollection(
+      collectionSettings({
+        name: 'test',
+        locales: ['en'],
+      }),
+    );
 
     const cacheReq = httpMock.expectOne('/api/collections/test/resources/cache/status');
     cacheReq.flush({ status: 'ready', error: null });
@@ -265,10 +268,12 @@ describe('TranslationList - Virtual Scrolling', () => {
     fixture.detectChanges();
 
     // Manually trigger store initialization and folder selection
-    store.setSelectedCollection({
-      collectionName: 'test',
-      locales: ['en', 'es'],
-    });
+    store.openCollection(
+      collectionSettings({
+        name: 'test',
+        locales: ['en', 'es'],
+      }),
+    );
 
     // First request for cache status
     const cacheReq = httpMock.expectOne('/api/collections/test/resources/cache/status');
@@ -480,16 +485,17 @@ describe('TranslationList - Locale Filtering', () => {
     ]);
     store = fixture.debugElement.injector.get(BrowserStore);
 
-    store.setSelectedCollection({
-      collectionName: 'test',
-      locales: ['en', 'es', 'fr'],
-    });
+    store.openCollection(
+      collectionSettings({
+        name: 'test',
+        locales: ['en', 'es', 'fr'],
+      }),
+    );
     // Switch to full mode so multi-locale display is not restricted by compact auto-selection
     store.setDensityMode('full');
     store.clearAllLocales();
 
     fixture.componentRef.setInput('collectionName', 'test');
-    fixture.componentRef.setInput('baseLocale', 'en');
     fixture.detectChanges();
   });
 
@@ -533,7 +539,7 @@ describe('TranslationList - deleteTranslation', () => {
     ]);
     store = fixture.debugElement.injector.get(BrowserStore);
 
-    store.setSelectedCollection({ collectionName: 'my-collection', locales: ['en', 'fr'] });
+    store.openCollection(collectionSettings({ name: 'my-collection', locales: ['en', 'fr'] }));
     fixture.componentRef.setInput('collectionName', 'my-collection');
     fixture.detectChanges();
   });
@@ -609,7 +615,7 @@ describe('TranslationList - handleTranslate', () => {
     ]);
     store = fixture.debugElement.injector.get(BrowserStore);
 
-    store.setSelectedCollection({ collectionName: 'my-collection', locales: ['en', 'fr'] });
+    store.openCollection(collectionSettings({ name: 'my-collection', locales: ['en', 'fr'] }));
     fixture.componentRef.setInput('collectionName', 'my-collection');
     fixture.detectChanges();
   });

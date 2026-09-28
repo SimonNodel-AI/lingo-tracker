@@ -2,18 +2,21 @@ import { computed, effect } from '@angular/core';
 import { signalStoreFeature, withComputed, withMethods, withHooks, patchState, type } from '@ngrx/signals';
 import type { DensityMode } from '../../types/density-mode';
 import type { ViewPreferences } from '../view-preferences.types';
-import { computeDensityModeTransition } from '../density-mode.utils';
+import { computeDensityModeTransition, resolveCompactLocale } from '../density-mode.utils';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 
 function storageKey(collectionName: string): string {
   return `lingo-tracker:view-prefs:${collectionName}`;
 }
 
-function readFromLocalStorage(collectionName: string): ViewPreferences | undefined {
+/** What an older Tracker may have saved: any field can be missing, and density may be the retired 'medium'. */
+type SavedViewPreferences = Partial<Omit<ViewPreferences, 'densityMode'>> & { densityMode?: DensityMode | 'medium' };
+
+function readFromLocalStorage(collectionName: string): SavedViewPreferences | undefined {
   try {
     const raw = localStorage.getItem(storageKey(collectionName));
     if (!raw) return undefined;
-    return JSON.parse(raw) as ViewPreferences;
+    return JSON.parse(raw) as SavedViewPreferences;
   } catch {
     return undefined;
   }
@@ -69,8 +72,39 @@ export function withViewPreferencesFeature<_>() {
         });
       },
 
-      loadViewPreferences(collectionName: string): ViewPreferences | undefined {
-        return readFromLocalStorage(collectionName);
+      /**
+       * Applies the view preferences saved for a collection on top of the fresh state the
+       * Browser Session has just set; a collection without any keeps the initial state. The
+       * retired 'medium' density reads as 'compact'. In compact the one displayed locale is
+       * resolved against the collection's locales, so a saved locale it no longer has cannot
+       * leave the list blank.
+       */
+      restoreViewPreferences(collectionName: string): void {
+        const saved = readFromLocalStorage(collectionName);
+        if (!saved) return;
+
+        const densityMode: DensityMode = saved.densityMode === 'full' ? 'full' : 'compact';
+        const savedSelectedLocales = saved.selectedLocales ?? [];
+        const selectedLocales =
+          densityMode === 'compact'
+            ? resolveCompactLocale({
+                savedCompactLocale: saved.compactLocale,
+                currentSelectedLocales: savedSelectedLocales,
+                availableLocales: store.availableLocales(),
+                baseLocale: store.baseLocale(),
+              })
+            : savedSelectedLocales;
+
+        patchState(store, {
+          densityMode,
+          selectedLocales,
+          showNestedResources: saved.showNestedResources ?? store.showNestedResources(),
+          compactLocale: saved.compactLocale,
+          compactLocaleManuallyChanged: saved.compactLocaleManuallyChanged ?? false,
+          sortField: saved.sortField ?? store.sortField(),
+          sortDirection: saved.sortDirection ?? store.sortDirection(),
+          selectedStatuses: saved.selectedStatuses ?? store.selectedStatuses(),
+        });
       },
     })),
     withHooks({

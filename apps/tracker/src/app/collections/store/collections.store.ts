@@ -14,6 +14,7 @@ import { catchError, of, pipe, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsApiService } from '../services/collections-api.service';
+import { resolveCollectionSettings } from './collection-settings';
 import { withBundlesFeature } from './features/with-bundles.feature';
 
 /**
@@ -93,20 +94,15 @@ export const CollectionsStore = signalStore(
     }),
 
     /**
-     * Converts collections to array with resolved locales for each collection.
-     * Collections inherit global locales unless they specify their own.
+     * Every collection with its effective locales and base locale, resolved by the one rule
+     * (`resolveCollectionSettings`: collection value, else global, else default).
      */
     collectionEntriesWithLocales: computed(() => {
       const cfg = config();
       if (!cfg?.collections) return [];
       return Object.entries(cfg.collections).map(([name, collection]) => {
-        const coll = collection as LingoTrackerCollectionDto;
-        return {
-          name,
-          config: coll,
-          locales: coll.locales || cfg.locales,
-          baseLocale: coll.baseLocale || cfg.baseLocale,
-        };
+        const { locales, baseLocale } = resolveCollectionSettings(cfg, name);
+        return { name, config: collection, locales, baseLocale };
       });
     }),
 

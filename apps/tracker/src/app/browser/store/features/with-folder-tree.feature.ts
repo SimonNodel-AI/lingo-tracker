@@ -23,7 +23,7 @@ import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import type { FolderNodeDto, CreateFolderResponseDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import type { Observable } from 'rxjs';
 
-interface FolderTreeState {
+export interface FolderTreeState {
   rootFolders: FolderNodeDto[];
   /**
    * A root tree load has succeeded for the selected collection. Not the same as
@@ -43,7 +43,7 @@ interface FolderTreeState {
   deletingFolderPath: string | null;
 }
 
-const initialFolderTreeState: FolderTreeState = {
+export const initialFolderTreeState: FolderTreeState = {
   rootFolders: [],
   folderTreeLoaded: false,
   expandedFolders: new Set<string>(),

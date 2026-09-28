@@ -132,13 +132,13 @@ flowchart TD
 
 ### BrowserStore — Feature Composition
 
-`BrowserStore` is a single `signalStore` provided in root. Its state is split across seven `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call; each feature adds its own slice.
+`BrowserStore` is a single `signalStore` provided in root. Its state is split across eight `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call (`store/root-state.ts`); each feature adds its own slice and exports its initial state. The last feature is the [Browser Session](glossary.md#browser-session): `openCollection(settings)` is the one way a collection is opened or switched.
 
 <!-- BrowserStore feature composition — how with-* files build up the root store -->
 
 ```mermaid
 flowchart TD
-    Root["BrowserStore root state\n─────────────────────────\nselectedCollection\navailableLocales / baseLocale\nisDisabled / error\ncurrentFolderPath\ndensityMode / compactLocale\ncompactLocaleManuallyChanged\nnonCompactSelectedLocales\n─────────────────────────\nmethods: setSelectedCollection, moveResource, reset, …"]
+    Root["BrowserStore root state (root-state.ts)\n─────────────────────────\nselectedCollection\navailableLocales / baseLocale / isReadOnly\nisDisabled / error\ncurrentFolderPath\ndensityMode / compactLocale\ncompactLocaleManuallyChanged\nnonCompactSelectedLocales\n─────────────────────────\nmethods: moveResource, setDisabled, clearError"]
 
     Root --> WS["withSearchFeature\n(with-search.feature.ts)\nAdds: searchQuery, isSearchMode,\nsearchResults, isSearchLoading, searchError\nMethods: setSearchQuery, clearSearch,\nsearchTranslations (rxMethod)"]
 
@@ -152,16 +152,22 @@ flowchart TD
 
     Root --> WCS["withCacheStatusFeature\n(with-cache-status.feature.ts)\nAdds: cacheStatus, cacheError, collectionStats\nComputed: isCacheReady, isCacheIndexing,\ncollectionTotalKeys, collectionLocaleCount\nMethods: checkCacheStatus (rxMethod — polls every 2s\nuntil status = 'ready')"]
 
-    Root --> WVP["withViewPreferencesFeature\n(with-view-preferences.feature.ts)\nNo new state (reads from root + other features)\nComputed: canShowMultipleLocales\nMethods: setDensityMode, loadViewPreferences\nHook: onInit effect → persists prefs to\nlocalStorage on every signal change"]
+    Root --> WVP["withViewPreferencesFeature\n(with-view-preferences.feature.ts)\nNo new state (reads from root + other features)\nComputed: canShowMultipleLocales\nMethods: setDensityMode, restoreViewPreferences\nHook: onInit effect → persists prefs to\nlocalStorage on every signal change"]
+
+    Root --> WBS["withBrowserSessionFeature\n(with-browser-session.feature.ts)\nNo new state\nMethods: openCollection(settings) — every\nfeature back to its initial state, settings\napplied, prefs restored, polling started"]
 
     WS -.->|"isSearchMode, searchResults\nread by"| WT
+    WBS -.->|"calls restoreViewPreferences\nprovided by"| WVP
+    WBS -.->|"calls checkCacheStatus\nprovided by"| WCS
     WF -.->|"selectedLocales, selectedStatuses\nread by"| WT
     WFT -.->|"calls selectFolder\nprovided by"| WT
     WEW -.->|"calls selectFolder,\npatches translations"| WT
     WCS -.->|"calls loadRootFolders\nprovided by"| WFT
 ```
 
-**Composition order matters.** `withEntryWritesFeature` and `withFolderTreeFeature` require `selectFolder` (and the folder tree also `setTranslationsLoading`) from `withTranslationsFeature`, so `withTranslationsFeature` must appear first. `withCacheStatusFeature` requires `loadRootFolders` from `withFolderTreeFeature`, so it follows. `withViewPreferencesFeature` reads from every other feature's state and is last.
+**Composition order matters.** `withEntryWritesFeature` and `withFolderTreeFeature` require `selectFolder` (and the folder tree also `setTranslationsLoading`) from `withTranslationsFeature`, so `withTranslationsFeature` must appear first. `withCacheStatusFeature` requires `loadRootFolders` from `withFolderTreeFeature`, so it follows. `withViewPreferencesFeature` reads from every other feature's state. `withBrowserSessionFeature` calls `restoreViewPreferences` and `checkCacheStatus`, and is last.
+
+**Opening a collection.** The store is root-provided, so it outlives the `/browser/:collectionName` route. `TranslationBrowser` resolves the routed collection's settings once (`resolveCollectionSettings(config, name)`, the Tracker's counterpart of core's `openCollection`: collection value, else global, else default) and calls `store.openCollection(settings)`. The session patches every feature's exported initial state together with the root state, applies the settings (`selectedCollection`, `availableLocales`, `baseLocale`, `isReadOnly`), then has the view-preferences feature restore what `localStorage` holds for that collection (a saved `medium` density reads as `compact`; in compact the one displayed locale is resolved against the collection's locales), and starts index polling. Nothing from the previous collection — a search, a selected folder, a pending folder add or delete — survives the switch. The same `CollectionSettings` gives the browser its `translationEnabled` and `translationsFolder`; no component re-derives a setting from the raw config.
 
 ---
 
@@ -175,16 +181,15 @@ flowchart TD
 | `with-entry-writes.feature.ts` | (no new state) | — | `createResource`, `updateResource`, `deleteResource`, `translateResource` — see [Writing a Resource Entry](#writing-a-resource-entry) |
 | `with-folder-tree.feature.ts` | `rootFolders`, `expandedFolders`, `folderTreeFilter`, `isFolderTreeLoading`, `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath` | `filteredFolders`, `breadcrumbs`, `isLoading` | `loadRootFolders`, `loadFolderChildren`, `createFolder`, `createFolderAt`, `deleteFolder`, `moveFolder`, `toggleFolderExpanded`, `startAddingFolder`, `cancelAddingFolder` |
 | `with-cache-status.feature.ts` | `cacheStatus`, `cacheError`, `collectionStats` | `isCacheReady`, `isCacheIndexing`, `collectionTotalKeys`, `collectionLocaleCount`, `hasCollectionStats` | `checkCacheStatus` (polls every 2 s via `interval`, stops when `status === 'ready'`) |
-| `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `loadViewPreferences` (reads `localStorage`) |
+| `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `restoreViewPreferences` (reads `localStorage` for one collection and applies it) |
+| `with-browser-session.feature.ts` | (no new state) | — | `openCollection(settings)` — the [Browser Session](glossary.md#browser-session): every feature to its initial state, settings applied, preferences restored, polling started |
 
 Root-level methods on `BrowserStore` (not in a feature):
 
 | Method | Purpose |
 |---|---|
-| `setSelectedCollection` | Switches active collection, restores view preferences from `localStorage`, triggers cache polling |
 | `moveResource` | Optimistic remove from `translations` (matched by `fullKey`, so it works for rows in any folder) → API call → re-fetch on success, rollback on error |
-| `reset` | Clears all state slices back to initial values |
-| `setBaseLocale`, `setDisabled`, `clearError` | Simple `patchState` helpers |
+| `setDisabled`, `clearError` | Simple `patchState` helpers |
 
 ---
 

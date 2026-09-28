@@ -28,6 +28,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 ---
 
+### Browser Session
+
+The one path that opens a [collection](#collection) in the Tracker UI. In code, `openCollection(settings)` in `apps/tracker/src/app/browser/store/features/with-browser-session.feature.ts`, a feature of the root-provided `BrowserStore`. It takes a `CollectionSettings`, the Tracker's [resolved collection](#collection) (`resolveCollectionSettings(config, name)` in `apps/tracker/src/app/collections/store/collection-settings.ts`, with core's rules: `baseLocale` collection, else global, else `en`; `locales` collection, else global, else none; `translationEnabled` from the collection `translation` config, else the global one, not merged; `readOnly`). It starts every store feature at its own initial state (each feature exports it; the session names no other feature's fields), applies the settings, restores the collection's saved view preferences (`restoreViewPreferences`, owned by the view-preferences feature, which also reads the retired `medium` density as `compact`), and starts index polling. Because the store outlives the route, this is what keeps one collection's search results, folder selection or pending folder operation from showing up in the next collection. The `TranslationBrowser` route component is its only production caller; the browser reads every setting from the store or from the same `CollectionSettings`.
+
+Explained in context: [`frontend.md`](frontend.md#browserstore--feature-composition)
+
+---
+
 ### Bundle
 
 A generated JSON file (one per locale) that aggregates translation values from one or more [collections](#collection) into a flat or hierarchical format consumable by the Angular Transloco library. Bundles are defined in the `bundles` section of `.lingo-tracker.json`. Each bundle specifies a `dist` output directory, a `bundleName` pattern (e.g. `{locale}`), and which collections (or `"All"`) to include.

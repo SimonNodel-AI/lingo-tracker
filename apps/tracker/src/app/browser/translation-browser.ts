@@ -18,6 +18,7 @@ import { HeaderContextService } from '../shared/services/header-context.service'
 import { FolderTree } from './sidebar';
 import { TranslationMainHeader } from './translations/header/translation-main-header';
 import { CollectionsStore } from '../collections/store/collections.store';
+import { resolveCollectionSettings } from '../collections/store/collection-settings';
 import { BrowserStore } from './store/browser.store';
 import { TranslationList } from './translations/list/translation-list';
 import { IndexingOverlay } from './ui/indexing-overlay';
@@ -79,48 +80,20 @@ export class TranslationBrowser {
    */
   readonly activeLocales = computed(() => this.store.availableLocales());
 
-  /**
-   * Computed signal for base locale from collection config.
-   */
-  readonly baseLocale = computed(() => {
-    const name = this.collectionName();
-    if (!name) return 'en';
-
-    const collections = this.#collectionsStore.collectionEntriesWithLocales();
-    const collection = collections.find((c) => c.name === name);
-    return collection?.baseLocale || 'en';
+  /** The open collection's resolved settings, for the values the store does not carry. */
+  readonly #settings = computed(() => {
+    const config = this.#collectionsStore.config();
+    const name = this.store.selectedCollection();
+    return config && name ? resolveCollectionSettings(config, name) : undefined;
   });
 
-  /**
-   * Computed signal for translations folder path from collection config.
-   */
-  readonly translationsFolder = computed(() => {
-    const name = this.collectionName();
-    if (!name) return '';
+  readonly translationsFolder = computed(() => this.#settings()?.translationsFolder ?? '');
 
-    const collections = this.#collectionsStore.collectionEntriesWithLocales();
-    const collection = collections.find((c) => c.name === name);
-    return collection?.config.translationsFolder || '';
-  });
-
-  /**
-   * Computed signal that reflects whether auto-translation is enabled for the current collection.
-   * Collection-level config takes precedence over global config.
-   */
-  readonly translationEnabled = computed(() => {
-    const name = this.collectionName();
-    if (!name) return false;
-
-    const globalConfig = this.#collectionsStore.config();
-    const collections = this.#collectionsStore.collectionEntriesWithLocales();
-    const collection = collections.find((c) => c.name === name);
-
-    const translationConfig = collection?.config.translation ?? globalConfig?.translation;
-    return translationConfig?.enabled === true;
-  });
+  /** Whether auto-translation is enabled for the open collection. */
+  readonly translationEnabled = computed(() => this.#settings()?.translationEnabled ?? false);
 
   constructor() {
-    // Wait for collections to load before initializing browser store
+    // Wait for collections to load before opening the routed collection in the browser store
     effect(() => {
       const config = this.#collectionsStore.config();
       if (!config) return;
@@ -130,21 +103,11 @@ export class TranslationBrowser {
       if (!name) return;
 
       const decodedName = decodeURIComponent(name);
-      const collection = config.collections?.[decodedName];
 
-      // Only initialize if we haven't already
+      // Only open if we haven't already
       if (this.store.selectedCollection() === decodedName) return;
 
-      const locales = collection?.locales || config.locales || [];
-      const baseLocale = collection?.baseLocale || config.baseLocale || '';
-
-      // Initialize unified store with collection
-      this.store.setSelectedCollection({
-        collectionName: decodedName,
-        locales,
-        baseLocale,
-        readOnly: collection?.readOnly ?? false,
-      });
+      this.store.openCollection(resolveCollectionSettings(config, decodedName));
     });
 
     // Sync collection context to header
