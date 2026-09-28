@@ -15,9 +15,9 @@ import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { PickerFolderNode } from './picker-folder-node/picker-folder-node';
 import { BrowserStore } from '../../../store/browser.store';
 import { NotificationService } from '../../../../shared/notification';
-import type { HttpErrorResponse } from '@angular/common/http';
 import { TranslocoService } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { apiErrorMessage } from '../../../../shared/api-error/api-error';
 import { TranslocoPipe } from '@jsverse/transloco';
 
 /**
@@ -176,14 +176,14 @@ export class FolderPicker implements OnInit {
           }
         }
       },
-      error: (error: HttpErrorResponse) => {
+      error: (error: unknown) => {
         this.isCreatingFolder.set(false);
         this.isAddingFolder.set(false);
         this.addFolderParentPath.set(null);
 
-        const errorMessage =
-          error.error?.message || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.CREATEFOLDERFAILED);
-        this.#notifications.error(errorMessage);
+        this.#notifications.error(
+          apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.CREATEFOLDERFAILED)),
+        );
       },
     });
   }

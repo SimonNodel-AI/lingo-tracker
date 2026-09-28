@@ -6,6 +6,7 @@ import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../../shared/notification';
 import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { apiErrorMessage } from '../../../../shared/api-error/api-error';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
 import { ConfirmationDialog } from '../../../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../../../shared/components/confirmation-dialog/confirmation-dialog-data';
@@ -98,10 +99,10 @@ export function withItemActions() {
                     }
                   },
                   error: (error: unknown) => {
-                    const message =
-                      error instanceof Error
-                        ? error.message
-                        : transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED);
+                    const message = apiErrorMessage(
+                      error,
+                      transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED),
+                    );
                     notifications.error(message);
                   },
                 });
@@ -142,10 +143,10 @@ export function withItemActions() {
               },
               error: (error: unknown) => {
                 store.removeTranslatingKey(fullKey);
-                const message =
-                  error instanceof Error
-                    ? error.message
-                    : transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.TRANSLATEFAILED);
+                const message = apiErrorMessage(
+                  error,
+                  transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.TRANSLATEFAILED),
+                );
                 notifications.error(message);
               },
             });

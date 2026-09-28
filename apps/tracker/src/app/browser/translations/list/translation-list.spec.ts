@@ -1,4 +1,5 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { toApiError } from '../../../shared/api-error/api-error';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import type { Provider } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
@@ -553,14 +554,18 @@ describe('TranslationList - deleteTranslation', () => {
 
   it('should show error notification when API throws', () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
-    mockBrowserApi.deleteResource.mockReturnValue(throwError(() => new Error('Network failure')));
+    mockBrowserApi.deleteResource.mockReturnValue(
+      throwError(() =>
+        toApiError(new HttpErrorResponse({ status: 404, error: { message: 'Resource not found: button.save' } })),
+      ),
+    );
     patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
     listStore.deleteTranslation(mockResource, 'my-collection');
 
     expect(store.translations()).toEqual([mockResource]);
-    expect(notificationsSpy.error).toHaveBeenCalledWith('Network failure');
+    expect(notificationsSpy.error).toHaveBeenCalledWith('Resource not found: button.save');
   });
 
   it('should not call API when dialog is cancelled', () => {
@@ -639,7 +644,11 @@ describe('TranslationList - handleTranslate', () => {
   });
 
   it('should remove key from translatingKeys and show failure snackbar on error', () => {
-    mockBrowserApi.translateResource.mockReturnValue(throwError(() => new Error('Network failure')));
+    mockBrowserApi.translateResource.mockReturnValue(
+      throwError(() =>
+        toApiError(new HttpErrorResponse({ status: 404, error: { message: 'Resource not found: button.save' } })),
+      ),
+    );
 
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
     listStore.translateResource(mockResource, 'my-collection');
@@ -648,7 +657,7 @@ describe('TranslationList - handleTranslate', () => {
     expect(listStore.translatingKeys().has('button.save')).toBe(false);
 
     // Error message from the thrown Error is displayed
-    expect(notificationsSpy.error).toHaveBeenCalledWith('Network failure');
+    expect(notificationsSpy.error).toHaveBeenCalledWith('Resource not found: button.save');
   });
 
   it('should show ICU warning snackbar when skippedLocales is non-empty', () => {

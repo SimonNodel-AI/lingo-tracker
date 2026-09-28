@@ -5,7 +5,7 @@ import { inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { BrowserApiService } from '../../services/browser-api.service';
 import type { SearchResultDto, SearchResultsDto } from '@simoncodes-ca/data-transfer';
-import { toErrorMessage } from '../async-error.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
 interface SearchState {
@@ -73,7 +73,7 @@ export function withSearchFeature<_>() {
                 catchError((error: unknown) => {
                   patchState(store, {
                     isSearchLoading: false,
-                    searchError: toErrorMessage(
+                    searchError: apiErrorMessage(
                       error,
                       transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SEARCHTRANSLATIONSFAILED),
                     ),

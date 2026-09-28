@@ -1,4 +1,5 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { toApiError } from '../../../shared/api-error/api-error';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal, type WritableSignal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
@@ -1405,13 +1406,14 @@ describe('TranslationEditorDialog', () => {
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(
-        throwError(
-          () =>
+        throwError(() =>
+          toApiError(
             new HttpErrorResponse({
               status: 404,
               statusText: 'Not Found',
               error: { message: 'Resource not found' },
             }),
+          ),
         ),
       );
       renderDialog(editData);

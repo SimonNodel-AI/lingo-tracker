@@ -1,5 +1,4 @@
 import { computed, inject } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { signalStoreFeature, withState, withComputed, withMethods, withHooks, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, tap, switchMap, mergeMap, catchError, of, timer, takeWhile } from 'rxjs';
@@ -13,6 +12,7 @@ import type {
   LingoTrackerConfigDto,
   UpdateBundleDto,
 } from '@simoncodes-ca/data-transfer';
+import { ApiError, apiErrorMessage } from '../../../shared/api-error/api-error';
 
 /** Client-side lifecycle of a bundle generation run. */
 export type BundleRunStatus = 'idle' | 'running' | 'completed' | 'failed';
@@ -98,22 +98,15 @@ const FALLBACK_MESSAGES = {
 } as const;
 
 /**
- * Extracts a human-readable message from an HTTP or generic error.
- * The API returns `{ message }` bodies, which `HttpErrorResponse` exposes on `error.error`.
- * An invalid bundle definition also carries `errors: string[]`; they are appended
- * (`Invalid bundle definition: a; b`) so the reason is readable.
+ * The message for a failed bundle operation. An invalid bundle definition carries every
+ * rule message as `details`; they are appended (`Invalid bundle definition: a; b`) so the
+ * reason is readable.
  */
 function toBundleErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof HttpErrorResponse) {
-    const body: unknown = error.error;
-    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-      const errors: unknown = 'errors' in body ? body.errors : undefined;
-      const details = Array.isArray(errors) ? errors.filter((item): item is string => typeof item === 'string') : [];
-      return details.length > 0 ? `${body.message}: ${details.join('; ')}` : body.message;
-    }
-    return error.message || fallback;
-  }
-  return error instanceof Error ? error.message : fallback;
+  const message = apiErrorMessage(error, fallback);
+  const details =
+    error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
+  return details.length > 0 ? `${message}: ${details.join('; ')}` : message;
 }
 
 function isJobFinished(job: BundleGenerateJobDto): boolean {

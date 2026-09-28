@@ -1,4 +1,3 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
@@ -13,6 +12,7 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { catchError, of, pipe, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { withBundlesFeature } from './features/with-bundles.feature';
 
@@ -36,13 +36,14 @@ interface CollectionsState {
   configRuleErrors: PreferredTermRuleErrorDto[];
 }
 
-/** Extracts the `errors` array of a 400 `{ message, errors }` body from `PUT /api/config`, if present. */
+/**
+ * The per-row rule errors of a rejected `PUT /api/config`. The API's config controller is the
+ * only source of an `invalid` answer with details on that route, and its `errors` are
+ * `PreferredTermRuleErrorDto[]` (`PreferredTermRulesErrorResponseDto`).
+ */
 function extractRuleErrors(error: unknown): PreferredTermRuleErrorDto[] {
-  if (!(error instanceof HttpErrorResponse) || error.status !== 400) return [];
-  const body: unknown = error.error;
-  if (typeof body !== 'object' || body === null) return [];
-  const errors = (body as { errors?: unknown }).errors;
-  return Array.isArray(errors) ? (errors as PreferredTermRuleErrorDto[]) : [];
+  if (!(error instanceof ApiError) || error.kind !== 'invalid') return [];
+  return error.details as PreferredTermRuleErrorDto[];
 }
 
 /**
@@ -133,10 +134,10 @@ export const CollectionsStore = signalStore(
                 });
               }),
               catchError((error: unknown) => {
-                const errorMessage =
-                  error instanceof Error
-                    ? error.message
-                    : transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED);
+                const errorMessage = apiErrorMessage(
+                  error,
+                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED),
+                );
                 patchState(store, {
                   isLoading: false,
                   error: errorMessage,
@@ -168,10 +169,10 @@ export const CollectionsStore = signalStore(
                 });
               }),
               catchError((error: unknown) => {
-                const errorMessage =
-                  error instanceof Error
-                    ? error.message
-                    : transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED);
+                const errorMessage = apiErrorMessage(
+                  error,
+                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED),
+                );
                 patchState(store, {
                   isLoading: false,
                   error: errorMessage,
@@ -211,10 +212,10 @@ export const CollectionsStore = signalStore(
                 });
               }),
               catchError((error: unknown) => {
-                const errorMessage =
-                  error instanceof Error
-                    ? error.message
-                    : transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED);
+                const errorMessage = apiErrorMessage(
+                  error,
+                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED),
+                );
                 patchState(store, {
                   isLoading: false,
                   error: errorMessage,
@@ -245,10 +246,10 @@ export const CollectionsStore = signalStore(
                 });
               }),
               catchError((error: unknown) => {
-                const errorMessage =
-                  error instanceof Error
-                    ? error.message
-                    : transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED);
+                const errorMessage = apiErrorMessage(
+                  error,
+                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED),
+                );
                 patchState(store, {
                   isLoading: false,
                   error: errorMessage,
@@ -281,10 +282,10 @@ export const CollectionsStore = signalStore(
                 });
               }),
               catchError((error: unknown) => {
-                const errorMessage =
-                  error instanceof Error
-                    ? error.message
-                    : transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED);
+                const errorMessage = apiErrorMessage(
+                  error,
+                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED),
+                );
                 patchState(store, {
                   isLoading: false,
                   error: errorMessage,

@@ -18,7 +18,7 @@ import {
   prunePathsUnder,
   rebaseExpandedPaths,
 } from '../folder-tree.utils';
-import { toErrorMessage } from '../async-error.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import type { FolderNodeDto, CreateFolderResponseDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import type { Observable } from 'rxjs';
@@ -229,7 +229,7 @@ export function withFolderTreeFeature<_>() {
                   }),
                 ),
                 catchError((error: unknown) => {
-                  const message = toErrorMessage(
+                  const message = apiErrorMessage(
                     error,
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERSFAILED),
                   );
@@ -277,7 +277,7 @@ export function withFolderTreeFeature<_>() {
                   });
                 }),
                 catchError((error: unknown) => {
-                  const message = toErrorMessage(
+                  const message = apiErrorMessage(
                     error,
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERCHILDRENFAILED),
                   );
@@ -321,7 +321,7 @@ export function withFolderTreeFeature<_>() {
                   patchState(store, {
                     isAddingFolder: false,
                     addFolderParentPath: null,
-                    error: toErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
+                    error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
                   });
                   return of(null);
                 }),
@@ -348,7 +348,7 @@ export function withFolderTreeFeature<_>() {
             }),
             catchError((error: unknown) => {
               patchState(store, {
-                error: toErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
+                error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
               });
               throw error;
             }),
@@ -403,7 +403,7 @@ export function withFolderTreeFeature<_>() {
                   patchState(store, {
                     isDeletingFolder: false,
                     deletingFolderPath: null,
-                    error: toErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFOLDERFAILED)),
+                    error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFOLDERFAILED)),
                   });
                   return of(null);
                 }),
@@ -522,7 +522,7 @@ export function withFolderTreeFeature<_>() {
                       );
                     }),
                     catchError((error: unknown) => {
-                      const errorMessage = toErrorMessage(
+                      const errorMessage = apiErrorMessage(
                         error,
                         transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVEFOLDERFAILED),
                       );

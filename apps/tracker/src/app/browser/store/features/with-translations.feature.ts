@@ -9,7 +9,7 @@ import { sortTranslations } from '../../translations/utils/sort-translations';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { countByStatus, STATUS_PRECEDENCE, summaryTarget, type TranslationStatus } from '@simoncodes-ca/domain';
 import { displayStatus } from '../../../shared/translation-status/display-status';
-import { toErrorMessage } from '../async-error.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
 interface TranslationsState {
@@ -166,7 +166,7 @@ export function withTranslationsFeature<_>() {
                   }),
                 ),
                 catchError((error: unknown) => {
-                  const message = toErrorMessage(
+                  const message = apiErrorMessage(
                     error,
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADTRANSLATIONSFAILED),
                   );

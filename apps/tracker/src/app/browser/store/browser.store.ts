@@ -6,7 +6,7 @@ import { TranslocoService } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { NotificationService } from '../../shared/notification';
 import { BrowserApiService } from '../services/browser-api.service';
-import { toErrorMessage } from './async-error.utils';
+import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { resolveCompactLocale } from './density-mode.utils';
 import { withSearchFeature } from './features/with-search.feature';
 import { withCacheStatusFeature } from './features/with-cache-status.feature';
@@ -229,7 +229,7 @@ export const BrowserStore = signalStore(
                 store.selectFolder(store.currentFolderPath());
               }),
               catchError((error: unknown) => {
-                const errorMessage = toErrorMessage(
+                const errorMessage = apiErrorMessage(
                   error,
                   transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVERESOURCEFAILED),
                 );

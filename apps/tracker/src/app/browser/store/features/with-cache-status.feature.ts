@@ -5,7 +5,7 @@ import { pipe, switchMap, interval, startWith, takeWhile, catchError, of, tap } 
 import { TranslocoService } from '@jsverse/transloco';
 import { BrowserApiService } from '../../services/browser-api.service';
 import type { CacheStatusType } from '@simoncodes-ca/data-transfer';
-import { toErrorMessage } from '../async-error.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
 interface CacheStatusState {
@@ -75,7 +75,7 @@ export function withCacheStatusFeature<_>() {
                 catchError((error: unknown) => {
                   patchState(store, {
                     cacheStatus: 'error',
-                    cacheError: toErrorMessage(
+                    cacheError: apiErrorMessage(
                       error,
                       transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CHECKCACHESTATUSFAILED),
                     ),

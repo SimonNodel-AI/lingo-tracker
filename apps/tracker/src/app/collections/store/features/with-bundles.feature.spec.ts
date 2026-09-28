@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { toApiError } from '../../../shared/api-error/api-error';
 import { createEnvironmentInjector, EnvironmentInjector } from '@angular/core';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type { BundleDefinitionDto, BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
@@ -140,8 +141,10 @@ describe('withBundlesFeature', () => {
 
     it('createBundle surfaces the API error body message', () => {
       api.createBundle.mockReturnValue(
-        throwError(
-          () => new HttpErrorResponse({ status: 409, error: { message: 'A bundle named tracker already exists.' } }),
+        throwError(() =>
+          toApiError(
+            new HttpErrorResponse({ status: 409, error: { message: 'A bundle named tracker already exists.' } }),
+          ),
         ),
       );
 
@@ -154,8 +157,8 @@ describe('withBundlesFeature', () => {
 
     it('createBundle appends the validation errors of an invalid definition', () => {
       api.createBundle.mockReturnValue(
-        throwError(
-          () =>
+        throwError(() =>
+          toApiError(
             new HttpErrorResponse({
               status: 400,
               error: {
@@ -168,6 +171,7 @@ describe('withBundlesFeature', () => {
                 ],
               },
             }),
+          ),
         ),
       );
 
@@ -338,7 +342,9 @@ describe('withBundlesFeature', () => {
 
     it('marks the run failed when the generate request is rejected', () => {
       api.generateBundle.mockReturnValue(
-        throwError(() => new HttpErrorResponse({ status: 404, error: { message: 'Bundle tracker not found' } })),
+        throwError(() =>
+          toApiError(new HttpErrorResponse({ status: 404, error: { message: 'Bundle tracker not found' } })),
+        ),
       );
 
       store.generateBundle('tracker');
@@ -361,7 +367,11 @@ describe('withBundlesFeature', () => {
     });
 
     it('retryBundle re-runs a failed bundle', () => {
-      api.generateBundle.mockReturnValueOnce(throwError(() => new Error('boom'))).mockReturnValueOnce(of(completedJob));
+      api.generateBundle
+        .mockReturnValueOnce(
+          throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
+        )
+        .mockReturnValueOnce(of(completedJob));
 
       store.generateBundle('tracker');
       expect(store.bundleRuns()['tracker']?.status).toBe('failed');
@@ -434,7 +444,9 @@ describe('withBundlesFeature', () => {
       api.getBundleJob.mockReturnValue(of(runningJob));
       store.generateBundle('tracker');
 
-      api.getBundleJob.mockReturnValue(throwError(() => new Error('job not found')));
+      api.getBundleJob.mockReturnValue(
+        throwError(() => toApiError(new HttpErrorResponse({ status: 404, error: { message: 'job not found' } }))),
+      );
       reloadStore();
       await Promise.resolve();
 

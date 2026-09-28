@@ -1,4 +1,5 @@
-import { HttpClientTestingModule } from '@angular/common/http/testing';
+import { HttpErrorResponse } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type {
   CacheStatusDto,
@@ -9,6 +10,7 @@ import type {
 import { NEVER, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { provideTrackerHttpClient, toApiError } from '../../shared/api-error/api-error';
 import { NotificationService } from '../../shared/notification';
 import { BrowserApiService, CollectionIndexNotReadyError } from '../services/browser-api.service';
 import { BrowserStore } from './browser.store';
@@ -20,6 +22,10 @@ import { BrowserStore } from './browser.store';
  * We use a small delay to ensure all async operations complete.
  */
 const waitForSignals = () => new Promise<void>((resolve) => setTimeout(resolve, 10));
+
+/** A failed API response as the HTTP seam hands it to the store. */
+const serverError = (status: number, message: string) =>
+  toApiError(new HttpErrorResponse({ status, error: { statusCode: status, message } }));
 
 const summary = (
   fullKey: string,
@@ -102,8 +108,8 @@ describe('BrowserStore', () => {
 
   const createStore = createServiceFactory({
     service: BrowserStore,
-    imports: [HttpClientTestingModule, getTranslocoTestingModule()],
-    providers: [BrowserApiService],
+    imports: [getTranslocoTestingModule()],
+    providers: [provideTrackerHttpClient(), provideHttpClientTesting(), BrowserApiService],
   });
 
   beforeEach(() => {
@@ -236,7 +242,7 @@ describe('BrowserStore', () => {
     });
 
     it('should handle root folder loading errors', async () => {
-      const error = new Error('Collection not found');
+      const error = serverError(404, 'Collection not found');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(throwError(() => error));
 
@@ -250,6 +256,24 @@ describe('BrowserStore', () => {
       expect(store.rootFolders()).toEqual([]);
       expect(store.isFolderTreeLoading()).toBe(false);
       expect(store.error()).toBe('Collection not found');
+    });
+
+    it('surfaces the server message of a failed tree load through the HTTP seam', async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      const http = spectator.inject(HttpTestingController);
+
+      store.setSelectedCollection({ collectionName: 'ghost', locales: [] });
+      await waitForSignals();
+      http
+        .expectOne((request) => request.url.endsWith('/resources/tree'))
+        .flush(
+          { statusCode: 404, message: 'Collection "ghost" not found', error: 'Not Found' },
+          { status: 404, statusText: 'Not Found' },
+        );
+      await waitForSignals();
+
+      expect(store.error()).toBe('Collection "ghost" not found');
+      expect(store.isFolderTreeLoading()).toBe(false);
     });
 
     it('should keep the already-loaded root folders when the index is still not ready after the retries', async () => {
@@ -370,7 +394,7 @@ describe('BrowserStore', () => {
     });
 
     it('should handle folder children loading errors', async () => {
-      const error = new Error('api error: load folder children');
+      const error = serverError(500, 'api error: load folder children');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree')
         .mockReturnValueOnce(of(mockTreeRoot))
@@ -417,7 +441,7 @@ describe('BrowserStore', () => {
     });
 
     it('should handle translation loading errors', async () => {
-      const error = new Error('api error: load translations');
+      const error = serverError(500, 'api error: load translations');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree')
         .mockReturnValueOnce(of(mockTreeRoot))
@@ -730,7 +754,7 @@ describe('BrowserStore', () => {
 
   describe('Error Handling', () => {
     it('should clear error when clearError is called', async () => {
-      const error = new Error('Test error');
+      const error = serverError(500, 'Test error');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(throwError(() => error));
 
@@ -748,7 +772,7 @@ describe('BrowserStore', () => {
     });
 
     it('should clear error when new operation starts', async () => {
-      const error = new Error('Test error');
+      const error = serverError(500, 'Test error');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree')
         .mockReturnValueOnce(throwError(() => error))
@@ -1377,7 +1401,7 @@ describe('BrowserStore', () => {
       });
 
       it('should handle search errors', async () => {
-        const error = new Error('Search failed');
+        const error = serverError(500, 'Search failed');
         vi.spyOn(apiService, 'searchTranslations').mockReturnValue(throwError(() => error));
 
         store.searchTranslations('test');

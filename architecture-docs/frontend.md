@@ -18,6 +18,7 @@ Return to [architecture README](README.md).
   - [BrowserStore Feature Breakdown](#browserstore-feature-breakdown)
   - [TranslationListStore](#translationliststore)
   - [CollectionsStore](#collectionsstore)
+  - [API Errors — One Adapter at the HTTP Seam](#api-errors--one-adapter-at-the-http-seam)
 - [Key UI Patterns](#key-ui-patterns)
   - [Virtual Scrolling](#virtual-scrolling)
   - [Optimistic Updates with Rollback](#optimistic-updates-with-rollback)
@@ -222,6 +223,18 @@ The dialog returns `protectedTermsFile` unchanged in its submit payload. It incl
 
 ---
 
+### API Errors — One Adapter at the HTTP Seam
+
+The API clients (`BrowserApiService`, `CollectionsApiService`) never expose Angular's `HttpErrorResponse`. `provideTrackerHttpClient()` (`shared/api-error/api-error.ts`) installs one functional interceptor, `apiErrorInterceptor`, on the app's `HttpClient`. It is the only place in the Tracker that reads a status code or an error body: every failed response becomes an `ApiError`, an `Error` with three fields.
+
+| Field | Value |
+|---|---|
+| `kind` | From the status the API's `LingoTrackerExceptionFilter` chose: `network` (status 0), `invalid` (400, 422), `forbidden` (403, the read-only collection answer), `not-found` (404), `conflict` (409), `server` (5xx), `unknown` (anything else). |
+| `serverMessage` | The `message` of the API's `{ statusCode, message, error }` body; `undefined` for a network failure or a non-JSON body (an HTML page from a proxy). |
+| `details` | The body's `errors` array when present: bundle rule messages (`string[]`) or preferred-terminology rule errors (`PreferredTermRuleErrorDto[]`). |
+
+Consumers use two things. `apiErrorMessage(error, fallback)` is the text to show: the server's message when the API sent one, the message of an `Error` the Tracker raised itself (`CollectionIndexNotReadyError`), else the caller's localized fallback for that operation (`browser.toast.loadFoldersFailed` and the like). `kind` drives a decision: the translation editor opens the key-conflict dialog on `conflict` and shows its not-found text on `not-found`; `CollectionsStore` reads the `details` of an `invalid` answer as rule errors; `withBundlesFeature` appends string `details` to the message (`Invalid bundle definition: a; b`). No store, dialog or picker matches on a status or parses a body.
+
 ## Key UI Patterns
 
 ### Virtual Scrolling
@@ -364,7 +377,7 @@ All UI writes of a resource entry go through `withEntryWritesFeature` on `Browse
 | `deleteResource(collectionName, fullKey)` | `withItemActions.deleteTranslation` | Removes the entry when `entriesDeleted > 0`. |
 | `translateResource(collectionName, fullKey)` | `withItemActions.translateResource` | Patches the entry in place. |
 
-Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling, for example the dialog's 409 conflict dialog and its 400 and 404 messages. The store changes its caches only on success.
+Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling on the [`ApiError`](#api-errors--one-adapter-at-the-http-seam) it receives, for example the dialog's key-conflict dialog on `conflict` and its `invalid` and `not-found` messages. The store changes its caches only on success.
 
 `toUpdateDto` includes `moveTo` only when the entry changes folder, and `''` means the collection root. The server edits the entry, then moves it there (core `editResource` with `moveTo`). The store then drops the row, and it does not check whether the destination is still in the list's scope. The store rule and the DTO rule use the same test: the `moveTo` property is present or absent. Limitation: with nested resources on (`includeNested`), the list shows a folder and its descendants. An entry that moves from one descendant to another stays in scope, but its row disappears until the next reload of the folder.
 
@@ -460,6 +473,7 @@ Specs are co-located `*.spec.ts` files run by Vitest (jsdom, `globals: true`) th
 - Update a store's protected state with `patchState(unprotected(store), …)` (`@ngrx/signals/testing`).
 - Type a `SpectatorService` over a signal store as `SpectatorService<InstanceType<typeof Store>>`.
 - Mocks carry the real DTO shape (a `ResourceSummaryDto` has `tags` and `inheritedTags`). A partial fake of a DOM or library type takes one `as unknown as` cast with a comment at the point where it is handed over.
+- A mocked API service fails with the adapter's value, `toApiError(new HttpErrorResponse({ status, error: { message } }))`, never a plain `new Error(...)` standing in for HTTP. A spec that provides `HttpClient` uses `provideTrackerHttpClient()`, so a flushed `HttpTestingController` failure goes through the interceptor.
 
 ---
 
