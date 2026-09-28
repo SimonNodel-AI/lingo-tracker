@@ -12,12 +12,6 @@ import {
 } from './set-protected-terms';
 
 vi.mock('node:fs');
-vi.mock('./add-locale-to-collection', () => ({
-  addLocaleToCollection: vi.fn().mockResolvedValue({ message: 'ok', entriesBackfilled: 0, filesUpdated: 0 }),
-}));
-vi.mock('./remove-locale-from-collection', () => ({
-  removeLocaleFromCollection: vi.fn().mockResolvedValue({ message: 'ok', entriesPurged: 0, filesUpdated: 0 }),
-}));
 
 const CONFIG_PATH = path.resolve('/test', '.lingo-tracker.json');
 const DEFAULT_TERMS_PATH = path.resolve('/test', '.lingo-tracker-protected-terms.json');
@@ -161,33 +155,48 @@ describe('set-protected-terms', () => {
   });
 
   describe('setCollectionProtectedTermsFile', () => {
-    it('stores the pointer on the collection and creates the file', async () => {
+    it('stores the pointer on the collection and creates the file', () => {
       const newPath = path.resolve('/test', 'i18n/terms.json');
 
-      const result = await setCollectionProtectedTermsFile('myApp', 'i18n/terms.json', { cwd: '/test' });
+      const result = setCollectionProtectedTermsFile('myApp', 'i18n/terms.json', { cwd: '/test' });
 
       expect(result.filePath).toBe(newPath);
       expect(writtenTo(CONFIG_PATH).collections.myApp.protectedTermsFile).toBe('i18n/terms.json');
       expect(writtenTo(newPath)).toEqual([]);
     });
 
-    it('clears the pointer when passed undefined', async () => {
-      const result = await setCollectionProtectedTermsFile('myApp', undefined, { cwd: '/test' });
+    it('clears the pointer when passed undefined', () => {
+      const result = setCollectionProtectedTermsFile('myApp', undefined, { cwd: '/test' });
 
       expect(result.filePath).toBeUndefined();
       expect(writtenTo(CONFIG_PATH).collections.myApp.protectedTermsFile).toBeUndefined();
     });
 
-    it('throws when the collection does not exist', async () => {
-      await expect(setCollectionProtectedTermsFile('nope', 'terms.json', { cwd: '/test' })).rejects.toThrow(
+    it('keeps the rest of the record, including a translation override (regression)', () => {
+      const translation = { enabled: false, provider: 'none', apiKeyEnv: 'NONE' };
+      givenFiles({}, { ...baseConfig, collections: { myApp: { ...baseConfig.collections.myApp, translation } } });
+
+      setCollectionProtectedTermsFile('myApp', 'i18n/terms.json', { cwd: '/test' });
+
+      // `locales` equals the global list, so the re-minimized record inherits it.
+      expect(writtenTo(CONFIG_PATH).collections.myApp).toEqual({
+        translationsFolder: './i18n',
+        tags: ['feature-a'],
+        translation,
+        protectedTermsFile: 'i18n/terms.json',
+      });
+    });
+
+    it('throws when the collection does not exist', () => {
+      expect(() => setCollectionProtectedTermsFile('nope', 'terms.json', { cwd: '/test' })).toThrow(
         'Collection "nope" not found',
       );
     });
 
-    it('leaves the config untouched when the target directory does not exist', async () => {
+    it('leaves the config untouched when the target directory does not exist', () => {
       vi.mocked(fs.existsSync).mockImplementation((p) => p === CONFIG_PATH);
 
-      await expect(setCollectionProtectedTermsFile('myApp', 'nope/terms.json', { cwd: '/test' })).rejects.toThrow(
+      expect(() => setCollectionProtectedTermsFile('myApp', 'nope/terms.json', { cwd: '/test' })).toThrow(
         'directory does not exist',
       );
       expect(vi.mocked(fs.writeFileSync).mock.calls.filter((c) => c[0] === CONFIG_PATH)).toHaveLength(0);

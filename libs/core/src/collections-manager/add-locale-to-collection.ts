@@ -1,13 +1,9 @@
-import * as path from 'node:path';
-import { existsSync } from 'node:fs';
 import { updateConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
-import { walkFolders } from '../lib/normalize/iterative-folder-walker';
-import { openResourceFolder } from '../lib/resource/resource-folder';
-import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { BaseLocaleImmutableError, LocaleAlreadyExistsError } from '../lib/errors/lingo-tracker-error';
+import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';
-import { RESOURCE_ENTRIES_FILENAME } from '../constants';
+import { seedLocaleFiles } from './locale-files';
 
 export interface AddLocaleToCollectionOptions {
   readonly cwd?: string;
@@ -61,24 +57,7 @@ export async function addLocaleToCollection(
   }, cwd);
 
   const collection = openCollection(updatedConfig, collectionName, { cwd });
-
-  let entriesBackfilled = 0;
-  let filesUpdated = 0;
-
-  for (const visit of walkFolders(collection.translationsFolder)) {
-    if (!existsSync(path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME))) continue;
-
-    const folder = openResourceFolder(visit.absolutePath, { baseLocale: collection.baseLocale });
-
-    // Seed the new locale with the base (source) value and status 'new' — the same
-    // convention normalize uses for missing locales.
-    const seeded = folder.seedLocale(locale);
-    if (seeded > 0) {
-      folder.save();
-      entriesBackfilled += seeded;
-      filesUpdated++;
-    }
-  }
+  const { entries: entriesBackfilled, filesUpdated } = seedLocaleFiles(collection, locale);
 
   return {
     message: `Locale "${locale}" added to collection "${collectionName}" successfully`,

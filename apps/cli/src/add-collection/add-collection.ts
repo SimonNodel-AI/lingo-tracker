@@ -70,14 +70,12 @@ export const addCollectionCommand = defineCommand<InitOptions>()({
     return questions;
   },
   required: ['collectionName', 'translationsFolder'],
-  run: async ({ config, cwd, answers, interactive, ask }) => {
+  // Core refuses a duplicate name (CollectionAlreadyExistsError) and defaults a folder under
+  // node_modules to read-only when the flag is left unset.
+  run: async ({ cwd, answers, interactive, ask }) => {
     const { collectionName, translationsFolder } = answers;
 
-    if (config.collections?.[collectionName]) {
-      throw new Error(`Collection "${collectionName}" already exists.`);
-    }
-
-    const readOnly = await resolveReadOnly(answers.readOnly, isUnderNodeModules(translationsFolder), interactive, ask);
+    const readOnly = await resolveReadOnly(answers.readOnly, translationsFolder, interactive, ask);
 
     const newCollection = {
       translationsFolder,
@@ -85,8 +83,7 @@ export const addCollectionCommand = defineCommand<InitOptions>()({
       importFolder: answers.importFolder ?? DEFAULT_CONFIG.importFolder,
       baseLocale: answers.baseLocale ?? DEFAULT_CONFIG.baseLocale,
       locales: answers.locales ?? DEFAULT_CONFIG.locales,
-      // Only persist the flag when set, keeping writable collections clean in config.
-      ...(readOnly ? { readOnly: true } : {}),
+      readOnly,
     };
 
     const result = addCollection(collectionName, newCollection, { cwd });
@@ -97,22 +94,19 @@ export const addCollectionCommand = defineCommand<InitOptions>()({
 /**
  * Resolves the collection's read-only flag. An explicit --read-only/--no-read-only flag
  * always wins. Otherwise, in an interactive terminal the user is asked (pre-filled from
- * node_modules detection); in non-interactive mode the node_modules detection is the default.
+ * node_modules detection); in non-interactive mode the flag is left to core's default.
  */
 async function resolveReadOnly(
   flag: boolean | undefined,
-  nodeModulesDefault: boolean,
+  translationsFolder: string,
   interactive: boolean,
   ask: Ask,
-): Promise<boolean> {
-  if (typeof flag === 'boolean') {
+): Promise<boolean | undefined> {
+  if (typeof flag === 'boolean' || !interactive) {
     return flag;
   }
 
-  if (!interactive) {
-    return nodeModulesDefault;
-  }
-
+  const nodeModulesDefault = isUnderNodeModules(translationsFolder);
   const result = await ask({
     type: 'confirm',
     name: 'readOnly',

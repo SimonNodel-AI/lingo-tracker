@@ -18,16 +18,21 @@ import {
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  CollectionAlreadyExistsError,
   CollectionNotFoundError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidCollectionError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  ParentDirectoryMissingError,
+  PreferredTerminologyValidationError,
+  ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
@@ -44,13 +49,17 @@ import {
  *
  * Every mapped answer has the same `{ statusCode, message, error }` body. An invalid bundle
  * definition also carries `errors`, every problem the domain rules found, under the fixed
- * message `Invalid bundle definition`.
+ * message `Invalid bundle definition`; invalid preferred-terminology rules carry the per-row
+ * `errors` under `Invalid preferred terminology rules`.
  */
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
   const { message } = error;
 
   if (error instanceof InvalidBundleDefinitionError) {
     return invalidBundleDefinitionToHttp(error);
+  }
+  if (error instanceof PreferredTerminologyValidationError) {
+    return withErrors('Invalid preferred terminology rules', error.errors);
   }
 
   if (
@@ -64,7 +73,11 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   if (error instanceof ReadOnlyCollectionError) {
     return new ForbiddenException(message);
   }
-  if (error instanceof BundleAlreadyExistsError || error instanceof ResourceAlreadyExistsError) {
+  if (
+    error instanceof BundleAlreadyExistsError ||
+    error instanceof ResourceAlreadyExistsError ||
+    error instanceof CollectionAlreadyExistsError
+  ) {
     return new ConflictException(message);
   }
   if (error instanceof AutoTranslationDisabledError) {
@@ -78,7 +91,10 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
     error instanceof InvalidLocaleError ||
     error instanceof LocaleNotFoundError ||
     error instanceof LocaleAlreadyExistsError ||
-    error instanceof BaseLocaleImmutableError
+    error instanceof BaseLocaleImmutableError ||
+    error instanceof InvalidCollectionError ||
+    error instanceof ProtectedTermsFileNotSetError ||
+    error instanceof ParentDirectoryMissingError
   ) {
     return new BadRequestException(message);
   }
@@ -89,11 +105,13 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
 }
 
 function invalidBundleDefinitionToHttp(error: InvalidBundleDefinitionError): HttpException {
+  return withErrors('Invalid bundle definition', error.errors);
+}
+
+/** A 400 whose body also lists every problem found. */
+function withErrors(message: string, errors: readonly unknown[]): HttpException {
   const status = HttpStatus.BAD_REQUEST;
-  return new BadRequestException({
-    ...HttpException.createBody('Invalid bundle definition', 'Bad Request', status),
-    errors: [...error.errors],
-  });
+  return new BadRequestException({ ...HttpException.createBody(message, 'Bad Request', status), errors: [...errors] });
 }
 
 /** Translation codes that mean the server's translation setup is wrong, not the request. */

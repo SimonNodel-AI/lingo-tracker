@@ -60,7 +60,7 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
     if (hasFile) {
       const pointer = options.file?.trim() ? options.file.trim() : undefined;
       const result = collectionName
-        ? await setCollectionProtectedTermsFile(collectionName, pointer, { cwd })
+        ? setCollectionProtectedTermsFile(collectionName, pointer, { cwd })
         : setGlobalProtectedTermsFile(pointer, { cwd });
       ConsoleFormatter.success(result.message);
     }

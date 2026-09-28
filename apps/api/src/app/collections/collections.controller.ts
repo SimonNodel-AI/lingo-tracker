@@ -1,4 +1,4 @@
-import { Controller, Delete, Param, HttpException, HttpStatus, Post, Body, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from '@nestjs/common';
 import {
   addCollection,
   deleteCollectionByName,
@@ -8,7 +8,6 @@ import {
   setCollectionProtectedTerms,
   updateCollection,
 } from '@simoncodes-ca/core';
-import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
@@ -17,14 +16,14 @@ import { mapDtoToCollection } from '../mappers/collection.mapper';
 /**
  * Persists a collection's protected terms to its configured file. Terms live in a file
  * rather than the config, so a collection with no `protectedTermsFile` has nowhere to put
- * them — `setCollectionProtectedTerms` throws, and the caller turns that into a 400.
+ * them — `setCollectionProtectedTerms` throws `ProtectedTermsFileNotSetError` (400).
  */
 function writeCollectionProtectedTerms(collectionName: string, terms: string[] | undefined): void {
   if (terms === undefined) {
     return;
   }
   if (!Array.isArray(terms) || terms.some((term) => typeof term !== 'string')) {
-    throw new HttpException('protectedTerms must be an array of strings', HttpStatus.BAD_REQUEST);
+    throw new BadRequestException('protectedTerms must be an array of strings');
   }
   setCollectionProtectedTerms(collectionName, terms);
 }
@@ -57,38 +56,25 @@ export class CollectionsController {
     this.#index.apply([...mutations, ...unique.map((folder) => reindexMutation(folder))]);
   }
 
+  /** Core's typed errors (for example `CollectionNotFoundError`, 404) reach the global exception filter. */
   @Delete(':collectionName')
   async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
-    try {
-      const decodedCollectionName = decodeURIComponent(collectionName);
-      const translationsFolder = this.#translationsFolderOf(decodedCollectionName);
-      deleteCollectionByName(decodedCollectionName);
-      this.#reindex([translationsFolder]);
-      return {
-        message: `Collection "${decodedCollectionName}" deleted successfully`,
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error deleting collection';
-      throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
-    }
+    const decodedCollectionName = decodeURIComponent(collectionName);
+    const translationsFolder = this.#translationsFolderOf(decodedCollectionName);
+    deleteCollectionByName(decodedCollectionName);
+    this.#reindex([translationsFolder]);
+    return {
+      message: `Collection "${decodedCollectionName}" deleted successfully`,
+    };
   }
 
+  /** Core defaults a collection under `node_modules` to read-only unless `readOnly` is sent. */
   @Post()
   async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
-    try {
-      const { name, collection } = body;
-      const mapped = mapDtoToCollection(collection);
-      // Default to read-only for collections vendored under node_modules unless the caller was explicit.
-      if (mapped.readOnly === undefined && isUnderNodeModules(mapped.translationsFolder)) {
-        mapped.readOnly = true;
-      }
-      const result = addCollection(name, mapped);
-      writeCollectionProtectedTerms(name, collection.protectedTerms);
-      return { message: result.message };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error creating collection';
-      throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
-    }
+    const { name, collection } = body;
+    const result = addCollection(name, mapDtoToCollection(collection));
+    writeCollectionProtectedTerms(name, collection.protectedTerms);
+    return { message: result.message };
   }
 
   /**
@@ -103,20 +89,12 @@ export class CollectionsController {
     @Param('collectionName') collectionName: string,
     @Body() body: UpdateCollectionDto,
   ): Promise<{ message: string }> {
-    try {
-      const decodedCollectionName = decodeURIComponent(collectionName);
-      const { name, collection } = body;
-      const oldTranslationsFolder = this.#translationsFolderOf(decodedCollectionName);
-      const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
-      this.#reindex(
-        [oldTranslationsFolder, this.#translationsFolderOf(name || decodedCollectionName)],
-        result.mutations,
-      );
-      writeCollectionProtectedTerms(name ?? decodedCollectionName, collection.protectedTerms);
-      return { message: result.message };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error updating collection';
-      throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
-    }
+    const decodedCollectionName = decodeURIComponent(collectionName);
+    const { name, collection } = body;
+    const oldTranslationsFolder = this.#translationsFolderOf(decodedCollectionName);
+    const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
+    this.#reindex([oldTranslationsFolder, this.#translationsFolderOf(name || decodedCollectionName)], result.mutations);
+    writeCollectionProtectedTerms(name ?? decodedCollectionName, collection.protectedTerms);
+    return { message: result.message };
   }
 }

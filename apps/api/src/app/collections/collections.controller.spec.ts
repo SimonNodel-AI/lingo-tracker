@@ -1,10 +1,11 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { HttpException } from '@nestjs/common';
 import { resolve } from 'node:path';
 import { CollectionsController } from './collections.controller';
 import { ConfigService } from '../config/config.service';
 import { CollectionIndex } from '../cache/collection-index.service';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import * as core from '@simoncodes-ca/core';
+import { CollectionAlreadyExistsError, CollectionNotFoundError } from '@simoncodes-ca/core';
 import type { UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 
 // Mock the core writes; keep the real config resolution and mutation helpers
@@ -81,24 +82,28 @@ describe('CollectionsController', () => {
       expect(deleteCollectionByName).toHaveBeenCalledWith('My Collection');
     });
 
-    it('should throw HttpException when collection not found', async () => {
+    it('lets CollectionNotFoundError through, which the filter answers with 404', async () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockImplementation(() => {
-        throw new Error('Collection not found');
+        throw new CollectionNotFoundError('non-existent');
       });
 
-      await expect(collectionsController.deleteCollection('non-existent')).rejects.toThrow(HttpException);
-      expect(deleteCollectionByName).toHaveBeenCalledWith('non-existent');
+      const error = await collectionsController.deleteCollection('non-existent').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(CollectionNotFoundError);
+      expect(toHttpException(error).getStatus()).toBe(404);
+      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
-    it('should throw HttpException when deletion fails', async () => {
+    it('propagates an unexpected error and leaves the index alone', async () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockImplementation(() => {
         throw new Error('Failed to delete collection');
       });
 
-      await expect(collectionsController.deleteCollection('test-collection')).rejects.toThrow(HttpException);
-      expect(deleteCollectionByName).toHaveBeenCalledWith('test-collection');
+      await expect(collectionsController.deleteCollection('test-collection')).rejects.toThrow(
+        'Failed to delete collection',
+      );
       expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
@@ -135,10 +140,10 @@ describe('CollectionsController', () => {
       expect(addCollection).toHaveBeenCalledWith('new-collection', dto.collection);
     });
 
-    it('should throw HttpException when creation fails', async () => {
+    it('lets CollectionAlreadyExistsError through, which the filter answers with 409', async () => {
       const addCollection = core.addCollection as jest.Mock;
       addCollection.mockImplementation(() => {
-        throw new Error('Failed to create collection');
+        throw new CollectionAlreadyExistsError('new-collection');
       });
 
       const dto = {
@@ -148,7 +153,10 @@ describe('CollectionsController', () => {
         },
       };
 
-      await expect(collectionsController.createCollection(dto as any)).rejects.toThrow(HttpException);
+      const error = await collectionsController.createCollection(dto as any).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(CollectionAlreadyExistsError);
+      expect(toHttpException(error).getStatus()).toBe(409);
     });
   });
 
@@ -194,10 +202,10 @@ describe('CollectionsController', () => {
       expect(updateCollection).toHaveBeenCalledWith('My Collection', 'My Collection', dto.collection);
     });
 
-    it('should throw HttpException when update fails', async () => {
+    it('lets CollectionNotFoundError through (404) and leaves the index alone', async () => {
       const updateCollection = core.updateCollection as jest.Mock;
       updateCollection.mockImplementation(() => {
-        throw new Error('Failed to update collection');
+        throw new CollectionNotFoundError('old-name');
       });
 
       const dto = {
@@ -207,7 +215,10 @@ describe('CollectionsController', () => {
         },
       };
 
-      await expect(collectionsController.updateCollectionByName('old-name', dto as any)).rejects.toThrow(HttpException);
+      const error = await collectionsController.updateCollectionByName('old-name', dto as any).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(CollectionNotFoundError);
+      expect(toHttpException(error).getStatus()).toBe(404);
       expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 

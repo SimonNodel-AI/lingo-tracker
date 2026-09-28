@@ -1,4 +1,4 @@
-import { type Collection, translateLocale } from '@simoncodes-ca/core';
+import { AutoTranslationDisabledError, translateLocale } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -19,10 +19,13 @@ export interface TranslateLocaleOptions {
 export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
   name: 'Translate locale',
   collection: 'writable',
-  // Called in both modes before `required` is checked, so a collection that cannot be
-  // translated is reported as such rather than as a missing --locale.
+  // Core's translateLocale refuses a collection without auto-translation (AutoTranslationDisabledError).
   prompts: (options, { collection }) => {
-    assertTranslatable(collection);
+    if (collection.targetLocales.length === 0) {
+      throw new Error(
+        `No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`,
+      );
+    }
     return options.locale
       ? []
       : [
@@ -64,7 +67,9 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
           : undefined,
       });
     } catch (error) {
-      throw new Error(`Translation failed: ${error instanceof Error ? error.message : String(error)}`);
+      const hint =
+        error instanceof AutoTranslationDisabledError ? '. Set translation.enabled = true in your configuration' : '';
+      throw new Error(`Translation failed: ${error instanceof Error ? error.message : String(error)}${hint}`);
     }
 
     console.log('');
@@ -91,16 +96,3 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
     return result.failedCount > 0 ? { exitCode: 1 } : undefined;
   },
 });
-
-/** Auto-translation must be enabled, and there must be a locale other than the base locale. */
-function assertTranslatable(collection: Collection): void {
-  if (!collection.translationConfig?.enabled) {
-    throw new Error(
-      `Auto-translation is not enabled for collection "${collection.name}". ` +
-        `Set translation.enabled = true in your configuration.`,
-    );
-  }
-  if (collection.targetLocales.length === 0) {
-    throw new Error(`No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`);
-  }
-}

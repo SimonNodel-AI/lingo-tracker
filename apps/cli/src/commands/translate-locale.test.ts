@@ -1,4 +1,10 @@
-import { type LingoTrackerConfig, loadConfig, type TranslateLocaleResult, translateLocale } from '@simoncodes-ca/core';
+import {
+  AutoTranslationDisabledError,
+  type LingoTrackerConfig,
+  loadConfig,
+  type TranslateLocaleResult,
+  translateLocale,
+} from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -97,14 +103,26 @@ describe('translateLocaleCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('reports disabled translation before a missing --locale', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, translation: undefined });
+  it('adds a configuration hint when core reports auto-translation disabled', async () => {
+    vi.mocked(translateLocale).mockRejectedValue(new AutoTranslationDisabledError('main'));
 
-    await translateLocaleCommand({});
+    await translateLocaleCommand({ locale: 'fr' });
 
     expect(console.error).toHaveBeenCalledWith(
-      '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration.',
+      '❌ Translation failed: Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
     );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('exits 1 when the collection has no target locales', async () => {
+    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, locales: ['en'] });
+
+    await translateLocaleCommand({ locale: 'fr' });
+
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ No target locales configured. Add locales other than the base locale "en".',
+    );
+    expect(translateLocale).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 

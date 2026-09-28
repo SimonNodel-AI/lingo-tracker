@@ -57,10 +57,11 @@ libs/core/src/
 │   └── tracker-metadata.ts       # TrackerMetadata interface
 │
 ├── collections-manager/          # Collection-level operations (create / delete / update in config)
-│   ├── add-collection.ts         # addCollection()
+│   ├── add-collection.ts         # addCollection(): one config write through the Collection Entry
 │   ├── delete-collection-by-name.ts # deleteCollectionByName()
+│   ├── locale-files.ts           # seedLocaleFiles() / dropLocaleFiles(): the translation-file side of a locale change
 │   ├── set-protected-terms.ts    # setGlobal/CollectionProtectedTerms(): write the terms file; setGlobal/CollectionProtectedTermsFile(): move the pointer
-│   └── update-collection.ts      # updateCollection() — async; diffs locale list and calls addLocaleToCollection / removeLocaleFromCollection
+│   └── update-collection.ts      # updateCollection() — validates, seeds/purges locale files, then one config write through the Collection Entry
 │
 └── lib/                          # Deeper sub-modules
     ├── bundle/                   # Bundle generation pipeline
@@ -77,6 +78,7 @@ libs/core/src/
     ├── config/                   # Config file I/O and collection resolution
     │   ├── load-config.ts        # loadConfig(): the only reader of .lingo-tracker.json
     │   ├── open-collection.ts    # openCollection(): a collection's effective settings (Collection)
+    │   ├── collection-entry.ts   # Collection Entry: toCollectionEntry() / addCollectionEntry() / replaceCollectionEntry(), pure
     │   ├── config-file-operations.ts # read/write/update .lingo-tracker.json (reads via loadConfig)
     │   └── protected-terms-file.ts   # Resolve, read, and write protected-terms JSON files (cached per path)
     │
@@ -248,7 +250,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 ## Public Surface
 
-`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 179 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing`, `ImportStrategy` and the [Bundle Definition](glossary.md#bundle-definition) type and rules from `@simoncodes-ca/domain`.
+`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 182 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing`, `ImportStrategy` and the [Bundle Definition](glossary.md#bundle-definition) type and rules from `@simoncodes-ca/domain`.
 
 | Group | What it holds |
 |---|---|
@@ -272,7 +274,11 @@ Core owns the config file and the rule that turns a collection's config entry in
 - **`loadConfig({ cwd? })`** is the only reader of `.lingo-tracker.json`. It returns the file as written, with no validation and no fallbacks. It throws `ConfigNotFoundError` when the file does not exist and `ConfigParseError` when the file is not a JSON object; other I/O errors pass through. The CLI passes its `INIT_CWD`-aware directory, the API passes `process.cwd()`, and `createConfigFileOperations().read()` (used by the config writers) reads through it too.
 - **`openCollection(config, name, { cwd?, writable? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (collection, else global, else `[]`), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `protectedTermsFiles` (the absolute paths of the global and collection protected-terms files, resolved but not read; see [Protected Terms Resolution](#protected-terms-resolution)), `readOnly`, and the raw entry as `config`. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
 
-The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
+The fallback rule lives only in `openCollection`. The collection operations in `collections-manager/` (`addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`) use it for their locale checks.
+
+The write side is the [Collection Entry](glossary.md#collection-entry) (`lib/config/collection-entry.ts`): three pure functions over the in-memory config that decide what a collection's record contains. `toCollectionEntry(config, collection)` builds the minimal record: `translationsFolder` (trimmed; blank is `InvalidCollectionError`), then only what differs from the global config (`exportFolder`, `importFolder`, `baseLocale`, `locales` compared as ordered lists), `translation` verbatim (a per-collection override is never diffed against the global block), `readOnly` only when true, normalized non-empty `tags`, a trimmed non-empty `protectedTermsFile`. The rule for every field is listed once in a record keyed by the `LingoTrackerCollection` type, so a new field is a compile error until its rule exists. `addCollectionEntry(config, name, collection)` refuses a taken name and, when `readOnly` is left unset, marks a folder under `node_modules` read-only (the domain `isUnderNodeModules`). `replaceCollectionEntry(config, name, collection, newName?)` refuses an unknown name and a rename onto a taken one, rebuilds the record in full (a field the caller leaves out is dropped) and renames in place, keeping the collection's position in the file.
+
+Three operations write a collection record, each through the Collection Entry and each with one config write: `addCollection` (`updateConfig` with `addCollectionEntry`); `updateCollection`, which reads the config, builds the new config with `replaceCollectionEntry` (so existence and rename collisions fail before anything changes), diffs `collection.locales` against the opened collection's effective locales (an empty or absent list means inherit and touches nothing; the base locale is never seeded or purged), refuses the diff on a read-only collection and checks each added locale's format, seeds and purges the translation files with `seedLocaleFiles` / `dropLocaleFiles` (`collections-manager/locale-files.ts`, shared with `addLocaleToCollection` / `removeLocaleFromCollection`), and only then writes the config; and `setCollectionProtectedTermsFile`, which carries the stored record over with the new pointer. `deleteCollectionByName` removes the record and needs no rule. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
 
 ---
 
@@ -286,8 +292,11 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 | `ConfigParseError` | `CONFIG_PARSE_FAILED` | `configPath`, `reason` | `loadConfig` |
 | `ProtectedTermsFileError` | `INVALID_PROTECTED_TERMS_FILE` | `filePath` | `readProtectedTermsFile` and every reader built on it: the protected-terms commands, import/export callers, `resolveProtectedTermsForConfig`, and `openTranslator` (so `addResource` / `editResource` with auto-translation on, `translateExistingResource` and `translateLocale`, when there is work). The API answers 500 with the message. |
 | `CollectionNotFoundError` | `COLLECTION_NOT_FOUND` | `collectionName` | `openCollection`, `deleteCollectionByName`, `updateCollection`, `setCollectionProtectedTerms`, `setCollectionProtectedTermsFile` |
-| `CollectionAlreadyExistsError` | `COLLECTION_ALREADY_EXISTS` | `collectionName` | `addCollection`, `updateCollection` (rename) |
-| `ReadOnlyCollectionError` | `COLLECTION_READ_ONLY` | `collectionName` | `openCollection` with `{ writable: true }` |
+| `CollectionAlreadyExistsError` | `COLLECTION_ALREADY_EXISTS` | `collectionName` | `addCollection`, `updateCollection` (rename), through the Collection Entry |
+| `InvalidCollectionError` | `INVALID_COLLECTION` | — | the Collection Entry (so `addCollection`, `updateCollection`, `setCollectionProtectedTermsFile`) for a missing or blank `translationsFolder` |
+| `ReadOnlyCollectionError` | `COLLECTION_READ_ONLY` | `collectionName` | `openCollection` with `{ writable: true }`; `updateCollection` when the locales change |
+| `ProtectedTermsFileNotSetError` | `PROTECTED_TERMS_FILE_NOT_SET` | `collectionName` | `setCollectionProtectedTerms` for a collection with no `protectedTermsFile` pointer |
+| `ParentDirectoryMissingError` | `PARENT_DIRECTORY_MISSING` | `filePath`, `directory` | `writeProtectedTermsFile` / `assertWritableProtectedTermsPath` (so the protected-terms setters) and `writePreferredTerminology` |
 | `InvalidLocaleError` | `INVALID_LOCALE` | `locale` | `addLocaleToCollection`, `removeLocaleFromCollection` |
 | `LocaleNotFoundError` | `LOCALE_NOT_FOUND` | `locale`, `collectionName` | `removeLocaleFromCollection`; `addResource` / `editResource` for a supplied translation in a locale the collection does not have |
 | `LocaleAlreadyExistsError` | `LOCALE_ALREADY_EXISTS` | `locale`, `collectionName` | `addLocaleToCollection` |
@@ -309,7 +318,8 @@ Rules:
 
 - **Domain validators stay untyped.** `@simoncodes-ca/domain` has no error classes. `validateKey`, `validateTargetFolder`, and `validateLocale` throw a plain `Error`. Core wraps each call in one place and throws the typed error with the same message: `validateAndResolvePaths` for keys and target folders, and `assertValidLocale` (`collections-manager/assert-valid-locale.ts`) for locales.
 - **Batch operations report per-item failures, not throw.** `deleteResource`, `moveResource`, and `moveFolder` put per-key failures into their result (`errors`) as strings. Bad input to the whole operation (a malformed folder path, a missing folder, a move into the folder's own descendant) is a typed error.
-- **Unexpected failures stay `Error`.** File I/O errors, invariant breaks (for example `ResourceFolder`'s "Resource entry not found"), and parser errors for import files are not typed. An adapter treats them as "something went wrong" and shows the message.
+- **Unexpected failures stay `Error`.** File I/O errors, invariant breaks (for example `ResourceFolder`'s "Resource entry not found"), and parser errors for import files are not typed. An adapter treats them as "something went wrong": the CLI shows the message, the API answers a generic 500.
+- **Adapters do not duplicate core's checks.** The CLI `add-collection` no longer tests for a taken name itself, and `translate-locale` no longer tests `translationConfig.enabled`: the core errors (`CollectionAlreadyExistsError`, `AutoTranslationDisabledError`) reach the runner, which prints their message. The API controllers have no catch-all; every core error reaches the exception filter.
 
 ---
 

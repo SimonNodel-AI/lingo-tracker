@@ -8,7 +8,7 @@ import {
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { LingoTrackerError } from '../errors/lingo-tracker-error';
+import { LingoTrackerError, ParentDirectoryMissingError } from '../errors/lingo-tracker-error';
 
 /**
  * Default location of the preferred-terminology file, resolved against the directory
@@ -179,7 +179,7 @@ export function loadPreferredTerminology(
  * of where it lands. An empty `reason` is dropped rather than written as `""`.
  *
  * Throws `PreferredTerminologyValidationError` (with the per-row errors attached) when
- * the rules fail validation, and a plain `Error` when the parent directory is missing;
+ * the rules fail validation, and `ParentDirectoryMissingError` when the parent directory is missing;
  * in both cases the file is left untouched. The file is created when absent.
  */
 export function writePreferredTerminology(filePath: string, rules: readonly PreferredTermRule[]): void {
@@ -192,7 +192,7 @@ export function writePreferredTerminology(filePath: string, rules: readonly Pref
 
   const parent = dirname(filePath);
   if (!existsSync(parent)) {
-    throw new Error(`Cannot write preferred terminology file — directory does not exist: ${parent}`);
+    throw new ParentDirectoryMissingError('preferred terminology file', filePath, parent);
   }
 
   const sorted = sortPreferredTermRules(normalizePreferredTermRules(rules));

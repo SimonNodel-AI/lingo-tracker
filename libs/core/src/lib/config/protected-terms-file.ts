@@ -3,7 +3,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { effectiveProtectedTerms, normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import { ParentDirectoryMissingError, ProtectedTermsFileError } from '../errors/lingo-tracker-error';
 import type { Collection } from './open-collection';
 
 /**
@@ -109,7 +109,7 @@ export function readProtectedTermsFile(filePath: string, options: { explicit?: b
 export function assertWritableProtectedTermsPath(filePath: string): void {
   const parent = dirname(filePath);
   if (!existsSync(parent)) {
-    throw new Error(`Cannot write protected terms file — directory does not exist: ${parent}`);
+    throw new ParentDirectoryMissingError('protected terms file', filePath, parent);
   }
 }
 

@@ -45,7 +45,7 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 | Method | Path | Purpose | Request DTO | Response DTO |
 |--------|------|---------|-------------|--------------|
 | `POST` | `/collections` | Create a new [collection](glossary.md#collection) | `CreateCollectionDto` | `{ message: string }` |
-| `PUT` | `/collections/:collectionName` | Update a collection's name or settings. When `locales` in the request body differs from the current config, the handler diffs the two lists and adds/removes locale files on disk accordingly (base locale cannot be removed). The handler writes a `protectedTerms` array from the body to the collection's terms file. A collection with no `protectedTermsFile` returns 400. | `UpdateCollectionDto` | `{ message: string }` |
+| `PUT` | `/collections/:collectionName` | Replace a collection's settings, optionally renaming it (core `updateCollection`, through the [Collection Entry](glossary.md#collection-entry)). When `locales` in the request body is a non-empty list that differs from the current locales, core seeds and purges the locale files on disk (the base locale is never removed) and then writes the config once. The handler writes a `protectedTerms` array from the body to the collection's terms file. An unknown collection is 404, a rename onto a taken name 409, a collection with no `protectedTermsFile` 400 (`ProtectedTermsFileNotSetError`). | `UpdateCollectionDto` | `{ message: string }` |
 | `DELETE` | `/collections/:collectionName` | Delete a collection and its config entry | — | `{ message: string }` |
 
 ### Resources
@@ -170,7 +170,7 @@ graph TD
 
 Controllers are the only layer that knows HTTP. They read the config from `ConfigService` (a thin wrapper over core `loadConfig()` that maps `ConfigNotFoundError` to 404 and parse/read failures to 500), turn the `:collectionName` route param into the effective `Collection` with `openRouteCollection()` (`collections/open-route-collection.ts`: decodes the name, calls core `openCollection()`, maps `CollectionNotFoundError` to 404), delegate business operations to `@simoncodes-ca/core` (see [core-library.md](core-library.md)), apply mappers at the boundary, and pass the `mutations` of every successful core write to `CollectionIndex.apply()`. Controllers do not catch core errors; the global exception filter maps them (see [Error Mapping](#error-mapping)). The resource and folder handlers pass the opened `Collection` (and, for a cross-collection move, the one `openDestinationCollection()` returns) to core as the first argument and copy the DTO fields through; which locales get what on create or edit is core's [locale seeding](glossary.md#locale-seeding), not the controller's.
 
-**Read-only enforcement.** `WritableCollectionGuard` (`collections/guards/writable-collection.guard.ts`) is applied at the class level to the `Resources`, `Locales`, and `Folders` controllers. For any non-`GET` request it reads the `:collectionName` route param, opens the collection with core `openCollection(config, name, { writable: true })`, and maps `ReadOnlyCollectionError` to `403 Forbidden` (unknown collections pass through so the controller returns its 404). This is the single API choke-point for read-only enforcement. The `Collections` controller is intentionally **not** guarded: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even for read-only collections, since the lock protects resources, not the registration. On create, the controller defaults `readOnly` to `true` for `node_modules` paths (via the `isUnderNodeModules` domain helper) when the DTO omits it.
+**Read-only enforcement.** `WritableCollectionGuard` (`collections/guards/writable-collection.guard.ts`) is applied at the class level to the `Resources`, `Locales`, and `Folders` controllers. For any non-`GET` request it reads the `:collectionName` route param, opens the collection with core `openCollection(config, name, { writable: true })`, and maps `ReadOnlyCollectionError` to `403 Forbidden` (unknown collections pass through so the controller returns its 404). This is the single API choke-point for read-only enforcement. The `Collections` controller is intentionally **not** guarded: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even for read-only collections, since the lock protects resources, not the registration. On create, core's Collection Entry defaults `readOnly` to `true` for `node_modules` paths when the DTO omits it; the controller adds nothing.
 
 ---
 
@@ -183,11 +183,12 @@ Controllers are the only layer that knows HTTP. They read the config from `Confi
 | `HttpException` (thrown by a controller, guard, or `ConfigService`) | its own | its own |
 | `CollectionNotFoundError`, `ResourceNotFoundError`, `FolderNotFoundError`, `BundleNotFoundError` | 404 (`NotFoundException`) | error message |
 | `ReadOnlyCollectionError` | 403 (`ForbiddenException`) | error message |
-| `BundleAlreadyExistsError`, `ResourceAlreadyExistsError` | 409 (`ConflictException`) | error message |
+| `BundleAlreadyExistsError`, `ResourceAlreadyExistsError`, `CollectionAlreadyExistsError` | 409 (`ConflictException`) | error message |
 | `AutoTranslationDisabledError` | 422 (`UnprocessableEntityException`) | error message |
 | `InvalidFolderPathError`, `FolderMoveIntoDescendantError` | 400 (`BadRequestException`) | `Validation error: <message>` |
-| `InvalidResourceKeyError`, `InvalidLocaleError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError` | 400 (`BadRequestException`) | error message |
+| `InvalidResourceKeyError`, `InvalidLocaleError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError`, `InvalidCollectionError`, `ProtectedTermsFileNotSetError`, `ParentDirectoryMissingError` | 400 (`BadRequestException`) | error message |
 | `InvalidBundleDefinitionError` | 400 (`BadRequestException`) | `Invalid bundle definition`, with `errors: string[]` in the body |
+| `PreferredTerminologyValidationError` | 400 (`BadRequestException`) | `Invalid preferred terminology rules`, with `errors` (one per invalid row, indexed by submitted row) in the body |
 | `TranslationError` with code `INVALID_REQUEST` | 400 (`BadRequestException`) | `Translation provider error: <message>` |
 | `TranslationError` with code `MISSING_API_KEY`, `UNKNOWN_PROVIDER`, or `AUTH_ERROR` (server misconfiguration) | 500 (`InternalServerErrorException`) | `Translation provider error: <message>` |
 | `TranslationError` with code `RATE_LIMIT` | 429 (`HttpException`, error `Too Many Requests`) | `Translation provider error: <message>` |
@@ -199,8 +200,8 @@ Controllers are the only layer that knows HTTP. They read the config from `Confi
 
 Statuses that are kept from before the filter, although they do not match the class name:
 
-- `LocaleNotFoundError` and `LocaleAlreadyExistsError` answer **400**, not 404 / 409. Bundle conflicts answer 409.
-- The `Collections` and `Config` controllers keep their own catch that answers **400** for every failure. So `CollectionNotFoundError` from `DELETE`/`PUT /collections/:name` is 400 (not 404), `CollectionAlreadyExistsError` is 400, and `PreferredTerminologyValidationError` is 400 with `{ message, errors }`. These errors never reach the filter.
+- `LocaleNotFoundError` and `LocaleAlreadyExistsError` answer **400**, not 404 / 409. Bundle and collection conflicts answer 409.
+- The `Collections` and `Config` controllers have no catch of their own: `CollectionNotFoundError` from `DELETE`/`PUT /collections/:name` is 404, `CollectionAlreadyExistsError` is 409, and `PreferredTerminologyValidationError` (thrown by the controller's own pre-validation as well as by `writePreferredTerminology`) is 400 with `{ message, errors }`. Request-shape checks (`protectedTerms must be an array of strings`, `preferredTerminology must be an array of rules`) throw `BadRequestException` directly. An untyped failure (for example a malformed `preferredTerminologyFile` pointer in the config) is a generic 500.
 - The `Bundles` controller answers **400** for an untyped failure (the other controllers answer 500).
 - Route-level resolution keeps its own Nest exceptions, because the messages are route-specific: `openRouteCollection` / `openDestinationCollection` (404 `Collection "x" not found` / `Destination collection "x" not found`, 403 read-only), `WritableCollectionGuard` (403), and `ConfigService` (404 `Configuration file not found`, 500 `Invalid configuration file format` / `Failed to read configuration file`).
 

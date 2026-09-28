@@ -87,6 +87,35 @@ export class ReadOnlyCollectionError extends LingoTrackerError {
   }
 }
 
+/** A collection record cannot be stored as given (for example a blank `translationsFolder`). */
+export class InvalidCollectionError extends LingoTrackerError {
+  constructor(message: string) {
+    super(message, 'INVALID_COLLECTION');
+  }
+}
+
+/** Terms were given for a collection that has no `protectedTermsFile` pointer to write them to. */
+export class ProtectedTermsFileNotSetError extends LingoTrackerError {
+  readonly collectionName: string;
+
+  constructor(collectionName: string) {
+    super(ErrorMessages.protectedTermsFileNotSet(collectionName), 'PROTECTED_TERMS_FILE_NOT_SET');
+    this.collectionName = collectionName;
+  }
+}
+
+/** A terminology file cannot be written because its parent directory does not exist. */
+export class ParentDirectoryMissingError extends LingoTrackerError {
+  readonly filePath: string;
+  readonly directory: string;
+
+  constructor(what: string, filePath: string, directory: string) {
+    super(ErrorMessages.parentDirectoryMissing(what, directory), 'PARENT_DIRECTORY_MISSING');
+    this.filePath = filePath;
+    this.directory = directory;
+  }
+}
+
 // --- Locales -----------------------------------------------------------------
 
 /** The locale string is malformed. The message is the domain validator's text. */
