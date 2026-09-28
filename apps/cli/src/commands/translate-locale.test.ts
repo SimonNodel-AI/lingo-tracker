@@ -1,10 +1,4 @@
-import {
-  AutoTranslationDisabledError,
-  type LingoTrackerConfig,
-  loadConfig,
-  type TranslateLocaleResult,
-  translateLocale,
-} from '@simoncodes-ca/core';
+import { type LingoTrackerConfig, loadConfig, type TranslateLocaleResult, translateLocale } from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -103,14 +97,18 @@ describe('translateLocaleCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('adds a configuration hint when core reports auto-translation disabled', async () => {
-    vi.mocked(translateLocale).mockRejectedValue(new AutoTranslationDisabledError('main'));
+  it.each([
+    ['disabled', { ...CONFIG, translation: { enabled: false, provider: 'none', apiKeyEnv: 'NONE' } }],
+    ['absent', { ...CONFIG, translation: undefined }],
+  ])('exits 1 with a configuration hint, before any core call, when auto-translation is %s', async (_label, config) => {
+    vi.mocked(loadConfig).mockReturnValue(config);
 
     await translateLocaleCommand({ locale: 'fr' });
 
     expect(console.error).toHaveBeenCalledWith(
-      '❌ Translation failed: Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
+      '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
     );
+    expect(translateLocale).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -157,6 +155,16 @@ describe('translateLocaleCommand', () => {
         expect.anything(),
       );
       expect(translateLocale).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ targetLocale: 'de' }));
+    });
+
+    it('refuses a collection with auto-translation disabled before asking for a locale', async () => {
+      vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, translation: undefined });
+
+      await translateLocaleCommand({});
+
+      expect(prompts).not.toHaveBeenCalled();
+      expect(translateLocale).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('cancelling prints one cancel line and exits 0', async () => {

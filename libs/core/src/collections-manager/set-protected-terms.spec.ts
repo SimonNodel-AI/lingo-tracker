@@ -138,9 +138,10 @@ describe('set-protected-terms', () => {
       expect(writtenTo(newPath)).toEqual(['iPhone']);
     });
 
-    it('clears the pointer when passed undefined', () => {
-      setGlobalProtectedTermsFile(undefined, { cwd: '/test' });
+    it.each([undefined, '', '   '])('clears the pointer when passed %j', (pointer) => {
+      const result = setGlobalProtectedTermsFile(pointer, { cwd: '/test' });
 
+      expect(result.filePath).toBe(DEFAULT_TERMS_PATH);
       expect(writtenTo(CONFIG_PATH).protectedTermsFile).toBeUndefined();
     });
 
@@ -165,10 +166,11 @@ describe('set-protected-terms', () => {
       expect(writtenTo(newPath)).toEqual([]);
     });
 
-    it('clears the pointer when passed undefined', () => {
-      const result = setCollectionProtectedTermsFile('myApp', undefined, { cwd: '/test' });
+    it.each([undefined, '', '   '])('clears the pointer when passed %j', (pointer) => {
+      const result = setCollectionProtectedTermsFile('myApp', pointer, { cwd: '/test' });
 
       expect(result.filePath).toBeUndefined();
+      expect(result.message).toBe('Collection "myApp" protected terms file cleared');
       expect(writtenTo(CONFIG_PATH).collections.myApp.protectedTermsFile).toBeUndefined();
     });
 

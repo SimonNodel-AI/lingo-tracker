@@ -6,6 +6,7 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
+import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
 import { type TranslateLocaleProgress, translateLocale } from './translate-locale';
 import { TranslationError } from './translation-provider';
@@ -56,6 +57,15 @@ describe('translateLocale', () => {
       const result = await translateLocale(collection(), { targetLocale: 'fr' });
 
       expect(result.totalResources).toBe(0);
+    });
+
+    it.each([
+      undefined,
+      { ...AUTO, enabled: false },
+    ])('still refuses a collection whose translation config is %j', async (translationConfig) => {
+      await expect(translateLocale(collection({ translationConfig }), { targetLocale: 'fr' })).rejects.toThrow(
+        AutoTranslationDisabledError,
+      );
     });
   });
 

@@ -1,11 +1,11 @@
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
-import { AutoTranslationDisabledError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
-import { type OpenTranslatorOptions, openTranslator } from './translator';
+import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
 
 export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
@@ -39,9 +39,7 @@ export async function translateExistingResource(
   options: OpenTranslatorOptions = {},
 ): Promise<TranslateExistingResourceResult> {
   const { baseLocale, translationsFolder } = collection;
-  if (!collection.translationConfig?.enabled) {
-    throw new AutoTranslationDisabledError(collection.name);
-  }
+  assertAutoTranslationEnabled(collection);
 
   const paths = validateAndResolvePaths({ key, translationsFolder });
 

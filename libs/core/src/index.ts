@@ -48,7 +48,7 @@ export { exportTargetLocales, runExport } from './lib/export/run-export';
 
 // Operations: normalize, translate, validate
 export { normalize } from './lib/normalize';
-export { translateExistingResource, translateLocale } from './lib/translation';
+export { assertAutoTranslationEnabled, translateExistingResource, translateLocale } from './lib/translation';
 export { describePreferredTermRule, generateValidationSummary, validateResources } from './lib/validate';
 
 // Collection & config

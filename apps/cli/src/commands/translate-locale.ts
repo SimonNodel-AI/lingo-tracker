@@ -1,4 +1,4 @@
-import { AutoTranslationDisabledError, translateLocale } from '@simoncodes-ca/core';
+import { assertAutoTranslationEnabled, translateLocale } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -19,8 +19,14 @@ export interface TranslateLocaleOptions {
 export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
   name: 'Translate locale',
   collection: 'writable',
-  // Core's translateLocale refuses a collection without auto-translation (AutoTranslationDisabledError).
+  // Core's precondition runs before the locale prompt, so a disabled collection is refused before any question.
   prompts: (options, { collection }) => {
+    try {
+      assertAutoTranslationEnabled(collection);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${message}. Set translation.enabled = true in your configuration`);
+    }
     if (collection.targetLocales.length === 0) {
       throw new Error(
         `No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`,
@@ -67,9 +73,7 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
           : undefined,
       });
     } catch (error) {
-      const hint =
-        error instanceof AutoTranslationDisabledError ? '. Set translation.enabled = true in your configuration' : '';
-      throw new Error(`Translation failed: ${error instanceof Error ? error.message : String(error)}${hint}`);
+      throw new Error(`Translation failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 
     console.log('');

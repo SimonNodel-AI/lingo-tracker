@@ -20,6 +20,7 @@
  */
 
 import { classifyICUContent, findProtectedTermViolations, translocoToICU } from '@simoncodes-ca/domain';
+import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { readProtectedTermsInForce } from '../config/protected-terms-file';
 import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
@@ -81,6 +82,21 @@ export interface OpenTranslatorOptions {
 }
 
 /**
+ * The precondition of every auto-translate operation: the collection's translation config,
+ * which must be enabled. Callers check it up front (before prompting, before deciding there
+ * is nothing to do), so a disabled collection is always refused the same way.
+ *
+ * @throws {AutoTranslationDisabledError} The collection has no enabled translation config.
+ */
+export function assertAutoTranslationEnabled(collection: Collection): TranslationConfig {
+  const config = collection.translationConfig;
+  if (!config?.enabled) {
+    throw new AutoTranslationDisabledError(collection.name);
+  }
+  return config;
+}
+
+/**
  * Opens the Translator for a collection.
  *
  * @throws {AutoTranslationDisabledError} The collection has no enabled translation config.
@@ -89,10 +105,7 @@ export interface OpenTranslatorOptions {
  * @throws {ProtectedTermsFileError} No terms were passed and a terms file is not a JSON array of strings.
  */
 export function openTranslator(collection: Collection, options: OpenTranslatorOptions = {}): Translator {
-  const config = collection.translationConfig;
-  if (!config?.enabled) {
-    throw new AutoTranslationDisabledError(collection.name);
-  }
+  const config = assertAutoTranslationEnabled(collection);
 
   const provider = options.provider ?? createTranslationProvider(config.provider, readApiKey(config.apiKeyEnv));
   const protectedTerms = options.protectedTerms ?? readProtectedTermsInForce(collection);

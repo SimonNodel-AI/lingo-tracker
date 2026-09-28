@@ -6,7 +6,7 @@ import {
   CollectionNotFoundError,
   InvalidCollectionError,
 } from '../errors/lingo-tracker-error';
-import { addCollectionEntry, replaceCollectionEntry, toCollectionEntry } from './collection-entry';
+import { addCollectionEntry, patchCollectionEntry, toCollectionEntry } from './collection-entry';
 
 const GLOBAL: LingoTrackerConfig = {
   exportFolder: 'dist/lingo-export',
@@ -70,6 +70,12 @@ describe('toCollectionEntry', () => {
     ]);
   });
 
+  it('drops an empty locales list, which means inherit, not "no locales"', () => {
+    expect(toCollectionEntry(GLOBAL, { translationsFolder: './i18n', locales: [] })).toEqual({
+      translationsFolder: './i18n',
+    });
+  });
+
   it('throws InvalidCollectionError for a missing or blank translationsFolder', () => {
     expect(() => toCollectionEntry(GLOBAL, { translationsFolder: '   ' })).toThrow(InvalidCollectionError);
     expect(() => toCollectionEntry(GLOBAL, {} as LingoTrackerCollection)).toThrow('translationsFolder is required');
@@ -89,6 +95,9 @@ describe('addCollectionEntry', () => {
     const vendored = 'node_modules/lib/i18n';
 
     expect(addCollectionEntry(GLOBAL, 'v', { translationsFolder: vendored }).collections['v'].readOnly).toBe(true);
+    expect(addCollectionEntry(GLOBAL, 'v', { translationsFolder: ` ${vendored} ` }).collections['v'].readOnly).toBe(
+      true,
+    );
     expect(
       addCollectionEntry(GLOBAL, 'v', { translationsFolder: vendored, readOnly: false }).collections['v'].readOnly,
     ).toBeUndefined();
@@ -102,43 +111,107 @@ describe('addCollectionEntry', () => {
   });
 });
 
-describe('replaceCollectionEntry', () => {
-  it('rebuilds the record from the given collection (full replace)', () => {
-    const next = replaceCollectionEntry(GLOBAL, 'app', { translationsFolder: './i18n', readOnly: true });
+describe('patchCollectionEntry', () => {
+  const translation = { enabled: false, provider: 'none', apiKeyEnv: 'X' };
+  const stored: LingoTrackerCollection = {
+    translationsFolder: './i18n',
+    exportFolder: 'custom/export',
+    importFolder: 'custom/import',
+    locales: ['en', 'es'],
+    translation,
+    readOnly: true,
+    tags: ['team-x'],
+    protectedTermsFile: 'i18n/terms.json',
+  };
+  const config: LingoTrackerConfig = { ...GLOBAL, collections: { app: stored } };
 
-    expect(next.collections['app']).toEqual({ translationsFolder: './i18n', readOnly: true });
+  it('keeps every field the patch leaves out', () => {
+    const next = patchCollectionEntry(config, 'app', { tags: ['new'] });
+
+    expect(next.collections['app']).toEqual({ ...stored, tags: ['new'] });
   });
 
-  it('keeps a translation override that the caller carries over', () => {
-    const translation = { enabled: false, provider: 'none', apiKeyEnv: 'X' };
-    const config = { ...GLOBAL, collections: { app: { translationsFolder: './i18n', translation } } };
+  it('keeps translation, exportFolder and importFolder for a client that never sends them (the Tracker form)', () => {
+    const next = patchCollectionEntry(config, 'app', {
+      translationsFolder: './i18n',
+      locales: ['en', 'es'],
+      readOnly: true,
+      tags: ['team-x'],
+      protectedTermsFile: 'i18n/terms.json',
+    });
 
-    const next = replaceCollectionEntry(config, 'app', { ...config.collections['app'], tags: ['new'] });
+    expect(next.collections['app']).toEqual(stored);
+  });
 
-    expect(next.collections['app']).toEqual({ translationsFolder: './i18n', translation, tags: ['new'] });
+  it('clears a setting with its empty value: [] tags, false readOnly, "" pointer, [] locales', () => {
+    const next = patchCollectionEntry(config, 'app', {
+      tags: [],
+      readOnly: false,
+      protectedTermsFile: '',
+      locales: [],
+    });
+
+    expect(next.collections['app']).toEqual({
+      translationsFolder: './i18n',
+      exportFolder: 'custom/export',
+      importFolder: 'custom/import',
+      translation,
+    });
+  });
+
+  it('treats an undefined value like a key left out (the `{ locales }` shorthand of a caller with nothing to say)', () => {
+    const next = patchCollectionEntry(config, 'app', {
+      locales: undefined,
+      tags: undefined,
+      readOnly: undefined,
+      protectedTermsFile: undefined,
+      translation: undefined,
+    });
+
+    expect(next.collections['app']).toEqual(stored);
+  });
+
+  it('re-minimizes: a value now equal to the global one is stored as inherited', () => {
+    const next = patchCollectionEntry(config, 'app', { exportFolder: GLOBAL.exportFolder, locales: GLOBAL.locales });
+
+    expect(next.collections['app']).toEqual({ ...stored, exportFolder: undefined, locales: undefined });
+    expect(next.collections['app']).not.toHaveProperty('exportFolder');
+    expect(next.collections['app']).not.toHaveProperty('locales');
+  });
+
+  it('does not mutate the config it was given', () => {
+    patchCollectionEntry(config, 'app', { tags: [] });
+
+    expect(config.collections['app']).toEqual(stored);
   });
 
   it('renames in place, keeping the collection order', () => {
-    const next = replaceCollectionEntry(GLOBAL, 'app', { translationsFolder: './i18n' }, 'renamed');
+    const next = patchCollectionEntry(GLOBAL, 'app', { translationsFolder: './i18n' }, 'renamed');
 
     expect(Object.keys(next.collections)).toEqual(['first', 'renamed', 'last']);
-    expect(next.collections['renamed']).toEqual({ translationsFolder: './i18n' });
+    expect(next.collections['renamed']).toEqual({
+      translationsFolder: './i18n',
+      locales: ['en', 'es'],
+      tags: ['team-x'],
+    });
   });
 
   it('treats an empty new name as no rename', () => {
-    const next = replaceCollectionEntry(GLOBAL, 'app', { translationsFolder: './i18n' }, '');
+    const next = patchCollectionEntry(GLOBAL, 'app', {}, '');
 
     expect(Object.keys(next.collections)).toEqual(['first', 'app', 'last']);
   });
 
+  it('throws InvalidCollectionError when the patch blanks translationsFolder', () => {
+    expect(() => patchCollectionEntry(GLOBAL, 'app', { translationsFolder: ' ' })).toThrow(InvalidCollectionError);
+  });
+
   it('throws CollectionNotFoundError for an unknown collection', () => {
-    expect(() => replaceCollectionEntry(GLOBAL, 'nope', { translationsFolder: './x' })).toThrow(
-      CollectionNotFoundError,
-    );
+    expect(() => patchCollectionEntry(GLOBAL, 'nope', { translationsFolder: './x' })).toThrow(CollectionNotFoundError);
   });
 
   it('throws CollectionAlreadyExistsError when renaming onto a taken name', () => {
-    expect(() => replaceCollectionEntry(GLOBAL, 'app', { translationsFolder: './x' }, 'last')).toThrow(
+    expect(() => patchCollectionEntry(GLOBAL, 'app', { translationsFolder: './x' }, 'last')).toThrow(
       CollectionAlreadyExistsError,
     );
   });

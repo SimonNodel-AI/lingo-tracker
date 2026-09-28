@@ -12,7 +12,7 @@ import {
 } from '../lib/errors/lingo-tracker-error';
 import type { ResourceEntries } from '../resource/resource-entry';
 import type { TrackerMetadata } from '../resource/tracker-metadata';
-import { seedResources, testCollection, useTempDir } from '../testing/temp-dir.spec-helpers';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { updateCollection } from './update-collection';
 
 const TRANSLATION: TranslationConfig = { enabled: false, provider: 'none', apiKeyEnv: 'NONE' };
@@ -28,7 +28,13 @@ describe('updateCollection', () => {
     baseLocale: 'en',
     locales: ['en'],
     collections: {
-      myApp: { translationsFolder: './i18n', locales: ['en', 'es', 'fr-ca'], translation: TRANSLATION },
+      myApp: {
+        translationsFolder: './i18n',
+        exportFolder: 'custom/export',
+        importFolder: 'custom/import',
+        locales: ['en', 'es', 'fr-ca'],
+        translation: TRANSLATION,
+      },
       other: { translationsFolder: './other' },
     },
   });
@@ -48,13 +54,38 @@ describe('updateCollection', () => {
     });
   });
 
-  it('keeps the translation override when only the tags change (regression)', async () => {
+  it('keeps the translation override when only the tags change, whether the caller carries the record over (CLI) or not', async () => {
     const stored = config().collections['myApp'];
 
     const result = await updateCollection('myApp', undefined, { ...stored, tags: ['Team X'] }, { cwd: cwd() });
-
     expect(result).toEqual({ message: 'Collection "myApp" updated successfully', mutations: [] });
     expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-x'] });
+
+    await updateCollection('myApp', undefined, { tags: ['Team Y'] }, { cwd: cwd() });
+    expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-y'] });
+  });
+
+  it('keeps translation, exportFolder and importFolder through the Tracker form payload, which never sends them', async () => {
+    // The shape CollectionFormDialog#buildResult sends on PUT /collections/:name.
+    const trackerPayload = {
+      translationsFolder: './i18n',
+      locales: ['en', 'es', 'fr-ca'],
+      readOnly: false,
+      tags: ['Team X'],
+    };
+
+    await updateCollection('myApp', undefined, trackerPayload, { cwd: cwd() });
+
+    expect(readConfig().collections['myApp']).toEqual({ ...config().collections['myApp'], tags: ['team-x'] });
+  });
+
+  it('clears a setting with its empty value (tags: [], readOnly: false, protectedTermsFile: "")', async () => {
+    const stored = { ...config().collections['myApp'], readOnly: true, tags: ['a'], protectedTermsFile: 'terms.json' };
+    writeConfig({ ...config(), collections: { ...config().collections, myApp: stored } });
+
+    await updateCollection('myApp', undefined, { tags: [], readOnly: false, protectedTermsFile: '' }, { cwd: cwd() });
+
+    expect(readConfig().collections['myApp']).toEqual(config().collections['myApp']);
   });
 
   it('seeds the files for an added locale and purges a removed one, then writes the config once', async () => {
@@ -70,11 +101,14 @@ describe('updateCollection', () => {
     expect(entries['ok']).toEqual({ source: 'OK', es: 'Vale', de: 'OK' });
     expect(meta['ok']?.['de']?.status).toBe('new');
     expect(meta['ok']?.['fr-ca']).toBeUndefined();
-    expect(readConfig().collections['myApp']).toEqual({ translationsFolder: './i18n', locales: ['en', 'es', 'de'] });
+    expect(readConfig().collections['myApp']).toEqual({
+      ...config().collections['myApp'],
+      locales: ['en', 'es', 'de'],
+    });
   });
 
-  it('never removes the base locale, and touches no files when the locales are unchanged or inherited', async () => {
-    for (const locales of [['es', 'fr-ca'], ['en', 'es', 'fr-ca'], [], undefined]) {
+  it('never removes the base locale, and touches no files when the locales are unchanged or left out', async () => {
+    for (const locales of [['es', 'fr-ca'], ['en', 'es', 'fr-ca'], undefined]) {
       const result = await updateCollection(
         'myApp',
         undefined,
@@ -85,6 +119,60 @@ describe('updateCollection', () => {
       expect(result.mutations).toEqual([]);
       expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
     }
+  });
+
+  it('stores an empty locales list as inherit, and the files follow the global locales', async () => {
+    writeConfig({ ...config(), locales: ['en', 'es'] });
+
+    await updateCollection('myApp', undefined, { locales: [] }, { cwd: cwd() });
+
+    expect(readConfig().collections['myApp']).not.toHaveProperty('locales');
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale' });
+  });
+
+  it('seeds the added locales before purging the removed ones, so a seeding failure costs no data', async () => {
+    writeFolderFiles(i18n(), 'broken', { entries: '{ not json' });
+
+    await expect(
+      updateCollection('myApp', undefined, { locales: ['en', 'es', 'de'] }, { cwd: cwd() }),
+    ).rejects.toThrow();
+
+    expect(readFolder('apps').entries['ok']?.['fr-ca']).toBe('OK');
+    expect(readConfig()).toEqual(config());
+  });
+
+  it('applies the locale changes to the new translations folder when the folder changes in the same update', async () => {
+    const moved = join(tempDir(), 'moved');
+    seedResources(testCollection(moved, { locales: ['en', 'es', 'fr-ca'] }), {
+      'apps.ok': { source: 'OK', translations: { es: 'Vale', 'fr-ca': 'OK' } },
+    });
+
+    const result = await updateCollection(
+      'myApp',
+      'renamed',
+      { translationsFolder: './moved', locales: ['en', 'es', 'de'] },
+      { cwd: cwd() },
+    );
+
+    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: moved }]);
+    const movedEntries: ResourceEntries = JSON.parse(
+      readFileSync(join(moved, 'apps', RESOURCE_ENTRIES_FILENAME), 'utf8'),
+    );
+    expect(movedEntries['ok']).toEqual({ source: 'OK', es: 'Vale', de: 'OK' });
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
+    expect(readConfig().collections['renamed']?.translationsFolder).toBe('./moved');
+  });
+
+  it('never seeds or purges a base locale, old or new, when the base locale changes in the same update', async () => {
+    await updateCollection('myApp', undefined, { baseLocale: 'de', locales: ['de', 'es'] }, { cwd: cwd() });
+
+    // de is the new base (not seeded as a translation), en the old one (not purged), fr-ca is gone.
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale' });
+    expect(readConfig().collections['myApp']).toEqual({
+      ...config().collections['myApp'],
+      baseLocale: 'de',
+      locales: ['de', 'es'],
+    });
   });
 
   it('diffs against the global locales when the collection inherits them', async () => {

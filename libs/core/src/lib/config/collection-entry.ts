@@ -17,6 +17,12 @@ import {
  * from the global config, so a collection inherits by omission. `STORE` holds the rule for
  * every field, keyed by the type, so a field added to `LingoTrackerCollection` does not
  * compile until its rule is written here.
+ *
+ * An existing record is changed by patch: a key the patch sets (to anything but `undefined`)
+ * replaces the stored value; a key left out, or set to `undefined`, keeps it. A setting is
+ * cleared with its empty value (`tags: []`, `readOnly: false`, `locales: []`,
+ * `protectedTermsFile: ''`), which the field rule then drops from the record. So a caller that
+ * edits one setting never has to know, or carry over, the others.
  */
 
 /** What to store for one field, or `undefined` to leave it out of the record. */
@@ -35,12 +41,15 @@ function sameLocales(a: readonly string[], b: readonly string[] | undefined): bo
 }
 
 const STORE: { [K in keyof Required<LingoTrackerCollection>]: StoreRule<K> } = {
+  // Required and already validated by toCollectionEntry; listed so the table covers every key of the type.
   translationsFolder: (value) => value.trim(),
   exportFolder: unlessGlobal('exportFolder'),
   importFolder: unlessGlobal('importFolder'),
   baseLocale: unlessGlobal('baseLocale'),
-  // Order matters to callers (the first locale is the default), so lists are compared as sequences.
-  locales: (value, config) => (value !== undefined && !sameLocales(value, config.locales) ? value : undefined),
+  // An empty list means "inherit" (openCollection falls back to the global list only when the key is
+  // absent). Order matters to callers (the first locale is the default), so lists are compared as sequences.
+  locales: (value, config) =>
+    value !== undefined && value.length > 0 && !sameLocales(value, config.locales) ? value : undefined,
   // A per-collection override replaces the global block; it is never merged with or diffed against it.
   translation: (value) => value,
   // Stored only when set, so writable collections stay clean.
@@ -96,24 +105,26 @@ export function addCollectionEntry(
     throw new CollectionAlreadyExistsError(name);
   }
 
-  const readOnly = collection.readOnly ?? isUnderNodeModules(collection.translationsFolder ?? '');
+  const readOnly = collection.readOnly ?? isUnderNodeModules(collection.translationsFolder?.trim() ?? '');
   const entry = toCollectionEntry(config, { ...collection, readOnly });
   return { ...config, collections: { ...config.collections, [name]: entry } };
 }
 
 /**
- * The config with the collection `name` replaced by `collection`, and moved to `newName`
- * when that is given and differs. Full-replace semantics: a field the caller leaves out
- * (`readOnly`, `translation`, `locales`, ...) is dropped from the record. Pure.
+ * The config with the collection `name` changed by `patch`, and moved to `newName` when that
+ * is given and differs. Patch semantics: a key `patch` sets replaces the stored value (so
+ * `tags: []`, `readOnly: false`, `locales: []` or `protectedTermsFile: ''` clear a setting),
+ * and a key left out or set to `undefined` keeps it. The merged record is then rebuilt by the
+ * field rules, so a value that now equals the global one is stored as inherited. Pure.
  *
  * @throws {CollectionNotFoundError} No collection named `name`.
  * @throws {CollectionAlreadyExistsError} A collection named `newName` exists.
- * @throws {InvalidCollectionError} `translationsFolder` is missing or blank.
+ * @throws {InvalidCollectionError} The merged `translationsFolder` is missing or blank.
  */
-export function replaceCollectionEntry(
+export function patchCollectionEntry(
   config: LingoTrackerConfig,
   name: string,
-  collection: LingoTrackerCollection,
+  patch: Partial<LingoTrackerCollection>,
   newName?: string,
 ): LingoTrackerConfig {
   if (!hasCollection(config, name)) {
@@ -125,12 +136,28 @@ export function replaceCollectionEntry(
     throw new CollectionAlreadyExistsError(targetName);
   }
 
-  const entry = toCollectionEntry(config, collection);
+  const stored = config.collections?.[name];
+  const merged: LingoTrackerCollection = { ...stored };
+  for (const key of Object.keys(patch) as Array<keyof LingoTrackerCollection>) {
+    setDefined(merged, key, patch[key]);
+  }
+  const entry = toCollectionEntry(config, merged);
   // Rebuild in the same order, so a rename keeps the collection's place in the file.
   const collections = Object.fromEntries(
     Object.entries(config.collections ?? {}).map(([key, value]) => (key === name ? [targetName, entry] : [key, value])),
   );
   return { ...config, collections };
+}
+
+/** Assigns `value` to `target[key]` unless it is `undefined` (typed per key, so the two agree). */
+function setDefined<K extends keyof LingoTrackerCollection>(
+  target: LingoTrackerCollection,
+  key: K,
+  value: LingoTrackerCollection[K] | undefined,
+): void {
+  if (value !== undefined) {
+    target[key] = value;
+  }
 }
 
 function hasCollection(config: LingoTrackerConfig, name: string): boolean {

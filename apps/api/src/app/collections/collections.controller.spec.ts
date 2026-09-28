@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { resolve } from 'node:path';
 import { CollectionsController } from './collections.controller';
@@ -16,6 +17,7 @@ jest.mock('@simoncodes-ca/core', () => {
     deleteCollectionByName: jest.fn(),
     addCollection: jest.fn(),
     updateCollection: jest.fn(),
+    setCollectionProtectedTerms: jest.fn(),
   };
 });
 
@@ -140,6 +142,25 @@ describe('CollectionsController', () => {
       expect(addCollection).toHaveBeenCalledWith('new-collection', dto.collection);
     });
 
+    it.each([
+      ['no body', undefined, 'request body must be an object'],
+      ['no name', { collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
+      ['a blank name', { name: ' ', collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
+      ['no collection', { name: 'new' }, 'collection must be an object'],
+      ['an array collection', { name: 'new', collection: [] }, 'collection must be an object'],
+      [
+        'a non-string folder',
+        { name: 'new', collection: { translationsFolder: 1 } },
+        'collection.translationsFolder must be a string',
+      ],
+    ])('answers 400 for %s, before core is called', async (_label, body, message) => {
+      const error = await collectionsController.createCollection(body as any).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toBe(message);
+      expect(core.addCollection).not.toHaveBeenCalled();
+    });
+
     it('lets CollectionAlreadyExistsError through, which the filter answers with 409', async () => {
       const addCollection = core.addCollection as jest.Mock;
       addCollection.mockImplementation(() => {
@@ -200,6 +221,36 @@ describe('CollectionsController', () => {
       await collectionsController.updateCollectionByName('My%20Collection', dto as any);
 
       expect(updateCollection).toHaveBeenCalledWith('My Collection', 'My Collection', dto.collection);
+    });
+
+    it.each([
+      ['a blank name', { name: '', collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
+      ['a non-string name', { name: 1, collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
+      ['no collection', {}, 'collection must be an object'],
+      [
+        'a non-string folder',
+        { collection: { translationsFolder: null } },
+        'collection.translationsFolder must be a string',
+      ],
+    ])('answers 400 for %s, before core is called', async (_label, body, message) => {
+      const error = await collectionsController
+        .updateCollectionByName('old-name', body as any)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toBe(message);
+      expect(core.updateCollection).not.toHaveBeenCalled();
+    });
+
+    it('writes the protected terms under the current name when the body does not rename', async () => {
+      (core.updateCollection as jest.Mock).mockResolvedValue({ message: 'ok', mutations: [] });
+
+      await collectionsController.updateCollectionByName('test-collection', {
+        collection: { translationsFolder: './translations/test', protectedTerms: ['iPhone'] },
+      });
+
+      expect(core.updateCollection).toHaveBeenCalledWith('test-collection', undefined, expect.anything());
+      expect(core.setCollectionProtectedTerms).toHaveBeenCalledWith('test-collection', ['iPhone']);
     });
 
     it('lets CollectionNotFoundError through (404) and leaves the index alone', async () => {

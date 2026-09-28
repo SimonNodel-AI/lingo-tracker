@@ -7,7 +7,7 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => ({
   setGlobalProtectedTerms: vi.fn(() => ({ message: 'ok', filePath: '/project/.lingo-tracker-protected-terms.json' })),
   setCollectionProtectedTerms: vi.fn(() => ({ message: 'ok', filePath: '/project/i18n/terms.json' })),
   setGlobalProtectedTermsFile: vi.fn(() => ({ message: 'file set', filePath: '/project/custom.json' })),
-  setCollectionProtectedTermsFile: vi.fn(async () => ({ message: 'file set', filePath: '/project/i18n/terms.json' })),
+  setCollectionProtectedTermsFile: vi.fn(() => ({ message: 'file set', filePath: '/project/i18n/terms.json' })),
   readGlobalProtectedTerms: vi.fn(() => []),
   readCollectionProtectedTerms: vi.fn(() => []),
   resolveGlobalProtectedTermsFilePath: vi.fn(() => '/project/.lingo-tracker-protected-terms.json'),
@@ -153,6 +153,7 @@ describe('protectedTermsCommand', () => {
     await protectedTermsCommand({ collection: 'main', file: 'i18n/terms.json' });
 
     expect(setCollectionProtectedTermsFile).toHaveBeenCalledWith('main', 'i18n/terms.json', { cwd: '/project' });
+    expect(ConsoleFormatter.success).toHaveBeenCalledWith('file set');
   });
 
   it('sets the pointer before writing terms when --file and --add are combined', async () => {
