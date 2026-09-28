@@ -488,12 +488,14 @@ Steps:
 2. **Open each folder** — `openResourceFolder()`; a folder whose files are not valid JSON is reported on stderr and skipped. A folder with no entries is left alone.
 3. **Normalize each entry** — two steps, with a clear seam between them:
    - `normalizeEntryValues(entry)` in `normalize-entry.ts` is pure and changes only the values: Transloco `{{ varName }}` becomes ICU `{varName}` in the base value and every translation (`valuesConverted`), and tags are normalized (`tagsNormalized`).
-   - `ResourceFolder.normalizeEntry(key, values, collection.targetLocales)` does the rest with the folder's own rules: it drops a stray base-locale property, re-records every translation with a current checksum and its stored status (no metadata counts as `new`), puts the base through `setBase` (the [staleness rule](glossary.md#staleness-rule) when the stored checksum disagrees with the value; a missing checksum is just recorded), and seeds each missing target locale with `seedLocale`'s rule (`localesAdded`). It reports whether the entry or its metadata changed.
+   - `ResourceFolder.normalizeEntry(key, values, collection.targetLocales)` does the rest with the folder's own rules: it drops a stray base-locale property, re-records every target-locale translation with a current checksum and its stored status (no metadata counts as `new`; a translation whose stored `baseChecksum` differs from the base checksum was made from an older base, so it becomes `stale`, or `new` when its value is a copy of the base or it was `new`, and gets the current `baseChecksum`), puts the base through `setBase` (the [staleness rule](glossary.md#staleness-rule) when the stored checksum disagrees with the value; a missing checksum is just recorded), and seeds each missing target locale with `seedLocale`'s rule (`localesAdded`). It reports whether the entry or its metadata changed. A locale that is not a target locale of the collection (for example one removed from the config) keeps its value and metadata as they are.
 4. **Persist changes** — a folder is saved when any entry changed, or when one of its two files is missing (normalize guarantees the pair exists wherever there are entries).
 5. **Dry-run mode** — `save({ dryRun: true })` reports the files without writing; counters still reflect what *would* change.
 6. **Cleanup empty folders** — `cleanupEmptyFolders()` removes directories with no entries and no subfolders.
 
 Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `tagsNormalized`, `filesCreated`, `filesUpdated`, `foldersRemoved`, and `dryRun`.
+
+`filesUpdated` can be higher than with earlier versions on the first run. A folder is now rewritten when its only drift is a stray base-locale property, the key order of its metadata, or a translation made from an older base. This is a one-time rewrite; the next run reports 0 for those folders.
 
 ---
 

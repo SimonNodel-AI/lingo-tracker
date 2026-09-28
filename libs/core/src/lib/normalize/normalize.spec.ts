@@ -80,7 +80,7 @@ describe('normalize', () => {
         ok: {
           en: { checksum: md5('OK') },
           fr: { checksum: 'outdated', baseChecksum: md5('OK'), status: 'verified' },
-          es: { checksum: md5('Vale'), baseChecksum: 'outdated', status: 'translated' },
+          es: { checksum: 'outdated', baseChecksum: md5('OK'), status: 'translated' },
         },
       },
     });
@@ -90,6 +90,66 @@ describe('normalize', () => {
     expect(result.filesUpdated).toBe(2);
     expect(meta(folder).ok.fr).toEqual({ checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'verified' });
     expect(meta(folder).ok.es).toEqual({ checksum: md5('Vale'), baseChecksum: md5('OK'), status: 'translated' });
+  });
+
+  it('marks translations made from an older base stale (a merge where the base changed on another branch)', async () => {
+    const folder = writeFolderFiles(dir(), 'common', {
+      entries: {
+        verified: { source: 'OK', fr: 'Oui', es: 'Vale' },
+        untouched: { source: 'Yes', fr: 'Oui', es: 'Sí' },
+      },
+      meta: {
+        verified: {
+          en: { checksum: md5('OK') },
+          fr: { checksum: md5('Oui'), baseChecksum: md5('Okay'), status: 'verified' },
+          es: { checksum: md5('Vale'), baseChecksum: md5('Okay'), status: 'translated' },
+        },
+        untouched: {
+          en: { checksum: md5('Yes') },
+          fr: { checksum: md5('Oui'), baseChecksum: md5('Yes'), status: 'verified' },
+          es: { checksum: md5('Sí'), baseChecksum: md5('Okay'), status: 'new' },
+        },
+      },
+    });
+
+    const first = await normalize(collection());
+
+    expect(first.filesUpdated).toBe(2);
+    expect(meta(folder).verified).toEqual({
+      en: { checksum: md5('OK') },
+      fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'stale' },
+      es: { checksum: md5('Vale'), baseChecksum: md5('OK'), status: 'stale' },
+    });
+    expect(meta(folder).untouched).toEqual({
+      en: { checksum: md5('Yes') },
+      fr: { checksum: md5('Oui'), baseChecksum: md5('Yes'), status: 'verified' },
+      es: { checksum: md5('Sí'), baseChecksum: md5('Yes'), status: 'new' },
+    });
+
+    const second = await normalize(collection());
+    expect(second.filesUpdated).toBe(0);
+    expect(meta(folder).verified.fr.status).toBe('stale');
+  });
+
+  it('leaves a locale that is not in the collection untouched', async () => {
+    const deMeta = { checksum: 'outdated', baseChecksum: 'older-base', status: 'verified' };
+    const folder = writeFolderFiles(dir(), 'common', {
+      entries: { ok: { source: 'OK', fr: 'Oui', es: 'Vale', de: 'Ja' } },
+      meta: {
+        ok: {
+          en: { checksum: md5('OK') },
+          fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'translated' },
+          es: { checksum: md5('Vale'), baseChecksum: md5('OK'), status: 'translated' },
+          de: deMeta,
+        },
+      },
+    });
+
+    const result = await normalize(collection());
+
+    expect(result.filesUpdated).toBe(0);
+    expect(entries(folder).ok.de).toBe('Ja');
+    expect(meta(folder).ok.de).toEqual(deMeta);
   });
 
   it('converts Transloco syntax to ICU, normalizes tags and drops a stray base-locale property', async () => {

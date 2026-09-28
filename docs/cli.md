@@ -835,7 +835,7 @@ lingo-tracker normalize [options]
 2. **Adds missing locales**: Creates entries for any missing locales using the base value with status `new`
 3. **Updates statuses**: Sets correct translation status based on checksums
    - `new` - Locale entry was just added or matches base value
-   - `stale` - Base value changed since last translation (checksum mismatch)
+   - `stale` - Base value changed since last translation (checksum mismatch). This includes a translation whose stored `baseChecksum` differs from the current base checksum, for example after a git merge where one branch changed the base and another verified the translation. Normalize sets its `baseChecksum` to the current value and its status to `stale` (`new` if it was `new` or is a copy of the base)
    - `translated` / `verified` - Preserved when base value unchanged
 4. **Normalizes tags**: Coerces all tag values to lowercase, hyphenated form (`[a-z0-9-]`, max 50 chars). For example `"Common UI"` → `"common-ui"`. Deduplicates tags within each resource. This is the recommended way to clean up legacy tag data that pre-dates strict validation.
 5. **Creates missing files**: Ensures `resource_entries.json` and `tracker_meta.json` exist at every folder level
@@ -942,6 +942,8 @@ JSON format (`--json` flag):
 - Normalization is **non-destructive**: it preserves existing translation values and comments
 - Tag values are coerced to normalized form (lowercase, hyphens, max 50 chars) — this is the intended cleanup path for legacy tags
 - Only fills in missing data and corrects metadata
+- Locales that are not in the collection's `locales` keep their values and metadata unchanged
+- On the first run after upgrading, `filesUpdated` can be higher than before: folders whose only drift is a stray base-locale property, metadata key order, or a translation made from an older base are rewritten once. The next run reports 0 for them
 - Dry-run mode counts folders that would be removed but doesn't delete them
 - In interactive mode, you'll be prompted to confirm when using `--all`
 - Best practice: run with `--dry-run` first to preview changes before applying

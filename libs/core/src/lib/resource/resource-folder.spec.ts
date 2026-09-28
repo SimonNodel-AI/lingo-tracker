@@ -247,7 +247,7 @@ describe('ResourceFolder', () => {
   });
 
   describe('normalizeEntry', () => {
-    it('re-records every translation, counting one without metadata as new, and seeds missing locales', () => {
+    it('re-records every target translation, counting one without metadata as new, and seeds missing locales', () => {
       writePair(
         { ok: { source: 'OK', fr: 'Oui', de: 'OK' } },
         {
@@ -259,7 +259,7 @@ describe('ResourceFolder', () => {
       );
       const folder = openResourceFolder(folderPath);
 
-      const report = folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui', de: 'OK' }, ['fr', 'es']);
+      const report = folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui', de: 'OK' }, ['fr', 'de', 'es']);
 
       expect(report).toEqual({ localesAdded: 1, changed: true });
       expect(folder.get('ok')).toEqual({
@@ -271,6 +271,100 @@ describe('ResourceFolder', () => {
           es: { checksum: md5('OK'), baseChecksum: md5('OK'), status: 'new' },
         },
       });
+    });
+
+    it('leaves the data and metadata of a non-target locale alone', () => {
+      const esMeta = { checksum: 'outdated', baseChecksum: 'older-base', status: 'verified' };
+      writePair(
+        { ok: { source: 'OK', fr: 'Oui', es: 'Vale', de: 'Ja' } },
+        {
+          ok: {
+            en: { checksum: md5('OK') },
+            fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'translated' },
+            es: esMeta,
+          },
+        },
+      );
+      const folder = openResourceFolder(folderPath);
+
+      expect(folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui', es: 'Vale', de: 'Ja' }, ['fr'])).toEqual({
+        localesAdded: 0,
+        changed: false,
+      });
+      expect(folder.get('ok')?.entry).toEqual({ source: 'OK', fr: 'Oui', es: 'Vale', de: 'Ja' });
+      expect(folder.get('ok')?.meta?.['es']).toEqual(esMeta);
+      expect(folder.get('ok')?.meta?.['de']).toBeUndefined();
+    });
+
+    describe('a translation made from an older base (stored baseChecksum differs from the base checksum)', () => {
+      const drifted = (fr: string, status: string) => {
+        writePair(
+          { ok: { source: 'OK', fr } },
+          {
+            ok: {
+              en: { checksum: md5('OK') },
+              fr: { checksum: md5(fr), baseChecksum: md5('Okay'), status },
+            },
+          },
+        );
+        return openResourceFolder(folderPath);
+      };
+
+      it.each(['verified', 'translated'])('%s becomes stale with the current baseChecksum', (status) => {
+        const folder = drifted('Oui', status);
+
+        expect(folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui' }, ['fr'])).toEqual({
+          localesAdded: 0,
+          changed: true,
+        });
+        expect(folder.get('ok')?.meta?.['fr']).toEqual({
+          checksum: md5('Oui'),
+          baseChecksum: md5('OK'),
+          status: 'stale',
+        });
+      });
+
+      it('becomes new when its value is a copy of the base', () => {
+        const folder = drifted('OK', 'translated');
+        folder.normalizeEntry('ok', { source: 'OK', fr: 'OK' }, ['fr']);
+        expect(folder.get('ok')?.meta?.['fr']?.status).toBe('new');
+      });
+
+      it('stays new when it was new', () => {
+        const folder = drifted('Oui', 'new');
+        folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui' }, ['fr']);
+        expect(folder.get('ok')?.meta?.['fr']).toEqual({
+          checksum: md5('Oui'),
+          baseChecksum: md5('OK'),
+          status: 'new',
+        });
+      });
+
+      it('is idempotent: a second run changes nothing', () => {
+        const folder = drifted('Oui', 'verified');
+        folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui' }, ['fr']);
+        expect(folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui' }, ['fr'])).toEqual({
+          localesAdded: 0,
+          changed: false,
+        });
+        expect(folder.get('ok')?.meta?.['fr']?.status).toBe('stale');
+      });
+    });
+
+    it('keeps the status of a translation whose baseChecksum matches the base', () => {
+      writePair(
+        { ok: { source: 'OK', fr: 'Oui' } },
+        {
+          ok: {
+            en: { checksum: md5('OK') },
+            fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'verified' },
+          },
+        },
+      );
+      const folder = openResourceFolder(folderPath);
+
+      expect(folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui' }, ['fr']).changed).toBe(false);
+      expect(folder.get('ok')?.meta?.['fr']?.status).toBe('verified');
     });
 
     it('applies the staleness rule with current checksums when the base value changed', () => {
