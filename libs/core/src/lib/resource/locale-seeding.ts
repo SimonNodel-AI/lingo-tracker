@@ -1,8 +1,8 @@
 import type { TranslationStatus } from '@simoncodes-ca/domain';
-import type { Collection } from '../lib/config/open-collection';
-import type { TerminologyFindings } from '../lib/config/project-terms';
-import { LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
-import { type OpenTranslatorOptions, openTranslator } from '../lib/translation/translator';
+import type { Collection } from '../config/open-collection';
+import type { TerminologyFindings } from '../config/project-terms';
+import { LocaleNotFoundError } from '../errors/lingo-tracker-error';
+import { type OpenTranslatorOptions, openTranslator } from '../translation/translator';
 
 /** A value for one locale and the status it is stored with. */
 export interface ResourceTranslation {

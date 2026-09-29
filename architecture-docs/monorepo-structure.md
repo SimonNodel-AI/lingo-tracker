@@ -65,11 +65,11 @@ lingo-tracker/                         # Nx workspace root
 │   │   └── src/
 │   │       ├── config/                # LingoTrackerConfig, BundleDefinition, etc.
 │   │       ├── collections-manager/   # add-collection, delete-collection, update
-│   │       ├── resource/              # add, edit, delete, move resource; checksums
 │   │       └── lib/
 │   │           ├── bundle/            # Bundle generation, tag filter, hierarchy
 │   │           ├── export/            # Export run (runExport) and the JSON / XLIFF exporters
 │   │           ├── import/            # Import run (importResources), JSON / XLIFF parse adapters
+│   │           ├── resource/          # resource CRUD, Folder Address, checksums, reading and search
 │   │           ├── folder/            # create-folder, delete-folder, move-folder
 │   │           ├── normalize/         # Cleanup empty folders, normalize entries
 │   │           ├── translate/         # Auto-translation, Google Translate provider
@@ -260,7 +260,7 @@ To run a single test file (the path is relative to the project root):
 
 ```bash
 # domain, core, tracker (@nx/vitest:test)
-pnpm nx test core --testFile=src/resource/checksum.spec.ts
+pnpm nx test core --testFile=src/lib/resource/checksum.spec.ts
 
 # cli (vitest): a positional path after -- (vitest rejects --testFile as an unknown option)
 pnpm nx test cli -- src/commands/move.test.ts

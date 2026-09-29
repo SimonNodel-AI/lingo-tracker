@@ -1,11 +1,11 @@
 import { isUntranslatedCopy, normalizeTags, translocoToICU } from '@simoncodes-ca/domain';
-import type { Collection } from '../lib/config/open-collection';
-import { readProjectTerms, type TerminologyFindings } from '../lib/config/project-terms';
-import { ensureDirectoryExists } from '../lib/file-io/directory-operations';
-import type { OpenTranslatorOptions } from '../lib/translation/translator';
-import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
-import { openResourceFolder } from '../lib/resource/resource-folder';
-import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
+import type { Collection } from '../config/open-collection';
+import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
+import { ensureDirectoryExists } from '../file-io/directory-operations';
+import type { OpenTranslatorOptions } from '../translation/translator';
+import { validateAndResolvePaths } from './resource-file-paths';
+import { openResourceFolder } from './resource-folder';
+import { type ResourceMutation, upsertMutation } from './resource-mutation';
 import {
   assertCollectionLocales,
   type ResourceTranslation,

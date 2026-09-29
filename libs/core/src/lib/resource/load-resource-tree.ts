@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
+import type { ResourceEntryMetadata } from './resource-entry-metadata';
+import { resolveFolderAddress } from './folder-address';
 import { readCollectionFolders } from './read-collection';
 
 export interface ResourceTreeNode {
@@ -60,7 +61,7 @@ export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTree
   const { baseLocale, path: folderPath = '', depth = 2, cwd = process.cwd() } = options;
   const translationsFolder = path.resolve(cwd, options.translationsFolder);
   const pathSegments = folderPath ? folderPath.split('.').filter(Boolean) : [];
-  const absoluteFolderPath = path.join(translationsFolder, ...pathSegments);
+  const absoluteFolderPath = resolveFolderAddress(translationsFolder, pathSegments.join('.'));
 
   if (!fs.existsSync(absoluteFolderPath)) {
     if (pathSegments.length === 0) {

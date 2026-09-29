@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { Collection } from '../lib/config/open-collection';
-import { moveFolder } from '../lib/folder/move-folder';
+import type { Collection } from '../config/open-collection';
+import { moveFolder } from '../folder/move-folder';
 import { calculateChecksum } from './checksum';
 import { moveResource } from './move-resource';
 

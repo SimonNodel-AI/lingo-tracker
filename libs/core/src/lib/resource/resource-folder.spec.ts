@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openResourceFolder, translationLocales } from './resource-folder';
-import { calculateChecksum } from '../../resource/checksum';
+import { calculateChecksum } from './checksum';
 
 const md5 = calculateChecksum;
 

@@ -3,7 +3,7 @@
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
-export { addResource, deleteResource, editResource, moveResource } from './resource';
+export { addResource, deleteResource, editResource, moveResource } from './lib/resource';
 
 // Operations: folders
 export { createFolder, deleteFolder, moveFolder } from './lib/folder';
@@ -250,4 +250,4 @@ export type {
   MoveResourceResult,
   ResourceEntryMetadata,
   ResourceTranslation,
-} from './resource';
+} from './lib/resource';

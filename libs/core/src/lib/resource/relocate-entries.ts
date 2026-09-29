@@ -1,15 +1,10 @@
 import { resolve } from 'node:path';
 import { validateKey } from '@simoncodes-ca/domain';
-import type { Collection } from '../lib/config/open-collection';
-import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
-import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
-import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from '../lib/resource/resource-folder';
-import {
-  reindexMutation,
-  removeMutation,
-  type ResourceMutation,
-  upsertMutation,
-} from '../lib/resource/resource-mutation';
+import type { Collection } from '../config/open-collection';
+import type { ResourceTreeEntry } from './load-resource-tree';
+import { resolveResourcePaths } from './resource-file-paths';
+import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
+import { reindexMutation, removeMutation, type ResourceMutation, upsertMutation } from './resource-mutation';
 
 /**
  * Entry Relocation — the one way entries move between keys, within a collection or into another.

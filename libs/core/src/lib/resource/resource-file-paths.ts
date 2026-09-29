@@ -1,7 +1,8 @@
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 import { validateKey, validateTargetFolder, resolveResourceKey, splitResolvedKey } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import { resolveFolderAddress } from './folder-address';
 
 export interface ResolvedResourcePaths {
   /** The fully resolved key (targetFolder.key) */
@@ -64,11 +65,7 @@ export function resolveResourcePaths(params: ResourcePathResolutionParams): Reso
   const resolvedKey = resolveResourceKey(key, targetFolder);
   const { folderPath: folderPathSegments, entryKey } = splitResolvedKey(resolvedKey);
 
-  const relativeFolderPath = folderPathSegments.length
-    ? join(translationsFolder, ...folderPathSegments)
-    : translationsFolder;
-
-  const folderPath = resolve(cwd, relativeFolderPath);
+  const folderPath = resolveFolderAddress(translationsFolder, folderPathSegments.join('.'), cwd);
   const resourceEntriesPath = join(folderPath, RESOURCE_ENTRIES_FILENAME);
   const trackerMetaPath = join(folderPath, TRACKER_META_FILENAME);
 

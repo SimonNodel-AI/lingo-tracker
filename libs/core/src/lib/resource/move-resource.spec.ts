@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
-import { RESOURCE_ENTRIES_FILENAME } from '../constants';
-import type { Collection } from '../lib/config/open-collection';
+import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
+import type { Collection } from '../config/open-collection';
 import { moveResource } from './move-resource';
 
 function collection(translationsFolder: string, name = 'main'): Collection {

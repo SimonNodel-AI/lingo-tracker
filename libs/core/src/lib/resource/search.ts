@@ -1,6 +1,6 @@
 import { normalizedLevenshtein } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
+import type { ResourceEntryMetadata } from './resource-entry-metadata';
 import type { ResourceTreeNode } from './load-resource-tree';
 import type { StoredResource } from './read-collection';
 

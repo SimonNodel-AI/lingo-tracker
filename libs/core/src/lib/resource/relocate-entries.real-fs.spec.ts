@@ -1,14 +1,14 @@
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { writeJsonFile } from '../lib/file-io/json-file-operations';
-import { readCollection } from '../lib/resource/read-collection';
-import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
+import { writeJsonFile } from '../file-io/json-file-operations';
+import { readCollection } from './read-collection';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { calculateChecksum } from './checksum';
 import { relocateEntries } from './relocate-entries';
 
-vi.mock('../lib/file-io/json-file-operations', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../lib/file-io/json-file-operations')>();
+vi.mock('../file-io/json-file-operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
   return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
 });
 

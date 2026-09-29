@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeEntryValues } from './normalize-entry';
-import type { ResourceEntry } from '../../resource/resource-entry';
+import type { ResourceEntry } from '../resource/resource-entry';
 
 describe('normalizeEntryValues', () => {
   it('converts Transloco syntax to ICU in the base value and every translation, counting changed values', () => {

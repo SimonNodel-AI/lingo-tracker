@@ -153,7 +153,7 @@ Explained in context: [`frontend.md`](frontend.md#the-editor-outcome)
 
 ### Entry Relocation
 
-The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. In code, `relocateEntries(source, destination, relocations, { override? })` in `libs/core/src/resource/relocate-entries.ts` takes a list of `{ from, to }` full keys and returns `{ moved, collisions, errors, mutations }`. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `moveResource` and `moveFolder` move through it.
+The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. In code, `relocateEntries(source, destination, relocations, { override? })` in `libs/core/src/lib/resource/relocate-entries.ts` takes a list of `{ from, to }` full keys and returns `{ moved, collisions, errors, mutations }`. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `moveResource` and `moveFolder` move through it.
 
 Explained in context: [`core-library.md`](core-library.md#entry-relocation)
 
@@ -168,6 +168,14 @@ Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 ---
 
 ## F
+
+### Folder Address
+
+A dot-delimited path to a folder in a [collection](#collection), such as `apps.common.buttons`. The empty address names the translations root. `lib/resource/folder-address.ts` validates each segment with the domain `isValidSegment` rule, resolves the address beneath the collection's `translationsFolder`, and checks whether that path exists. Folder create, delete and move decide whether the root is allowed and retain their own error labels; wildcard resource moves use key-style diagnostics for their prefix.
+
+Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
+
+---
 
 ### Folder Peek
 
@@ -209,7 +217,7 @@ Explained in context: [`frontend.md`](frontend.md#list-scope--what-the-list-show
 
 ### Locale Seeding
 
-What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
+What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/lib/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
 
 Explained in context: [`core-library.md`](core-library.md#locale-seeding)
 

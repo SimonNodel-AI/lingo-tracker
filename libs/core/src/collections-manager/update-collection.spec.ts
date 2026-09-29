@@ -10,8 +10,8 @@ import {
   InvalidLocaleError,
   ReadOnlyCollectionError,
 } from '../lib/errors/lingo-tracker-error';
-import type { ResourceEntries } from '../resource/resource-entry';
-import type { TrackerMetadata } from '../resource/tracker-metadata';
+import type { ResourceEntries } from '../lib/resource/resource-entry';
+import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { updateCollection } from './update-collection';
 import { deleteCollectionByName } from './delete-collection-by-name';

@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Collection } from '../lib/config/open-collection';
+import type { Collection } from '../config/open-collection';
 import { deleteResource } from './delete-resource';
 
 const collection: Collection = {
