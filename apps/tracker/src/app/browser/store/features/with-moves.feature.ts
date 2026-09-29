@@ -46,6 +46,7 @@ export function withMovesFeature<_>() {
         selectedCollection: string | null;
         currentFolderPath: string;
         translations: ResourceSummaryDto[];
+        loadedFolderPath: string | null;
         error: string | null;
         rootFolders: FolderNodeDto[];
         expandedFolders: ReadonlySet<string>;
@@ -68,6 +69,9 @@ export function withMovesFeature<_>() {
       const notifications = inject(NotificationService);
       const dialog = inject(MatDialog);
       const transloco = inject(TranslocoService);
+
+      /** The collection root's name in a message ("Moved … to root"). */
+      const rootLabel = (): string => transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL);
 
       /**
        * Counts the move as in flight from subscribe until it settles. A move from a closed session
@@ -102,8 +106,9 @@ export function withMovesFeature<_>() {
 
               const destinationKey = destinationFolderPath ? `${destinationFolderPath}.${entryKey}` : entryKey;
 
-              const currentTranslations = store.translations();
-              patchState(store, { translations: currentTranslations.filter((r) => r.fullKey !== sourceKey) });
+              const movedRow = store.translations().find((r) => r.fullKey === sourceKey);
+              const rowsFolder = store.loadedFolderPath();
+              patchState(store, { translations: store.translations().filter((r) => r.fullKey !== sourceKey) });
 
               return api.moveResource(collection, sourceKey, destinationKey).pipe(
                 withinSession(inSession),
@@ -111,7 +116,7 @@ export function withMovesFeature<_>() {
                   notifications.success(
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEMOVEDX, {
                       name: entryKey,
-                      folder: destinationFolderPath || 'root',
+                      folder: destinationFolderPath || rootLabel(),
                     }),
                   );
                   store.loadRootFolders();
@@ -122,7 +127,12 @@ export function withMovesFeature<_>() {
                     error,
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVERESOURCEFAILED),
                   );
-                  patchState(store, { translations: currentTranslations, error: errorMessage });
+                  // Put back only the row this move took out, and only into the rows it came from: a
+                  // reload that landed meanwhile is newer than a snapshot taken before the move.
+                  const rows = store.translations();
+                  const putBack =
+                    movedRow && store.loadedFolderPath() === rowsFolder && !rows.some((r) => r.fullKey === sourceKey);
+                  patchState(store, { translations: putBack ? [...rows, movedRow] : rows, error: errorMessage });
                   notifications.error(errorMessage);
                   return of(null);
                 }),
@@ -157,7 +167,7 @@ export function withMovesFeature<_>() {
                       title: transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
                       message: transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
                         name: folderName,
-                        dest: destinationFolderPath || 'root',
+                        dest: destinationFolderPath || rootLabel(),
                       }),
                       confirmButtonText: transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
                       actionType: 'standard',
@@ -183,7 +193,7 @@ export function withMovesFeature<_>() {
                       notifications.success(
                         transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERMOVEDX, {
                           name: folderName,
-                          dest: destinationFolderPath || 'root',
+                          dest: destinationFolderPath || rootLabel(),
                         }),
                       );
                       patchState(store, { isDeletingFolder: false });

@@ -96,12 +96,20 @@ describe('BrowserStore List Scope', () => {
     expect(store.isTranslationsLoading()).toBe(false);
 
     store.showQuery('one');
+    // The first search from a folder has no hits to keep up yet, so the list spins too.
     expect(store.isSearchLoading()).toBe(true);
-    expect(store.isTranslationsLoading()).toBe(false);
+    expect(store.isTranslationsLoading()).toBe(true);
     expect(store.isDisabled()).toBe(true);
     searchRead('app', 'one').flush(found('one', 'a.one', 'b.one'));
     expect(keys(store.sortedTranslations())).toEqual(['a.one', 'b.one']);
     expect(store.isSearchLoading()).toBe(false);
+
+    // A refined search keeps its hits up and spins in the search box only.
+    store.showQuery('one.');
+    expect(store.isSearchLoading()).toBe(true);
+    expect(store.isTranslationsLoading()).toBe(false);
+    expect(keys(store.sortedTranslations())).toEqual(['a.one', 'b.one']);
+    searchRead('app', 'one.').flush(found('one.', 'b.one'));
 
     store.showFolder('b');
     expect(store.isSearchMode()).toBe(false);
@@ -172,11 +180,12 @@ describe('BrowserStore List Scope', () => {
     store.showQuery('save');
     searchRead('app', 'save').flush({ statusCode: 502, message: 'Search is down' }, { status: 502, statusText: 'Bad' });
 
-    expect(store.error()).toBe('Search is down');
+    expect(store.listError()).toBe('Search is down');
+    expect(store.listErrorMessage()).toBe('Search is down');
     expect(store.isSearchLoading()).toBe(false);
 
     store.retryLoad();
-    expect(store.error()).toBeNull();
+    expect(store.listErrorMessage()).toBeNull();
     searchRead('app', 'save').flush(found('save', 'save'));
     expect(keys(store.sortedTranslations())).toEqual(['save']);
   });
@@ -202,6 +211,40 @@ describe('BrowserStore List Scope', () => {
     expect(keys(store.sortedTranslations())).toEqual(['a.two']);
   });
 
+  it('should put back only the moved row when a move fails, and unlock', () => {
+    open('app');
+    store.showFolder('a');
+    listRead('app', 'a').flush(folder('a', 'a.one', 'a.two'));
+
+    store.moveResource({ sourceKey: 'a.one', destinationFolderPath: 'b' });
+    // A reload landed while the move was in flight: it is newer than anything taken before the move.
+    store.reloadList();
+    listRead('app', 'a').flush(folder('a', 'a.two', 'a.three'));
+    http
+      .expectOne(url('app', 'move'))
+      .flush({ statusCode: 409, message: 'Taken' }, { status: 409, statusText: 'Conflict' });
+
+    expect(keys(store.sortedTranslations())).toEqual(['a.one', 'a.three', 'a.two']);
+    expect(store.movesInFlight()).toBe(0);
+    expect(store.isDisabled()).toBe(false);
+  });
+
+  it('should start the next collection unlocked while a move of the previous one is in flight', () => {
+    open('a');
+    store.showFolder('x');
+    listRead('a', 'x').flush(folder('x', 'x.one'));
+    store.moveResource({ sourceKey: 'x.one', destinationFolderPath: 'y' });
+    const move = http.expectOne(url('a', 'move'));
+
+    open('b', 'b.welcome');
+    expect(store.isDisabled()).toBe(false);
+    move.flush({ statusCode: 500, message: 'late' }, { status: 500, statusText: 'Error' });
+
+    expect(store.movesInFlight()).toBe(0);
+    expect(keys(store.sortedTranslations())).toEqual(['b.welcome']);
+    expect(store.error()).toBeNull();
+  });
+
   it('should keep the shown list and folder, and toast, when the index is not ready after a list is up', () => {
     vi.useFakeTimers();
     open('app', 'welcome');
@@ -215,8 +258,55 @@ describe('BrowserStore List Scope', () => {
     expect(store.currentFolderPath()).toBe('');
     expect(keys(store.sortedTranslations())).toEqual(['welcome']);
     expect(store.isListLoading()).toBe(false);
-    expect(store.error()).toBeNull();
+    expect(store.listErrorMessage()).toBeNull();
     expect(toastError).toHaveBeenCalledWith('Collection is being indexed.');
+  });
+
+  it('should go back to the last scope that loaded, not one that never did, when the index is not ready', () => {
+    vi.useFakeTimers();
+    open('app', 'welcome');
+
+    store.showFolder('a');
+    const cancelled = listRead('app', 'a');
+    store.showFolder('b');
+    expect(cancelled.cancelled).toBe(true);
+    for (let attempt = 0; attempt <= TREE_NOT_READY_RETRIES; attempt++) {
+      listRead('app', 'b').flush(notReady, { status: 202, statusText: 'Accepted' });
+      vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
+    }
+
+    // `a` never loaded: the rows on screen are the root's, so the list goes back to the root.
+    expect(store.listScope()).toEqual({ kind: 'folder', path: '' });
+    expect(store.currentFolderPath()).toBe('');
+    expect(keys(store.sortedTranslations())).toEqual(['welcome']);
+    expect(toastError).toHaveBeenCalledWith('Collection is being indexed.');
+  });
+
+  it('should not cancel a folder load when the search box empties without a search shown', () => {
+    open('app', 'welcome');
+    store.showFolder('a');
+
+    store.clearSearch();
+
+    expect(store.isTranslationsLoading()).toBe(true);
+    listRead('app', 'a').flush(folder('a', 'a.one'));
+    expect(keys(store.sortedTranslations())).toEqual(['a.one']);
+  });
+
+  it("should keep a failed folder load's error up when another load clears the shared error", () => {
+    open('app', 'welcome');
+    store.showFolder('a');
+    listRead('app', 'a').flush({ statusCode: 502, message: 'Folder is down' }, { status: 502, statusText: 'Bad' });
+
+    // Loading a folder's children in the tree clears `error` as it starts, and must not bring back
+    // the root's rows under the `a` breadcrumb.
+    store.loadFolderChildren('other');
+    http
+      .expectOne((req) => req.url === url('app', 'tree') && req.params.get('path') === 'other')
+      .flush(folder('other'));
+
+    expect(store.error()).toBeNull();
+    expect(store.listErrorMessage()).toBe('Folder is down');
   });
 
   it('should stop retrying the previous collection once another one is opened', () => {

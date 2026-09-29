@@ -221,7 +221,6 @@ export function withFolderTreeFeature<_>() {
                     rootFolders: treeData.children,
                     folderTreeLoaded: true,
                     isFolderTreeLoading: false,
-                    // `error` was cleared when the load started: clearing it here would hide a failed list load.
                   }),
                 ),
                 catchError((error: unknown) => {
@@ -271,7 +270,6 @@ export function withFolderTreeFeature<_>() {
                   patchState(store, {
                     rootFolders: updateFolder(store.rootFolders()),
                     isFolderTreeLoading: false,
-                    error: null,
                   });
                 }),
                 catchError((error: unknown) => {

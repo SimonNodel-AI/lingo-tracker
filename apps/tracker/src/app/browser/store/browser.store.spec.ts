@@ -504,7 +504,7 @@ describe('BrowserStore', () => {
 
       expect(store.currentFolderPath()).toBe('common');
       expect(store.isTranslationsLoading()).toBe(false);
-      expect(store.error()).toBe('api error: load translations');
+      expect(store.listError()).toBe('api error: load translations');
     });
 
     it('should keep the tree and the shown list, and notify, when the index is still not ready after the retries', async () => {
@@ -1451,7 +1451,7 @@ describe('BrowserStore', () => {
       await waitForSignals();
 
       expect(store.isSearchLoading()).toBe(false);
-      expect(store.error()).toBe('Search failed');
+      expect(store.listError()).toBe('Search failed');
       expect(store.searchQuery()).toBe('test');
     });
   });

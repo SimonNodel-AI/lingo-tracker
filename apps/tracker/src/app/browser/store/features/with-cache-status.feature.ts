@@ -1,4 +1,4 @@
-import { computed, inject } from '@angular/core';
+import { computed, inject, type Signal } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, switchMap, interval, startWith, takeWhile, catchError, of, tap } from 'rxjs';
@@ -23,7 +23,9 @@ export const initialCacheStatusState: CacheStatusState = {
 export function withCacheStatusFeature<_>() {
   return signalStoreFeature(
     {
-      state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean; listLoaded: boolean }>(),
+      state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean }>(),
+      // Provided by withListScopeFeature, which composes before this feature.
+      props: type<{ listLoaded: Signal<boolean> }>(),
       methods: type<{ loadRootFolders(): void; reloadList(): void }>(),
     },
     withState(initialCacheStatusState),
@@ -74,8 +76,6 @@ export function withCacheStatusFeature<_>() {
                   });
 
                   if (statusDto.status === 'ready') {
-                    // Both loads clear `error` as they start; neither clears it when it lands, so a
-                    // failure of either one stays on screen.
                     if (!store.listLoaded()) store.reloadList();
                     if (!store.folderTreeLoaded()) store.loadRootFolders();
                   }

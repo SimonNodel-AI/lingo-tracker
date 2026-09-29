@@ -30,15 +30,21 @@ export const BrowserStore = signalStore(
       isDisabled,
       /** Editing affordances are locked: `isDisabled`, or the collection is read-only. */
       effectiveDisabled: computed(() => isDisabled() || store.isReadOnly()),
+      /** What the list's error view shows: the list's own failed load, else any other failure. */
+      listErrorMessage: computed(() => store.listError() ?? store.error()),
     };
   }),
   withMethods((store) => ({
     clearError(): void {
-      patchState(store, { error: null });
+      patchState(store, { error: null, listError: null });
     },
 
-    /** The list's Retry: loads the folder tree too when it never loaded, then the List Scope again. */
+    /**
+     * The list's Retry: clears the error on screen and loads the List Scope again, and the folder
+     * tree too when it never loaded.
+     */
     retryLoad(): void {
+      patchState(store, { error: null });
       store.reloadList();
       if (!store.folderTreeLoaded()) store.loadRootFolders();
     },
