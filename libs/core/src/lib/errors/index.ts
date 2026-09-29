@@ -4,6 +4,7 @@ export type { FolderPathPart } from './error-messages';
 export {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
+  CannotTranslateBaseLocaleError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
   CollectionAlreadyExistsError,
@@ -22,6 +23,7 @@ export {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,

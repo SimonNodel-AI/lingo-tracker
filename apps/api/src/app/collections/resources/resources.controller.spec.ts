@@ -3,7 +3,12 @@ import { HttpException, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Response } from 'express';
 import * as core from '@simoncodes-ca/core';
-import { TranslationError } from '@simoncodes-ca/core';
+import {
+  AutoTranslationDisabledError,
+  CannotTranslateBaseLocaleError,
+  TranslationError,
+  TranslationLocaleNotConfiguredError,
+} from '@simoncodes-ca/core';
 import type { ResourceTreeDto, SearchTranslationsDto } from '@simoncodes-ca/data-transfer';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { CollectionIndex } from '../../cache/collection-index.service';
@@ -1429,13 +1434,20 @@ describe('ResourcesController', () => {
         json: jest.fn().mockReturnThis(),
       };
 
-      try {
-        await resourcesController.translateLocale('test-collection', { locale: 'fr-ca' }, mockResponse as any);
-        fail('expected HttpException to be thrown');
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(422);
-      }
+      const error = await resourcesController
+        .translateLocale('test-collection', { locale: 'fr-ca' }, mockResponse as any)
+        .then(
+          () => {
+            throw new Error('expected rejection');
+          },
+          (reason: unknown) => reason,
+        );
+      expect(error).toBeInstanceOf(AutoTranslationDisabledError);
+      expect(toHttpException(error).getStatus()).toBe(422);
+      expect(toHttpException(error).getResponse()).toMatchObject({
+        message: 'Auto-translation is not enabled for collection "test-collection"',
+      });
+      expect(resourcesModule.get<TranslationJobService>(TranslationJobService).startJob).not.toHaveBeenCalled();
     });
 
     it('should return 400 when locale equals the base locale', async () => {
@@ -1446,13 +1458,20 @@ describe('ResourcesController', () => {
         json: jest.fn().mockReturnThis(),
       };
 
-      try {
-        await resourcesController.translateLocale('test-collection', { locale: 'en' }, mockResponse as any);
-        fail('expected HttpException to be thrown');
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(400);
-      }
+      const error = await resourcesController
+        .translateLocale('test-collection', { locale: 'en' }, mockResponse as any)
+        .then(
+          () => {
+            throw new Error('expected rejection');
+          },
+          (reason: unknown) => reason,
+        );
+      expect(error).toBeInstanceOf(CannotTranslateBaseLocaleError);
+      expect(toHttpException(error).getStatus()).toBe(400);
+      expect(toHttpException(error).getResponse()).toMatchObject({
+        message: 'Cannot translate to the base locale "en".',
+      });
+      expect(resourcesModule.get<TranslationJobService>(TranslationJobService).startJob).not.toHaveBeenCalled();
     });
 
     it('should return 400 when locale is not in the collection locales list', async () => {
@@ -1463,13 +1482,20 @@ describe('ResourcesController', () => {
         json: jest.fn().mockReturnThis(),
       };
 
-      try {
-        await resourcesController.translateLocale('test-collection', { locale: 'de' }, mockResponse as any);
-        fail('expected HttpException to be thrown');
-      } catch (error: unknown) {
-        expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(400);
-      }
+      const error = await resourcesController
+        .translateLocale('test-collection', { locale: 'de' }, mockResponse as any)
+        .then(
+          () => {
+            throw new Error('expected rejection');
+          },
+          (reason: unknown) => reason,
+        );
+      expect(error).toBeInstanceOf(TranslationLocaleNotConfiguredError);
+      expect(toHttpException(error).getStatus()).toBe(400);
+      expect(toHttpException(error).getResponse()).toMatchObject({
+        message: 'Locale "de" is not configured. Available locales: en, fr-ca, es',
+      });
+      expect(resourcesModule.get<TranslationJobService>(TranslationJobService).startJob).not.toHaveBeenCalled();
     });
   });
 

@@ -48,6 +48,11 @@ export const ErrorMessages = {
 
   cannotModifyBaseLocale: (locale: string) => `Cannot add or remove the base locale "${locale}"`,
 
+  cannotTranslateBaseLocale: (locale: string) => `Cannot translate to the base locale "${locale}".`,
+
+  translationLocaleNotConfigured: (locale: string, availableLocales: readonly string[]) =>
+    `Locale "${locale}" is not configured. Available locales: ${availableLocales.join(', ')}`,
+
   invalidKey: (key: string, reason: string) => `Invalid resource key "${key}": ${reason}`,
 
   bundleNotFound: (name: string) => `Bundle "${name}" not found`,
