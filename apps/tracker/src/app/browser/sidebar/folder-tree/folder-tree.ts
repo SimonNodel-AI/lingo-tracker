@@ -14,7 +14,6 @@ import { CommonModule } from '@angular/common';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatDialog } from '@angular/material/dialog';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -31,6 +30,7 @@ import type { DragData } from '../../types/drag-data';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 import { NotificationService } from '../../../shared/notification';
 import { folderMoveNoOp } from '../../store/folder-tree.utils';
+import { injectConfirm } from '../../../shared/confirm';
 
 const NESTED_ANIMATION_DURATION_MS = 250;
 const SCROLL_EDGE_THRESHOLD_PX = 50;
@@ -71,7 +71,7 @@ const SCROLL_INTERVAL_MS = 50;
 })
 export class FolderTree {
   readonly store = inject(BrowserStore);
-  readonly #dialog = inject(MatDialog);
+  readonly #confirm = injectConfirm();
   readonly TOKENS = TRACKER_TOKENS;
   readonly #transloco = inject(TranslocoService);
   readonly #notifications = inject(NotificationService);
@@ -308,22 +308,16 @@ export class FolderTree {
   onDeleteFolder(folderPath: string): void {
     const folderName = extractFolderNameFromPath(folderPath);
 
-    import('../../../shared/components/confirmation-dialog/confirmation-dialog').then((m) => {
-      const dialogRef = this.#dialog.open(m.ConfirmationDialog, {
-        data: {
-          title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
-          message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, { name: folderName }),
-          confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-          actionType: 'destructive',
-        },
-        width: '400px',
-      });
-
-      dialogRef.afterClosed().subscribe((confirmed) => {
-        if (confirmed === true) {
-          this.store.deleteFolder(folderPath);
-        }
-      });
+    this.#confirm(
+      {
+        title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
+        message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, { name: folderName }),
+        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
+        actionType: 'destructive',
+      },
+      { width: '400px' },
+    ).then((confirmed) => {
+      if (confirmed) this.store.deleteFolder(folderPath);
     });
   }
 
@@ -339,26 +333,21 @@ export class FolderTree {
 
     const sessionId = this.store.sessionId();
     const folderName = extractFolderNameFromPath(sourceFolderPath);
-    import('../../../shared/components/confirmation-dialog/confirmation-dialog').then((module) => {
-      if (this.store.sessionId() !== sessionId) return;
-      const dialogRef = this.#dialog.open(module.ConfirmationDialog, {
-        data: {
-          title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
-          message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
-            name: folderName,
-            dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-          }),
-          confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
-          actionType: 'standard',
-        },
-        width: '400px',
-      });
-
-      dialogRef.afterClosed().subscribe((confirmed) => {
-        if (confirmed && this.store.sessionId() === sessionId) {
-          this.store.moveFolder({ sourceFolderPath, destinationFolderPath });
-        }
-      });
+    this.#confirm(
+      {
+        title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
+        message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
+          name: folderName,
+          dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
+        }),
+        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
+        actionType: 'standard',
+      },
+      { width: '400px', canOpen: () => this.store.sessionId() === sessionId },
+    ).then((confirmed) => {
+      if (confirmed && this.store.sessionId() === sessionId) {
+        this.store.moveFolder({ sourceFolderPath, destinationFolderPath });
+      }
     });
   }
 

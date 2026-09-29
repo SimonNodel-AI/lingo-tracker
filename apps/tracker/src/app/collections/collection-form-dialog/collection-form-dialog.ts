@@ -2,22 +2,21 @@ import { Component, ChangeDetectionStrategy, computed, inject, DestroyRef, type 
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { ReactiveFormsModule, FormGroup, FormControl, FormArray, Validators } from '@angular/forms';
-import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA, MatDialog } from '@angular/material/dialog';
+import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import type { MatChipInputEvent } from '@angular/material/chips';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { firstValueFrom } from 'rxjs';
 import { isUnderNodeModules, normalizeProtectedTerms, normalizeTag, validateLocale } from '@simoncodes-ca/domain';
 import type { CollectionFormDialogData } from './collection-form-dialog-data';
 import type { LingoTrackerCollectionDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
-import { ConfirmationDialog } from '../../shared/components/confirmation-dialog/confirmation-dialog';
-import type { ConfirmationDialogData } from '../../shared/components/confirmation-dialog/confirmation-dialog-data';
+import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsStore } from '../store/collections.store';
+import { injectConfirm } from '../../shared/confirm';
+import { submitDialogConfigWrite, type ConfigRefusal } from '../store/dialog-config-submit';
 
 /** What the dialog closes with: the collection as the server has now accepted it. */
 export interface CollectionFormResult {
@@ -45,7 +44,7 @@ export interface CollectionFormResult {
 export class CollectionFormDialog implements OnInit {
   readonly #dialogRef = inject(MatDialogRef<CollectionFormDialog>);
   readonly #data = inject<CollectionFormDialogData>(MAT_DIALOG_DATA);
-  readonly #dialog = inject(MatDialog);
+  readonly #confirm = injectConfirm();
   readonly #translocoService = inject(TranslocoService);
   readonly #destroyRef = inject(DestroyRef);
   readonly #store = inject(CollectionsStore);
@@ -334,21 +333,15 @@ export class CollectionFormDialog implements OnInit {
       const removedLocales = this.#originalLocales.filter((l) => !localesArray.includes(l));
 
       if (removedLocales.length > 0) {
-        const confirmRef = this.#dialog.open(ConfirmationDialog, {
-          data: {
-            title: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE),
-            message: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY, {
-              locales: removedLocales.join(', '),
-            }),
-            confirmButtonText: this.#translocoService.translate(TRACKER_TOKENS.COMMON.ACTIONS.SAVE),
-            actionType: 'destructive',
-          } satisfies ConfirmationDialogData,
+        const confirmed = await this.#confirm({
+          title: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE),
+          message: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY, {
+            locales: removedLocales.join(', '),
+          }),
+          confirmButtonText: this.#translocoService.translate(TRACKER_TOKENS.COMMON.ACTIONS.SAVE),
+          actionType: 'destructive',
         });
-
-        const confirmed = await firstValueFrom(confirmRef.afterClosed());
-        if (confirmed) {
-          this.#save();
-        }
+        if (confirmed) this.#save();
         return;
       }
     }
@@ -356,15 +349,6 @@ export class CollectionFormDialog implements OnInit {
     this.#save();
   }
 
-  /**
-   * Writes the collection through the store and closes with the result once the server has
-   * accepted it. A rejection keeps the dialog open with what was typed: a taken name lands
-   * on the name field, anything else on the error line above the buttons.
-   *
-   * The dialog cannot be closed while the write is in flight (Cancel, the close icon, Esc and
-   * the backdrop are all off): closing would destroy it and cancel the subscription, so the
-   * outcome of a write the server may already have made would be lost.
-   */
   #save(): void {
     const result = this.#buildResult();
     const existingName = this.isEditMode ? this.#data.name : undefined;
@@ -376,23 +360,20 @@ export class CollectionFormDialog implements OnInit {
             collection: result.config,
           });
 
-    const disableClose = this.#dialogRef.disableClose;
-    this.saving.set(true);
-    this.#dialogRef.disableClose = true;
     this.submitError.set(null);
-    write.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe({
-      next: () => this.#dialogRef.close(result),
-      error: (error: unknown) => {
-        this.saving.set(false);
-        this.#dialogRef.disableClose = disableClose;
-        this.#showRejection(error, result.name);
-      },
+    submitDialogConfigWrite({
+      dialogRef: this.#dialogRef,
+      write,
+      saving: this.saving,
+      result,
+      destroyRef: this.#destroyRef,
+      onRefusal: (refusal) => this.#showRejection(refusal, result.name),
     });
   }
 
-  #showRejection(error: unknown, name: string): void {
+  #showRejection(refusal: ConfigRefusal, name: string): void {
     const nameControl = this.form.controls.name;
-    if (error instanceof ApiError && error.kind === 'conflict' && nameControl.enabled) {
+    if (refusal.kind === 'conflict' && nameControl.enabled) {
       this.#serverTakenName = name;
       nameControl.updateValueAndValidity();
       nameControl.markAsTouched();
@@ -401,7 +382,7 @@ export class CollectionFormDialog implements OnInit {
     const fallback = this.isEditMode
       ? TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED
       : TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED;
-    this.submitError.set(apiErrorMessage(error, this.#translocoService.translate(fallback)));
+    this.submitError.set(apiErrorMessage(refusal.error, this.#translocoService.translate(fallback)));
   }
 
   #buildResult(): CollectionFormResult {
