@@ -1,5 +1,5 @@
-import { existsSync, statSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync, readdirSync, rmdirSync, statSync } from 'node:fs';
+import { join, relative, resolve, sep } from 'node:path';
 import { isValidSegment } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import {
@@ -9,9 +9,8 @@ import {
 } from '../errors/lingo-tracker-error';
 import { mergeRelocation } from '../../resource/move-resource';
 import { relocateEntries } from '../../resource/relocate-entries';
-import { deleteFolder } from './delete-folder';
 import { sweepKeys } from '../resource/collection-sweep';
-import type { ResourceMutation } from '../resource/resource-mutation';
+import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -51,7 +50,8 @@ export interface MoveFolderResult {
  * 2. Prevents circular dependencies (moving folder into its own descendant)
  * 3. Extracts all resources in the source folder tree recursively
  * 4. Moves each resource to the corresponding destination path
- * 5. Deletes the source folder once every resource in it was moved (otherwise keeps it and warns)
+ * 5. Once every resource in it was moved, removes the source folder where it is empty. Content
+ *    outside the collection (hidden folders, stray files) is never deleted: its folders are kept with a warning
  *
  * Bad input throws; failures of individual resources are reported in the result.
  *
@@ -76,7 +76,7 @@ export interface MoveFolderResult {
 export async function moveFolder(collection: Collection, params: MoveFolderParams): Promise<MoveFolderResult> {
   const { sourceFolderPath, destinationFolderPath, override = false, nestUnderDestination = true } = params;
   const destinationCollection = params.destinationCollection ?? collection;
-  const sameCollection = destinationCollection.translationsFolder === collection.translationsFolder;
+  const sameCollection = resolve(destinationCollection.translationsFolder) === resolve(collection.translationsFolder);
 
   const result: MoveFolderResult = {
     movedCount: 0,
@@ -144,10 +144,9 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
 
   if (resourceKeys.length === 0) {
     result.warnings.push('No resources found in source folder. Nothing to move.');
-    // Still delete the empty folder
+    // Still remove the empty folder
     try {
-      result.mutations.push(...deleteFolder(collection, { folderPath: sourceFolderPath }).mutations);
-      result.foldersDeleted++;
+      removeEmptySource(collection, sourceFolderPath, absoluteSourcePath, result);
     } catch (error) {
       result.errors.push(`Failed to delete empty source folder: ${errorMessage(error)}`);
     }
@@ -211,17 +210,66 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     result.warnings.push(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
   }
 
-  // Only delete the source folder when every resource in it was moved
+  // Only remove the source folder when every resource in it was moved
   if (keptKeys.length === 0 && result.errors.length === 0) {
     try {
-      result.mutations.push(...deleteFolder(collection, { folderPath: sourceFolderPath }).mutations);
-      result.foldersDeleted++;
+      removeEmptySource(collection, sourceFolderPath, absoluteSourcePath, result);
     } catch (error) {
       result.warnings.push(`Resources moved but failed to delete source folder: ${errorMessage(error)}`);
     }
   }
 
   return result;
+}
+
+/**
+ * Removes the source folder tree, deepest first, where it is empty now: the relocation's saves
+ * already deleted the resource files of every emptied folder. Anything else (a hidden folder, a
+ * stray file) is not part of the collection and is never deleted; the folders that hold it are
+ * kept with a warning. A `remove-folder` is added for the source folder when it is gone, else for
+ * each removed subfolder whose parent is kept.
+ */
+function removeEmptySource(
+  collection: Collection,
+  sourceFolderPath: string,
+  absoluteSourcePath: string,
+  result: MoveFolderResult,
+): void {
+  const { translationsFolder } = collection;
+  const leftovers: string[] = [];
+  const prune = (folder: string): boolean => {
+    let empty = true;
+    const removed: string[] = [];
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const child = join(folder, entry.name);
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        if (prune(child)) removed.push(child);
+        else empty = false;
+      } else {
+        leftovers.push(relative(translationsFolder, child));
+        empty = false;
+      }
+    }
+    if (empty) {
+      rmdirSync(folder);
+    } else {
+      // The folder stays, so the index must drop the emptied subfolders it lost.
+      for (const child of removed) {
+        const path = relative(translationsFolder, child).split(sep).join('.');
+        result.mutations.push(folderMutation('remove-folder', translationsFolder, path));
+      }
+    }
+    return empty;
+  };
+
+  if (prune(absoluteSourcePath)) {
+    result.mutations.push(folderMutation('remove-folder', translationsFolder, sourceFolderPath));
+    result.foldersDeleted++;
+  } else {
+    result.warnings.push(
+      `Source folder kept: holds content that is not part of the collection: ${leftovers.join(', ')}`,
+    );
+  }
 }
 
 function errorMessage(error: unknown): string {

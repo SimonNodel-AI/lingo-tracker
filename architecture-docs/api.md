@@ -290,7 +290,7 @@ Mutations come back only from a write that returns. A core write that throws par
 | `upsert` (key, entry) | `addResource`, `editResource` (at the destination after a `moveTo`), `translateExistingResource`, `moveResource` / `moveFolder` (destination) | Insert or replace the entry. Missing folders are created, as on disk. |
 | `remove` (key) | `deleteResource`, `moveResource` / `moveFolder` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → drop the collection. |
 | `add-folder` (path) | `createFolder` | Create the folder node (and missing parents). |
-| `remove-folder` (path) | `deleteFolder`, `moveFolder` (deleted source folder) | Remove the folder node. Missing folder → drop the collection. |
+| `remove-folder` (path) | `deleteFolder`, `moveFolder` (the removed source folder, or its removed subfolders when the source is kept) | Remove the folder node. Missing folder → drop the collection. |
 | `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`; a move whose write failed part-way | Drop the collection. Every folder's metadata changed, or the change is not known. |
 
 A move (`moveResource`, `moveFolder`, `editResource` with a `moveTo`) lists a `remove` for every moved key first, then an `upsert` for every moved key, and a folder move then adds a `remove-folder`. Removes come first because one batch can move an entry into a key that another entry of the same batch leaves (`a.*` to `a.b`). Thus the index follows partial moves, merges into an existing folder, and `nestUnderDestination: false` in the same way as the disk. Writes that do not go through the API (the translate-locale job, CLI commands, imports) are found by revalidation.

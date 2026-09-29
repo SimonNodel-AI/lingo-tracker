@@ -125,7 +125,7 @@ describe('moveFolder with a destination collision (real fs)', () => {
   });
 });
 
-describe('moveFolder across collections and past hidden folders (real fs)', () => {
+describe('moveFolder across collections and around content outside the collection (real fs)', () => {
   let root: string;
 
   beforeEach(() => {
@@ -136,7 +136,7 @@ describe('moveFolder across collections and past hidden folders (real fs)', () =
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('moves the collection entries of a tree and deletes it with its hidden folders, as deleteFolder does', async () => {
+  it('moves the collection entries of a tree, keeps what is not part of the collection and warns', async () => {
     const source = collection(join(root, 'main'));
     await addResource(source, { key: 'apps.one', baseValue: 'One' });
     await addResource(source, { key: 'apps.nested.two', baseValue: 'Two' });
@@ -148,9 +148,46 @@ describe('moveFolder across collections and past hidden folders (real fs)', () =
 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(2);
-    expect(result.foldersDeleted).toBe(1);
-    expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
+    expect(result.foldersDeleted).toBe(0);
+    expect(result.warnings).toEqual([
+      `Source folder kept: holds content that is not part of the collection: ${join('apps', '.backup')}`,
+    ]);
+    // The hidden folder is untouched; the emptied collection folders are gone.
+    expect(JSON.parse(readFileSync(join(hidden, 'resource_entries.json'), 'utf8'))).toEqual({ old: { source: 'Old' } });
+    expect(existsSync(join(source.translationsFolder, 'apps', 'resource_entries.json'))).toBe(false);
+    expect(existsSync(join(source.translationsFolder, 'apps', 'nested'))).toBe(false);
     expect(openResourceFolder(join(source.translationsFolder, 'shared', 'apps', 'nested')).keys()).toEqual(['two']);
+    expect(result.mutations.filter((mutation) => mutation.kind === 'remove-folder')).toEqual([
+      { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps.nested' },
+    ]);
+  });
+
+  it('keeps an empty source folder that holds a stray file', async () => {
+    const source = collection(join(root, 'main'));
+    mkdirSync(join(source.translationsFolder, 'apps'), { recursive: true });
+    writeFileSync(join(source.translationsFolder, 'apps', 'README.md'), 'notes');
+
+    const result = await moveFolder(source, { sourceFolderPath: 'apps', destinationFolderPath: 'shared' });
+
+    expect(result.foldersDeleted).toBe(0);
+    expect(result.mutations).toEqual([]);
+    expect(result.warnings).toContain(
+      `Source folder kept: holds content that is not part of the collection: ${join('apps', 'README.md')}`,
+    );
+    expect(readFileSync(join(source.translationsFolder, 'apps', 'README.md'), 'utf8')).toBe('notes');
+  });
+
+  it('removes an empty source folder tree', async () => {
+    const source = collection(join(root, 'main'));
+    mkdirSync(join(source.translationsFolder, 'apps', 'deep'), { recursive: true });
+
+    const result = await moveFolder(source, { sourceFolderPath: 'apps', destinationFolderPath: 'shared' });
+
+    expect(result.foldersDeleted).toBe(1);
+    expect(result.mutations).toEqual([
+      { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps' },
+    ]);
+    expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
   });
 
   it('fits entries moved into another collection to its locales', async () => {
