@@ -49,7 +49,8 @@ export { exportTargetLocales, runExport } from './lib/export/run-export';
 // Operations: normalize, translate, validate
 export { normalize } from './lib/normalize';
 export { assertAutoTranslationEnabled, translateExistingResource, translateLocale } from './lib/translation';
-export { generateValidationSummary, validateResources } from './lib/validate';
+export { generateValidationSummary, runValidate, validateResources } from './lib/validate';
+export type { ValidateRunOptions, ValidateRunResult } from './lib/validate';
 
 // Collection & config
 export type { LingoTrackerCollection } from './config/lingo-tracker-collection';

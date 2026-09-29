@@ -1,12 +1,4 @@
-import {
-  describeTermFileProblem,
-  generateValidationSummary,
-  openCollection,
-  readProjectTerms,
-  type LingoTrackerConfig,
-  type ValidationOptions,
-  validateResources,
-} from '@simoncodes-ca/core';
+import { openCollection, runValidate, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -157,86 +149,12 @@ export const validateCommand = defineCommand<ValidateCommandOptions>()({
 
 function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const collections = Object.keys(config.collections || {}).map((name) => openCollection(config, name, { cwd }));
-
-  if (collections.length === 0) {
-    ConsoleFormatter.error('No collections found in configuration.');
+  const result = runValidate(collections, options);
+  for (const warning of result.warnings) ConsoleFormatter.warning(warning);
+  if (result.status === 'failed') {
+    ConsoleFormatter.error(result.error, result.details);
     return { exitCode: 1 };
   }
-
-  // Each collection is validated against its own target locales (its locales without its base locale).
-  const targetLocales = [...new Set(collections.flatMap((collection) => collection.targetLocales))];
-
-  if (targetLocales.length === 0) {
-    ConsoleFormatter.error('No target locales found in configuration.', [
-      "Target locales are each collection's locales except its base locale.",
-    ]);
-    return { exitCode: 1 };
-  }
-
-  const baseLocales = new Set(collections.map((collection) => collection.baseLocale));
-  const requestedSkip = options.skipLocales ?? [];
-  const effectiveSkipped: string[] = [];
-
-  for (const locale of requestedSkip) {
-    if (targetLocales.includes(locale)) {
-      effectiveSkipped.push(locale);
-      continue;
-    }
-    if (baseLocales.has(locale)) {
-      // A base locale is never a target, so there is nothing to skip — silently ignore
-      continue;
-    }
-    ConsoleFormatter.warning(`Skipping unknown locale '${locale}' — not in configured locales`);
-  }
-
-  if (targetLocales.every((locale) => effectiveSkipped.includes(locale))) {
-    ConsoleFormatter.error('All target locales were skipped; nothing to validate.');
-    return { exitCode: 1 };
-  }
-
-  // Term-file problems of every collection, printed once each (collections share the global
-  // files). Validate checks translations, not protected terms, so a missing or broken
-  // protected-terms file only warns. The preferred terminology is one file for the project, so
-  // any collection's Project Terms carry its rules; findings are advisory, but a broken rule file
-  // is a failure (loadError), otherwise a typo in the file would silently switch the check off in
-  // CI. A rule file named but missing warns.
-  const projectTerms = collections.map((collection) => readProjectTerms(collection));
-  const problems = projectTerms.flatMap((terms) => terms.problems);
-  const warnings = problems
-    .filter((problem) => problem.file === 'protected-terms' || problem.severity === 'warning')
-    .map(describeTermFileProblem);
-  for (const warning of new Set(warnings)) {
-    ConsoleFormatter.warning(warning);
-  }
-  const ruleFileError = problems.find(
-    (problem) => problem.file === 'preferred-terminology' && problem.severity === 'error',
-  )?.message;
-  const rules = [...projectTerms[0].preferredTerminology];
-
-  const compileValues = !options.skipIcu;
-  const requirePortablePlurals = options.requirePortablePlurals ?? false;
-
-  const validationOptions: ValidationOptions = {
-    allowTranslated: options.allowTranslated ?? false,
-    skippedLocales: effectiveSkipped,
-    // The portability rule is a static parse, not a compilation, so an explicit
-    // request for it is honoured even alongside --skip-icu. Each collection's
-    // base values are checked alongside its targets: they are copied into every
-    // translation slot.
-    icu: compileValues || requirePortablePlurals ? { compileValues, requirePortablePlurals } : undefined,
-    // A renamed placeholder renders as empty text instead of raising, so the
-    // ICU pass above cannot see it and the status gate has no opinion on it.
-    placeholders: !options.skipPlaceholders,
-    // Omitted when there is nothing to check, so a project without rules sees
-    // no terminology output at all.
-    terminology: rules.length > 0 || ruleFileError !== undefined ? { rules, loadError: ruleFileError } : undefined,
-  };
-
-  const validationResult = validateResources(collections, validationOptions);
-
-  const summary = generateValidationSummary(validationResult, validationOptions);
-
-  console.log(summary);
-
-  return validationResult.passed ? undefined : { exitCode: 1 };
+  console.log(result.summary);
+  return result.validation.passed ? undefined : { exitCode: 1 };
 }
