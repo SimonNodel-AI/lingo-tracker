@@ -511,7 +511,7 @@ Which folders it visits is the one collection-folder policy it shares with the r
 
 | Caller | What it does with a folder | What it does with a problem |
 |---|---|---|
-| `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection` (a locale list change), through `seedLocaleFiles` / `dropLocaleFiles` | `seedLocale` / `dropLocale`, then `save()` when anything changed | Throws with the problem's message. The folders swept before it are already saved. |
+| `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection` (a locale list change), through `openLocaleFolders` and `seedLocaleFiles` / `dropLocaleFiles` | Opens every folder first, then `seedLocale` / `dropLocale` and `save()` when anything changed | Throws with the problem's message before the config or any file is written. |
 | `normalize` | `normalizeEntry` for each entry, then `save({ dryRun })` | Leaves the folder as it is and returns it in `problems`. |
 | `deleteFolder` | Counts its entries for `resourcesDeleted` | Not counted. The whole folder tree is deleted either way. |
 | `moveFolder`, and a wildcard `moveResource` (through `sweepKeys`) | Lists the keys to move, for the [Entry Relocation](#entry-relocation) | One error in the result. `moveFolder` then moves and deletes nothing. |

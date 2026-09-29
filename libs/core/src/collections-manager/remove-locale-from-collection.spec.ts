@@ -124,17 +124,17 @@ describe('removeLocaleFromCollection', () => {
     expect(result.filesUpdated).toBe(0);
   });
 
-  it('fails on a folder the Collection Sweep cannot read, even one with only a tracker_meta.json', async () => {
+  it('fails before writing anything on a folder the Collection Sweep cannot read, even one with only a tracker_meta.json', async () => {
     setupMockFs({
       [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
       [TRANSLATIONS_FOLDER]: { type: 'directory', children: ['tracker_meta.json'] },
       [path.join(TRANSLATIONS_FOLDER, 'tracker_meta.json')]: { type: 'file', content: '{ not json' },
     });
 
-    // The Collection Reader reports this folder as a problem too; the locale change stops there.
+    // The Collection Reader reports this folder as a problem too; the locale change refuses it.
     await expect(removeLocaleFromCollection('main', 'fr', { cwd: CWD })).rejects.toThrow('tracker_meta.json');
-    // Only the config file is written
-    expect(vi.mocked(fs.writeFileSync)).toHaveBeenCalledTimes(1);
+    // Checked before the config is written: nothing is written at all.
+    expect(vi.mocked(fs.writeFileSync)).not.toHaveBeenCalled();
   });
 
   it('handles non-existent translations folder gracefully', async () => {

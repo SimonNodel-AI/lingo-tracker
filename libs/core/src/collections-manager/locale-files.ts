@@ -1,5 +1,4 @@
-import type { Collection } from '../lib/config/open-collection';
-import { sweepCollection } from '../lib/resource/collection-sweep';
+import { type CollectionSweepTarget, sweepCollection } from '../lib/resource/collection-sweep';
 import type { ResourceFolder } from '../lib/resource/resource-folder';
 
 export interface LocaleFilesResult {
@@ -10,30 +9,43 @@ export interface LocaleFilesResult {
 }
 
 /**
- * Seeds `locale` in every resource folder of `collection` through `ResourceFolder.seedLocale`
- * (the one seeding rule, which normalize shares). Touches only the translation files, never the config.
+ * Opens every folder of the collection's Collection Sweep, before anything is written, so a locale
+ * change can refuse a collection it cannot fully update and leave the config and the files as they are.
+ * @throws Error A folder cannot be read (not valid JSON, or not listable); names the folder or file.
  */
-export function seedLocaleFiles(collection: Collection, locale: string): LocaleFilesResult {
-  return rewriteFolders(collection, (folder) => folder.seedLocale(locale));
-}
-
-/** Drops `locale` from every resource folder of `collection`. Touches only the translation files. */
-export function dropLocaleFiles(collection: Collection, locale: string): LocaleFilesResult {
-  return rewriteFolders(collection, (folder) => folder.dropLocale(locale));
-}
-
-/**
- * Applies `change` to every folder of the Collection Sweep and saves the ones it changed.
- * @throws Error A folder cannot be read (the folders swept before it are already saved).
- */
-function rewriteFolders(collection: Collection, change: (folder: ResourceFolder) => number): LocaleFilesResult {
-  let entries = 0;
-  let filesUpdated = 0;
-
+export function openLocaleFolders(collection: CollectionSweepTarget): ResourceFolder[] {
+  const folders: ResourceFolder[] = [];
   for (const { folder, problem } of sweepCollection(collection)) {
     if (problem) {
       throw new Error(problem.message);
     }
+    folders.push(folder);
+  }
+  return folders;
+}
+
+/**
+ * Seeds `locale` in the folders (from {@link openLocaleFolders}) through `ResourceFolder.seedLocale`
+ * (the one seeding rule, which normalize shares). Touches only the translation files, never the config.
+ */
+export function seedLocaleFiles(folders: readonly ResourceFolder[], locale: string): LocaleFilesResult {
+  return rewriteFolders(folders, (folder) => folder.seedLocale(locale));
+}
+
+/** Drops `locale` from the folders (from {@link openLocaleFolders}). Touches only the translation files. */
+export function dropLocaleFiles(folders: readonly ResourceFolder[], locale: string): LocaleFilesResult {
+  return rewriteFolders(folders, (folder) => folder.dropLocale(locale));
+}
+
+/** Applies `change` to every folder and saves the ones it changed. */
+function rewriteFolders(
+  folders: readonly ResourceFolder[],
+  change: (folder: ResourceFolder) => number,
+): LocaleFilesResult {
+  let entries = 0;
+  let filesUpdated = 0;
+
+  for (const folder of folders) {
     const changed = change(folder);
     if (changed > 0) {
       folder.save();
