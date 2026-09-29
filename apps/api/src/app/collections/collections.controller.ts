@@ -2,15 +2,11 @@ import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from 
 import {
   addCollection,
   deleteCollectionByName,
-  openCollection,
-  reindexMutation,
-  type ResourceMutation,
   setCollectionProtectedTerms,
   updateCollection,
 } from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
-import { ConfigService } from '../config/config.service';
 import { mapDtoToCollection } from '../mappers/collection.mapper';
 
 /**
@@ -69,42 +65,19 @@ function assertCollectionBody(
 
 @Controller('collections')
 export class CollectionsController {
-  readonly #configService: ConfigService;
   readonly #index: CollectionIndex;
 
-  constructor(configService: ConfigService, index: CollectionIndex) {
-    this.#configService = configService;
+  constructor(index: CollectionIndex) {
     this.#index = index;
-  }
-
-  /**
-   * The collection's absolute translations folder per the current config, or `undefined`
-   * when it cannot be resolved (the core call that follows reports that error).
-   */
-  #translationsFolderOf(collectionName: string): string | undefined {
-    try {
-      return openCollection(this.#configService.getConfig(), collectionName).translationsFolder;
-    } catch {
-      return undefined;
-    }
-  }
-
-  /** Drops the index entries for the given folders; a config change is too broad to patch. */
-  #reindex(folders: ReadonlyArray<string | undefined>, mutations: readonly ResourceMutation[] = []): void {
-    const unique = [...new Set(folders.filter((folder): folder is string => folder !== undefined))];
-    this.#index.apply([...mutations, ...unique.map((folder) => reindexMutation(folder))]);
   }
 
   /** Core's typed errors (for example `CollectionNotFoundError`, 404) reach the global exception filter. */
   @Delete(':collectionName')
   async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
     const decodedCollectionName = decodeURIComponent(collectionName);
-    const translationsFolder = this.#translationsFolderOf(decodedCollectionName);
-    deleteCollectionByName(decodedCollectionName);
-    this.#reindex([translationsFolder]);
-    return {
-      message: `Collection "${decodedCollectionName}" deleted successfully`,
-    };
+    const result = deleteCollectionByName(decodedCollectionName);
+    this.#index.apply(result.mutations);
+    return { message: result.message };
   }
 
   /**
@@ -136,9 +109,8 @@ export class CollectionsController {
     const decodedCollectionName = decodeURIComponent(collectionName);
     const { name, collection } = body;
     const targetName = name ?? decodedCollectionName;
-    const oldTranslationsFolder = this.#translationsFolderOf(decodedCollectionName);
     const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
-    this.#reindex([oldTranslationsFolder, this.#translationsFolderOf(targetName)], result.mutations);
+    this.#index.apply(result.mutations);
     writeCollectionProtectedTerms(targetName, collection.protectedTerms);
     return { message: result.message };
   }

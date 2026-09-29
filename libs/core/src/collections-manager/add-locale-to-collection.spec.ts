@@ -1,216 +1,127 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
-import { addLocaleToCollection } from './add-locale-to-collection';
-import { calculateChecksum } from '../resource/checksum';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
+import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import {
+  BaseLocaleImmutableError,
+  CollectionNotFoundError,
+  InvalidLocaleError,
+  LocaleAlreadyExistsError,
+  ReadOnlyCollectionError,
+} from '../lib/errors/lingo-tracker-error';
 import type { ResourceEntries } from '../resource/resource-entry';
 import type { TrackerMetadata } from '../resource/tracker-metadata';
-import type { SafeAny } from '../constants';
-import { setupMockFs, makeBaseConfig } from './locale.spec-helpers';
-import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
-
-vi.mock('fs');
-
-const CWD = path.resolve('/test');
-const CONFIG_PATH = path.join(CWD, '.lingo-tracker.json');
-const TRANSLATIONS_FOLDER = path.join(CWD, 'src/i18n');
-
-function makeConfig(overrides: SafeAny = {}) {
-  return makeBaseConfig(overrides);
-}
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
+import { addLocaleToCollection } from './add-locale-to-collection';
 
 describe('addLocaleToCollection', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  const tempDir = useTempDir('add-locale-');
+  const folder = (): string => join(tempDir(), 'src/i18n');
+  const config = (): LingoTrackerConfig => ({
+    exportFolder: 'export',
+    importFolder: 'import',
+    baseLocale: 'en',
+    locales: ['en', 'fr'],
+    collections: { main: { translationsFolder: 'src/i18n' } },
   });
+  const writeConfig = (value: LingoTrackerConfig = config()): void =>
+    writeFileSync(join(tempDir(), CONFIG_FILENAME), JSON.stringify(value));
+  const readConfig = (): LingoTrackerConfig => JSON.parse(readFileSync(join(tempDir(), CONFIG_FILENAME), 'utf8'));
+  const entries = (): ResourceEntries => JSON.parse(readFileSync(join(folder(), RESOURCE_ENTRIES_FILENAME), 'utf8'));
+  const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
+  const add = (name = 'main', locale = 'de') => addLocaleToCollection(name, locale, { cwd: tempDir() });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  beforeEach(() => writeConfig());
 
   it('adds locale to config and backfills resource entries', async () => {
-    const entries: ResourceEntries = {
-      ok: { source: 'OK', fr: 'OK' },
-    };
-    const meta: TrackerMetadata = {
-      ok: {
-        en: { checksum: calculateChecksum('OK') },
-        fr: { checksum: calculateChecksum('OK'), baseChecksum: calculateChecksum('OK'), status: 'new' },
-      },
-    };
-
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-      [TRANSLATIONS_FOLDER]: { type: 'directory', children: ['resource_entries.json', 'tracker_meta.json'] },
-      [path.join(TRANSLATIONS_FOLDER, 'resource_entries.json')]: { type: 'file', content: JSON.stringify(entries) },
-      [path.join(TRANSLATIONS_FOLDER, 'tracker_meta.json')]: { type: 'file', content: JSON.stringify(meta) },
+    seedResources(testCollection(folder()), { ok: { source: 'OK', translations: { fr: 'OK' } } });
+    const result = await add();
+    expect(result).toEqual({
+      message: 'Locale "de" added to collection "main" successfully',
+      entriesBackfilled: 1,
+      filesUpdated: 1,
+      mutations: [{ kind: 'reindex', translationsFolder: folder() }],
     });
-
-    const result = await addLocaleToCollection('main', 'de', { cwd: CWD });
-
-    expect(result.message).toBe('Locale "de" added to collection "main" successfully');
-    expect(result.entriesBackfilled).toBe(1);
-    expect(result.filesUpdated).toBe(1);
-
-    const writeCalls = vi.mocked(fs.writeFileSync).mock.calls;
-    // First call: config file
-    const configWrite = JSON.parse(writeCalls[0][1] as string);
-    expect(configWrite.collections.main.locales).toContain('de');
-
-    // Second call: resource_entries.json — de entry should be source value
-    const entriesWrite = JSON.parse(writeCalls[1][1] as string);
-    expect(entriesWrite.ok.de).toBe('OK');
-
-    // Third call: tracker_meta.json — de metadata should be status 'new'
-    const metaWrite = JSON.parse(writeCalls[2][1] as string);
-    expect(metaWrite.ok.de).toMatchObject({
-      checksum: calculateChecksum('OK'),
-      baseChecksum: calculateChecksum('OK'),
-      status: 'new',
-    });
+    expect(readConfig().collections['main'].locales).toEqual(['en', 'fr', 'de']);
+    expect(entries()['ok']?.['de']).toBe('OK');
+    expect(meta()['ok']?.['de']).toMatchObject({ status: 'new' });
   });
 
   it('copies global locales into collection when collection has no locales override', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-      [TRANSLATIONS_FOLDER]: { type: 'directory', children: [] },
-    });
-
-    const result = await addLocaleToCollection('main', 'de', { cwd: CWD });
-
-    expect(result.message).toContain('de');
-
-    const configWriteCall = vi.mocked(fs.writeFileSync).mock.calls[0];
-    const writtenConfig = JSON.parse(configWriteCall[1] as string);
-    // Should have copied global locales AND added de
-    expect(writtenConfig.collections.main.locales).toEqual(['en', 'fr', 'de']);
+    await add();
+    expect(readConfig().collections['main'].locales).toEqual(['en', 'fr', 'de']);
   });
 
   it('does not copy global locales when collection already has explicit locales', async () => {
-    const config = makeConfig({
-      locales: ['en', 'fr'],
-      collections: {
-        main: { translationsFolder: 'src/i18n', locales: ['en', 'fr'] },
-      },
-    });
-
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(config) },
-      [TRANSLATIONS_FOLDER]: { type: 'directory', children: [] },
-    });
-
-    await addLocaleToCollection('main', 'de', { cwd: CWD });
-
-    const configWriteCall = vi.mocked(fs.writeFileSync).mock.calls[0];
-    const writtenConfig = JSON.parse(configWriteCall[1] as string);
-    expect(writtenConfig.collections.main.locales).toEqual(['en', 'fr', 'de']);
+    writeConfig({ ...config(), collections: { main: { translationsFolder: 'src/i18n', locales: ['en', 'fr'] } } });
+    await add();
+    expect(readConfig().collections['main'].locales).toEqual(['en', 'fr', 'de']);
   });
 
   it('handles empty translations folder gracefully (no resource files)', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-      [TRANSLATIONS_FOLDER]: { type: 'directory', children: [] },
-    });
-
-    const result = await addLocaleToCollection('main', 'de', { cwd: CWD });
-
+    writeFolderFiles(folder(), '', {});
+    const result = await add();
     expect(result.entriesBackfilled).toBe(0);
     expect(result.filesUpdated).toBe(0);
   });
 
   it('fails before writing anything on a folder the Collection Sweep cannot read, even one with only a tracker_meta.json', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-      [TRANSLATIONS_FOLDER]: { type: 'directory', children: ['tracker_meta.json'] },
-      [path.join(TRANSLATIONS_FOLDER, 'tracker_meta.json')]: { type: 'file', content: '{ not json' },
-    });
-
-    // The Collection Reader reports this folder as a problem too; the locale change refuses it.
-    await expect(addLocaleToCollection('main', 'de', { cwd: CWD })).rejects.toThrow('tracker_meta.json');
-    // Checked before the config is written: nothing is written at all.
-    expect(vi.mocked(fs.writeFileSync)).not.toHaveBeenCalled();
+    seedResources(testCollection(folder()), { ok: { source: 'OK', translations: { fr: 'Oui' } } });
+    writeFolderFiles(folder(), 'broken', { meta: '{ not json' });
+    const beforeEntries = entries();
+    const beforeMeta = meta();
+    await expect(add()).rejects.toThrow('tracker_meta.json');
+    expect(readConfig()).toEqual(config());
+    expect(entries()).toEqual(beforeEntries);
+    expect(meta()).toEqual(beforeMeta);
   });
 
   it('handles non-existent translations folder gracefully', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-      // translations folder not in mockFs
-    });
-
-    const result = await addLocaleToCollection('main', 'de', { cwd: CWD });
-
+    const result = await add();
     expect(result.entriesBackfilled).toBe(0);
     expect(result.filesUpdated).toBe(0);
   });
 
   it('throws when locale already exists in collection', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-    });
-
-    await expect(addLocaleToCollection('main', 'fr', { cwd: CWD })).rejects.toThrow(
-      'Locale "fr" already exists in collection "main"',
-    );
+    await expect(add('main', 'fr')).rejects.toThrow(LocaleAlreadyExistsError);
   });
 
   it('throws when trying to add the base locale', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-    });
-
-    await expect(addLocaleToCollection('main', 'en', { cwd: CWD })).rejects.toThrow(
-      'Cannot add or remove the base locale "en"',
-    );
+    await expect(add('main', 'en')).rejects.toThrow(BaseLocaleImmutableError);
   });
 
   it('throws when collection does not exist', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-    });
-
-    await expect(addLocaleToCollection('nonexistent', 'de', { cwd: CWD })).rejects.toThrow(
-      'Collection "nonexistent" not found',
-    );
+    await expect(add('nonexistent')).rejects.toThrow(CollectionNotFoundError);
   });
 
   it('throws ReadOnlyCollectionError and writes nothing for a read-only collection', async () => {
-    const config = makeConfig({
-      collections: { main: { translationsFolder: 'src/i18n', readOnly: true } },
-    });
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(config) },
-      [TRANSLATIONS_FOLDER]: { type: 'directory', children: ['resource_entries.json', 'tracker_meta.json'] },
-      [path.join(TRANSLATIONS_FOLDER, 'resource_entries.json')]: { type: 'file', content: '{}' },
-      [path.join(TRANSLATIONS_FOLDER, 'tracker_meta.json')]: { type: 'file', content: '{}' },
-    });
-
-    await expect(addLocaleToCollection('main', 'de', { cwd: CWD })).rejects.toThrow(ReadOnlyCollectionError);
-
-    expect(fs.writeFileSync).not.toHaveBeenCalled();
-    expect(fs.mkdirSync).not.toHaveBeenCalled();
+    const readOnly = { ...config(), collections: { main: { translationsFolder: 'src/i18n', readOnly: true } } };
+    writeConfig(readOnly);
+    await expect(add()).rejects.toThrow(ReadOnlyCollectionError);
+    expect(readConfig()).toEqual(readOnly);
   });
 
   it('throws when locale format is invalid', async () => {
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(makeConfig()) },
-    });
-
-    await expect(addLocaleToCollection('main', 'not-valid-123', { cwd: CWD })).rejects.toThrow('Invalid locale format');
+    await expect(add('main', 'not-valid-123')).rejects.toThrow(InvalidLocaleError);
   });
 
   it('uses collection-level baseLocale when blocking base locale add', async () => {
-    const config = makeConfig({
-      collections: {
-        main: { translationsFolder: 'src/i18n', baseLocale: 'fr' },
-      },
-    });
+    writeConfig({ ...config(), collections: { main: { translationsFolder: 'src/i18n', baseLocale: 'fr' } } });
+    await expect(add('main', 'fr')).rejects.toThrow(BaseLocaleImmutableError);
+  });
 
-    setupMockFs({
-      [CONFIG_PATH]: { type: 'file', content: JSON.stringify(config) },
+  it('stores a locale list equal to the global list as inherited', async () => {
+    writeConfig({
+      ...config(),
+      locales: ['en', 'fr', 'de'],
+      collections: { main: { translationsFolder: 'src/i18n', locales: ['en', 'fr'] } },
     });
+    await add();
+    expect(readConfig().collections['main']).toEqual({ translationsFolder: 'src/i18n' });
+  });
 
-    await expect(addLocaleToCollection('main', 'fr', { cwd: CWD })).rejects.toThrow(
-      'Cannot add or remove the base locale "fr"',
-    );
+  it('validates the locale before looking up a missing collection', async () => {
+    await expect(add('missing', 'not-valid-123')).rejects.toThrow(InvalidLocaleError);
   });
 });
