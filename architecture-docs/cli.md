@@ -50,7 +50,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `bundle` | `--name`, `--locale`, `--quiet`, `--verbose`, `--token-casing`, `--token-constant-name`, `--no-transform-icu-to-transloco`, `--debug-keys` | `generateBundle()` (with the project `cwd`) |
 | `export` | `-f/--format`, `-c/--collection`, `-l/--locale`, `-s/--status`, `-t/--tags`, `-o/--output`, `--structure`, `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name`, `--filename`, `--no-protect-notes`, `--dry-run`, `--verbose` | `runExport()` |
 | `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `parseJsonImport()` / `parseXliffImport()` → `importResources()` |
-| `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | `openCollection()` for each collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
+| `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | Command Runner opens every collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
 | `find-similar` | `--collection`, `--value`, `--max-results` | `readCollection()` → `searchResources(…, { mode: 'similar-value', limit })` ([Resource Search](glossary.md#resource-search)) |
 | `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `readCollection()` (matching/extraction done in the command, not core) |
 | `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `setGlobalProtectedTerms()` / `setCollectionProtectedTerms()` / `setGlobalProtectedTermsFile()` / `setCollectionProtectedTermsFile()`, reading via `readGlobalProtectedTerms()` / `readCollectionProtectedTerms()` |
@@ -80,6 +80,12 @@ The core layer raises errors for a malformed file, for a collection with no file
 
 A folder whose files cannot be read fails validation. The summary lists it under `Unreadable Folders`.
 
+### `normalize` collection selection
+
+The Command Runner resolves the configured collections before `normalize` checks its own options. With an empty config, it reports `No collections found. Run \`lingo-tracker add-collection\` first.` before checking `--collection` or `--all`. The command keeps its interactive collection select, the `All collections` choice, and the `Are you sure?` confirmation for all.
+
+`normalize` decides what to do with the opened read-only collections. An explicitly named read-only collection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
+
 ### `glossary` pipeline
 
 The `glossary` command is intentionally CLI-only (no new core API surface) but reads resources through the core [Collection Reader](glossary.md#collection-reader), `readCollection()` (the same reader that `export`, `validate` and `bundle` use). Its logic lives in three sibling modules under `apps/cli/src/commands/`:
@@ -101,10 +107,10 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 1. Finds the project root: `INIT_CWD` (set by pnpm to the directory where the command was typed), else `process.cwd()`.
 2. Reads the [interactive rule](#the-interactive-rule) once.
 3. Loads `.lingo-tracker.json` with core `loadConfig({ cwd })`, unless the command sets `config: false`.
-4. Resolves and opens the collection, when the command needs one ([Collection Resolution](#collection-resolution)).
+4. Resolves and opens one collection, or prepares all configured collections for a `many` command's questions ([Collection Resolution](#collection-resolution)). This runs before a command's own option checks: for example, `export` on an empty config reports no collections before a missing `--format`.
 5. Builds the command's questions (in both modes; the builder may throw to fail early) and asks them when interactive.
 6. Checks the `required` options against the flags merged with the answers. `undefined`, `null` and `''` count as missing, so an empty interactive answer fails the same way as an absent flag.
-7. Calls `run`, and turns the result or the thrown error into output and an exit code ([Errors and Exit Codes](#errors-and-exit-codes)).
+7. For `many`, selects the final ordered collection list and applies its read or writable policy. Calls `run`, and turns the result or the thrown error into output and an exit code ([Errors and Exit Codes](#errors-and-exit-codes)).
 
 The runner sets `process.exitCode` and returns. No CLI code calls `process.exit()`, so Commander finishes normally.
 
@@ -130,14 +136,15 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 | Field | Meaning |
 |---|---|
 | `name` | Operation name for the cancel line. |
-| `collection` | `'writable'` opens the collection with `writable: true`. `'read'` opens it for reading. `'none'` opens no collection. |
+| `collection` | `'writable'` opens one collection with `writable: true`. `'read'` opens one for reading. `'many'` opens several. `'none'` opens no collection. |
+| `many` | For `'many'`, `select(answers, ctx)` chooses `'all'` or an explicit list after prompts; the default is all. The runner opens these collections for reading. |
 | `collectionOption` | The option that holds the collection name. Default `collection`. `delete-collection` uses `collectionName`; `edit-collection` uses its positional `<name>`. |
-| `config` | `false` skips loading the config. Only `init` and `install-skill` set it. It is only allowed with `collection: 'none'`: `config: false` with `'writable'` or `'read'` does not compile. |
+| `config` | `false` skips loading the config. Only `init` and `install-skill` set it. It is only allowed with `collection: 'none'`. |
 | `prompts(options, ctx)` | Returns the questions for the values the flags left out. It receives the same context as `run`, without the answers, so it can use the opened collection (for example the locale choices). It is called in both modes, before `required` is checked, so it can throw a better reason than "missing flag": `remove-locale` reports `No removable locales in collection "x".` and `translate-locale` calls core's `assertAutoTranslationEnabled` here (so a collection with auto-translation off is refused, with a configuration hint, before any locale is asked for) and then reports a collection with no target locale the same way. `init` returns `[]` in an initialized folder. |
 | `required` | Options that must have a value before `run`: checked after the questions when interactive, against the flags when not. `undefined`, `null` and `''` count as missing. `run` sees these options typed as present. `init` declares none: it needs `--collection-name` and `--translations-folder` only when there is a config to write, and checks them itself with the same `requireOptions` helper. |
 | `run(ctx)` | The core call(s) and the output. It returns nothing, or `{ exitCode: 1 }` for a failure it has already reported. It throws to fail with `❌ <message>`. |
 
-The context (`CommandContext`) has `cwd`, `interactive`, `ask`, and `answers` (the flags merged with the prompt answers). It has `config` and `configPath` unless `config: false`. It has `collection` (the core `Collection`) only when `collection` is `'writable'` or `'read'`. The type follows the spec, so a `'none'` command cannot read `ctx.collection`.
+The context (`CommandContext`) has `cwd`, `interactive`, `ask`, and `answers` (the flags merged with the prompt answers). It has `config` and `configPath` unless `config: false`. It has `collection` (the core `Collection`) for `'writable'` or `'read'`, and `collections` (`Collection[]`) for `'many'`. Prompt builders for `'many'` receive all configured collections; `run` receives the final selection. The type follows the spec, so a `'none'` command cannot read either resource.
 
 `ask(questions)` runs follow-up prompts inside `run`: confirmations (`delete-resource`, `delete-collection`, `normalize --all`, the `add-resource` override), the `add-resource` translations loop, the `add-collection` read-only question, and the `install-skill` loop. A cancel in `ask` is the same cancel as in the declared questions. A command throws `CommandCancelledError` when the user declines a confirmation.
 
@@ -149,7 +156,8 @@ A destructive command confirms only when interactive, and `--yes` skips the ques
 |---|---|---|
 | `add-resource`, `edit-resource`, `delete-resource`, `move`, `add-locale`, `remove-locale`, `translate-locale`, `import` | `'writable'` | `move` opens an optional destination collection itself, also writable. |
 | `delete-collection`, `edit-collection`, `find-similar` | `'read'` | `delete-collection` and `edit-collection` change the registration, not the resources, so a read-only collection is allowed. |
-| `add-collection`, `normalize`, `bundle`, `export`, `validate`, `glossary`, `protected-terms`, `preferred-terminology` | `'none'` | `normalize` takes `--collection` or `--all` (an explicit `--collection` is opened `writable`). `export` takes a list. `glossary` and `protected-terms` take an optional `--collection` (absent means every collection, or the global scope). These commands call core `openCollection` themselves; a name that is not configured still ends as `❌ Collection "x" not found`, exit 1. |
+| `validate`, `export`, `normalize`, `glossary` | `'many'` | `validate` and an unqualified `glossary` open all. `export --collection` takes a comma-separated list; without it, all are opened. `normalize` selects one or all and confirms an interactive all selection, then [handles read-only collections](#normalize-collection-selection). Empty config fails with `NO_COLLECTIONS_MESSAGE`; unknown names fail with `CollectionNotFoundError`; names in a list are deduplicated in order. |
+| `add-collection`, `bundle`, `protected-terms`, `preferred-terminology` | `'none'` | `protected-terms` takes an optional `--collection`; the other commands handle their own scope. |
 | `init`, `install-skill` | `'none'`, `config: false` | Neither reads `.lingo-tracker.json`. |
 
 ---
@@ -284,7 +292,7 @@ Exit codes:
 | Partial failure: `delete-resource` or `move` reports per-key errors; `normalize` fails on a collection; `bundle` fails on a bundle, names an unknown bundle, or finds no bundles | 1 |
 | `validate` failed, or had nothing to validate; `translate-locale` with failed entries (`Translation failed: <message>` when the run cannot start); `export` with errors or hierarchical conflicts (not with `--dry-run`); `import` with errors or failed resources (`Import failed: <message>` when parsing fails) | 1 |
 
-`normalize --all` skips a read-only collection with an info line and does not fail. A collection that fails, or a read-only `--collection`, prints `❌ Failed to normalize collection "x": <message>` or `❌ Collection "x" is read-only. …` on stderr, also with `--json` (before, `--json` printed nothing for it).
+`normalize --all` skips a read-only collection with a stderr warning and does not fail. A collection that fails, or a read-only `--collection`, prints `❌ Failed to normalize collection "x": <message>` or `❌ Collection "x" is read-only. …` on stderr, also with `--json`.
 
 ### Changes Introduced by the Command Runner
 
@@ -340,7 +348,9 @@ For a command with `collection: 'writable'` or `'read'`, the runner resolves the
 
 It then opens the name with core `openCollection(config, name, { cwd, writable })`, where `writable` is `true` for `'writable'`. The result, `ctx.collection`, is the core `Collection`: the absolute `translationsFolder` and the effective `baseLocale`, `locales`, `targetLocales`, and `translationConfig`. Commands read those fields; none of them applies the collection-then-global fallback itself.
 
-**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for read-only collections: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. Commands do not check `readOnly` themselves, with two exceptions that open collections without the runner, both through core's `writable: true`: `move` opens its destination that way, and `normalize` opens an explicitly named `--collection` that way (the `ReadOnlyCollectionError` is printed on stderr, the JSON summary is still printed, exit 1). Under `--all`, `normalize` skips a read-only collection with an info line; core's `normalize(collection)` refuses a read-only collection either way.
+**Many-collection resolution.** The runner first opens every configured collection for prompt choices and fails immediately when the config is empty. After prompts, `many.select` chooses `'all'` or an explicit name list. The runner deduplicates names in order and opens the selected set. `validate` reads all; `export` parses its comma-separated `--collection` choice; `glossary` reads all or one; `normalize` selects one or all and confirms all interactively. An unknown name raises core's `CollectionNotFoundError` and exits 1.
+
+**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for one read-only collection: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. The many-collection mode opens for reading; [normalize applies its own read-only rule](#normalize-collection-selection). `move` still opens its destination with core's `writable: true`.
 
 ### Resolution Flowchart
 

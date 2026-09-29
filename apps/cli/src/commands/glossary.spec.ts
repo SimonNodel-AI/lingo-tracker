@@ -200,6 +200,14 @@ describe('glossaryCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('uses the runner no-collections failure when config is empty', async () => {
+    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, collections: {} });
+    await glossaryCommand({ text: 'Save' });
+    expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
+    expect(readCollection).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
   it('writes an empty glossary when nothing matches', async () => {
     await glossaryCommand({ text: 'completely unrelated words' });
     const out = JSON.parse(writtenContent());

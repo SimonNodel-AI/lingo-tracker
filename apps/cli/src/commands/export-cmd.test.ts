@@ -309,6 +309,16 @@ describe('exportCommand', () => {
       expect(process.exitCode).toBe(1);
     });
 
+    it('reports an empty config before requiring --format', async () => {
+      vi.mocked(core.loadConfig).mockReturnValue({ ...mockConfig, collections: {} });
+
+      await exportCommand({});
+
+      expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
     it('should export a collection named twice only once', async () => {
       await exportCommand({ format: 'json', collection: 'common,common' });
 

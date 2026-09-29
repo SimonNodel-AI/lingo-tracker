@@ -16,9 +16,10 @@ import { isInteractiveTerminal } from './terminal';
  * What a command needs opened before it runs.
  * - `'writable'` — one collection, opened with `writable: true` (a read-only one fails).
  * - `'read'` — one collection, opened for reading.
+ * - `'many'` — several collections, selected and opened by the runner.
  * - `'none'` — no collection; the command reads `config` itself (or nothing, with `config: false`).
  */
-export type CollectionNeed = 'writable' | 'read' | 'none';
+export type CollectionNeed = 'writable' | 'read' | 'many' | 'none';
 
 /** What `run` may return: nothing (exit 0), or `{ exitCode: 1 }` for a failure it has already reported. */
 export type CommandResult = { readonly exitCode: 0 | 1 } | undefined;
@@ -57,10 +58,15 @@ interface CollectionResources {
   readonly collection: Collection;
 }
 
+interface ManyCollectionResources {
+  /** All configured collections for building interactive questions; the final selection is in `run`. */
+  readonly collections: Collection[];
+}
+
 type Resources<Need extends CollectionNeed, WithConfig extends boolean> = (WithConfig extends true
   ? ConfigResources
   : unknown) &
-  (Need extends 'none' ? unknown : CollectionResources);
+  (Need extends 'many' ? ManyCollectionResources : Need extends 'none' ? unknown : CollectionResources);
 
 /** What `prompts` receives: everything but the answers. */
 export type PromptContext<Need extends CollectionNeed, WithConfig extends boolean = true> = BaseContext &
@@ -85,6 +91,15 @@ export interface CommandSpec<
   readonly collection: Need;
   /** Option holding the collection name (default `collection`); named in the missing-option message. */
   readonly collectionOption?: keyof Options & string;
+  /** Selection is evaluated after prompts; every collection is opened for reading. */
+  readonly many?: Need extends 'many'
+    ? {
+        readonly select?: (
+          answers: Answers<Options>,
+          ctx: PromptContext<Need, WithConfig>,
+        ) => 'all' | readonly string[] | Promise<'all' | readonly string[]>;
+      }
+    : never;
   /**
    * `false` skips loading `.lingo-tracker.json` (only `init` and `install-skill`). Only
    * allowed with `collection: 'none'`; anything else does not compile.
@@ -187,13 +202,17 @@ async function execute<
   try {
     const cwd = getCwd();
     const interactive = isInteractiveTerminal();
-    let resources: Partial<ConfigResources & CollectionResources> = {};
+    let resources: Partial<ConfigResources & CollectionResources & ManyCollectionResources> = {};
 
     if (spec.config !== false) {
       const config = readConfig(cwd);
       resources = { config, configPath: path.join(cwd, CONFIG_FILENAME) };
 
-      if (spec.collection !== 'none') {
+      if (spec.collection === 'many') {
+        const names = Object.keys(config.collections ?? {});
+        if (names.length === 0) throw new Error(NO_COLLECTIONS_MESSAGE);
+        resources = { ...resources, collections: names.map((name) => openCollection(config, name, { cwd })) };
+      } else if (spec.collection !== 'none') {
         const flag = spec.collectionOption ?? 'collection';
         const given: unknown = options[flag as keyof Options];
         const name =
@@ -214,7 +233,22 @@ async function execute<
     // requireOptions has just checked what CheckedAnswers claims; the type cannot follow it.
     const answers = merged as CheckedAnswers<Options, Required>;
 
-    const result = await spec.run({ ...promptContext, answers });
+    if (spec.collection === 'many') {
+      const config = resources.config;
+      if (!config) throw new Error('Configuration was not loaded.');
+      const selected =
+        (await spec.many?.select?.(answers, promptContext as PromptContext<'many', WithConfig>)) ?? 'all';
+      const names = selected === 'all' ? Object.keys(config.collections ?? {}) : selected;
+      const collections: Collection[] = [];
+      for (const name of new Set(names)) {
+        const collection =
+          resources.collections?.find((item) => item.name === name) ?? openCollection(config, name, { cwd });
+        collections.push(collection);
+      }
+      resources = { ...resources, collections };
+    }
+
+    const result = await spec.run({ ...promptContext, ...resources, answers });
     return result ? result.exitCode : 0;
   } catch (error) {
     return report(error, spec.name);
