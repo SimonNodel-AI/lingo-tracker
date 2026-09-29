@@ -144,6 +144,7 @@
               (deleteFolder)="onDeleteFolder($event)"
               (resourceDropped)="onResourceDropped($event)"
               (folderDropped)="onFolderDropped($event)"
+              (createFolder)="onFolderConfirm($event.folderName, $event.parentPath)"
               (dragStarted)="onDragStarted($event)"
               (dragEnded)="onDragEnded()"
             />

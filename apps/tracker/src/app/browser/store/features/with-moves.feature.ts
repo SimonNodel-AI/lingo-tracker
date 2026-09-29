@@ -1,8 +1,7 @@
 import { computed, inject } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { type MonoTypeOperatorFunction, catchError, defer, finalize, from, of, pipe, switchMap, tap } from 'rxjs';
-import { MatDialog } from '@angular/material/dialog';
+import { type MonoTypeOperatorFunction, catchError, defer, finalize, of, pipe, switchMap, tap } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
 import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { splitResolvedKey } from '@simoncodes-ca/domain';
@@ -10,7 +9,7 @@ import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { extractFolderNameFromPath, extractParentFolderPath } from '../../utils/folder-path.utils';
+import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 import {
   collectAncestorPaths,
   findFolderInTree,
@@ -18,6 +17,7 @@ import {
   rebaseExpandedPaths,
   rebaseFolderPaths,
   removeFolderFromTree,
+  folderMoveNoOp,
 } from '../folder-tree.utils';
 import { captureSession, type SessionCheck, withinSession } from '../session-guard';
 
@@ -44,13 +44,11 @@ export function withMovesFeature<_>() {
       state: type<{
         sessionId: number;
         selectedCollection: string | null;
-        currentFolderPath: string;
         translations: ResourceSummaryDto[];
         loadedFolderPath: string | null;
         error: string | null;
         rootFolders: FolderNodeDto[];
         expandedFolders: ReadonlySet<string>;
-        isDeletingFolder: boolean;
       }>(),
       // Provided by withListScopeFeature and withFolderTreeFeature, which compose before this feature.
       methods: type<{
@@ -67,7 +65,6 @@ export function withMovesFeature<_>() {
     withMethods((store) => {
       const api = inject(BrowserApiService);
       const notifications = inject(NotificationService);
-      const dialog = inject(MatDialog);
       const transloco = inject(TranslocoService);
 
       /** The collection root's name in a message ("Moved … to root"). */
@@ -150,106 +147,73 @@ export function withMovesFeature<_>() {
               const collection = store.selectedCollection();
               if (!collection) return of(null);
 
-              if (sourceFolderPath === destinationFolderPath) return of(null);
-
-              const sourceParentPath = extractParentFolderPath(sourceFolderPath);
-              if (sourceParentPath === destinationFolderPath) {
-                notifications.info(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERALREADYATLOCATION));
-                return of(null);
-              }
+              if (folderMoveNoOp(sourceFolderPath, destinationFolderPath)) return of(null);
 
               const folderName = extractFolderNameFromPath(sourceFolderPath);
 
-              return from(import('../../../shared/components/confirmation-dialog/confirmation-dialog')).pipe(
-                switchMap((module) => {
-                  const dialogRef = dialog.open(module.ConfirmationDialog, {
-                    data: {
-                      title: transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
-                      message: transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
-                        name: folderName,
-                        dest: destinationFolderPath || rootLabel(),
-                      }),
-                      confirmButtonText: transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
-                      actionType: 'standard',
-                    },
-                    width: '400px',
-                  });
+              const currentFolders = store.rootFolders();
+              patchState(store, {
+                rootFolders: removeFolderFromTree(currentFolders, sourceFolderPath),
+              });
 
-                  return dialogRef.afterClosed();
-                }),
+              return api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
                 withinSession(inSession),
-                switchMap((confirmed) => {
-                  if (!confirmed) return of(null);
-
-                  const currentFolders = store.rootFolders();
-                  patchState(store, {
-                    isDeletingFolder: true,
-                    rootFolders: removeFolderFromTree(currentFolders, sourceFolderPath),
-                  });
-
-                  return api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
-                    withinSession(inSession),
-                    tap(() => {
-                      notifications.success(
-                        transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERMOVEDX, {
-                          name: folderName,
-                          dest: destinationFolderPath || rootLabel(),
-                        }),
-                      );
-                      patchState(store, { isDeletingFolder: false });
-
-                      const destWasLoaded = destinationFolderPath
-                        ? (findFolderInTree(store.rootFolders(), destinationFolderPath)?.loaded ?? false)
-                        : true;
-
-                      const sourceNode = findFolderInTree(currentFolders, sourceFolderPath);
-                      if (sourceNode) {
-                        const rebasedFolder = rebaseFolderPaths(sourceNode, destinationFolderPath);
-                        const updatedFolders = insertFolderIntoTree(
-                          store.rootFolders(),
-                          rebasedFolder,
-                          destinationFolderPath || null,
-                        );
-                        patchState(store, { rootFolders: updatedFolders });
-
-                        if (!destWasLoaded && destinationFolderPath) {
-                          store.loadFolderChildren(destinationFolderPath);
-                        }
-                      } else {
-                        store.loadRootFolders();
-                      }
-
-                      // Carry the moved subtree's own expansion across, then open the
-                      // destination so the folder is visible where it landed.
-                      const expanded = rebaseExpandedPaths(
-                        store.expandedFolders(),
-                        sourceFolderPath,
-                        destinationFolderPath,
-                      );
-                      if (destinationFolderPath) {
-                        expanded.add(destinationFolderPath);
-                        for (const ancestor of collectAncestorPaths(destinationFolderPath)) expanded.add(ancestor);
-                      }
-                      patchState(store, { expandedFolders: expanded });
-
-                      store.showFolder(destinationFolderPath ? `${destinationFolderPath}.${folderName}` : folderName);
+                tap(() => {
+                  notifications.success(
+                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERMOVEDX, {
+                      name: folderName,
+                      dest: destinationFolderPath || rootLabel(),
                     }),
-                    catchError((error: unknown) => {
-                      const errorMessage = apiErrorMessage(
-                        error,
-                        transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVEFOLDERFAILED),
-                      );
-                      patchState(store, {
-                        rootFolders: currentFolders,
-                        isDeletingFolder: false,
-                        error: errorMessage,
-                      });
-                      notifications.error(errorMessage);
-                      return of(null);
-                    }),
-                    whileMoving(inSession),
                   );
+                  const destWasLoaded = destinationFolderPath
+                    ? (findFolderInTree(store.rootFolders(), destinationFolderPath)?.loaded ?? false)
+                    : true;
+
+                  const sourceNode = findFolderInTree(currentFolders, sourceFolderPath);
+                  if (sourceNode) {
+                    const rebasedFolder = rebaseFolderPaths(sourceNode, destinationFolderPath);
+                    const updatedFolders = insertFolderIntoTree(
+                      store.rootFolders(),
+                      rebasedFolder,
+                      destinationFolderPath || null,
+                    );
+                    patchState(store, { rootFolders: updatedFolders });
+
+                    if (!destWasLoaded && destinationFolderPath) {
+                      store.loadFolderChildren(destinationFolderPath);
+                    }
+                  } else {
+                    store.loadRootFolders();
+                  }
+
+                  // Carry the moved subtree's own expansion across, then open the
+                  // destination so the folder is visible where it landed.
+                  const expanded = rebaseExpandedPaths(
+                    store.expandedFolders(),
+                    sourceFolderPath,
+                    destinationFolderPath,
+                  );
+                  if (destinationFolderPath) {
+                    expanded.add(destinationFolderPath);
+                    for (const ancestor of collectAncestorPaths(destinationFolderPath)) expanded.add(ancestor);
+                  }
+                  patchState(store, { expandedFolders: expanded });
+
+                  store.showFolder(destinationFolderPath ? `${destinationFolderPath}.${folderName}` : folderName);
                 }),
+                catchError((error: unknown) => {
+                  const errorMessage = apiErrorMessage(
+                    error,
+                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVEFOLDERFAILED),
+                  );
+                  patchState(store, {
+                    rootFolders: currentFolders,
+                    error: errorMessage,
+                  });
+                  notifications.error(errorMessage);
+                  return of(null);
+                }),
+                whileMoving(inSession),
               );
             }),
           ),

@@ -40,6 +40,16 @@ describe('FolderNode', () => {
     expect(component).toBeTruthy();
   });
 
+  it('passes its own path with a confirmed folder name to the sidebar', () => {
+    fixture.componentRef.setInput('folder', folderWithChildren);
+    const create = vi.fn();
+    component.createFolder.subscribe(create);
+
+    component.onFolderConfirm('icons');
+
+    expect(create).toHaveBeenCalledWith({ folderName: 'icons', parentPath: 'common' });
+  });
+
   it('should accept folder input', () => {
     const folder: FolderNodeDto = {
       name: 'common',

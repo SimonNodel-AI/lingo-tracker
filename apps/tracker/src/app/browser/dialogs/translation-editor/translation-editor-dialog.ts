@@ -1006,7 +1006,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   onFolderCreated(folder: FolderNodeDto): void {
-    // Store's createFolderAt already updated rootFolders, just update selection
+    // The store's createFolder already updated rootFolders; update the selection.
     this.#folderFromKey = null;
     this.#setSelectedFolder(folder.fullPath);
     this.stagedFolderPath.set(folder.fullPath);

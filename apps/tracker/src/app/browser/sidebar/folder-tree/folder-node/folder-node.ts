@@ -69,6 +69,9 @@ export class FolderNode {
   /** Emitted when delete button is clicked or Delete key is pressed */
   deleteFolder = output<string>();
 
+  /** Emitted when the inline input confirms a folder name. */
+  createFolder = output<{ folderName: string; parentPath: string }>();
+
   /** Whether this folder is currently being deleted */
   isDeleting = input<boolean>(false);
 
@@ -194,7 +197,7 @@ export class FolderNode {
    * Calls the store to create the folder.
    */
   onFolderConfirm(folderName: string): void {
-    this.store.createFolder(folderName);
+    this.createFolder.emit({ folderName, parentPath: this.folder().fullPath });
   }
 
   /**

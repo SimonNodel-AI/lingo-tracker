@@ -29,6 +29,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { CdkDropList, type CdkDrag, type CdkDragDrop } from '@angular/cdk/drag-drop';
 import type { DragData } from '../../types/drag-data';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
+import { NotificationService } from '../../../shared/notification';
+import { folderMoveNoOp } from '../../store/folder-tree.utils';
 
 const NESTED_ANIMATION_DURATION_MS = 250;
 const SCROLL_EDGE_THRESHOLD_PX = 50;
@@ -72,6 +74,7 @@ export class FolderTree {
   readonly #dialog = inject(MatDialog);
   readonly TOKENS = TRACKER_TOKENS;
   readonly #transloco = inject(TranslocoService);
+  readonly #notifications = inject(NotificationService);
 
   /** Name of the collection to browse */
   readonly collectionName = input.required<string>();
@@ -230,7 +233,7 @@ export class FolderTree {
     const dragData = event.item.data as DragData;
     if (dragData.type !== 'folder' || !dragData.path) return;
 
-    this.store.moveFolder({ sourceFolderPath: dragData.path, destinationFolderPath: '' });
+    this.confirmMoveFolder(dragData.path, '');
   }
 
   /**
@@ -266,8 +269,19 @@ export class FolderTree {
    * Handles confirmation of folder name from inline input.
    * Calls the store to create the folder.
    */
-  onFolderConfirm(folderName: string): void {
-    this.store.createFolder(folderName);
+  onFolderConfirm(folderName: string, parentPath: string | null = this.store.addFolderParentPath()): void {
+    const sessionId = this.store.sessionId();
+    this.store.clearFolderError();
+    this.store.createFolder(folderName, parentPath).subscribe({
+      next: () => {
+        if (this.store.sessionId() === sessionId) this.store.cancelAddingFolder();
+      },
+      error: (error: unknown) => {
+        if (this.store.sessionId() !== sessionId) return;
+        this.store.cancelAddingFolder();
+        this.store.reportCreateFolderError(error);
+      },
+    });
   }
 
   /**
@@ -313,6 +327,41 @@ export class FolderTree {
     });
   }
 
+  /** Confirms a folder move before handing the write to the store. */
+  confirmMoveFolder(sourceFolderPath: string, destinationFolderPath: string): void {
+    this.store.clearFolderError();
+    const noOp = folderMoveNoOp(sourceFolderPath, destinationFolderPath);
+    if (noOp === 'same-folder') return;
+    if (noOp === 'already-at-location') {
+      this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERALREADYATLOCATION));
+      return;
+    }
+
+    const sessionId = this.store.sessionId();
+    const folderName = extractFolderNameFromPath(sourceFolderPath);
+    import('../../../shared/components/confirmation-dialog/confirmation-dialog').then((module) => {
+      if (this.store.sessionId() !== sessionId) return;
+      const dialogRef = this.#dialog.open(module.ConfirmationDialog, {
+        data: {
+          title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
+          message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
+            name: folderName,
+            dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
+          }),
+          confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
+          actionType: 'standard',
+        },
+        width: '400px',
+      });
+
+      dialogRef.afterClosed().subscribe((confirmed) => {
+        if (confirmed && this.store.sessionId() === sessionId) {
+          this.store.moveFolder({ sourceFolderPath, destinationFolderPath });
+        }
+      });
+    });
+  }
+
   /**
    * Handles resource drop events bubbled up from folder nodes.
    * Calls store to move the resource to the target folder.
@@ -343,10 +392,7 @@ export class FolderTree {
       return;
     }
 
-    this.store.moveFolder({
-      sourceFolderPath: dragData.path,
-      destinationFolderPath: targetFolderPath,
-    });
+    this.confirmMoveFolder(dragData.path, targetFolderPath);
   }
 
   /**
