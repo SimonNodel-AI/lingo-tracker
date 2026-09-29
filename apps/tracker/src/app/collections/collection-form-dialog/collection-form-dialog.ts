@@ -165,6 +165,9 @@ export class CollectionFormDialog implements OnInit {
       }
     }
 
+    // A refusal stays on screen until the next edit.
+    this.form.valueChanges.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe(() => this.submitError.set(null));
+
     // Auto-default read-only for node_modules paths until the user overrides it.
     this.form.controls.translationsFolder.valueChanges
       .pipe(takeUntilDestroyed(this.#destroyRef))
@@ -320,6 +323,7 @@ export class CollectionFormDialog implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
+    if (this.saving()) return;
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -356,6 +360,10 @@ export class CollectionFormDialog implements OnInit {
    * Writes the collection through the store and closes with the result once the server has
    * accepted it. A rejection keeps the dialog open with what was typed: a taken name lands
    * on the name field, anything else on the error line above the buttons.
+   *
+   * The dialog cannot be closed while the write is in flight (Cancel, the close icon, Esc and
+   * the backdrop are all off): closing would destroy it and cancel the subscription, so the
+   * outcome of a write the server may already have made would be lost.
    */
   #save(): void {
     const result = this.#buildResult();
@@ -368,12 +376,15 @@ export class CollectionFormDialog implements OnInit {
             collection: result.config,
           });
 
+    const disableClose = this.#dialogRef.disableClose;
     this.saving.set(true);
+    this.#dialogRef.disableClose = true;
     this.submitError.set(null);
     write.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe({
       next: () => this.#dialogRef.close(result),
       error: (error: unknown) => {
         this.saving.set(false);
+        this.#dialogRef.disableClose = disableClose;
         this.#showRejection(error, result.name);
       },
     });

@@ -5,7 +5,7 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory } from '@ngneat/spectator/vitest';
 import type { BundleDefinitionDto, BundleDryRunResultDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { toApiError } from '../../shared/api-error/api-error';
@@ -53,14 +53,17 @@ const dryRunResult: BundleDryRunResultDto = {
 interface Harness {
   fixture: ComponentFixture<BundleFormDialog>;
   component: BundleFormDialog;
-  dialogRef: { close: ReturnType<typeof vi.fn> };
+  /** `close`, and `disableClose`, which the dialog sets while a write is in flight. */
+  dialogRef: { close: ReturnType<typeof vi.fn>; disableClose: boolean | undefined };
   api: { dryRunBundle: ReturnType<typeof vi.fn> };
   /** The two Config Writes the dialog makes; both accept by default. */
   store: { createBundle: ReturnType<typeof vi.fn>; updateBundle: ReturnType<typeof vi.fn> };
 }
 
-const rejection = (status: number, body: object) =>
-  throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } })));
+const apiError = (status: number, body: object) =>
+  toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } }));
+
+const rejection = (status: number, body: object) => throwError(() => apiError(status, body));
 
 const createComponent = createComponentFactory({
   component: BundleFormDialog,
@@ -69,7 +72,7 @@ const createComponent = createComponentFactory({
 });
 
 const buildHarness = (data: BundleFormDialogData): Harness => {
-  const dialogRef = { close: vi.fn() };
+  const dialogRef: Harness['dialogRef'] = { close: vi.fn(), disableClose: false };
   const api = { dryRunBundle: vi.fn().mockReturnValue(of(dryRunResult)) };
   const store = {
     config: signal<LingoTrackerConfigDto | null>(config),
@@ -97,6 +100,12 @@ const buildHarness = (data: BundleFormDialogData): Harness => {
 const submitErrorsText = (harness: Harness): string | null =>
   (harness.fixture.nativeElement as HTMLElement).querySelector('[data-testid="submit-errors"]')?.textContent?.trim() ??
   null;
+
+/** Cancel in the footer and the close icon in the header. */
+const closeButtons = (harness: Harness): HTMLButtonElement[] =>
+  Array.from(
+    (harness.fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[data-testid="cancel"]'),
+  );
 
 const fillOutput = (component: BundleFormDialog): void => {
   component.form.controls.name.setValue('admin');
@@ -396,6 +405,34 @@ describe('BundleFormDialog — create mode', () => {
       component.onSubmit();
       expect(component.submitErrors()).toEqual(['Failed to create bundle']);
       expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('should not let the dialog close while the write is in flight, and allow it again after a refusal', () => {
+      const write = new Subject<LingoTrackerConfigDto | null>();
+      harness.store.createBundle.mockReturnValue(write);
+      fillOutput(component);
+
+      component.onSubmit();
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.disableClose).toBe(true);
+      expect(closeButtons(harness).every((button) => button.disabled)).toBe(true);
+
+      write.error(apiError(403, { message: 'Config is read-only', error: 'Forbidden' }));
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.disableClose).toBe(false);
+      expect(closeButtons(harness).some((button) => button.disabled)).toBe(false);
+    });
+
+    it('should ignore a second submit while the first is in flight', () => {
+      harness.store.createBundle.mockReturnValue(new Subject<LingoTrackerConfigDto | null>());
+      fillOutput(component);
+
+      component.onSubmit();
+      component.onSubmit();
+
+      expect(harness.store.createBundle).toHaveBeenCalledTimes(1);
     });
   });
 

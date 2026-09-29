@@ -4,7 +4,7 @@ import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dial
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { toApiError } from '../../shared/api-error/api-error';
@@ -32,6 +32,12 @@ type DialogMock = { open: ReturnType<typeof vi.fn> };
 /** The two Config Writes the dialog makes; both accept by default. */
 type StoreMock = { createCollection: ReturnType<typeof vi.fn>; updateCollection: ReturnType<typeof vi.fn> };
 
+/** `close`, and `disableClose`, which the dialog sets while a write is in flight. */
+type DialogRefMock = { close: ReturnType<typeof vi.fn>; disableClose: boolean | undefined };
+
+const apiError = (status: number, body: object) =>
+  toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } }));
+
 const rejection = (status: number, body: object) =>
   throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } })));
 
@@ -41,11 +47,11 @@ const buildHarness = (
 ): {
   fixture: ComponentFixture<CollectionFormDialog>;
   spectator: Spectator<CollectionFormDialog>;
-  mockDialogRef: { close: ReturnType<typeof vi.fn> };
+  mockDialogRef: DialogRefMock;
   mockDialog: DialogMock;
   store: StoreMock;
 } => {
-  const mockDialogRef = { close: vi.fn() };
+  const mockDialogRef: DialogRefMock = { close: vi.fn(), disableClose: false };
   const store: StoreMock = {
     createCollection: vi.fn(() => of(savedConfig)),
     updateCollection: vi.fn(() => of(savedConfig)),
@@ -65,7 +71,7 @@ const buildHarness = (
 describe('CollectionFormDialog — create mode', () => {
   let fixture: ComponentFixture<CollectionFormDialog>;
   let component: CollectionFormDialog;
-  let mockDialogRef: { close: ReturnType<typeof vi.fn> };
+  let mockDialogRef: DialogRefMock;
   let store: StoreMock;
 
   beforeEach(async () => {
@@ -83,6 +89,10 @@ describe('CollectionFormDialog — create mode', () => {
   const submitError = (): string | null =>
     (fixture.nativeElement as HTMLElement).querySelector('[data-testid="submit-error"] span')?.textContent?.trim() ??
     null;
+
+  /** Cancel in the footer and the close icon in the header. */
+  const closeButtons = (): HTMLButtonElement[] =>
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[data-testid="cancel"]'));
 
   describe('writing through the store', () => {
     it('should create the collection through the store and close only once the server has accepted it', async () => {
@@ -155,6 +165,45 @@ describe('CollectionFormDialog — create mode', () => {
 
       expect(submitError()).toBeNull();
       expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('should clear a refusal on the next edit', async () => {
+      store.createCollection.mockReturnValue(rejection(400, { message: 'nope', error: 'Bad Request' }));
+      fillValidForm();
+      await component.onSubmit();
+      expect(component.submitError()).toBe('nope');
+
+      component.form.controls.translationsFolder.setValue('./other');
+
+      expect(component.submitError()).toBeNull();
+    });
+
+    it('should not let the dialog close while the write is in flight, and allow it again after a refusal', async () => {
+      const write = new Subject<LingoTrackerConfigDto | null>();
+      store.createCollection.mockReturnValue(write);
+      fillValidForm();
+
+      await component.onSubmit();
+      fixture.detectChanges();
+
+      expect(mockDialogRef.disableClose).toBe(true);
+      expect(closeButtons().every((button) => button.disabled)).toBe(true);
+
+      write.error(apiError(400, { message: 'nope', error: 'Bad Request' }));
+      fixture.detectChanges();
+
+      expect(mockDialogRef.disableClose).toBe(false);
+      expect(closeButtons().some((button) => button.disabled)).toBe(false);
+    });
+
+    it('should ignore a second submit while the first is in flight', async () => {
+      store.createCollection.mockReturnValue(new Subject<LingoTrackerConfigDto | null>());
+      fillValidForm();
+
+      await component.onSubmit();
+      await component.onSubmit();
+
+      expect(store.createCollection).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -409,7 +458,7 @@ describe('CollectionFormDialog — create mode', () => {
 describe('CollectionFormDialog — edit mode', () => {
   let fixture: ComponentFixture<CollectionFormDialog>;
   let component: CollectionFormDialog;
-  let mockDialogRef: { close: ReturnType<typeof vi.fn> };
+  let mockDialogRef: DialogRefMock;
   let mockDialog: DialogMock;
   let store: StoreMock;
 
@@ -573,7 +622,7 @@ describe('CollectionFormDialog — edit mode', () => {
 
 describe('CollectionFormDialog — edit mode with inherited base locale', () => {
   let component: CollectionFormDialog;
-  let mockDialogRef: { close: ReturnType<typeof vi.fn> };
+  let mockDialogRef: DialogRefMock;
 
   beforeEach(async () => {
     const built = buildHarness({

@@ -500,6 +500,7 @@ export class BundleFormDialog {
   }
 
   onSubmit(): void {
+    if (this.saving()) return;
     this.submitAttempted.set(true);
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -517,6 +518,10 @@ export class BundleFormDialog {
    * Writes the bundle through the store and closes with the result once the server has
    * accepted it. A rejection keeps the dialog open with what was typed: a taken name lands
    * on the name field, anything else in the errors above the footer.
+   *
+   * The dialog cannot be closed while the write is in flight (Cancel, the close icon, Esc and
+   * the backdrop are all off): closing would destroy it and cancel the subscription, so the
+   * outcome of a write the server may already have made would be lost.
    */
   #save(result: BundleFormResult): void {
     const existingName = this.isEditMode ? this.#data.name : undefined;
@@ -528,11 +533,14 @@ export class BundleFormDialog {
             bundle: result.bundle,
           });
 
+    const disableClose = this.#dialogRef.disableClose;
     this.saving.set(true);
+    this.#dialogRef.disableClose = true;
     write.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe({
       next: () => this.#dialogRef.close(result),
       error: (error: unknown) => {
         this.saving.set(false);
+        this.#dialogRef.disableClose = disableClose;
         this.#showRejection(error, result.name);
       },
     });

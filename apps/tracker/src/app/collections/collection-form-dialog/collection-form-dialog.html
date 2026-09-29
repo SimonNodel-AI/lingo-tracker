@@ -17,7 +17,9 @@
       mat-icon-button
       type="button"
       class="dialog-close"
+      data-testid="cancel"
       (click)="onCancel()"
+      [disabled]="saving()"
       [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.CLOSEDIALOG | transloco"
     >
       <mat-icon>close</mat-icon>
@@ -347,7 +349,7 @@
   }
 
   <mat-dialog-actions class="dialog-footer" align="end">
-    <button mat-button type="button" (click)="onCancel()">
+    <button mat-button type="button" data-testid="cancel" (click)="onCancel()" [disabled]="saving()">
       {{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}
     </button>
     <button mat-flat-button color="primary" type="button" (click)="onSubmit()" [disabled]="form.invalid || saving()">

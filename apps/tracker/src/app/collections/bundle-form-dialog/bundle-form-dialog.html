@@ -19,7 +19,9 @@
       mat-icon-button
       type="button"
       class="dialog-close"
+      data-testid="cancel"
       (click)="onCancel()"
+      [disabled]="saving()"
       [attr.aria-label]="TOKENS.COMMON.ACTIONS.CLOSE | transloco"
     >
       <mat-icon>close</mat-icon>
@@ -700,7 +702,9 @@
       </span>
     </div>
     <div class="footer-spacer"></div>
-    <button mat-button type="button" (click)="onCancel()">{{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}</button>
+    <button mat-button type="button" data-testid="cancel" (click)="onCancel()" [disabled]="saving()">
+      {{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}
+    </button>
     <button mat-flat-button color="primary" type="button" data-testid="submit" (click)="onSubmit()" [disabled]="saving()">
       {{ (isEditMode ? TOKENS.BUNDLES.DIALOG.FOOTER.SAVECHANGES : TOKENS.BUNDLES.DIALOG.FOOTER.CREATE) | transloco }}
     </button>
