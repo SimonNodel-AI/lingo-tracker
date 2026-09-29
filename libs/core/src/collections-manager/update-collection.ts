@@ -32,9 +32,7 @@ export interface UpdateCollectionOptions {
  * seed the added locales, purge the removed ones, then write the config once. A
  * seeding failure therefore never costs a removed locale its data.
  *
- * `mutations` holds what the locale changes (if any) wrote to the translation files. The
- * config change itself is not a resource mutation; callers that cache a collection's tree
- * must also drop it for the old and new translations folders.
+ * A changed collection record reindexes both its old and new translations folders.
  *
  * @throws {CollectionNotFoundError} No collection named `collectionName`.
  * @throws {CollectionAlreadyExistsError} A collection named `newCollectionName` exists.
@@ -48,18 +46,42 @@ export async function updateCollection(
   patch: Partial<LingoTrackerCollection>,
   options: UpdateCollectionOptions = {},
 ): Promise<{ message: string; mutations: ResourceMutation[] }> {
+  const result = await changeCollection(collectionName, newCollectionName, patch, options);
+  return { message: result.message, mutations: result.mutations };
+}
+
+interface CollectionChangeResult {
+  readonly message: string;
+  readonly mutations: ResourceMutation[];
+  readonly entriesAdded: number;
+  readonly entriesRemoved: number;
+  readonly filesUpdated: number;
+}
+
+/** The shared validation, folder rewrite and single config write for every locale change. */
+export async function changeCollection(
+  collectionName: string,
+  newCollectionName: string | undefined,
+  patch: Partial<LingoTrackerCollection>,
+  options: UpdateCollectionOptions = {},
+  targetLocales?: (current: Collection) => string[],
+): Promise<CollectionChangeResult> {
   const { cwd } = options;
   const configFile = createConfigFileOperations({ cwd });
   const config = configFile.read();
 
-  // Validate and build the new config before anything is written.
-  const nextConfig = patchCollectionEntry(config, collectionName, patch, newCollectionName);
+  // Sugar calls check writability and their locale-specific errors before building the patch.
+  const sugarCurrent = targetLocales ? openCollection(config, collectionName, { cwd, writable: true }) : undefined;
+  const effectivePatch = targetLocales && sugarCurrent ? { ...patch, locales: targetLocales(sugarCurrent) } : patch;
+  const nextConfig = patchCollectionEntry(config, collectionName, effectivePatch, newCollectionName);
   const targetName = newCollectionName || collectionName;
-  const current = openCollection(config, collectionName, { cwd });
+  const current = sugarCurrent ?? openCollection(config, collectionName, { cwd });
   const next = openCollection(nextConfig, targetName, { cwd });
   const { added, removed } = diffLocales(current, next);
 
-  const mutations: ResourceMutation[] = [];
+  let entriesAdded = 0;
+  let entriesRemoved = 0;
+  let filesUpdated = 0;
   if (added.length > 0 || removed.length > 0) {
     if (current.readOnly) {
       throw new ReadOnlyCollectionError(collectionName);
@@ -71,21 +93,30 @@ export async function updateCollection(
     const folders = openLocaleFolders(next);
     // Additive work first, so a failure here leaves every removed locale's data on disk.
     for (const locale of added) {
-      seedLocaleFiles(folders, locale);
+      const result = seedLocaleFiles(folders, locale);
+      entriesAdded += result.entries;
+      filesUpdated += result.filesUpdated;
     }
     for (const locale of removed) {
-      dropLocaleFiles(folders, locale);
+      const result = dropLocaleFiles(folders, locale);
+      entriesRemoved += result.entries;
+      filesUpdated += result.filesUpdated;
     }
-    mutations.push(reindexMutation(next.translationsFolder));
   }
 
   configFile.write(nextConfig);
+  const recordChanged =
+    targetName !== collectionName ||
+    JSON.stringify(config.collections[collectionName]) !== JSON.stringify(nextConfig.collections[targetName]);
+  const mutations = recordChanged
+    ? [...new Set([current.translationsFolder, next.translationsFolder])].map(reindexMutation)
+    : [];
 
   const message =
     targetName === collectionName
       ? `Collection "${collectionName}" updated successfully`
       : `Collection "${collectionName}" renamed to "${targetName}" and updated successfully`;
-  return { message, mutations };
+  return { message, mutations, entriesAdded, entriesRemoved, filesUpdated };
 }
 
 /** Which effective locales `next` adds to and removes from `current`. A base locale is never in either list. */

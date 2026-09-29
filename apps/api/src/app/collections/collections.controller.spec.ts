@@ -60,6 +60,7 @@ describe('CollectionsController', () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockReturnValue({
         message: 'Collection "test-collection" deleted successfully',
+        mutations: [],
       });
 
       const result = await collectionsController.deleteCollection('test-collection');
@@ -74,6 +75,7 @@ describe('CollectionsController', () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockReturnValue({
         message: 'Collection "My Collection" deleted successfully',
+        mutations: [],
       });
 
       const result = await collectionsController.deleteCollection('My%20Collection');
@@ -110,7 +112,10 @@ describe('CollectionsController', () => {
     });
 
     it('drops the index entry for the deleted collection folder', async () => {
-      (core.deleteCollectionByName as jest.Mock).mockReturnValue(undefined);
+      (core.deleteCollectionByName as jest.Mock).mockReturnValue({
+        message: 'Collection "test-collection" deleted successfully',
+        mutations: [{ kind: 'reindex', translationsFolder: resolve('./translations/test') }],
+      });
 
       await collectionsController.deleteCollection('test-collection');
 
@@ -293,7 +298,7 @@ describe('CollectionsController', () => {
       expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
-    it('drops the index entry for the collection folder, after its locale mutations', async () => {
+    it('applies the collection mutations returned by core', async () => {
       const localeMutation = { kind: 'reindex', translationsFolder: resolve('./translations/test') };
       (core.updateCollection as jest.Mock).mockResolvedValue({
         message: 'Collection "test-collection" updated successfully',
@@ -303,10 +308,7 @@ describe('CollectionsController', () => {
       const dto: UpdateCollectionDto = { collection: { translationsFolder: './translations/test' } };
       await collectionsController.updateCollectionByName('test-collection', dto);
 
-      expect(mockIndex.apply).toHaveBeenCalledWith([
-        localeMutation,
-        { kind: 'reindex', translationsFolder: resolve('./translations/test') },
-      ]);
+      expect(mockIndex.apply).toHaveBeenCalledWith([localeMutation]);
     });
   });
 });
