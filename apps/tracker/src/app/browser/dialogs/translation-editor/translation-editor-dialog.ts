@@ -813,8 +813,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   /**
    * Fetches a folder's own entries once, so the collision check and the "Where
    * it lands" tree work for any folder the user picks — not only the one the
-   * browser happens to be showing. Deliberately a plain read: the store's
-   * `selectFolder` would navigate the list behind the dialog.
+   * browser happens to be showing. Deliberately a plain read: the List Scope's
+   * `showFolder` would navigate the list behind the dialog.
    */
   #ensureFolderEntries(folderPath: string): void {
     if (

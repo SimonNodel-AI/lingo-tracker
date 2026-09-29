@@ -171,14 +171,18 @@ describe('TranslationEditorLauncher', () => {
       patchState(unprotected(store), { listScope: { kind: 'search', query: 'back' } });
       dialog.outcomes.push({ kind: 'open-existing', fullKey: resource.fullKey });
 
-      expect(await launcher.openCreate()).toEqual({ kind: 'open-existing', fullKey: resource.fullKey });
-      await vi.waitFor(() => expect(dialog.opened).toHaveLength(2));
+      dialog.outcomes.push({ kind: 'saved', fullKey: resource.fullKey, skippedLocales: [] });
+
+      // The create resolves with the outcome of the edit it handed over to.
+      expect(await launcher.openCreate()).toEqual({ kind: 'saved', fullKey: resource.fullKey, skippedLocales: [] });
+      expect(dialog.opened).toHaveLength(2);
 
       expect(getResourceTree).toHaveBeenCalledWith('test-collection', 'browser.header', false);
       expect(dialog.data(1)).toMatchObject({ mode: 'edit', resource, folderPath: 'browser.header' });
       expect(store.isSearchMode()).toBe(false);
       expect(store.currentFolderPath()).toBe('browser.header');
-      expect(notifications.success).not.toHaveBeenCalled();
+      expect(notifications.success).toHaveBeenCalledTimes(1);
+      expect(notifications.success).toHaveBeenCalledWith('Translation updated successfully');
     });
   });
 

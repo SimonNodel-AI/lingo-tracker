@@ -29,7 +29,8 @@ export const CREATE_WARNING_DELAY_MS = 3200;
  * `with-entry-writes.feature.ts`), so there is nothing left to reload here.
  *
  * Each method resolves with the outcome once the feedback is given, for a caller that has its
- * own reaction (the list flashes a saved row).
+ * own reaction (the list flashes a saved row). An "Open existing" hand-off resolves with the
+ * outcome of the edit it hands over to, so a caller never sees `open-existing`.
  */
 @Injectable({ providedIn: 'root' })
 export class TranslationEditorLauncher {
@@ -119,8 +120,8 @@ export class TranslationEditorLauncher {
     return this.#followUp(outcome);
   }
 
-  /** The feedback for one outcome. */
-  #followUp(outcome: EditorOutcome): EditorOutcome {
+  /** The feedback for one outcome. An "Open existing" hand-off resolves with the outcome of the edit it opens. */
+  async #followUp(outcome: EditorOutcome): Promise<EditorOutcome> {
     const toast = TRACKER_TOKENS.BROWSER.TOAST;
     switch (outcome.kind) {
       case 'saved':
@@ -131,7 +132,7 @@ export class TranslationEditorLauncher {
         this.#notifications.success(
           this.#transloco.translate(toast.RESOURCEMOVEDX, {
             name: splitResolvedKey(outcome.fullKey).entryKey,
-            folder: outcome.folderPath || 'root',
+            folder: outcome.folderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
           }),
         );
         this.#warnSkipped(outcome.skippedLocales);
@@ -142,8 +143,7 @@ export class TranslationEditorLauncher {
         return outcome;
       case 'open-existing':
         // A hand-off, not a save: the create closes and the editor opens on the entry the user meant.
-        void this.openByFullKey(outcome.fullKey);
-        return outcome;
+        return this.openByFullKey(outcome.fullKey);
       case 'cancelled':
         return outcome;
     }
