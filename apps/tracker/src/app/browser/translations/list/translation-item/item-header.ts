@@ -49,9 +49,6 @@ export class TranslationItemHeader {
   readonly #browserStore = inject(BrowserStore);
   readonly #listStore = inject(TranslationListStore);
 
-  /** Active collection name — always set when this component is rendered. */
-  readonly #collectionName = computed(() => this.#browserStore.selectedCollection() ?? '');
-
   /** The resource: its key, comment and tags, and what the row actions act on. */
   translation = input.required<ResourceSummaryDto>();
 
@@ -176,7 +173,7 @@ export class TranslationItemHeader {
   });
 
   onCopyKey(): void {
-    this.#listStore.copyKey(this.fullKey());
+    this.#listStore.copyKey(this.translation());
   }
 
   /**
@@ -220,11 +217,11 @@ export class TranslationItemHeader {
   }
 
   onDelete(): void {
-    this.#listStore.deleteTranslation(this.translation(), this.#collectionName());
+    void this.#listStore.deleteTranslation(this.translation());
   }
 
   onTranslate(): void {
-    this.#listStore.translateResource(this.translation(), this.#collectionName());
+    this.#listStore.translateResource(this.translation());
   }
 
   onCommentClick(event: MouseEvent): void {

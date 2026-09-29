@@ -15,6 +15,7 @@ import {
 import { FolderPeek } from './folder-peek';
 import { BrowserStore } from '../store/browser.store';
 import { captureSession, withinSession } from '../store/session-guard';
+import { resourceMovedToast } from './resource-moved-toast';
 
 /** A create's skipped-locales warning waits out the success toast, so the two do not overlap. */
 export const CREATE_WARNING_DELAY_MS = 3200;
@@ -133,10 +134,7 @@ export class TranslationEditorLauncher {
         return outcome;
       case 'moved':
         this.#notifications.success(
-          this.#transloco.translate(toast.RESOURCEMOVEDX, {
-            name: splitResolvedKey(outcome.fullKey).entryKey,
-            folder: outcome.folderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-          }),
+          resourceMovedToast(this.#transloco, splitResolvedKey(outcome.fullKey).entryKey, outcome.folderPath),
         );
         this.#warnSkipped(outcome.skippedLocales);
         return outcome;

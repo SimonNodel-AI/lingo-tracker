@@ -1,14 +1,13 @@
 import { inject, DestroyRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { signalStoreFeature, type, withMethods } from '@ngrx/signals';
-import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../../shared/notification';
 import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../../shared/api-error/api-error';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
-import { ConfirmationDialog } from '../../../../shared/components/confirmation-dialog/confirmation-dialog';
+import { injectConfirm } from '../../../../shared/confirm';
 import type { ConfirmationDialogData } from '../../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import type { ResourceSummaryDto, TranslateResourceResponseDto } from '@simoncodes-ca/data-transfer';
 
@@ -24,20 +23,20 @@ export function withItemActions() {
     },
     withMethods((store) => {
       const browserStore = inject(BrowserStore);
-      const dialog = inject(MatDialog);
+      const confirm = injectConfirm();
       const launcher = inject(TranslationEditorLauncher);
       const destroyRef = inject(DestroyRef);
       const notifications = inject(NotificationService);
       const transloco = inject(TranslocoService);
 
       return {
-        copyKey(key: string): void {
+        copyKey(translation: ResourceSummaryDto): void {
           if (!navigator.clipboard?.writeText) {
             notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPYFAILED));
             return;
           }
           navigator.clipboard
-            .writeText(key)
+            .writeText(translation.fullKey)
             .then(() => notifications.success(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPIEDTOCLIPBOARD)))
             .catch(() => notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPYFAILED)));
         },
@@ -49,11 +48,12 @@ export function withItemActions() {
           });
         },
 
-        deleteTranslation(translation: ResourceSummaryDto, collectionName: string): void {
+        async deleteTranslation(translation: ResourceSummaryDto): Promise<void> {
           // Last line of defence for every caller. A read-only collection must
           // never reach the confirmation dialog: asking the user to confirm a
           // deletion the API will refuse is a promise the UI cannot keep.
-          if (browserStore.isReadOnly()) return;
+          const collectionName = browserStore.selectedCollection();
+          if (!collectionName || browserStore.isReadOnly()) return;
 
           const { fullKey } = translation;
 
@@ -65,40 +65,28 @@ export function withItemActions() {
             actionType: 'destructive',
           };
 
-          const dialogRef = dialog.open(ConfirmationDialog, {
-            data: dialogData,
-            autoFocus: true,
-            restoreFocus: true,
-          });
-
-          dialogRef
-            .afterClosed()
+          if (!(await confirm(dialogData, { canOpen: () => !destroyRef.destroyed })) || destroyRef.destroyed) return;
+          browserStore
+            .deleteResource(collectionName, fullKey)
             .pipe(takeUntilDestroyed(destroyRef))
-            .subscribe((confirmed: boolean | undefined) => {
-              if (!confirmed) return;
-              browserStore
-                .deleteResource(collectionName, fullKey)
-                .pipe(takeUntilDestroyed(destroyRef))
-                .subscribe({
-                  next: (response) => {
-                    if (response.entriesDeleted > 0) {
-                      notifications.success(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEDELETED));
-                    } else {
-                      notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED));
-                    }
-                  },
-                  error: (error: unknown) => {
-                    const message = apiErrorMessage(
-                      error,
-                      transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED),
-                    );
-                    notifications.error(message);
-                  },
-                });
+            .subscribe({
+              next: (response) => {
+                if (response.entriesDeleted > 0) {
+                  notifications.success(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEDELETED));
+                } else {
+                  notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED));
+                }
+              },
+              error: (error: unknown) => {
+                const message = apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED));
+                notifications.error(message);
+              },
             });
         },
 
-        translateResource(translation: ResourceSummaryDto, collectionName: string): void {
+        translateResource(translation: ResourceSummaryDto): void {
+          const collectionName = browserStore.selectedCollection();
+          if (!collectionName || browserStore.isReadOnly()) return;
           const { fullKey } = translation;
           store.addTranslatingKey(fullKey);
 

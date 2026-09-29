@@ -20,6 +20,7 @@ import {
   folderMoveNoOp,
 } from '../folder-tree.utils';
 import { captureSession, type SessionCheck, withinSession } from '../session-guard';
+import { resourceMovedToast } from '../../services/resource-moved-toast';
 
 export interface MovesState {
   /** Moves sent and not yet answered. Written only by `whileMoving`. */
@@ -110,12 +111,7 @@ export function withMovesFeature<_>() {
               return api.moveResource(collection, sourceKey, destinationKey).pipe(
                 withinSession(inSession),
                 tap(() => {
-                  notifications.success(
-                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEMOVEDX, {
-                      name: entryKey,
-                      folder: destinationFolderPath || rootLabel(),
-                    }),
-                  );
+                  notifications.success(resourceMovedToast(transloco, entryKey, destinationFolderPath));
                   store.loadRootFolders();
                   store.reloadList();
                 }),
