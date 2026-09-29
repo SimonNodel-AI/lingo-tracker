@@ -139,6 +139,9 @@ describe('normalizeCommand', () => {
     await normalizeCommand({ collection: 'App', json: true });
 
     expect(errored()).toContain('⚠️  Skipped unreadable folder: Unexpected token in resource_entries.json');
+    expect(JSON.parse(logged()[0]).collections[0].problems).toEqual([
+      { folderPath: 'bad', absolutePath: '/p/path/App/bad', message: 'Unexpected token in resource_entries.json' },
+    ]);
     expect(process.exitCode).toBe(0);
   });
 

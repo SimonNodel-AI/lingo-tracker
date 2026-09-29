@@ -1,4 +1,10 @@
-import { type Collection, normalize, openCollection, ReadOnlyCollectionError } from '@simoncodes-ca/core';
+import {
+  type Collection,
+  type NormalizeResult,
+  normalize,
+  openCollection,
+  ReadOnlyCollectionError,
+} from '@simoncodes-ca/core';
 import { CommandCancelledError, defineCommand, NO_COLLECTIONS_MESSAGE } from '../runner/command-runner';
 import { ALL_ITEMS_SENTINEL, aggregateNumericFields, ConsoleFormatter } from '../utils';
 
@@ -18,6 +24,8 @@ interface CollectionNormalizeResult {
   filesCreated: number;
   filesUpdated: number;
   foldersRemoved: number;
+  /** Folders normalize could not read and left as they are. */
+  problems: NormalizeResult['problems'];
 }
 
 interface NormalizeCommandResult {
@@ -131,6 +139,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
           filesCreated: result.filesCreated,
           filesUpdated: result.filesUpdated,
           foldersRemoved: result.foldersRemoved,
+          problems: result.problems,
         });
 
         if (!answers.json) {
