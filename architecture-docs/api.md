@@ -194,7 +194,7 @@ Controllers are the only layer that knows HTTP. They read the config from `Confi
 | `TranslationError` with code `RATE_LIMIT` | 429 (`HttpException`, error `Too Many Requests`) | `Translation provider error: <message>` |
 | `TranslationError` with any other code (for example `SERVER_ERROR`) | 502 (`BadGatewayException`) | `Translation provider error: <message>` |
 | `ProtectedTermsFileError` (a malformed protected-terms file on the server, from the [Translator](glossary.md#translator) or `GET /config`) | 500 (`InternalServerErrorException`) | error message (names the file) |
-| `InvalidConfigError` (a `.lingo-tracker.json` the server cannot use: a malformed `preferredTerminologyFile` pointer on `PUT /config`, a missing or malformed required field on any config write) | 500 (`InternalServerErrorException`) | error message (names the field or pointer) |
+| `InvalidConfigError` (a `.lingo-tracker.json` the server cannot use: a malformed `preferredTerminologyFile` pointer on `PUT /config`, a missing or malformed required field on any config write, a config file that cannot be read or written) | 500 (`InternalServerErrorException`) | error message (fixed text naming the field or pointer, never a path or an fs message) |
 | any other `LingoTrackerError` | 500 (`InternalServerErrorException`) | error message |
 | any other `Error` (message and stack logged on the server) | 500 (`InternalServerErrorException`) | none: the body is `{ statusCode: 500, error: 'Internal Server Error' }` |
 | an error with its own numeric `statusCode` (for example from body-parser) | Nest default | Nest default |
