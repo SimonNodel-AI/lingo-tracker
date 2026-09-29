@@ -14,10 +14,6 @@ export {
   addLocaleToCollection,
   deleteCollectionByName,
   removeLocaleFromCollection,
-  setCollectionProtectedTerms,
-  setCollectionProtectedTermsFile,
-  setGlobalProtectedTerms,
-  setGlobalProtectedTermsFile,
   updateCollection,
 } from './collections-manager';
 
@@ -65,7 +61,12 @@ export type { LingoTrackerConfig } from './config/lingo-tracker-config';
 export type { TranslationConfig } from './config/translation-config';
 export { CONFIG_FILENAME, DEFAULT_CONFIG } from './constants';
 export {
+  assertProtectedTerms,
   type Collection,
+  displayTermPath,
+  editPreferredTerminology,
+  editProtectedTerms,
+  readProtectedTermsTarget,
   type LoadPreferredTerminologyResult,
   loadConfig,
   loadPreferredTerminology,
@@ -77,6 +78,10 @@ export {
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
+  setCollectionProtectedTerms,
+  setCollectionProtectedTermsFile,
+  setGlobalProtectedTerms,
+  setGlobalProtectedTermsFile,
   type StoredProtectedTerms,
   type TermFile,
   type TermFiles,
@@ -172,8 +177,6 @@ export type {
   DeleteCollectionOptions,
   RemoveLocaleFromCollectionOptions,
   RemoveLocaleFromCollectionResult,
-  SetProtectedTermsOptions,
-  SetProtectedTermsResult,
   UpdateCollectionOptions,
 } from './collections-manager';
 export type {
@@ -188,6 +191,12 @@ export type {
   UpdateBundleDefinitionOptions,
 } from './lib/bundle';
 export type { LoadConfigOptions, OpenCollectionOptions } from './lib/config';
+export type {
+  PreferredTerminologyEdit,
+  PreferredTerminologyEditResult,
+  SetProtectedTermsOptions,
+  SetProtectedTermsResult,
+} from './lib/config';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 export type { ExportFormat, ExportResult } from './lib/export/types';
 export type {

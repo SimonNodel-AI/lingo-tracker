@@ -12,12 +12,4 @@ export {
   type RemoveLocaleFromCollectionResult,
   removeLocaleFromCollection,
 } from './remove-locale-from-collection';
-export {
-  type SetProtectedTermsOptions,
-  type SetProtectedTermsResult,
-  setCollectionProtectedTerms,
-  setCollectionProtectedTermsFile,
-  setGlobalProtectedTerms,
-  setGlobalProtectedTermsFile,
-} from './set-protected-terms';
 export { type UpdateCollectionOptions, updateCollection } from './update-collection';

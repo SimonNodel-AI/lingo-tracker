@@ -1,6 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from '@nestjs/common';
 import {
   addCollection,
+  assertProtectedTerms,
   deleteCollectionByName,
   setCollectionProtectedTerms,
   updateCollection,
@@ -17,9 +18,6 @@ import { mapDtoToCollection } from '../mappers/collection.mapper';
 function writeCollectionProtectedTerms(collectionName: string, terms: string[] | undefined): void {
   if (terms === undefined) {
     return;
-  }
-  if (!Array.isArray(terms) || terms.some((term) => typeof term !== 'string')) {
-    throw new BadRequestException('protectedTerms must be an array of strings');
   }
   setCollectionProtectedTerms(collectionName, terms);
 }
@@ -88,6 +86,7 @@ export class CollectionsController {
   async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
     assertCollectionBody(body, 'required');
     const { name, collection } = body;
+    if (collection.protectedTerms !== undefined) assertProtectedTerms(collection.protectedTerms);
     const result = addCollection(name, mapDtoToCollection(collection));
     writeCollectionProtectedTerms(name, collection.protectedTerms);
     return { message: result.message };
@@ -108,6 +107,7 @@ export class CollectionsController {
     assertCollectionBody(body, 'optional');
     const decodedCollectionName = decodeURIComponent(collectionName);
     const { name, collection } = body;
+    if (collection.protectedTerms !== undefined) assertProtectedTerms(collection.protectedTerms);
     const targetName = name ?? decodedCollectionName;
     const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
     this.#index.apply(result.mutations);

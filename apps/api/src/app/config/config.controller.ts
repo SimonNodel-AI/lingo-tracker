@@ -1,15 +1,13 @@
 import { basename } from 'node:path';
-import { BadRequestException, Body, Controller, Get, Put } from '@nestjs/common';
+import { Body, Controller, Get, Put } from '@nestjs/common';
 import {
+  assertProtectedTerms,
   loadPreferredTerminology,
-  PreferredTerminologyValidationError,
-  resolvePreferredTerminologyFilePath,
+  editPreferredTerminology,
   resolveProtectedTermsForConfig,
   setGlobalProtectedTerms,
-  writePreferredTerminology,
 } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
-import { validatePreferredTermRules } from '@simoncodes-ca/domain';
 import { mapConfigToDto, mapDtoToConfigUpdate } from '../mappers/config.mapper';
 import { ConfigService } from './config.service';
 
@@ -44,28 +42,11 @@ export class ConfigController {
   @Put()
   updateConfig(@Body() dto: UpdateConfigDto): { message: string } {
     const protectedTerms = dto?.protectedTerms;
-    if (
-      protectedTerms !== undefined &&
-      (!Array.isArray(protectedTerms) || protectedTerms.some((t) => typeof t !== 'string'))
-    ) {
-      throw new BadRequestException('protectedTerms must be an array of strings');
-    }
-
-    const preferredTerminology: unknown = dto?.preferredTerminology;
-    if (preferredTerminology !== undefined) {
-      if (!Array.isArray(preferredTerminology)) {
-        throw new BadRequestException('preferredTerminology must be an array of rules');
-      }
-      const ruleErrors = validatePreferredTermRules(preferredTerminology);
-      if (ruleErrors.length > 0) {
-        throw new PreferredTerminologyValidationError(ruleErrors);
-      }
-    }
+    if (protectedTerms !== undefined) assertProtectedTerms(protectedTerms);
 
     const update = mapDtoToConfigUpdate(dto ?? {});
     if (update.preferredTerminology !== undefined) {
-      const filePath = resolvePreferredTerminologyFilePath(this.configService.getConfig(), process.cwd());
-      writePreferredTerminology(filePath, update.preferredTerminology);
+      editPreferredTerminology(this.configService.getConfig(), { set: update.preferredTerminology }, process.cwd());
     }
     if (update.protectedTerms !== undefined) {
       setGlobalProtectedTerms(update.protectedTerms);

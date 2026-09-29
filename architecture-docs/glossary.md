@@ -275,7 +275,7 @@ Example file:
 ]
 ```
 
-A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. The commands that show or rewrite one file (`protected-terms`, the config endpoint) read it directly with `readGlobalProtectedTerms` / `readCollectionProtectedTerms`, which return the stored `terms` (and a `warning` for a named file that does not exist) and throw `ProtectedTermsFileError` for a file that is not a JSON array of strings.
+A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. `readProtectedTermsTarget()` reads the stored scope through `readGlobalProtectedTerms` / `readCollectionProtectedTerms`, which return `terms` (and a warning for a missing named file) and throw `ProtectedTermsFileError` for a malformed file. The config endpoint checks an untyped list with core `assertProtectedTerms()` before writing.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms), [`core-library.md`](core-library.md#project-terms)
 
@@ -422,6 +422,14 @@ Validated to the same segment rules as a resource key (`[A-Za-z0-9_-]`). An empt
 An edit does not use it. `editResource(collection, key, { moveTo })` takes the full existing key, and `moveTo` is the folder the entry moves to (`''` for the collection root); `UpdateResourceDto.moveTo` and `edit-resource --target-folder` map to it.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`core-library.md`](core-library.md#collection-bound-operations), [`cli.md`](cli.md)
+
+---
+
+### Term List Edit
+
+The write side of [Project Terms](#project-terms), owned by core config. Core’s pointer setters change `protectedTermsFile` and carry over the old list. `readProtectedTermsTarget(config, target, cwd)` returns stored terms, paths, warnings and the effective union before a write. `editProtectedTerms(target, view, edit)` applies add, remove or set and returns the resulting list and path. The CLI prints the read result before it writes. `loadPreferredTerminology(config, cwd)` reads the project-wide rules; `editPreferredTerminology(config, edit, cwd)` replaces, upserts or removes them. Upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched. The CLI prints these results, and the API uses core’s rule validation.
+
+Explained in context: [`core-library.md`](core-library.md#project-terms), [`cli.md`](cli.md#protected-terms-scoping), [`api.md`](api.md#error-mapping)
 
 ---
 
