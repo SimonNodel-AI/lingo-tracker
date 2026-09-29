@@ -17,6 +17,7 @@ import {
 import type { Response } from 'express';
 import {
   addResource,
+  assertCanTranslateLocale,
   deleteResource,
   moveResource,
   editResource,
@@ -338,18 +339,7 @@ export class ResourcesController {
     @Res() response: Response,
   ): Promise<void> {
     const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-    const { translationConfig, baseLocale, locales: allLocales } = collection;
-
-    if (!translationConfig?.enabled) {
-      throw new HttpException('Auto-translation is not enabled for this collection', HttpStatus.UNPROCESSABLE_ENTITY);
-    }
-
-    if (dto.locale === baseLocale || !allLocales.includes(dto.locale)) {
-      throw new HttpException(
-        `Invalid locale "${dto.locale}": must be a non-base locale defined in the collection's locales`,
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    assertCanTranslateLocale(collection, dto.locale);
 
     const jobId = this.#translationJobService.startJob(collection, dto.locale);
 

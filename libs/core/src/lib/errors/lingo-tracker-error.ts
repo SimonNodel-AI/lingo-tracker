@@ -260,6 +260,28 @@ export class AutoTranslationDisabledError extends LingoTrackerError {
   }
 }
 
+/** A collection's base locale is not a translation target. */
+export class CannotTranslateBaseLocaleError extends LingoTrackerError {
+  readonly locale: string;
+
+  constructor(locale: string) {
+    super(ErrorMessages.cannotTranslateBaseLocale(locale), 'CANNOT_TRANSLATE_BASE_LOCALE');
+    this.locale = locale;
+  }
+}
+
+/** The requested translation target is not configured for this collection. */
+export class TranslationLocaleNotConfiguredError extends LingoTrackerError {
+  readonly locale: string;
+  readonly availableLocales: readonly string[];
+
+  constructor(locale: string, availableLocales: readonly string[]) {
+    super(ErrorMessages.translationLocaleNotConfigured(locale, availableLocales), 'TRANSLATION_LOCALE_NOT_CONFIGURED');
+    this.locale = locale;
+    this.availableLocales = [...availableLocales];
+  }
+}
+
 // --- Bundles -----------------------------------------------------------------
 
 /** The config has no bundle with this name. */

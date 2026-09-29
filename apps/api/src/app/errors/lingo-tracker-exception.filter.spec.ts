@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
+  CannotTranslateBaseLocaleError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
   CollectionAlreadyExistsError,
@@ -20,6 +21,7 @@ import {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
@@ -133,6 +135,16 @@ describe('toHttpException', () => {
       new BaseLocaleImmutableError('en'),
       400,
       { message: 'Cannot add or remove the base locale "en"', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
+      new CannotTranslateBaseLocaleError('en'),
+      400,
+      { message: 'Cannot translate to the base locale "en".', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
+      new TranslationLocaleNotConfiguredError('ja', ['en', 'fr']),
+      400,
+      { message: 'Locale "ja" is not configured. Available locales: en, fr', error: 'Bad Request', statusCode: 400 },
     ],
     [
       new InvalidBundleDefinitionError(['a', 'b']),

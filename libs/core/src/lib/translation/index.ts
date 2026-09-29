@@ -10,6 +10,7 @@ export {
   translateExistingResource,
 } from './translate-existing-resource';
 export {
+  assertCanTranslateLocale,
   type TranslateLocaleParams,
   type TranslateLocaleProgress,
   type TranslateLocaleResult,

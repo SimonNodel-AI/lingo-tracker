@@ -50,7 +50,12 @@ export { exportTargetLocales, runExport } from './lib/export/run-export';
 
 // Operations: normalize, translate, validate
 export { normalize } from './lib/normalize';
-export { assertAutoTranslationEnabled, translateExistingResource, translateLocale } from './lib/translation';
+export {
+  assertAutoTranslationEnabled,
+  assertCanTranslateLocale,
+  translateExistingResource,
+  translateLocale,
+} from './lib/translation';
 export { generateValidationSummary, runValidate, validateResources } from './lib/validate';
 export type { ValidateRunOptions, ValidateRunResult } from './lib/validate';
 
@@ -129,6 +134,7 @@ export { PreferredTerminologyValidationError } from './lib/config';
 export {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
+  CannotTranslateBaseLocaleError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
   CollectionAlreadyExistsError,
@@ -148,6 +154,7 @@ export {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
