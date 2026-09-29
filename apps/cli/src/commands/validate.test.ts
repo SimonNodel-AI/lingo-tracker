@@ -123,7 +123,7 @@ describe('validateCommand', () => {
     });
     await validateCommand({});
     expect(process.exitCode).toBe(1);
-    expect(console.error).toHaveBeenCalledWith('❌ No collections found in configuration.');
+    expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
     expect(console.log).not.toHaveBeenCalled();
   });
 

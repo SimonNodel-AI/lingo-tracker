@@ -1,11 +1,5 @@
-import {
-  type Collection,
-  type NormalizeResult,
-  normalize,
-  openCollection,
-  ReadOnlyCollectionError,
-} from '@simoncodes-ca/core';
-import { CommandCancelledError, defineCommand, NO_COLLECTIONS_MESSAGE } from '../runner/command-runner';
+import { type NormalizeResult, normalize, ReadOnlyCollectionError } from '@simoncodes-ca/core';
+import { CommandCancelledError, defineCommand } from '../runner/command-runner';
 import { ALL_ITEMS_SENTINEL, aggregateNumericFields, ConsoleFormatter } from '../utils';
 
 export interface NormalizeOptions {
@@ -44,8 +38,24 @@ interface NormalizeCommandResult {
 
 export const normalizeCommand = defineCommand<NormalizeOptions>()({
   name: 'Normalize',
-  // `--collection` or `--all`: the command opens the collections itself.
-  collection: 'none',
+  collection: 'many',
+  many: {
+    select: async (answers, { interactive, ask }) => {
+      const selected = typeof answers.collectionOrAll === 'string' ? answers.collectionOrAll : undefined;
+      const all = answers.all === true || selected === ALL_ITEMS_SENTINEL;
+      const collectionName = answers.collection ?? (selected !== ALL_ITEMS_SENTINEL ? selected : undefined);
+      if (!all) {
+        if (!collectionName) throw new Error('Missing required option in non-interactive mode: --collection or --all');
+        return [collectionName];
+      }
+      if (all && interactive) {
+        ConsoleFormatter.warning('This will normalize ALL collections in your project.');
+        const confirmed = await ask({ type: 'confirm', name: 'confirmed', message: 'Are you sure?', initial: false });
+        if (confirmed.confirmed !== true) throw new CommandCancelledError();
+      }
+      return 'all';
+    },
+  },
   prompts: (options, { config }) => {
     const collections = Object.keys(config.collections ?? {});
     if (options.collection || options.all || collections.length === 0) {
@@ -63,55 +73,22 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       },
     ];
   },
-  run: async ({ config, cwd, answers, interactive, ask }) => {
-    const selected = typeof answers.collectionOrAll === 'string' ? answers.collectionOrAll : undefined;
-    const all = answers.all === true || selected === ALL_ITEMS_SENTINEL;
-    const collectionName = answers.collection ?? (selected !== ALL_ITEMS_SENTINEL ? selected : undefined);
-    const collectionNames = Object.keys(config.collections ?? {});
-
-    if (collectionNames.length === 0) {
-      throw new Error(NO_COLLECTIONS_MESSAGE);
-    }
-    if (!all && !collectionName) {
-      throw new Error('Missing required option in non-interactive mode: --collection or --all');
-    }
-
-    if (all && interactive) {
-      ConsoleFormatter.warning('This will normalize ALL collections in your project.');
-      const confirmed = await ask({ type: 'confirm', name: 'confirmed', message: 'Are you sure?', initial: false });
-      if (confirmed.confirmed !== true) {
-        throw new CommandCancelledError();
-      }
-    }
-
-    // An explicitly named collection that does not exist throws CollectionNotFoundError (exit 1).
-    // Core refuses a read-only collection: an explicitly named one is opened `writable` and fails;
-    // under `--all`, read-only collections are skipped without failing the run.
+  run: async ({ config, collections, answers }) => {
     let failed = false;
-    const collections: Collection[] = [];
-    try {
-      collections.push(
-        ...(all
-          ? collectionNames.map((name) => openCollection(config, name, { cwd }))
-          : [openCollection(config, collectionName ?? '', { cwd, writable: true })]),
-      );
-    } catch (e: unknown) {
-      if (!(e instanceof ReadOnlyCollectionError)) throw e;
-      // stderr, so it is reported with --json too.
-      ConsoleFormatter.error(e.message);
-      failed = true;
-    }
-
     const collectionResults: CollectionNormalizeResult[] = [];
+    const all = answers.all === true || answers.collectionOrAll === ALL_ITEMS_SENTINEL;
+
+    if (!all && collections[0]?.readOnly) {
+      ConsoleFormatter.error(new ReadOnlyCollectionError(collections[0].name).message);
+      printSummary(collectionResults, 0, answers);
+      return { exitCode: 1 };
+    }
 
     for (const collection of collections) {
       const { name } = collection;
 
       if (collection.readOnly) {
-        if (!answers.json) {
-          console.log('');
-          ConsoleFormatter.info(`Skipping read-only collection: ${name}`);
-        }
+        ConsoleFormatter.warning(`Skipping read-only collection: ${name}`);
         continue;
       }
 
@@ -162,7 +139,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       }
     }
 
-    printSummary(collectionResults, collections.length, answers);
+    printSummary(collectionResults, all ? Object.keys(config.collections ?? {}).length : collections.length, answers);
     return failed ? { exitCode: 1 } : undefined;
   },
 });

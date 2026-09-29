@@ -198,6 +198,45 @@ describe('defineCommand', () => {
   });
 
   describe('collection resolution', () => {
+    it('opens every configured collection for many mode', async () => {
+      const { invoke, run } = command({ collection: 'many' });
+      await invoke({});
+      expect(run.mock.calls[0]?.[0].collections.map((collection: { name: string }) => collection.name)).toEqual([
+        'main',
+        'vendor',
+      ]);
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('selects a list after prompts and deduplicates names in order', async () => {
+      const { invoke, run } = command({
+        collection: 'many',
+        many: { select: (answers) => answers.collection?.split(',') ?? 'all' },
+      });
+      await invoke({ collection: 'vendor,main,vendor' });
+      expect(run.mock.calls[0]?.[0].collections.map((collection: { name: string }) => collection.name)).toEqual([
+        'vendor',
+        'main',
+      ]);
+    });
+
+    it('fails many mode before prompts when config has no collections', async () => {
+      mockLoadConfig.mockReturnValue({ ...twoCollections, collections: {} });
+      const { invoke, run } = command({ collection: 'many' });
+      await invoke({});
+      expect(run).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('reports an unknown name from a many list', async () => {
+      const { invoke, run } = command({ collection: 'many', many: { select: () => ['main', 'missing'] } });
+      await invoke({});
+      expect(run).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith('❌ Collection "missing" not found');
+      expect(process.exitCode).toBe(1);
+    });
+
     it('opens the collection named by --collection', async () => {
       const { invoke, run } = command();
 

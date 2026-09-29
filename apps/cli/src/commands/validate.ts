@@ -1,4 +1,4 @@
-import { openCollection, runValidate, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { type Collection, runValidate } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -143,12 +143,11 @@ export interface ValidateCommandOptions {
  */
 export const validateCommand = defineCommand<ValidateCommandOptions>()({
   name: 'Validate',
-  collection: 'none',
-  run: ({ config, cwd, answers }) => validate(answers, config, cwd),
+  collection: 'many',
+  run: ({ collections, answers }) => validate(answers, collections),
 });
 
-function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
-  const collections = Object.keys(config.collections || {}).map((name) => openCollection(config, name, { cwd }));
+function validate(options: ValidateCommandOptions, collections: Collection[]): CommandResult {
   const result = runValidate(collections, options);
   for (const warning of result.warnings) ConsoleFormatter.warning(warning);
   if (result.status === 'failed') {

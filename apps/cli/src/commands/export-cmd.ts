@@ -1,10 +1,8 @@
 import {
-  type Collection,
   type ExportFormat,
   type ExportRunResult,
   exportTargetLocales,
   type LingoTrackerConfig,
-  openCollection,
   runExport,
   validateBasePropertyName,
   validateOutputDirectory,
@@ -13,7 +11,7 @@ import type { TranslationStatus } from '@simoncodes-ca/domain';
 import * as fs from 'fs';
 import * as path from 'path';
 import type prompts from 'prompts';
-import { type Answers, defineCommand, NO_COLLECTIONS_MESSAGE } from '../runner/command-runner';
+import { type Answers, defineCommand } from '../runner/command-runner';
 import {
   buildSummaryPath,
   ConsoleFormatter,
@@ -45,13 +43,13 @@ export interface ExportCommandOptions {
 
 export const exportCommand = defineCommand<ExportCommandOptions>()({
   name: 'Export',
-  // `--collection` takes a comma-separated list here (default: every collection), so the command opens them.
-  collection: 'none',
+  collection: 'many',
+  many: { select: (answers) => parseCommaSeparatedList(resolveAnswers(answers).collection) ?? 'all' },
   // The locale choices need the opened collections; only build them when they will be asked.
-  prompts: (options, { config, cwd, interactive }) =>
-    interactive ? buildQuestions(options, config, exportTargetLocales(openCollections(config, cwd))) : [],
+  prompts: (options, { config, collections, interactive }) =>
+    interactive ? buildQuestions(options, config, exportTargetLocales(collections)) : [],
   required: ['format'],
-  run: async ({ config, cwd, answers }) => {
+  run: async ({ config, cwd, collections, answers }) => {
     const options = resolveAnswers(answers);
     const { format } = options;
 
@@ -71,9 +69,6 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       : path.resolve(cwd, config.exportFolder || 'dist/lingo-export');
 
     validateOutputDirectory(outputDir);
-
-    // An unknown name throws CollectionNotFoundError; none configured fails like every other command.
-    const collections = openCollections(config, cwd, parseCommaSeparatedList(options.collection));
 
     const targetLocales = exportTargetLocales(collections, parseCommaSeparatedList(options.locale));
     if (targetLocales.length === 0) {
@@ -122,15 +117,6 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
     return failed ? { exitCode: 1 } : undefined;
   },
 });
-
-/** Opens the named collections (default: every one). Throws when none is configured or a name is unknown. */
-function openCollections(config: LingoTrackerConfig, cwd: string, names?: string[]): Collection[] {
-  const configured = Object.keys(config.collections ?? {});
-  if (configured.length === 0) {
-    throw new Error(NO_COLLECTIONS_MESSAGE);
-  }
-  return [...new Set(names ?? configured)].map((name) => openCollection(config, name, { cwd }));
-}
 
 function displayResults(result: ExportRunResult): void {
   for (const { locale, outcome, resourcesExported, filesCreated, error } of result.localeResults) {
