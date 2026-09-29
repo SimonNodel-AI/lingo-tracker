@@ -270,7 +270,7 @@ sequenceDiagram
     Note over FT,API: C. Load the root folder tree and the root list
     TS->>API: GET /api/collections/{name}/resources/tree?path=&includeNested=true
     API-->>TS: ResourceTreeDto { resources: ResourceSummaryDto[] }
-    TS->>BS: patchState({ translations, loadedFolderPath: "", listLoaded: true })
+    TS->>BS: patchState({ translations, loadedFolderPath: "", shownScope })
     FT->>API: GET /api/collections/{name}/resources/tree?path=&includeNested=false
     API-->>FT: ResourceTreeDto { children: FolderNodeDto[] }
     FT->>BS: patchState({ rootFolders, folderTreeLoaded: true })
@@ -330,13 +330,13 @@ sequenceDiagram
 
     TS->>TS: query.trim().length >= 3? Yes
     TS->>BS: showQuery("confirm")
-    Note right of BS: patchState({ listScope: { kind: "search", query }, isListLoading: true, error: null })<br/>isSearchMode, searchQuery, isSearchLoading and isDisabled are derived from it.<br/>The switchMap cancels any list load still in flight.
+    Note right of BS: patchState({ listScope: { kind: "search", query }, isListLoading: true, listError: null })<br/>isSearchMode, searchQuery, isSearchLoading and isDisabled are derived from it.<br/>The switchMap cancels any list load still in flight.
     BS->>API: GET /api/collections/{name}/resources/search?query=confirm
     Note right of API: CollectionIndex.search() runs searchResources (text mode)<br/>over the indexed tree (treeResources)<br/>or the disk (readCollection) if not indexed;<br/>every match is ranked, then maxResults applies
 
     API-->>BS: SearchResultsDto { results: SearchResultDto[] }
     BS->>BS: patchState({ searchResults, isListLoading: false })
-    Note right of BS: A failed search is the list's error<br/>(error view with Retry, which runs the query again).
+    Note right of BS: A failed search is the list's listError<br/>(error view with Retry, which runs the query again).
 
     Note over TL: displayedTranslations computed signal<br/>returns searchResults when isSearchMode=true
     TL->>TL: re-render virtual scroll list

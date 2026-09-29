@@ -186,7 +186,7 @@ flowchart TD
 
 | Feature file | State owned | Key computed signals | Key methods |
 |---|---|---|---|
-| `with-list-scope.feature.ts` | `listScope`, `translations`, `loadedFolderPath`, `searchResults`, `isListLoading`, `listLoaded`, `showNestedResources` | `isSearchMode`, `searchQuery`, `isTranslationsLoading`, `isSearchLoading` | `showFolder`, `showQuery`, `clearSearch`, `reloadList`, `setNestedResources` — see [List Scope](#list-scope--what-the-list-shows) |
+| `with-list-scope.feature.ts` | `listScope`, `translations`, `loadedFolderPath`, `searchResults`, `isListLoading`, `shownScope`, `listError`, `showNestedResources` | `listLoaded`, `isSearchMode`, `searchQuery`, `isTranslationsLoading`, `isSearchLoading` | `showFolder`, `showQuery`, `clearSearch`, `reloadList`, `setNestedResources` — see [List Scope](#list-scope--what-the-list-shows) |
 | `with-filter.feature.ts` | `selectedLocales`, `selectedStatuses`, `sortField`, `sortDirection` | `filteredLocales`, `filterableLocales`, `localeFilterText`, `statusFilterText`, `isShowingAllLocales`, `isShowingAllStatuses` | `toggleLocale`, `setSelectedLocales`, `setSortField`, `toggleSortDirection`, `toggleStatus`, `selectNeedsWorkStatuses` |
 | `with-translations.feature.ts` | (no new state) | `sortedTranslations`, `displayedTranslations`, `statusCounts`, `needsWorkCount`, `isEmpty`, `translationCount`, `hasTranslations` | — |
 | `with-entry-writes.feature.ts` | (no new state) | — | `createResource`, `updateResource`, `deleteResource`, `translateResource` — see [Writing a Resource Entry](#writing-a-resource-entry) |
@@ -202,12 +202,13 @@ Root-level members of `BrowserStore` (not in a feature):
 |---|---|
 | `isDisabled` | Computed: `isSearchMode() \|\| isMoving()`. Locks folder navigation and moves. It has no writer: a search shown by the List Scope or a move in flight is the only way it becomes true. |
 | `effectiveDisabled` | Computed: `isDisabled() \|\| isReadOnly()`, for editing affordances. |
-| `retryLoad` | The list's Retry: the List Scope's `reloadList`, plus `loadRootFolders` when the folder tree never loaded in this session. |
-| `clearError` | Simple `patchState` helper |
+| `listErrorMessage` | Computed: `listError() ?? error()`, what the list's error view shows. |
+| `retryLoad` | The list's Retry: clears `error`, then the List Scope's `reloadList`, plus `loadRootFolders` when the folder tree never loaded in this session. |
+| `clearError` | Clears `error` and `listError` |
 
 ### List Scope — What the List Shows
 
-The [List Scope](glossary.md#list-scope) (`with-list-scope.feature.ts`) owns what the translation list shows and every load of it. The scope is a folder or a search query:
+The [List Scope](glossary.md#list-scope) (`with-list-scope.feature.ts`) owns what the translation list shows and is the only loader of its rows. The scope is a folder or a search query:
 
 ```typescript
 type ListScope = { kind: 'folder'; path: string } | { kind: 'search'; query: string };
@@ -217,17 +218,17 @@ type ListScope = { kind: 'folder'; path: string } | { kind: 'search'; query: str
 |---|---|
 | `showFolder(path)` | Shows the folder (leaving a search, if one is shown) and loads its rows with the nested setting. Sets `currentFolderPath`. |
 | `showQuery(query)` | Shows the hits of a text search. A blank query is `clearSearch`. Hits of an earlier search are dropped when a search starts from a folder, so they never stand in for the new one. |
-| `clearSearch()` | Goes back to the folder behind the search. Its rows are shown as they are when they were loaded for that folder (`loadedFolderPath`); when a search cut the folder's load short, the folder is loaded. |
+| `clearSearch()` | Goes back to the folder behind the search. Its rows are shown as they are when they were loaded for that folder (`loadedFolderPath`); when a search cut the folder's load short, the folder is loaded. Without a search shown it does nothing (the search box calls it whenever its query empties), so it never cancels a folder load. |
 | `reloadList()` | Loads the current scope again: after a create, after a resource move, from the list's Retry, and for the first list of a session once the index is ready. |
 | `setNestedResources(value)` | Changes the nested setting and reloads a folder scope. |
 
-The callers are the folder tree (a folder click, a delete shows the parent), `TranslationSearch`, the moves, the entry writes, the cache-status poll and `TranslationEditorLauncher.openByFullKey`. None of them loads rows or writes `currentFolderPath`, `translations`, `searchResults` or a loading flag itself.
+The callers are the folder tree (a folder click, a delete shows the parent), `TranslationSearch`, the moves, the entry writes, the cache-status poll and `TranslationEditorLauncher.openByFullKey`. None of them loads rows or writes `currentFolderPath`, `listError` or a loading flag itself. Entry writes (`patchEntry`/`dropEntry`) and moves (the optimistic drop and its undo) patch the loaded rows in place.
 
 **One pipeline.** Every load goes through one `switchMap`: a newer scope cancels the older load (its HTTP request and any not-ready retries), so answers cannot land out of order. `openCollection` cancels it too (`_cancelListLoads`).
 
-**One busy state.** `isListLoading`. `isTranslationsLoading` (the list's spinner) and `isSearchLoading` (the search box's spinner) are the same flag read for a folder scope and a search scope.
+**One busy state.** `isListLoading`. `isSearchLoading` (the search box's spinner) is the flag in a search scope. `isTranslationsLoading` (the list's spinner) is the flag in a folder scope, and in a search scope with no hits yet (the first search from a folder), so the list does not show its empty state while that search loads; a refined search keeps its hits up.
 
-**One failure rule.** When a load fails with `CollectionIndexNotReadyError` and a list has already loaded in this session (`listLoaded`), the scope goes back to what was shown (scope and `currentFolderPath`), the rows stay, and a toast gives the message. Any other failure is the list's `error`, with the Retry button. The fallback message is `browser.toast.loadTranslationsFailed` for a folder and `browser.toast.searchTranslationsFailed` for a search. A load clears `error` when it starts and not when it lands, so a failure of the folder tree's load, which runs beside the first list load, stays on screen.
+**One failure rule.** When a load fails with `CollectionIndexNotReadyError` and a list has already loaded in this session (`listLoaded`), the scope goes back to `shownScope`, the last scope that loaded (or that `clearSearch` went back to), so the scope and `currentFolderPath` match the rows on screen even when a newer scope was cancelled before it loaded; a toast gives the message. Any other failure is `listError`, with the Retry button. Only the List Scope writes `listError` (a list load clears it as it starts), so the folder tree's loads, which clear the shared `error`, cannot bring the previous folder's rows back under a new breadcrumb. The fallback message is `browser.toast.loadTranslationsFailed` for a folder and `browser.toast.searchTranslationsFailed` for a search.
 
 **Tests.** `with-list-scope.feature.spec.ts` drives the store through the real HTTP seam (`HttpTestingController`) and checks scope changes: show folder A, a query, folder B, and check the rows, the busy flags and that a cancelled load never lands.
 
@@ -306,7 +307,7 @@ Both moves live in `withMovesFeature`. While one is in flight, `movesInFlight` c
 2. Immediately `patchState` with the resource removed (`optimisticTranslations`).
 3. Call `api.moveResource()`.
 4. On success: reload the folder tree (`loadRootFolders`, the tree only) and the list (`reloadList`). The list stays on the folder it showed.
-5. On error: restore the snapshot, set `error`, show an error notification.
+5. On error: put back the moved row (only when the rows are still the folder it came from, and it is not there already, so a reload that landed meanwhile is kept), set `error`, show an error notification.
 
 **Move folder** (`moveFolder`):
 
@@ -451,7 +452,7 @@ type EditorOutcome =
 | `saved` | "Translation updated" toast, then the skipped-locales warning when auto-translation skipped any. |
 | `moved` | "Moved … to …" toast (the edit had a `moveTo`, the same test the store uses to drop the row), then the skipped-locales warning. |
 | `created` | "Resource created" toast; the skipped-locales warning follows after `CREATE_WARNING_DELAY_MS` (3.2 s), so the two toasts do not overlap. |
-| `open-existing` | `openByFullKey`: a session-guarded lookup of the entry, `showFolder` on its folder (which leaves a search), then an edit of it. A key the folder no longer holds, or a failed lookup, is a "not found" toast. |
+| `open-existing` | `openByFullKey`: a session-guarded lookup of the entry, `showFolder` on its folder (which leaves a search), then an edit of it. The hand-off resolves with that edit's outcome, so a caller never sees `open-existing`. A key the folder no longer holds, or a failed lookup, is a "not found" toast. |
 | `cancelled` | Nothing. A dialog closed without a result (backdrop) and an edit the server found nothing to change in are cancels too. |
 
 Each method resolves with the outcome once the feedback is given. The list's `editTranslation` flashes the row on `saved`. The reload after a write stays in the store (`with-entry-writes.feature.ts`): it runs inside the write's Browser Session, before the dialog closes, so the launcher has nothing to reload. `translation-editor-launcher.spec.ts` tests every outcome with a fake `MatDialog`.
