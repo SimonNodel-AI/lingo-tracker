@@ -20,6 +20,7 @@ export interface MoveFolderParams {
   /**
    * When true, the source folder is nested under the destination as a child folder.
    * When false, uses depth-based rename/nest heuristic (legacy behavior).
+   * The root destination (`''`) has no name, so it always nests, whatever this says.
    * Default: true
    */
   readonly nestUnderDestination?: boolean;
@@ -99,8 +100,11 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     throw new FolderMoveIntoDescendantError(sourceFolderPath, destinationFolderPath);
   }
 
+  // The root has no name to rename to, so a move there always nests.
+  const nest = nestUnderDestination || destinationFolderPath === '';
+
   // When nesting, check if destination is the source's parent (would be a no-op)
-  if (nestUnderDestination && sameCollection) {
+  if (nest && sameCollection) {
     const sourceParentPath = sourceFolderSegments.slice(0, -1).join('.');
     if (sourceParentPath === destinationFolderPath) {
       result.warnings.push('Folder is already at this location. No move performed.');
@@ -141,8 +145,7 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
 
   // Calculate depth once for all resources
   const sourceDepth = sourceFolderSegments.length;
-  // Legacy depth rule: the empty destination counted as one segment for non-nesting moves.
-  const destDepth = destinationFolderPath === '' ? 1 : destinationFolderSegments.length;
+  const destDepth = destinationFolderSegments.length;
   const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
 
   const relocations = resourceKeys.map((sourceKey) => {
@@ -160,7 +163,7 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     // Otherwise suffix will start with '.'
 
     let destinationKey: string;
-    if (nestUnderDestination) {
+    if (nest) {
       // always nest the source folder under destination
       const sourceFolderName = lastSourceSegment;
       if (destinationFolderPath) {

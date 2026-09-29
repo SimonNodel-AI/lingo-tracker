@@ -29,6 +29,7 @@ export interface MoveFolderDto {
   /**
    * When true, the source folder is nested under the destination as a child folder.
    * When false, uses depth-based rename/nest heuristic (legacy behavior).
+   * The root destination ("") has no name, so it always nests, whatever this says.
    * Default: true
    */
   nestUnderDestination?: boolean;

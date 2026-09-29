@@ -82,10 +82,10 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
   });
 });
 
-describe('moveFolder to the root without nesting (legacy depth rule, real fs)', () => {
+describe('moveFolder to the root without nesting (real fs)', () => {
   const root = useTempDir('move-folder-root-depth-');
 
-  it('reports the malformed destination for a depth-one source and keeps its entry', async () => {
+  it('treats a depth-one source as already at the root and moves nothing', async () => {
     const source = collection(root());
     await addResource(source, { key: 'apps.one', baseValue: 'One' });
 
@@ -95,14 +95,14 @@ describe('moveFolder to the root without nesting (legacy depth rule, real fs)', 
       nestUnderDestination: false,
     });
 
-    // The legacy rename branch forms ".one". Preserve this result until the caller chooses a behavior change.
-    expect(result.errors).toEqual(['Key validation: Invalid key format ".one" (leading or trailing dot not allowed)']);
+    expect(result.warnings).toEqual(['Folder is already at this location. No move performed.']);
+    expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(0);
     expect(result.mutations).toEqual([]);
     expect(openResourceFolder(join(root(), 'apps')).get('one')?.entry.source).toBe('One');
   });
 
-  it('reports the malformed destination for a depth-two source and keeps its entry', async () => {
+  it('nests a depth-two source under the root', async () => {
     const source = collection(root());
     await addResource(source, { key: 'apps.deep.one', baseValue: 'One' });
 
@@ -112,13 +112,15 @@ describe('moveFolder to the root without nesting (legacy depth rule, real fs)', 
       nestUnderDestination: false,
     });
 
-    // The legacy nest branch forms ".deep.one". Preserve this result until the caller chooses a behavior change.
-    expect(result.errors).toEqual([
-      'Key validation: Invalid key format ".deep.one" (leading or trailing dot not allowed)',
+    expect(result.errors).toEqual([]);
+    expect(result.movedCount).toBe(1);
+    expect(openResourceFolder(join(root(), 'deep')).get('one')?.entry.source).toBe('One');
+    expect(existsSync(join(root(), 'apps', 'deep'))).toBe(false);
+    expect(result.mutations.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
+      ['remove', 'apps.deep.one'],
+      ['upsert', 'deep.one'],
+      ['remove-folder', ''],
     ]);
-    expect(result.movedCount).toBe(0);
-    expect(result.mutations).toEqual([]);
-    expect(openResourceFolder(join(root(), 'apps', 'deep')).get('one')?.entry.source).toBe('One');
   });
 });
 
