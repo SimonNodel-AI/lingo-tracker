@@ -9,7 +9,7 @@ import { type Relocation, type RelocationResult, relocateEntries } from './reloc
 export interface MoveResourceParams {
   /** Full source key, or a prefix pattern ending with `*` (`common.buttons.*`). */
   readonly source: string;
-  /** Full destination key; for a pattern, the prefix the matched keys move under. */
+  /** Full destination key; for a pattern, the prefix the matched keys move under (`''`: the collection root). */
   readonly destination: string;
   /** Replace an existing destination entry. Default: false (the key is skipped with a warning). */
   readonly override?: boolean;
@@ -78,7 +78,7 @@ function expandPattern(
     try {
       validateKey(cleanPrefix);
     } catch (error) {
-      result.errors.push((error as Error).message);
+      result.errors.push(error instanceof Error ? error.message : String(error));
       return undefined;
     }
   }
@@ -93,6 +93,7 @@ function expandPattern(
 
   return keys.map((from) => {
     const suffix = cleanPrefix ? from.slice(cleanPrefix.length + 1) : from; // +1 for the dot
-    return { from, to: `${destinationKey}.${suffix}` };
+    // An empty destination is the collection root, as for moveFolder and editResource's moveTo.
+    return { from, to: destinationKey ? `${destinationKey}.${suffix}` : suffix };
   });
 }

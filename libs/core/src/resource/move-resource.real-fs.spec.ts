@@ -126,4 +126,15 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(result.warnings[0]).toContain('Destination key already exists');
     expect(existsSync(join(root, 'common', 'resource_entries.json'))).toBe(true);
   });
+
+  it('moves a pattern to the collection root with an empty destination', async () => {
+    writeFolder('common', 'buttons');
+
+    const result = await moveResource(collection(), { source: 'common.*', destination: '' });
+
+    expect(result.errors).toEqual([]);
+    expect(result.movedCount).toBe(1);
+    expect(read('resource_entries.json', 'buttons')).toEqual(entries);
+    expect(read('tracker_meta.json', 'buttons')).toEqual(meta);
+  });
 });
