@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../lib/config/open-collection';
 import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
@@ -15,8 +16,11 @@ import {
  * `editResource` (`moveTo`), `moveResource` (one key or a pattern) and `moveFolder` all move through it.
  *
  * - **Batch**: every folder involved is opened once, and saved once, however many entries move
- *   in or out of it. Folders that receive entries are saved before folders that only lose them,
- *   so a failed write leaves an entry in both places rather than in neither.
+ *   in or out of it. A folder is saved only after every folder it sends entries to, and the saves
+ *   stop at the first failed write. So after a failure each moved entry is at its destination, at
+ *   its source, or in both places, but not lost. The exception is a cycle of folders that send
+ *   entries to each other (a swap, `p.x` ↔ `q.x`): one of them has to be saved first, so a write
+ *   that fails inside the cycle can lose the entries moving within it.
  * - **Lossless**: values, comment, tags, checksums and statuses (`verified`, `stale`) are carried as
  *   they are. Nothing is auto-translated.
  * - **Collision policy**: a destination key is taken when an entry that is not itself moving
@@ -84,7 +88,7 @@ export function relocateEntries(
   options: RelocateEntriesOptions = {},
 ): RelocationResult {
   const override = options.override ?? false;
-  const crossCollection = source.translationsFolder !== destination.translationsFolder;
+  const crossCollection = resolve(source.translationsFolder) !== resolve(destination.translationsFolder);
   const errors: string[] = [];
 
   if (crossCollection && source.baseLocale !== destination.baseLocale) {
@@ -155,11 +159,9 @@ export function relocateEntries(
     to.folder.setEntry(to.entryKey, stored.entry, stored.meta ?? {}, fit);
   }
 
-  // 4. Save each folder once: the ones that receive entries first.
-  const receiving = new Set(pending.map(({ to }) => to.folder));
-  const losing = pending.map(({ from }) => from.folder).filter((folder) => !receiving.has(folder));
+  // 4. Save each folder once, after every folder it sends entries to.
   try {
-    for (const folder of new Set([...receiving, ...losing])) {
+    for (const folder of saveOrder(pending)) {
       folder.save();
     }
   } catch (error) {
@@ -185,6 +187,34 @@ export function relocateEntries(
       ...moved.map(({ to, entry }) => upsertMutation(destination.translationsFolder, to, entry)),
     ],
   };
+}
+
+/**
+ * The folders of `pending` in post-order over "sends entries to": each folder comes after every
+ * folder it sends entries to. A cycle is broken where the walk first meets it again.
+ */
+function saveOrder(pending: readonly Planned[]): ResourceFolder[] {
+  const sendsTo = new Map<ResourceFolder, Set<ResourceFolder>>();
+  for (const { from, to } of pending) {
+    if (from.folder === to.folder) continue;
+    const targets = sendsTo.get(from.folder) ?? new Set<ResourceFolder>();
+    targets.add(to.folder);
+    sendsTo.set(from.folder, targets);
+  }
+
+  const order: ResourceFolder[] = [];
+  const seen = new Set<ResourceFolder>();
+  const visit = (folder: ResourceFolder): void => {
+    if (seen.has(folder)) return;
+    seen.add(folder);
+    for (const target of sendsTo.get(folder) ?? []) visit(target);
+    order.push(folder);
+  };
+  for (const { from, to } of pending) {
+    visit(to.folder);
+    visit(from.folder);
+  }
+  return order;
 }
 
 /** The relocation's source and destination slots and the stored entry, or why it cannot move. */

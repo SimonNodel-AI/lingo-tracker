@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { writeJsonFile } from '../lib/file-io/json-file-operations';
@@ -119,6 +119,78 @@ describe('relocateEntries (real fs)', () => {
     expect(result.moved).toEqual([]);
     expect(result.collisions.map(({ from }) => from)).toEqual(['p.one', 'q.one']);
   });
+
+  it('swaps the entries of two folders', () => {
+    seedResources(main(), { 'p.x': { source: 'P' }, 'q.x': { source: 'Q' } });
+
+    const result = relocateEntries(main(), main(), [
+      { from: 'p.x', to: 'q.x' },
+      { from: 'q.x', to: 'p.x' },
+    ]);
+
+    expect(result.collisions).toEqual([]);
+    expect(result.moved.map(({ from, to }) => [from, to])).toEqual([
+      ['p.x', 'q.x'],
+      ['q.x', 'p.x'],
+    ]);
+    const entries = readCollection(main()).resources.map((resource) => [resource.fullKey, resource.entry.source]);
+    expect(entries.sort()).toEqual([
+      ['p.x', 'Q'],
+      ['q.x', 'P'],
+    ]);
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'saves a folder only after the folders it sends to, so a failed write loses no entry',
+    () => {
+      seedResources(main(), { 'a.k': { source: 'Outer' }, 'a.b.k': { source: 'Inner' } });
+      const deepest = join(main().translationsFolder, 'a', 'b', 'b');
+      mkdirSync(deepest);
+      chmodSync(deepest, 0o500);
+
+      try {
+        // a sends to a/b, and a/b sends to a/b/b, which cannot be written.
+        const result = relocateEntries(main(), main(), [
+          { from: 'a.k', to: 'a.b.k' },
+          { from: 'a.b.k', to: 'a.b.b.k' },
+        ]);
+
+        expect(result.moved).toEqual([]);
+        expect(result.errors).toEqual([expect.stringContaining('Failed to write the move')]);
+        expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: main().translationsFolder }]);
+        const entries = readCollection(main()).resources.map((resource) => [resource.fullKey, resource.entry.source]);
+        expect(entries.sort()).toEqual([
+          ['a.b.k', 'Inner'],
+          ['a.k', 'Outer'],
+        ]);
+      } finally {
+        chmodSync(deepest, 0o700);
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'returns a reindex of both collections when a cross-collection write fails',
+    () => {
+      const target = testCollection(join(root(), 'other'), { name: 'other' });
+      seedResources(main(), { 'common.ok': { source: 'OK' } });
+      mkdirSync(join(target.translationsFolder, 'common'), { recursive: true });
+      chmodSync(join(target.translationsFolder, 'common'), 0o500);
+
+      try {
+        const result = relocateEntries(main(), target, [{ from: 'common.ok', to: 'common.ok' }]);
+
+        expect(result.moved).toEqual([]);
+        expect(result.mutations).toEqual([
+          { kind: 'reindex', translationsFolder: target.translationsFolder },
+          { kind: 'reindex', translationsFolder: main().translationsFolder },
+        ]);
+        expect(keysOf(main().translationsFolder)).toEqual(['common.ok']);
+      } finally {
+        chmodSync(join(target.translationsFolder, 'common'), 0o700);
+      }
+    },
+  );
 
   it('fits an entry moved into another collection to its locales', () => {
     const source = testCollection(join(root(), 'main'), { locales: ['en', 'fr', 'es'] });
