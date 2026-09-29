@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import {
   normalizePreferredTermRules,
   type PreferredTermRule,
@@ -7,7 +7,7 @@ import {
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
+import { InvalidCollectionError, InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
 import {
   readTermFile,
   resolveTermFilePath,
@@ -40,10 +40,12 @@ export interface LoadPreferredTerminologyResult {
 /** Thrown by `writePreferredTerminology` when the rule list fails validation. The file is left untouched. */
 export class PreferredTerminologyValidationError extends LingoTrackerError {
   readonly errors: PreferredTermRuleError[];
+  readonly submittedRules?: readonly PreferredTermRule[];
 
-  constructor(errors: PreferredTermRuleError[]) {
+  constructor(errors: PreferredTermRuleError[], submittedRules?: readonly PreferredTermRule[]) {
     super(`Invalid preferred terminology rules: ${formatRuleErrors(errors)}`, 'INVALID_PREFERRED_TERMINOLOGY');
     this.errors = errors;
+    this.submittedRules = submittedRules;
   }
 }
 
@@ -127,13 +129,106 @@ export function readPreferredTerminologyFile(file: TermFile): TermFileRead<Prefe
  * in both cases the file is left untouched. The file is created when absent.
  */
 export function writePreferredTerminology(filePath: string, rules: readonly PreferredTermRule[]): void {
+  writePreferredTerminologyRules(() => filePath, rules, false);
+}
+
+export interface PreferredTerminologyEdit {
+  readonly set?: readonly PreferredTermRule[];
+  readonly add?: string;
+  readonly preferred?: string;
+  readonly reason?: string;
+  readonly remove?: string;
+}
+
+export interface PreferredTerminologyEditResult extends LoadPreferredTerminologyResult {
+  readonly action?: 'added' | 'updated' | 'removed';
+  readonly changedRule?: PreferredTermRule;
+}
+
+/** Edits the project rule file; a failed validation leaves it untouched. */
+export function editPreferredTerminology(
+  config: Pick<LingoTrackerConfig, 'preferredTerminologyFile'>,
+  edit: PreferredTerminologyEdit,
+  cwd: string = process.cwd(),
+  previous?: LoadPreferredTerminologyResult,
+): PreferredTerminologyEditResult {
+  const replacement: unknown = edit.set;
+  if (replacement !== undefined && !Array.isArray(replacement)) {
+    throw new InvalidCollectionError('preferredTerminology must be an array of rules');
+  }
+  let loaded: LoadPreferredTerminologyResult | undefined;
+  let next: PreferredTermRule[];
+  let action: PreferredTerminologyEditResult['action'];
+  let changedRule: PreferredTermRule | undefined;
+  if (edit.set !== undefined) {
+    next = [...edit.set];
+  } else {
+    loaded = previous ?? loadPreferredTerminology(config, cwd);
+    if (edit.add === undefined && edit.remove === undefined) return loaded;
+    if (loaded.error !== undefined) {
+      throw new Error(loaded.error);
+    }
+
+    next = [...loaded.rules];
+    if (edit.remove !== undefined) {
+      const index = next.findIndex((rule) => sameTerm(rule.discouraged, edit.remove ?? ''));
+      if (index === -1) {
+        throw new Error(
+          `No preferred terminology rule for "${edit.remove.trim()}" (${displayTermPath(loaded.filePath, cwd)})`,
+        );
+      }
+      const [removed] = next.splice(index, 1);
+      changedRule = removed;
+      action = 'removed';
+    } else if (edit.add !== undefined) {
+      // An upsert replaces the whole rule: omitting --reason clears the previous reason.
+      const rule: PreferredTermRule = {
+        discouraged: edit.add.trim(),
+        preferred: (edit.preferred ?? '').trim(),
+        ...(edit.reason?.trim() ? { reason: edit.reason.trim() } : {}),
+      };
+      const index = next.findIndex((existing) => sameTerm(existing.discouraged, rule.discouraged));
+      if (index === -1) {
+        next.push(rule);
+        action = 'added';
+      } else {
+        next[index] = rule;
+        action = 'updated';
+      }
+      changedRule = rule;
+    }
+  }
+
+  const written = writePreferredTerminologyRules(() => resolvePreferredTerminologyFilePath(config, cwd), next, true);
+  return loaded === undefined ? written : { ...loaded, ...written, action, changedRule };
+}
+
+/** Discouraged terms match after trimming and case folding. */
+function sameTerm(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** Renders a term-file path relative to the project root when it is inside it. */
+export function displayTermPath(filePath: string, cwd: string): string {
+  const rel = relative(cwd, filePath);
+  return rel && !rel.startsWith('..') ? rel : filePath;
+}
+
+function writePreferredTerminologyRules(
+  resolveFilePath: () => string,
+  rules: readonly PreferredTermRule[],
+  includeSubmittedRules: boolean,
+): LoadPreferredTerminologyResult {
   // Validate before normalizing: rules may arrive from an untyped source (the API), and
   // normalizing trims fields that might not be strings. Validation trims on its own.
   const errors = validatePreferredTermRules(rules);
   if (errors.length > 0) {
-    throw new PreferredTerminologyValidationError(errors);
+    throw new PreferredTerminologyValidationError(errors, includeSubmittedRules ? rules : undefined);
   }
-  writeTermFile(PREFERRED_TERMINOLOGY, filePath, [...rules]);
+  const normalized = PREFERRED_TERMINOLOGY.serialize([...rules]);
+  const filePath = resolveFilePath();
+  writeTermFile(PREFERRED_TERMINOLOGY, filePath, normalized);
+  return { rules: normalized, filePath };
 }
 
 /** Error message for a `preferredTerminologyFile` that is set but not a string; `undefined` when usable. */

@@ -4,12 +4,27 @@ export { addCollectionEntry, patchCollectionEntry, toCollectionEntry } from './c
 export { type LoadConfigOptions, loadConfig } from './load-config';
 export { type Collection, type OpenCollectionOptions, openCollection, type TermFiles } from './open-collection';
 export {
+  displayTermPath,
+  editPreferredTerminology,
+  type PreferredTerminologyEdit,
+  type PreferredTerminologyEditResult,
   type LoadPreferredTerminologyResult,
   loadPreferredTerminology,
   PreferredTerminologyValidationError,
   resolvePreferredTerminologyFilePath,
   writePreferredTerminology,
 } from './preferred-terminology-file';
+export {
+  assertProtectedTerms,
+  editProtectedTerms,
+  readProtectedTermsTarget,
+  type SetProtectedTermsOptions,
+  type SetProtectedTermsResult,
+  setCollectionProtectedTerms,
+  setCollectionProtectedTermsFile,
+  setGlobalProtectedTerms,
+  setGlobalProtectedTermsFile,
+} from './set-protected-terms';
 export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './project-terms';
 export {
   type ResolvedProtectedTerms,

@@ -3,9 +3,10 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONFIG_FILENAME, type LingoTrackerConfig } from '@simoncodes-ca/core';
-import type { UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
+import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { CollectionsController } from './collections.controller';
 
 /**
@@ -75,5 +76,55 @@ describe('CollectionsController PUT (real core)', () => {
 
     const { tags, exportFolder, ...rest } = stored;
     expect(readConfig().collections['app']).toEqual(rest);
+  });
+
+  it('answers 400 for invalid protected terms on create without changing config', async () => {
+    const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
+    const error = await controller
+      .createCollection({
+        name: 'new',
+        collection: { translationsFolder: './new', protectedTerms: ['valid', 42] },
+      } as unknown as CreateCollectionDto)
+      .catch((cause: unknown) => cause);
+    expect(toHttpException(error).getStatus()).toBe(400);
+    expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
+  });
+
+  it('answers 400 for invalid protected terms on update without changing config', async () => {
+    const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
+    const error = await controller
+      .updateCollectionByName('app', {
+        collection: { translationsFolder: './changed', protectedTerms: ['valid', 42] },
+      } as unknown as UpdateCollectionDto)
+      .catch((cause: unknown) => cause);
+    expect(toHttpException(error).getStatus()).toBe(400);
+    expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
+  });
+
+  it('writes valid protected terms when creating a collection', async () => {
+    await controller.createCollection({
+      name: 'new',
+      collection: {
+        translationsFolder: './new',
+        protectedTermsFile: 'new-terms.json',
+        protectedTerms: [' iPhone ', 'Pixel'],
+      },
+    });
+
+    expect(readConfig().collections['new'].protectedTermsFile).toBe('new-terms.json');
+    expect(JSON.parse(readFileSync(join(projectDir, 'new-terms.json'), 'utf8'))).toEqual(['iPhone', 'Pixel']);
+  });
+
+  it('writes valid protected terms when updating a collection', async () => {
+    await controller.updateCollectionByName('app', {
+      collection: {
+        translationsFolder: './i18n',
+        protectedTermsFile: 'app-terms.json',
+        protectedTerms: ['Pixel', ' Pixel '],
+      },
+    });
+
+    expect(readConfig().collections['app'].protectedTermsFile).toBe('app-terms.json');
+    expect(JSON.parse(readFileSync(join(projectDir, 'app-terms.json'), 'utf8'))).toEqual(['Pixel']);
   });
 });

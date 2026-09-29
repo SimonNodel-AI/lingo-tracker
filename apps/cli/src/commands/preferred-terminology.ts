@@ -1,9 +1,10 @@
-import { relative } from 'node:path';
 import {
+  displayTermPath,
+  editPreferredTerminology,
   type LingoTrackerConfig,
   loadPreferredTerminology,
+  type PreferredTerminologyEditResult,
   PreferredTerminologyValidationError,
-  writePreferredTerminology,
 } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
@@ -21,20 +22,10 @@ export interface PreferredTerminologyOptions {
   remove?: string;
 }
 
-/** Renders an absolute path relative to the project root, for readable output. */
-function displayPath(filePath: string, cwd: string): string {
-  const rel = relative(cwd, filePath);
-  return rel && !rel.startsWith('..') ? rel : filePath;
-}
-
-/** `Expenditure → Investment — reason`, without the reason suffix when there is none. */
+/** `Expenditure → Investment — reason`, without a reason suffix when there is none. */
 function formatRule(rule: PreferredTermRule): string {
   const base = `${rule.discouraged} → ${rule.preferred}`;
   return rule.reason ? `${base} — ${rule.reason}` : base;
-}
-
-function sameTerm(a: string, b: string): boolean {
-  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOptions>()({
@@ -62,72 +53,28 @@ function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, c
     throw new Error('--add requires --preferred <preferred>');
   }
 
-  const result = loadPreferredTerminology(config, cwd);
-  const where = displayPath(result.filePath, cwd);
-
-  if (result.warning) {
-    ConsoleFormatter.warning(result.warning);
-  }
-
+  const loaded = loadPreferredTerminology(config, cwd);
+  const where = displayTermPath(loaded.filePath, cwd);
+  if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
   if (hasList) {
     ConsoleFormatter.section('Preferred Terminology');
     ConsoleFormatter.keyValue('File', where);
-    if (result.error) {
-      throw new Error(result.error);
-    }
-    if (result.rules.length === 0) {
-      ConsoleFormatter.indent('(none)');
-    } else {
-      for (const rule of result.rules) {
-        ConsoleFormatter.indent(formatRule(rule));
-      }
-    }
+    if (loaded.error) throw new Error(loaded.error);
+    if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
+    else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
   }
-
   if (!hasAdd && !hasRemove) return;
+  if (loaded.error) throw new Error(loaded.error);
 
-  // Writing would replace a file we could not read; make the user fix it first.
-  if (result.error) {
-    throw new Error(result.error);
-  }
-
-  const next = [...result.rules];
-  let successMessage: string;
-
-  if (hasRemove) {
-    const term = options.remove ?? '';
-    const index = next.findIndex((rule) => sameTerm(rule.discouraged, term));
-    if (index === -1) {
-      throw new Error(`No preferred terminology rule for "${term.trim()}" (${where})`);
-    }
-    const [removed] = next.splice(index, 1);
-    successMessage = `Removed preferred terminology rule: ${formatRule(removed)} (${where})`;
-  } else {
-    // Upsert: a rule for the same discouraged term (any casing) is replaced entirely,
-    // so omitting --reason on an update clears the previous reason.
-    const rule: PreferredTermRule = {
-      discouraged: (options.add ?? '').trim(),
-      preferred: (options.preferred ?? '').trim(),
-      ...(options.reason?.trim() ? { reason: options.reason.trim() } : {}),
-    };
-    const index = next.findIndex((existing) => sameTerm(existing.discouraged, rule.discouraged));
-    if (index === -1) {
-      next.push(rule);
-      successMessage = `Added preferred terminology rule: ${formatRule(rule)} (${where})`;
-    } else {
-      next[index] = rule;
-      successMessage = `Updated preferred terminology rule: ${formatRule(rule)} (${where})`;
-    }
-  }
-
+  let result: PreferredTerminologyEditResult;
   try {
-    writePreferredTerminology(result.filePath, next);
+    result = editPreferredTerminology(config, options, cwd, loaded);
   } catch (error) {
     if (error instanceof PreferredTerminologyValidationError) {
       ConsoleFormatter.error(
         'Preferred terminology not saved:',
         error.errors.map((ruleError) => {
-          const row = next[ruleError.index];
+          const row = error.submittedRules?.[ruleError.index];
           const label = row ? `"${row.discouraged} → ${row.preferred}"` : `row ${ruleError.index + 1}`;
           return `${label}: ${ruleError.message}`;
         }),
@@ -136,6 +83,8 @@ function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, c
     }
     throw new Error(error instanceof Error ? error.message : String(error));
   }
-
-  ConsoleFormatter.success(successMessage);
+  if (result.action && result.changedRule) {
+    const verb = result.action === 'added' ? 'Added' : result.action === 'updated' ? 'Updated' : 'Removed';
+    ConsoleFormatter.success(`${verb} preferred terminology rule: ${formatRule(result.changedRule)} (${where})`);
+  }
 }
