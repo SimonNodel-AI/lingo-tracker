@@ -3,7 +3,7 @@ import { signalStoreFeature, withState, withComputed, withMethods, withHooks, pa
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, tap, switchMap, mergeMap, catchError, of, timer, takeWhile, type Observable } from 'rxjs';
 import { CollectionsApiService } from '../../services/collections-api.service';
-import { configWrite } from '../config-write';
+import { injectConfigWrite } from '../config-write';
 import type {
   BundleDefinitionDto,
   BundleGenerateJobDto,
@@ -178,6 +178,7 @@ export function withBundlesFeature<_>() {
     }),
     withMethods((store) => {
       const api = inject(CollectionsApiService);
+      const configWrite = injectConfigWrite(store);
 
       const writeRuns = (bundleRuns: Record<string, BundleRunState>): void => {
         patchState(store, { bundleRuns });
@@ -260,18 +261,18 @@ export function withBundlesFeature<_>() {
 
       return {
         /** Creates a bundle definition. A taken name errors with a `conflict`; a definition the rules reject with an `invalid` whose `details` are the rule messages. */
-        createBundle(data: CreateBundleDto): Observable<LingoTrackerConfigDto> {
-          return configWrite(store, api, api.createBundle(data));
+        createBundle(data: CreateBundleDto): Observable<LingoTrackerConfigDto | null> {
+          return configWrite(api.createBundle(data));
         },
 
         /** Updates the bundle `name` names; `update.name` renames it. */
-        updateBundle(name: string, update: UpdateBundleDto): Observable<LingoTrackerConfigDto> {
-          return configWrite(store, api, api.updateBundle(name, update));
+        updateBundle(name: string, update: UpdateBundleDto): Observable<LingoTrackerConfigDto | null> {
+          return configWrite(api.updateBundle(name, update));
         },
 
         /** Deletes a bundle definition and drops its run state once the server confirms it. */
-        deleteBundle(name: string): Observable<LingoTrackerConfigDto> {
-          return configWrite(store, api, api.deleteBundle(name)).pipe(tap(() => clearRun(name)));
+        deleteBundle(name: string): Observable<LingoTrackerConfigDto | null> {
+          return configWrite(api.deleteBundle(name)).pipe(tap(() => clearRun(name)));
         },
 
         /**

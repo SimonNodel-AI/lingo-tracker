@@ -388,9 +388,11 @@ export class Settings {
   /**
    * Sends every changed list in one request. Invalid terminology blocks the whole save —
    * nothing is half-applied — and reveals errors still hidden on untouched fields. The
-   * answer decides the rest: the saved config reseeds both lists and earns one toast; a
-   * refusal keeps every edit, shows its message, and maps per-row rule errors (the
-   * `details` of an `invalid` answer) back onto the rows that were sent.
+   * answer decides the rest: the saved config reseeds both lists and earns one toast (a
+   * save whose reload failed earns the toast too, but keeps the lists, as there is no saved
+   * config to reseed from; the page shows the load error); a refusal keeps every edit, shows
+   * its message, and maps per-row rule errors (the `details` of an `invalid` answer) back
+   * onto the rows that were sent.
    */
   save(): void {
     if (!this.hasAnyChanges()) return;
@@ -402,6 +404,8 @@ export class Settings {
     this.cancelEdit();
     this.saving.set(true);
     this.saveError.set(null);
+    // No `takeUntilDestroyed`: the save is not cancelled by navigating away, so its outcome
+    // toast still shows after the page is gone.
     this.store
       .updateGlobalConfig({
         ...(this.hasChanges() && { protectedTerms: this.termsToSave() }),
@@ -410,7 +414,7 @@ export class Settings {
       .subscribe({
         next: (config) => {
           this.saving.set(false);
-          this.#seed(config);
+          if (config) this.#seed(config);
           this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVESUCCESS));
         },
         error: (error: unknown) => {

@@ -361,7 +361,7 @@ describe('Settings', () => {
       expect(component.hasChanges()).toBe(false);
     });
 
-    it('surfaces a failed save error to the user', () => {
+    it('surfaces a failed config load to the user', () => {
       render(null, 'update failed');
 
       expect(fixture.nativeElement.textContent).toContain('update failed');
@@ -396,6 +396,21 @@ describe('Settings', () => {
       expect(component.hasChanges()).toBe(false);
       expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
       expect(notifications.success).toHaveBeenCalledTimes(1);
+      expect(notifications.success).toHaveBeenCalledWith('Global settings saved');
+      expect(component.saveError()).toBeNull();
+    });
+
+    it('toasts a save whose reload failed and keeps the edits, as there is no saved config to adopt', () => {
+      render(baseConfig);
+      updateGlobalConfigMock.mockReturnValueOnce(of(null));
+
+      component.onAddDraftChange('C++');
+      component.addTerm();
+      component.save();
+      fixture.detectChanges();
+
+      expect(component.saving()).toBe(false);
+      expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
       expect(notifications.success).toHaveBeenCalledWith('Global settings saved');
       expect(component.saveError()).toBeNull();
     });

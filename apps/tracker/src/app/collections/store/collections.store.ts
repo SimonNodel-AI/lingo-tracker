@@ -9,11 +9,9 @@ import type {
   UpdateConfigDto,
 } from '@simoncodes-ca/data-transfer';
 import { catchError, type Observable, of, pipe, switchMap, tap } from 'rxjs';
-import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { resolveCollectionSettings } from './collection-settings';
-import { configWrite } from './config-write';
+import { configLoadError, injectConfigWrite } from './config-write';
 import { withBundlesFeature } from './features/with-bundles.feature';
 
 /**
@@ -26,7 +24,10 @@ interface CollectionsState {
   /** True while `loadCollections` is in flight. */
   isLoading: boolean;
 
-  /** Message of a failed config load. Writes report their outcome to their caller instead. */
+  /**
+   * Message of a failed config load: `loadCollections`, or the reload after an accepted write.
+   * Writes report their own outcome to their caller instead.
+   */
   error: string | null;
 }
 
@@ -44,9 +45,10 @@ const initialState: CollectionsState = {
  * settings of `.lingo-tracker.json`.
  *
  * `loadCollections` fills `config` and reports a failure in `error`. Every mutation is a
- * Config Write (`config-write.ts`): it returns an Observable of the reloaded config, which
- * the store already holds when it resolves, or errors with the `ApiError` of the rejected
- * write and leaves the store as it was. The caller subscribes and reacts.
+ * Config Write (`config-write.ts`): it returns an Observable that resolves once the write is
+ * accepted, with the reloaded config the store already holds (or `null` when that reload
+ * failed, which `error` then reports), or errors with the `ApiError` of the rejected write and
+ * leaves the store as it was. The caller subscribes and reacts.
  *
  * @example
  * // In component
@@ -100,6 +102,7 @@ export const CollectionsStore = signalStore(
   withMethods((store) => {
     const api = inject(CollectionsApiService);
     const transloco = inject(TranslocoService);
+    const configWrite = injectConfigWrite(store);
 
     return {
       /**
@@ -118,13 +121,9 @@ export const CollectionsStore = signalStore(
                 });
               }),
               catchError((error: unknown) => {
-                const errorMessage = apiErrorMessage(
-                  error,
-                  transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED),
-                );
                 patchState(store, {
                   isLoading: false,
-                  error: errorMessage,
+                  error: configLoadError(error, transloco),
                 });
                 return of(null);
               }),
@@ -134,21 +133,21 @@ export const CollectionsStore = signalStore(
       ),
 
       /** Creates a collection. A taken name errors with a `conflict`. */
-      createCollection(data: CreateCollectionDto): Observable<LingoTrackerConfigDto> {
-        return configWrite(store, api, api.createCollection(data));
+      createCollection(data: CreateCollectionDto): Observable<LingoTrackerConfigDto | null> {
+        return configWrite(api.createCollection(data));
       },
 
       /**
        * Updates the collection `name` names; `update.name` renames it. Locale diffing and the
        * file-system changes happen inside `PUT /collections/:name` on the core side.
        */
-      updateCollection(name: string, update: UpdateCollectionDto): Observable<LingoTrackerConfigDto> {
-        return configWrite(store, api, api.updateCollection(name, update));
+      updateCollection(name: string, update: UpdateCollectionDto): Observable<LingoTrackerConfigDto | null> {
+        return configWrite(api.updateCollection(name, update));
       },
 
       /** Deletes a collection's record from the config. */
-      deleteCollection(name: string): Observable<LingoTrackerConfigDto> {
-        return configWrite(store, api, api.deleteCollection(name));
+      deleteCollection(name: string): Observable<LingoTrackerConfigDto | null> {
+        return configWrite(api.deleteCollection(name));
       },
 
       /**
@@ -156,8 +155,8 @@ export const CollectionsStore = signalStore(
        * terminology rules). Rejected rules error with an `invalid` whose `details` are the
        * per-row `PreferredTermRuleErrorDto`s.
        */
-      updateGlobalConfig(dto: UpdateConfigDto): Observable<LingoTrackerConfigDto> {
-        return configWrite(store, api, api.updateConfig(dto));
+      updateGlobalConfig(dto: UpdateConfigDto): Observable<LingoTrackerConfigDto | null> {
+        return configWrite(api.updateConfig(dto));
       },
     };
   }),

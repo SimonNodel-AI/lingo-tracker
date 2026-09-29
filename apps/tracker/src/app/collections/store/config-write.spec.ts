@@ -120,6 +120,23 @@ describe('CollectionsStore config writes', () => {
       expect(next).toHaveBeenCalledWith(config);
     });
 
+    it('resolves with null when the write succeeded but the reload failed, and reports the load error', () => {
+      patchState(unprotected(store), { config });
+      const next = vi.fn();
+      const error = vi.fn();
+
+      write(store).subscribe({ next, error });
+      http.expectOne({ method: request.method, url: request.url }).flush({ message: 'ok' });
+      http
+        .expectOne({ method: 'GET', url: CONFIG_URL })
+        .flush({ statusCode: 500, error: 'Internal Server Error' }, { status: 500, statusText: 'Server Error' });
+
+      expect(error).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(null);
+      expect(store.error()).toBe(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED);
+      expect(store.config()).toEqual(config);
+    });
+
     it('errors with the ApiError of a rejected write and leaves the store as it was', () => {
       const error = vi.fn();
 
