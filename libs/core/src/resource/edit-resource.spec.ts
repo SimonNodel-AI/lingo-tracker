@@ -226,8 +226,8 @@ describe('editResource (real fs)', () => {
       expect(read('tracker_meta.json', 'dialogs', 'actions').save.fr.status).toBe('verified');
       expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
       expect(result.mutations).toEqual([
-        expect.objectContaining({ kind: 'upsert', key: 'dialogs.actions.save' }),
         expect.objectContaining({ kind: 'remove', key: 'common.save', translationsFolder: target.translationsFolder }),
+        expect.objectContaining({ kind: 'upsert', key: 'dialogs.actions.save' }),
       ]);
     });
 

@@ -283,7 +283,7 @@ reindex or failed patch
 
 Each core write returns `mutations: ResourceMutation[]` (see [core-library.md](core-library.md) and the [glossary](glossary.md#resource-mutation)), which describe what changed on disk. The controller calls `index.apply(result.mutations)`. The index finds every entry whose translations folder is the mutation's `translationsFolder`, so a cross-collection move updates the source and the destination with no controller logic.
 
-Mutations come back only from a write that returns. A core write that throws part-way returns no mutations, even when it already changed the disk. For example, `editResource` with a `moveTo` writes the destination folder before it removes the source entry; if the source save then throws, the destination entry is on disk and the index was not told. The controller applies nothing, so the index is out of date until its next revalidation: the first read after the throttle interval (`LINGO_TRACKER_REVALIDATE_INTERVAL_MS`) finds that the disk fingerprint no longer matches, drops the collection, and indexes it again. There is no rollback. (One gap: if a deferred fingerprint refresh from another request's own write runs after the partial write, the index adopts that fingerprint and does not see the change until the next outside change or restart.)
+Mutations come back only from a write that returns. A core write that throws part-way returns no mutations, even when it already changed the disk. For example, `editResource` with a `moveTo` saves the edit before the entry moves; if the move then throws, the edit is on disk and the index was not told. (A move whose own write fails part-way returns a `reindex` for the collections it touched instead of per-key mutations.) The controller applies nothing, so the index is out of date until its next revalidation: the first read after the throttle interval (`LINGO_TRACKER_REVALIDATE_INTERVAL_MS`) finds that the disk fingerprint no longer matches, drops the collection, and indexes it again. There is no rollback. (One gap: if a deferred fingerprint refresh from another request's own write runs after the partial write, the index adopts that fingerprint and does not see the change until the next outside change or restart.)
 
 | Mutation | Returned by | Index action |
 |---|---|---|
@@ -291,9 +291,9 @@ Mutations come back only from a write that returns. A core write that throws par
 | `remove` (key) | `deleteResource`, `moveResource` / `moveFolder` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → drop the collection. |
 | `add-folder` (path) | `createFolder` | Create the folder node (and missing parents). |
 | `remove-folder` (path) | `deleteFolder`, `moveFolder` (deleted source folder) | Remove the folder node. Missing folder → drop the collection. |
-| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection` | Drop the collection. Every folder's metadata changed. |
+| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`; a move whose write failed part-way | Drop the collection. Every folder's metadata changed, or the change is not known. |
 
-A folder move is a list of per-key `upsert` + `remove` pairs and then a `remove-folder`. Thus the index follows partial moves, merges into an existing folder, and `nestUnderDestination: false` in the same way as the disk. Writes that do not go through the API (the translate-locale job, CLI commands, imports) are found by revalidation.
+A move (`moveResource`, `moveFolder`, `editResource` with a `moveTo`) lists a `remove` for every moved key first, then an `upsert` for every moved key, and a folder move then adds a `remove-folder`. Removes come first because one batch can move an entry into a key that another entry of the same batch leaves (`a.*` to `a.b`). Thus the index follows partial moves, merges into an existing folder, and `nestUnderDestination: false` in the same way as the disk. Writes that do not go through the API (the translate-locale job, CLI commands, imports) are found by revalidation.
 
 ### Polling Flow from the Frontend
 

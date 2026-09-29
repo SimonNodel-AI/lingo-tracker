@@ -119,8 +119,71 @@ describe('moveFolder with a destination collision (real fs)', () => {
     expect(result.mutations.some((mutation) => mutation.kind === 'remove-folder')).toBe(false);
     expect(result.mutations.some((mutation) => mutation.kind === 'remove' && mutation.key === 'src.a')).toBe(false);
     expect(result.mutations.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
-      ['upsert', 'dst.src.b'],
       ['remove', 'src.b'],
+      ['upsert', 'dst.src.b'],
     ]);
+  });
+});
+
+describe('moveFolder across collections and past hidden folders (real fs)', () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'move-folder-sweep-'));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('moves the collection entries of a tree and deletes it with its hidden folders, as deleteFolder does', async () => {
+    const source = collection(join(root, 'main'));
+    await addResource(source, { key: 'apps.one', baseValue: 'One' });
+    await addResource(source, { key: 'apps.nested.two', baseValue: 'Two' });
+    const hidden = join(source.translationsFolder, 'apps', '.backup');
+    mkdirSync(hidden);
+    writeFileSync(join(hidden, 'resource_entries.json'), JSON.stringify({ old: { source: 'Old' } }));
+
+    const result = await moveFolder(source, { sourceFolderPath: 'apps', destinationFolderPath: 'shared' });
+
+    expect(result.errors).toEqual([]);
+    expect(result.movedCount).toBe(2);
+    expect(result.foldersDeleted).toBe(1);
+    expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
+    expect(openResourceFolder(join(source.translationsFolder, 'shared', 'apps', 'nested')).keys()).toEqual(['two']);
+  });
+
+  it('fits entries moved into another collection to its locales', async () => {
+    const source: Collection = {
+      ...collection(join(root, 'main')),
+      locales: ['en', 'fr', 'es'],
+      targetLocales: ['fr', 'es'],
+    };
+    const target: Collection = {
+      ...collection(join(root, 'other')),
+      name: 'other',
+      locales: ['en', 'fr', 'de'],
+      targetLocales: ['fr', 'de'],
+    };
+    await addResource(source, {
+      key: 'apps.ok',
+      baseValue: 'OK',
+      translations: [
+        { locale: 'fr', value: 'Bien', status: 'translated' },
+        { locale: 'es', value: 'Vale', status: 'translated' },
+      ],
+    });
+
+    const result = await moveFolder(source, {
+      sourceFolderPath: 'apps',
+      destinationFolderPath: '',
+      destinationCollection: target,
+    });
+
+    expect(result.movedCount).toBe(1);
+    const moved = openResourceFolder(join(target.translationsFolder, 'apps')).get('ok');
+    expect(moved?.entry).toEqual({ source: 'OK', fr: 'Bien', de: 'OK' });
+    expect(moved?.meta?.['de']?.status).toBe('new');
+    expect(moved?.meta?.['es']).toBeUndefined();
   });
 });

@@ -7,7 +7,8 @@ import {
   FolderNotFoundError,
   InvalidFolderPathError,
 } from '../errors/lingo-tracker-error';
-import { moveResource, type MoveResourceResult } from '../../resource/move-resource';
+import { mergeRelocation } from '../../resource/move-resource';
+import { relocateEntries } from '../../resource/relocate-entries';
 import { deleteFolder } from './delete-folder';
 import { sweepKeys } from '../resource/collection-sweep';
 import type { ResourceMutation } from '../resource/resource-mutation';
@@ -38,7 +39,7 @@ export interface MoveFolderResult {
   warnings: string[];
   /** Error messages */
   errors: string[];
-  /** Per moved key an `upsert` and a `remove`, then a `remove-folder` if every key moved and the folder was deleted. */
+  /** A `remove` per moved key, an `upsert` per moved key, then a `remove-folder` if every key moved and the folder was deleted. */
   mutations: ResourceMutation[];
 }
 
@@ -157,10 +158,8 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
   const sourceDepth = sourceFolderSegments.length;
   const destDepth = destinationFolderSegments.length;
   const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
-  // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
-  const keptKeys: string[] = [];
 
-  for (const sourceKey of resourceKeys) {
+  const relocations = resourceKeys.map((sourceKey) => {
     // Calculate destination key by replacing source folder prefix with destination folder prefix
     //
     // When nestUnderDestination is true (default):
@@ -197,22 +196,16 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
         ? `${destinationFolderPath}.${lastSourceSegment}${suffix}`
         : `${destinationFolderPath}.${lastSourceSegment}`;
     }
+    return { from: sourceKey, to: destinationKey };
+  });
 
-    const moveResult: MoveResourceResult = await moveResource(collection, {
-      source: sourceKey,
-      destination: destinationKey,
-      override,
-      destinationCollection,
-    });
+  // One Entry Relocation for the whole tree: each folder is read and written once.
+  const relocation = relocateEntries(collection, destinationCollection, relocations, { override });
+  mergeRelocation(result, relocation);
 
-    result.movedCount += moveResult.movedCount;
-    result.warnings.push(...moveResult.warnings);
-    result.errors.push(...moveResult.errors);
-    result.mutations.push(...moveResult.mutations);
-    if (moveResult.movedCount === 0) {
-      keptKeys.push(sourceKey);
-    }
-  }
+  // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
+  const movedKeys = new Set(relocation.moved.map(({ from }) => from));
+  const keptKeys = resourceKeys.filter((key) => !movedKeys.has(key));
 
   if (keptKeys.length > 0) {
     result.warnings.push(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);

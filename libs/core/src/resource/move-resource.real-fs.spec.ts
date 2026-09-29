@@ -70,8 +70,8 @@ describe('moving resources keeps metadata (real fs)', () => {
       warnings: [],
       errors: [],
       mutations: [
-        { kind: 'upsert', translationsFolder: root, key: 'shared.buttons.confirm', entry: expect.any(Object) },
         { kind: 'remove', translationsFolder: root, key: 'common.ok' },
+        { kind: 'upsert', translationsFolder: root, key: 'shared.buttons.confirm', entry: expect.any(Object) },
       ],
     });
     expect(read('resource_entries.json', 'shared', 'buttons')).toEqual({ confirm: entries.ok });

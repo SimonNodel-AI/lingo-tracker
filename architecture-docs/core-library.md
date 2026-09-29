@@ -19,6 +19,7 @@ Return to [architecture README](README.md).
   - [edit-resource](#edit-resource)
   - [delete-resource](#delete-resource)
   - [move-resource](#move-resource)
+  - [Entry Relocation](#entry-relocation)
 - [Collection Reader](#collection-reader)
   - [Resource Search](#resource-search)
 - [Collection Sweep](#collection-sweep)
@@ -52,6 +53,7 @@ libs/core/src/
 │   ├── locale-seeding.ts         # seedLocales(): what target locales get when a base value is written
 │   ├── delete-resource.ts        # deleteResource(): remove one or more entries by key
 │   ├── move-resource.ts          # moveResource(): rename/relocate entries (single or wildcard)
+│   ├── relocate-entries.ts       # relocateEntries(): the Entry Relocation every move goes through
 │   ├── checksum.ts               # calculateChecksum(): MD5 via node:crypto
 │   ├── resource-entry.ts         # ResourceEntry, ResourceEntries interfaces
 │   ├── resource-entry-metadata.ts # ResourceEntryMetadata interface
@@ -145,7 +147,7 @@ libs/core/src/
     ├── folder/                   # Folder-level filesystem operations
     │   ├── create-folder.ts      # createFolder(): mkdir with segment validation
     │   ├── delete-folder.ts      # deleteFolder(): recursive removal
-    │   └── move-folder.ts        # moveFolder(): rename + resource re-key
+    │   └── move-folder.ts        # moveFolder(): re-key a folder tree as one Entry Relocation, then delete the source
     │
     ├── file-io/                  # Low-level JSON read/write helpers (internal; no barrel)
     │   ├── json-file-operations.ts  # readJsonFile(), writeJsonFile(), typed helpers
@@ -337,7 +339,7 @@ Resource CRUD is implemented across four functions in `libs/core/src/resource/`,
 
 **All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `normalizeEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. `seedLocale` is the one seeding rule for a locale missing from a stored entry (a `new` copy of the base); add-locale, edit-collection and normalize share it. A locale value with no metadata counts as `new` everywhere: the reader and validate read it so, and `normalizeEntry` records it so. Readers use it too: every whole-collection read goes through the [Collection Reader](#collection-reader), every write over many folders goes through the [Collection Sweep](#collection-sweep), and `resolveResourcePaths()` is the only function that maps a key to its folder.
 
-**Writes return what changed.** Every write (add, edit, delete, move, translate-existing-resource, folder create/delete/move, add/remove-locale) returns `mutations: ResourceMutation[]` (`lib/resource/resource-mutation.ts`) next to its other results: an `upsert` with the stored entry as `ResourceFolder.treeEntry()` reads it, a `remove`, an `add-folder` / `remove-folder`, or a `reindex` when the change is too broad to describe. Each mutation carries the absolute translations folder it applies to. A move returns an `upsert` at the destination and a `remove` at the source for each moved key, and a folder move adds a `remove-folder` for the deleted source. The API's [Collection Index](glossary.md#collection-index) uses them to follow the disk without reading it again; the CLI ignores them. See [Resource Mutation](glossary.md#resource-mutation).
+**Writes return what changed.** Every write (add, edit, delete, move, translate-existing-resource, folder create/delete/move, add/remove-locale) returns `mutations: ResourceMutation[]` (`lib/resource/resource-mutation.ts`) next to its other results: an `upsert` with the stored entry as `ResourceFolder.treeEntry()` reads it, a `remove`, an `add-folder` / `remove-folder`, or a `reindex` when the change is too broad to describe. Each mutation carries the absolute translations folder it applies to. A move returns a `remove` at the source for each moved key, then an `upsert` at the destination for each moved key, and a folder move adds a `remove-folder` for the deleted source. The API's [Collection Index](glossary.md#collection-index) uses them to follow the disk without reading it again; the CLI ignores them. See [Resource Mutation](glossary.md#resource-mutation).
 
 ### Collection-bound operations
 
@@ -357,7 +359,7 @@ moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nes
 
 `addResource` and `editResource` take the same optional `{ provider?, protectedTerms? }` as a last parameter, for [locale seeding](#locale-seeding). The base locale, the target locales, the translation config and the term files come only from the `Collection`; there is no `'en'` fallback and no `cwd` (the `translationsFolder` is absolute). Both check the stored base value against the [Project Terms](#project-terms) and return the advisory `terminology` (`addResource` always; `editResource` when the edit supplied a base value and updated the entry). A cross-collection move takes the destination as a second `Collection`.
 
-**Key placement.** `addResource` stores `targetFolder.key` (`resolveResourceKey`, applied by `validateAndResolvePaths`). `editResource` takes the entry's full, existing key. Its `moveTo` is a destination folder (`''` is the collection root): the entry keeps its entry key (the last segment) and moves there, as a lossless copy, after the edit is saved. The destination must not already have that entry key (`ResourceAlreadyExistsError`). This is checked before anything is written, and again on a fresh read of the destination just before the move, because auto-translation may run in between; a collision found then throws with the edit already saved in the source folder. The destination is written before the source entry is removed.
+**Key placement.** `addResource` stores `targetFolder.key` (`resolveResourceKey`, applied by `validateAndResolvePaths`). `editResource` takes the entry's full, existing key. Its `moveTo` is a destination folder (`''` is the collection root): the entry keeps its entry key (the last segment) and moves there through the [Entry Relocation](#entry-relocation), after the edit is saved. The destination must not already have that entry key (`ResourceAlreadyExistsError`). This is checked before anything is written, and again by the relocation, which reads both folders fresh just before the move, because auto-translation may run in between; a collision found then throws with the edit already saved in the source folder. The destination is written before the source entry is removed.
 
 ### Locale seeding
 
@@ -396,7 +398,7 @@ Steps:
 5. **Update locale values** — for each locale in `changes.translations`, normalizes with `translocoToICU()`, recomputes checksum via `calculateChecksum()`, and updates `status` (defaults to `'translated'` if not provided).
 6. **Persist initial changes** — `folder.save()` before attempting auto-translation, so the base value change is durable even if the translation API call fails.
 7. **Seed on base change** — if the base value changed, [locale seeding](#locale-seeding) runs for the locales that need work and were not supplied; results are written by a second `folder.save()`.
-8. **Move** — with a `moveTo` naming another folder, the entry is copied as stored to the destination and removed from the source. The result's `resolvedKey` is the destination key, and `mutations` are an `upsert` there and a `remove` at the source.
+8. **Move** — with a `moveTo` naming another folder, the entry moves as stored through the [Entry Relocation](#entry-relocation); a collision there throws `ResourceAlreadyExistsError`. The result's `resolvedKey` is the destination key, and `mutations` are a `remove` at the source and an `upsert` there.
 
 ### delete-resource
 
@@ -414,10 +416,29 @@ Steps:
 
 **Entry point:** `moveResource(collection, { source, destination, override, destinationCollection })`
 
-Two modes:
+Two modes, one move: both build a list of `{ from, to }` keys and hand it to the [Entry Relocation](#entry-relocation) in one call. A collision becomes a warning (`Destination key already exists: <key>. Use override option to force move.`); a failed relocation is an error.
 
-- **Single key move** (`moveSingleResource`) — validates source and destination keys, checks for collision at destination (returns warning unless `override` is set), copies the entry and its metadata to the destination with `setEntry()` (lossless: values, comment, tags, checksums, and statuses such as `verified` and `stale` are kept; no auto-translation), then calls `deleteResource()` at the source. `moveFolder()` moves each resource this way.
-- **Wildcard pattern move** (`moveResourcesByPattern`) — patterns ending with `*` are expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to enumerate all keys under the prefix, then each key is moved individually using `moveSingleResource()`. A folder the sweep cannot read is one error in the result.
+- **Single key move** — one relocation, `source` to `destination`.
+- **Wildcard pattern move** — a pattern ending with `*` is expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to every key under the prefix, each moved under `destination`. A folder the sweep cannot read is one error in the result; the other keys still move.
+
+`moveFolder()` works the same way: it lists the source tree's keys with `sweepKeys()`, maps each to its destination key (`nestUnderDestination`), moves them as one relocation, and deletes the source folder (with `deleteFolder`) only when every key moved and nothing failed.
+
+### Entry Relocation
+
+**Entry point:** `relocateEntries(source, destination, relocations, { override? })` in `resource/relocate-entries.ts` (internal)
+
+The [Entry Relocation](glossary.md#entry-relocation) is the one move primitive. It takes a source and a destination `Collection` (the same one for a move inside a collection) and a list of `{ from, to }` full keys, and returns `{ moved, collisions, errors, mutations }`. `moved` holds each moved entry as stored at its destination (`ResourceTreeEntry`). It never throws for one relocation.
+
+| Rule | What it does |
+|---|---|
+| Batch | Every folder involved is opened once and saved once, however many entries move in or out of it. A folder move of N keys from one folder is two folder writes, not N + N. Folders that receive entries are saved before folders that only lose them, so a failed write leaves an entry in both places, not in neither; the failure is an error and the mutations are a `reindex` of the collections involved. |
+| Lossless | Values, comment, tags, checksums and statuses (`verified`, `stale`) are carried as they are. Nothing is auto-translated. |
+| Collision | A destination key is taken when an entry that is not itself moving away holds it. A taken key is a collision (the entry stays) unless `override` is set, which replaces the entry there. Two entries of one batch never move to one key; the later one is a collision. Collisions are decided before anything changes, and a key the batch frees counts as free, so `a.*` can move to `a.b`. An entry that stays because of a collision frees nothing, which can make another relocation a collision too. |
+| Locales | An entry moved into another collection is fitted to that collection's locales (`ResourceFolder.setEntry` with `targetLocales`): values and metadata of locales the destination does not have are dropped, and each missing destination locale is seeded as a `new` copy of the base (the rule `seedLocale` applies). Inside one collection the entry is not changed. The two collections must have the same base locale; otherwise nothing moves and the result has one error. |
+| Errors | A malformed key, a missing source entry, a folder that is not valid JSON, a relocation onto its own key, or a key listed twice is one error each; the other relocations still move. |
+| Mutations | A `remove` per moved key at the source, then an `upsert` per moved key at the destination. |
+
+Callers: `moveResource` (one key, or a pattern), `moveFolder`, and `editResource` with a `moveTo` (one relocation; a collision throws `ResourceAlreadyExistsError`). Before this module, the edit move and `moveResource` each copied, saved and removed on their own with different collision rules, a folder move of N keys rewrote the source folder once per key, and a cross-collection move kept locales the destination does not have and did not seed the ones it has.
 
 ---
 
@@ -493,7 +514,7 @@ Which folders it visits is the one collection-folder policy it shares with the r
 | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection` (a locale list change), through `seedLocaleFiles` / `dropLocaleFiles` | `seedLocale` / `dropLocale`, then `save()` when anything changed | Throws with the problem's message. The folders swept before it are already saved. |
 | `normalize` | `normalizeEntry` for each entry, then `save({ dryRun })` | Leaves the folder as it is and returns it in `problems`. |
 | `deleteFolder` | Counts its entries for `resourcesDeleted` | Not counted. The whole folder tree is deleted either way. |
-| `moveFolder`, and a wildcard `moveResource` (through `sweepKeys`) | Lists the keys to move | One error in the result. `moveFolder` then moves and deletes nothing. |
+| `moveFolder`, and a wildcard `moveResource` (through `sweepKeys`) | Lists the keys to move, for the [Entry Relocation](#entry-relocation) | One error in the result. `moveFolder` then moves and deletes nothing. |
 
 Before the sweep, each of these walked the folders with `walkFolders` itself: add/remove-locale skipped hidden folders, and normalize, folder move/delete and the wildcard move walked into them.
 
