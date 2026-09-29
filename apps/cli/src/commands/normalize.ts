@@ -117,6 +117,10 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
 
       try {
         const result = await normalize(collection, { dryRun: answers.dryRun ?? false });
+        // stderr, so it is reported with --json too.
+        for (const problem of result.problems) {
+          ConsoleFormatter.warning(`Skipped unreadable folder: ${problem.message}`);
+        }
 
         collectionResults.push({
           collectionName: name,

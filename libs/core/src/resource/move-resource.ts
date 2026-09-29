@@ -1,12 +1,11 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { walkFolders } from '../lib/normalize/iterative-folder-walker';
+import { sweepKeys } from '../lib/resource/collection-sweep';
 import { deleteResource } from './delete-resource';
 import { validateKey } from '@simoncodes-ca/domain';
 import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
-import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 import type { Collection } from '../lib/config/open-collection';
 
 export interface MoveResourceParams {
@@ -154,8 +153,6 @@ async function moveResourcesByPattern(
   const prefix = pattern.slice(0, -1); // remove '*'
   const cleanPrefix = prefix.endsWith('.') ? prefix.slice(0, -1) : prefix;
 
-  const keysToMove: string[] = [];
-
   const rootFolderParts = cleanPrefix.split('.');
   const rootFolderPath = join(sourceTranslationsFolder, ...rootFolderParts);
 
@@ -168,23 +165,12 @@ async function moveResourcesByPattern(
     }
   }
 
-  if (existsSync(rootFolderPath)) {
-    for (const visit of walkFolders(rootFolderPath, { skipHidden: false })) {
-      const currentKeyPrefix = [cleanPrefix, visit.keyPrefix].filter(Boolean).join('.');
-
-      try {
-        for (const key of openResourceFolder(visit.absolutePath).keys()) {
-          const fullKey = currentKeyPrefix ? `${currentKeyPrefix}.${key}` : key;
-          keysToMove.push(fullKey);
-        }
-      } catch {
-        result.errors.push(`Failed to read file at ${join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME)}`);
-      }
-    }
-  } else {
+  if (!existsSync(rootFolderPath)) {
     result.warnings.push(`No folder found for prefix ${cleanPrefix}. Nothing moved.`);
     return result;
   }
+  const { keys: keysToMove, problems } = sweepKeys(sourceCollection, { startPath: cleanPrefix });
+  result.errors.push(...problems.map((problem) => problem.message));
 
   // Move each key sequentially so errors are captured per-key
   for (const sourceKey of keysToMove) {

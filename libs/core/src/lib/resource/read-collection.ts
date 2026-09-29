@@ -1,7 +1,11 @@
-import { join, relative, sep } from 'node:path';
 import { effectiveTags } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { walkFolders } from '../normalize/iterative-folder-walker';
+import {
+  type CollectionFolderProblem,
+  type CollectionFolderVisit,
+  type WalkCollectionFoldersOptions,
+  walkCollectionFolders,
+} from './collection-folders';
 import type { ResourceTreeEntry } from './load-resource-tree';
 import { openResourceFolder } from './resource-folder';
 
@@ -12,9 +16,9 @@ import { openResourceFolder } from './resource-folder';
  * resource tree, glossary) walks the translations folder here, so one set of rules applies:
  *
  * - Folders are opened with the collection's base locale, through `openResourceFolder`.
- * - Hidden folders (name starts with `.`) are skipped: a key segment cannot start with `.`.
- * - A missing translations folder is an empty collection, not a problem. A folder that exists but
- *   cannot be listed (permission denied, or the translations "folder" is a file) is a problem.
+ * - Which folders are read is the shared collection-folder policy (`collection-folders.ts`): hidden
+ *   folders are skipped, a missing translations folder is an empty collection, and a folder that
+ *   exists but cannot be listed is a problem.
  * - **Missing metadata**: an entry without a `tracker_meta.json` record (or a folder without the
  *   file) is read with `metadata: {}`. Every locale then has no status, which readers treat as `new`.
  * - **Malformed folder**: when a folder cannot be read (a file is not valid JSON, or an entry is
@@ -46,14 +50,7 @@ export interface StoredResource {
 }
 
 /** A folder the reader could not read. Its entries are missing from the result. */
-export interface CollectionReadProblem {
-  /** Dot-delimited folder path relative to the translations folder; `''` for the root. */
-  readonly folderPath: string;
-  /** Absolute path of the folder. */
-  readonly absolutePath: string;
-  /** Why the folder could not be read; names the file. */
-  readonly message: string;
-}
+export type CollectionReadProblem = CollectionFolderProblem;
 
 /** Everything the reader found in a collection. */
 export interface CollectionRead {
@@ -64,27 +61,12 @@ export interface CollectionRead {
 }
 
 /** One folder visited by {@link readCollectionFolders}. */
-export interface CollectionFolderRead {
-  /** Folder path segments relative to the translations folder; empty for the root. */
-  readonly segments: readonly string[];
-  /** `segments` joined with `.`. */
-  readonly folderPath: string;
-  readonly absolutePath: string;
-  /** Depth below the folder the walk started at (which is 0). */
-  readonly depth: number;
-  /** Subfolders (hidden ones excluded), whether or not the walk descends into them. */
-  readonly subfolderNames: readonly string[];
+export interface CollectionFolderRead extends CollectionFolderVisit {
   /** The folder's entries; empty when `problem` is set. */
   readonly resources: readonly StoredResource[];
-  readonly problem?: CollectionReadProblem;
 }
 
-export interface ReadCollectionFoldersOptions {
-  /** Dot-delimited folder to start at. Default: the collection root. */
-  readonly startPath?: string;
-  /** How deep to descend below the start folder (0 = the start folder only). Default: no limit. */
-  readonly maxDepth?: number;
-}
+export type ReadCollectionFoldersOptions = WalkCollectionFoldersOptions;
 
 /**
  * Reads every resource entry of a collection.
@@ -114,59 +96,29 @@ export function* readCollectionFolders(
   collection: CollectionReadTarget,
   options: ReadCollectionFoldersOptions = {},
 ): Generator<CollectionFolderRead> {
-  const root = collection.translationsFolder;
-  const startSegments = (options.startPath ?? '').split('.').filter((segment) => segment.length > 0);
   const collectionTags = [...collection.tags];
 
-  // The walker skips a folder it cannot list (the start folder included); each one becomes a
-  // problem, so an unreadable folder is never read as an empty one.
-  const unlistable: CollectionFolderRead[] = [];
-  const onUnlistable = (absolutePath: string, error: unknown): void => {
-    const segments = segmentsOf(root, absolutePath);
-    const folderPath = segments.join('.');
-    const message = error instanceof Error ? error.message : String(error);
-    unlistable.push({
-      segments,
-      folderPath,
-      absolutePath,
-      depth: segments.length - startSegments.length,
-      subfolderNames: [],
-      resources: [],
-      problem: { folderPath, absolutePath, message: `Cannot list folder ${absolutePath}: ${message}` },
-    });
-  };
-
-  const walk = walkFolders(join(root, ...startSegments), { maxDepth: options.maxDepth, onUnlistable });
-  for (const visit of walk) {
-    yield* unlistable.splice(0);
-    const segments = segmentsOf(root, visit.absolutePath);
-    const folderPath = segments.join('.');
-    const base = {
-      segments,
-      folderPath,
-      absolutePath: visit.absolutePath,
-      depth: visit.depth,
-      subfolderNames: visit.subdirectoryNames,
-    };
-
-    let resources: StoredResource[];
-    try {
-      resources = readFolder(visit.absolutePath, folderPath, collection.baseLocale, collectionTags);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      yield { ...base, resources: [], problem: { folderPath, absolutePath: visit.absolutePath, message } };
+  for (const visit of walkCollectionFolders(collection.translationsFolder, options)) {
+    if (visit.problem) {
+      yield { ...visit, resources: [] };
       continue;
     }
 
-    yield { ...base, resources };
-  }
-  yield* unlistable.splice(0);
-}
+    let resources: StoredResource[];
+    try {
+      resources = readFolder(visit.absolutePath, visit.folderPath, collection.baseLocale, collectionTags);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      yield {
+        ...visit,
+        resources: [],
+        problem: { folderPath: visit.folderPath, absolutePath: visit.absolutePath, message },
+      };
+      continue;
+    }
 
-function segmentsOf(root: string, absolutePath: string): string[] {
-  return relative(root, absolutePath)
-    .split(sep)
-    .filter((segment) => segment.length > 0);
+    yield { ...visit, resources };
+  }
 }
 
 function readFolder(

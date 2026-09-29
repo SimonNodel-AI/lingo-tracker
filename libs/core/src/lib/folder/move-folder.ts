@@ -1,6 +1,5 @@
 import { existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { walkFolders } from '../normalize/iterative-folder-walker';
 import { isValidSegment } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import {
@@ -10,7 +9,7 @@ import {
 } from '../errors/lingo-tracker-error';
 import { moveResource, type MoveResourceResult } from '../../resource/move-resource';
 import { deleteFolder } from './delete-folder';
-import { openResourceFolder } from '../resource/resource-folder';
+import { sweepKeys } from '../resource/collection-sweep';
 import type { ResourceMutation } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
@@ -131,9 +130,9 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
   }
 
   // Extract all resource keys from the source folder tree
-  const { keys: resourceKeys, errors: enumerationErrors } = extractAllResourceKeysFromFolder(
-    absoluteSourcePath,
-    sourceFolderPath,
+  const { keys: resourceKeys, problems } = sweepKeys(collection, { startPath: sourceFolderPath });
+  const enumerationErrors = problems.map(
+    (problem) => `Failed to read resources in "${problem.folderPath || '.'}": ${problem.message}`,
   );
 
   // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
@@ -234,38 +233,4 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * Extracts all resource keys from a folder and its subfolders.
- *
- * @param absoluteFolderPath - Absolute filesystem path to the folder
- * @param folderKeyPrefix - Dot-delimited key prefix for this folder
- * @returns Full resource keys found in the folder tree, and one error per folder that could not be read
- */
-function extractAllResourceKeysFromFolder(
-  absoluteFolderPath: string,
-  folderKeyPrefix: string,
-): { keys: string[]; errors: string[] } {
-  const keys: string[] = [];
-  const errors: string[] = [];
-
-  for (const visit of walkFolders(absoluteFolderPath, { skipHidden: false })) {
-    const currentKeyPrefix = visit.keyPrefix
-      ? folderKeyPrefix
-        ? `${folderKeyPrefix}.${visit.keyPrefix}`
-        : visit.keyPrefix
-      : folderKeyPrefix;
-
-    try {
-      for (const entryKey of openResourceFolder(visit.absolutePath).keys()) {
-        keys.push(currentKeyPrefix ? `${currentKeyPrefix}.${entryKey}` : entryKey);
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      errors.push(`Failed to read resources in "${currentKeyPrefix || '.'}": ${reason}`);
-    }
-  }
-
-  return { keys, errors };
 }

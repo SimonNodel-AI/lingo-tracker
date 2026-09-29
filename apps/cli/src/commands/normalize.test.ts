@@ -40,6 +40,7 @@ describe('normalizeCommand', () => {
     filesUpdated: 0,
     foldersRemoved: 0,
     dryRun: false,
+    problems: [],
   };
 
   beforeEach(() => {
@@ -125,6 +126,20 @@ describe('normalizeCommand', () => {
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0])).toMatchObject({ collections: [] });
     expect(process.exitCode).toBe(1);
+  });
+
+  it('warns on stderr about each folder normalize could not read, and still succeeds', async () => {
+    vi.mocked(normalize).mockResolvedValueOnce({
+      ...NORMALIZE_RESULT,
+      problems: [
+        { folderPath: 'bad', absolutePath: '/p/path/App/bad', message: 'Unexpected token in resource_entries.json' },
+      ],
+    });
+
+    await normalizeCommand({ collection: 'App', json: true });
+
+    expect(errored()).toContain('⚠️  Skipped unreadable folder: Unexpected token in resource_entries.json');
+    expect(process.exitCode).toBe(0);
   });
 
   it('prints only JSON with --json', async () => {

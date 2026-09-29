@@ -197,6 +197,7 @@ describe('normalize', () => {
       filesUpdated: 0,
       foldersRemoved: 0,
       dryRun: false,
+      problems: [],
     });
     expect({ entries: entries(folder), meta: meta(folder) }).toEqual(before);
   });
@@ -240,15 +241,29 @@ describe('normalize', () => {
     expect(result).toMatchObject({ entriesProcessed: 0, filesCreated: 0, foldersRemoved: 0 });
   });
 
-  it('skips a folder with invalid JSON, reports it on stderr and leaves it untouched', async () => {
+  it('skips a folder with invalid JSON, returns it as a problem and leaves it untouched', async () => {
     const folder = writeFolderFiles(dir(), 'broken', { entries: 'invalid json{', meta: 'invalid json{' });
     writeFolderFiles(dir(), 'fine', { entries: { ok: { source: 'OK' } } });
-    const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const result = await normalize(collection());
 
     expect(result.entriesProcessed).toBe(1);
-    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('Skipping folder due to invalid JSON'), folder);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]).toMatchObject({ folderPath: 'broken', absolutePath: folder });
+    expect(result.problems[0]?.message).toContain('resource_entries.json');
     expect(readFileSync(join(folder, 'resource_entries.json'), 'utf8')).toBe('invalid json{');
+  });
+
+  it('leaves hidden folders alone: their entries are not normalized and their empty subfolders are kept', async () => {
+    const hiddenFolder = writeFolderFiles(join(dir(), '.backup'), '', { entries: { ok: { source: 'Hi {{ name }}' } } });
+    mkdirSync(join(hiddenFolder, 'empty'));
+
+    const result = await normalize(collection());
+
+    expect(result.entriesProcessed).toBe(0);
+    expect(result.foldersRemoved).toBe(0);
+    expect(entries(hiddenFolder).ok).toEqual({ source: 'Hi {{ name }}' });
+    expect(existsSync(join(hiddenFolder, 'tracker_meta.json'))).toBe(false);
+    expect(existsSync(join(hiddenFolder, 'empty'))).toBe(true);
   });
 });

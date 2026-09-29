@@ -1,9 +1,6 @@
-import { existsSync } from 'node:fs';
-import * as path from 'node:path';
-import { RESOURCE_ENTRIES_FILENAME } from '../constants';
 import type { Collection } from '../lib/config/open-collection';
-import { walkFolders } from '../lib/normalize/iterative-folder-walker';
-import { openResourceFolder } from '../lib/resource/resource-folder';
+import { sweepCollection } from '../lib/resource/collection-sweep';
+import type { ResourceFolder } from '../lib/resource/resource-folder';
 
 export interface LocaleFilesResult {
   /** Entries the locale was added to or dropped from. */
@@ -25,17 +22,18 @@ export function dropLocaleFiles(collection: Collection, locale: string): LocaleF
   return rewriteFolders(collection, (folder) => folder.dropLocale(locale));
 }
 
-function rewriteFolders(
-  collection: Collection,
-  change: (folder: ReturnType<typeof openResourceFolder>) => number,
-): LocaleFilesResult {
+/**
+ * Applies `change` to every folder of the Collection Sweep and saves the ones it changed.
+ * @throws Error A folder cannot be read (the folders swept before it are already saved).
+ */
+function rewriteFolders(collection: Collection, change: (folder: ResourceFolder) => number): LocaleFilesResult {
   let entries = 0;
   let filesUpdated = 0;
 
-  for (const visit of walkFolders(collection.translationsFolder)) {
-    if (!existsSync(path.join(visit.absolutePath, RESOURCE_ENTRIES_FILENAME))) continue;
-
-    const folder = openResourceFolder(visit.absolutePath, { baseLocale: collection.baseLocale });
+  for (const { folder, problem } of sweepCollection(collection)) {
+    if (problem) {
+      throw new Error(problem.message);
+    }
     const changed = change(folder);
     if (changed > 0) {
       folder.save();

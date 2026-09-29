@@ -2,8 +2,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 export interface WalkFoldersOptions {
-  /** Skip directories whose names start with '.'. Defaults to true. */
-  skipHidden?: boolean;
   /** Maximum traversal depth. 0 = root only, 1 = root + immediate children. Defaults to Infinity. */
   maxDepth?: number;
   /** When provided, realpath of each directory is checked against this set for cycle detection. */
@@ -22,7 +20,7 @@ export interface FolderVisit {
   depth: number;
   /** Dot-delimited path segments relative to root (e.g. "apps.common.buttons"). Root yields "". */
   keyPrefix: string;
-  /** Names of subdirectories that will be visited (hidden dirs filtered if skipHidden is true). */
+  /** Names of subdirectories that will be visited (hidden ones excluded). */
   subdirectoryNames: string[];
   /** Raw Dirent entries for the directory (all entries, not just directories). */
   dirEntries: fs.Dirent[];
@@ -40,7 +38,7 @@ interface StackEntry {
  *
  * Key properties:
  * - DFS traversal in readdir order (top-down: parent before children)
- * - Hidden directories (names starting with '.') are skipped by default
+ * - Hidden directories (names starting with '.') are skipped, with everything below them
  * - maxDepth limits traversal depth (0 = root only)
  * - Cycle detection via realpath when visitedPaths is provided
  * - Yields nothing (does not throw) when rootPath does not exist
@@ -59,7 +57,6 @@ interface StackEntry {
  * }
  */
 export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Generator<FolderVisit> {
-  const skipHidden = options?.skipHidden ?? true;
   const maxDepth = options?.maxDepth ?? Infinity;
   const visitedPaths = options?.visitedPaths;
 
@@ -98,7 +95,7 @@ export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Ge
 
     const visitableSubdirectoryNames = dirEntries
       .filter((entry) => entry.isDirectory())
-      .filter((entry) => !skipHidden || !entry.name.startsWith('.'))
+      .filter((entry) => !entry.name.startsWith('.'))
       .map((entry) => entry.name);
 
     const keyPrefix = current.keySegments.join('.');

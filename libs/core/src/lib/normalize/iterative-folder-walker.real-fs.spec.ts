@@ -77,7 +77,7 @@ describe('walkFolders (real filesystem)', () => {
 
     const visited: string[] = [];
 
-    for (const visit of walkFolders(tempDir, { skipHidden: false })) {
+    for (const visit of walkFolders(tempDir)) {
       visited.push(visit.absolutePath);
     }
 

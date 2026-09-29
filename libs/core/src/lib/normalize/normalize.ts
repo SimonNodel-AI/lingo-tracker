@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs';
 import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
-import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
+import type { CollectionFolderProblem } from '../resource/collection-folders';
+import { sweepCollection } from '../resource/collection-sweep';
+import type { ResourceFolder } from '../resource/resource-folder';
 import { cleanupEmptyFolders } from './cleanup-empty-folders';
-import { walkFolders } from './iterative-folder-walker';
 import { normalizeEntryValues } from './normalize-entry';
 
 export interface NormalizeOptions {
@@ -20,22 +21,25 @@ export interface NormalizeResult {
   readonly filesUpdated: number;
   readonly foldersRemoved: number;
   readonly dryRun: boolean;
+  /** Folders that could not be read (invalid JSON, or not listable); they were left as they are. */
+  readonly problems: CollectionFolderProblem[];
 }
 
 type Counters = {
-  -readonly [K in Exclude<keyof NormalizeResult, 'dryRun' | 'foldersRemoved'>]: number;
+  -readonly [K in Exclude<keyof NormalizeResult, 'dryRun' | 'foldersRemoved' | 'problems'>]: number;
 };
 
 /**
- * Normalizes every resource folder of a writable collection:
+ * Normalizes every folder of a writable collection's Collection Sweep (hidden folders are not
+ * part of the collection and are left alone):
  * - makes `resource_entries.json` and `tracker_meta.json` exist wherever there are entries,
  * - converts Transloco `{{ x }}` syntax to ICU and normalizes tags (`normalizeEntryValues`),
  * - recomputes checksums, re-applies the Staleness rule and seeds the collection's missing
  *   target locales, through `ResourceFolder.normalizeEntry`,
  * - removes empty folders afterwards.
  *
- * Non-destructive: existing values, comments and tags are kept. A folder whose files are not
- * valid JSON is reported on stderr and skipped.
+ * Non-destructive: existing values, comments and tags are kept. A folder that cannot be read is
+ * skipped and returned in `problems`; the caller reports it.
  *
  * @throws {ReadOnlyCollectionError} The collection is read-only.
  */
@@ -53,21 +57,26 @@ export async function normalize(collection: Collection, options: NormalizeOption
     filesUpdated: 0,
   };
 
+  const problems: CollectionFolderProblem[] = [];
+
   if (!existsSync(collection.translationsFolder)) {
-    return { ...counters, foldersRemoved: 0, dryRun };
+    return { ...counters, foldersRemoved: 0, dryRun, problems };
   }
 
-  for (const visit of walkFolders(collection.translationsFolder, { skipHidden: false })) {
-    normalizeFolder(visit.absolutePath, collection, dryRun, counters);
+  for (const { folder, problem } of sweepCollection(collection)) {
+    if (problem) {
+      problems.push(problem);
+    } else {
+      normalizeFolder(folder, collection, dryRun, counters);
+    }
   }
 
   const { foldersRemoved } = cleanupEmptyFolders(collection.translationsFolder, dryRun);
-  return { ...counters, foldersRemoved, dryRun };
+  return { ...counters, foldersRemoved, dryRun, problems };
 }
 
-function normalizeFolder(folderPath: string, collection: Collection, dryRun: boolean, counters: Counters): void {
-  const folder = openFolderOrWarn(folderPath, collection.baseLocale);
-  if (folder === null || folder.isEmpty()) {
+function normalizeFolder(folder: ResourceFolder, collection: Collection, dryRun: boolean, counters: Counters): void {
+  if (folder.isEmpty()) {
     return;
   }
 
@@ -95,16 +104,4 @@ function normalizeFolder(folderPath: string, collection: Collection, dryRun: boo
   const { written, created } = folder.save({ dryRun });
   counters.filesCreated += created.length;
   counters.filesUpdated += written.length - created.length;
-}
-
-function openFolderOrWarn(folderPath: string, baseLocale: string): ResourceFolder | null {
-  try {
-    return openResourceFolder(folderPath, { baseLocale });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('\n⚠️  Skipping folder due to invalid JSON:', folderPath);
-    console.error('    Parse error:', errorMessage);
-    console.error('    Please fix the JSON syntax manually.\n');
-    return null;
-  }
 }

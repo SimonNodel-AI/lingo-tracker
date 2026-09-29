@@ -170,7 +170,7 @@ describe('walkFolders (mocked fs)', () => {
   // ── Hidden directory filtering ───────────────────────────────────────────
 
   describe('hidden directory filtering', () => {
-    it('skips hidden directories by default (skipHidden defaults to true)', () => {
+    it('skips hidden directories', () => {
       installMockFilesystem({
         '/root': [makeDirectoryDirent('visible'), makeDirectoryDirent('.hidden')],
         '/root/visible': [],
@@ -184,22 +184,7 @@ describe('walkFolders (mocked fs)', () => {
       expect(visitedPaths).not.toContain('/root/.hidden');
     });
 
-    it('includes hidden directories when skipHidden is false', () => {
-      installMockFilesystem({
-        '/root': [makeDirectoryDirent('.git'), makeDirectoryDirent('src')],
-        '/root/.git': [makeDirectoryDirent('objects')],
-        '/root/.git/objects': [],
-        '/root/src': [],
-      });
-
-      const visitedPaths = [...walkFolders('/root', { skipHidden: false })].map((v) => posix(v.absolutePath));
-
-      expect(visitedPaths).toContain('/root/.git');
-      expect(visitedPaths).toContain('/root/.git/objects');
-      expect(visitedPaths).toContain('/root/src');
-    });
-
-    it('excludes hidden dirs from subdirectoryNames when skipHidden is true', () => {
+    it('excludes hidden dirs from subdirectoryNames', () => {
       installMockFilesystem({
         '/root': [makeDirectoryDirent('visible'), makeDirectoryDirent('.hidden')],
         '/root/visible': [],
@@ -209,19 +194,6 @@ describe('walkFolders (mocked fs)', () => {
       const rootVisit = [...walkFolders('/root')].find((v) => posix(v.absolutePath) === '/root');
 
       expect(rootVisit?.subdirectoryNames).toEqual(['visible']);
-    });
-
-    it('includes hidden dirs in subdirectoryNames when skipHidden is false', () => {
-      installMockFilesystem({
-        '/root': [makeDirectoryDirent('visible'), makeDirectoryDirent('.hidden')],
-        '/root/visible': [],
-        '/root/.hidden': [],
-      });
-
-      const rootVisit = [...walkFolders('/root', { skipHidden: false })].find((v) => posix(v.absolutePath) === '/root');
-
-      expect(rootVisit?.subdirectoryNames).toContain('visible');
-      expect(rootVisit?.subdirectoryNames).toContain('.hidden');
     });
   });
 

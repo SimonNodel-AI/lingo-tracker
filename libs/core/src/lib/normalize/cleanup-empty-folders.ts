@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { resolve } from 'node:path';
 import { getAllFoldersBottomUp, isFolderEmpty } from './folder-utils';
 
 export interface CleanupResult {
@@ -25,7 +26,7 @@ export function cleanupEmptyFolders(translationsRoot: string, dryRun = false): C
 
   for (const folderPath of allFolders) {
     // Never remove the root translations folder
-    if (folderPath === translationsRoot) {
+    if (resolve(folderPath) === resolve(translationsRoot)) {
       continue;
     }
 
