@@ -250,8 +250,8 @@ export class Settings {
     this.#scrollToId.set(id);
   }
 
-  /** Makes `config` the saved baseline of both lists, dropping every pending edit. */
-  #seed(config: LingoTrackerConfigDto): void {
+  /** Makes `config`'s lists the saved baseline of both editors, dropping every pending edit. */
+  #seed(config: Pick<LingoTrackerConfigDto, 'protectedTerms' | 'preferredTerminology'>): void {
     this.entries.set(
       normalizeProtectedTerms([...(config.protectedTerms ?? [])]).map((value) => ({
         id: this.#nextId++,
@@ -389,8 +389,8 @@ export class Settings {
    * Sends every changed list in one request. Invalid terminology blocks the whole save —
    * nothing is half-applied — and reveals errors still hidden on untouched fields. The
    * answer decides the rest: the saved config reseeds both lists and earns one toast (a
-   * save whose reload failed earns the toast too, but keeps the lists, as there is no saved
-   * config to reseed from; the page shows the load error); a refusal keeps every edit, shows
+   * save whose reload failed was still accepted, so the lists it sent become the baseline
+   * and it earns the toast too; the page shows the load error); a refusal keeps every edit, shows
    * its message, and maps per-row rule errors (the `details` of an `invalid` answer) back
    * onto the rows that were sent.
    */
@@ -404,17 +404,19 @@ export class Settings {
     this.cancelEdit();
     this.saving.set(true);
     this.saveError.set(null);
+    // An unchanged list equals its baseline, so the lists as they stand are the lists as sent.
+    const sent = { protectedTerms: this.termsToSave(), preferredTerminology: this.terminology.rulesToSave() };
     // No `takeUntilDestroyed`: the save is not cancelled by navigating away, so its outcome
     // toast still shows after the page is gone.
     this.store
       .updateGlobalConfig({
-        ...(this.hasChanges() && { protectedTerms: this.termsToSave() }),
+        ...(this.hasChanges() && { protectedTerms: sent.protectedTerms }),
         ...(this.terminology.hasChanges() && { preferredTerminology: this.terminology.beginSave() }),
       })
       .subscribe({
         next: (config) => {
           this.saving.set(false);
-          if (config) this.#seed(config);
+          this.#seed(config ?? sent);
           this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVESUCCESS));
         },
         error: (error: unknown) => {

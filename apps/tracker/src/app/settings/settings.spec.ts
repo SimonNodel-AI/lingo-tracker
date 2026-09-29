@@ -400,17 +400,25 @@ describe('Settings', () => {
       expect(component.saveError()).toBeNull();
     });
 
-    it('toasts a save whose reload failed and keeps the edits, as there is no saved config to adopt', () => {
+    it('treats the sent lists as saved and toasts once when the save is accepted but its reload fails', () => {
       render(baseConfig);
       updateGlobalConfigMock.mockReturnValueOnce(of(null));
 
       component.onAddDraftChange('C++');
       component.addTerm();
+      component.addRule();
+      const [rule] = component.terminology.rowViews();
+      expect(rule).toBeDefined();
+      component.onRuleInput(rule?.row.id ?? -1, 'discouraged', 'utilize');
+      component.onRuleInput(rule?.row.id ?? -1, 'preferred', 'use');
       component.save();
       fixture.detectChanges();
 
       expect(component.saving()).toBe(false);
+      expect(component.hasAnyChanges()).toBe(false);
       expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(component.terminology.rulesToSave()).toEqual([{ discouraged: 'utilize', preferred: 'use' }]);
+      expect(notifications.success).toHaveBeenCalledTimes(1);
       expect(notifications.success).toHaveBeenCalledWith('Global settings saved');
       expect(component.saveError()).toBeNull();
     });
