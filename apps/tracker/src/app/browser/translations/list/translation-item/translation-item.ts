@@ -67,17 +67,11 @@ export class TranslationItem {
   readonly #listStore = inject(TranslationListStore);
   readonly TOKENS = TRACKER_TOKENS;
 
-  /** Active collection name — always set when this component is rendered. */
-  readonly #collectionName = computed(() => this.#store.selectedCollection() ?? '');
-
   /** Whether this item was recently updated (flash highlight). */
   readonly isRecentlyUpdated = computed(() => this.#listStore.isRecentlyUpdated(this.translation().fullKey));
 
   /** Current search query from the store */
   readonly searchQuery = this.#store.searchQuery;
-
-  /** Whether the active collection is read-only (mutating actions are refused). */
-  readonly isReadOnly = this.#store.isReadOnly;
 
   // Timestamp when touch started (ms since epoch)
   #touchStartTs = 0;
@@ -243,11 +237,9 @@ export class TranslationItem {
 
       case 'delete':
       case 'del':
-        // The menu item is disabled in a read-only collection, so the keyboard
-        // must refuse the same way. Without this the shortcut opens a delete
-        // confirmation the API will reject after the user commits to it.
-        if (this.isReadOnly()) return;
-        action = () => this.#listStore.deleteTranslation(this.translation(), this.#collectionName());
+        action = () => {
+          void this.#listStore.deleteTranslation(this.translation());
+        };
         break;
     }
 

@@ -105,7 +105,7 @@ describe('TranslationList - Copy to Clipboard', () => {
     fixture.detectChanges();
 
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.copyKey('common.buttons.save');
+    listStore.copyKey(summary('common.buttons.save', 'Save'));
     await Promise.resolve(); // Wait for clipboard promise to resolve
 
     expect(mockClipboard.writeText).toHaveBeenCalledWith('common.buttons.save');
@@ -119,7 +119,7 @@ describe('TranslationList - Copy to Clipboard', () => {
     fixture.detectChanges();
 
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.copyKey('test.key');
+    listStore.copyKey(summary('test.key', 'Test'));
     await Promise.resolve(); // Wait for clipboard promise to reject
 
     expect(notificationsSpy.error).toHaveBeenCalledWith('Failed to copy');
@@ -396,13 +396,13 @@ describe('TranslationList - deleteTranslation', () => {
     fixture.detectChanges();
   });
 
-  it('should call API and show success notification when dialog is confirmed', () => {
+  it('should call API and show success notification when dialog is confirmed', async () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(of({ entriesDeleted: 1 }));
     patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
-    listStore.deleteTranslation(mockResource, 'my-collection');
+    await listStore.deleteTranslation(mockResource);
 
     expect(mockBrowserApi.deleteResource).toHaveBeenCalledWith('my-collection', ['button.delete']);
     expect(store.translations()).toEqual([]);
@@ -410,7 +410,7 @@ describe('TranslationList - deleteTranslation', () => {
     expect(notificationsSpy.error).not.toHaveBeenCalled();
   });
 
-  it('should show error notification when API throws', () => {
+  it('should show error notification when API throws', async () => {
     mockDialogRef.afterClosed.mockReturnValue(of(true));
     mockBrowserApi.deleteResource.mockReturnValue(
       throwError(() =>
@@ -420,17 +420,17 @@ describe('TranslationList - deleteTranslation', () => {
     patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
-    listStore.deleteTranslation(mockResource, 'my-collection');
+    await listStore.deleteTranslation(mockResource);
 
     expect(store.translations()).toEqual([mockResource]);
     expect(notificationsSpy.error).toHaveBeenCalledWith('Resource not found: button.save');
   });
 
-  it('should not call API when dialog is cancelled', () => {
+  it('should not call API when dialog is cancelled', async () => {
     mockDialogRef.afterClosed.mockReturnValue(of(false));
 
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.deleteTranslation(mockResource, 'my-collection');
+    await listStore.deleteTranslation(mockResource);
 
     expect(mockBrowserApi.deleteResource).not.toHaveBeenCalled();
     expect(notificationsSpy.success).not.toHaveBeenCalled();
@@ -490,7 +490,7 @@ describe('TranslationList - handleTranslate', () => {
     patchState(unprotected(store), { translations: [mockResource] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
-    listStore.translateResource(mockResource, 'my-collection');
+    listStore.translateResource(mockResource);
 
     // The key is removed synchronously from translatingKeys after the observable emits
     expect(listStore.translatingKeys().has('button.save')).toBe(false);
@@ -509,7 +509,7 @@ describe('TranslationList - handleTranslate', () => {
     );
 
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.translateResource(mockResource, 'my-collection');
+    listStore.translateResource(mockResource);
 
     // Key must not linger in the translating set after error
     expect(listStore.translatingKeys().has('button.save')).toBe(false);
@@ -528,7 +528,7 @@ describe('TranslationList - handleTranslate', () => {
     );
 
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.translateResource(mockResource, 'my-collection');
+    listStore.translateResource(mockResource);
 
     const transloco = fixture.debugElement.injector.get(TranslocoService);
     const expectedSkippedMessage = transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SKIPPEDLOCALESX, {
