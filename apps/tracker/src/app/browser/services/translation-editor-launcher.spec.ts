@@ -187,6 +187,21 @@ describe('TranslationEditorLauncher', () => {
   });
 
   describe('openByFullKey', () => {
+    it('reads the folder again for a later hand-off after the resource changes', async () => {
+      const updated = { ...resource, base: { locale: 'en', value: 'Return' } };
+      getResourceTree
+        .mockReturnValueOnce(of({ path: 'browser.header', resources: [resource], children: [] }))
+        .mockReturnValueOnce(of({ path: 'browser.header', resources: [updated], children: [] }));
+      vi.spyOn(store, 'showFolder').mockImplementation(() => undefined);
+
+      await launcher.openByFullKey(resource.fullKey);
+      await launcher.openByFullKey(resource.fullKey);
+
+      expect(getResourceTree).toHaveBeenCalledTimes(2);
+      expect(dialog.data(0)?.resource?.base.value).toBe('Back');
+      expect(dialog.data(1)?.resource?.base.value).toBe('Return');
+    });
+
     it('should resolve a root-level key against the collection root', async () => {
       getResourceTree.mockReturnValue(
         of({ path: '', resources: [{ ...resource, fullKey: 'backButton', folderPath: '' }], children: [] }),

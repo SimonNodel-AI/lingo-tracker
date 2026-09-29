@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
-import { resolveResourcePaths } from '../lib/resource/resource-file-paths';
-import { openResourceFolder } from '../lib/resource/resource-folder';
-import { removeMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
+import { resolveResourcePaths } from './resource-file-paths';
+import { openResourceFolder } from './resource-folder';
+import { removeMutation, type ResourceMutation } from './resource-mutation';
 import { validateKey } from '@simoncodes-ca/domain';
-import type { Collection } from '../lib/config/open-collection';
+import type { Collection } from '../config/open-collection';
 
 export interface DeleteResourceParams {
   keys: string[];

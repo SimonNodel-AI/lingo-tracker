@@ -14,7 +14,6 @@ import { CommonModule } from '@angular/common';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatDialog } from '@angular/material/dialog';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -29,6 +28,9 @@ import { MatIconModule } from '@angular/material/icon';
 import { CdkDropList, type CdkDrag, type CdkDragDrop } from '@angular/cdk/drag-drop';
 import type { DragData } from '../../types/drag-data';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
+import { NotificationService } from '../../../shared/notification';
+import { folderMoveNoOp } from '../../store/folder-tree.utils';
+import { injectConfirm } from '../../../shared/confirm';
 
 const NESTED_ANIMATION_DURATION_MS = 250;
 const SCROLL_EDGE_THRESHOLD_PX = 50;
@@ -69,9 +71,10 @@ const SCROLL_INTERVAL_MS = 50;
 })
 export class FolderTree {
   readonly store = inject(BrowserStore);
-  readonly #dialog = inject(MatDialog);
+  readonly #confirm = injectConfirm();
   readonly TOKENS = TRACKER_TOKENS;
   readonly #transloco = inject(TranslocoService);
+  readonly #notifications = inject(NotificationService);
 
   /** Name of the collection to browse */
   readonly collectionName = input.required<string>();
@@ -230,7 +233,7 @@ export class FolderTree {
     const dragData = event.item.data as DragData;
     if (dragData.type !== 'folder' || !dragData.path) return;
 
-    this.store.moveFolder({ sourceFolderPath: dragData.path, destinationFolderPath: '' });
+    this.confirmMoveFolder(dragData.path, '');
   }
 
   /**
@@ -266,8 +269,19 @@ export class FolderTree {
    * Handles confirmation of folder name from inline input.
    * Calls the store to create the folder.
    */
-  onFolderConfirm(folderName: string): void {
-    this.store.createFolder(folderName);
+  onFolderConfirm(folderName: string, parentPath: string | null = this.store.addFolderParentPath()): void {
+    const sessionId = this.store.sessionId();
+    this.store.clearFolderError();
+    this.store.createFolder(folderName, parentPath).subscribe({
+      next: () => {
+        if (this.store.sessionId() === sessionId) this.store.cancelAddingFolder();
+      },
+      error: (error: unknown) => {
+        if (this.store.sessionId() !== sessionId) return;
+        this.store.cancelAddingFolder();
+        this.store.reportCreateFolderError(error);
+      },
+    });
   }
 
   /**
@@ -294,22 +308,46 @@ export class FolderTree {
   onDeleteFolder(folderPath: string): void {
     const folderName = extractFolderNameFromPath(folderPath);
 
-    import('../../../shared/components/confirmation-dialog/confirmation-dialog').then((m) => {
-      const dialogRef = this.#dialog.open(m.ConfirmationDialog, {
-        data: {
-          title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
-          message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, { name: folderName }),
-          confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-          actionType: 'destructive',
-        },
-        width: '400px',
-      });
+    this.#confirm(
+      {
+        title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
+        message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, { name: folderName }),
+        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
+        actionType: 'destructive',
+      },
+      { width: '400px' },
+    ).then((confirmed) => {
+      if (confirmed) this.store.deleteFolder(folderPath);
+    });
+  }
 
-      dialogRef.afterClosed().subscribe((confirmed) => {
-        if (confirmed === true) {
-          this.store.deleteFolder(folderPath);
-        }
-      });
+  /** Confirms a folder move before handing the write to the store. */
+  confirmMoveFolder(sourceFolderPath: string, destinationFolderPath: string): void {
+    this.store.clearFolderError();
+    const noOp = folderMoveNoOp(sourceFolderPath, destinationFolderPath);
+    if (noOp === 'same-folder') return;
+    if (noOp === 'already-at-location') {
+      this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERALREADYATLOCATION));
+      return;
+    }
+
+    const sessionId = this.store.sessionId();
+    const folderName = extractFolderNameFromPath(sourceFolderPath);
+    this.#confirm(
+      {
+        title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
+        message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
+          name: folderName,
+          dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
+        }),
+        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
+        actionType: 'standard',
+      },
+      { width: '400px', canOpen: () => this.store.sessionId() === sessionId },
+    ).then((confirmed) => {
+      if (confirmed && this.store.sessionId() === sessionId) {
+        this.store.moveFolder({ sourceFolderPath, destinationFolderPath });
+      }
     });
   }
 
@@ -343,10 +381,7 @@ export class FolderTree {
       return;
     }
 
-    this.store.moveFolder({
-      sourceFolderPath: dragData.path,
-      destinationFolderPath: targetFolderPath,
-    });
+    this.confirmMoveFolder(dragData.path, targetFolderPath);
   }
 
   /**

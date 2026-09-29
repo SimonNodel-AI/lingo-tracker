@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { normalize } from './normalize';
-import { calculateChecksum } from '../../resource/checksum';
+import { calculateChecksum } from '../resource/checksum';
 import { ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { readCollection } from '../resource/read-collection';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';

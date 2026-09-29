@@ -1,5 +1,5 @@
 import { normalizeTags, translocoToICU } from '@simoncodes-ca/domain';
-import type { ResourceEntry } from '../../resource/resource-entry';
+import type { ResourceEntry } from '../resource/resource-entry';
 import { translationLocales } from '../resource/resource-folder';
 
 export interface NormalizedEntryValues {

@@ -1,4 +1,9 @@
-import { assertAutoTranslationEnabled, translateLocale } from '@simoncodes-ca/core';
+import {
+  assertAutoTranslationEnabled,
+  assertCanTranslateLocale,
+  AutoTranslationDisabledError,
+  translateLocale,
+} from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -24,13 +29,18 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
     try {
       assertAutoTranslationEnabled(collection);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`${message}. Set translation.enabled = true in your configuration`);
+      if (error instanceof AutoTranslationDisabledError) {
+        throw new Error(`${error.message}. Set translation.enabled = true in your configuration`);
+      }
+      throw error;
     }
     if (collection.targetLocales.length === 0) {
       throw new Error(
         `No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`,
       );
+    }
+    if (options.locale) {
+      assertCanTranslateLocale(collection, options.locale);
     }
     return options.locale
       ? []
@@ -45,16 +55,8 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
   },
   required: ['locale'],
   run: async ({ collection, answers }) => {
-    const { name: collectionName, baseLocale, locales: allLocales } = collection;
+    const { name: collectionName } = collection;
     const targetLocale = answers.locale;
-
-    if (targetLocale === baseLocale) {
-      throw new Error(`Cannot translate to the base locale "${baseLocale}".`);
-    }
-
-    if (!allLocales.includes(targetLocale)) {
-      throw new Error(`Locale "${targetLocale}" is not configured. Available locales: ${allLocales.join(', ')}`);
-    }
 
     console.log('');
     ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);

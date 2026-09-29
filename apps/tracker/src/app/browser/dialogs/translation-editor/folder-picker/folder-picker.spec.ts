@@ -7,6 +7,9 @@ import { getTranslocoTestingModule } from '../../../../../testing/transloco-test
 import { NotificationService } from '../../../../shared/notification';
 import { BrowserStore } from '../../../store/browser.store';
 import { FolderPicker } from './folder-picker';
+import { of, throwError } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { toApiError } from '../../../../shared/api-error/api-error';
 
 describe('FolderPicker', () => {
   let component: FolderPicker;
@@ -38,7 +41,7 @@ describe('FolderPicker', () => {
   ];
 
   const mockStore = {
-    createFolderAt: vi.fn(),
+    createFolder: vi.fn(),
     selectedCollection: vi.fn(() => 'test-collection'),
   };
 
@@ -53,6 +56,8 @@ describe('FolderPicker', () => {
   });
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockStore.createFolder.mockReset();
     spectator = createComponent({ detectChanges: false });
     fixture = spectator.fixture;
     component = spectator.component;
@@ -168,6 +173,61 @@ describe('FolderPicker', () => {
   });
 
   describe('Folder Creation', () => {
+    it('uses the shared create method with an explicit parent and selects the result', () => {
+      const response = {
+        folderPath: 'common.new',
+        created: true,
+        folder: { name: 'new', fullPath: 'common.new', loaded: false },
+      };
+      mockStore.createFolder.mockReturnValue(of(response));
+      const created = vi.fn();
+      component.folderCreated.subscribe(created);
+      component.onAddFolder('common');
+
+      component.onFolderNameConfirmed('new');
+
+      expect(mockStore.createFolder).toHaveBeenCalledWith('new', 'common');
+      expect(created).toHaveBeenCalledWith(response.folder);
+      expect(component.selectedPath()).toBe('common.new');
+      expect(component.isCreatingFolder()).toBe(false);
+    });
+
+    it('shows one failure toast without reporting an error to the store', () => {
+      const error = toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Already exists' } }));
+      mockStore.createFolder.mockReturnValue(throwError(() => error));
+      const notifications = spectator.inject(NotificationService);
+      component.onAddFolder('common');
+
+      component.onFolderNameConfirmed('new');
+
+      expect(notifications.error).toHaveBeenCalledOnce();
+      expect(notifications.error).toHaveBeenCalledWith('Already exists');
+      expect(component.isAddingFolder()).toBe(false);
+    });
+
+    it('closes the inline input without a toast when no collection is open', () => {
+      mockStore.createFolder.mockReturnValue(of(null));
+      const notifications = spectator.inject(NotificationService);
+      const created = vi.fn();
+      component.folderCreated.subscribe(created);
+      component.onCreateFirstFolder();
+
+      component.onFolderNameConfirmed('new');
+
+      expect(mockStore.createFolder).toHaveBeenCalledWith('new', null);
+      expect(component.isCreatingFolder()).toBe(false);
+      expect(component.isAddingFolder()).toBe(false);
+      expect(component.addFolderParentPath()).toBeNull();
+      expect(created).not.toHaveBeenCalled();
+      expect(notifications.error).not.toHaveBeenCalled();
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('keeps picker expansion separate from the browser tree', () => {
+      component.onExpandToggle('common');
+      expect(component.expandedPaths()).toEqual(new Set(['common']));
+      expect(mockStore).not.toHaveProperty('expandedFolders');
+    });
     it('should start folder creation when add folder is clicked', () => {
       expect(component.isAddingFolder()).toBe(false);
 

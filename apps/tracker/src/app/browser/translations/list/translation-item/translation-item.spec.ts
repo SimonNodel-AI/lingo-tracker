@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import type { ComponentFixture } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { MatDialog } from '@angular/material/dialog';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
@@ -12,6 +13,7 @@ import { getTranslocoTestingModule } from '../../../../../testing/transloco-test
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
 import { TranslationItem } from './translation-item';
+import { TranslationItemHeader } from './item-header';
 
 const createItem = createComponentFactory({
   component: TranslationItem,
@@ -468,7 +470,7 @@ describe('TranslationItem - Full density expansion', () => {
       fixture.componentRef.setInput('translation', mockTranslation);
     });
 
-    it('should refuse the Delete shortcut when the collection is read-only', () => {
+    it('should pass the entry to the Delete action when the collection is read-only', () => {
       store.openCollection(
         collectionSettings({
           name: 'vendored',
@@ -484,7 +486,7 @@ describe('TranslationItem - Full density expansion', () => {
 
       component.onKeyDown(new KeyboardEvent('keydown', { key: 'Delete' }));
 
-      expect(deleteSpy).not.toHaveBeenCalled();
+      expect(deleteSpy).toHaveBeenCalledWith(mockTranslation);
     });
 
     it('should run the Delete shortcut when the collection is writable', () => {
@@ -496,7 +498,7 @@ describe('TranslationItem - Full density expansion', () => {
 
       component.onKeyDown(new KeyboardEvent('keydown', { key: 'Delete' }));
 
-      expect(deleteSpy).toHaveBeenCalledOnce();
+      expect(deleteSpy).toHaveBeenCalledWith(mockTranslation);
     });
 
     it('should show a lock in place of the drag handle when the collection is read-only', () => {
@@ -561,7 +563,7 @@ describe('TranslationItem - compact key chip', () => {
     click(chip(), 1);
 
     expect(copySpy).toHaveBeenCalledOnce();
-    expect(copySpy).toHaveBeenCalledWith('common.buttons.save');
+    expect(copySpy).toHaveBeenCalledWith(mockTranslation);
   });
 
   it('copies the key on Enter, which fires a click with no detail count', () => {
@@ -573,6 +575,34 @@ describe('TranslationItem - compact key chip', () => {
     click(chip(), 0);
 
     expect(copySpy).toHaveBeenCalledOnce();
+  });
+
+  it('passes the entry from the header to the Delete action', () => {
+    render();
+    const listStore = spectator.inject(TranslationListStore, true);
+    const deleteSpy = vi.spyOn(listStore, 'deleteTranslation').mockResolvedValue(undefined);
+    const header = fixture.debugElement.query(By.directive(TranslationItemHeader))?.componentInstance as
+      | TranslationItemHeader
+      | undefined;
+
+    header?.onDelete();
+
+    expect(header).toBeDefined();
+    expect(deleteSpy).toHaveBeenCalledWith(mockTranslation);
+  });
+
+  it('passes the entry from the header to the Translate action', () => {
+    render();
+    const listStore = spectator.inject(TranslationListStore, true);
+    const translateSpy = vi.spyOn(listStore, 'translateResource').mockImplementation(() => undefined);
+    const header = fixture.debugElement.query(By.directive(TranslationItemHeader))?.componentInstance as
+      | TranslationItemHeader
+      | undefined;
+
+    header?.onTranslate();
+
+    expect(header).toBeDefined();
+    expect(translateSpy).toHaveBeenCalledWith(mockTranslation);
   });
 
   it('opens the editor on a double-click of the key chip, copying only once', () => {

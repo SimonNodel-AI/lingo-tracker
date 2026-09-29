@@ -6,9 +6,13 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
-import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
+import {
+  AutoTranslationDisabledError,
+  CannotTranslateBaseLocaleError,
+  TranslationLocaleNotConfiguredError,
+} from '../errors/lingo-tracker-error';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
-import { type TranslateLocaleProgress, translateLocale } from './translate-locale';
+import { assertCanTranslateLocale, type TranslateLocaleProgress, translateLocale } from './translate-locale';
 import { TranslationError } from './translation-provider';
 
 const AUTO: TranslationConfig = {
@@ -32,6 +36,35 @@ describe('translateLocale', () => {
   function read(file: string, ...segments: string[]) {
     return JSON.parse(readFileSync(join(dir(), ...segments, file), 'utf8'));
   }
+
+  describe('start-time preconditions', () => {
+    it('accepts an enabled collection and a configured target locale', async () => {
+      expect(() => assertCanTranslateLocale(collection(), 'fr')).not.toThrow();
+      await expect(translateLocale(collection(), { targetLocale: 'fr' })).resolves.toMatchObject({ totalResources: 0 });
+    });
+
+    it('rejects disabled auto-translation before checking the locale', async () => {
+      const target = collection({ translationConfig: undefined });
+      expect(() => assertCanTranslateLocale(target, 'en')).toThrow(AutoTranslationDisabledError);
+      await expect(translateLocale(target, { targetLocale: 'en' })).rejects.toThrow(AutoTranslationDisabledError);
+    });
+
+    it('rejects the base locale with the CLI message', async () => {
+      const target = collection();
+      expect(() => assertCanTranslateLocale(target, 'en')).toThrow(CannotTranslateBaseLocaleError);
+      await expect(translateLocale(target, { targetLocale: 'en' })).rejects.toThrow(
+        'Cannot translate to the base locale "en".',
+      );
+    });
+
+    it('rejects an unknown locale with the available locales', async () => {
+      const target = collection();
+      expect(() => assertCanTranslateLocale(target, 'de')).toThrow(TranslationLocaleNotConfiguredError);
+      await expect(translateLocale(target, { targetLocale: 'de' })).rejects.toThrow(
+        'Locale "de" is not configured. Available locales: en, fr',
+      );
+    });
+  });
 
   describe('when nothing needs translating', () => {
     it('returns zeros for an empty collection, without an API key', async () => {

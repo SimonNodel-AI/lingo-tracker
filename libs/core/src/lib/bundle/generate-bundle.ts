@@ -8,10 +8,12 @@ import * as path from 'node:path';
 import {
   type BundleDefinition,
   bundleOutputFile,
+  findBundleDefinition,
   hasTypeDistConfigured,
   type TokenCasing,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { BundleNotFoundError, InvalidBundleLocalesError } from '../errors';
 import {
   type BundleSelection,
   resolveBundleCollections,
@@ -28,9 +30,8 @@ import {
 
 export interface GenerateBundleParams {
   readonly bundleKey: string;
-  readonly bundleDefinition: BundleDefinition;
   readonly config: LingoTrackerConfig;
-  readonly locales?: string[];
+  readonly locales?: readonly string[];
   /** CLI-level override for token casing. Takes precedence over all config values. */
   readonly tokenCasing?: TokenCasing;
   /**
@@ -77,21 +78,56 @@ export interface BundleProgressEvent {
 export interface GenerateBundleResult {
   readonly bundleKey: string;
   readonly filesGenerated: number;
+  /** Every successfully written file, in write order, relative to `cwd` with `/` separators. An output outside `cwd` begins with `../`. */
+  readonly writtenFiles: string[];
   readonly warnings: string[];
   readonly localesProcessed: string[];
   /** Number of keys written per processed locale (empty locales are omitted). */
   readonly keysPerLocale: Record<string, number>;
-  readonly typeGenerationResult?: GenerateTypesResult;
+  readonly typeOutcome: BundleTypeOutcome;
+}
+
+export type BundleTypeOutcome =
+  | { readonly status: 'written'; readonly path: string; readonly keysCount: number }
+  | { readonly status: 'skipped'; readonly reason: string }
+  | { readonly status: 'failed'; readonly reason: string }
+  | { readonly status: 'not-configured' };
+
+/** Checks a saved bundle request before a job is queued or any output is written. */
+export function validateGenerateBundleRequest(
+  params: Pick<GenerateBundleParams, 'bundleKey' | 'config' | 'locales'>,
+): BundleDefinition {
+  const definition = findBundleDefinition(params.config.bundles, params.bundleKey);
+  if (!definition) throw new BundleNotFoundError(params.bundleKey);
+
+  validateBundleLocales(params.locales, params.config);
+  return definition;
+}
+
+/** Validates an optional project locale subset, including malformed API bodies. */
+export function validateBundleLocales(locales: readonly string[] | undefined, config: LingoTrackerConfig): void {
+  if (locales !== undefined) {
+    if (!Array.isArray(locales) || locales.some((locale) => typeof locale !== 'string')) {
+      throw new InvalidBundleLocalesError('locales must be an array of strings');
+    }
+    const unknown = locales.filter((locale) => !config.locales.includes(locale));
+    if (unknown.length > 0) {
+      throw new InvalidBundleLocalesError(
+        `Unknown locale${unknown.length > 1 ? 's' : ''} ${unknown.map((locale) => `"${locale}"`).join(', ')}: must be defined in the project locales`,
+      );
+    }
+  }
 }
 
 /**
  * Generates a bundle's files: one JSON file per locale (a locale with no entries is skipped with a
  * warning), the debug-keys file when `debugKeysLocale` is set, and the type file when the
  * definition configures one. Collections the config lacks, unreadable folders, ICU values that do
- * not carry to Transloco, and type generation failures are reported in `warnings`.
+ * not carry to Transloco are reported in `warnings`; type generation has its own outcome.
  */
 export async function generateBundle(params: GenerateBundleParams): Promise<GenerateBundleResult> {
-  const { bundleKey, bundleDefinition, config, debugKeysLocale, onProgress } = params;
+  const { bundleKey, config, debugKeysLocale, onProgress } = params;
+  const bundleDefinition = validateGenerateBundleRequest(params);
   const cwd = params.cwd ?? process.cwd();
 
   // CLI override → bundle config → global config → default
@@ -119,10 +155,13 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
   };
 
   const localesProcessed: string[] = [];
+  const writtenFiles: string[] = [];
   const keysPerLocale: Record<string, number> = {};
 
   const write = (locale: string, data: Record<string, string>): void => {
-    writeBundleFile(path.resolve(cwd, bundleOutputFile(bundleDefinition, locale)), buildHierarchy(data));
+    const outputFile = bundleOutputFile(bundleDefinition, locale);
+    writeBundleFile(path.resolve(cwd, outputFile), buildHierarchy(data));
+    writtenFiles.push(toProjectRelative(outputFile, cwd));
     localesProcessed.push(locale);
     keysPerLocale[locale] = Object.keys(data).length;
   };
@@ -152,45 +191,53 @@ export async function generateBundle(params: GenerateBundleParams): Promise<Gene
     }
   }
 
-  const typeGenerationResult = hasTypeDistConfigured(bundleDefinition)
+  const typeOutcome = hasTypeDistConfigured(bundleDefinition)
     ? generateTypes(
         { bundleKey, definition: bundleDefinition, tokenCasing, tokenConstantName: params.tokenConstantName, cwd },
         selectBaseKeys,
-        warnings,
       )
-    : undefined;
+    : { status: 'not-configured' as const };
+
+  if (typeOutcome.status === 'written') writtenFiles.push(typeOutcome.path);
 
   return {
     bundleKey,
     filesGenerated: localesProcessed.length,
+    writtenFiles,
     warnings,
     localesProcessed,
     keysPerLocale,
-    typeGenerationResult,
+    typeOutcome,
   };
 }
 
 /**
- * Runs type generation, reporting a skipped (empty) or failed run in `warnings`. The keys are selected
- * inside the `try`, so a failed read is reported the same way as a failed write.
+ * The keys are selected inside the `try`, so a failed read is reported like a failed write.
  */
 function generateTypes(
   params: Omit<GenerateBundleTypesParams, 'keys'>,
   selectKeys: () => readonly string[],
-  warnings: string[],
-): GenerateTypesResult | undefined {
+): BundleTypeOutcome {
   try {
     const result = generateBundleTypes({ ...params, keys: selectKeys() });
-    if (result.skippedReason === 'empty-bundle') {
-      warnings.push(`Type generation skipped for '${params.bundleKey}': Bundle is empty`);
-    }
-    return result;
+    return typeOutcomeFromResult(result, params.cwd ?? process.cwd());
   } catch (error) {
-    warnings.push(
-      `Type generation failed for '${params.bundleKey}': ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return undefined;
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
+}
+
+function typeOutcomeFromResult(result: GenerateTypesResult, cwd: string): BundleTypeOutcome {
+  if (result.fileGenerated && result.typeDistFile) {
+    return { status: 'written', path: toProjectRelative(result.typeDistFile, cwd), keysCount: result.keysCount };
+  }
+  if (result.errorReason) return { status: 'failed', reason: result.errorReason };
+  if (result.skippedReason === 'empty-bundle') return { status: 'skipped', reason: 'bundle has no keys' };
+  return { status: 'not-configured' };
+}
+
+function toProjectRelative(filePath: string, cwd: string): string {
+  const relative = path.relative(cwd, path.resolve(cwd, filePath));
+  return relative.split(path.sep).join('/');
 }
 
 /**

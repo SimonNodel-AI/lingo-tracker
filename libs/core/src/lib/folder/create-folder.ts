@@ -1,9 +1,6 @@
-import { existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
-import { isValidSegment } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
+import { folderAddressExists, resolveFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface CreateFolderParams {
@@ -64,35 +61,21 @@ export function createFolder(collection: Collection, params: CreateFolderParams)
   const { translationsFolder } = collection;
 
   // Validate folderName segments
-  const folderSegments = folderName.split('.');
-  for (const segment of folderSegments) {
-    if (!isValidSegment(segment)) {
-      throw new InvalidFolderPathError('folder name', segment);
-    }
-  }
+  validateFolderAddress(folderName, 'folder name', false);
 
   // Validate parentPath segments if provided
   if (parentPath && parentPath.trim() !== '') {
-    const parentSegments = parentPath.split('.');
-    for (const segment of parentSegments) {
-      if (!isValidSegment(segment)) {
-        throw new InvalidFolderPathError('parent path', segment);
-      }
-    }
+    validateFolderAddress(parentPath, 'parent path');
   }
 
   // Combine parent path and folder name
   const fullDotPath = parentPath && parentPath.trim() !== '' ? `${parentPath}.${folderName}` : folderName;
 
-  // Convert dot-delimited path to filesystem path
-  const pathSegments = fullDotPath.split('.');
-  const relativeFolderPath = pathSegments.length ? join(translationsFolder, ...pathSegments) : translationsFolder;
-
-  // Resolve to absolute path
-  const absoluteFolderPath = resolve(relativeFolderPath);
+  // Resolve the dot-delimited address to an absolute filesystem path.
+  const absoluteFolderPath = resolveFolderAddress(translationsFolder, fullDotPath);
 
   // Check if folder already exists
-  const alreadyExists = existsSync(absoluteFolderPath);
+  const alreadyExists = folderAddressExists(translationsFolder, fullDotPath);
 
   // Create the directory (idempotent operation)
   ensureDirectoryExists({

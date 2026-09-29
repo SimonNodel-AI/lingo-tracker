@@ -9,9 +9,12 @@ export {
 } from './bundle-definition-operations';
 export {
   type BundleProgressEvent,
+  type BundleTypeOutcome,
   type GenerateBundleParams,
   type GenerateBundleResult,
   generateBundle,
+  validateBundleLocales,
+  validateGenerateBundleRequest,
 } from './generate-bundle';
 export {
   type BundlePlan,

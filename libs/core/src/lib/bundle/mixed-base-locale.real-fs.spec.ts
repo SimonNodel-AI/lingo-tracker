@@ -62,8 +62,7 @@ describe('bundles with a collection that overrides the base locale (real fs)', (
 
     const result = await generateBundle({
       bundleKey: 'main',
-      bundleDefinition: { ...definition, typeDistFile: undefined },
-      config,
+      config: { ...config, bundles: { main: { ...definition, typeDistFile: undefined } } },
       locales: ['en'],
       debugKeysLocale: '99',
     });

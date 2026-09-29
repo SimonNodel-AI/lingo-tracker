@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { openCollection, readCollection } from '@simoncodes-ca/core';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { type Collection, readCollection, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { hasPipedStdin } from '../runner/terminal';
 import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
@@ -65,10 +64,7 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
  * is reported as a warning and its entries are left out.
  * A named collection that does not exist throws CollectionNotFoundError (the runner exits 1).
  */
-function loadEntries(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): FlatEntry[] {
-  const names = options.collection ? [options.collection] : Object.keys(config.collections ?? {});
-  const targets = names.map((name) => openCollection(config, name, { cwd }));
-
+function loadEntries(targets: Collection[]): FlatEntry[] {
   const entries: FlatEntry[] = [];
   for (const collection of targets) {
     const { resources, problems } = readCollection(collection);
@@ -98,12 +94,17 @@ function buildOutputPath(options: GlossaryCommandOptions, cwd: string): string {
 
 export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
   name: 'Glossary',
-  // `--collection` is optional here: absent means every collection, so the runner opens nothing.
-  collection: 'none',
-  run: ({ config, cwd, answers }) => runGlossary(answers, config, cwd),
+  collection: 'many',
+  many: { select: (answers) => (answers.collection ? [answers.collection] : 'all') },
+  run: ({ config, cwd, collections, answers }) => runGlossary(answers, config, cwd, collections),
 });
 
-function runGlossary(options: GlossaryCommandOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
+function runGlossary(
+  options: GlossaryCommandOptions,
+  config: LingoTrackerConfig,
+  cwd: string,
+  collections: Collection[],
+): CommandResult {
   const block = resolveInputText(options, cwd);
   if (block === null) {
     return { exitCode: 1 };
@@ -117,7 +118,7 @@ function runGlossary(options: GlossaryCommandOptions, config: LingoTrackerConfig
     ConsoleFormatter.warning('No target locales to include (only the base locale is configured or requested).');
   }
 
-  const entries = loadEntries(options, config, cwd);
+  const entries = loadEntries(collections);
   const extractor: CandidateExtractor = resolveExtractor(options.extractor ?? 'ngram');
 
   const candidates = extractor(block);

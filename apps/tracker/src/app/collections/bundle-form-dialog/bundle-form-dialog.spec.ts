@@ -9,7 +9,6 @@ import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { toApiError } from '../../shared/api-error/api-error';
-import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from '../store/collections.store';
 import { BundleFormDialog } from './bundle-form-dialog';
 import type { BundleFormDialogData } from './bundle-form-dialog-data';
@@ -55,9 +54,12 @@ interface Harness {
   component: BundleFormDialog;
   /** `close`, and `disableClose`, which the dialog sets while a write is in flight. */
   dialogRef: { close: ReturnType<typeof vi.fn>; disableClose: boolean | undefined };
-  api: { dryRunBundle: ReturnType<typeof vi.fn> };
   /** The two Config Writes the dialog makes; both accept by default. */
-  store: { createBundle: ReturnType<typeof vi.fn>; updateBundle: ReturnType<typeof vi.fn> };
+  store: {
+    createBundle: ReturnType<typeof vi.fn>;
+    updateBundle: ReturnType<typeof vi.fn>;
+    dryRunBundle: ReturnType<typeof vi.fn>;
+  };
 }
 
 const apiError = (status: number, body: object) =>
@@ -73,7 +75,6 @@ const createComponent = createComponentFactory({
 
 const buildHarness = (data: BundleFormDialogData): Harness => {
   const dialogRef: Harness['dialogRef'] = { close: vi.fn(), disableClose: false };
-  const api = { dryRunBundle: vi.fn().mockReturnValue(of(dryRunResult)) };
   const store = {
     config: signal<LingoTrackerConfigDto | null>(config),
     collectionEntries: signal(
@@ -82,19 +83,19 @@ const buildHarness = (data: BundleFormDialogData): Harness => {
     bundleEntries: signal([{ name: 'tracker', definition: trackerBundle }]),
     createBundle: vi.fn(() => of(config)),
     updateBundle: vi.fn(() => of(config)),
+    dryRunBundle: vi.fn(() => of(dryRunResult)),
   };
 
   const spectator = createComponent({
     providers: [
       { provide: MAT_DIALOG_DATA, useValue: data },
       { provide: MatDialogRef, useValue: dialogRef },
-      { provide: CollectionsApiService, useValue: api },
       { provide: CollectionsStore, useValue: store },
     ],
   });
   spectator.detectChanges();
   const fixture = spectator.fixture;
-  return { fixture, component: fixture.componentInstance, dialogRef, api, store };
+  return { fixture, component: fixture.componentInstance, dialogRef, store };
 };
 
 const submitErrorsText = (harness: Harness): string | null =>
@@ -489,18 +490,18 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should debounce edits and call the API once with the current definition', async () => {
-    const { component, api } = buildHarness({ mode: 'create' });
+    const { component, store } = buildHarness({ mode: 'create' });
     fillOutput(component);
     component.form.controls.dist.setValue('./dist/i18n');
-    expect(api.dryRunBundle).not.toHaveBeenCalled();
+    expect(store.dryRunBundle).not.toHaveBeenCalled();
     expect(component.previewStale()).toBe(true);
 
     vi.advanceTimersByTime(299);
-    expect(api.dryRunBundle).not.toHaveBeenCalled();
+    expect(store.dryRunBundle).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
-    expect(api.dryRunBundle).toHaveBeenCalledTimes(1);
-    expect(api.dryRunBundle).toHaveBeenCalledWith({
+    expect(store.dryRunBundle).toHaveBeenCalledTimes(1);
+    expect(store.dryRunBundle).toHaveBeenCalledWith({
       name: 'admin',
       bundle: expect.objectContaining({ bundleName: 'admin.{locale}', dist: './dist/i18n' }),
     });
@@ -512,17 +513,17 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should not call the API until name, folder and pattern are all present', async () => {
-    const { component, api } = buildHarness({ mode: 'create' });
+    const { component, store } = buildHarness({ mode: 'create' });
     component.form.controls.name.setValue('admin');
     vi.advanceTimersByTime(300);
 
-    expect(api.dryRunBundle).not.toHaveBeenCalled();
+    expect(store.dryRunBundle).not.toHaveBeenCalled();
     expect(component.previewStatus()).toBe('waiting');
   });
 
   it('should fall back to the client-side tree when the dry run fails', async () => {
-    const { component, api } = buildHarness({ mode: 'create' });
-    api.dryRunBundle.mockReturnValue(
+    const { component, store } = buildHarness({ mode: 'create' });
+    store.dryRunBundle.mockReturnValue(
       throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
     );
     fillOutput(component);
@@ -551,8 +552,8 @@ describe('BundleFormDialog — dry run', () => {
   });
 
   it('should split tree paths and names after separators so they wrap between segments', async () => {
-    const { component, api } = buildHarness({ mode: 'create' });
-    api.dryRunBundle.mockReturnValue(
+    const { component, store } = buildHarness({ mode: 'create' });
+    store.dryRunBundle.mockReturnValue(
       throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
     );
     fillOutput(component);
@@ -689,6 +690,19 @@ describe('BundleFormDialog — edit mode', () => {
 
     expect(harness.dialogRef.close).not.toHaveBeenCalled();
     expect(component.submitErrors()).toEqual(['Bundle "tracker" already exists']);
+  });
+
+  it('should list server details from a conflict when the name is locked', () => {
+    harness.store.updateBundle.mockReturnValue(
+      rejection(409, { message: 'Bundle "tracker" already exists', errors: ['Conflicting bundle output path.'] }),
+    );
+
+    component.onSubmit();
+    harness.fixture.detectChanges();
+
+    expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    expect(component.submitErrors()).toEqual(['Conflicting bundle output path.']);
+    expect(submitErrorsText(harness)).toContain('Conflicting bundle output path.');
   });
 
   it('should collapse an ICU choice equal to the project default (on) back to inherit', () => {

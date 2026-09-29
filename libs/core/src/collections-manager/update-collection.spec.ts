@@ -10,10 +10,11 @@ import {
   InvalidLocaleError,
   ReadOnlyCollectionError,
 } from '../lib/errors/lingo-tracker-error';
-import type { ResourceEntries } from '../resource/resource-entry';
-import type { TrackerMetadata } from '../resource/tracker-metadata';
+import type { ResourceEntries } from '../lib/resource/resource-entry';
+import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { updateCollection } from './update-collection';
+import { deleteCollectionByName } from './delete-collection-by-name';
 
 const TRANSLATION: TranslationConfig = { enabled: false, provider: 'none', apiKeyEnv: 'NONE' };
 
@@ -58,7 +59,10 @@ describe('updateCollection', () => {
     const stored = config().collections['myApp'];
 
     const result = await updateCollection('myApp', undefined, { ...stored, tags: ['Team X'] }, { cwd: cwd() });
-    expect(result).toEqual({ message: 'Collection "myApp" updated successfully', mutations: [] });
+    expect(result).toEqual({
+      message: 'Collection "myApp" updated successfully',
+      mutations: [{ kind: 'reindex', translationsFolder: i18n() }],
+    });
     expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-x'] });
 
     await updateCollection('myApp', undefined, { tags: ['Team Y'] }, { cwd: cwd() });
@@ -116,7 +120,7 @@ describe('updateCollection', () => {
         { cwd: cwd() },
       );
 
-      expect(result.mutations).toEqual([]);
+      expect(result.mutations).toEqual(locales ? [{ kind: 'reindex', translationsFolder: i18n() }] : []);
       expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
     }
   });
@@ -154,7 +158,10 @@ describe('updateCollection', () => {
       { cwd: cwd() },
     );
 
-    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: moved }]);
+    expect(result.mutations).toEqual([
+      { kind: 'reindex', translationsFolder: i18n() },
+      { kind: 'reindex', translationsFolder: moved },
+    ]);
     const movedEntries: ResourceEntries = JSON.parse(
       readFileSync(join(moved, 'apps', RESOURCE_ENTRIES_FILENAME), 'utf8'),
     );
@@ -198,7 +205,15 @@ describe('updateCollection', () => {
     const result = await updateCollection('myApp', 'renamed', { translationsFolder: './i18n' }, { cwd: cwd() });
 
     expect(result.message).toBe('Collection "myApp" renamed to "renamed" and updated successfully');
+    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     expect(Object.keys(readConfig().collections)).toEqual(['renamed', 'other']);
+  });
+
+  it('returns the deleted collection folder for reindexing', () => {
+    const result = deleteCollectionByName('myApp', { cwd: cwd() });
+
+    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
+    expect(readConfig().collections).not.toHaveProperty('myApp');
   });
 
   it('throws on a rename collision before any locale file changes', async () => {

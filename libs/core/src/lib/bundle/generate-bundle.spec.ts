@@ -6,7 +6,21 @@ import type { BundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { Collection } from '../config/open-collection';
 import { type SeedResource, seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { type BundleProgressEvent, generateBundle } from './generate-bundle';
+import {
+  type BundleProgressEvent,
+  type GenerateBundleParams,
+  generateBundle as generateBundleByName,
+  validateBundleLocales,
+} from './generate-bundle';
+import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors';
+
+async function generateBundle(params: GenerateBundleParams & { bundleDefinition: BundleDefinition }) {
+  const { bundleDefinition, ...request } = params;
+  return generateBundleByName({
+    ...request,
+    config: { ...request.config, bundles: { ...request.config.bundles, [request.bundleKey]: bundleDefinition } },
+  });
+}
 
 describe('generateBundle (real fs)', () => {
   const root = useTempDir('bundle-generate-');
@@ -43,6 +57,61 @@ describe('generateBundle (real fs)', () => {
     return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
   }
 
+  it('rejects an unknown saved bundle name before writing', async () => {
+    await expect(
+      generateBundleByName({ bundleKey: 'missing', config: config({}), cwd: root() }),
+    ).rejects.toBeInstanceOf(BundleNotFoundError);
+    expect(existsSync(join(root(), 'dist/bundles/en.json'))).toBe(false);
+  });
+
+  it.each(['constructor', '__proto__'])('rejects prototype-member bundle name %s', async (bundleKey) => {
+    await expect(
+      generateBundleByName({ bundleKey, config: config({}, { bundles: { main: definition() } }), cwd: root() }),
+    ).rejects.toBeInstanceOf(BundleNotFoundError);
+  });
+
+  it('rejects an unconfigured locale filter with the API message', async () => {
+    await expect(
+      generateBundleByName({
+        bundleKey: 'main',
+        config: config({}, { bundles: { main: definition() } }),
+        locales: ['en', 'xx'],
+        cwd: root(),
+      }),
+    ).rejects.toMatchObject({
+      name: 'InvalidBundleLocalesError',
+      message: 'Unknown locale "xx": must be defined in the project locales',
+    } satisfies Partial<InvalidBundleLocalesError>);
+  });
+
+  it('reports multiple unconfigured locales with the plural API message', async () => {
+    await expect(
+      generateBundleByName({
+        bundleKey: 'main',
+        config: config({}, { bundles: { main: definition() } }),
+        locales: ['xx', 'yy'],
+        cwd: root(),
+      }),
+    ).rejects.toThrow('Unknown locales "xx", "yy": must be defined in the project locales');
+  });
+
+  it('lists an output outside cwd with a leading parent segment', async () => {
+    const common = seed('common', { welcome: { source: 'Welcome' } });
+    const result = await generateBundleByName({
+      bundleKey: 'main',
+      config: config({ common }, { bundles: { main: definition({ dist: '../shared' }) } }),
+      locales: ['en'],
+      cwd: join(root(), 'project'),
+    });
+
+    expect(result.writtenFiles).toEqual(['../shared/en.json']);
+    expect(existsSync(join(root(), 'shared/en.json'))).toBe(true);
+  });
+
+  it('rejects a malformed locale filter with the API message', () => {
+    expect(() => validateBundleLocales('en' as never, config({}))).toThrow('locales must be an array of strings');
+  });
+
   it('generates every configured locale by default', async () => {
     const common = seed('common', {
       welcome: { source: 'Welcome', translations: { fr: 'Bienvenue', es: 'Bienvenido' } },
@@ -56,6 +125,7 @@ describe('generateBundle (real fs)', () => {
     });
 
     expect(result.filesGenerated).toBe(3);
+    expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/fr.json', 'dist/bundles/es.json']);
     expect(result.localesProcessed).toEqual(['en', 'fr', 'es']);
     expect(result.warnings).toEqual([]);
   });
@@ -167,7 +237,8 @@ describe('generateBundle (real fs)', () => {
 
     expect(existsSync(join(root(), 'dist/bundles/en.json'))).toBe(true);
     expect(existsSync(join(root(), 'types/tokens.ts'))).toBe(true);
-    expect(result.typeGenerationResult?.typeDistFile).toBe(join(root(), 'types/tokens.ts'));
+    expect(result.typeOutcome).toMatchObject({ status: 'written', path: 'types/tokens.ts' });
+    expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'types/tokens.ts']);
   });
 
   it('uses cwd to resolve a relative collection translationsFolder', async () => {
@@ -195,9 +266,9 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeGenerationResult).toBeDefined();
-      expect(result.typeGenerationResult).toMatchObject({ fileGenerated: true, keysCount: 2 });
-      expect(result.typeGenerationResult?.typeDistFile).toBe(join(root(), 'types/main.ts'));
+      expect(result.typeOutcome.status).toBe('written');
+      expect(result.typeOutcome).toMatchObject({ status: 'written', keysCount: 2 });
+      expect(result.typeOutcome).toMatchObject({ status: 'written', path: 'types/main.ts' });
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(true);
     });
 
@@ -211,7 +282,7 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeGenerationResult).toBeUndefined();
+      expect(result.typeOutcome.status).toBe('not-configured');
     });
 
     it('supports deprecated typeDist and emits its deprecation warning', async () => {
@@ -226,7 +297,7 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeGenerationResult?.fileGenerated).toBe(true);
+      expect(result.typeOutcome.status).toBe('written');
       expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining("'typeDist' is deprecated"));
     });
@@ -265,7 +336,7 @@ describe('generateBundle (real fs)', () => {
       expect(readFileSync(join(root(), 'types/main.ts'), 'utf8')).toContain('export const CUSTOM_TOKENS');
     });
 
-    it('captures thrown type generation errors as warnings', async () => {
+    it('reports thrown type generation errors through the type outcome only', async () => {
       const common = seed('common', { welcome: { source: 'Welcome' } });
       writeFileSync(join(root(), 'blocked'), 'not a directory');
       const result = await generateBundle({
@@ -276,11 +347,26 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeGenerationResult).toBeUndefined();
-      expect(result.warnings.some((warning) => warning.startsWith("Type generation failed for 'main':"))).toBe(true);
+      expect(result.typeOutcome).toMatchObject({ status: 'failed' });
+      expect(result.warnings.some((warning) => warning.startsWith("Type generation failed for 'main':"))).toBe(false);
     });
 
-    it('reports an empty type key set as a bundle warning', async () => {
+    it('reports a rejected type file path as failed without adding a warning', async () => {
+      const common = seed('common', { welcome: { source: 'Welcome' } });
+      const result = await generateBundle({
+        bundleKey: 'main',
+        bundleDefinition: definition({ typeDistFile: 'types/main.txt' }),
+        config: config({ common }),
+        locales: ['en'],
+        cwd: root(),
+      });
+
+      expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
+      expect(result.warnings).toEqual([]);
+      expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
+    });
+
+    it('reports an empty type key set as a skipped outcome', async () => {
       vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const empty = join(root(), 'empty');
       const result = await generateBundle({
@@ -290,8 +376,8 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeGenerationResult?.skippedReason).toBe('empty-bundle');
-      expect(result.warnings).toContain("Type generation skipped for 'main': Bundle is empty");
+      expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'bundle has no keys' });
+      expect(result.warnings).not.toContain("Type generation skipped for 'main': Bundle is empty");
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(false);
     });
 
@@ -428,6 +514,21 @@ describe('generateBundle (real fs)', () => {
   });
 
   describe('debugKeysLocale', () => {
+    it('lists locale, debug and type files in write order', async () => {
+      const common = seed('common', { welcome: { source: 'Welcome' } });
+      const result = await generateBundle({
+        bundleKey: 'main',
+        bundleDefinition: definition({ typeDistFile: 'types/main.ts' }),
+        config: config({ common }),
+        locales: ['en'],
+        debugKeysLocale: '99',
+        cwd: root(),
+      });
+
+      expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/99.json', 'types/main.ts']);
+      expect(result.typeOutcome).toEqual({ status: 'written', path: 'types/main.ts', keysCount: 1 });
+    });
+
     it('emits one extra file whose values equal their keys', async () => {
       const common = seed('common', {
         'buttons.ok': { source: 'OK' },
@@ -443,6 +544,7 @@ describe('generateBundle (real fs)', () => {
       });
 
       expect(result.filesGenerated).toBe(2);
+      expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/99.json']);
       expect(readJson(join(root(), 'dist/bundles/99.json'))).toEqual({
         buttons: { ok: 'buttons.ok', cancel: 'buttons.cancel' },
       });

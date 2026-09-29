@@ -1,5 +1,7 @@
-import { patchCollectionEntry } from '../lib/config/collection-entry';
-import { createConfigFileOperations, updateConfig } from '../lib/config/config-file-operations';
+import { effectiveProtectedTerms, normalizeProtectedTerms } from '@simoncodes-ca/domain';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { patchCollectionEntry } from './collection-entry';
+import { createConfigFileOperations, updateConfig } from './config-file-operations';
 import {
   assertWritableProtectedTermsPath,
   readCollectionProtectedTerms,
@@ -8,8 +10,94 @@ import {
   resolveGlobalProtectedTermsFilePath,
   resolveProtectedTermsFilePath,
   writeProtectedTermsFile,
-} from '../lib/config/protected-terms-file';
-import { CollectionNotFoundError, ProtectedTermsFileNotSetError } from '../lib/errors/lingo-tracker-error';
+} from './protected-terms-file';
+import {
+  CollectionNotFoundError,
+  InvalidCollectionError,
+  ProtectedTermsFileNotSetError,
+} from '../errors/lingo-tracker-error';
+
+/** Rejects an untyped request before it can change a term file or a collection entry. */
+export function assertProtectedTerms(terms: unknown): asserts terms is string[] {
+  if (!Array.isArray(terms) || terms.some((term) => typeof term !== 'string')) {
+    throw new InvalidCollectionError('protectedTerms must be an array of strings');
+  }
+}
+
+export interface ProtectedTermsEdit {
+  readonly add?: readonly string[];
+  readonly remove?: readonly string[];
+  readonly set?: string;
+}
+
+export interface ProtectedTermsView {
+  readonly globalTerms: string[];
+  readonly collectionTerms: string[];
+  readonly effectiveTerms: string[];
+  readonly globalFilePath: string;
+  readonly collectionFilePath?: string;
+  readonly warnings: string[];
+  readonly storedTerms: string[];
+}
+
+export interface ProtectedTermsEditResult {
+  readonly terms: string[];
+  readonly filePath: string;
+}
+
+/** Reads the stored lists and paths for one scope, before an edit writes anything. */
+export function readProtectedTermsTarget(
+  config: LingoTrackerConfig,
+  target: { readonly collection?: string },
+  cwd: string = process.cwd(),
+): ProtectedTermsView {
+  const collectionName = target.collection;
+  if (collectionName && !config.collections?.[collectionName]) {
+    throw new CollectionNotFoundError(collectionName);
+  }
+  const collection = collectionName ? config.collections?.[collectionName] : undefined;
+  const global = readGlobalProtectedTerms(config, cwd);
+  const own = collection ? readCollectionProtectedTerms(collection, cwd) : { terms: [] };
+  const globalFilePath = resolveGlobalProtectedTermsFilePath(config, cwd);
+  const collectionFilePath = collection ? resolveCollectionProtectedTermsFilePath(collection, cwd) : undefined;
+  const storedTerms = collectionName ? [...own.terms] : [...global.terms];
+  const warnings = [...new Set([global.warning, own.warning])].filter(
+    (warning): warning is string => warning !== undefined,
+  );
+  return {
+    globalTerms: global.terms,
+    collectionTerms: own.terms,
+    effectiveTerms: effectiveProtectedTerms(global.terms, own.terms),
+    globalFilePath,
+    collectionFilePath,
+    warnings,
+    storedTerms,
+  };
+}
+
+/** Applies add, remove, or set to the list already read for this scope. */
+export function editProtectedTerms(
+  target: { readonly collection?: string },
+  view: ProtectedTermsView,
+  edit: ProtectedTermsEdit,
+  options: SetProtectedTermsOptions = {},
+): ProtectedTermsEditResult {
+  let terms: string[];
+  if (edit.set !== undefined) {
+    terms = normalizeProtectedTerms(edit.set.split(','));
+  } else {
+    terms = [...view.storedTerms];
+    for (const term of normalizeProtectedTerms([...(edit.add ?? [])])) {
+      if (!terms.includes(term)) terms.push(term);
+    }
+    const toRemove = normalizeProtectedTerms([...(edit.remove ?? [])]);
+    terms = terms.filter((term) => !toRemove.includes(term));
+  }
+  const result = target.collection
+    ? setCollectionProtectedTerms(target.collection, terms, options)
+    : setGlobalProtectedTerms(terms, options);
+  return { terms, filePath: result.filePath };
+}
 
 export interface SetProtectedTermsOptions {
   cwd?: string;
@@ -29,6 +117,7 @@ export function setGlobalProtectedTerms(
   terms: string[],
   options: SetProtectedTermsOptions = {},
 ): SetProtectedTermsResult {
+  assertProtectedTerms(terms);
   const cwd = options.cwd ?? process.cwd();
   const config = createConfigFileOperations({ cwd }).read();
   const filePath = resolveGlobalProtectedTermsFilePath(config, cwd);
@@ -48,6 +137,7 @@ export function setCollectionProtectedTerms(
   terms: string[],
   options: SetProtectedTermsOptions = {},
 ): SetProtectedTermsResult {
+  assertProtectedTerms(terms);
   const cwd = options.cwd ?? process.cwd();
   const config = createConfigFileOperations({ cwd }).read();
   const collection = config.collections?.[collectionName];

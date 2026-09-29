@@ -37,10 +37,10 @@ import type {
   TokenCasingDto,
 } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
+import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { segmentValidator } from '../../shared/validators/segment.validator';
-import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from '../store/collections.store';
+import { submitDialogConfigWrite, type ConfigRefusal } from '../store/dialog-config-submit';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { SegmentedControl, type SegmentOption } from './segmented-control';
 
@@ -127,7 +127,6 @@ const stripDotSlash = (path: string): string => path.replace(/^\.\//, '').replac
 export class BundleFormDialog {
   readonly #dialogRef = inject(MatDialogRef<BundleFormDialog, BundleFormResult | undefined>);
   readonly #data = inject<BundleFormDialogData>(MAT_DIALOG_DATA);
-  readonly #api = inject(CollectionsApiService);
   readonly #destroyRef = inject(DestroyRef);
   readonly #transloco = inject(TranslocoService);
   readonly store = inject(CollectionsStore);
@@ -514,15 +513,6 @@ export class BundleFormDialog {
     this.#save(result);
   }
 
-  /**
-   * Writes the bundle through the store and closes with the result once the server has
-   * accepted it. A rejection keeps the dialog open with what was typed: a taken name lands
-   * on the name field, anything else in the errors above the footer.
-   *
-   * The dialog cannot be closed while the write is in flight (Cancel, the close icon, Esc and
-   * the backdrop are all off): closing would destroy it and cancel the subscription, so the
-   * outcome of a write the server may already have made would be lost.
-   */
   #save(result: BundleFormResult): void {
     const existingName = this.isEditMode ? this.#data.name : undefined;
     const write =
@@ -533,22 +523,19 @@ export class BundleFormDialog {
             bundle: result.bundle,
           });
 
-    const disableClose = this.#dialogRef.disableClose;
-    this.saving.set(true);
-    this.#dialogRef.disableClose = true;
-    write.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe({
-      next: () => this.#dialogRef.close(result),
-      error: (error: unknown) => {
-        this.saving.set(false);
-        this.#dialogRef.disableClose = disableClose;
-        this.#showRejection(error, result.name);
-      },
+    submitDialogConfigWrite({
+      dialogRef: this.#dialogRef,
+      write,
+      saving: this.saving,
+      result,
+      destroyRef: this.#destroyRef,
+      onRefusal: (refusal) => this.#showRejection(refusal, result.name),
     });
   }
 
-  #showRejection(error: unknown, name: string): void {
+  #showRejection(refusal: ConfigRefusal, name: string): void {
     const nameControl = this.form.controls.name;
-    if (error instanceof ApiError && error.kind === 'conflict' && nameControl.enabled) {
+    if (refusal.kind === 'conflict' && nameControl.enabled) {
       // Validation state, not `setErrors`: showing the Output section re-attaches the
       // control, which re-validates it and would wipe an error set by hand.
       this.#serverTakenName = name;
@@ -557,13 +544,14 @@ export class BundleFormDialog {
       this.activate('output');
       return;
     }
-    // An invalid definition carries every rule message the server found as `details`.
-    const details =
-      error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
+    // Keep server rule messages even when the API classifies the refusal as conflict or other.
+    const details = refusal.details.filter((item): item is string => typeof item === 'string');
     const fallback = this.isEditMode
       ? TRACKER_TOKENS.BUNDLES.TOAST.UPDATEFAILED
       : TRACKER_TOKENS.BUNDLES.TOAST.CREATEFAILED;
-    this.submitErrors.set(details.length > 0 ? details : [apiErrorMessage(error, this.#transloco.translate(fallback))]);
+    this.submitErrors.set(
+      details.length > 0 ? details : [apiErrorMessage(refusal.error, this.#transloco.translate(fallback))],
+    );
   }
 
   // ───────────────────────────── private ─────────────────────────────
@@ -689,7 +677,7 @@ export class BundleFormDialog {
             return of({ status: 'waiting' as const, result: undefined });
           }
           this.previewStatus.update((status) => (status === 'ready' ? status : 'loading'));
-          return this.#api.dryRunBundle(request).pipe(
+          return this.store.dryRunBundle(request).pipe(
             map((result) => ({ status: 'ready' as const, result })),
             catchError(() => of({ status: 'error' as const, result: undefined })),
           );

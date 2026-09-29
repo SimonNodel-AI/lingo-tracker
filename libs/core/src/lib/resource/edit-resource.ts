@@ -5,14 +5,14 @@ import {
   type TranslationStatus,
   translocoToICU,
 } from '@simoncodes-ca/domain';
-import type { Collection } from '../lib/config/open-collection';
-import { readProjectTerms, type TerminologyFindings } from '../lib/config/project-terms';
-import { ResourceAlreadyExistsError, ResourceNotFoundError } from '../lib/errors/lingo-tracker-error';
-import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
-import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
-import { openResourceFolder } from '../lib/resource/resource-folder';
-import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
-import type { OpenTranslatorOptions } from '../lib/translation/translator';
+import type { Collection } from '../config/open-collection';
+import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
+import { ResourceAlreadyExistsError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import type { ResourceTreeEntry } from './load-resource-tree';
+import { validateAndResolvePaths } from './resource-file-paths';
+import { openResourceFolder } from './resource-folder';
+import { type ResourceMutation, upsertMutation } from './resource-mutation';
+import type { OpenTranslatorOptions } from '../translation/translator';
 import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
 import { relocateEntries } from './relocate-entries';
 

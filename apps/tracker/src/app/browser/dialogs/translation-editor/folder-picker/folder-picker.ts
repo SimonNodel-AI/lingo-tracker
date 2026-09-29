@@ -19,6 +19,12 @@ import { TranslocoService } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../../shared/api-error/api-error';
 import { TranslocoPipe } from '@jsverse/transloco';
+import {
+  collectAncestorPaths,
+  collectVisibleFolderPaths,
+  parentFolderPath,
+  toggleExpandedPath,
+} from '../../../store/folder-tree.utils';
 
 /**
  * Folder picker component for the Translation Editor Dialog.
@@ -102,12 +108,7 @@ export class FolderPicker implements OnInit {
         // Note: we intentionally don't emit folderConfirmed here because the
         // parent dialog already has the correct path from its data.
         // Expand all ancestor segments so the current path is visible
-        const segments = currentPath.split('.');
-        const pathsToExpand = new Set<string>();
-        for (let i = 0; i < segments.length; i++) {
-          pathsToExpand.add(segments.slice(0, i + 1).join('.'));
-        }
-        this.expandedPaths.set(pathsToExpand);
+        this.expandedPaths.set(new Set([...collectAncestorPaths(currentPath), currentPath]));
       }
     }
   }
@@ -152,7 +153,7 @@ export class FolderPicker implements OnInit {
 
     this.isCreatingFolder.set(true);
 
-    this.#store.createFolderAt(folderName, parentPath || null).subscribe({
+    this.#store.createFolder(folderName, parentPath || null).subscribe({
       next: (response) => {
         this.isCreatingFolder.set(false);
         this.isAddingFolder.set(false);
@@ -194,19 +195,11 @@ export class FolderPicker implements OnInit {
   }
 
   onExpandToggle(folderPath: string): void {
-    this.expandedPaths.update((expanded) => {
-      const newSet = new Set(expanded);
-      if (newSet.has(folderPath)) {
-        newSet.delete(folderPath);
-      } else {
-        newSet.add(folderPath);
-      }
-      return newSet;
-    });
+    this.expandedPaths.update((expanded) => toggleExpandedPath(expanded, folderPath));
   }
 
   onTreeKeydown(event: KeyboardEvent): void {
-    const visiblePaths = this.#getVisibleFolderPaths();
+    const visiblePaths = collectVisibleFolderPaths(this.rootFolders(), this.expandedPaths());
     if (visiblePaths.length === 0) {
       return;
     }
@@ -253,7 +246,7 @@ export class FolderPicker implements OnInit {
               return newSet;
             });
           } else {
-            const parentPath = this.#getParentPath(currentFocus);
+            const parentPath = parentFolderPath(currentFocus);
             if (parentPath !== null) {
               this.focusedPath.set(parentPath);
             }
@@ -269,30 +262,5 @@ export class FolderPicker implements OnInit {
         }
         break;
     }
-  }
-
-  #getVisibleFolderPaths(): string[] {
-    const paths: string[] = [];
-    const expanded = this.expandedPaths();
-
-    const collectPaths = (folders: FolderNodeDto[], _parentPath = ''): void => {
-      for (const folder of folders) {
-        paths.push(folder.fullPath);
-        if (expanded.has(folder.fullPath) && folder.loaded && folder.tree?.children) {
-          collectPaths(folder.tree.children, folder.fullPath);
-        }
-      }
-    };
-
-    collectPaths(this.rootFolders());
-    return paths;
-  }
-
-  #getParentPath(path: string): string | null {
-    const lastDotIndex = path.lastIndexOf('.');
-    if (lastDotIndex === -1) {
-      return null;
-    }
-    return path.substring(0, lastDotIndex);
   }
 }

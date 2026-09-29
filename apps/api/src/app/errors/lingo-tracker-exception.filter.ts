@@ -16,6 +16,7 @@ import { BaseExceptionFilter } from '@nestjs/core';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
+  CannotTranslateBaseLocaleError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
   CollectionAlreadyExistsError,
@@ -23,6 +24,7 @@ import {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
   InvalidCollectionError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -30,6 +32,7 @@ import {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileNotSetError,
@@ -90,10 +93,13 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   }
   if (
     error instanceof InvalidResourceKeyError ||
+    error instanceof InvalidBundleLocalesError ||
     error instanceof InvalidLocaleError ||
     error instanceof LocaleNotFoundError ||
     error instanceof LocaleAlreadyExistsError ||
     error instanceof BaseLocaleImmutableError ||
+    error instanceof CannotTranslateBaseLocaleError ||
+    error instanceof TranslationLocaleNotConfiguredError ||
     error instanceof InvalidCollectionError ||
     error instanceof ProtectedTermsFileNotSetError ||
     error instanceof ParentDirectoryMissingError

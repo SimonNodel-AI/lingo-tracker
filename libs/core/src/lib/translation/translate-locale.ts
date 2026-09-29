@@ -14,6 +14,7 @@
 
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
+import { CannotTranslateBaseLocaleError, TranslationLocaleNotConfiguredError } from '../errors/lingo-tracker-error';
 import { readCollection } from '../resource/read-collection';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
@@ -105,6 +106,17 @@ function writeTranslatedValues(
 // Main export
 // ---------------------------------------------------------------------------
 
+/** Checks whether a collection can start a job to translate this target locale. */
+export function assertCanTranslateLocale(collection: Collection, locale: string): void {
+  assertAutoTranslationEnabled(collection);
+  if (locale === collection.baseLocale) {
+    throw new CannotTranslateBaseLocaleError(locale);
+  }
+  if (!collection.locales.includes(locale)) {
+    throw new TranslationLocaleNotConfiguredError(locale, collection.locales);
+  }
+}
+
 /**
  * Translates every resource of `collection` that needs work for `targetLocale`, writing the
  * results back to disk with status `translated` (values ICU-normalised by the Translator).
@@ -125,6 +137,8 @@ function writeTranslatedValues(
  *   `protectedTerms` to use instead of the collection's (see {@link openTranslator}).
  * @returns A summary of how many resources were translated, skipped, or failed.
  * @throws {AutoTranslationDisabledError} The collection has no enabled translation config (checked first).
+ * @throws {CannotTranslateBaseLocaleError} The target is the collection's base locale.
+ * @throws {TranslationLocaleNotConfiguredError} The target is not configured for the collection.
  * @throws {TranslationError} There is work, no provider was injected, and the API key env var is unset
  *   (`MISSING_API_KEY`).
  * @throws {ProtectedTermsFileError} There is work and a protected-terms file is malformed.
@@ -135,7 +149,7 @@ export async function translateLocale(
 ): Promise<TranslateLocaleResult> {
   const { targetLocale, onProgress } = params;
   const { baseLocale, translationsFolder } = collection;
-  assertAutoTranslationEnabled(collection);
+  assertCanTranslateLocale(collection, targetLocale);
 
   const { resources, problems } = readCollection(collection);
   const warnings = problems.map(

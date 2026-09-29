@@ -4,7 +4,6 @@ import { validateCommand } from './validate';
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
-    // Collection resolution runs for real against the mocked config.
     loadConfig: vi.fn(),
     openCollection: actual.openCollection,
     ConfigNotFoundError: actual.ConfigNotFoundError,
@@ -12,23 +11,13 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CollectionNotFoundError: actual.CollectionNotFoundError,
     ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
     CONFIG_FILENAME: '.lingo-tracker.json',
-    validateResources: vi.fn(),
-    generateValidationSummary: vi.fn(),
-    describeTermFileProblem: actual.describeTermFileProblem,
-    readProjectTerms: vi.fn(() => ({
-      protectedTerms: [],
-      preferredTerminology: [],
-      problems: [],
-      checkBaseValue: () => ({ findings: [], problems: [] }),
-    })),
+    runValidate: vi.fn(),
   };
 });
 
 import * as core from '@simoncodes-ca/core';
 
-const mockValidateResources = vi.mocked(core.validateResources);
-const mockGenerateValidationSummary = vi.mocked(core.generateValidationSummary);
-
+const mockRunValidate = vi.mocked(core.runValidate);
 const CONFIG = {
   exportFolder: 'dist/lingo-export',
   importFolder: 'dist/lingo-import',
@@ -37,13 +26,26 @@ const CONFIG = {
   collections: { common: { translationsFolder: 'translations/common' } },
 };
 
-/** The ICU options `validateResources` was called with. */
-function icuOptions() {
-  return mockValidateResources.mock.calls[0]?.[1].icu;
-}
+const success = {
+  status: 'complete' as const,
+  summary: 'summary',
+  warnings: [],
+  validation: {
+    totalResourcesValidated: 0,
+    totalUniqueKeys: 0,
+    localesValidated: 2,
+    collectionsValidated: 1,
+    statusCounts: { new: 0, translated: 0, stale: 0, verified: 0 },
+    failures: [],
+    warnings: [],
+    successes: [],
+    passed: true,
+  },
+};
 
-describe('validateCommand ICU options', () => {
+describe('validateCommand ICU flag forwarding', () => {
   const originalLog = console.log;
+  const originalWarn = console.warn;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -51,84 +53,71 @@ describe('validateCommand ICU options', () => {
     console.warn = vi.fn();
     process.env.INIT_CWD = '/project';
     process.exitCode = undefined;
-
     vi.mocked(core.loadConfig).mockReturnValue(CONFIG);
-    mockGenerateValidationSummary.mockReturnValue('summary');
-    mockValidateResources.mockReturnValue({
-      totalResourcesValidated: 0,
-      totalUniqueKeys: 0,
-      localesValidated: 2,
-      collectionsValidated: 1,
-      statusCounts: { new: 0, translated: 0, stale: 0, verified: 0 },
-      failures: [],
-      warnings: [],
-      successes: [],
-      passed: true,
-    });
+    mockRunValidate.mockReturnValue(success);
   });
 
   afterEach(() => {
     console.log = originalLog;
+    console.warn = originalWarn;
     process.exitCode = undefined;
   });
 
-  it('checks ICU by default', async () => {
+  it('passes default options to the Validate Run', async () => {
     await validateCommand({});
-
-    expect(icuOptions()).toBeDefined();
+    expect(mockRunValidate).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({}));
+    expect(console.log).toHaveBeenCalledWith('summary');
   });
 
-  it('leaves base-locale compilation to each collection in core', async () => {
+  it('passes opened collections with their own base locales', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue({
+      ...CONFIG,
+      collections: {
+        common: { translationsFolder: 'translations/common' },
+        other: { translationsFolder: 'translations/other', baseLocale: 'en-GB' },
+      },
+    });
     await validateCommand({});
-
-    // Core compiles each collection's base values under that collection's own base locale.
-    expect(icuOptions()).not.toHaveProperty('baseLocale');
+    expect(mockRunValidate.mock.calls[0]?.[0]).toEqual([
+      expect.objectContaining({ name: 'common', baseLocale: 'en' }),
+      expect.objectContaining({ name: 'other', baseLocale: 'en-GB' }),
+    ]);
   });
 
-  it('leaves the portability rule off unless asked', async () => {
+  it('does not request portability by default', async () => {
     await validateCommand({});
-
-    expect(icuOptions()?.requirePortablePlurals).toBe(false);
+    expect(mockRunValidate.mock.calls[0]?.[1].requirePortablePlurals).toBeUndefined();
   });
 
-  it('enables the portability rule on request', async () => {
+  it('forwards a portability request', async () => {
     await validateCommand({ requirePortablePlurals: true });
-
-    expect(icuOptions()?.requirePortablePlurals).toBe(true);
+    expect(mockRunValidate.mock.calls[0]?.[1].requirePortablePlurals).toBe(true);
   });
 
-  it('compiles values by default', async () => {
+  it('leaves ICU enabled by default', async () => {
     await validateCommand({});
-
-    expect(icuOptions()?.compileValues).toBe(true);
+    expect(mockRunValidate.mock.calls[0]?.[1].skipIcu).toBeUndefined();
   });
 
-  it('skips ICU checking entirely when asked', async () => {
+  it('forwards --skip-icu', async () => {
     await validateCommand({ skipIcu: true });
-
-    expect(icuOptions()).toBeUndefined();
+    expect(mockRunValidate.mock.calls[0]?.[1].skipIcu).toBe(true);
   });
 
-  it('still runs the portability rule alongside --skip-icu, since it only parses', async () => {
+  it('forwards portability alongside --skip-icu', async () => {
     await validateCommand({ skipIcu: true, requirePortablePlurals: true });
-
-    expect(icuOptions()?.requirePortablePlurals).toBe(true);
-    expect(icuOptions()?.compileValues).toBe(false);
+    expect(mockRunValidate.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ skipIcu: true, requirePortablePlurals: true }),
+    );
   });
 
-  it('keeps --skip-locales a statement about target locales only', async () => {
-    // The base locale is not a target locale, so skipping it is a no-op —
-    // the ICU pass still covers the source value every translation copies.
+  it('passes a base locale in --skip-locales for core to partition', async () => {
     await validateCommand({ skipLocales: ['en'] });
-
-    expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual([]);
-    expect(mockValidateResources.mock.calls[0]?.[0]?.[0]?.targetLocales).toEqual(['fr', 'es']);
+    expect(mockRunValidate.mock.calls[0]?.[1].skipLocales).toEqual(['en']);
   });
 
-  it('does not check a skipped target locale', async () => {
+  it('passes a target locale in --skip-locales for core to partition', async () => {
     await validateCommand({ skipLocales: ['es'] });
-
-    expect(mockValidateResources.mock.calls[0]?.[1].skippedLocales).toEqual(['es']);
-    expect(mockValidateResources.mock.calls[0]?.[0]?.[0]?.targetLocales).toEqual(['fr', 'es']);
+    expect(mockRunValidate.mock.calls[0]?.[1].skipLocales).toEqual(['es']);
   });
 });

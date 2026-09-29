@@ -1,6 +1,6 @@
 import { dirname } from 'node:path';
 import { findProtectedTermViolations, resolveImportStatus, type TranslationStatus } from '@simoncodes-ca/domain';
-import { calculateChecksum } from '../../resource/checksum';
+import { calculateChecksum } from '../resource/checksum';
 import type { ProjectTerms } from '../config/project-terms';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { determineNewResourceStatus, honouredSourceStatus } from './determine-status';

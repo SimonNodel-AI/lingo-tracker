@@ -2,8 +2,7 @@ import { Pipe, type PipeTransform, inject } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 import { escapeRegExp } from '@simoncodes-ca/domain';
 import { truncateKey } from '../utils/truncate-key';
-
-const MINIMUM_SEARCH_LENGTH = 3;
+import { hasSearchLength } from '../search/search-minimum';
 
 const HTML_ESCAPES: Record<string, string> = {
   '&': '&amp;',
@@ -82,7 +81,7 @@ export class KeyMarkupPipe implements PipeTransform {
       part === 'head' ? [0, splitIndex] : part === 'tail' ? [splitIndex, text.length] : [0, text.length];
 
     const term = searchTerm ?? '';
-    const matches = term.length < MINIMUM_SEARCH_LENGTH ? [] : this.#matchRanges(text, term);
+    const matches = hasSearchLength(term) ? this.#matchRanges(text, term) : [];
     const breaks = new Set([...text.matchAll(BREAK_POINTS)].map((match) => match.index ?? 0));
 
     let html = '';

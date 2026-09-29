@@ -8,6 +8,7 @@ import { CdkDragHandle } from '@angular/cdk/drag-drop';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { KeyMarkupPipe, hasKeyLeaf } from '../../../../shared/pipes/key-markup.pipe';
+import { hasSearchLength } from '../../../../shared/search/search-minimum';
 import { TagList } from '../../../../shared/tag-list/tag-list.component';
 import { TranslationRollup } from './translation-rollup';
 import type { RowView } from './row-view';
@@ -47,9 +48,6 @@ import { TranslationListStore } from '../store/translation-list.store';
 export class TranslationItemHeader {
   readonly #browserStore = inject(BrowserStore);
   readonly #listStore = inject(TranslationListStore);
-
-  /** Active collection name — always set when this component is rendered. */
-  readonly #collectionName = computed(() => this.#browserStore.selectedCollection() ?? '');
 
   /** The resource: its key, comment and tags, and what the row actions act on. */
   translation = input.required<ResourceSummaryDto>();
@@ -167,7 +165,7 @@ export class TranslationItemHeader {
     const query = this.searchQuery();
     const commentText = this.comment();
 
-    if (!query || !commentText || query.length < 3) {
+    if (!query || !commentText || !hasSearchLength(query)) {
       return false;
     }
 
@@ -175,7 +173,7 @@ export class TranslationItemHeader {
   });
 
   onCopyKey(): void {
-    this.#listStore.copyKey(this.fullKey());
+    this.#listStore.copyKey(this.translation());
   }
 
   /**
@@ -219,11 +217,11 @@ export class TranslationItemHeader {
   }
 
   onDelete(): void {
-    this.#listStore.deleteTranslation(this.translation(), this.#collectionName());
+    void this.#listStore.deleteTranslation(this.translation());
   }
 
   onTranslate(): void {
-    this.#listStore.translateResource(this.translation(), this.#collectionName());
+    this.#listStore.translateResource(this.translation());
   }
 
   onCommentClick(event: MouseEvent): void {

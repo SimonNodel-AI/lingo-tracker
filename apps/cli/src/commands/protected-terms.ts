@@ -1,17 +1,11 @@
-import { relative } from 'node:path';
 import {
+  displayTermPath,
+  editProtectedTerms,
   loadConfig,
-  openCollection,
-  readCollectionProtectedTerms,
-  readGlobalProtectedTerms,
-  resolveCollectionProtectedTermsFilePath,
-  resolveGlobalProtectedTermsFilePath,
-  setCollectionProtectedTerms,
+  readProtectedTermsTarget,
   setCollectionProtectedTermsFile,
-  setGlobalProtectedTerms,
   setGlobalProtectedTermsFile,
 } from '@simoncodes-ca/core';
-import { effectiveProtectedTerms, normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -25,15 +19,9 @@ export interface ProtectedTermsOptions {
   file?: string;
 }
 
-/** Renders an absolute path relative to the project root, for readable output. */
-function displayPath(filePath: string, cwd: string): string {
-  const rel = relative(cwd, filePath);
-  return rel && !rel.startsWith('..') ? rel : filePath;
-}
-
 export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
   name: 'Protected terms',
-  // `--collection` is optional here: absent means the global scope, so the runner opens nothing.
+  // `--collection` is optional: absent means the global scope, so the runner opens nothing.
   collection: 'none',
   run: async ({ config, cwd, answers: options }) => {
     const hasAdd = (options.add ?? []).length > 0;
@@ -45,92 +33,56 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
     if (hasSet && (hasAdd || hasRemove)) {
       throw new Error('--set cannot be combined with --add or --remove');
     }
-
     if (!hasAdd && !hasRemove && !hasSet && !hasList && !hasFile) {
       throw new Error('Provide at least one of --add, --remove, --set, --list, or --file');
     }
 
     const collectionName = options.collection;
-    if (collectionName) {
-      // Throws CollectionNotFoundError, which the runner reports (exit 1).
-      openCollection(config, collectionName, { cwd });
-    }
+    const target = { collection: collectionName };
 
-    // --file runs first so a combined `--file x.json --add Foo` points at the new file, then writes to it.
+    // --file runs first so --file x.json --add Foo writes Foo into the new file.
     if (hasFile) {
-      const pointer = options.file?.trim() ? options.file.trim() : undefined;
-      const result = collectionName
+      const pointer = options.file?.trim() || undefined;
+      const change = collectionName
         ? setCollectionProtectedTermsFile(collectionName, pointer, { cwd })
         : setGlobalProtectedTermsFile(pointer, { cwd });
-      ConsoleFormatter.success(result.message);
+      ConsoleFormatter.success(change.message);
     }
 
-    // Re-read after a pointer change so subsequent reads and writes target the new file.
+    // Re-read only after a pointer change; otherwise use the config already loaded by the runner.
     const currentConfig = hasFile ? loadConfig({ cwd }) : config;
-    const currentCollection = collectionName ? currentConfig.collections?.[collectionName] : undefined;
-
-    const global = readGlobalProtectedTerms(currentConfig, cwd);
-    const own = currentCollection ? readCollectionProtectedTerms(currentCollection, cwd) : { terms: [] };
-    const globalTerms = global.terms;
-    const collectionTerms = own.terms;
-    // A named file that does not exist reads as empty; say so, since the pointer is usually a typo.
-    for (const warning of new Set([global.warning, own.warning])) {
-      if (warning !== undefined) ConsoleFormatter.warning(warning);
-    }
-
-    const globalFile = resolveGlobalProtectedTermsFilePath(currentConfig, cwd);
-    const collectionFile = currentCollection
-      ? resolveCollectionProtectedTermsFilePath(currentCollection, cwd)
-      : undefined;
+    const view = readProtectedTermsTarget(currentConfig, target, cwd);
+    // A named file that does not exist reads as empty; print its warning before a later write can fail.
+    for (const warning of view.warnings) ConsoleFormatter.warning(warning);
 
     if (hasList) {
       ConsoleFormatter.section('Protected Terms');
       if (collectionName) {
         ConsoleFormatter.keyValue('Scope', `Collection "${collectionName}" (global + collection)`);
-        ConsoleFormatter.keyValue('Global file', displayPath(globalFile, cwd));
-        ConsoleFormatter.keyValue('Global', globalTerms.length > 0 ? globalTerms.join(', ') : '(none)');
-        ConsoleFormatter.keyValue('Collection file', collectionFile ? displayPath(collectionFile, cwd) : '(none)');
+        ConsoleFormatter.keyValue('Global file', displayTermPath(view.globalFilePath, cwd));
+        ConsoleFormatter.keyValue('Global', view.globalTerms.join(', ') || '(none)');
         ConsoleFormatter.keyValue(
-          'Collection-specific',
-          collectionTerms.length > 0 ? collectionTerms.join(', ') : '(none)',
+          'Collection file',
+          view.collectionFilePath ? displayTermPath(view.collectionFilePath, cwd) : '(none)',
         );
-        ConsoleFormatter.keyValue(
-          'Effective',
-          effectiveProtectedTerms(globalTerms, collectionTerms).join(', ') || '(none)',
-        );
+        ConsoleFormatter.keyValue('Collection-specific', view.collectionTerms.join(', ') || '(none)');
+        ConsoleFormatter.keyValue('Effective', view.effectiveTerms.join(', ') || '(none)');
       } else {
         ConsoleFormatter.keyValue('Scope', 'Global');
-        ConsoleFormatter.keyValue('File', displayPath(globalFile, cwd));
-        ConsoleFormatter.keyValue('Terms', globalTerms.length > 0 ? globalTerms.join(', ') : '(none)');
+        ConsoleFormatter.keyValue('File', displayTermPath(view.globalFilePath, cwd));
+        ConsoleFormatter.keyValue('Terms', view.globalTerms.join(', ') || '(none)');
       }
     }
 
     if (hasAdd || hasRemove || hasSet) {
-      let next = collectionName ? [...collectionTerms] : [...globalTerms];
-
-      if (hasSet) {
-        next = normalizeProtectedTerms((options.set ?? '').split(','));
-      } else {
-        for (const term of normalizeProtectedTerms(options.add ?? [])) {
-          if (!next.includes(term)) {
-            next.push(term);
-          }
-        }
-        const toRemove = normalizeProtectedTerms(options.remove ?? []);
-        next = next.filter((t) => !toRemove.includes(t));
-      }
-
-      const result = collectionName
-        ? setCollectionProtectedTerms(collectionName, next, { cwd })
-        : setGlobalProtectedTerms(next, { cwd });
-
+      const result = editProtectedTerms(target, view, options, { cwd });
       const scopeLabel = collectionName ? `Collection "${collectionName}"` : 'Global';
-      const where = `(${displayPath(result.filePath, cwd)})`;
-      if (next.length === 0) {
-        ConsoleFormatter.success(`${scopeLabel} protected terms cleared ${where}`);
-      } else {
-        ConsoleFormatter.success(`${scopeLabel} protected terms updated: ${next.join(', ')} ${where}`);
-      }
+      const where = `(${displayTermPath(result.filePath, cwd)})`;
+      ConsoleFormatter.success(
+        result.terms.length === 0
+          ? `${scopeLabel} protected terms cleared ${where}`
+          : `${scopeLabel} protected terms updated: ${result.terms.join(', ')} ${where}`,
+      );
     }
   },
 });

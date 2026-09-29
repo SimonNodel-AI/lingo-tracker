@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addResource } from '../../resource/add-resource';
+import { addResource } from '../resource/add-resource';
 import type { Collection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
+import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { moveFolder } from './move-folder';
 
 function collection(translationsFolder: string): Collection {
@@ -78,6 +79,48 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.foldersDeleted).toBe(0);
     expect(readFileSync(join(root, 'apps', 'bad', 'resource_entries.json'), 'utf8')).toBe(entries);
+  });
+});
+
+describe('moveFolder to the root without nesting (real fs)', () => {
+  const root = useTempDir('move-folder-root-depth-');
+
+  it('treats a depth-one source as already at the root and moves nothing', async () => {
+    const source = collection(root());
+    await addResource(source, { key: 'apps.one', baseValue: 'One' });
+
+    const result = await moveFolder(source, {
+      sourceFolderPath: 'apps',
+      destinationFolderPath: '',
+      nestUnderDestination: false,
+    });
+
+    expect(result.warnings).toEqual(['Folder is already at this location. No move performed.']);
+    expect(result.errors).toEqual([]);
+    expect(result.movedCount).toBe(0);
+    expect(result.mutations).toEqual([]);
+    expect(openResourceFolder(join(root(), 'apps')).get('one')?.entry.source).toBe('One');
+  });
+
+  it('nests a depth-two source under the root', async () => {
+    const source = collection(root());
+    await addResource(source, { key: 'apps.deep.one', baseValue: 'One' });
+
+    const result = await moveFolder(source, {
+      sourceFolderPath: 'apps.deep',
+      destinationFolderPath: '',
+      nestUnderDestination: false,
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.movedCount).toBe(1);
+    expect(openResourceFolder(join(root(), 'deep')).get('one')?.entry.source).toBe('One');
+    expect(existsSync(join(root(), 'apps', 'deep'))).toBe(false);
+    expect(result.mutations.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
+      ['remove', 'apps.deep.one'],
+      ['upsert', 'deep.one'],
+      ['remove-folder', ''],
+    ]);
   });
 });
 

@@ -47,18 +47,6 @@ libs/core/src/
 │   ├── lingo-tracker-collection.ts # Collection config (incl. protectedTermsFile pointer)
 │   └── translation-config.ts     # TranslationConfig (provider name, API key env var)
 │
-├── resource/                     # Resource CRUD on an opened Collection — reads/writes resource_entries.json + tracker_meta.json
-│   ├── add-resource.ts           # addResource(): create or overwrite a single entry
-│   ├── edit-resource.ts          # editResource(): update value, comment, tags, or locale values; moveTo moves the entry
-│   ├── locale-seeding.ts         # seedLocales(): what target locales get when a base value is written
-│   ├── delete-resource.ts        # deleteResource(): remove one or more entries by key
-│   ├── move-resource.ts          # moveResource(): rename/relocate entries (single or wildcard)
-│   ├── relocate-entries.ts       # relocateEntries(): the Entry Relocation every move goes through
-│   ├── checksum.ts               # calculateChecksum(): MD5 via node:crypto
-│   ├── resource-entry.ts         # ResourceEntry, ResourceEntries interfaces
-│   ├── resource-entry-metadata.ts # ResourceEntryMetadata interface
-│   └── tracker-metadata.ts       # TrackerMetadata interface
-│
 ├── collections-manager/          # Collection-level operations (create / delete / update in config)
 │   ├── add-collection.ts         # addCollection(): one config write through the Collection Entry
 │   ├── delete-collection-by-name.ts # deleteCollectionByName()
@@ -133,7 +121,14 @@ libs/core/src/
     │   ├── translate-locale.ts           # translateLocale(): translate one locale of a collection in batches
     │   └── placeholder-protector.ts      # protectPlaceholders() / restorePlaceholders()
     │
-    ├── resource/                 # One folder's files, and the read models built on them
+    ├── resource/                 # Resource CRUD, Folder Address, folder files, and collection read models
+    │   ├── folder-address.ts     # validate, resolve and check folder addresses
+    │   ├── add-resource.ts       # addResource()
+    │   ├── edit-resource.ts      # editResource()
+    │   ├── delete-resource.ts    # deleteResource()
+    │   ├── move-resource.ts      # moveResource()
+    │   ├── relocate-entries.ts   # Entry Relocation used by moves
+    │   ├── checksum.ts           # MD5 checksums
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
     │   ├── iterative-folder-walker.ts # walkFolders(): depth-ordered directory traversal (hidden folders skipped)
     │   ├── collection-folders.ts # walkCollectionFolders(): which folders belong to a collection (reader and sweep)
@@ -168,7 +163,6 @@ graph TD
     end
 
     subgraph core["@simoncodes-ca/core root modules"]
-        RESOURCE["resource/\nadd · edit · delete · move"]
         COLLECTIONS["collections-manager/\nadd · delete · update"]
         CONFIG_ROOT["config/\nLingoTrackerConfig\nTranslationConfig"]
     end
@@ -184,14 +178,14 @@ graph TD
         FILEIO["file-io/\nreadJsonFile · writeJsonFile\nensureDirectoryExists"]
         CONFIG_LIB["config/\nloadConfig · openCollection\ncreateConfigFileOperations"]
         ERRORS["errors/\nErrorMessages"]
-        RESOURCE_LIB["resource/\nresource-folder · read-collection\ncollection-sweep · resource-file-paths\nload-resource-tree · search"]
+        RESOURCE_LIB["resource/\nadd · edit · delete · move\nFolder Address · resource-folder\nread-collection · collection-sweep\nload-resource-tree · search"]
     end
 
     subgraph domain["@simoncodes-ca/domain (peer)"]
         DOMAIN["validateKey · resolveResourceKey\nsplitResolvedKey · translocoToICU\nicuToTransloco · classifyICUContent\napplyBaseChange · recordTranslation"]
     end
 
-    CLI --> RESOURCE
+    CLI --> RESOURCE_LIB
     CLI --> COLLECTIONS
     CLI --> BUNDLE
     CLI --> IMPORT
@@ -199,7 +193,7 @@ graph TD
     CLI --> VALIDATE
     CLI --> NORMALIZE
 
-    API --> RESOURCE
+    API --> RESOURCE_LIB
     API --> COLLECTIONS
     API --> BUNDLE
     API --> IMPORT
@@ -207,10 +201,7 @@ graph TD
     API --> VALIDATE
     API --> NORMALIZE
 
-    RESOURCE --> FILEIO
-    RESOURCE --> RESOURCE_LIB
-    RESOURCE --> TRANSLATION
-    RESOURCE --> DOMAIN
+    RESOURCE_LIB --> TRANSLATION
 
     BUNDLE --> FILEIO
     BUNDLE --> RESOURCE_LIB
@@ -262,7 +253,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 | Group | What it holds |
 |---|---|
-| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition` (the definition type, its validators, `bundleOutputFile` and `hasTypeDistConfigured` are domain names). Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks. Also `normalize`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`. |
+| Operations | The entry points the apps call. Resources: `addResource`, `editResource`, `deleteResource`, `moveResource`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition` (the definition type, its validators, `bundleOutputFile` and `hasTypeDistConfigured` are domain names). Import: `importResources` and its adapters. Export: `runExport`, `exportTargetLocales`, the export argument checks. Validate: `runValidate`. Also `normalize`, `assertCanTranslateLocale`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`. |
 | Translator | Only the types in the translate operations' signatures: `OpenTranslatorOptions` (the optional `{ provider?, protectedTerms? }` of `addResource`, `editResource`, `translateExistingResource`, `translateLocale`) and the `TranslationProvider` seam (`TranslateRequest`, `TranslateResult`, `ProviderCapabilities`). `openTranslator`, the `Translator` types and `InMemoryTranslationProvider` stay internal to core (the translation barrel), because no app uses them. See [Auto-Translation Pipeline](#auto-translation-pipeline). |
 | Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, ...; `LingoTrackerConfig.bundles` holds domain `BundleDefinition`s), and the protected-terms and preferred-terminology file readers and writers. |
 | Project Terms | `readProjectTerms` (the CLI's `validate`), `TerminologyFindings` (the `terminology` of `addResource` / `editResource`), `describeTermFileProblem` (`validate` prints the problems). See [Project Terms](#project-terms). |
@@ -272,7 +263,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 | Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
 | Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
 
-Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the [Bundle Selection](#bundle-selection) and the other bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
+Each sub-module with a barrel (`collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the [Bundle Selection](#bundle-selection) and the other bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
 
 ---
 
@@ -287,7 +278,7 @@ The fallback rule lives only in `openCollection`. The collection operations in `
 
 The write side is the [Collection Entry](glossary.md#collection-entry) (`lib/config/collection-entry.ts`): three pure functions over the in-memory config that decide what a collection's record contains. `toCollectionEntry(config, collection)` builds the minimal record: `translationsFolder` (trimmed; blank is `InvalidCollectionError`), then only what differs from the global config (`exportFolder`, `importFolder`, `baseLocale`, `locales` compared as ordered lists), `translation` verbatim (a per-collection override is never diffed against the global block), `readOnly` only when true, normalized non-empty `tags`, a trimmed non-empty `protectedTermsFile`. A blank `exportFolder`, `importFolder` or `baseLocale` is not stored (the collection inherits), and a field set to `null` (possible in a JSON body, not in the type) is `InvalidCollectionError`. The rule for every field is listed once in a record keyed by the `LingoTrackerCollection` type, so a new field is a compile error until its rule exists. `addCollectionEntry(config, name, collection)` refuses a taken name and, when `readOnly` is left unset, marks a folder under `node_modules` read-only (the domain `isUnderNodeModules`). An empty `locales` list is dropped too: it means inherit, since `openCollection` falls back to the global list only when the key is absent. `patchCollectionEntry(config, name, patch, newName?)` refuses an unknown name and a rename onto a taken one, merges `patch` over the stored record (a field the patch sets wins, so `tags: []`, `readOnly: false`, `locales: []`, or `''` for `exportFolder`, `importFolder`, `baseLocale` or `protectedTermsFile` clear a setting; a field left out or `undefined` keeps its stored value; `translation` has no empty value, since a `TranslationConfig` needs `enabled`, `provider` and `apiKeyEnv`, so a patch replaces the override but cannot clear it), rebuilds the record through the field rules and renames in place, keeping the collection's position in the file. So a caller that edits one setting never carries the others over, and a client that does not send `translation`, `exportFolder` or `importFolder` cannot drop them.
 
-Three operations write a collection record, each through the Collection Entry and each with one config write: `addCollection` (`updateConfig` with `addCollectionEntry`); `updateCollection`, which reads the config, builds the new config with `patchCollectionEntry` (so existence and rename collisions fail before anything changes), opens the collection from both configs and diffs their effective locales (a list left out changes nothing; `locales: []` returns to the global list and the files follow it; a base locale, old or new, is never seeded or purged), refuses the diff on a read-only collection and checks each added locale's format, seeds the added locales and then purges the removed ones with `seedLocaleFiles` / `dropLocaleFiles` (`collections-manager/locale-files.ts`, shared with `addLocaleToCollection` / `removeLocaleFromCollection`) against the collection as it will be after the update (the new folder and base locale, when the patch changes them), and only then writes the config, so a seeding failure never costs a removed locale its data; and `setCollectionProtectedTermsFile`, which patches the one pointer (a blank pointer clears it). `deleteCollectionByName` removes the record and needs no rule. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
+`addCollection`, `setCollectionProtectedTermsFile`, and every locale change write collection records through the Collection Entry. `updateCollection`, `addLocaleToCollection`, and `removeLocaleFromCollection` share one locale-change path: validate the request, read every folder before writing, seed added locales, purge removed locales, then write the minimized config once with `patchCollectionEntry`. Add/remove compute the target locale list from the collection's effective locales. An unreadable folder leaves config and files unchanged. A base locale, old or new, is never seeded or purged. A changed collection record returns reindex mutations for its old and new translations folders, with duplicate paths removed. `deleteCollectionByName` returns a reindex mutation for its folder when it has a translations folder. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
 
 ---
 
@@ -317,7 +308,9 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 | `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder`, `deleteFolder`, `moveFolder` |
 | `FolderNotFoundError` | `FOLDER_NOT_FOUND` | `folderPath` | `deleteFolder`, `moveFolder` (source missing or not a directory) |
 | `FolderMoveIntoDescendantError` | `FOLDER_MOVE_INTO_DESCENDANT` | `sourceFolderPath`, `destinationFolderPath` | `moveFolder` (same collection) |
-| `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `assertAutoTranslationEnabled`, the precondition of `openTranslator`, `translateExistingResource` and `translateLocale` (checked first, even when there is no work) |
+| `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `assertAutoTranslationEnabled`, the precondition of `openTranslator`, `translateExistingResource` and `assertCanTranslateLocale` (checked first, even when there is no work) |
+| `CannotTranslateBaseLocaleError` | `CANNOT_TRANSLATE_BASE_LOCALE` | `locale` | `assertCanTranslateLocale` when the target is the collection's base locale |
+| `TranslationLocaleNotConfiguredError` | `TRANSLATION_LOCALE_NOT_CONFIGURED` | `locale`, `availableLocales` | `assertCanTranslateLocale` when the target is not configured for the collection |
 | `BundleNotFoundError` | `BUNDLE_NOT_FOUND` | `bundleName` | `updateBundleDefinition`, `deleteBundleDefinition` |
 | `BundleAlreadyExistsError` | `BUNDLE_ALREADY_EXISTS` | `bundleName` | `addBundleDefinition`, `updateBundleDefinition` (rename) |
 | `InvalidBundleDefinitionError` | `INVALID_BUNDLE_DEFINITION` | `errors[]` | `addBundleDefinition`, `updateBundleDefinition` (every message from the domain `validateBundleKey` / `validateBundleDefinition`); the API throws it too for a dry run or a missing body |
@@ -335,9 +328,11 @@ Rules:
 
 ## Resource CRUD Flows
 
-Resource CRUD is implemented across four functions in `libs/core/src/resource/`, each bound to an opened `Collection`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
+Resource CRUD is implemented across four functions in `libs/core/src/lib/resource/`, each bound to an opened `Collection`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
 
 **All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `normalizeEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. `seedLocale` is the one seeding rule for a locale missing from a stored entry (a `new` copy of the base); add-locale, edit-collection and normalize share it. A locale value with no metadata counts as `new` everywhere: the reader and validate read it so, and `normalizeEntry` records it so. Readers use it too: every whole-collection read goes through the [Collection Reader](#collection-reader), every write over many folders goes through the [Collection Sweep](#collection-sweep), and `resolveResourcePaths()` is the only function that maps a key to its folder.
+
+**Folder Address.** `lib/resource/folder-address.ts` validates every dot-delimited segment with the domain's `isValidSegment`, resolves the empty address to the collection's translations root, and checks existence or whether it is a directory. Folder create, delete and move keep their own error labels and root rules; wildcard resource moves keep their key-style validation message. Resource key path resolution and tree loading also use it for address-to-path conversion. The collection folder walker retains a raw `join` so relative roots and their error messages remain unchanged. See [Folder Address](glossary.md#folder-address).
 
 **Writes return what changed.** Every write (add, edit, delete, move, translate-existing-resource, folder create/delete/move, add/remove-locale) returns `mutations: ResourceMutation[]` (`lib/resource/resource-mutation.ts`) next to its other results: an `upsert` with the stored entry as `ResourceFolder.treeEntry()` reads it, a `remove`, an `add-folder` / `remove-folder`, or a `reindex` when the change is too broad to describe. Each mutation carries the absolute translations folder it applies to. A move returns a `remove` at the source for each moved key, then an `upsert` at the destination for each moved key, and a folder move adds a `remove-folder` for the deleted source. The API's [Collection Index](glossary.md#collection-index) uses them to follow the disk without reading it again; the CLI ignores them. See [Resource Mutation](glossary.md#resource-mutation).
 
@@ -351,6 +346,7 @@ editResource(collection, key, { baseValue?, comment?, tags?, translations?, move
 deleteResource(collection, { keys })
 moveResource(collection, { source, destination, override?, destinationCollection? })
 translateExistingResource(collection, key, { provider?, protectedTerms? }?)
+assertCanTranslateLocale(collection, locale)
 translateLocale(collection, { targetLocale, onProgress?, provider?, protectedTerms? })
 createFolder(collection, { folderName, parentPath? })
 deleteFolder(collection, { folderPath })
@@ -363,7 +359,7 @@ moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nes
 
 ### Locale seeding
 
-[Locale seeding](glossary.md#locale-seeding) (`seedLocales` in `resource/locale-seeding.ts`) decides what each of `collection.targetLocales` gets when a base value is written:
+[Locale seeding](glossary.md#locale-seeding) (`seedLocales` in `lib/resource/locale-seeding.ts`) decides what each of `collection.targetLocales` gets when a base value is written:
 
 1. A translation the caller supplied → the caller's value and status.
 2. Else, when `collection.translationConfig` is enabled → the [Translator](#auto-translation-pipeline)'s value (status `translated`). Locale seeding checks `enabled` itself before it opens the Translator, so a disabled config never throws here.
@@ -421,11 +417,11 @@ Two modes, one move: both build a list of `{ from, to }` keys and hand it to the
 - **Single key move** — one relocation, `source` to `destination`.
 - **Wildcard pattern move** — a pattern ending with `*` is expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to every key under the prefix, each moved under `destination`. A folder the sweep cannot read is one error in the result; the other keys still move.
 
-`moveFolder()` works the same way: it lists the source tree's keys with `sweepKeys()`, maps each to its destination key (`nestUnderDestination`), moves them as one relocation, and then, only when every key moved and nothing failed, removes the source folder tree where it is empty. The relocation's saves have already deleted the resource files of every emptied folder, so a folder that is still not empty holds content that is not part of the collection (a hidden folder, a stray file). That content is never deleted: the folders that hold it are kept, and the result warns `Source folder kept: holds content that is not part of the collection: <paths>`. A `remove-folder` is returned for the source folder when it is gone, else for each removed subfolder whose parent is kept. A source tree with no entries is handled the same way. `deleteFolder` is different: it deletes the whole tree.
+`moveFolder()` works the same way: it lists the source tree's keys with `sweepKeys()`, maps each to its destination key (`nestUnderDestination`; a move to the root always nests), moves them as one relocation, and then, only when every key moved and nothing failed, removes the source folder tree where it is empty. The relocation's saves have already deleted the resource files of every emptied folder, so a folder that is still not empty holds content that is not part of the collection (a hidden folder, a stray file). That content is never deleted: the folders that hold it are kept, and the result warns `Source folder kept: holds content that is not part of the collection: <paths>`. A `remove-folder` is returned for the source folder when it is gone, else for each removed subfolder whose parent is kept. A source tree with no entries is handled the same way. `deleteFolder` is different: it deletes the whole tree.
 
 ### Entry Relocation
 
-**Entry point:** `relocateEntries(source, destination, relocations, { override? })` in `resource/relocate-entries.ts` (internal)
+**Entry point:** `relocateEntries(source, destination, relocations, { override? })` in `lib/resource/relocate-entries.ts` (internal)
 
 The [Entry Relocation](glossary.md#entry-relocation) is the one move primitive. It takes a source and a destination `Collection` (the same one for a move inside a collection) and a list of `{ from, to }` full keys, and returns `{ moved, collisions, errors, mutations }`. `moved` holds each moved entry as stored at its destination (`ResourceTreeEntry`). It never throws for one relocation.
 
@@ -596,7 +592,7 @@ flowchart TD
 
 **Skip reasons.** `SkippedTranslation.reason` is `complex-icu`, `placeholder-mismatch` or `protected-term` (with the dropped `terms`). A translation that drops a protected term would be rejected by import, so it is not stored. The callers report skipped locales (`skippedLocales`) or keys (`skippedKeys`) without the reason.
 
-**When the Translator is opened.** Only when there is work, so "nothing to translate" never needs an API key or a readable terms file. Opening reads the [Project Terms](#project-terms) once for the protected terms. `translateExistingResource` and `translateLocale` both check `assertAutoTranslationEnabled` first (`AutoTranslationDisabledError`, 422 in the API; the CLI calls the same precondition before it prompts for a locale), then open the Translator only when a locale or a resource needs work. Locale seeding opens it only when the config is enabled and a locale needs work. Opening reads the protected terms once (unless the `protectedTerms` option is passed), so with auto-translation on, `addResource`, `editResource` (on a base value change), `translateExistingResource` and `translateLocale` fail with `ProtectedTermsFileError` when a terms file is malformed.
+**When the Translator is opened.** Only when there is work, so "nothing to translate" never needs an API key or a readable terms file. Opening reads the [Project Terms](#project-terms) once for the protected terms. `translateExistingResource` checks `assertAutoTranslationEnabled`; `translateLocale` checks `assertCanTranslateLocale`, which checks enabled first and then requires a configured, non-base target. The API calls that precondition synchronously before starting an asynchronous job. The CLI uses it before running a supplied locale, and checks enabled before prompting for a missing locale. Locale seeding opens the Translator only when the config is enabled and a locale needs work. Successful Translator values in `translateExistingResource` and `translateLocale` are stored as `translated` through the Resource Folder. Seeding also writes base-value copies as `new` when translation is disabled or skipped, so it keeps its separate status rule. Opening reads the protected terms once (unless the `protectedTerms` option is passed), so with auto-translation on, `addResource`, `editResource` (on a base value change), `translateExistingResource` and `translateLocale` fail with `ProtectedTermsFileError` when a terms file is malformed.
 
 **The provider seam.** The `provider` option replaces the configured provider, and the `protectedTerms` option replaces the Project Terms. `InMemoryTranslationProvider` (`in-memory-translation-provider.ts`) is the second adapter, internal to core: it translates each text with a function (default `[locale] text`) and records every call in `calls`, so specs can assert batching. It imports nothing from vitest. The core specs for the Translator, add, edit, translate-existing and translate-locale use it with real temp directories; none of them mocks a core module.
 
@@ -674,7 +670,7 @@ For the full sequence diagram, see [user-flows.md — Import / Export Flow](user
 
 ## Project Terms
 
-**Entry points:** `lib/config/project-terms.ts`, `lib/config/term-file.ts`, `lib/config/protected-terms-file.ts`, `lib/config/preferred-terminology-file.ts`
+**Entry points:** `lib/config/project-terms.ts`, `lib/config/term-file.ts`, `lib/config/set-protected-terms.ts`, `lib/config/preferred-terminology-file.ts`
 
 Core owns the term files, because they live in standalone JSON files rather than in `.lingo-tracker.json`. Domain owns the pure logic: `normalizeProtectedTerms()`, `effectiveProtectedTerms()`, `findProtectedTerms()`, `findProtectedTermViolations()`, the preferred-terminology rule validation and `findPreferredTermFindings()`. Domain reads no files.
 
@@ -704,11 +700,11 @@ Core resolves every pointer against the directory that holds `.lingo-tracker.jso
 | `addResource`, `editResource` | once, after the write | not its concern (the Translator's, when auto-translation runs) | returned in `terminology.problems`, next to the findings, with the Translator's `problems` when auto-translation ran |
 | [Import run](#import-pipeline) (`openImportSession`) | once per run | `ProtectedTermsFileError` before anything is written | opens `warnings`: a rule-file problem on a base-locale import, a missing named protected-terms file on a target-locale import |
 | [Export run](#export-pipeline) | once per collection, unless `augmentProtectedTerms` is false (then never, so nothing fails) | an error (`Protected terms checks skipped: …`) in `errors`, so `export` exits 1; the files are still written, without notes | a missing named protected-terms file is a warning. `warnings` and `errors` are deduped, so collections that share the global file report it once |
-| `validate` (the CLI) | once per collection; the rules come from the first (the rule file is one per project) | printed as a warning, and validation does not fail: validate checks translations, not protected terms | every problem printed once; a missing named file is a warning; a broken rule file is also `ValidationOptions.terminology.loadError`, which fails validation |
+| [Validate Run](glossary.md#validate-run) | once per collection; the rules come from the first non-empty read of the project-wide file | printed as a warning, and validation does not fail: validate checks translations, not protected terms | every problem printed once; a missing named file is a warning; a broken rule file is also `ValidationOptions.terminology.loadError`, which fails validation |
 
-The commands that show or rewrite one file need the stored list, not the union, and must not write over a file they could not read: `readGlobalProtectedTerms(config, cwd)` and `readCollectionProtectedTerms(collection, cwd)` (the `protected-terms` command, `setGlobal/CollectionProtectedTerms`, `resolveProtectedTermsForConfig` for `GET /config`) return `StoredProtectedTerms` (`terms`, and a `warning` when the config names a file that does not exist, which the `protected-terms` command prints) and throw `ProtectedTermsFileError` for a file that is not a JSON array of strings; `loadPreferredTerminology(config, cwd)` (the `preferred-terminology` command, `GET /config`) reports in-band as before.
+The [Term List Edit](glossary.md#term-list-edit) uses the stored list, not the union, and must not write over a file it could not read: `readGlobalProtectedTerms(config, cwd)` and `readCollectionProtectedTerms(collection, cwd)` (used by `readProtectedTermsTarget` and `resolveProtectedTermsForConfig` for `GET /config`) return `StoredProtectedTerms` (`terms`, and a `warning` when the config names a file that does not exist, which the `protected-terms` command prints) and throw `ProtectedTermsFileError` for a file that is not a JSON array of strings; `loadPreferredTerminology(config, cwd)` (the `preferred-terminology` command, `GET /config`) reports in-band as before.
 
-**Writes.** `writeTermFile` normalizes and sorts the value (`serialize`), writes 2-space JSON with a trailing newline, and creates the file when absent; adding an entry therefore produces a small diff. A missing parent directory is `ParentDirectoryMissingError`. `writePreferredTerminology` validates first and throws `PreferredTerminologyValidationError` with the per-row errors, leaving the file untouched. The pointer-setting functions call `assertWritableProtectedTermsPath()` *before* they mutate the config. A bad path therefore fails first, and the config keeps pointing at a file that can exist.
+**Writes.** `assertProtectedTerms()` checks untyped lists before any config or file write. `setGlobalProtectedTermsFile` / `setCollectionProtectedTermsFile` change a pointer and carry over the old list. `readProtectedTermsTarget(config, target, cwd)` returns the stored lists, paths, warnings, and effective union before a write. `editProtectedTerms(target, view, edit)` applies add, remove, or set to the stored list and returns the resulting list and path. This lets the CLI print warnings and `--list` output before a later write error. `editPreferredTerminology(config, edit, cwd)` checks replacement rules before resolving or reading a file, and changes the project-wide rules; upsert and removal match the discouraged term without regard to case. Incremental edits leave a malformed existing file untouched; a full preferred-terminology replacement overwrites it after validating the submitted rows. Legacy `setGlobal/CollectionProtectedTerms` exports remain for API and other package callers. `writeTermFile` normalizes and sorts the value (`serialize`), writes 2-space JSON with a trailing newline, and creates the file when absent; adding an entry therefore produces a small diff. A missing parent directory is `ParentDirectoryMissingError`. `writePreferredTerminology` validates first and throws `PreferredTerminologyValidationError` with the per-row errors, leaving the file untouched. The pointer-setting functions call `assertWritableProtectedTermsPath()` *before* they mutate the config. A bad path therefore fails first, and the config keeps pointing at a file that can exist.
 
 ---
 
@@ -760,7 +756,9 @@ For a deep-dive into `BundleDefinition` configuration and the type generation su
 
 ## Validation for CI/CD
 
-**Entry point:** `validateResources(collections, options)` in `lib/validate/validate-resources.ts`
+**Entry point:** `runValidate(collections, options)` in `lib/validate/run-validate.ts`. It resolves target locales, partitions skipped locales (target, base-only, unknown), and refuses an empty collection set, no target locales, or all targets skipped. Those conditions return an in-band failure with a message and detail lines. Unknown skipped locales and term-file problems return in `warnings`. The run reads each collection's Project Terms, uses the first non-empty rule list from the one project-wide preferred-terminology file, assembles `ValidationOptions`, calls `validateResources`, and returns its result and `generateValidationSummary()` text.
+
+**Validation engine:** `validateResources(collections, options)` in `lib/validate/validate-resources.ts`
 
 The validation pipeline is designed for headless CI/CD use. It takes the opened collections (`openCollection`) and validates them one by one. It reads each collection through the [Collection Reader](#collection-reader). Then it checks every resource in each of that collection's target locales (its `targetLocales` minus `options.skippedLocales`) against its stored [translation status](glossary.md#translation-status). Nothing is deduplicated across collections: a key in two collections is validated in both. The ICU pass compiles each collection's base values under that collection's base locale. The placeholder pass compares translations with that collection's base value. Terminology findings are reported under the collection's base locale.
 
@@ -783,7 +781,7 @@ The function never stops at the first failure — it validates all resources and
 
 `generateValidationSummary()` in `generate-validation-summary.ts` converts this result into a human-readable string for CLI output.
 
-The CLI's `validate` command exits with a non-zero code when `passed` is `false`, making it suitable for use as a blocking step in CI pipelines. The `--allow-translated` flag maps directly to `options.allowTranslated`.
+The CLI's `validate` command exits with a non-zero code when the run fails or `passed` is `false`, making it suitable for use as a blocking step in CI pipelines. The `--allow-translated` flag maps directly to `options.allowTranslated`.
 
 `ValidationOptions.skippedLocales` removes locales from every collection's target locales. `generateValidationSummary()` also prints them as a `Skipped Locales: <list> (<count>)` line between "Locales Validated" and "Collections Validated". The other options are `icu` (`{ compileValues, requirePortablePlurals }`), `placeholders` (a boolean) and `terminology` (`{ rules, loadError }`). None of them names a locale: the locales come from the collections.
 

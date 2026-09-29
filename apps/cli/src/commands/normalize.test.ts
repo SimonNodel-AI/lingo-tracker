@@ -94,6 +94,17 @@ describe('normalizeCommand', () => {
     await normalizeCommand({ all: true });
 
     expect(normalize).not.toHaveBeenCalled();
+    expect(errored()).toContain('❌ No collections found. Run `lingo-tracker add-collection` first.');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('reports an empty config before requiring --collection or --all', async () => {
+    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, collections: {} });
+
+    await normalizeCommand({});
+
+    expect(normalize).not.toHaveBeenCalled();
+    expect(errored()).toEqual(['❌ No collections found. Run `lingo-tracker add-collection` first.']);
     expect(process.exitCode).toBe(1);
   });
 
@@ -172,7 +183,47 @@ describe('normalizeCommand', () => {
       // App (writable) is normalized; Lib (read-only) is skipped, not failed.
       expect(normalize).toHaveBeenCalledTimes(1);
       expect(process.exitCode).toBe(0);
-      expect(logged()).toContain('ℹ️  Skipping read-only collection: Lib');
+      expect(errored()).toContain('⚠️  Skipping read-only collection: Lib');
+    });
+
+    it('prints the dry-run warning after refusing an explicit read-only collection', async () => {
+      await normalizeCommand({ collection: 'Lib', dryRun: true });
+
+      expect(normalize).not.toHaveBeenCalled();
+      expect(errored()).toEqual([
+        '❌ Collection "Lib" is read-only. Its resources cannot be modified.',
+        '⚠️  Dry run completed - no changes were made.',
+      ]);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('keeps stdout to one JSON payload when --all skips the only read-only collection', async () => {
+      vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, collections: { Lib: CONFIG.collections.Lib } });
+
+      await normalizeCommand({ all: true, json: true });
+
+      expect(normalize).not.toHaveBeenCalled();
+      expect(logged()).toEqual([
+        JSON.stringify(
+          {
+            collections: [],
+            totals: {
+              entriesProcessed: 0,
+              localesAdded: 0,
+              valuesConverted: 0,
+              tagsNormalized: 0,
+              filesCreated: 0,
+              filesUpdated: 0,
+              foldersRemoved: 0,
+              collectionsProcessed: 0,
+            },
+          },
+          null,
+          2,
+        ),
+      ]);
+      expect(errored()).toEqual(['⚠️  Skipping read-only collection: Lib']);
+      expect(process.exitCode).toBe(0);
     });
   });
 

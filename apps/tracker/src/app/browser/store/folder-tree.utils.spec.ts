@@ -9,6 +9,10 @@ import {
   collectAncestorPaths,
   prunePathsUnder,
   rebaseExpandedPaths,
+  toggleExpandedPath,
+  collectVisibleFolderPaths,
+  parentFolderPath,
+  folderMoveNoOp,
 } from './folder-tree.utils';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 
@@ -22,6 +26,44 @@ const withChildren = (node: FolderNodeDto, children: FolderNodeDto[]): FolderNod
   ...node,
   loaded: true,
   tree: { path: node.fullPath, resources: [], children },
+});
+
+describe('shared folder navigation', () => {
+  it('toggles expansion without mutating the original set', () => {
+    const expanded = new Set(['common']);
+    expect(toggleExpandedPath(expanded, 'common')).toEqual(new Set());
+    expect(toggleExpandedPath(expanded, 'errors')).toEqual(new Set(['common', 'errors']));
+    expect(expanded).toEqual(new Set(['common']));
+  });
+
+  it('lists only visible paths in tree order', () => {
+    const folders = [
+      withChildren(leaf('common', 'common'), [
+        withChildren(leaf('buttons', 'common.buttons'), [leaf('ok', 'common.buttons.ok')]),
+      ]),
+      withChildren(leaf('errors', 'errors'), [leaf('http', 'errors.http')]),
+    ];
+    expect(collectVisibleFolderPaths(folders, new Set(['common']))).toEqual(['common', 'common.buttons', 'errors']);
+    expect(collectVisibleFolderPaths(folders, new Set(['common', 'common.buttons', 'errors']))).toEqual([
+      'common',
+      'common.buttons',
+      'common.buttons.ok',
+      'errors',
+      'errors.http',
+    ]);
+  });
+
+  it('finds the parent path, including the root boundary', () => {
+    expect(parentFolderPath('common.buttons.ok')).toBe('common.buttons');
+    expect(parentFolderPath('common')).toBeNull();
+  });
+
+  it('identifies folder moves that cannot change the tree', () => {
+    expect(folderMoveNoOp('common.buttons', 'common.buttons')).toBe('same-folder');
+    expect(folderMoveNoOp('common.buttons', 'common')).toBe('already-at-location');
+    expect(folderMoveNoOp('common', '')).toBe('already-at-location');
+    expect(folderMoveNoOp('common.buttons', 'errors')).toBeNull();
+  });
 });
 
 describe('insertFolderIntoTree', () => {

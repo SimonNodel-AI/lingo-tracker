@@ -12,9 +12,10 @@ import {
   TRANSLATION_EDITOR_TITLE_ID,
   type TranslationEditorDialogData,
 } from '../dialogs/translation-editor';
-import { BrowserApiService } from './browser-api.service';
+import { FolderPeek } from './folder-peek';
 import { BrowserStore } from '../store/browser.store';
 import { captureSession, withinSession } from '../store/session-guard';
+import { resourceMovedToast } from './resource-moved-toast';
 
 /** A create's skipped-locales warning waits out the success toast, so the two do not overlap. */
 export const CREATE_WARNING_DELAY_MS = 3200;
@@ -35,7 +36,7 @@ export const CREATE_WARNING_DELAY_MS = 3200;
 @Injectable({ providedIn: 'root' })
 export class TranslationEditorLauncher {
   readonly #dialog = inject(MatDialog);
-  readonly #api = inject(BrowserApiService);
+  readonly #folderPeek = inject(FolderPeek);
   readonly #browserStore = inject(BrowserStore);
   readonly #notifications = inject(NotificationService);
   readonly #transloco = inject(TranslocoService);
@@ -67,11 +68,14 @@ export class TranslationEditorLauncher {
     // It is session-guarded: `null` means another collection opened meanwhile, so that one gets
     // neither the folder nor the editor. `undefined` means the lookup failed or found no entry.
     const resource = await firstValueFrom(
-      this.#api.getResourceTree(collectionName, folderPath, false).pipe(
-        withinSession(captureSession(this.#browserStore)),
-        map((tree) => tree.resources.find((item) => item.fullKey === fullKey)),
-        catchError(() => of(undefined)),
-      ),
+      this.#folderPeek
+        .openFolderPeek()
+        .peekFolder(collectionName, folderPath)
+        .pipe(
+          withinSession(captureSession(this.#browserStore)),
+          map((tree) => tree.resources.find((item) => item.fullKey === fullKey)),
+          catchError(() => of(undefined)),
+        ),
       { defaultValue: null },
     );
     if (resource === null) return { kind: 'cancelled' };
@@ -130,10 +134,7 @@ export class TranslationEditorLauncher {
         return outcome;
       case 'moved':
         this.#notifications.success(
-          this.#transloco.translate(toast.RESOURCEMOVEDX, {
-            name: splitResolvedKey(outcome.fullKey).entryKey,
-            folder: outcome.folderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-          }),
+          resourceMovedToast(this.#transloco, splitResolvedKey(outcome.fullKey).entryKey, outcome.folderPath),
         );
         this.#warnSkipped(outcome.skippedLocales);
         return outcome;

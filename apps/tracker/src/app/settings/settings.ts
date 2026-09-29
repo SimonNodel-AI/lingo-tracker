@@ -21,7 +21,8 @@ import type { LingoTrackerConfigDto, PreferredTermRuleErrorDto } from '@simoncod
 import { normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import { CollectionsStore } from '../collections/store/collections.store';
-import { ApiError, apiErrorMessage } from '../shared/api-error/api-error';
+import { classifyConfigRefusal } from '../collections/store/dialog-config-submit';
+import { apiErrorMessage } from '../shared/api-error/api-error';
 import { NotificationService } from '../shared/notification';
 import { PreferredTerminologyDraft, type RuleField, type RuleFieldError } from './preferred-terminology-draft';
 
@@ -58,8 +59,8 @@ function isPreferredTermRuleErrorDto(value: unknown): value is PreferredTermRule
  * carry the DTO's required fields is dropped rather than trusted.
  */
 function extractRuleErrors(error: unknown): PreferredTermRuleErrorDto[] {
-  if (!(error instanceof ApiError) || error.kind !== 'invalid') return [];
-  return error.details.filter(isPreferredTermRuleErrorDto);
+  const refusal = classifyConfigRefusal(error);
+  return refusal.kind === 'invalid' ? refusal.details.filter(isPreferredTermRuleErrorDto) : [];
 }
 
 /** Translation token for each rule error code. */

@@ -3,7 +3,7 @@
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
-export { addResource, deleteResource, editResource, moveResource } from './resource';
+export { addResource, deleteResource, editResource, moveResource } from './lib/resource';
 
 // Operations: folders
 export { createFolder, deleteFolder, moveFolder } from './lib/folder';
@@ -14,10 +14,6 @@ export {
   addLocaleToCollection,
   deleteCollectionByName,
   removeLocaleFromCollection,
-  setCollectionProtectedTerms,
-  setCollectionProtectedTermsFile,
-  setGlobalProtectedTerms,
-  setGlobalProtectedTermsFile,
   updateCollection,
 } from './collections-manager';
 
@@ -26,6 +22,8 @@ export {
   addBundleDefinition,
   deleteBundleDefinition,
   generateBundle,
+  validateBundleLocales,
+  validateGenerateBundleRequest,
   planBundle,
   updateBundleDefinition,
 } from './lib/bundle';
@@ -48,8 +46,14 @@ export { exportTargetLocales, runExport } from './lib/export/run-export';
 
 // Operations: normalize, translate, validate
 export { normalize } from './lib/normalize';
-export { assertAutoTranslationEnabled, translateExistingResource, translateLocale } from './lib/translation';
-export { generateValidationSummary, validateResources } from './lib/validate';
+export {
+  assertAutoTranslationEnabled,
+  assertCanTranslateLocale,
+  translateExistingResource,
+  translateLocale,
+} from './lib/translation';
+export { generateValidationSummary, runValidate, validateResources } from './lib/validate';
+export type { ValidateRunOptions, ValidateRunResult } from './lib/validate';
 
 // Collection & config
 export type { LingoTrackerCollection } from './config/lingo-tracker-collection';
@@ -57,7 +61,12 @@ export type { LingoTrackerConfig } from './config/lingo-tracker-config';
 export type { TranslationConfig } from './config/translation-config';
 export { CONFIG_FILENAME, DEFAULT_CONFIG } from './constants';
 export {
+  assertProtectedTerms,
   type Collection,
+  displayTermPath,
+  editPreferredTerminology,
+  editProtectedTerms,
+  readProtectedTermsTarget,
   type LoadPreferredTerminologyResult,
   loadConfig,
   loadPreferredTerminology,
@@ -69,6 +78,10 @@ export {
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
+  setCollectionProtectedTerms,
+  setCollectionProtectedTermsFile,
+  setGlobalProtectedTerms,
+  setGlobalProtectedTermsFile,
   type StoredProtectedTerms,
   type TermFile,
   type TermFiles,
@@ -126,6 +139,7 @@ export { PreferredTerminologyValidationError } from './lib/config';
 export {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
+  CannotTranslateBaseLocaleError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
   CollectionAlreadyExistsError,
@@ -136,6 +150,7 @@ export {
   FolderNotFoundError,
   type FolderPathPart,
   InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
   InvalidCollectionError,
   InvalidConfigError,
   InvalidFolderPathError,
@@ -144,6 +159,7 @@ export {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
@@ -161,8 +177,6 @@ export type {
   DeleteCollectionOptions,
   RemoveLocaleFromCollectionOptions,
   RemoveLocaleFromCollectionResult,
-  SetProtectedTermsOptions,
-  SetProtectedTermsResult,
   UpdateCollectionOptions,
 } from './collections-manager';
 export type {
@@ -177,6 +191,12 @@ export type {
   UpdateBundleDefinitionOptions,
 } from './lib/bundle';
 export type { LoadConfigOptions, OpenCollectionOptions } from './lib/config';
+export type {
+  PreferredTerminologyEdit,
+  PreferredTerminologyEditResult,
+  SetProtectedTermsOptions,
+  SetProtectedTermsResult,
+} from './lib/config';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 export type { ExportFormat, ExportResult } from './lib/export/types';
 export type {
@@ -230,4 +250,4 @@ export type {
   MoveResourceResult,
   ResourceEntryMetadata,
   ResourceTranslation,
-} from './resource';
+} from './lib/resource';

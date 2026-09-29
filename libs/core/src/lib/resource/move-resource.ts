@@ -1,9 +1,8 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import type { Collection } from '../config/open-collection';
 import { validateKey } from '@simoncodes-ca/domain';
-import type { Collection } from '../lib/config/open-collection';
-import { sweepKeys } from '../lib/resource/collection-sweep';
-import type { ResourceMutation } from '../lib/resource/resource-mutation';
+import { sweepKeys } from './collection-sweep';
+import { folderAddressExists } from './folder-address';
+import type { ResourceMutation } from './resource-mutation';
 import { type Relocation, type RelocationResult, relocateEntries } from './relocate-entries';
 
 export interface MoveResourceParams {
@@ -83,7 +82,7 @@ function expandPattern(
     }
   }
 
-  if (!existsSync(join(collection.translationsFolder, ...cleanPrefix.split('.')))) {
+  if (!folderAddressExists(collection.translationsFolder, cleanPrefix)) {
     result.warnings.push(`No folder found for prefix ${cleanPrefix}. Nothing moved.`);
     return undefined;
   }

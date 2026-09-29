@@ -1,14 +1,10 @@
-import { existsSync, readdirSync, rmdirSync, statSync } from 'node:fs';
+import { readdirSync, rmdirSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
-import { isValidSegment } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import {
-  FolderMoveIntoDescendantError,
-  FolderNotFoundError,
-  InvalidFolderPathError,
-} from '../errors/lingo-tracker-error';
-import { mergeRelocation } from '../../resource/move-resource';
-import { relocateEntries } from '../../resource/relocate-entries';
+import { FolderMoveIntoDescendantError, FolderNotFoundError } from '../errors/lingo-tracker-error';
+import { mergeRelocation } from '../resource/move-resource';
+import { relocateEntries } from '../resource/relocate-entries';
+import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { sweepKeys } from '../resource/collection-sweep';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
@@ -24,6 +20,7 @@ export interface MoveFolderParams {
   /**
    * When true, the source folder is nested under the destination as a child folder.
    * When false, uses depth-based rename/nest heuristic (legacy behavior).
+   * The root destination (`''`) has no name, so it always nests, whatever this says.
    * Default: true
    */
   readonly nestUnderDestination?: boolean;
@@ -87,23 +84,10 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
   };
 
   // Validate folder path segments and split for later use
-  const sourceFolderSegments = sourceFolderPath.split('.');
-  const destinationFolderSegments = destinationFolderPath.split('.');
+  const sourceFolderSegments = validateFolderAddress(sourceFolderPath, 'source folder path', false);
 
-  for (const segment of sourceFolderSegments) {
-    if (!isValidSegment(segment)) {
-      throw new InvalidFolderPathError('source folder path', segment);
-    }
-  }
-
-  // Skip validation if destination is empty (root-level move)
-  if (destinationFolderPath !== '') {
-    for (const segment of destinationFolderSegments) {
-      if (!isValidSegment(segment)) {
-        throw new InvalidFolderPathError('destination folder path', segment);
-      }
-    }
-  }
+  // The root is a valid destination.
+  const destinationFolderSegments = validateFolderAddress(destinationFolderPath, 'destination folder path');
 
   // Check for same-folder move (no-op)
   if (sourceFolderPath === destinationFolderPath && sameCollection) {
@@ -116,8 +100,11 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     throw new FolderMoveIntoDescendantError(sourceFolderPath, destinationFolderPath);
   }
 
+  // The root has no name to rename to, so a move there always nests.
+  const nest = nestUnderDestination || destinationFolderPath === '';
+
   // When nesting, check if destination is the source's parent (would be a no-op)
-  if (nestUnderDestination && sameCollection) {
+  if (nest && sameCollection) {
     const sourceParentPath = sourceFolderSegments.slice(0, -1).join('.');
     if (sourceParentPath === destinationFolderPath) {
       result.warnings.push('Folder is already at this location. No move performed.');
@@ -125,8 +112,11 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     }
   }
 
-  const absoluteSourcePath = resolve(join(collection.translationsFolder, ...sourceFolderSegments));
-  if (!existsSync(absoluteSourcePath) || !statSync(absoluteSourcePath).isDirectory()) {
+  const { absolutePath: absoluteSourcePath, isDirectory } = inspectFolderAddress(
+    collection.translationsFolder,
+    sourceFolderPath,
+  );
+  if (!isDirectory) {
     throw new FolderNotFoundError(sourceFolderPath);
   }
 
@@ -173,7 +163,7 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     // Otherwise suffix will start with '.'
 
     let destinationKey: string;
-    if (nestUnderDestination) {
+    if (nest) {
       // always nest the source folder under destination
       const sourceFolderName = lastSourceSegment;
       if (destinationFolderPath) {
