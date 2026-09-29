@@ -3,18 +3,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { findPreferredTermFindings } from '@simoncodes-ca/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
-import type { TranslationConfig } from '../config/translation-config';
-import { type Collection, openCollection } from '../lib/config/open-collection';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import type { TranslationConfig } from '../../config/translation-config';
+import { type Collection, openCollection } from '../config/open-collection';
 import {
   InvalidResourceKeyError,
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
-} from '../lib/errors/lingo-tracker-error';
-import { openResourceFolder } from '../lib/resource/resource-folder';
-import { InMemoryTranslationProvider } from '../lib/translation/in-memory-translation-provider';
-import { TranslationError } from '../lib/translation/translation-provider';
+} from '../errors/lingo-tracker-error';
+import { openResourceFolder } from './resource-folder';
+import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
+import { TranslationError } from '../translation/translation-provider';
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
 

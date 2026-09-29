@@ -1,9 +1,8 @@
-import { existsSync, rmSync, statSync } from 'node:fs';
-import { resolve, join } from 'node:path';
-import { isValidSegment } from '@simoncodes-ca/domain';
+import { rmSync } from 'node:fs';
 import type { Collection } from '../config/open-collection';
-import { FolderNotFoundError, InvalidFolderPathError } from '../errors/lingo-tracker-error';
+import { FolderNotFoundError } from '../errors/lingo-tracker-error';
 import { sweepCollection } from '../resource/collection-sweep';
+import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface DeleteFolderParams {
@@ -46,15 +45,10 @@ export function deleteFolder(collection: Collection, params: DeleteFolderParams)
   const { folderPath } = params;
   const { translationsFolder } = collection;
 
-  const pathSegments = folderPath.split('.');
-  for (const segment of pathSegments) {
-    if (!isValidSegment(segment)) {
-      throw new InvalidFolderPathError('folder path', segment);
-    }
-  }
+  validateFolderAddress(folderPath, 'folder path', false);
 
-  const absoluteFolderPath = resolve(join(translationsFolder, ...pathSegments));
-  if (!existsSync(absoluteFolderPath) || !statSync(absoluteFolderPath).isDirectory()) {
+  const { absolutePath: absoluteFolderPath, isDirectory } = inspectFolderAddress(translationsFolder, folderPath);
+  if (!isDirectory) {
     throw new FolderNotFoundError(folderPath);
   }
 

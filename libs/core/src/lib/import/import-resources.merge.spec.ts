@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { calculateChecksum } from '../../resource/checksum';
+import { calculateChecksum } from '../resource/checksum';
 import { type Collection, openCollection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';

@@ -34,7 +34,7 @@ pnpm run test:domain
 pnpm run test:tracker
 
 # Run a single test file (path relative to the project root)
-pnpm nx test core --testFile=src/resource/checksum.spec.ts   # core, domain, tracker (@nx/vitest)
+pnpm nx test core --testFile=src/lib/resource/checksum.spec.ts   # core, domain, tracker (@nx/vitest)
 pnpm nx test cli -- src/commands/move.test.ts                # cli (vitest): positional path after --
 pnpm nx test api -- src/app/app.service.spec.ts              # api (jest): positional path after --
 
@@ -83,9 +83,10 @@ libs/
 │   └── src/lib/       # Flat structure: key validation, status helpers,
 │                      #   format conversion, validation utilities, shared types
 ├── core/              # Node.js business logic (file I/O, checksums, bundles)
-│   ├── config/        # Configuration interfaces and management
-│   ├── resource/      # Resource CRUD, metadata, validation
-│   └── collections-manager/ # Collection operations
+│   └── src/
+│       ├── config/            # Configuration interfaces
+│       ├── collections-manager/ # Collection operations
+│       └── lib/resource/      # Resource CRUD, Folder Address, metadata, reading
 └── data-transfer/     # DTOs shared between API/CLI/UI
 ```
 
@@ -183,7 +184,7 @@ export class ExampleComponent implements OnInit {
 
 ## Key Implementation Patterns
 
-### Adding a Resource (libs/core/src/resource/add-resource.ts)
+### Adding a Resource (libs/core/src/lib/resource/add-resource.ts)
 
 1. Validate the key (and optional `targetFolder`) and resolve it to a folder path
 2. Normalize values to ICU and seed every target locale (supplied value, else auto-translation, else a `new` copy of the base) before touching the disk

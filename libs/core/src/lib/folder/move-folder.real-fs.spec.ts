@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addResource } from '../../resource/add-resource';
+import { addResource } from '../resource/add-resource';
 import type { Collection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
+import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { moveFolder } from './move-folder';
 
 function collection(translationsFolder: string): Collection {
@@ -78,6 +79,46 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.foldersDeleted).toBe(0);
     expect(readFileSync(join(root, 'apps', 'bad', 'resource_entries.json'), 'utf8')).toBe(entries);
+  });
+});
+
+describe('moveFolder to the root without nesting (legacy depth rule, real fs)', () => {
+  const root = useTempDir('move-folder-root-depth-');
+
+  it('reports the malformed destination for a depth-one source and keeps its entry', async () => {
+    const source = collection(root());
+    await addResource(source, { key: 'apps.one', baseValue: 'One' });
+
+    const result = await moveFolder(source, {
+      sourceFolderPath: 'apps',
+      destinationFolderPath: '',
+      nestUnderDestination: false,
+    });
+
+    // The legacy rename branch forms ".one". Preserve this result until the caller chooses a behavior change.
+    expect(result.errors).toEqual(['Key validation: Invalid key format ".one" (leading or trailing dot not allowed)']);
+    expect(result.movedCount).toBe(0);
+    expect(result.mutations).toEqual([]);
+    expect(openResourceFolder(join(root(), 'apps')).get('one')?.entry.source).toBe('One');
+  });
+
+  it('reports the malformed destination for a depth-two source and keeps its entry', async () => {
+    const source = collection(root());
+    await addResource(source, { key: 'apps.deep.one', baseValue: 'One' });
+
+    const result = await moveFolder(source, {
+      sourceFolderPath: 'apps.deep',
+      destinationFolderPath: '',
+      nestUnderDestination: false,
+    });
+
+    // The legacy nest branch forms ".deep.one". Preserve this result until the caller chooses a behavior change.
+    expect(result.errors).toEqual([
+      'Key validation: Invalid key format ".deep.one" (leading or trailing dot not allowed)',
+    ]);
+    expect(result.movedCount).toBe(0);
+    expect(result.mutations).toEqual([]);
+    expect(openResourceFolder(join(root(), 'apps', 'deep')).get('one')?.entry.source).toBe('One');
   });
 });
 

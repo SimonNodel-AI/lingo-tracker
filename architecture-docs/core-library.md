@@ -47,18 +47,6 @@ libs/core/src/
 │   ├── lingo-tracker-collection.ts # Collection config (incl. protectedTermsFile pointer)
 │   └── translation-config.ts     # TranslationConfig (provider name, API key env var)
 │
-├── resource/                     # Resource CRUD on an opened Collection — reads/writes resource_entries.json + tracker_meta.json
-│   ├── add-resource.ts           # addResource(): create or overwrite a single entry
-│   ├── edit-resource.ts          # editResource(): update value, comment, tags, or locale values; moveTo moves the entry
-│   ├── locale-seeding.ts         # seedLocales(): what target locales get when a base value is written
-│   ├── delete-resource.ts        # deleteResource(): remove one or more entries by key
-│   ├── move-resource.ts          # moveResource(): rename/relocate entries (single or wildcard)
-│   ├── relocate-entries.ts       # relocateEntries(): the Entry Relocation every move goes through
-│   ├── checksum.ts               # calculateChecksum(): MD5 via node:crypto
-│   ├── resource-entry.ts         # ResourceEntry, ResourceEntries interfaces
-│   ├── resource-entry-metadata.ts # ResourceEntryMetadata interface
-│   └── tracker-metadata.ts       # TrackerMetadata interface
-│
 ├── collections-manager/          # Collection-level operations (create / delete / update in config)
 │   ├── add-collection.ts         # addCollection(): one config write through the Collection Entry
 │   ├── delete-collection-by-name.ts # deleteCollectionByName()
@@ -133,7 +121,14 @@ libs/core/src/
     │   ├── translate-locale.ts           # translateLocale(): translate one locale of a collection in batches
     │   └── placeholder-protector.ts      # protectPlaceholders() / restorePlaceholders()
     │
-    ├── resource/                 # One folder's files, and the read models built on them
+    ├── resource/                 # Resource CRUD, Folder Address, folder files, and collection read models
+    │   ├── folder-address.ts     # validate, resolve and check folder addresses
+    │   ├── add-resource.ts       # addResource()
+    │   ├── edit-resource.ts      # editResource()
+    │   ├── delete-resource.ts    # deleteResource()
+    │   ├── move-resource.ts      # moveResource()
+    │   ├── relocate-entries.ts   # Entry Relocation used by moves
+    │   ├── checksum.ts           # MD5 checksums
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
     │   ├── iterative-folder-walker.ts # walkFolders(): depth-ordered directory traversal (hidden folders skipped)
     │   ├── collection-folders.ts # walkCollectionFolders(): which folders belong to a collection (reader and sweep)
@@ -168,7 +163,6 @@ graph TD
     end
 
     subgraph core["@simoncodes-ca/core root modules"]
-        RESOURCE["resource/\nadd · edit · delete · move"]
         COLLECTIONS["collections-manager/\nadd · delete · update"]
         CONFIG_ROOT["config/\nLingoTrackerConfig\nTranslationConfig"]
     end
@@ -184,14 +178,14 @@ graph TD
         FILEIO["file-io/\nreadJsonFile · writeJsonFile\nensureDirectoryExists"]
         CONFIG_LIB["config/\nloadConfig · openCollection\ncreateConfigFileOperations"]
         ERRORS["errors/\nErrorMessages"]
-        RESOURCE_LIB["resource/\nresource-folder · read-collection\ncollection-sweep · resource-file-paths\nload-resource-tree · search"]
+        RESOURCE_LIB["resource/\nadd · edit · delete · move\nFolder Address · resource-folder\nread-collection · collection-sweep\nload-resource-tree · search"]
     end
 
     subgraph domain["@simoncodes-ca/domain (peer)"]
         DOMAIN["validateKey · resolveResourceKey\nsplitResolvedKey · translocoToICU\nicuToTransloco · classifyICUContent\napplyBaseChange · recordTranslation"]
     end
 
-    CLI --> RESOURCE
+    CLI --> RESOURCE_LIB
     CLI --> COLLECTIONS
     CLI --> BUNDLE
     CLI --> IMPORT
@@ -199,7 +193,7 @@ graph TD
     CLI --> VALIDATE
     CLI --> NORMALIZE
 
-    API --> RESOURCE
+    API --> RESOURCE_LIB
     API --> COLLECTIONS
     API --> BUNDLE
     API --> IMPORT
@@ -207,10 +201,7 @@ graph TD
     API --> VALIDATE
     API --> NORMALIZE
 
-    RESOURCE --> FILEIO
-    RESOURCE --> RESOURCE_LIB
-    RESOURCE --> TRANSLATION
-    RESOURCE --> DOMAIN
+    RESOURCE_LIB --> TRANSLATION
 
     BUNDLE --> FILEIO
     BUNDLE --> RESOURCE_LIB
@@ -272,7 +263,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 | Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
 | Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
 
-Each sub-module with a barrel (`resource/`, `collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the [Bundle Selection](#bundle-selection) and the other bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
+Each sub-module with a barrel (`collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the [Bundle Selection](#bundle-selection) and the other bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
 
 ---
 
@@ -337,9 +328,11 @@ Rules:
 
 ## Resource CRUD Flows
 
-Resource CRUD is implemented across four functions in `libs/core/src/resource/`, each bound to an opened `Collection`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
+Resource CRUD is implemented across four functions in `libs/core/src/lib/resource/`, each bound to an opened `Collection`. Each function follows the same structural pattern: resolve the dot-delimited [resource key](glossary.md#resource-key) to a filesystem path, load the current JSON files, apply changes, recompute [checksums](glossary.md#checksum) and [translation status](glossary.md#translation-status), then write both files back. Both files are always written together by one call (`ResourceFolder.save()`); the writes are sequential, not atomic.
 
 **All writes go through `ResourceFolder`.** `openResourceFolder(folderPath, { baseLocale })` in `lib/resource/resource-folder.ts` is the only owner of a [resource folder](glossary.md#resource-folder) (`resource_entries.json` + `tracker_meta.json`). Add, edit, delete, move, import, normalize, translate-locale, translate-existing-resource, and add/remove-locale all load the pair through it, change it with `setBase` / `setTranslation` / `setStatus` / `setDetails` / `setEntry` / `normalizeEntry` / `seedLocale` / `dropLocale` / `remove`, and persist with `save()` (which deletes both files when the folder becomes empty). `ResourceFolder` computes the checksums and applies the domain [staleness rule](glossary.md#staleness-rule) (`applyBaseChange`, `recordTranslation` in `libs/domain/src/lib/staleness.ts`), so no caller builds `{ checksum, baseChecksum, status }` by hand. `seedLocale` is the one seeding rule for a locale missing from a stored entry (a `new` copy of the base); add-locale, edit-collection and normalize share it. A locale value with no metadata counts as `new` everywhere: the reader and validate read it so, and `normalizeEntry` records it so. Readers use it too: every whole-collection read goes through the [Collection Reader](#collection-reader), every write over many folders goes through the [Collection Sweep](#collection-sweep), and `resolveResourcePaths()` is the only function that maps a key to its folder.
+
+**Folder Address.** `lib/resource/folder-address.ts` validates every dot-delimited segment with the domain's `isValidSegment`, resolves the empty address to the collection's translations root, and checks existence or whether it is a directory. Folder create, delete and move keep their own error labels and root rules; wildcard resource moves keep their key-style validation message. Resource key path resolution and tree loading also use it for address-to-path conversion. The collection folder walker retains a raw `join` so relative roots and their error messages remain unchanged. See [Folder Address](glossary.md#folder-address).
 
 **Writes return what changed.** Every write (add, edit, delete, move, translate-existing-resource, folder create/delete/move, add/remove-locale) returns `mutations: ResourceMutation[]` (`lib/resource/resource-mutation.ts`) next to its other results: an `upsert` with the stored entry as `ResourceFolder.treeEntry()` reads it, a `remove`, an `add-folder` / `remove-folder`, or a `reindex` when the change is too broad to describe. Each mutation carries the absolute translations folder it applies to. A move returns a `remove` at the source for each moved key, then an `upsert` at the destination for each moved key, and a folder move adds a `remove-folder` for the deleted source. The API's [Collection Index](glossary.md#collection-index) uses them to follow the disk without reading it again; the CLI ignores them. See [Resource Mutation](glossary.md#resource-mutation).
 
@@ -366,7 +359,7 @@ moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nes
 
 ### Locale seeding
 
-[Locale seeding](glossary.md#locale-seeding) (`seedLocales` in `resource/locale-seeding.ts`) decides what each of `collection.targetLocales` gets when a base value is written:
+[Locale seeding](glossary.md#locale-seeding) (`seedLocales` in `lib/resource/locale-seeding.ts`) decides what each of `collection.targetLocales` gets when a base value is written:
 
 1. A translation the caller supplied → the caller's value and status.
 2. Else, when `collection.translationConfig` is enabled → the [Translator](#auto-translation-pipeline)'s value (status `translated`). Locale seeding checks `enabled` itself before it opens the Translator, so a disabled config never throws here.
@@ -428,7 +421,7 @@ Two modes, one move: both build a list of `{ from, to }` keys and hand it to the
 
 ### Entry Relocation
 
-**Entry point:** `relocateEntries(source, destination, relocations, { override? })` in `resource/relocate-entries.ts` (internal)
+**Entry point:** `relocateEntries(source, destination, relocations, { override? })` in `lib/resource/relocate-entries.ts` (internal)
 
 The [Entry Relocation](glossary.md#entry-relocation) is the one move primitive. It takes a source and a destination `Collection` (the same one for a move inside a collection) and a list of `{ from, to }` full keys, and returns `{ moved, collisions, errors, mutations }`. `moved` holds each moved entry as stored at its destination (`ResourceTreeEntry`). It never throws for one relocation.
 

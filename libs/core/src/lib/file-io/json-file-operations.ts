@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { ResourceEntries } from '../../resource/resource-entry';
-import type { TrackerMetadata } from '../../resource/tracker-metadata';
+import type { ResourceEntries } from '../resource/resource-entry';
+import type { TrackerMetadata } from '../resource/tracker-metadata';
 import { ErrorMessages } from '../errors/error-messages';
 
 export interface JsonFileReadOptions<T> {

@@ -2,10 +2,10 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyBaseChange, isUntranslatedCopy, recordTranslation, type TranslationStatus } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
-import { calculateChecksum } from '../../resource/checksum';
-import type { ResourceEntries, ResourceEntry } from '../../resource/resource-entry';
-import type { ResourceEntryMetadata } from '../../resource/resource-entry-metadata';
-import type { TrackerMetadata } from '../../resource/tracker-metadata';
+import { calculateChecksum } from './checksum';
+import type { ResourceEntries, ResourceEntry } from './resource-entry';
+import type { ResourceEntryMetadata } from './resource-entry-metadata';
+import type { TrackerMetadata } from './tracker-metadata';
 import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
 import type { ResourceTreeEntry } from './load-resource-tree';
 

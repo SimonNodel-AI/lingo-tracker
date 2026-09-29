@@ -1,14 +1,10 @@
-import { existsSync, readdirSync, rmdirSync, statSync } from 'node:fs';
+import { readdirSync, rmdirSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
-import { isValidSegment } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import {
-  FolderMoveIntoDescendantError,
-  FolderNotFoundError,
-  InvalidFolderPathError,
-} from '../errors/lingo-tracker-error';
-import { mergeRelocation } from '../../resource/move-resource';
-import { relocateEntries } from '../../resource/relocate-entries';
+import { FolderMoveIntoDescendantError, FolderNotFoundError } from '../errors/lingo-tracker-error';
+import { mergeRelocation } from '../resource/move-resource';
+import { relocateEntries } from '../resource/relocate-entries';
+import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { sweepKeys } from '../resource/collection-sweep';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
@@ -87,23 +83,10 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
   };
 
   // Validate folder path segments and split for later use
-  const sourceFolderSegments = sourceFolderPath.split('.');
-  const destinationFolderSegments = destinationFolderPath.split('.');
+  const sourceFolderSegments = validateFolderAddress(sourceFolderPath, 'source folder path', false);
 
-  for (const segment of sourceFolderSegments) {
-    if (!isValidSegment(segment)) {
-      throw new InvalidFolderPathError('source folder path', segment);
-    }
-  }
-
-  // Skip validation if destination is empty (root-level move)
-  if (destinationFolderPath !== '') {
-    for (const segment of destinationFolderSegments) {
-      if (!isValidSegment(segment)) {
-        throw new InvalidFolderPathError('destination folder path', segment);
-      }
-    }
-  }
+  // The root is a valid destination.
+  const destinationFolderSegments = validateFolderAddress(destinationFolderPath, 'destination folder path');
 
   // Check for same-folder move (no-op)
   if (sourceFolderPath === destinationFolderPath && sameCollection) {
@@ -125,8 +108,11 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     }
   }
 
-  const absoluteSourcePath = resolve(join(collection.translationsFolder, ...sourceFolderSegments));
-  if (!existsSync(absoluteSourcePath) || !statSync(absoluteSourcePath).isDirectory()) {
+  const { absolutePath: absoluteSourcePath, isDirectory } = inspectFolderAddress(
+    collection.translationsFolder,
+    sourceFolderPath,
+  );
+  if (!isDirectory) {
     throw new FolderNotFoundError(sourceFolderPath);
   }
 
@@ -155,7 +141,8 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
 
   // Calculate depth once for all resources
   const sourceDepth = sourceFolderSegments.length;
-  const destDepth = destinationFolderSegments.length;
+  // Legacy depth rule: the empty destination counted as one segment for non-nesting moves.
+  const destDepth = destinationFolderPath === '' ? 1 : destinationFolderSegments.length;
   const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
 
   const relocations = resourceKeys.map((sourceKey) => {
