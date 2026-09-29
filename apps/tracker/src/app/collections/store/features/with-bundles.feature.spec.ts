@@ -20,6 +20,7 @@ describe('withBundlesFeature', () => {
     getConfig: vi.fn(),
     generateBundle: vi.fn(),
     getBundleJob: vi.fn(),
+    dryRunBundle: vi.fn(),
   };
 
   const trackerBundle: BundleDefinitionDto = {
@@ -119,6 +120,19 @@ describe('withBundlesFeature', () => {
       expect(store.bundleCount()).toBe(0);
       expect(store.projectName()).toBeNull();
     });
+  });
+
+  it('passes a bundle dry run through the store and preserves the API Error', () => {
+    createStoreInstance();
+    const request = { name: 'main', bundle: mainBundle };
+    const failure = toApiError(new HttpErrorResponse({ status: 400, error: { message: 'Invalid bundle' } }));
+    api.dryRunBundle.mockReturnValue(throwError(() => failure));
+    const received = vi.fn();
+
+    store.dryRunBundle(request).subscribe({ error: received });
+
+    expect(api.dryRunBundle).toHaveBeenCalledWith(request);
+    expect(received).toHaveBeenCalledWith(failure);
   });
 
   describe('generateBundle', () => {

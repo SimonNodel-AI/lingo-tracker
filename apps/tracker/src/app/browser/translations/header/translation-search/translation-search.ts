@@ -4,6 +4,7 @@ import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { hasSearchLength } from '../../../../shared/search/search-minimum';
 import { SearchInput } from '../../../../shared/components/search-input';
 
 /**
@@ -51,7 +52,7 @@ export class TranslationSearch implements OnDestroy {
         )
         .subscribe((query) => {
           // Only trigger search if query has at least 3 characters
-          if (query.trim().length >= 3) {
+          if (hasSearchLength(query.trim())) {
             this.store.showQuery(query);
           } else if (query.trim().length === 0) {
             // Clear search when input is empty

@@ -13,6 +13,7 @@ import type {
 import { type Observable, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { captureSession } from '../session-guard';
+import { doesUpdateMoveEntry } from '../does-update-move-entry';
 
 /**
  * How a Resource entry is written from the UI.
@@ -85,7 +86,7 @@ export function withEntryWritesFeature<_>() {
           return api.updateResource(collectionName, dto).pipe(
             tap((response) => {
               if (!inSession()) return;
-              if (dto.moveTo !== undefined) {
+              if (doesUpdateMoveEntry(dto)) {
                 dropEntry(dto.key);
               } else if (response.resource) {
                 patchEntry(dto.key, response.resource);
