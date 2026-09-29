@@ -272,6 +272,13 @@ export class BundleNotFoundError extends LingoTrackerError {
   }
 }
 
+/** A bundle generation locale filter is malformed or names unconfigured project locales. */
+export class InvalidBundleLocalesError extends LingoTrackerError {
+  constructor(message: string) {
+    super(message, 'INVALID_BUNDLE_LOCALES');
+  }
+}
+
 /** A bundle with this name already exists (add, or rename onto it). */
 export class BundleAlreadyExistsError extends LingoTrackerError {
   readonly bundleName: string;

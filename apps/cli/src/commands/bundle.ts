@@ -1,6 +1,6 @@
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
-import { generateBundle } from '@simoncodes-ca/core';
+import type { TokenCasing } from '@simoncodes-ca/domain';
+import { BundleNotFoundError, generateBundle, validateGenerateBundleRequest } from '@simoncodes-ca/core';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { ALL_ITEMS_SENTINEL, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
 
@@ -94,32 +94,18 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
   const bundleResults: BundleGenerationResult[] = [];
 
   for (const bundleKey of bundlesToProcess) {
-    const bundleDefinition = config.bundles[bundleKey];
-
-    if (!bundleDefinition) {
-      ConsoleFormatter.error(`Bundle "${bundleKey}" not found.`);
-      bundleResults.push({
-        bundleKey,
-        filesGenerated: 0,
-        warnings: [],
-        localesProcessed: [],
-        error: `Bundle "${bundleKey}" not found in configuration`,
-      });
-      continue;
-    }
-
-    if (!options.quiet) {
-      console.log('');
-      ConsoleFormatter.progress(`Generating bundle: ${bundleKey}`);
-    }
-    if (!options.quiet && options.verbose && localeFilter) {
-      ConsoleFormatter.indent(`Locales: ${localeFilter.join(', ')}`);
-    }
-
     try {
+      validateGenerateBundleRequest({ bundleKey, config, locales: localeFilter });
+      if (!options.quiet) {
+        console.log('');
+        ConsoleFormatter.progress(`Generating bundle: ${bundleKey}`);
+      }
+      if (!options.quiet && options.verbose && localeFilter) {
+        ConsoleFormatter.indent(`Locales: ${localeFilter.join(', ')}`);
+      }
+
       const result = await generateBundle({
         bundleKey,
-        bundleDefinition,
         config,
         locales: localeFilter,
         tokenCasing: options.tokenCasing,
@@ -141,33 +127,9 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
       }
 
-      if (result.typeGenerationResult) {
-        if (result.typeGenerationResult.fileGenerated) {
-          if (!options.quiet) {
-            ConsoleFormatter.indent(
-              `└─ Types: ${result.typeGenerationResult.typeDistFile} (${result.typeGenerationResult.keysCount} keys)`,
-            );
-          }
-        } else if (result.typeGenerationResult.errorReason) {
-          ConsoleFormatter.error(`Type generation failed: ${result.typeGenerationResult.errorReason}`);
-        } else if (result.typeGenerationResult.skippedReason) {
-          if (!options.quiet) {
-            const skippedReasonMessages: Record<string, string> = {
-              'empty-bundle': 'bundle has no keys',
-              'not-configured': 'no typeDistFile configured',
-            };
-            const skippedMessage =
-              skippedReasonMessages[result.typeGenerationResult.skippedReason] ??
-              result.typeGenerationResult.skippedReason;
-            ConsoleFormatter.indent(`└─ Types: Skipped (${skippedMessage})`);
-          }
-        }
-      } else if (hasTypeDistConfigured(bundleDefinition)) {
-        // Should have result if configured, but just in case
-        ConsoleFormatter.error('Type generation failed: no result returned');
-      } else if (!options.quiet) {
-        ConsoleFormatter.indent(`└─ Types: Skipped (no typeDistFile configured)`);
-      }
+      const typeLine = typeOutcomeLine(result.typeOutcome);
+      if (result.typeOutcome.status === 'failed') ConsoleFormatter.error(typeLine);
+      else if (!options.quiet) ConsoleFormatter.indent(typeLine);
 
       if (result.warnings.length > 0) {
         ConsoleFormatter.warning(
@@ -176,7 +138,12 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         );
       }
     } catch (e: unknown) {
-      const errorMessage = e instanceof Error ? e.message : 'Failed to generate bundle';
+      const errorMessage =
+        e instanceof BundleNotFoundError
+          ? `Bundle "${bundleKey}" not found.`
+          : e instanceof Error
+            ? e.message
+            : 'Failed to generate bundle';
       bundleResults.push({
         bundleKey,
         filesGenerated: 0,
@@ -224,4 +191,17 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
   }
 
   return bundleResults.some((r) => r.error) ? { exitCode: 1 } : undefined;
+}
+
+function typeOutcomeLine(outcome: Awaited<ReturnType<typeof generateBundle>>['typeOutcome']): string {
+  switch (outcome.status) {
+    case 'written':
+      return `└─ Types: ${outcome.path} (${outcome.keysCount} keys)`;
+    case 'skipped':
+      return `└─ Types: Skipped (${outcome.reason})`;
+    case 'failed':
+      return `Type generation failed: ${outcome.reason}`;
+    case 'not-configured':
+      return '└─ Types: Skipped (no typeDistFile configured)';
+  }
 }

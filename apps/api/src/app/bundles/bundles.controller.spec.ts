@@ -340,7 +340,6 @@ describe('BundlesController', () => {
 
       expect(jobService.startJob).toHaveBeenCalledWith({
         bundleName: 'tracker',
-        bundleDefinition: existingDefinition,
         config,
         locales: ['fr-ca'],
       });
@@ -357,7 +356,6 @@ describe('BundlesController', () => {
 
       expect(jobService.startJob).toHaveBeenCalledWith({
         bundleName: 'tracker',
-        bundleDefinition: existingDefinition,
         config,
       });
       expect(status).toHaveBeenCalledWith(HttpStatus.ACCEPTED);
@@ -366,25 +364,34 @@ describe('BundlesController', () => {
     it('returns 404 for an unknown bundle', () => {
       const { response } = makeResponse();
 
+      jobService.startJob.mockImplementation(() => {
+        throw new core.BundleNotFoundError('missing');
+      });
       expect(() => controller.generateBundle('missing', {}, response)).toThrow(core.BundleNotFoundError);
       expect(statusOf(() => controller.generateBundle('missing', {}, response))).toBe(HttpStatus.NOT_FOUND);
-      expect(jobService.startJob).not.toHaveBeenCalled();
+      expect(jobService.startJob).toHaveBeenCalled();
     });
 
     it('returns 404 for a name that only exists on Object.prototype', () => {
       const { response } = makeResponse();
 
+      jobService.startJob.mockImplementation(() => {
+        throw new core.BundleNotFoundError('constructor');
+      });
       expect(statusOf(() => controller.generateBundle('constructor', {}, response))).toBe(HttpStatus.NOT_FOUND);
-      expect(jobService.startJob).not.toHaveBeenCalled();
+      expect(jobService.startJob).toHaveBeenCalled();
     });
 
     it('returns 400 for a locale outside the project locales', () => {
       const { response } = makeResponse();
 
+      jobService.startJob.mockImplementation(() => {
+        throw new core.InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales');
+      });
       expect(statusOf(() => controller.generateBundle('tracker', { locales: ['en', 'xx'] }, response))).toBe(
         HttpStatus.BAD_REQUEST,
       );
-      expect(jobService.startJob).not.toHaveBeenCalled();
+      expect(jobService.startJob).toHaveBeenCalled();
     });
   });
 

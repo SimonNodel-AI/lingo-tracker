@@ -13,6 +13,7 @@ export {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
   InvalidCollectionError,
   InvalidConfigError,
   InvalidFolderPathError,

@@ -26,6 +26,8 @@ export {
   addBundleDefinition,
   deleteBundleDefinition,
   generateBundle,
+  validateBundleLocales,
+  validateGenerateBundleRequest,
   planBundle,
   updateBundleDefinition,
 } from './lib/bundle';
@@ -136,6 +138,7 @@ export {
   FolderNotFoundError,
   type FolderPathPart,
   InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
   InvalidCollectionError,
   InvalidConfigError,
   InvalidFolderPathError,

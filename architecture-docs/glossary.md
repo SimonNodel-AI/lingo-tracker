@@ -42,6 +42,8 @@ A generated JSON file (one per locale) that aggregates translation values from o
 
 During bundle generation, ICU simple placeholder syntax (`{varName}`) is converted to Transloco double-brace syntax (`{{ varName }}`); complex ICU constructs (`plural`, `select`) pass through unchanged.
 
+Core generates a saved bundle by its name, validates any requested locale subset, and reports the paths it wrote, including debug-keys and type files. Type generation has one outcome: written, skipped, failed, or not configured.
+
 Explained in context: [`bundle-generation.md`](bundle-generation.md), [`core-library.md`](core-library.md)
 
 ---

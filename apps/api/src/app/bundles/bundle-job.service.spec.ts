@@ -29,24 +29,25 @@ const config = {
   baseLocale: 'en',
   locales: ['en', 'fr'],
   collections: { app: { translationsFolder: './i18n' } },
+  bundles: { main: bundleDefinition },
 };
 
 const makeResult = (overrides: Partial<GenerateBundleResult> = {}): GenerateBundleResult => ({
   bundleKey: 'main',
   filesGenerated: 2,
+  writtenFiles: ['dist/i18n/en.json', 'dist/i18n/fr.json', 'dist/i18n-types/main.ts'],
   warnings: [],
   localesProcessed: ['en', 'fr'],
   keysPerLocale: { en: 5, fr: 5 },
-  typeGenerationResult: {
-    bundleKey: 'main',
-    typeDistFile: './dist/i18n-types/main.ts',
-    keysCount: 5,
-    fileGenerated: true,
-  },
+  typeOutcome: { status: 'written', path: 'dist/i18n-types/main.ts', keysCount: 5 },
   ...overrides,
 });
 
-const makeParams = (bundleName = 'main') => ({ bundleName, bundleDefinition, config });
+const makeParams = (bundleName = 'main') => ({
+  bundleName,
+  config:
+    bundleName === 'main' ? config : { ...config, bundles: { ...config.bundles, [bundleName]: bundleDefinition } },
+});
 
 describe('BundleJobService', () => {
   let service: BundleJobService;
@@ -56,6 +57,18 @@ describe('BundleJobService', () => {
     jest.clearAllMocks();
     logger = { error: jest.fn(), log: jest.fn(), warn: jest.fn() };
     service = new BundleJobService(logger as unknown as Logger);
+  });
+
+  it('rejects an unknown name before adding a job', () => {
+    expect(() => service.startJob({ bundleName: 'constructor', config })).toThrow('Bundle "constructor" not found');
+    expect(mockGenerateBundle).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unknown locale before adding a job', () => {
+    expect(() => service.startJob({ ...makeParams(), locales: ['xx'] })).toThrow(
+      'Unknown locale "xx": must be defined in the project locales',
+    );
+    expect(mockGenerateBundle).not.toHaveBeenCalled();
   });
 
   it('startJob returns an ID and getJob exposes the pending job', () => {
@@ -84,7 +97,6 @@ describe('BundleJobService', () => {
     expect(mockGenerateBundle).toHaveBeenCalledTimes(1);
     const params = mockGenerateBundle.mock.calls[0][0] as GenerateBundleParams;
     expect(params.bundleKey).toBe('main');
-    expect(params.bundleDefinition).toBe(bundleDefinition);
     expect(params.config).toBe(config);
     expect(params.locales).toEqual(['fr']);
     expect(params.cwd).toBe(process.cwd());

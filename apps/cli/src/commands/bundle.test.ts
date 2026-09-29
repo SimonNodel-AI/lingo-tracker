@@ -58,6 +58,7 @@ describe('bundleCommand', () => {
       filesGenerated: 3,
       warnings: [],
       localesProcessed: ['en', 'fr', 'es'],
+      typeOutcome: { status: 'not-configured' },
     });
   });
 
@@ -153,10 +154,36 @@ describe('bundleCommand', () => {
     });
 
     it('should show error for non-existent bundle', async () => {
+      mockGenerateBundle.mockImplementation(() => {
+        throw new core.BundleNotFoundError('nonexistent');
+      });
       await bundleCommand({ name: 'nonexistent' });
 
       expect(console.error).toHaveBeenCalledWith('❌ Bundle "nonexistent" not found.');
       expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('reports a prototype-member name as not found', async () => {
+      mockGenerateBundle.mockImplementation(() => {
+        throw new core.BundleNotFoundError('constructor');
+      });
+
+      await bundleCommand({ name: 'constructor' });
+
+      expect(console.error).toHaveBeenCalledWith('❌ Bundle "constructor" not found.');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('reports an unconfigured locale from core and exits 1', async () => {
+      mockGenerateBundle.mockImplementation(() => {
+        throw new core.InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales');
+      });
+
+      await bundleCommand({ name: 'core', locale: 'xx' });
+
+      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith('❌ Unknown locale "xx": must be defined in the project locales');
       expect(process.exitCode).toBe(1);
     });
   });
@@ -218,6 +245,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en', 'fr', 'es'],
+        typeOutcome: { status: 'not-configured' },
       });
 
       await bundleCommand({ name: 'core' });
@@ -239,6 +267,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: ['Warning 1'],
         localesProcessed: ['en', 'fr'],
+        typeOutcome: { status: 'not-configured' },
       });
 
       await bundleCommand({ name: 'core', quiet: true });
@@ -266,13 +295,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en'],
-        typeGenerationResult: {
-          bundleKey: 'core',
-          typeDistFile: 'src/generated/core-tokens.ts',
-          keysCount: 0,
-          fileGenerated: false,
-          errorReason: 'Unable to write type file',
-        },
+        typeOutcome: { status: 'failed', reason: 'Unable to write type file' },
       });
 
       await bundleCommand({ name: 'core', quiet: true });
@@ -288,6 +311,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: ['Warning 1', 'Warning 2'],
         localesProcessed: ['en', 'fr'],
+        typeOutcome: { status: 'not-configured' },
       });
 
       await bundleCommand({ name: 'core' });
@@ -302,6 +326,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: ['Warning 1', 'Warning 2'],
         localesProcessed: ['en', 'fr'],
+        typeOutcome: { status: 'not-configured' },
       });
 
       await bundleCommand({ name: 'core', verbose: true });
@@ -322,12 +347,14 @@ describe('bundleCommand', () => {
           filesGenerated: 3,
           warnings: [],
           localesProcessed: ['en', 'fr', 'es'],
+          typeOutcome: { status: 'not-configured' },
         })
         .mockReturnValueOnce({
           bundleKey: 'admin',
           filesGenerated: 2,
           warnings: ['Warning 1'],
           localesProcessed: ['en', 'fr'],
+          typeOutcome: { status: 'not-configured' },
         });
 
       await bundleCommand({ name: 'core,admin' });
@@ -345,12 +372,14 @@ describe('bundleCommand', () => {
           filesGenerated: 3,
           warnings: [],
           localesProcessed: ['en', 'fr', 'es'],
+          typeOutcome: { status: 'not-configured' },
         })
         .mockReturnValueOnce({
           bundleKey: 'admin',
           filesGenerated: 2,
           warnings: ['Warning 1'],
           localesProcessed: ['en', 'fr'],
+          typeOutcome: { status: 'not-configured' },
         });
 
       await bundleCommand({ name: 'core,admin', quiet: true });
@@ -369,12 +398,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en'],
-        typeGenerationResult: {
-          bundleKey: 'core',
-          typeDistFile: 'src/generated/core-tokens.ts',
-          keysCount: 100,
-          fileGenerated: true,
-        },
+        typeOutcome: { status: 'written', path: 'src/generated/core-tokens.ts', keysCount: 100 },
       });
 
       await bundleCommand({ name: 'core' });
@@ -388,13 +412,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en'],
-        typeGenerationResult: {
-          bundleKey: 'core',
-          typeDistFile: undefined,
-          keysCount: 0,
-          fileGenerated: false,
-          skippedReason: 'empty-bundle',
-        },
+        typeOutcome: { status: 'skipped', reason: 'bundle has no keys' },
       });
 
       await bundleCommand({ name: 'core' });
@@ -408,13 +426,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en'],
-        typeGenerationResult: {
-          bundleKey: 'core',
-          typeDistFile: undefined,
-          keysCount: 0,
-          fileGenerated: false,
-          skippedReason: 'not-configured',
-        },
+        typeOutcome: { status: 'not-configured' },
       });
 
       await bundleCommand({ name: 'core' });
@@ -428,7 +440,7 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en'],
-        // No typeGenerationResult
+        typeOutcome: { status: 'not-configured' },
       });
 
       await bundleCommand({ name: 'core' });
@@ -525,6 +537,7 @@ describe('bundleCommand', () => {
           filesGenerated: 2,
           warnings: [],
           localesProcessed: ['en', 'fr'],
+          typeOutcome: { status: 'not-configured' },
         });
 
       await bundleCommand({ name: 'core,admin' });
@@ -545,6 +558,7 @@ describe('bundleCommand', () => {
           filesGenerated: 2,
           warnings: [],
           localesProcessed: ['en', 'fr'],
+          typeOutcome: { status: 'not-configured' },
         });
 
       await bundleCommand({ name: 'core,admin' });
