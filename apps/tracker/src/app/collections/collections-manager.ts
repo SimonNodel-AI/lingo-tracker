@@ -21,10 +21,13 @@ import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionsStore } from './store/collections.store';
 import type { BundleEntry } from './store/features/with-bundles.feature';
 import { BundleCard } from './bundle-card/bundle-card';
+import type { CollectionFormDialogData } from './collection-form-dialog/collection-form-dialog-data';
+import type { CollectionFormResult } from './collection-form-dialog/collection-form-dialog';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog/bundle-form-dialog-data';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../shared/api-error/api-error';
 import { NotificationService } from '../shared/notification';
+import { injectConfirm } from '../shared/confirm';
 
 /**
  * Total locale chips a card shows, overflow chip included. Capped so every card keeps a
@@ -133,6 +136,7 @@ export class CollectionsManager {
   readonly #host = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly #destroyRef = inject(DestroyRef);
   readonly #dialog = inject(MatDialog);
+  readonly #confirm = injectConfirm();
   readonly #notifications = inject(NotificationService);
   readonly #router = inject(Router);
   readonly #transloco = inject(TranslocoService);
@@ -386,27 +390,23 @@ export class CollectionsManager {
   }
 
   openDeleteBundleDialog(name: string): void {
-    import('../shared/components/confirmation-dialog/confirmation-dialog').then((m) => {
-      const dialogRef = this.#dialog.open(m.ConfirmationDialog, {
-        data: {
-          title: this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMTITLE),
-          message: this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMMESSAGEX, { name }),
-          confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-          cancelButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
-          actionType: 'destructive',
-        },
-        width: '400px',
-      });
-
-      dialogRef.afterClosed().subscribe((confirmed) => {
-        if (!confirmed) return;
-        this.store.deleteBundle(name).subscribe({
-          next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETED)),
-          error: (error: unknown) =>
-            this.#notifications.error(
-              apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETEFAILED)),
-            ),
-        });
+    this.#confirm(
+      {
+        title: this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMTITLE),
+        message: this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMMESSAGEX, { name }),
+        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
+        cancelButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
+        actionType: 'destructive',
+      },
+      { width: '400px' },
+    ).then((confirmed) => {
+      if (!confirmed) return;
+      this.store.deleteBundle(name).subscribe({
+        next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETED)),
+        error: (error: unknown) =>
+          this.#notifications.error(
+            apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETEFAILED)),
+          ),
       });
     });
   }
@@ -446,84 +446,69 @@ export class CollectionsManager {
     );
   }
 
-  /**
-   * Opens the create collection dialog.
-   */
+  /** Opens the create form and toasts only when it closes with a saved result. */
   openCreateDialog(): void {
-    import('./collection-form-dialog/collection-form-dialog').then((m) => {
-      const dialogRef = this.#dialog.open(m.CollectionFormDialog, {
-        data: { mode: 'create' },
-        panelClass: 'collection-form-dialog-panel',
-        // Land on the first field, not the close button.
-        autoFocus: 'input',
-      });
-
-      dialogRef.afterClosed().subscribe((result) => {
-        if (result) this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.CREATED));
-      });
-    });
+    this.#openSavedCollectionDialog({ mode: 'create' }, TRACKER_TOKENS.COLLECTIONS.TOAST.CREATED);
   }
 
-  /**
-   * Opens the edit collection dialog.
-   */
+  /** Opens the edit form for an existing collection and toasts only after a save. */
   openEditDialog(name: string): void {
     const config = this.store.collections()[name];
     if (!config) {
       this.#notifications.error(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.ERROR));
       return;
     }
-
     const effectiveBaseLocale = this.store
       .collectionEntriesWithLocales()
       .find((item) => item.name === name)?.baseLocale;
+    this.#openSavedCollectionDialog(
+      { mode: 'edit', name, config, effectiveBaseLocale },
+      TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATED,
+    );
+  }
 
-    import('./collection-form-dialog/collection-form-dialog').then((m) => {
-      const dialogRef = this.#dialog.open(m.CollectionFormDialog, {
-        data: {
-          mode: 'edit',
-          name,
-          config,
-          effectiveBaseLocale,
-        },
-        panelClass: 'collection-form-dialog-panel',
-        // Land on the first field, not the close button.
-        autoFocus: 'input',
-      });
+  #openSavedCollectionDialog(data: CollectionFormDialogData, successToken: string): void {
+    this.#openCollectionDialog(data).then((result) => {
+      if (result) this.#notifications.success(this.#transloco.translate(successToken));
+    });
+  }
 
-      dialogRef.afterClosed().subscribe((result) => {
-        if (result) this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATED));
+  /** Opens a confirmation and toasts only after the delete Config Write resolves. */
+  openDeleteDialog(name: string): void {
+    this.#confirm(
+      {
+        title: this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.TITLE),
+        message: this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.MESSAGE, { name }),
+        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
+        cancelButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
+        actionType: 'destructive',
+      },
+      { width: '400px' },
+    ).then((confirmed) => {
+      if (!confirmed) return;
+      this.store.deleteCollection(name).subscribe({
+        next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETED)),
+        error: (error: unknown) =>
+          this.#notifications.error(
+            apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED)),
+          ),
       });
     });
   }
 
-  /**
-   * Opens the delete confirmation dialog.
-   */
-  openDeleteDialog(name: string): void {
-    import('../shared/components/confirmation-dialog/confirmation-dialog').then((m) => {
-      const dialogRef = this.#dialog.open(m.ConfirmationDialog, {
-        data: {
-          title: this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.TITLE),
-          message: this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.MESSAGE, { name }),
-          confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-          cancelButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
-          actionType: 'destructive',
-        },
-        width: '400px',
-      });
-
-      dialogRef.afterClosed().subscribe((confirmed) => {
-        if (!confirmed) return;
-        this.store.deleteCollection(name).subscribe({
-          next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETED)),
-          error: (error: unknown) =>
-            this.#notifications.error(
-              apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED)),
-            ),
-        });
-      });
-    });
+  #openCollectionDialog(data: CollectionFormDialogData): Promise<CollectionFormResult | undefined> {
+    return import('./collection-form-dialog/collection-form-dialog').then(
+      (m) =>
+        new Promise((resolve) => {
+          const ref = this.#dialog.open(m.CollectionFormDialog, {
+            data,
+            panelClass: 'collection-form-dialog-panel',
+            // Land on the first field, not the close button.
+            autoFocus: 'input',
+          });
+          ref.afterClosed().subscribe((result: CollectionFormResult | undefined) => resolve(result));
+        }),
+    );
   }
 
   /**

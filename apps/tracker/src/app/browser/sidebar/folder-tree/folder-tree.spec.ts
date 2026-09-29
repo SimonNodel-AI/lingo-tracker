@@ -155,9 +155,14 @@ describe('FolderTree', () => {
 
     component.confirmMoveFolder('common.buttons', 'errors');
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
-    expect(dialog.open.mock.calls.at(-1)?.[1]).toMatchObject({
+    expect(dialog.open.mock.calls.at(-1)?.[1]).toEqual({
       width: '400px',
-      data: { actionType: 'standard' },
+      data: {
+        title: 'Move Folder',
+        message: 'Move folder "buttons" and all its contents to "errors"?',
+        confirmButtonText: 'Move',
+        actionType: 'standard',
+      },
     });
     expect(move).not.toHaveBeenCalled();
 
@@ -171,7 +176,9 @@ describe('FolderTree', () => {
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(2));
     confirmed.next(true);
     confirmed.complete();
-    expect(move).toHaveBeenCalledWith({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' });
+    await vi.waitFor(() =>
+      expect(move).toHaveBeenCalledWith({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' }),
+    );
   });
 
   it('opens delete confirmation and calls the store only when confirmed', async () => {
@@ -182,9 +189,14 @@ describe('FolderTree', () => {
 
     component.onDeleteFolder('common');
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
-    expect(dialog.open.mock.calls.at(-1)?.[1]).toMatchObject({
+    expect(dialog.open.mock.calls.at(-1)?.[1]).toEqual({
       width: '400px',
-      data: { actionType: 'destructive' },
+      data: {
+        title: 'Delete Folder',
+        message: 'Delete "common" and all its contents?',
+        confirmButtonText: 'Delete',
+        actionType: 'destructive',
+      },
     });
     expect(remove).not.toHaveBeenCalled();
     closed.next(false);
@@ -197,7 +209,7 @@ describe('FolderTree', () => {
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(2));
     confirmed.next(true);
     confirmed.complete();
-    expect(remove).toHaveBeenCalledWith('common');
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledWith('common'));
   });
 
   it('silently skips a same-folder move and toasts an already-at-location move once', () => {

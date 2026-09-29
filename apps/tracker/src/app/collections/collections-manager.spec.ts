@@ -348,6 +348,17 @@ describe('CollectionsManager', () => {
       component.openDeleteDialog('zulu');
       await vi.waitFor(() => expect(notifications.success).toHaveBeenCalledWith('Collection deleted successfully'));
 
+      expect(dialog.open.mock.calls.at(-1)?.[1]).toEqual({
+        data: {
+          title: 'Delete Collection',
+          message: 'Are you sure you want to delete zulu?',
+          confirmButtonText: 'Delete',
+          cancelButtonText: 'Cancel',
+          actionType: 'destructive',
+        },
+        width: '400px',
+      });
+
       expect(api.deleteCollection).toHaveBeenCalledWith('zulu');
       expect(component.cards().map((card) => card.name)).toEqual(['alpha']);
     });
@@ -371,6 +382,17 @@ describe('CollectionsManager', () => {
 
       component.openDeleteBundleDialog('main');
       await vi.waitFor(() => expect(notifications.error).toHaveBeenCalledWith('Failed to delete bundle'));
+
+      expect(dialog.open.mock.calls.at(-1)?.[1]).toEqual({
+        data: {
+          title: 'Delete Bundle',
+          message: 'Delete the bundle main? Files it already generated are kept.',
+          confirmButtonText: 'Delete',
+          cancelButtonText: 'Cancel',
+          actionType: 'destructive',
+        },
+        width: '400px',
+      });
 
       expect(notifications.success).not.toHaveBeenCalled();
     });

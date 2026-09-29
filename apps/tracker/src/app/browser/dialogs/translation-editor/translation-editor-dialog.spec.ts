@@ -379,6 +379,16 @@ describe('TranslationEditorDialog', () => {
       await component.onCancel();
 
       expect(mockDialog.open).toHaveBeenCalled();
+      expect(mockDialog.open.mock.calls.at(-1)?.[1]).toEqual({
+        data: {
+          title: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.TITLE,
+          message: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.MESSAGE,
+          confirmButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.DISCARD,
+          cancelButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.KEEPEDITING,
+        },
+        width: '440px',
+        disableClose: true,
+      });
       expect(dialogRef.close).toHaveBeenCalledWith({ kind: 'cancelled' });
     });
 
@@ -1132,8 +1142,18 @@ describe('TranslationEditorDialog', () => {
       await component.onSubmit();
 
       expect(apiSpies.createResource).not.toHaveBeenCalled();
-      expect(mockDialog.open).toHaveBeenCalled();
-      expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' });
+      await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalled());
+      expect(mockDialog.open.mock.calls.at(-1)?.[1]).toEqual({
+        data: {
+          title: 'Translation Key Already Exists',
+          message:
+            'The translation key "common.buttons.ok" already exists in this collection. Would you like to edit the existing translation or choose a different key?',
+          confirmButtonText: 'Edit Existing',
+          cancelButtonText: 'Choose Different Key',
+        },
+        width: '500px',
+      });
+      await vi.waitFor(() => expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' }));
     });
   });
 
@@ -1158,8 +1178,8 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      expect(mockDialog.open).toHaveBeenCalled();
-      expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' });
+      await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalled());
+      await vi.waitFor(() => expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' }));
     });
 
     it('should show the server message for a 400 the API rejected as invalid', async () => {

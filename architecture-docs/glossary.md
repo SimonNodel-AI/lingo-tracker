@@ -141,6 +141,24 @@ Explained in context: [`frontend.md`](frontend.md#collectionsstore)
 
 ---
 
+### Confirmation
+
+Confirmation is one boolean answer from the shared `ConfirmationDialog`. `injectConfirm()` in `apps/tracker/src/app/shared/confirm.ts` lazily opens the dialog with the caller's data and options, then resolves `true` only for an explicit confirmation. Cancel, backdrop close, and a close without an emitted result resolve `false`. A caller can supply a Browser Session guard checked after loading and before opening.
+
+Explained in context: [`frontend.md`](frontend.md#lazy-loaded-dialogs)
+
+---
+
+## D
+
+### Dialog Config Submit
+
+Dialog Config Submit is how the collection and bundle form dialogs submit a [Config Write](#config-write). `submitDialogConfigWrite()` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` sets `saving`, locks closing during the write, closes with the caller's saved result on success, and restores the previous close setting and `saving` on refusal. `classifyConfigRefusal()` gives the caller a `conflict`, `invalid`, or `other` refusal and preserves API details for every kind. Each form renders that refusal on its own fields; the settings page uses the same classification for preferred-terminology rule errors but owns its save subscription because it is a page and must keep saving after navigation.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
+
+---
+
 ## E
 
 ### Editor Outcome

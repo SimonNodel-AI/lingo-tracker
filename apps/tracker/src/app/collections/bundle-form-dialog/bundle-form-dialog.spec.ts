@@ -692,6 +692,19 @@ describe('BundleFormDialog — edit mode', () => {
     expect(component.submitErrors()).toEqual(['Bundle "tracker" already exists']);
   });
 
+  it('should list server details from a conflict when the name is locked', () => {
+    harness.store.updateBundle.mockReturnValue(
+      rejection(409, { message: 'Bundle "tracker" already exists', errors: ['Conflicting bundle output path.'] }),
+    );
+
+    component.onSubmit();
+    harness.fixture.detectChanges();
+
+    expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    expect(component.submitErrors()).toEqual(['Conflicting bundle output path.']);
+    expect(submitErrorsText(harness)).toContain('Conflicting bundle output path.');
+  });
+
   it('should collapse an ICU choice equal to the project default (on) back to inherit', () => {
     component.setIcu(true);
     expect(component.form.controls.transformICUToTransloco.value).toBe('inherit');

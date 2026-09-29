@@ -17,7 +17,7 @@ import {
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatAutocompleteModule, type MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
-import { MAT_DIALOG_DATA, MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -43,8 +43,8 @@ import { debounceTime, takeUntil } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { ApiError, apiErrorMessage } from '../../../shared/api-error/api-error';
 import { CollectionsStore } from '../../../collections/store/collections.store';
-import { ConfirmationDialog } from '../../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
+import { injectConfirm } from '../../../shared/confirm';
 import { NotificationService } from '../../../shared/notification';
 import { hasSearchLength } from '../../../shared/search/search-minimum';
 import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
@@ -139,7 +139,7 @@ export type EditorOutcome =
 })
 export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit {
   private readonly dialogRef = inject<MatDialogRef<TranslationEditorDialog, EditorOutcome>>(MatDialogRef);
-  private readonly dialog = inject(MatDialog);
+  private readonly confirm = injectConfirm();
   private readonly folderPeek = inject(FolderPeek).openFolderPeek();
   private readonly similarValues = inject(SimilarValues);
   private readonly browserStore = inject(BrowserStore);
@@ -912,16 +912,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.KEEPEDITING),
     };
 
-    return new Promise((resolve) => {
-      this.dialog
-        .open<ConfirmationDialog, ConfirmationDialogData, boolean>(ConfirmationDialog, {
-          data: dialogData,
-          width: '440px',
-          disableClose: true,
-        })
-        .afterClosed()
-        .subscribe((discard) => resolve(discard === true));
-    });
+    return this.confirm(dialogData, { width: '440px', disableClose: true });
   }
 
   /** The picker inside the popover stages a folder; the popover's button commits it. */
@@ -1176,15 +1167,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.CHOOSEDIFFERENTKEY),
     };
 
-    const dialogRef = this.dialog.open<ConfirmationDialog, ConfirmationDialogData, boolean>(ConfirmationDialog, {
-      data: dialogData,
-      width: '500px',
-    });
-
-    dialogRef.afterClosed().subscribe((shouldEditExisting) => {
-      if (shouldEditExisting) {
-        this.#close({ kind: 'open-existing', fullKey: existingKey });
-      }
+    this.confirm(dialogData, { width: '500px' }).then((shouldEditExisting) => {
+      if (shouldEditExisting) this.#close({ kind: 'open-existing', fullKey: existingKey });
     });
   }
 
@@ -1198,20 +1182,14 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.ADDCOMMENT),
     };
 
-    const confirmationDialogRef = this.dialog.open(ConfirmationDialog, {
-      data: confirmationDialogData,
-      width: '400px',
-      disableClose: true,
-    });
-
-    const confirmed = await confirmationDialogRef.afterClosed().toPromise();
+    const confirmed = await this.confirm(confirmationDialogData, { width: '400px', disableClose: true });
 
     if (!confirmed) {
       this.#commentConfirmationShown = false;
       this.#focusCommentField();
     }
 
-    return confirmed === true;
+    return confirmed;
   }
 
   /**

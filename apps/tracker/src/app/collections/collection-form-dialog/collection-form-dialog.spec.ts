@@ -563,6 +563,14 @@ describe('CollectionFormDialog — edit mode', () => {
     await component.onSubmit();
 
     expect(mockDialog.open).toHaveBeenCalled();
+    expect(mockDialog.open.mock.calls.at(-1)?.[1]).toEqual({
+      data: {
+        title: 'Remove locales',
+        message: 'Removing locales: fr-ca. Their translation entries will be deleted. This cannot be undone.',
+        confirmButtonText: 'Save',
+        actionType: 'destructive',
+      },
+    });
     expect(mockDialogRef.close).not.toHaveBeenCalled();
   });
 
