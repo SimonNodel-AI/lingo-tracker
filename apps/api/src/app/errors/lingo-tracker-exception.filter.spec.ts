@@ -11,6 +11,7 @@ import {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
   InvalidCollectionError,
   InvalidConfigError,
   InvalidFolderPathError,
@@ -48,6 +49,15 @@ describe('toHttpException', () => {
       { message: 'Folder not found: apps.missing', error: 'Not Found', statusCode: 404 },
     ],
     [new BundleNotFoundError('main'), 404, { message: 'Bundle "main" not found', error: 'Not Found', statusCode: 404 }],
+    [
+      new InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales'),
+      400,
+      {
+        message: 'Unknown locale "xx": must be defined in the project locales',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
+    ],
     [
       new ReadOnlyCollectionError('vendor'),
       403,

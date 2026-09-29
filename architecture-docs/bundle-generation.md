@@ -352,7 +352,9 @@ On both shapes, the interpolation pass strands a branch with no body. The ICU co
 
 ### Per-Locale JSON Files
 
-For each locale in `config.locales` (or the `--locale` CLI override), one JSON file is written to `<dist>/<bundleName>.json`. The `{locale}` placeholder in `bundleName` is replaced with the locale code, and a relative path is resolved against the project directory (`cwd` on `generateBundle`: the CLI's `INIT_CWD`-aware directory, the API's `process.cwd()`). Collection `translationsFolder` values resolve against the same directory.
+`generateBundle({ bundleKey, config, ...options })` resolves the saved definition by its own property name. An unknown name, including an `Object.prototype` member, throws `BundleNotFoundError`. An optional locale subset must contain only configured project locales; core reports malformed or unknown locale filters with `InvalidBundleLocalesError`. The API checks the same request before queuing a job.
+
+For each locale in `config.locales` (or the `--locale` CLI override), one JSON file is written to `<dist>/<bundleName>.json`. The `{locale}` placeholder in `bundleName` is replaced with the locale code, and a relative path is resolved against the project directory (`cwd` on `generateBundle`: the CLI's `INIT_CWD`-aware directory, the API's `process.cwd()`). Collection `translationsFolder` values resolve against the same directory. The result's `writtenFiles` lists every successful JSON, debug-keys and type-file write as a project-relative path. `typeOutcome` is `written` (path and key count), `skipped` (reason), `failed` (reason), or `not-configured`. Type outcomes are not repeated in `warnings`.
 
 Example for the `"main"` bundle with `bundleName: "{locale}"` and `dist: "./dist/i18n"`:
 

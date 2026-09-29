@@ -1,5 +1,4 @@
 import type { BundlePlan, GenerateBundleResult } from '@simoncodes-ca/core';
-import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { MAX_CONFLICT_KEYS, mapBundlePlanToDto, mapGenerateBundleResultToJobResult } from './bundle.mapper';
 
 describe('bundle.mapper', () => {
@@ -67,29 +66,18 @@ describe('bundle.mapper', () => {
   });
 
   describe('mapGenerateBundleResultToJobResult', () => {
-    const definition: BundleDefinition = {
-      bundleName: 'main.{locale}',
-      dist: './dist/i18n',
-      collections: 'All',
-      typeDistFile: './dist/types/main.ts',
-    };
-
     const result: GenerateBundleResult = {
       bundleKey: 'main',
       filesGenerated: 2,
+      writtenFiles: ['dist/i18n/main.en.json', 'dist/i18n/main.fr.json', 'dist/types/main.ts'],
       warnings: ['Bundle empty for de'],
       localesProcessed: ['en', 'fr'],
       keysPerLocale: { en: 4, fr: 4 },
-      typeGenerationResult: {
-        bundleKey: 'main',
-        typeDistFile: './dist/types/main.ts',
-        keysCount: 4,
-        fileGenerated: true,
-      },
+      typeOutcome: { status: 'written', path: 'dist/types/main.ts', keysCount: 4 },
     };
 
-    it('rebuilds written paths from processed locales and appends the types file', () => {
-      const dto = mapGenerateBundleResultToJobResult(result, definition, '/workspace');
+    it('copies written paths and the types file metadata', () => {
+      const dto = mapGenerateBundleResultToJobResult(result);
 
       expect(dto.filesGenerated).toEqual(['dist/i18n/main.en.json', 'dist/i18n/main.fr.json', 'dist/types/main.ts']);
       expect(dto.typeDistFile).toBe('dist/types/main.ts');
@@ -99,49 +87,45 @@ describe('bundle.mapper', () => {
       expect(dto.warnings).toEqual(['Bundle empty for de']);
     });
 
-    it('makes an absolute types path relative to cwd', () => {
-      const dto = mapGenerateBundleResultToJobResult(
-        {
-          ...result,
-          typeGenerationResult: {
-            ...result.typeGenerationResult,
-            typeDistFile: '/workspace/dist/types/main.ts',
-          } as never,
-        },
-        definition,
-        '/workspace',
-      );
+    it('keeps a debug-keys path in the reported file list', () => {
+      const dto = mapGenerateBundleResultToJobResult({
+        ...result,
+        writtenFiles: [...result.writtenFiles, 'dist/i18n/main.99.json'],
+      });
 
-      expect(dto.typeDistFile).toBe('dist/types/main.ts');
-      expect(dto.filesGenerated).toContain('dist/types/main.ts');
-    });
-
-    it('leaves paths outside cwd untouched', () => {
-      const dto = mapGenerateBundleResultToJobResult(
-        {
-          ...result,
-          typeGenerationResult: { ...result.typeGenerationResult, typeDistFile: '/elsewhere/types/main.ts' } as never,
-        },
-        definition,
-        '/workspace',
-      );
-
-      expect(dto.typeDistFile).toBe('/elsewhere/types/main.ts');
+      expect(dto.filesGenerated).toContain('dist/i18n/main.99.json');
     });
 
     it('omits type fields when no types file was written', () => {
-      const dto = mapGenerateBundleResultToJobResult(
-        { ...result, typeGenerationResult: { ...result.typeGenerationResult, fileGenerated: false } as never },
-        definition,
-      );
+      const dto = mapGenerateBundleResultToJobResult({
+        ...result,
+        writtenFiles: result.writtenFiles.slice(0, 2),
+        typeOutcome: { status: 'skipped', reason: 'bundle has no keys' },
+      });
 
       expect(dto.filesGenerated).toHaveLength(2);
       expect('typeDistFile' in dto).toBe(false);
       expect('typesKeysCount' in dto).toBe(false);
+      expect(dto.warnings).toEqual(['Bundle empty for de', "Type generation skipped for 'main': Bundle is empty"]);
+    });
+
+    it('restores the previous Tracker warning for a failed type file', () => {
+      const dto = mapGenerateBundleResultToJobResult({
+        ...result,
+        writtenFiles: result.writtenFiles.slice(0, 2),
+        typeOutcome: { status: 'failed', reason: 'disk full' },
+      });
+
+      expect(dto.warnings).toEqual(['Bundle empty for de', "Type generation failed for 'main': disk full"]);
+      expect(dto.typeDistFile).toBeUndefined();
     });
 
     it('omits type fields when type generation did not run', () => {
-      const dto = mapGenerateBundleResultToJobResult({ ...result, typeGenerationResult: undefined }, definition);
+      const dto = mapGenerateBundleResultToJobResult({
+        ...result,
+        writtenFiles: result.writtenFiles.slice(0, 2),
+        typeOutcome: { status: 'not-configured' },
+      });
 
       expect(dto.filesGenerated).toHaveLength(2);
       expect(dto.typeDistFile).toBeUndefined();

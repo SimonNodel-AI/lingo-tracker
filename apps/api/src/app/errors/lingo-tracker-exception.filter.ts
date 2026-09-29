@@ -23,6 +23,7 @@ import {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
   InvalidCollectionError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -90,6 +91,7 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   }
   if (
     error instanceof InvalidResourceKeyError ||
+    error instanceof InvalidBundleLocalesError ||
     error instanceof InvalidLocaleError ||
     error instanceof LocaleNotFoundError ||
     error instanceof LocaleAlreadyExistsError ||

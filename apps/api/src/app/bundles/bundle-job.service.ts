@@ -1,21 +1,19 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import type { BundleProgressEvent, LingoTrackerConfig } from '@simoncodes-ca/core';
-import { generateBundle } from '@simoncodes-ca/core';
+import { generateBundle, validateGenerateBundleRequest } from '@simoncodes-ca/core';
 import type {
   BundleGenerateJobDto,
   BundleGenerateJobProgressDto,
   BundleGenerateJobResultDto,
   BundleGenerateJobStatus,
 } from '@simoncodes-ca/data-transfer';
-import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { mapGenerateBundleResultToJobResult } from '../mappers/bundle.mapper';
 
 export interface StartBundleJobParams {
   readonly bundleName: string;
-  readonly bundleDefinition: BundleDefinition;
   readonly config: LingoTrackerConfig;
-  readonly locales?: string[];
+  readonly locales?: readonly string[];
 }
 
 interface BundleJob {
@@ -53,6 +51,7 @@ export class BundleJobService {
 
   /** Registers a job, schedules it behind any running job, and returns its ID. */
   startJob(params: StartBundleJobParams): string {
+    validateGenerateBundleRequest({ bundleKey: params.bundleName, config: params.config, locales: params.locales });
     this.#evictFinishedJobs();
 
     const jobId = randomUUID();
@@ -90,7 +89,6 @@ export class BundleJobService {
     try {
       const result = await generateBundle({
         bundleKey: params.bundleName,
-        bundleDefinition: params.bundleDefinition,
         config: params.config,
         ...(params.locales && { locales: params.locales }),
         onProgress,
@@ -103,7 +101,7 @@ export class BundleJobService {
       completed.status = 'completed';
       completed.completedAt = new Date();
       completed.progress = { current: completed.progress.total, total: completed.progress.total };
-      completed.result = mapGenerateBundleResultToJobResult(result, params.bundleDefinition);
+      completed.result = mapGenerateBundleResultToJobResult(result);
     } catch (error: unknown) {
       const failed = this.#jobs.get(jobId);
       if (!failed) return;
