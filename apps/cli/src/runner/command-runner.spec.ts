@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import {
   ConfigNotFoundError,
   ConfigParseError,
+  InvalidConfigError,
   InvalidResourceKeyError,
   type LingoTrackerConfig,
   loadConfig,
@@ -474,6 +475,38 @@ describe('defineCommand', () => {
 
       expect(console.error).toHaveBeenCalledWith('❌ Invalid key "bad..key"');
       expect(process.exitCode).toBe(1);
+    });
+
+    it('prints the message of an Error cause as a detail line under the error', async () => {
+      const { invoke } = command({
+        collection: 'none',
+        run: () => {
+          throw new InvalidConfigError('Could not write .lingo-tracker.json', {
+            cause: new Error('EACCES: permission denied'),
+          });
+        },
+      });
+
+      await invoke({});
+
+      expect(vi.mocked(console.error).mock.calls).toEqual([
+        ['❌ Could not write .lingo-tracker.json'],
+        ['  EACCES: permission denied'],
+      ]);
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('prints no detail line for a cause that is not an Error', async () => {
+      const { invoke } = command({
+        collection: 'none',
+        run: () => {
+          throw new InvalidConfigError('Could not write .lingo-tracker.json', { cause: 'EACCES' });
+        },
+      });
+
+      await invoke({});
+
+      expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Could not write .lingo-tracker.json']]);
     });
 
     it('CommandCancelledError thrown by run is a cancel (exit 0)', async () => {
