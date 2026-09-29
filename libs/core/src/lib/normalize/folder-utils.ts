@@ -1,20 +1,21 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { walkFolders } from './iterative-folder-walker';
+import { walkCollectionFolders } from '../resource/collection-folders';
 import { openResourceFolder } from '../resource/resource-folder';
 
 /**
- * Recursively traverses a directory tree and returns all folder paths
- * sorted in bottom-up order (deepest folders first).
+ * Returns the collection folders under `rootPath` (the collection-folder policy: hidden folders
+ * and folders that cannot be listed are left out), deepest first.
  * This is essential for safe folder cleanup operations.
  *
- * @param rootPath - The root directory to traverse
+ * @param rootPath - The translations folder
  * @returns Array of folder paths sorted by depth (deepest first)
  */
 export function getAllFoldersBottomUp(rootPath: string): string[] {
   const foldersWithDepth: { path: string; depth: number }[] = [];
 
-  for (const visit of walkFolders(rootPath, { skipHidden: false })) {
+  for (const visit of walkCollectionFolders(rootPath)) {
+    if (visit.problem) continue;
     foldersWithDepth.push({ path: visit.absolutePath, depth: visit.depth });
   }
 
@@ -27,7 +28,7 @@ export function getAllFoldersBottomUp(rootPath: string): string[] {
  * A folder is empty if it has:
  * - No resource_entries.json file, OR
  * - An empty resource_entries.json (no entries or {}), AND
- * - No subfolders
+ * - No subfolders (a hidden subfolder counts, so the folder that holds one is kept)
  *
  * Files like tracker_meta.json and hidden files (.gitkeep, .DS_Store) are ignored.
  *

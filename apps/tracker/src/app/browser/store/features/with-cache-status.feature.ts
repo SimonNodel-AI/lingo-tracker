@@ -1,4 +1,4 @@
-import { computed, inject } from '@angular/core';
+import { computed, inject, type Signal } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, switchMap, interval, startWith, takeWhile, catchError, of, tap } from 'rxjs';
@@ -24,7 +24,9 @@ export function withCacheStatusFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean }>(),
-      methods: type<{ loadRootFolders(): void }>(),
+      // Provided by withListScopeFeature, which composes before this feature.
+      props: type<{ listLoaded: Signal<boolean> }>(),
+      methods: type<{ loadRootFolders(): void; reloadList(): void }>(),
     },
     withState(initialCacheStatusState),
     withComputed(({ cacheStatus, collectionStats }) => ({
@@ -46,7 +48,10 @@ export function withCacheStatusFeature<_>() {
       const transloco = inject(TranslocoService);
 
       return {
-        /** Polls the index status every 2s until it is ready, then loads the root tree once. */
+        /**
+         * Polls the index status every 2s until it is ready, then loads what has not loaded yet in
+         * this session: the root tree, and the list (the List Scope, which starts at the root).
+         */
         checkCacheStatus: rxMethod<void>(
           pipe(
             // Show the indexing state from the first request on, before the server has answered.
@@ -70,8 +75,9 @@ export function withCacheStatusFeature<_>() {
                       : null,
                   });
 
-                  if (statusDto.status === 'ready' && !store.folderTreeLoaded()) {
-                    store.loadRootFolders();
+                  if (statusDto.status === 'ready') {
+                    if (!store.listLoaded()) store.reloadList();
+                    if (!store.folderTreeLoaded()) store.loadRootFolders();
                   }
                 }),
                 takeWhile((statusDto) => statusDto.status === 'indexing' || statusDto.status === 'not-started', true),

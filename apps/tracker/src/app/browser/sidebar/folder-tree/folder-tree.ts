@@ -45,8 +45,8 @@ const SCROLL_INTERVAL_MS = 50;
  *   list every resource across every folder
  * - Folder selection
  * - Toggle between current folder and nested resources view
- * - Disabled while the store says so (`isDisabled`: a search or a move is in progress). The
- *   tree only reads it, so remounting it (re-entering the collection mid-search) keeps it disabled.
+ * - Disabled while the store says so (`isDisabled`: a search is shown or a move is in flight). It
+ *   is derived, so remounting the tree (re-entering the collection mid-search) keeps it disabled.
  */
 @Component({
   selector: 'app-folder-tree',
@@ -159,14 +159,14 @@ export class FolderTree {
    * Single click selects the folder and shows its translations.
    */
   onFolderClick(folder: FolderNodeDto): void {
-    this.store.selectFolder(folder.fullPath);
+    this.store.showFolder(folder.fullPath);
     this.folderSelected.emit(folder.fullPath);
   }
 
   /** Selects the collection root, whose resource list spans every folder. */
   onRootClick(): void {
     if (this.store.isDisabled()) return;
-    this.store.selectFolder('');
+    this.store.showFolder('');
     this.folderSelected.emit('');
   }
 

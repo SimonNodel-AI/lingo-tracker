@@ -159,7 +159,7 @@ describe('TranslationBrowser - opening the routed collection', () => {
     const store = spectator.component.store;
     expect(store.selectedCollection()).toBe('app');
     const sessionId = store.sessionId();
-    store.setSearchQuery('save');
+    store.showQuery('save');
 
     config.set(
       configWith({
@@ -182,7 +182,7 @@ describe('TranslationBrowser - opening the routed collection', () => {
     spectator.detectChanges();
     const store = spectator.component.store;
     const sessionId = store.sessionId();
-    store.setSearchQuery('save');
+    store.showQuery('save');
 
     config.set(
       configWith({
@@ -221,7 +221,7 @@ describe('TranslationBrowser - opening the routed collection', () => {
     first.detectChanges();
     const store = first.component.store;
     const sessionId = store.sessionId();
-    store.setSearchQuery('save');
+    store.showQuery('save');
     first.fixture.destroy();
 
     const second = createComponent();

@@ -5,7 +5,7 @@ import { type Collection, openCollection } from '../lib/config/open-collection';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
 import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';
-import { dropLocaleFiles, seedLocaleFiles } from './locale-files';
+import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
 
 export interface UpdateCollectionOptions {
   cwd?: string;
@@ -28,7 +28,8 @@ export interface UpdateCollectionOptions {
  * collection as it will be after the update, so a patch that also changes
  * `translationsFolder` or `baseLocale` seeds and purges the new folder with the new base
  * locale. The order is: validate everything (existence, rename collision, read-only, locale
- * format), seed the added locales, purge the removed ones, then write the config once. A
+ * format), read every folder of the collection (an unreadable one throws, with nothing written),
+ * seed the added locales, purge the removed ones, then write the config once. A
  * seeding failure therefore never costs a removed locale its data.
  *
  * `mutations` holds what the locale changes (if any) wrote to the translation files. The
@@ -66,12 +67,14 @@ export async function updateCollection(
     for (const locale of added) {
       assertValidLocale(locale);
     }
+    // Every folder is read before anything is written: an unreadable one fails the update with nothing written.
+    const folders = openLocaleFolders(next);
     // Additive work first, so a failure here leaves every removed locale's data on disk.
     for (const locale of added) {
-      seedLocaleFiles(next, locale);
+      seedLocaleFiles(folders, locale);
     }
     for (const locale of removed) {
-      dropLocaleFiles(next, locale);
+      dropLocaleFiles(folders, locale);
     }
     mutations.push(reindexMutation(next.translationsFolder));
   }

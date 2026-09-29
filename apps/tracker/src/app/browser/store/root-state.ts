@@ -9,7 +9,8 @@ import type { CollectionSettings } from '../../collections/store/collection-sett
  *   (`with-browser-session.feature.ts`)
  * - sessionId: bumped by every `openCollection`; loaders capture it (`session-guard.ts`) and drop
  *   a response that arrives after another collection was opened
- * - currentFolderPath: read by withTranslationsFeature (selectFolder) and written by withFolderTreeFeature
+ * - currentFolderPath: the folder the list shows, or returns to after a search; written only by the
+ *   List Scope (`with-list-scope.feature.ts`)
  * - densityMode and related: read by withFilterFeature (compact-mode locale tracking) and written by withViewPreferencesFeature
  */
 export interface RootState {
@@ -19,11 +20,10 @@ export interface RootState {
   selectedCollection: string | null;
   availableLocales: string[];
   baseLocale: string;
-  isDisabled: boolean;
   /**
    * True when the active collection is read-only. Persistent for the lifetime of the
-   * selected collection — kept separate from the transient `isDisabled` flag (which search
-   * and move operations flip on and off) so it is never accidentally cleared.
+   * selected collection — kept apart from the transient `isDisabled` (a search is shown
+   * or a move is in flight, derived in `browser.store.ts`) so it is never accidentally cleared.
    */
   isReadOnly: boolean;
   error: string | null;
@@ -40,7 +40,6 @@ export const initialRootState: RootState = {
   selectedCollection: null,
   availableLocales: [],
   baseLocale: '',
-  isDisabled: false,
   isReadOnly: false,
   error: null,
   currentFolderPath: '',

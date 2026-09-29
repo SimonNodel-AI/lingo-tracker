@@ -130,14 +130,14 @@ describe('updateCollection', () => {
     expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale' });
   });
 
-  it('seeds the added locales before purging the removed ones, so a seeding failure costs no data', async () => {
+  it('reads every folder before writing, so an unreadable one fails the update with nothing changed', async () => {
     writeFolderFiles(i18n(), 'broken', { entries: '{ not json' });
 
-    await expect(
-      updateCollection('myApp', undefined, { locales: ['en', 'es', 'de'] }, { cwd: cwd() }),
-    ).rejects.toThrow();
+    await expect(updateCollection('myApp', undefined, { locales: ['en', 'es', 'de'] }, { cwd: cwd() })).rejects.toThrow(
+      RESOURCE_ENTRIES_FILENAME,
+    );
 
-    expect(readFolder('apps').entries['ok']?.['fr-ca']).toBe('OK');
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
     expect(readConfig()).toEqual(config());
   });
 

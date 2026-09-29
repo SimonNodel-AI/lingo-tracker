@@ -36,6 +36,7 @@ vi.mock('node:fs', () => {
     writeFileSync: vi.fn(),
     mkdirSync: vi.fn(),
     rmSync: vi.fn(),
+    rmdirSync: vi.fn(),
     readdirSync: vi.fn(),
     statSync: vi.fn(),
     unlinkSync: vi.fn(),
@@ -86,6 +87,17 @@ describe('Move Folder', () => {
           mockDirectories.delete(dir);
         }
       }
+    });
+
+    (fs.rmdirSync as Mock).mockImplementation((path: string) => {
+      const prefix = `${path}/`;
+      const hasChildren =
+        [...mockFileSystem.keys()].some((key) => key.startsWith(prefix)) ||
+        [...mockDirectories].some((dir) => dir.startsWith(prefix));
+      if (hasChildren) {
+        throw new Error(`ENOTEMPTY: directory not empty, rmdir '${path}'`);
+      }
+      mockDirectories.delete(path);
     });
 
     (fs.unlinkSync as Mock).mockImplementation((path: string) => {

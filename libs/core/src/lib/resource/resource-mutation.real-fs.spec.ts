@@ -96,17 +96,17 @@ describe('mutations returned by core writes (real fs)', () => {
     expect(unchanged.mutations).toEqual([]);
   });
 
-  it('editResource with moveTo returns an upsert and removal keyed by their fully resolved keys', async () => {
+  it('editResource with moveTo returns a removal and an upsert keyed by their fully resolved keys', async () => {
     const result = await editResource(collection(), 'common.ok', { moveTo: 'shared', baseValue: 'Okay' });
 
     expect(result.mutations).toEqual([
+      { kind: 'remove', translationsFolder: root, key: 'common.ok' },
       {
         kind: 'upsert',
         translationsFolder: root,
         key: 'shared.ok',
         entry: expect.objectContaining({ source: 'Okay' }),
       },
-      { kind: 'remove', translationsFolder: root, key: 'common.ok' },
     ]);
   });
 
@@ -116,9 +116,11 @@ describe('mutations returned by core writes (real fs)', () => {
     expect(result.mutations).toEqual([{ kind: 'remove', translationsFolder: root, key: 'common.ok' }]);
   });
 
-  it('moveResource by pattern returns an upsert and a remove per moved key', async () => {
+  it('moveResource by pattern returns a remove and an upsert per moved key, removes first', async () => {
     const result = await moveResource(collection(), { source: 'common.*', destination: 'shared' });
 
+    const kinds = result.mutations.map((mutation) => mutation.kind);
+    expect(kinds).toEqual(['remove', 'remove', 'upsert', 'upsert']);
     expect(result.mutations.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual(
       expect.arrayContaining([
         ['upsert', 'shared.ok'],
@@ -127,7 +129,6 @@ describe('mutations returned by core writes (real fs)', () => {
         ['remove', 'common.cancel'],
       ]),
     );
-    expect(result.mutations).toHaveLength(4);
   });
 
   it('moveResource to another translations folder puts the upsert there', async () => {
@@ -140,13 +141,13 @@ describe('mutations returned by core writes (real fs)', () => {
       });
 
       expect(result.mutations).toEqual([
+        { kind: 'remove', translationsFolder: root, key: 'common.ok' },
         {
           kind: 'upsert',
           translationsFolder: other,
           key: 'imported.ok',
           entry: expect.objectContaining({ key: 'ok' }),
         },
-        { kind: 'remove', translationsFolder: root, key: 'common.ok' },
       ]);
     } finally {
       rmSync(other, { recursive: true, force: true });

@@ -36,6 +36,7 @@ describe('BrowserStore entry writes', () => {
   const folderMode = (): void => {
     patchState(unprotected(store), {
       selectedCollection: 'my-collection',
+      listScope: { kind: 'folder', path: 'common' },
       currentFolderPath: 'common',
       translations: [entry('common.save', 'Save'), entry('common.dialog.title', 'Title')],
     });
@@ -45,8 +46,7 @@ describe('BrowserStore entry writes', () => {
   const searchMode = (): void => {
     folderMode();
     patchState(unprotected(store), {
-      isSearchMode: true,
-      searchQuery: 'sa',
+      listScope: { kind: 'search', query: 'sa' },
       searchResults: [hit('common.save', 'Save'), hit('errors.save', 'Save')],
     });
   };
@@ -90,7 +90,7 @@ describe('BrowserStore entry writes', () => {
       folderMode();
       const treeRequests = () => http.match((req) => req.url === `${RESOURCES_URL}/tree`);
 
-      store.selectFolder('common');
+      store.showFolder('common');
       store.createResource('my-collection', { key: 'common.ok', baseValue: 'OK' }).subscribe();
       http.expectOne({ method: 'POST', url: RESOURCES_URL }).flush({ entriesCreated: 1, created: true });
 

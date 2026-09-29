@@ -8,11 +8,11 @@ import { initialRootState, type RootState } from '../root-state';
 import { type CacheStatusState, initialCacheStatusState } from './with-cache-status.feature';
 import { type FilterState, initialFilterState } from './with-filter.feature';
 import { type FolderTreeState, initialFolderTreeState } from './with-folder-tree.feature';
-import { initialSearchState, type SearchState } from './with-search.feature';
-import { initialTranslationsState, type TranslationsState } from './with-translations.feature';
+import { initialListScopeState, type ListScopeState } from './with-list-scope.feature';
+import { initialMovesState, type MovesState } from './with-moves.feature';
 
 /** Everything the session resets: the root state plus every feature's own slice. */
-type SessionState = RootState & SearchState & FilterState & TranslationsState & FolderTreeState & CacheStatusState;
+type SessionState = RootState & ListScopeState & FilterState & FolderTreeState & MovesState & CacheStatusState;
 
 /** The root fields a collection's settings set: the settings themselves and their projections. */
 function settingsState(settings: CollectionSettings): Partial<RootState> {
@@ -46,19 +46,25 @@ export function withBrowserSessionFeature<_>() {
   return signalStoreFeature(
     {
       state: type<SessionState>(),
-      methods: type<{ restoreViewPreferences(collectionName: string): void; checkCacheStatus(): void }>(),
+      methods: type<{
+        restoreViewPreferences(collectionName: string): void;
+        checkCacheStatus(): void;
+        _cancelListLoads(): void;
+      }>(),
     },
     withMethods((store) => {
-      /** Bumps the session, resets every feature, applies `settings`, restores prefs, starts polling. */
+      /** Stops list loads, bumps the session, resets every feature, applies `settings`, restores prefs, starts polling. */
       function open(settings: CollectionSettings): void {
         const sessionId = store.sessionId() + 1;
+        // A list load of the previous session (and its not-ready retries) stops here, not later.
+        store._cancelListLoads();
         patchState(
           store,
           initialRootState,
-          initialSearchState,
+          initialListScopeState,
           initialFilterState,
-          initialTranslationsState,
           initialFolderTreeState,
+          initialMovesState,
           initialCacheStatusState,
           { sessionId, ...settingsState(settings) },
         );

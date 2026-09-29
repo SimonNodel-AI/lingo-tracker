@@ -77,7 +77,7 @@ describe('walkFolders (real filesystem)', () => {
 
     const visited: string[] = [];
 
-    for (const visit of walkFolders(tempDir, { skipHidden: false })) {
+    for (const visit of walkFolders(tempDir)) {
       visited.push(visit.absolutePath);
     }
 
@@ -127,23 +127,6 @@ describe('walkFolders (real filesystem)', () => {
     expect(visited).toContain(subDir);
   });
 
-  it('yields correct keyPrefixes for a real nested directory structure', () => {
-    fs.mkdirSync(path.join(tempDir, 'apps'));
-    fs.mkdirSync(path.join(tempDir, 'apps', 'common'));
-    fs.mkdirSync(path.join(tempDir, 'apps', 'common', 'buttons'));
-    fs.writeFileSync(path.join(tempDir, 'apps', 'common', 'buttons', 'resource_entries.json'), '{}');
-
-    const keyPrefixByPath: Record<string, string> = {};
-    for (const visit of walkFolders(tempDir)) {
-      keyPrefixByPath[visit.absolutePath] = visit.keyPrefix;
-    }
-
-    expect(keyPrefixByPath[tempDir]).toBe('');
-    expect(keyPrefixByPath[path.join(tempDir, 'apps')]).toBe('apps');
-    expect(keyPrefixByPath[path.join(tempDir, 'apps', 'common')]).toBe('apps.common');
-    expect(keyPrefixByPath[path.join(tempDir, 'apps', 'common', 'buttons')]).toBe('apps.common.buttons');
-  });
-
   it('reports a root that is a file through onUnlistable and yields nothing', () => {
     const file = path.join(tempDir, 'file');
     fs.writeFileSync(file, '');
@@ -167,7 +150,7 @@ describe('walkFolders (real filesystem)', () => {
       try {
         const visited = [
           ...walkFolders(tempDir, { onUnlistable: (absolutePath) => unlistable.push(absolutePath) }),
-        ].map((visit) => visit.keyPrefix);
+        ].map((visit) => path.relative(tempDir, visit.absolutePath));
 
         expect(visited.sort()).toEqual(['', 'open']);
         expect(unlistable).toEqual([locked]);

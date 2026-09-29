@@ -10,10 +10,11 @@ import { readProjectTerms, type TerminologyFindings } from '../lib/config/projec
 import { ResourceAlreadyExistsError, ResourceNotFoundError } from '../lib/errors/lingo-tracker-error';
 import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
-import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
-import { removeMutation, type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
+import { openResourceFolder } from '../lib/resource/resource-folder';
+import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
 import type { OpenTranslatorOptions } from '../lib/translation/translator';
 import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
+import { relocateEntries } from './relocate-entries';
 
 /** What to change on an entry. `undefined` leaves a field alone. */
 export interface EditResourceChanges {
@@ -171,7 +172,7 @@ export async function editResource(
     translatorProblems = seeding.problems;
   }
 
-  const moved = destination ? moveEntry(collection, folder, paths.resolvedKey, destination) : undefined;
+  const moved = destination ? moveEntry(collection, paths.resolvedKey, destination) : undefined;
   const resolvedKey = moved?.resolvedKey ?? paths.resolvedKey;
   const updatedEntry = moved?.entry ?? folder.treeEntry(entryKey);
   if (!updatedEntry) {
@@ -193,15 +194,8 @@ export async function editResource(
   };
 }
 
-/** Where `moveTo` sends the entry. Holds paths only: the folder is read from disk when the move happens. */
-interface Destination {
-  readonly resolvedKey: string;
-  readonly entryKey: string;
-  readonly folderPath: string;
-}
-
 /**
- * Where `moveTo` sends the entry; `undefined` when it is the entry's own folder.
+ * The key `moveTo` sends the entry to; `undefined` when it is the entry's own folder.
  * @throws {InvalidResourceKeyError} `moveTo` is malformed.
  * @throws {ResourceAlreadyExistsError} The destination already has this entry key.
  */
@@ -209,7 +203,7 @@ function resolveDestination(
   collection: Collection,
   source: { readonly resolvedKey: string; readonly entryKey: string },
   moveTo: string,
-): Destination | undefined {
+): string | undefined {
   const paths = validateAndResolvePaths({
     key: source.entryKey,
     translationsFolder: collection.translationsFolder,
@@ -219,54 +213,32 @@ function resolveDestination(
     return undefined;
   }
 
-  const destination = { resolvedKey: paths.resolvedKey, entryKey: paths.entryKey, folderPath: paths.folderPath };
-  openDestination(collection, destination);
-  return destination;
-}
-
-/**
- * Opens the destination folder as it is on disk now.
- * @throws {ResourceAlreadyExistsError} It already has the entry key.
- */
-function openDestination(collection: Collection, destination: Destination): ResourceFolder {
-  const folder = openResourceFolder(destination.folderPath, { baseLocale: collection.baseLocale });
-  if (folder.has(destination.entryKey)) {
-    throw new ResourceAlreadyExistsError(destination.resolvedKey);
+  if (openResourceFolder(paths.folderPath, { baseLocale: collection.baseLocale }).has(paths.entryKey)) {
+    throw new ResourceAlreadyExistsError(paths.resolvedKey);
   }
-  return folder;
+  return paths.resolvedKey;
 }
 
 /**
- * Moves the entry, as stored, to the destination (a lossless copy, like `moveResource`).
- * The destination folder is re-read here, not kept from before the edit, so writes made to it
- * meanwhile are kept and a new collision is caught. The destination is written before the
- * source entry is removed.
+ * Moves the entry, as saved, to the destination through the Entry Relocation (`relocateEntries`),
+ * which reads both folders from disk again, so writes made to the destination meanwhile are kept
+ * and a new collision is caught. The destination is written before the source entry is removed.
+ * A failed write throws, and the relocation's `reindex` mutations are dropped with it: the API's
+ * index finds the change by fingerprint revalidation (see api.md, "Writes: Resource Mutations").
  * @throws {ResourceAlreadyExistsError} The destination has the entry key now.
  */
 function moveEntry(
   collection: Collection,
-  source: ResourceFolder,
   sourceKey: string,
-  destination: Destination,
-): { resolvedKey: string; entry: ResourceTreeEntry | undefined; mutations: ResourceMutation[] } {
-  const entryKey = destination.entryKey;
-  const stored = source.get(entryKey);
-  if (!stored) {
-    throw new ResourceNotFoundError(sourceKey);
+  destinationKey: string,
+): { resolvedKey: string; entry: ResourceTreeEntry; mutations: ResourceMutation[] } {
+  const relocation = relocateEntries(collection, collection, [{ from: sourceKey, to: destinationKey }]);
+  if (relocation.collisions.length > 0) {
+    throw new ResourceAlreadyExistsError(destinationKey);
   }
-  const destinationFolder = openDestination(collection, destination);
-  destinationFolder.setEntry(entryKey, stored.entry, stored.meta ?? {});
-  destinationFolder.save();
-  source.remove(entryKey);
-  source.save();
-
-  const entry = destinationFolder.treeEntry(entryKey);
-  return {
-    resolvedKey: destination.resolvedKey,
-    entry,
-    mutations: [
-      upsertMutation(collection.translationsFolder, destination.resolvedKey, entry),
-      removeMutation(collection.translationsFolder, sourceKey),
-    ],
-  };
+  const [moved] = relocation.moved;
+  if (!moved) {
+    throw new Error(relocation.errors.join('; ') || `Resource ${sourceKey} was not moved`);
+  }
+  return { resolvedKey: moved.to, entry: moved.entry, mutations: relocation.mutations };
 }

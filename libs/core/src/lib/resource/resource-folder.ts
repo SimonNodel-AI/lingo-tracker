@@ -65,8 +65,18 @@ export interface ResourceFolder {
     status: TranslationStatus,
     options?: { readonly refreshBaseChecksum?: boolean },
   ): void;
-  /** Stores an entry and its metadata exactly as given (lossless copy/replace: move, rename, add-resource reset). */
-  setEntry(key: string, entry: Readonly<ResourceEntry>, meta: Readonly<ResourceEntryMetadata>): void;
+  /**
+   * Stores an entry and its metadata exactly as given (lossless copy/replace: move, rename, add-resource reset).
+   * With `targetLocales` (an entry moved into another collection), the entry is fitted to them: values
+   * and metadata of other locales are dropped (the base locale's metadata is kept), and each missing
+   * one is seeded as a `new` copy of the base, the rule `seedLocale` applies.
+   */
+  setEntry(
+    key: string,
+    entry: Readonly<ResourceEntry>,
+    meta: Readonly<ResourceEntryMetadata>,
+    options?: { readonly targetLocales?: readonly string[] },
+  ): void;
   /**
    * Replaces an existing entry's values with `values` and makes its metadata true again:
    * - a stray base-locale property is dropped (the base value lives in `source`),
@@ -295,9 +305,28 @@ class FileResourceFolder implements ResourceFolder {
     }
   }
 
-  setEntry(key: string, entry: Readonly<ResourceEntry>, meta: Readonly<ResourceEntryMetadata>): void {
-    this.entries[key] = { ...entry };
-    this.meta[key] = { ...meta };
+  setEntry(
+    key: string,
+    entry: Readonly<ResourceEntry>,
+    meta: Readonly<ResourceEntryMetadata>,
+    options: { readonly targetLocales?: readonly string[] } = {},
+  ): void {
+    const stored: ResourceEntry = { ...entry };
+    const storedMeta: ResourceEntryMetadata = { ...meta };
+    this.entries[key] = stored;
+    this.meta[key] = storedMeta;
+
+    const { targetLocales } = options;
+    if (!targetLocales) return;
+    for (const locale of translationLocales(stored)) {
+      if (!targetLocales.includes(locale)) delete stored[locale];
+    }
+    for (const locale of Object.keys(storedMeta)) {
+      if (locale !== this.baseLocale && !targetLocales.includes(locale)) delete storedMeta[locale];
+    }
+    for (const locale of targetLocales) {
+      this.seedEntryLocale(key, locale);
+    }
   }
 
   normalizeEntry(key: string, values: Readonly<ResourceEntry>, targetLocales: readonly string[]): NormalizeEntryReport {

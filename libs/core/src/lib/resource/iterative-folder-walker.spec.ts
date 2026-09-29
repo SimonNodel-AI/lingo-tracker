@@ -19,10 +19,6 @@ function makeDirectoryDirent(name: string): FakeDirent {
   return { name, isDirectory: () => true };
 }
 
-function makeFileDirent(name: string): FakeDirent {
-  return { name, isDirectory: () => false };
-}
-
 /**
  * Builds a minimal mock filesystem mapping absolute paths to their readdir results.
  * Keys are absolute paths; values are arrays of Dirent-like entries.
@@ -79,34 +75,13 @@ describe('walkFolders (mocked fs)', () => {
       expect(visits).toHaveLength(1);
       expect(posix(visits[0].absolutePath)).toBe('/root');
       expect(visits[0].depth).toBe(0);
-      expect(visits[0].keyPrefix).toBe('');
       expect(visits[0].subdirectoryNames).toEqual([]);
     });
   });
 
-  // ── keyPrefix building ───────────────────────────────────────────────────
+  // ── depth ────────────────────────────────────────────────────────────────
 
-  describe('keyPrefix building', () => {
-    it('builds dot-delimited keyPrefix relative to root', () => {
-      installMockFilesystem({
-        '/root': [makeDirectoryDirent('apps')],
-        '/root/apps': [makeDirectoryDirent('common')],
-        '/root/apps/common': [makeDirectoryDirent('buttons')],
-        '/root/apps/common/buttons': [],
-      });
-
-      const visits = [...walkFolders('/root')];
-      const prefixByPath: Record<string, string> = {};
-      for (const visit of visits) {
-        prefixByPath[posix(visit.absolutePath)] = visit.keyPrefix;
-      }
-
-      expect(prefixByPath['/root']).toBe('');
-      expect(prefixByPath['/root/apps']).toBe('apps');
-      expect(prefixByPath['/root/apps/common']).toBe('apps.common');
-      expect(prefixByPath['/root/apps/common/buttons']).toBe('apps.common.buttons');
-    });
-
+  describe('depth', () => {
     it('assigns depth values correctly', () => {
       installMockFilesystem({
         '/root': [makeDirectoryDirent('a')],
@@ -170,7 +145,7 @@ describe('walkFolders (mocked fs)', () => {
   // ── Hidden directory filtering ───────────────────────────────────────────
 
   describe('hidden directory filtering', () => {
-    it('skips hidden directories by default (skipHidden defaults to true)', () => {
+    it('skips hidden directories', () => {
       installMockFilesystem({
         '/root': [makeDirectoryDirent('visible'), makeDirectoryDirent('.hidden')],
         '/root/visible': [],
@@ -184,22 +159,7 @@ describe('walkFolders (mocked fs)', () => {
       expect(visitedPaths).not.toContain('/root/.hidden');
     });
 
-    it('includes hidden directories when skipHidden is false', () => {
-      installMockFilesystem({
-        '/root': [makeDirectoryDirent('.git'), makeDirectoryDirent('src')],
-        '/root/.git': [makeDirectoryDirent('objects')],
-        '/root/.git/objects': [],
-        '/root/src': [],
-      });
-
-      const visitedPaths = [...walkFolders('/root', { skipHidden: false })].map((v) => posix(v.absolutePath));
-
-      expect(visitedPaths).toContain('/root/.git');
-      expect(visitedPaths).toContain('/root/.git/objects');
-      expect(visitedPaths).toContain('/root/src');
-    });
-
-    it('excludes hidden dirs from subdirectoryNames when skipHidden is true', () => {
+    it('excludes hidden dirs from subdirectoryNames', () => {
       installMockFilesystem({
         '/root': [makeDirectoryDirent('visible'), makeDirectoryDirent('.hidden')],
         '/root/visible': [],
@@ -209,19 +169,6 @@ describe('walkFolders (mocked fs)', () => {
       const rootVisit = [...walkFolders('/root')].find((v) => posix(v.absolutePath) === '/root');
 
       expect(rootVisit?.subdirectoryNames).toEqual(['visible']);
-    });
-
-    it('includes hidden dirs in subdirectoryNames when skipHidden is false', () => {
-      installMockFilesystem({
-        '/root': [makeDirectoryDirent('visible'), makeDirectoryDirent('.hidden')],
-        '/root/visible': [],
-        '/root/.hidden': [],
-      });
-
-      const rootVisit = [...walkFolders('/root', { skipHidden: false })].find((v) => posix(v.absolutePath) === '/root');
-
-      expect(rootVisit?.subdirectoryNames).toContain('visible');
-      expect(rootVisit?.subdirectoryNames).toContain('.hidden');
     });
   });
 
@@ -285,26 +232,6 @@ describe('walkFolders (mocked fs)', () => {
 
       // subdirectoryNames reports what *would* be visited, not what the depth limit blocks
       expect(appsVisit?.subdirectoryNames).toEqual(['buttons', 'forms']);
-    });
-  });
-
-  // ── dirEntries passthrough ───────────────────────────────────────────────
-
-  describe('dirEntries passthrough', () => {
-    it('includes all raw Dirent entries (files and directories)', () => {
-      const dirEntries: FakeDirent[] = [
-        makeFileDirent('resource_entries.json'),
-        makeFileDirent('tracker_meta.json'),
-        makeDirectoryDirent('buttons'),
-      ];
-      installMockFilesystem({
-        '/root': dirEntries,
-        '/root/buttons': [],
-      });
-
-      const rootVisit = [...walkFolders('/root')].find((v) => posix(v.absolutePath) === '/root');
-
-      expect(rootVisit?.dirEntries).toBe(dirEntries);
     });
   });
 

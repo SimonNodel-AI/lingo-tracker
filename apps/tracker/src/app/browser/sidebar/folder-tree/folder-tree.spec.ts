@@ -48,7 +48,7 @@ describe('FolderTree', () => {
   it('should stay disabled when mounted mid-search (re-entering the collection)', () => {
     createComponent();
     const store = spectator.inject(BrowserStore);
-    store.setSearchQuery('save');
+    store.showQuery('save');
 
     fixture.componentRef.setInput('collectionName', 'my-collection');
     spectator.detectComponentChanges();

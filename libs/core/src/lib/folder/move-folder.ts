@@ -1,6 +1,5 @@
-import { existsSync, statSync } from 'node:fs';
-import { resolve, join } from 'node:path';
-import { walkFolders } from '../normalize/iterative-folder-walker';
+import { existsSync, readdirSync, rmdirSync, statSync } from 'node:fs';
+import { join, relative, resolve, sep } from 'node:path';
 import { isValidSegment } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import {
@@ -8,10 +7,10 @@ import {
   FolderNotFoundError,
   InvalidFolderPathError,
 } from '../errors/lingo-tracker-error';
-import { moveResource, type MoveResourceResult } from '../../resource/move-resource';
-import { deleteFolder } from './delete-folder';
-import { openResourceFolder } from '../resource/resource-folder';
-import type { ResourceMutation } from '../resource/resource-mutation';
+import { mergeRelocation } from '../../resource/move-resource';
+import { relocateEntries } from '../../resource/relocate-entries';
+import { sweepKeys } from '../resource/collection-sweep';
+import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -39,7 +38,7 @@ export interface MoveFolderResult {
   warnings: string[];
   /** Error messages */
   errors: string[];
-  /** Per moved key an `upsert` and a `remove`, then a `remove-folder` if every key moved and the folder was deleted. */
+  /** A `remove` per moved key, an `upsert` per moved key, then a `remove-folder` if every key moved and the folder was deleted. */
   mutations: ResourceMutation[];
 }
 
@@ -51,7 +50,8 @@ export interface MoveFolderResult {
  * 2. Prevents circular dependencies (moving folder into its own descendant)
  * 3. Extracts all resources in the source folder tree recursively
  * 4. Moves each resource to the corresponding destination path
- * 5. Deletes the source folder once every resource in it was moved (otherwise keeps it and warns)
+ * 5. Once every resource in it was moved, removes the source folder where it is empty. Content
+ *    outside the collection (hidden folders, stray files) is never deleted: its folders are kept with a warning
  *
  * Bad input throws; failures of individual resources are reported in the result.
  *
@@ -76,7 +76,7 @@ export interface MoveFolderResult {
 export async function moveFolder(collection: Collection, params: MoveFolderParams): Promise<MoveFolderResult> {
   const { sourceFolderPath, destinationFolderPath, override = false, nestUnderDestination = true } = params;
   const destinationCollection = params.destinationCollection ?? collection;
-  const sameCollection = destinationCollection.translationsFolder === collection.translationsFolder;
+  const sameCollection = resolve(destinationCollection.translationsFolder) === resolve(collection.translationsFolder);
 
   const result: MoveFolderResult = {
     movedCount: 0,
@@ -131,9 +131,9 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
   }
 
   // Extract all resource keys from the source folder tree
-  const { keys: resourceKeys, errors: enumerationErrors } = extractAllResourceKeysFromFolder(
-    absoluteSourcePath,
-    sourceFolderPath,
+  const { keys: resourceKeys, problems } = sweepKeys(collection, { startPath: sourceFolderPath });
+  const enumerationErrors = problems.map(
+    (problem) => `Failed to read resources in "${problem.folderPath || '.'}": ${problem.message}`,
   );
 
   // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
@@ -144,10 +144,9 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
 
   if (resourceKeys.length === 0) {
     result.warnings.push('No resources found in source folder. Nothing to move.');
-    // Still delete the empty folder
+    // Still remove the empty folder
     try {
-      result.mutations.push(...deleteFolder(collection, { folderPath: sourceFolderPath }).mutations);
-      result.foldersDeleted++;
+      removeEmptySource(collection, sourceFolderPath, absoluteSourcePath, result);
     } catch (error) {
       result.errors.push(`Failed to delete empty source folder: ${errorMessage(error)}`);
     }
@@ -158,10 +157,8 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
   const sourceDepth = sourceFolderSegments.length;
   const destDepth = destinationFolderSegments.length;
   const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
-  // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
-  const keptKeys: string[] = [];
 
-  for (const sourceKey of resourceKeys) {
+  const relocations = resourceKeys.map((sourceKey) => {
     // Calculate destination key by replacing source folder prefix with destination folder prefix
     //
     // When nestUnderDestination is true (default):
@@ -198,32 +195,25 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
         ? `${destinationFolderPath}.${lastSourceSegment}${suffix}`
         : `${destinationFolderPath}.${lastSourceSegment}`;
     }
+    return { from: sourceKey, to: destinationKey };
+  });
 
-    const moveResult: MoveResourceResult = await moveResource(collection, {
-      source: sourceKey,
-      destination: destinationKey,
-      override,
-      destinationCollection,
-    });
+  // One Entry Relocation for the whole tree: each folder is read and written once.
+  const relocation = relocateEntries(collection, destinationCollection, relocations, { override });
+  mergeRelocation(result, relocation);
 
-    result.movedCount += moveResult.movedCount;
-    result.warnings.push(...moveResult.warnings);
-    result.errors.push(...moveResult.errors);
-    result.mutations.push(...moveResult.mutations);
-    if (moveResult.movedCount === 0) {
-      keptKeys.push(sourceKey);
-    }
-  }
+  // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
+  const movedKeys = new Set(relocation.moved.map(({ from }) => from));
+  const keptKeys = resourceKeys.filter((key) => !movedKeys.has(key));
 
   if (keptKeys.length > 0) {
     result.warnings.push(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
   }
 
-  // Only delete the source folder when every resource in it was moved
+  // Only remove the source folder when every resource in it was moved
   if (keptKeys.length === 0 && result.errors.length === 0) {
     try {
-      result.mutations.push(...deleteFolder(collection, { folderPath: sourceFolderPath }).mutations);
-      result.foldersDeleted++;
+      removeEmptySource(collection, sourceFolderPath, absoluteSourcePath, result);
     } catch (error) {
       result.warnings.push(`Resources moved but failed to delete source folder: ${errorMessage(error)}`);
     }
@@ -232,40 +222,56 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
   return result;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+/**
+ * Removes the source folder tree, deepest first, where it is empty now: the relocation's saves
+ * already deleted the resource files of every emptied folder. Anything else (a hidden folder, a
+ * stray file) is not part of the collection and is never deleted; the folders that hold it are
+ * kept with a warning. A `remove-folder` is added for the source folder when it is gone, else for
+ * each removed subfolder whose parent is kept.
+ */
+function removeEmptySource(
+  collection: Collection,
+  sourceFolderPath: string,
+  absoluteSourcePath: string,
+  result: MoveFolderResult,
+): void {
+  const { translationsFolder } = collection;
+  const leftovers: string[] = [];
+  const prune = (folder: string): boolean => {
+    let empty = true;
+    const removed: string[] = [];
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const child = join(folder, entry.name);
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        if (prune(child)) removed.push(child);
+        else empty = false;
+      } else {
+        leftovers.push(relative(translationsFolder, child));
+        empty = false;
+      }
+    }
+    if (empty) {
+      rmdirSync(folder);
+    } else {
+      // The folder stays, so the index must drop the emptied subfolders it lost.
+      for (const child of removed) {
+        const path = relative(translationsFolder, child).split(sep).join('.');
+        result.mutations.push(folderMutation('remove-folder', translationsFolder, path));
+      }
+    }
+    return empty;
+  };
+
+  if (prune(absoluteSourcePath)) {
+    result.mutations.push(folderMutation('remove-folder', translationsFolder, sourceFolderPath));
+    result.foldersDeleted++;
+  } else {
+    result.warnings.push(
+      `Source folder kept: holds content that is not part of the collection: ${leftovers.join(', ')}`,
+    );
+  }
 }
 
-/**
- * Extracts all resource keys from a folder and its subfolders.
- *
- * @param absoluteFolderPath - Absolute filesystem path to the folder
- * @param folderKeyPrefix - Dot-delimited key prefix for this folder
- * @returns Full resource keys found in the folder tree, and one error per folder that could not be read
- */
-function extractAllResourceKeysFromFolder(
-  absoluteFolderPath: string,
-  folderKeyPrefix: string,
-): { keys: string[]; errors: string[] } {
-  const keys: string[] = [];
-  const errors: string[] = [];
-
-  for (const visit of walkFolders(absoluteFolderPath, { skipHidden: false })) {
-    const currentKeyPrefix = visit.keyPrefix
-      ? folderKeyPrefix
-        ? `${folderKeyPrefix}.${visit.keyPrefix}`
-        : visit.keyPrefix
-      : folderKeyPrefix;
-
-    try {
-      for (const entryKey of openResourceFolder(visit.absolutePath).keys()) {
-        keys.push(currentKeyPrefix ? `${currentKeyPrefix}.${entryKey}` : entryKey);
-      }
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      errors.push(`Failed to read resources in "${currentKeyPrefix || '.'}": ${reason}`);
-    }
-  }
-
-  return { keys, errors };
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
