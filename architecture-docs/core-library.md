@@ -121,7 +121,6 @@ libs/core/src/
     │   ├── normalize.ts          # normalize(collection): main entry point
     │   ├── normalize-entry.ts    # normalizeEntryValues(): Transloco → ICU and tag cleanup (pure)
     │   ├── cleanup-empty-folders.ts # cleanupEmptyFolders(): removes empty directories
-    │   ├── iterative-folder-walker.ts # walkFolders(): depth-ordered directory traversal (hidden folders skipped)
     │   └── folder-utils.ts       # Bottom-up folder list and the empty-folder rule for cleanup
     │
     ├── translation/              # Machine translation: the Translator and the operations that use it
@@ -136,6 +135,7 @@ libs/core/src/
     │
     ├── resource/                 # One folder's files, and the read models built on them
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
+    │   ├── iterative-folder-walker.ts # walkFolders(): depth-ordered directory traversal (hidden folders skipped)
     │   ├── collection-folders.ts # walkCollectionFolders(): which folders belong to a collection (reader and sweep)
     │   ├── read-collection.ts    # readCollection(), readCollectionFolders(): the Collection Reader
     │   ├── collection-sweep.ts   # sweepCollection(), sweepKeys(): the Collection Sweep (write side)

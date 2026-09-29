@@ -1,5 +1,5 @@
 import { join, relative, sep } from 'node:path';
-import { walkFolders } from '../normalize/iterative-folder-walker';
+import { walkFolders } from './iterative-folder-walker';
 
 /**
  * Which folders belong to a collection — the one policy the Collection Reader (reads) and the

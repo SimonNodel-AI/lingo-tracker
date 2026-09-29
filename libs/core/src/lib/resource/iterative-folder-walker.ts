@@ -18,18 +18,13 @@ export interface FolderVisit {
   absolutePath: string;
   /** Depth relative to root. Root itself is 0. */
   depth: number;
-  /** Dot-delimited path segments relative to root (e.g. "apps.common.buttons"). Root yields "". */
-  keyPrefix: string;
   /** Names of subdirectories that will be visited (hidden ones excluded). */
   subdirectoryNames: string[];
-  /** Raw Dirent entries for the directory (all entries, not just directories). */
-  dirEntries: fs.Dirent[];
 }
 
 interface StackEntry {
   readonly absolutePath: string;
   readonly depth: number;
-  readonly keySegments: readonly string[];
 }
 
 /**
@@ -48,7 +43,7 @@ interface StackEntry {
  *
  * @example
  * for (const visit of walkFolders('/translations')) {
- *   console.log(visit.keyPrefix, visit.absolutePath);
+ *   console.log(visit.depth, visit.absolutePath);
  * }
  *
  * @example Early exit
@@ -64,7 +59,7 @@ export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Ge
     return;
   }
 
-  const stack: StackEntry[] = [{ absolutePath: rootPath, depth: 0, keySegments: [] }];
+  const stack: StackEntry[] = [{ absolutePath: rootPath, depth: 0 }];
 
   while (stack.length > 0) {
     const current = stack.pop() as StackEntry;
@@ -98,14 +93,10 @@ export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Ge
       .filter((entry) => !entry.name.startsWith('.'))
       .map((entry) => entry.name);
 
-    const keyPrefix = current.keySegments.join('.');
-
     yield {
       absolutePath: current.absolutePath,
       depth: current.depth,
-      keyPrefix,
       subdirectoryNames: visitableSubdirectoryNames,
-      dirEntries,
     };
 
     if (current.depth >= maxDepth) {
@@ -118,7 +109,6 @@ export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Ge
       stack.push({
         absolutePath: path.join(current.absolutePath, subdirName),
         depth: current.depth + 1,
-        keySegments: [...current.keySegments, subdirName],
       });
     }
   }
