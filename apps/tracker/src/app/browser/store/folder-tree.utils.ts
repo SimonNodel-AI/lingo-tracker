@@ -161,6 +161,43 @@ export function collectAncestorPaths(path: string): string[] {
   return ancestors;
 }
 
+/** Toggles one expansion path without mutating the caller's set. */
+export function toggleExpandedPath(paths: ReadonlySet<string>, path: string): Set<string> {
+  const next = new Set(paths);
+  if (next.has(path)) next.delete(path);
+  else next.add(path);
+  return next;
+}
+
+/** Folder paths in rendered order, including children only under open, loaded parents. */
+export function collectVisibleFolderPaths(folders: readonly FolderNodeDto[], expanded: ReadonlySet<string>): string[] {
+  const paths: string[] = [];
+  const walk = (nodes: readonly FolderNodeDto[]): void => {
+    for (const folder of nodes) {
+      paths.push(folder.fullPath);
+      if (expanded.has(folder.fullPath) && folder.loaded && folder.tree) walk(folder.tree.children);
+    }
+  };
+  walk(folders);
+  return paths;
+}
+
+/** Parent of a dot-delimited folder path, or null for a top-level folder. */
+export function parentFolderPath(path: string): string | null {
+  const lastDot = path.lastIndexOf('.');
+  return lastDot < 0 ? null : path.slice(0, lastDot);
+}
+
+/** A folder move that cannot change the tree, before asking for confirmation. */
+export function folderMoveNoOp(
+  sourceFolderPath: string,
+  destinationFolderPath: string,
+): 'same-folder' | 'already-at-location' | null {
+  if (sourceFolderPath === destinationFolderPath) return 'same-folder';
+  if ((parentFolderPath(sourceFolderPath) ?? '') === destinationFolderPath) return 'already-at-location';
+  return null;
+}
+
 /**
  * Removes a path and everything beneath it from a set of expanded paths.
  * Used after a folder is deleted so the set cannot accumulate paths that no longer exist.

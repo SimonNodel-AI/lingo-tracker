@@ -1,7 +1,7 @@
 import { computed, inject, type Signal } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, tap, switchMap, catchError, of } from 'rxjs';
+import { pipe, tap, switchMap, catchError, of, defer } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/browser-api.service';
@@ -12,6 +12,8 @@ import {
   collectExpandablePaths,
   collectAncestorPaths,
   prunePathsUnder,
+  toggleExpandedPath,
+  parentFolderPath,
 } from '../folder-tree.utils';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { captureSession, withinSession } from '../session-guard';
@@ -127,9 +129,9 @@ export function withFolderTreeFeature<_>() {
         return true;
       }
 
-      function scheduleNewFolderClear(folderFullPath: string): void {
+      function scheduleNewFolderClear(folderFullPath: string, inSession: () => boolean): void {
         setTimeout(() => {
-          if (store.newlyCreatedFolderPath() === folderFullPath) {
+          if (inSession() && store.newlyCreatedFolderPath() === folderFullPath) {
             patchState(store, { newlyCreatedFolderPath: null });
           }
         }, 3000);
@@ -163,10 +165,7 @@ export function withFolderTreeFeature<_>() {
         },
 
         toggleFolderExpanded(path: string): void {
-          const newExpanded = new Set(store.expandedFolders());
-          if (newExpanded.has(path)) newExpanded.delete(path);
-          else newExpanded.add(path);
-          patchState(store, { expandedFolders: newExpanded });
+          patchState(store, { expandedFolders: toggleExpandedPath(store.expandedFolders(), path) });
         },
 
         /** Opens a folder without closing it if it is already open — used when selecting a row. */
@@ -200,6 +199,16 @@ export function withFolderTreeFeature<_>() {
 
         cancelAddingFolder(): void {
           patchState(store, { isAddingFolder: false, addFolderParentPath: null });
+        },
+
+        reportCreateFolderError(error: unknown): void {
+          patchState(store, {
+            error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
+          });
+        },
+
+        clearFolderError(): void {
+          patchState(store, { error: null });
         },
 
         loadRootFolders: rxMethod<void>(
@@ -287,75 +296,25 @@ export function withFolderTreeFeature<_>() {
           ),
         ),
 
-        createFolder: rxMethod<string>(
-          pipe(
-            tap(() => patchState(store, { error: null })),
-            switchMap((folderName) => {
-              const inSession = captureSession(store);
-              const collection = store.selectedCollection();
-              const parentPath = store.addFolderParentPath();
+        createFolder(folderName: string, parentPath: string | null): Observable<CreateFolderResponseDto | null> {
+          return defer(() => {
+            const inSession = captureSession(store);
+            const collection = store.selectedCollection();
+            if (!collection) return of(null);
 
-              if (!collection) {
-                patchState(store, { isAddingFolder: false, addFolderParentPath: null });
-                return of(null);
-              }
-
-              return api.createFolder(collection, folderName, parentPath || undefined).pipe(
-                withinSession(inSession),
-                tap((response) => {
-                  const updatedFolders = insertFolderIntoTree(store.rootFolders(), response.folder, parentPath || null);
-
-                  patchState(store, {
-                    isAddingFolder: false,
-                    addFolderParentPath: null,
-                    rootFolders: updatedFolders,
-                    newlyCreatedFolderPath: response.folder.fullPath,
-                    error: null,
-                  });
-
-                  scheduleNewFolderClear(response.folder.fullPath);
-                }),
-                catchError((error: unknown) => {
-                  patchState(store, {
-                    isAddingFolder: false,
-                    addFolderParentPath: null,
-                    error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
-                  });
-                  return of(null);
-                }),
-              );
-            }),
-          ),
-        ),
-
-        createFolderAt(folderName: string, parentPath: string | null): Observable<CreateFolderResponseDto | null> {
-          const inSession = captureSession(store);
-          const collection = store.selectedCollection();
-          if (!collection) return of(null);
-
-          // The caller still gets its response; only the store writes are session-guarded.
-          return api.createFolder(collection, folderName, parentPath || undefined).pipe(
-            tap((response) => {
-              if (!inSession()) return;
-              const updatedFolders = insertFolderIntoTree(store.rootFolders(), response.folder, parentPath);
-
-              patchState(store, {
-                rootFolders: updatedFolders,
-                newlyCreatedFolderPath: response.folder.fullPath,
-                error: null,
-              });
-
-              scheduleNewFolderClear(response.folder.fullPath);
-            }),
-            catchError((error: unknown) => {
-              if (inSession()) {
+            // The caller owns feedback; only the tree write belongs to the store.
+            return api.createFolder(collection, folderName, parentPath || undefined).pipe(
+              tap((response) => {
+                if (!inSession()) return;
                 patchState(store, {
-                  error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
+                  rootFolders: insertFolderIntoTree(store.rootFolders(), response.folder, parentPath),
+                  newlyCreatedFolderPath: response.folder.fullPath,
+                  error: null,
                 });
-              }
-              throw error;
-            }),
-          );
+                scheduleNewFolderClear(response.folder.fullPath, inSession);
+              }),
+            );
+          });
         },
       };
     }),
@@ -388,8 +347,7 @@ export function withFolderTreeFeature<_>() {
                 tap((response) => {
                   if (response.deleted) {
                     const updatedFolders = removeFolderFromTree(store.rootFolders(), folderPath);
-                    const pathSegments = folderPath.split('.');
-                    const parentFolderPath = pathSegments.length > 1 ? pathSegments.slice(0, -1).join('.') : '';
+                    const parentPath = parentFolderPath(folderPath) ?? '';
 
                     patchState(store, {
                       isDeletingFolder: false,
@@ -399,7 +357,7 @@ export function withFolderTreeFeature<_>() {
                       error: null,
                     });
 
-                    store.showFolder(parentFolderPath);
+                    store.showFolder(parentPath);
                   }
                 }),
                 catchError((error: unknown) => {

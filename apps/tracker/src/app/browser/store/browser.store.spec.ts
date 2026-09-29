@@ -1,5 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type {
   CacheStatusDto,
@@ -130,7 +132,181 @@ describe('BrowserStore', () => {
     apiService = spectator.inject(BrowserApiService);
   });
 
+  describe('folder writes', () => {
+    const createdFolder = {
+      folderPath: 'common.new',
+      created: true,
+      folder: { name: 'new', fullPath: 'common.new', loaded: false },
+    };
+
+    beforeEach(async () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeWithNesting));
+      const notifications = spectator.inject(NotificationService);
+      vi.spyOn(notifications, 'success').mockImplementation(() => undefined);
+      vi.spyOn(notifications, 'error').mockImplementation(() => undefined);
+      vi.spyOn(notifications, 'info').mockImplementation(() => undefined);
+      store.openCollection(collectionSettings({ name: 'app-translations', locales: [] }));
+      await waitForSignals();
+    });
+
+    it('creates in the explicit parent only on subscription and inserts the response', () => {
+      const create = vi.spyOn(apiService, 'createFolder').mockReturnValue(of(createdFolder));
+      const result = store.createFolder('new', 'common');
+      expect(create).not.toHaveBeenCalled();
+
+      let received = false;
+      result.subscribe(() => {
+        received = true;
+      });
+
+      expect(create).toHaveBeenCalledWith('app-translations', 'new', 'common');
+      expect(received).toBe(true);
+      expect(store.rootFolders()[0].tree?.children.map((folder) => folder.fullPath)).toContain('common.new');
+      expect(store.newlyCreatedFolderPath()).toBe('common.new');
+    });
+
+    it('returns a create failure without changing the tree or store error', () => {
+      const failure = serverError(409, 'Already exists');
+      vi.spyOn(apiService, 'createFolder').mockReturnValue(throwError(() => failure));
+      const original = store.rootFolders();
+      let received: unknown;
+
+      store.createFolder('new', 'common').subscribe({
+        error: (error: unknown) => {
+          received = error;
+        },
+      });
+
+      expect(received).toBe(failure);
+      expect(store.rootFolders()).toBe(original);
+      expect(store.error()).toBeNull();
+    });
+
+    it('does not insert a folder whose response belongs to an old session', () => {
+      const pending = new Subject<typeof createdFolder>();
+      vi.spyOn(apiService, 'createFolder').mockReturnValue(pending);
+      let received = false;
+      store.createFolder('new', 'common').subscribe(() => {
+        received = true;
+      });
+
+      store.openCollection(collectionSettings({ name: 'other', locales: [] }));
+      pending.next(createdFolder);
+
+      expect(received).toBe(true);
+      expect(
+        store
+          .rootFolders()
+          .flatMap((folder) => folder.tree?.children ?? [])
+          .map((folder) => folder.fullPath),
+      ).not.toContain('common.new');
+      expect(store.newlyCreatedFolderPath()).toBeNull();
+    });
+
+    it('does not clear a matching new-session highlight when the old session timer fires', () => {
+      vi.useFakeTimers();
+      try {
+        vi.spyOn(apiService, 'createFolder').mockReturnValue(of(createdFolder));
+        store.createFolder('new', 'common').subscribe();
+        expect(store.newlyCreatedFolderPath()).toBe('common.new');
+
+        store.openCollection(collectionSettings({ name: 'other', locales: [] }));
+        patchState(unprotected(store), { newlyCreatedFolderPath: 'common.new' });
+        vi.advanceTimersByTime(3000);
+
+        expect(store.newlyCreatedFolderPath()).toBe('common.new');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('silently ignores a folder move that cannot change its location', async () => {
+      const move = vi.spyOn(apiService, 'moveFolder');
+      const info = vi.spyOn(spectator.inject(NotificationService), 'info');
+      const original = store.rootFolders();
+
+      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'common.buttons' });
+      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'common' });
+      await waitForSignals();
+
+      expect(move).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
+      expect(store.rootFolders()).toBe(original);
+    });
+
+    it('deletes a folder directly when asked, without requiring a dialog result', async () => {
+      const remove = vi
+        .spyOn(apiService, 'deleteFolder')
+        .mockReturnValue(of({ deleted: true, folderPath: 'errors', resourcesDeleted: 0 }));
+      store.deleteFolder('errors');
+      await waitForSignals();
+      expect(remove).toHaveBeenCalledWith('app-translations', 'errors');
+      expect(store.rootFolders().map((folder) => folder.fullPath)).not.toContain('errors');
+    });
+
+    it('moves a folder directly and counts the in-flight move without setting the delete flag', async () => {
+      const pending = new Subject<{
+        movedCount: number;
+        foldersDeleted: number;
+        warnings: string[];
+        errors: string[];
+      }>();
+      const move = vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
+
+      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' });
+      await waitForSignals();
+      expect(move).toHaveBeenCalledWith('app-translations', 'common.buttons', 'errors');
+      expect(store.movesInFlight()).toBe(1);
+      expect(store.isMoving()).toBe(true);
+      expect(store.isDisabled()).toBe(true);
+      expect(store.isDeletingFolder()).toBe(false);
+      expect(store.deletingFolderPath()).toBeNull();
+      expect(store.rootFolders()[0].tree?.children).toEqual([]);
+
+      pending.next({ movedCount: 0, foldersDeleted: 1, warnings: [], errors: [] });
+      pending.complete();
+      await waitForSignals();
+      expect(store.movesInFlight()).toBe(0);
+      expect(store.isMoving()).toBe(false);
+      expect(store.isDeletingFolder()).toBe(false);
+    });
+
+    it('rolls a refused folder move back and clears only move state', async () => {
+      const pending = new Subject<{
+        movedCount: number;
+        foldersDeleted: number;
+        warnings: string[];
+        errors: string[];
+      }>();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
+      const original = store.rootFolders();
+
+      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' });
+      await waitForSignals();
+      pending.error(serverError(409, 'Cannot move'));
+      await waitForSignals();
+
+      expect(store.rootFolders()).toBe(original);
+      expect(store.movesInFlight()).toBe(0);
+      expect(store.isDeletingFolder()).toBe(false);
+      expect(store.error()).toBe('Cannot move');
+    });
+  });
+
   describe('Initialization', () => {
+    it('returns null for a folder create when no collection is open', () => {
+      const create = vi.spyOn(apiService, 'createFolder');
+      let response: unknown = 'pending';
+
+      store.createFolder('new', null).subscribe((value) => {
+        response = value;
+      });
+
+      expect(response).toBeNull();
+      expect(create).not.toHaveBeenCalled();
+    });
+
     it('should create store with default state', () => {
       expect(store.selectedCollection()).toBeNull();
       expect(store.availableLocales()).toEqual([]);
