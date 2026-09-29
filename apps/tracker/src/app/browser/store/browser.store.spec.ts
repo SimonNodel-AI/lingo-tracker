@@ -8,7 +8,7 @@ import type {
   SearchResultsDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
-import { NEVER, of, Subject, throwError } from 'rxjs';
+import { NEVER, type Observable, of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { collectionSettings } from '../../../testing/collection-settings';
@@ -101,6 +101,15 @@ describe('BrowserStore', () => {
     ],
   };
 
+  /**
+   * Answers each tree read by its path: the root with `mockTreeRoot` (a collection opens with two
+   * reads of it, the folder tree's and the list's), any other path from `trees`.
+   */
+  const treeAt =
+    (trees: Record<string, Observable<ResourceTreeDto>>) =>
+    (_collection: string, path = ''): Observable<ResourceTreeDto> =>
+      trees[path] ?? (path === '' ? of(mockTreeRoot) : NEVER);
+
   const mockCacheReady: CacheStatusDto = {
     status: 'ready',
     stats: {
@@ -189,11 +198,10 @@ describe('BrowserStore', () => {
 
       store.openCollection(collectionSettings({ name: 'app-translations', locales: ['en', 'es'], readOnly: true }));
       await waitForSignals();
-      store.setSearchQuery('save');
-      store.searchTranslations('save');
-      await waitForSignals();
       store.setFolderTreeFilter('test');
-      store.selectFolder('common');
+      store.showFolder('common');
+      store.showQuery('save');
+      await waitForSignals();
       store.startAddingFolder('common');
       // The active search already keeps isDisabled true; opening the next collection must clear it.
       expect(store.isDisabled()).toBe(true);
@@ -297,12 +305,13 @@ describe('BrowserStore', () => {
 
       store.openCollection(collectionSettings({ name: 'ghost', locales: [] }));
       await waitForSignals();
-      http
-        .expectOne((request) => request.url.endsWith('/resources/tree'))
-        .flush(
+      // The folder tree's read and the list's.
+      for (const read of http.match((request) => request.url.endsWith('/resources/tree'))) {
+        read.flush(
           { statusCode: 404, message: 'Collection "ghost" not found', error: 'Not Found' },
           { status: 404, statusText: 'Not Found' },
         );
+      }
       await waitForSignals();
 
       expect(store.error()).toBe('Collection "ghost" not found');
@@ -404,9 +413,7 @@ describe('BrowserStore', () => {
   describe('Folder Children Loading', () => {
     it('should load folder children and update tree', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(of(mockTreeRoot))
-        .mockReturnValueOnce(of(mockTreeCommon));
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation(treeAt({ common: of(mockTreeCommon) }));
 
       store.openCollection(
         collectionSettings({
@@ -433,9 +440,7 @@ describe('BrowserStore', () => {
     it('should handle folder children loading errors', async () => {
       const error = serverError(502, 'api error: load folder children');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(of(mockTreeRoot))
-        .mockReturnValueOnce(throwError(() => error));
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation(treeAt({ common: throwError(() => error) }));
 
       store.openCollection(
         collectionSettings({
@@ -458,9 +463,7 @@ describe('BrowserStore', () => {
   describe('Folder Selection and Translation Loading', () => {
     it('should select folder and load its translations', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(of(mockTreeRoot))
-        .mockReturnValueOnce(of(mockTreeCommon));
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation(treeAt({ common: of(mockTreeCommon) }));
 
       store.openCollection(
         collectionSettings({
@@ -471,7 +474,7 @@ describe('BrowserStore', () => {
 
       await waitForSignals();
 
-      store.selectFolder('common');
+      store.showFolder('common');
 
       await waitForSignals();
 
@@ -484,9 +487,7 @@ describe('BrowserStore', () => {
     it('should handle translation loading errors', async () => {
       const error = serverError(502, 'api error: load translations');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(of(mockTreeRoot))
-        .mockReturnValueOnce(throwError(() => error));
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation(treeAt({ common: throwError(() => error) }));
 
       store.openCollection(
         collectionSettings({
@@ -497,7 +498,7 @@ describe('BrowserStore', () => {
 
       await waitForSignals();
 
-      store.selectFolder('common');
+      store.showFolder('common');
 
       await waitForSignals();
 
@@ -508,15 +509,15 @@ describe('BrowserStore', () => {
 
     it('should keep the tree and the shown list, and notify, when the index is still not ready after the retries', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(of(mockTreeRoot))
-        .mockReturnValueOnce(throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')));
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation(
+        treeAt({ common: throwError(() => new CollectionIndexNotReadyError('Collection is being indexed.')) }),
+      );
       const notifyError = vi.spyOn(spectator.inject(NotificationService), 'error').mockImplementation(() => undefined);
 
       store.openCollection(collectionSettings({ name: 'app-translations', locales: [] }));
       await waitForSignals();
 
-      store.selectFolder('common');
+      store.showFolder('common');
       await waitForSignals();
 
       expect(store.rootFolders()).toEqual(mockTreeRoot.children);
@@ -529,9 +530,7 @@ describe('BrowserStore', () => {
 
     it('should set loading state during translation fetch', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(of(mockTreeRoot))
-        .mockReturnValueOnce(of(mockTreeCommon));
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation(treeAt({ common: of(mockTreeCommon) }));
 
       store.openCollection(
         collectionSettings({
@@ -544,7 +543,7 @@ describe('BrowserStore', () => {
 
       expect(store.isTranslationsLoading()).toBe(false);
 
-      store.selectFolder('common');
+      store.showFolder('common');
 
       await waitForSignals();
 
@@ -632,7 +631,7 @@ describe('BrowserStore', () => {
       store.openCollection(collectionSettings({ name: 'app-translations', locales: [] }));
       await waitForSignals();
 
-      store.selectFolder('common.buttons.primary');
+      store.showFolder('common.buttons.primary');
       await waitForSignals();
 
       // Ancestors are revealed; the selection itself is not opened, and the stored set is untouched.
@@ -733,7 +732,7 @@ describe('BrowserStore', () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
 
-      store.selectFolder('common.buttons.primary');
+      store.showFolder('common.buttons.primary');
 
       await waitForSignals();
 
@@ -813,7 +812,10 @@ describe('BrowserStore', () => {
         new HttpErrorResponse({ status: 500, error: { statusCode: 500, error: 'Internal Server Error' } }),
       );
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(throwError(() => error));
+      // Only the folder tree's read fails; the list's succeeds and must not hide the failure.
+      vi.spyOn(apiService, 'getResourceTree').mockImplementation((_collection, _path, includeNested) =>
+        includeNested ? of(mockTreeRoot) : throwError(() => error),
+      );
 
       store.openCollection(
         collectionSettings({
@@ -847,30 +849,23 @@ describe('BrowserStore', () => {
       expect(store.error()).toBeNull();
     });
 
-    it('should clear error when new operation starts', async () => {
-      const error = serverError(502, 'Test error');
+    it("should clear the error on the list's Retry, loading the tree and the list again", async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(throwError(() => error))
-        .mockReturnValueOnce(of(mockTreeRoot));
+      const getTree = vi
+        .spyOn(apiService, 'getResourceTree')
+        .mockReturnValue(throwError(() => serverError(502, 'Test error')));
 
-      store.openCollection(
-        collectionSettings({
-          name: 'app-translations',
-          locales: [],
-        }),
-      );
-
+      store.openCollection(collectionSettings({ name: 'app-translations', locales: [] }));
       await waitForSignals();
-
       expect(store.error()).toBe('Test error');
 
-      // Try again - should clear error
-      store.loadRootFolders();
-
+      getTree.mockReturnValue(of(mockTreeRoot));
+      store.retryLoad();
       await waitForSignals();
 
       expect(store.error()).toBeNull();
+      expect(store.rootFolders()).toEqual(mockTreeRoot.children);
+      expect(store.translations()).toEqual(mockTreeRoot.resources);
     });
   });
 
@@ -878,7 +873,7 @@ describe('BrowserStore', () => {
     it('should reflect an active search as disabled, and clear it once the search ends', () => {
       expect(store.isDisabled()).toBe(false);
 
-      store.setSearchQuery('save');
+      store.showQuery('save');
       expect(store.isDisabled()).toBe(true);
 
       store.clearSearch();
@@ -897,13 +892,13 @@ describe('BrowserStore', () => {
       expect(store.effectiveDisabled()).toBe(true);
 
       store.openCollection(collectionSettings({ name: 'main' }));
-      store.setSearchQuery('something');
+      store.showQuery('something');
       expect(store.effectiveDisabled()).toBe(true);
     });
 
     it('persists read-only across clearSearch (does not get cleared like isDisabled)', () => {
       store.openCollection(collectionSettings({ name: 'vendor', readOnly: true }));
-      store.setSearchQuery('something');
+      store.showQuery('something');
       expect(store.isDisabled()).toBe(true);
 
       store.clearSearch();
@@ -1192,32 +1187,24 @@ describe('BrowserStore', () => {
   });
 
   describe('Refresh Translations', () => {
-    it('should reload current folder translations', async () => {
+    it('should reload the folder the list shows', async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
-      vi.spyOn(apiService, 'getResourceTree')
-        .mockReturnValueOnce(of(mockTreeRoot))
-        .mockReturnValueOnce(of(mockTreeCommon))
-        .mockReturnValueOnce(of(mockTreeCommon));
+      const getTree = vi
+        .spyOn(apiService, 'getResourceTree')
+        .mockImplementation(treeAt({ common: of(mockTreeCommon) }));
 
-      store.openCollection(
-        collectionSettings({
-          name: 'app-translations',
-          locales: [],
-        }),
-      );
+      store.openCollection(collectionSettings({ name: 'app-translations', locales: [] }));
+      await waitForSignals();
+      store.showFolder('common');
+      await waitForSignals();
+      getTree.mockClear();
 
+      store.reloadList();
       await waitForSignals();
 
-      store.selectFolder('common');
-
-      await waitForSignals();
-
-      store.selectFolder(store.currentFolderPath());
-
-      await waitForSignals();
-
-      expect(apiService.getResourceTree).toHaveBeenCalledTimes(3);
+      expect(getTree).toHaveBeenCalledExactlyOnceWith('app-translations', 'common', true);
       expect(store.currentFolderPath()).toBe('common');
+      expect(store.translations()).toEqual(mockTreeCommon.resources);
     });
   });
 
@@ -1232,7 +1219,7 @@ describe('BrowserStore', () => {
 
       store.openCollection(collectionSettings({ name: 'app-translations', locales: ['en'] }));
       await waitForSignals();
-      store.selectFolder('common.buttons');
+      store.showFolder('common.buttons');
       await waitForSignals();
       expect(store.translations()).toEqual([row]);
 
@@ -1386,6 +1373,13 @@ describe('BrowserStore', () => {
   });
 
   describe('Search State', () => {
+    const found = (query: string, results: SearchResultsDto['results']): SearchResultsDto => ({
+      query,
+      results,
+      totalFound: results.length,
+      limited: false,
+    });
+
     beforeEach(async () => {
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
@@ -1403,140 +1397,62 @@ describe('BrowserStore', () => {
       expect(store.isSearchMode()).toBe(false);
       expect(store.searchResults()).toEqual([]);
       expect(store.isSearchLoading()).toBe(false);
-      expect(store.searchError()).toBeNull();
     });
 
-    it('should set search query and enter search mode', () => {
-      store.setSearchQuery('test query');
+    it('should show a query: search mode, disabled, and its hits in the list', async () => {
+      const hits = [
+        { ...summary('common.save', 'Save', { es: ['Guardar', 'verified'] }), matchType: 'partial-key' as const },
+      ];
+      vi.spyOn(apiService, 'searchTranslations').mockReturnValue(of(found('save', hits)));
 
-      expect(store.searchQuery()).toBe('test query');
+      store.showQuery('save');
+      await waitForSignals();
+
+      expect(apiService.searchTranslations).toHaveBeenCalledWith('test', 'save');
+      expect(store.searchQuery()).toBe('save');
       expect(store.isSearchMode()).toBe(true);
       expect(store.isDisabled()).toBe(true);
+      expect(store.isSearchLoading()).toBe(false);
+      expect(store.displayedTranslations()).toEqual(hits);
     });
 
-    it('should exit search mode when query is empty', () => {
-      store.setSearchQuery('test');
-      store.setSearchQuery('');
+    it('should treat a blank query as clearing the search', () => {
+      const search = vi.spyOn(apiService, 'searchTranslations').mockReturnValue(NEVER);
 
+      store.showQuery('test');
+      store.showQuery('  ');
+
+      expect(search).toHaveBeenCalledTimes(1);
       expect(store.isSearchMode()).toBe(false);
       expect(store.isDisabled()).toBe(false);
+      expect(store.isSearchLoading()).toBe(false);
     });
 
-    it('should clear search state', () => {
-      store.setSearchQuery('test');
+    it('should go back to the folder rows behind the search without loading them again', async () => {
+      vi.spyOn(apiService, 'searchTranslations').mockReturnValue(of(found('test', [])));
+      const tree = vi.mocked(apiService.getResourceTree);
+      tree.mockClear();
+
+      store.showQuery('test');
+      await waitForSignals();
       store.clearSearch();
 
       expect(store.searchQuery()).toBe('');
       expect(store.isSearchMode()).toBe(false);
-      expect(store.searchResults()).toEqual([]);
-      expect(store.searchError()).toBeNull();
       expect(store.isDisabled()).toBe(false);
+      expect(store.displayedTranslations()).toEqual(mockTreeRoot.resources);
+      expect(tree).not.toHaveBeenCalled();
     });
 
-    describe('Computed: displayedTranslations', () => {
-      it('should return folder translations when not in search mode', async () => {
-        vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+    it("should show a failed search as the list's error, with the search kept for a retry", async () => {
+      vi.spyOn(apiService, 'searchTranslations').mockReturnValue(throwError(() => serverError(502, 'Search failed')));
 
-        store.loadRootFolders();
+      store.showQuery('test');
+      await waitForSignals();
 
-        await waitForSignals();
-
-        expect(store.displayedTranslations()).toEqual(mockTreeRoot.resources);
-      });
-
-      it('should return search results when in search mode', () => {
-        const mockSearchResults = [
-          { ...summary('found', 'Found', { es: ['Encontrado', 'verified'] }), matchType: 'exact-key' as const },
-        ];
-
-        store.setSearchQuery('found');
-        // Manually set search results for this test
-        vi.spyOn(apiService, 'searchTranslations').mockReturnValue(
-          of({
-            query: 'found',
-            results: mockSearchResults,
-            totalFound: 1,
-            limited: false,
-          }),
-        );
-
-        // Trigger search
-        store.searchTranslations('found');
-
-        // The displayedTranslations should switch to search results when in search mode
-        // Note: We can't wait for signals here since we're testing the computed property
-        // so we'll verify the logic by checking isSearchMode
-        expect(store.isSearchMode()).toBe(true);
-      });
-    });
-
-    describe('searchTranslations rxMethod', () => {
-      it('should search translations and update results', async () => {
-        const mockSearchResults = [
-          {
-            ...summary('common.save', 'Save', { es: ['Guardar', 'verified'] }),
-            matchType: 'partial-key' as const,
-          },
-        ];
-
-        vi.spyOn(apiService, 'searchTranslations').mockReturnValue(
-          of({
-            query: 'save',
-            results: mockSearchResults,
-            totalFound: 1,
-            limited: false,
-          }),
-        );
-
-        store.searchTranslations('save');
-
-        await waitForSignals();
-
-        expect(store.searchResults()).toEqual(mockSearchResults);
-        expect(store.isSearchLoading()).toBe(false);
-        expect(store.searchError()).toBeNull();
-      });
-
-      it('should handle empty query', async () => {
-        vi.spyOn(apiService, 'searchTranslations');
-
-        store.searchTranslations('');
-
-        await waitForSignals();
-
-        expect(apiService.searchTranslations).not.toHaveBeenCalled();
-        expect(store.isSearchLoading()).toBe(false);
-      });
-
-      it('should handle search errors', async () => {
-        const error = serverError(502, 'Search failed');
-        vi.spyOn(apiService, 'searchTranslations').mockReturnValue(throwError(() => error));
-
-        store.searchTranslations('test');
-
-        await waitForSignals();
-
-        expect(store.isSearchLoading()).toBe(false);
-        expect(store.searchError()).toBe('Search failed');
-        expect(store.searchResults()).toEqual([]);
-      });
-
-      it('should set loading state during search', async () => {
-        vi.spyOn(apiService, 'searchTranslations').mockReturnValue(
-          of({
-            query: 'test',
-            results: [],
-            totalFound: 0,
-            limited: false,
-          }),
-        );
-
-        store.searchTranslations('test');
-
-        await waitForSignals();
-
-        expect(store.isSearchLoading()).toBe(false);
-      });
+      expect(store.isSearchLoading()).toBe(false);
+      expect(store.error()).toBe('Search failed');
+      expect(store.searchQuery()).toBe('test');
     });
   });
 
@@ -1595,7 +1511,7 @@ describe('BrowserStore', () => {
           ],
         }),
       );
-      store.loadRootFolders();
+      store.reloadList();
       await waitForSignals();
     }
 
@@ -1670,7 +1586,7 @@ describe('BrowserStore', () => {
           children: [],
         }),
       );
-      store.loadRootFolders();
+      store.reloadList();
       await waitForSignals();
 
       expect(store.selectedLocales()).toEqual([]);
@@ -1680,7 +1596,7 @@ describe('BrowserStore', () => {
 
     it('should report zero for every status when the folder is empty', async () => {
       vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of({ path: '', resources: [], children: [] }));
-      store.loadRootFolders();
+      store.reloadList();
       await waitForSignals();
 
       expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 0, verified: 0 });
@@ -1740,7 +1656,7 @@ describe('BrowserStore', () => {
       store.openCollection(collectionSettings({ name: 'a' }));
       await waitForSignals();
       store.loadFolderChildren('common');
-      store.selectFolder('common');
+      store.showFolder('common');
       store.openCollection(collectionSettings({ name: 'b' }));
       aChildren.next(mockTreeCommon);
       aFolder.error(serverError(500, 'late'));
@@ -1759,8 +1675,7 @@ describe('BrowserStore', () => {
 
       store.openCollection(collectionSettings({ name: 'a' }));
       await waitForSignals();
-      store.setSearchQuery('save');
-      store.searchTranslations('save');
+      store.showQuery('save');
       store.openCollection(collectionSettings({ name: 'b' }));
       await waitForSignals();
       aSearch.next({
@@ -1823,9 +1738,11 @@ describe('BrowserStore', () => {
         .mockReturnValueOnce(of(mockCacheReady))
         .mockReturnValueOnce(NEVER)
         .mockReturnValueOnce(secondStatus);
+      // The first open reads the tree twice (the folder tree's read and the list's); later reads are fresh.
       vi.spyOn(apiService, 'getResourceTree')
         .mockReturnValueOnce(firstTree)
-        .mockReturnValueOnce(of(treeOf('a', ['fresh'])));
+        .mockReturnValueOnce(firstTree)
+        .mockReturnValue(of(treeOf('a', ['fresh'])));
 
       store.openCollection(collectionSettings({ name: 'a' }));
       await waitForSignals();
@@ -1853,8 +1770,8 @@ describe('BrowserStore', () => {
     it("should patch a readOnly/translationEnabled-only change in place, keeping the user's place", async () => {
       store.openCollection(collectionSettings({ name: 'app', locales: ['en', 'es'] }));
       await waitForSignals();
-      store.selectFolder('common');
-      store.setSearchQuery('save');
+      store.showFolder('common');
+      store.showQuery('save');
       await waitForSignals();
       const sessionId = store.sessionId();
       const statusCalls = vi.mocked(apiService.getCacheStatus).mock.calls.length;

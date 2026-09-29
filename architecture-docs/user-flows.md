@@ -264,12 +264,16 @@ sequenceDiagram
     API-->>CS: CacheStatusDto { status: "not-started" | "indexing" | "ready" }
     Note right of CS: Loop continues while status is<br/>"indexing" or "not-started".<br/>takeWhile stops the interval on "ready".
     CS->>CS: patchState({ cacheStatus })
-    CS->>FT: loadRootFolders() [when status becomes "ready" and rootFolders is empty]
+    CS->>TS: reloadList() [when status becomes "ready" and no list has loaded yet]
+    CS->>FT: loadRootFolders() [when status becomes "ready" and folderTreeLoaded is false]
 
-    Note over FT,API: C. Load root folder tree
-    FT->>API: GET /api/collections/{name}/resources/tree?path=&includeNested=true
-    API-->>FT: ResourceTreeDto { children: FolderNodeDto[], resources: ResourceSummaryDto[] }
-    FT->>BS: patchState({ rootFolders, translations, currentFolderPath: "" })
+    Note over FT,API: C. Load the root folder tree and the root list
+    TS->>API: GET /api/collections/{name}/resources/tree?path=&includeNested=true
+    API-->>TS: ResourceTreeDto { resources: ResourceSummaryDto[] }
+    TS->>BS: patchState({ translations, loadedFolderPath: "", listLoaded: true })
+    FT->>API: GET /api/collections/{name}/resources/tree?path=&includeNested=false
+    API-->>FT: ResourceTreeDto { children: FolderNodeDto[] }
+    FT->>BS: patchState({ rootFolders, folderTreeLoaded: true })
 
     Note over Dev,TS: D. Navigate to a subfolder
     Dev->>TB: click FolderNode "apps.common"
@@ -277,10 +281,11 @@ sequenceDiagram
     FT->>API: GET /api/collections/{name}/resources/tree?path=apps.common
     API-->>FT: ResourceTreeDto
     FT->>BS: update rootFolders[apps.common].tree + loaded=true
-    TB->>TS: selectFolder("apps.common")
+    TB->>TS: showFolder("apps.common") [List Scope]
+    TS->>BS: patchState({ listScope: folder, currentFolderPath: "apps.common", isListLoading: true })
     TS->>API: GET /api/collections/{name}/resources/tree?path=apps.common
     API-->>TS: ResourceTreeDto { resources: [...] }
-    TS->>BS: patchState({ translations, currentFolderPath: "apps.common" })
+    TS->>BS: patchState({ translations, isListLoading: false })
 
     Note over Dev,Dialog: E. Edit a resource
     Dev->>TB: double-click TranslationItem (or press E)
@@ -307,7 +312,7 @@ sequenceDiagram
 
 ## 4. Frontend: Search
 
-Full-text search across a collection via the `TranslationSearch` component, the `withSearchFeature` store method, and the API search endpoint. See [api.md — Endpoint Reference](api.md#endpoint-reference) for the search endpoint and [frontend.md — BrowserStore Feature Breakdown](frontend.md#browserstore-feature-breakdown) for store state details.
+Full-text search across a collection via the `TranslationSearch` component, the [List Scope](glossary.md#list-scope) (`withListScopeFeature`), and the API search endpoint. See [api.md — Endpoint Reference](api.md#endpoint-reference) for the search endpoint and [frontend.md — BrowserStore Feature Breakdown](frontend.md#browserstore-feature-breakdown) for store state details.
 
 <!-- Frontend search: type query → 300 ms debounce → API search → display results -->
 
@@ -315,7 +320,7 @@ Full-text search across a collection via the `TranslationSearch` component, the 
 sequenceDiagram
     actor Dev as Developer
     participant TS as TranslationSearch
-    participant BS as BrowserStore (withSearchFeature)
+    participant BS as BrowserStore (withListScopeFeature)
     participant API as ResourcesController
     participant TL as TranslationList (displayedTranslations)
 
@@ -324,27 +329,25 @@ sequenceDiagram
     Note right of TS: debounceTime(300ms) + distinctUntilChanged()<br/>— only emits after 300 ms of no input<br/>and only if value actually changed
 
     TS->>TS: query.trim().length >= 3? Yes
-    TS->>BS: setSearchQuery("confirm")
-    Note right of BS: patchState({ searchQuery, isSearchMode: true, isDisabled: true })
-    TS->>BS: searchTranslations("confirm") [rxMethod]
-
-    BS->>BS: patchState({ isSearchLoading: true, searchError: null })
+    TS->>BS: showQuery("confirm")
+    Note right of BS: patchState({ listScope: { kind: "search", query }, isListLoading: true, error: null })<br/>isSearchMode, searchQuery, isSearchLoading and isDisabled are derived from it.<br/>The switchMap cancels any list load still in flight.
     BS->>API: GET /api/collections/{name}/resources/search?query=confirm
     Note right of API: CollectionIndex.search() runs searchResources (text mode)<br/>over the indexed tree (treeResources)<br/>or the disk (readCollection) if not indexed;<br/>every match is ranked, then maxResults applies
 
     API-->>BS: SearchResultsDto { results: SearchResultDto[] }
-    BS->>BS: patchState({ searchResults, isSearchLoading: false })
+    BS->>BS: patchState({ searchResults, isListLoading: false })
+    Note right of BS: A failed search is the list's error<br/>(error view with Retry, which runs the query again).
 
     Note over TL: displayedTranslations computed signal<br/>returns searchResults when isSearchMode=true
     TL->>TL: re-render virtual scroll list
 
     Dev->>TS: clear search (X button or empty input)
     TS->>BS: clearSearch()
-    BS->>BS: patchState({ searchQuery: "", isSearchMode: false,<br/>searchResults: [], isDisabled: false })
-    Note over TL: displayedTranslations switches back to<br/>translations[] (folder browse mode)
+    BS->>BS: patchState({ listScope: { kind: "folder", path: currentFolderPath } })
+    Note over TL: displayedTranslations switches back to translations[]<br/>(no request when they were loaded for that folder;<br/>otherwise the folder is loaded again)
 ```
 
-**Minimum query length:** 3 characters (enforced in `TranslationSearch` before calling `setSearchQuery`). Queries shorter than 3 characters that are non-empty are silently ignored — only a full clear (empty string) resets search mode.
+**Minimum query length:** 3 characters (enforced in `TranslationSearch` before calling `showQuery`). Queries shorter than 3 characters that are non-empty are silently ignored — only a full clear (empty string) resets search mode.
 
 ---
 
@@ -379,23 +382,23 @@ sequenceDiagram
     Note over BS: Optimistic update
     BS->>BS: snapshot currentTranslations[]
     BS->>BS: patchState({ translations: optimisticTranslations })<br/>— resource removed from list immediately
-    BS->>BS: patchState({ isDisabled: true })
+    BS->>BS: movesInFlight + 1 — isMoving, so isDisabled is true
 
     BS->>API: POST /api/collections/{name}/resources/move<br/>{ source: "apps.common.ok", destination: "apps.navigation.ok" }
     API->>Index: apply(moveResult.mutations)<br/>— upsert at destination, remove at source
     API-->>BS: MoveResourceResponseDto { success: true }
 
     Note over BS: Success path
-    BS->>BS: patchState({ isDisabled: false })
     BS->>BS: notifications.success("Resource moved")
-    BS->>BS: loadRootFolders() — refresh sidebar tree
-    BS->>BS: selectFolder(currentFolderPath) — reload translation list
+    BS->>BS: loadRootFolders() — refresh sidebar tree (the tree only)
+    BS->>BS: reloadList() — the List Scope reloads the folder it shows
+    BS->>BS: movesInFlight - 1 — isDisabled is false again
 
     Note over BS: Rollback path (API error)
     alt API call fails
         API-->>BS: HTTP error
         BS->>BS: patchState({ translations: snapshotTranslations })<br/>— restore removed item
-        BS->>BS: patchState({ isDisabled: false, error: errorMessage })
+        BS->>BS: patchState({ error: errorMessage }); movesInFlight - 1
         BS->>BS: notifications.error(errorMessage)
     end
 
@@ -410,11 +413,11 @@ sequenceDiagram
     BS->>API: POST /api/collections/{name}/folders/move
     API-->>BS: MoveFolderResponseDto
     BS->>BS: rebaseFolderPaths(sourceNode, destinationFolderPath)<br/>insertFolderIntoTree(rootFolders, rebasedFolder, dest)
-    BS->>BS: GET /tree for movedFolderPath via BrowserApiService
-    Note right of BS: Folder move clears API cache;<br/>BrowserApiService retries a 202 (up to 5×, 1 s delay)<br/>before handing the tree over.
+    BS->>BS: showFolder(movedFolderPath) — the List Scope loads it
+    Note right of BS: Folder move clears API cache;<br/>BrowserApiService retries a 202 (up to 5×, 1 s delay)<br/>before handing the tree over. A failure follows<br/>the List Scope's one error rule.
     alt API call fails
         API-->>BS: HTTP error
-        BS->>BS: patchState({ rootFolders: snapshotFolders })<br/>isDisabled=false, isDeletingFolder=false
+        BS->>BS: patchState({ rootFolders: snapshotFolders })<br/>isDeletingFolder=false; movesInFlight - 1
         BS->>BS: notifications.error(errorMessage)
     end
 ```
@@ -455,16 +458,16 @@ flowchart TD
 
     STATUS_CHECK -- "ready" --> MARK_READY["patchState({ cacheStatus: 'ready', collectionStats })\ntakeWhile stops the interval — polling ends"]
 
-    MARK_READY --> HAS_FOLDERS{"rootFolders.length == 0?"}
+    MARK_READY --> HAS_FOLDERS{"folderTreeLoaded?\n(and listLoaded?)"}
 
-    HAS_FOLDERS -- Yes --> LOAD_TREE
-    HAS_FOLDERS -- No --> DONE_INDEXED([Tree already loaded\nUI ready])
+    HAS_FOLDERS -- No --> LOAD_TREE
+    HAS_FOLDERS -- Yes --> DONE_INDEXED([Tree already loaded\nUI ready])
 
-    LOAD_TREE["withFolderTreeFeature.loadRootFolders()\nGET /api/collections/{name}/resources/tree?path="]
+    LOAD_TREE["List Scope reloadList() + withFolderTreeFeature.loadRootFolders()\nGET /api/collections/{name}/resources/tree?path= (list, then tree)"]
 
     LOAD_TREE --> TREE_RESPONSE{"Response type?"}
 
-    TREE_RESPONSE -- "ResourceTreeDto\n(200 OK, cache READY)" --> POPULATE["patchState({\n  rootFolders: treeData.children,\n  translations: treeData.resources,\n  currentFolderPath: ''\n})\nIndexingOverlay hidden"]
+    TREE_RESPONSE -- "ResourceTreeDto\n(200 OK, cache READY)" --> POPULATE["patchState({\n  rootFolders: tree.children,\n  translations: list.resources\n})\nIndexingOverlay hidden"]
 
     TREE_RESPONSE -- "TreeStatusResponseDto\n(202, not ready yet)" --> LOAD_TREE_RETRY["BrowserApiService.getResourceTree\nasks again (up to 5×, 1 s apart);\nthe store only ever receives a tree"]
 
@@ -480,6 +483,6 @@ flowchart TD
 
 **Key timing details:**
 - Poll interval: `2000 ms` (hard-coded in `withCacheStatusFeature` via `interval(2000)`)
-- The interval uses `takeWhile(..., true)` — the final `"ready"` emission is included before the stream completes, which is what triggers `loadRootFolders()`
+- The interval uses `takeWhile(..., true)` — the final `"ready"` emission is included before the stream completes, which is what triggers the first list load (`reloadList()`) and `loadRootFolders()`
 - There is no WebSocket or server-sent event. The retry loop is entirely client-driven.
 - `CollectionIndex` holds up to `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` (default 4) collections and evicts the least recently used one. Switching back to a recently opened collection does not re-index it. See [api.md — Bounded Multi-Collection Design](api.md#bounded-multi-collection-design).

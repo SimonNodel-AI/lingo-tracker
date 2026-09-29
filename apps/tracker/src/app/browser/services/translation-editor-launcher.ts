@@ -12,6 +12,7 @@ import {
 } from '../dialogs/translation-editor';
 import { BrowserApiService } from './browser-api.service';
 import { BrowserStore } from '../store/browser.store';
+import { captureSession, withinSession } from '../store/session-guard';
 import { splitResolvedKey } from '@simoncodes-ca/domain';
 
 /** What the caller knows about the entry it wants opened in the editor. */
@@ -101,25 +102,26 @@ export class TranslationEditorLauncher {
   openByFullKey(fullKey: string, collectionName: string, onUpdated?: (fullKey: string) => void): void {
     const folderPath = splitResolvedKey(fullKey).folderPath.join('.');
 
-    this.#api.getResourceTree(collectionName, folderPath, false).subscribe({
-      next: (tree) => {
-        const resource = tree.resources.find((item) => item.fullKey === fullKey);
-        if (!resource) {
-          this.#notifyNotFound();
-          return;
-        }
+    // A lookup, not a list load: the List Scope loads the rows once the entry is known to exist.
+    // It is session-guarded, so a collection opened meanwhile gets neither the folder nor the editor.
+    this.#api
+      .getResourceTree(collectionName, folderPath, false)
+      .pipe(withinSession(captureSession(this.#browserStore)))
+      .subscribe({
+        next: (tree) => {
+          const resource = tree.resources.find((item) => item.fullKey === fullKey);
+          if (!resource) {
+            this.#notifyNotFound();
+            return;
+          }
 
-        // A search result list would survive the folder change and leave the user
-        // looking at the wrong set of rows behind the dialog.
-        if (this.#browserStore.isSearchMode()) {
-          this.#browserStore.clearSearch();
-        }
-        this.#browserStore.selectFolder(folderPath);
+          // Leaves a search too, so the dialog closes onto the entry's folder, not onto search hits.
+          this.#browserStore.showFolder(folderPath);
 
-        this.openEditor({ resource, collectionName, onUpdated });
-      },
-      error: () => this.#notifyNotFound(),
-    });
+          this.openEditor({ resource, collectionName, onUpdated });
+        },
+        error: () => this.#notifyNotFound(),
+      });
   }
 
   #notifyNotFound(): void {

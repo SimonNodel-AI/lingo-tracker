@@ -693,7 +693,7 @@ describe('TranslationItem - compact key chip', () => {
     });
 
     it('highlights a search match that straddles the head/tail boundary', () => {
-      store.setSearchQuery('context.allUp');
+      store.showQuery('context.allUp');
       render(longKey);
 
       const head = fixture.nativeElement.querySelector('.key-text__head');

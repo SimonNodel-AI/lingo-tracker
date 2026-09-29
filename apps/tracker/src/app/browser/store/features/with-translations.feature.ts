@@ -1,29 +1,9 @@
-import { computed, inject } from '@angular/core';
-import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
-import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, tap, switchMap, catchError, of, map } from 'rxjs';
-import { TranslocoService } from '@jsverse/transloco';
-import { NotificationService } from '../../../shared/notification';
-import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/browser-api.service';
+import { computed, type Signal } from '@angular/core';
+import { signalStoreFeature, withComputed, type } from '@ngrx/signals';
 import { sortTranslations } from '../../translations/utils/sort-translations';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { countByStatus, STATUS_PRECEDENCE, summaryTarget, type TranslationStatus } from '@simoncodes-ca/domain';
 import { displayStatus } from '../../../shared/translation-status/display-status';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
-import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { captureSession, withinSession } from '../session-guard';
-
-export interface TranslationsState {
-  translations: ResourceSummaryDto[];
-  isTranslationsLoading: boolean;
-  showNestedResources: boolean;
-}
-
-export const initialTranslationsState: TranslationsState = {
-  translations: [],
-  isTranslationsLoading: false,
-  showNestedResources: true,
-};
 
 const NEEDS_WORK_STATUSES: readonly TranslationStatus[] = ['new', 'stale'];
 
@@ -44,15 +24,12 @@ function matchesAnyStatus(
   return statuses.some((status) => counts[status] > 0);
 }
 
+/** The list as the user sees it: the List Scope's rows, filtered by status, sorted, and counted. */
 export function withTranslationsFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{
-        sessionId: number;
-        selectedCollection: string | null;
-        currentFolderPath: string;
-        error: string | null;
-        isSearchMode: boolean;
+        translations: ResourceSummaryDto[];
         searchResults: SearchResultDto[];
         selectedLocales: string[];
         availableLocales: string[];
@@ -60,8 +37,9 @@ export function withTranslationsFeature<_>() {
         sortField: 'key' | 'status';
         sortDirection: 'asc' | 'desc';
       }>(),
+      // Provided by withListScopeFeature, which composes before this feature.
+      props: type<{ isSearchMode: Signal<boolean> }>(),
     },
-    withState(initialTranslationsState),
     withComputed(({ selectedLocales, availableLocales }) => ({
       /**
        * The locales a status is read over: the selected ones, or every locale when
@@ -134,72 +112,5 @@ export function withTranslationsFeature<_>() {
         }),
       }),
     ),
-    withMethods((store) => {
-      const api = inject(BrowserApiService);
-      const transloco = inject(TranslocoService);
-      const notifications = inject(NotificationService);
-
-      return {
-        selectFolder: rxMethod<string>(
-          pipe(
-            // The folder whose list is on screen, to go back to if the index is not ready (see below).
-            map((path) => ({ path, shownFolderPath: store.currentFolderPath() })),
-            tap(({ path }) =>
-              patchState(store, {
-                currentFolderPath: path,
-                isTranslationsLoading: true,
-                error: null,
-              }),
-            ),
-            switchMap(({ path, shownFolderPath }) => {
-              const inSession = captureSession(store);
-              const collection = store.selectedCollection();
-              const includeNested = store.showNestedResources();
-              if (!collection) {
-                patchState(store, { isTranslationsLoading: false });
-                return of(null);
-              }
-
-              return api.getResourceTree(collection, path, includeNested).pipe(
-                withinSession(inSession),
-                tap((tree) =>
-                  patchState(store, {
-                    translations: tree.resources,
-                    isTranslationsLoading: false,
-                    error: null,
-                  }),
-                ),
-                catchError((error: unknown) => {
-                  const message = apiErrorMessage(
-                    error,
-                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADTRANSLATIONSFAILED),
-                  );
-                  // The index can go not-ready mid-session. selectFolder only runs once a tree is on
-                  // screen (the first load is loadRootFolders), so keep the list and the folder it shows,
-                  // and toast: the `error` state would replace the tree.
-                  if (error instanceof CollectionIndexNotReadyError) {
-                    patchState(store, { isTranslationsLoading: false, currentFolderPath: shownFolderPath });
-                    notifications.error(message);
-                    return of(null);
-                  }
-                  patchState(store, { isTranslationsLoading: false, error: message });
-                  return of(null);
-                }),
-              );
-            }),
-          ),
-        ),
-
-        setTranslationsLoading(value: boolean): void {
-          patchState(store, { isTranslationsLoading: value });
-        },
-
-        setNestedResources(value: boolean): void {
-          if (value === store.showNestedResources()) return;
-          patchState(store, { showNestedResources: value });
-          this.selectFolder(store.currentFolderPath());
-        },
-      };
-    }),
   );
 }

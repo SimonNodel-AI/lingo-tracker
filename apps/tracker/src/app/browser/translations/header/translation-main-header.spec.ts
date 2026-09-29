@@ -203,7 +203,7 @@ describe('TranslationMainHeader', () => {
     // (with-entry-writes.feature.spec.ts), so the header must not do it twice.
     it('should leave reloading the folder to the store', async () => {
       const store = spectator.inject(BrowserStore);
-      const selectFolderSpy = vi.spyOn(store, 'selectFolder');
+      const selectFolderSpy = vi.spyOn(store, 'showFolder');
 
       const result: TranslationEditorResult = {
         key: 'new_key',

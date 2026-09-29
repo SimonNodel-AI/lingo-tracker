@@ -20,9 +20,8 @@ describe('TranslationSearch', () => {
     searchQuery: signal(''),
     isSearchMode: signal(false),
     isSearchLoading: signal(false),
-    setSearchQuery: vi.fn(),
+    showQuery: vi.fn(),
     clearSearch: vi.fn(),
-    searchTranslations: vi.fn(),
   });
 
   const createComponent = createComponentFactory({
@@ -95,21 +94,12 @@ describe('TranslationSearch', () => {
   });
 
   describe('Search Debouncing', () => {
-    it('should update store search query after typing at least 3 characters', async () => {
-      component.onSearchChange('test');
-
-      // Wait for debounce
-      await new Promise((resolve) => setTimeout(resolve, 350));
-
-      expect(mockStore.setSearchQuery).toHaveBeenCalledWith('test');
-    });
-
-    it('should trigger search after debounce with 3+ characters', async () => {
+    it('should show the query in the list after typing at least 3 characters', async () => {
       component.onSearchChange('button');
 
       await new Promise((resolve) => setTimeout(resolve, 350));
 
-      expect(mockStore.searchTranslations).toHaveBeenCalledWith('button');
+      expect(mockStore.showQuery).toHaveBeenCalledWith('button');
     });
 
     it('should not search for query with fewer than 3 characters', async () => {
@@ -117,23 +107,21 @@ describe('TranslationSearch', () => {
 
       await new Promise((resolve) => setTimeout(resolve, 350));
 
-      expect(mockStore.setSearchQuery).not.toHaveBeenCalled();
-      expect(mockStore.searchTranslations).not.toHaveBeenCalled();
+      expect(mockStore.showQuery).not.toHaveBeenCalled();
     });
 
     it('should clear search when query becomes empty', async () => {
       component.onSearchChange('test');
       await new Promise((resolve) => setTimeout(resolve, 350));
 
-      mockStore.setSearchQuery.mockClear();
-      mockStore.searchTranslations.mockClear();
+      mockStore.showQuery.mockClear();
       mockStore.clearSearch.mockClear();
 
       component.onSearchChange('');
       await new Promise((resolve) => setTimeout(resolve, 350));
 
       expect(mockStore.clearSearch).toHaveBeenCalled();
-      expect(mockStore.searchTranslations).not.toHaveBeenCalled();
+      expect(mockStore.showQuery).not.toHaveBeenCalled();
     });
   });
 

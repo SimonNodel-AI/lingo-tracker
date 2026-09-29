@@ -80,7 +80,7 @@ describe('TranslationEditorLauncher', () => {
     });
 
     it('should leave search mode before navigating, so the list matches the dialog', () => {
-      patchState(unprotected(store), { isSearchMode: true, searchQuery: 'back' });
+      patchState(unprotected(store), { listScope: { kind: 'search', query: 'back' } });
 
       launcher.openByFullKey('browser.header.backButton', 'test-collection');
 

@@ -35,12 +35,11 @@ export function withEntryWritesFeature<_>() {
     {
       state: type<{
         sessionId: number;
-        currentFolderPath: string;
         translations: ResourceSummaryDto[];
         searchResults: SearchResultDto[];
       }>(),
-      // Provided by withTranslationsFeature, which composes before this feature.
-      methods: type<{ selectFolder(path: string): void }>(),
+      // Provided by withListScopeFeature, which composes before this feature.
+      methods: type<{ reloadList(): void }>(),
     },
     withMethods((store) => {
       const api = inject(BrowserApiService);
@@ -68,13 +67,11 @@ export function withEntryWritesFeature<_>() {
       }
 
       return {
-        /** Creates an entry, then reloads the current folder so the list shows it in place. */
+        /** Creates an entry, then reloads the List Scope so the list shows it in place. */
         createResource(collectionName: string, dto: CreateResourceDto): Observable<CreateResourceResponseDto> {
           const inSession = captureSession(store);
           // The caller still gets its response; only the store write is session-guarded.
-          return api
-            .createResource(collectionName, dto)
-            .pipe(tap(() => inSession() && store.selectFolder(store.currentFolderPath())));
+          return api.createResource(collectionName, dto).pipe(tap(() => inSession() && store.reloadList()));
         },
 
         /**

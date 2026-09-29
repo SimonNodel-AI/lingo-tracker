@@ -23,8 +23,8 @@ export const initialCacheStatusState: CacheStatusState = {
 export function withCacheStatusFeature<_>() {
   return signalStoreFeature(
     {
-      state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean }>(),
-      methods: type<{ loadRootFolders(): void }>(),
+      state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean; listLoaded: boolean }>(),
+      methods: type<{ loadRootFolders(): void; reloadList(): void }>(),
     },
     withState(initialCacheStatusState),
     withComputed(({ cacheStatus, collectionStats }) => ({
@@ -46,7 +46,10 @@ export function withCacheStatusFeature<_>() {
       const transloco = inject(TranslocoService);
 
       return {
-        /** Polls the index status every 2s until it is ready, then loads the root tree once. */
+        /**
+         * Polls the index status every 2s until it is ready, then loads what has not loaded yet in
+         * this session: the root tree, and the list (the List Scope, which starts at the root).
+         */
         checkCacheStatus: rxMethod<void>(
           pipe(
             // Show the indexing state from the first request on, before the server has answered.
@@ -70,8 +73,11 @@ export function withCacheStatusFeature<_>() {
                       : null,
                   });
 
-                  if (statusDto.status === 'ready' && !store.folderTreeLoaded()) {
-                    store.loadRootFolders();
+                  if (statusDto.status === 'ready') {
+                    // Both loads clear `error` as they start; neither clears it when it lands, so a
+                    // failure of either one stays on screen.
+                    if (!store.listLoaded()) store.reloadList();
+                    if (!store.folderTreeLoaded()) store.loadRootFolders();
                   }
                 }),
                 takeWhile((statusDto) => statusDto.status === 'indexing' || statusDto.status === 'not-started', true),

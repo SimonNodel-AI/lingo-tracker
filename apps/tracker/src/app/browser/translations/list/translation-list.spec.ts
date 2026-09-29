@@ -148,7 +148,7 @@ describe('TranslationList - Loading and Error States', () => {
     );
 
     // Trigger loading state by selecting a folder
-    store.selectFolder('test-folder');
+    store.showFolder('test-folder');
 
     fixture.componentRef.setInput('collectionName', 'test');
     fixture.detectChanges();
@@ -179,12 +179,16 @@ describe('TranslationList - Loading and Error States', () => {
     const cacheReq = httpMock.expectOne('/api/collections/test/resources/cache/status');
     cacheReq.flush({ status: 'ready', error: null });
 
-    // Second request for root folders (triggered when cache is ready)
-    const rootReq = httpMock.expectOne('/api/collections/test/resources/tree?path=&includeNested=true');
-    rootReq.flush({ path: '', resources: [], children: [] });
+    // Ready: the folder tree loads, and the list shows the collection root.
+    httpMock
+      .expectOne('/api/collections/test/resources/tree?path=&includeNested=false')
+      .flush({ path: '', resources: [], children: [] });
+    httpMock
+      .expectOne('/api/collections/test/resources/tree?path=&includeNested=true')
+      .flush({ path: '', resources: [], children: [] });
 
     // Now select a folder and make it fail
-    store.selectFolder('test-folder');
+    store.showFolder('test-folder');
 
     const req = httpMock.expectOne('/api/collections/test/resources/tree?path=test-folder&includeNested=true');
     req.error(new ProgressEvent('error'), {
@@ -228,10 +232,15 @@ describe('TranslationList - Loading and Error States', () => {
     const cacheReq = httpMock.expectOne('/api/collections/test/resources/cache/status');
     cacheReq.flush({ status: 'ready', error: null });
 
-    const rootReq = httpMock.expectOne('/api/collections/test/resources/tree?path=&includeNested=true');
-    rootReq.flush({ path: '', resources: [], children: [] });
+    // Ready: the folder tree loads, and the list shows the collection root.
+    httpMock
+      .expectOne('/api/collections/test/resources/tree?path=&includeNested=false')
+      .flush({ path: '', resources: [], children: [] });
+    httpMock
+      .expectOne('/api/collections/test/resources/tree?path=&includeNested=true')
+      .flush({ path: '', resources: [], children: [] });
 
-    store.selectFolder('empty-folder');
+    store.showFolder('empty-folder');
 
     const req = httpMock.expectOne('/api/collections/test/resources/tree?path=empty-folder&includeNested=true');
     req.flush({ path: 'empty-folder', resources: [], children: [] });
@@ -279,12 +288,16 @@ describe('TranslationList - Virtual Scrolling', () => {
     const cacheReq = httpMock.expectOne('/api/collections/test/resources/cache/status');
     cacheReq.flush({ status: 'ready', error: null });
 
-    // Second request for root folders
-    const rootReq = httpMock.expectOne('/api/collections/test/resources/tree?path=&includeNested=true');
-    rootReq.flush({ path: '', resources: [], children: [] });
+    // Ready: the folder tree loads, and the list shows the collection root.
+    httpMock
+      .expectOne('/api/collections/test/resources/tree?path=&includeNested=false')
+      .flush({ path: '', resources: [], children: [] });
+    httpMock
+      .expectOne('/api/collections/test/resources/tree?path=&includeNested=true')
+      .flush({ path: '', resources: [], children: [] });
 
     // Select a folder so the viewport renders (empty path shows "select folder" state)
-    store.selectFolder('test-folder');
+    store.showFolder('test-folder');
 
     const folderReq = httpMock.expectOne('/api/collections/test/resources/tree?path=test-folder&includeNested=true');
     folderReq.flush({
@@ -450,7 +463,7 @@ describe('TranslationList - handleEdit full key', () => {
   it('should flash the row under its full key', () => {
     const store = fixture.debugElement.injector.get(BrowserStore);
 
-    store.setSearchQuery('buttons');
+    store.showQuery('buttons');
 
     const storeResource = summary('buttons.save', 'Save', ['', 'new']);
     const apiResource = summary('buttons.save', 'Save', ['Enregistrer', 'translated']);
