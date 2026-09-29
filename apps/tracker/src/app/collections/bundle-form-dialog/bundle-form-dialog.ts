@@ -17,7 +17,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TranslocoPipe } from '@jsverse/transloco';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { catchError, debounceTime, map, of, startWith, switchMap, tap } from 'rxjs';
 import {
   bundleOutputFile,
@@ -37,6 +37,7 @@ import type {
   TokenCasingDto,
 } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import { segmentValidator } from '../../shared/validators/segment.validator';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from '../store/collections.store';
@@ -128,6 +129,7 @@ export class BundleFormDialog {
   readonly #data = inject<BundleFormDialogData>(MAT_DIALOG_DATA);
   readonly #api = inject(CollectionsApiService);
   readonly #destroyRef = inject(DestroyRef);
+  readonly #transloco = inject(TranslocoService);
   readonly store = inject(CollectionsStore);
 
   readonly TOKENS = TRACKER_TOKENS;
@@ -184,10 +186,15 @@ export class BundleFormDialog {
   readonly activeSection = signal<BundleSection>(this.#initialSection());
   readonly submitAttempted = signal(false);
   /**
-   * Messages from the domain Bundle Definition rules that the control validators did not
-   * catch, found on submit. Cleared on the next edit.
+   * What stopped the last submit: messages from the domain Bundle Definition rules that the
+   * control validators did not catch, or the server's refusal (its rule messages, else its
+   * one message). Cleared on the next edit.
    */
   readonly submitErrors = signal<readonly string[]>([]);
+  /** True from submit until the server has answered. */
+  readonly saving = signal(false);
+  /** A name the server refused as taken; the unique-name validator reports it until the name changes. */
+  #serverTakenName: string | undefined;
   readonly previewOpen = signal(false);
 
   readonly dryRun = signal<BundleDryRunResultDto | undefined>(undefined);
@@ -493,6 +500,7 @@ export class BundleFormDialog {
   }
 
   onSubmit(): void {
+    if (this.saving()) return;
     this.submitAttempted.set(true);
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -503,7 +511,59 @@ export class BundleFormDialog {
     const errors = this.#domainErrors(result);
     this.submitErrors.set(errors);
     if (errors.length > 0) return;
-    this.#dialogRef.close(result);
+    this.#save(result);
+  }
+
+  /**
+   * Writes the bundle through the store and closes with the result once the server has
+   * accepted it. A rejection keeps the dialog open with what was typed: a taken name lands
+   * on the name field, anything else in the errors above the footer.
+   *
+   * The dialog cannot be closed while the write is in flight (Cancel, the close icon, Esc and
+   * the backdrop are all off): closing would destroy it and cancel the subscription, so the
+   * outcome of a write the server may already have made would be lost.
+   */
+  #save(result: BundleFormResult): void {
+    const existingName = this.isEditMode ? this.#data.name : undefined;
+    const write =
+      existingName === undefined
+        ? this.store.createBundle({ name: result.name, bundle: result.bundle })
+        : this.store.updateBundle(existingName, {
+            name: result.name !== existingName ? result.name : undefined,
+            bundle: result.bundle,
+          });
+
+    const disableClose = this.#dialogRef.disableClose;
+    this.saving.set(true);
+    this.#dialogRef.disableClose = true;
+    write.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe({
+      next: () => this.#dialogRef.close(result),
+      error: (error: unknown) => {
+        this.saving.set(false);
+        this.#dialogRef.disableClose = disableClose;
+        this.#showRejection(error, result.name);
+      },
+    });
+  }
+
+  #showRejection(error: unknown, name: string): void {
+    const nameControl = this.form.controls.name;
+    if (error instanceof ApiError && error.kind === 'conflict' && nameControl.enabled) {
+      // Validation state, not `setErrors`: showing the Output section re-attaches the
+      // control, which re-validates it and would wipe an error set by hand.
+      this.#serverTakenName = name;
+      nameControl.updateValueAndValidity();
+      nameControl.markAsTouched();
+      this.activate('output');
+      return;
+    }
+    // An invalid definition carries every rule message the server found as `details`.
+    const details =
+      error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
+    const fallback = this.isEditMode
+      ? TRACKER_TOKENS.BUNDLES.TOAST.UPDATEFAILED
+      : TRACKER_TOKENS.BUNDLES.TOAST.CREATEFAILED;
+    this.submitErrors.set(details.length > 0 ? details : [apiErrorMessage(error, this.#transloco.translate(fallback))]);
   }
 
   // ───────────────────────────── private ─────────────────────────────
@@ -597,7 +657,7 @@ export class BundleFormDialog {
       if (this.#data.mode === 'edit') return null;
       const value = String(control.value ?? '').trim();
       if (!value) return null;
-      const taken = this.store.bundleEntries().some((entry) => entry.name === value);
+      const taken = value === this.#serverTakenName || this.store.bundleEntries().some((entry) => entry.name === value);
       return taken ? { nameExists: { name: value } } : null;
     };
   }

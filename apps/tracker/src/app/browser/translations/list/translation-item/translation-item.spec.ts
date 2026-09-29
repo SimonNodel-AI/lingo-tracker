@@ -7,6 +7,7 @@ import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-
 import { buildResourceSummary } from '@simoncodes-ca/domain';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { collectionSettings } from '../../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
@@ -84,7 +85,7 @@ describe('TranslationItem', () => {
   });
 
   it('should accept translation input', () => {
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
 
@@ -94,7 +95,7 @@ describe('TranslationItem', () => {
   it('should render placeholder for empty selected locale value', () => {
     const t = summary('k-empty', 'en', { es: ['', 'new'] });
 
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
     store.setDensityMode('compact');
     store.setSelectedLocales(['es']);
     fixture.componentRef.setInput('translation', t);
@@ -107,7 +108,7 @@ describe('TranslationItem', () => {
 
   describe('compact row composition', () => {
     it('shows the base value alone by default', () => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
       store.setDensityMode('compact');
       fixture.componentRef.setInput('translation', mockTranslation);
       fixture.detectChanges();
@@ -126,7 +127,7 @@ describe('TranslationItem', () => {
     });
 
     it('replaces the base value with the selected locale value, not beside it', () => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
       store.setDensityMode('compact');
       store.setSelectedLocales(['es']);
       fixture.componentRef.setInput('translation', mockTranslation);
@@ -141,7 +142,7 @@ describe('TranslationItem', () => {
     });
 
     it('hides the status chip for translated and verified rows', () => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' }));
       store.setDensityMode('compact');
       store.setSelectedLocales(['es']);
       fixture.componentRef.setInput('translation', mockTranslation);
@@ -160,7 +161,7 @@ describe('TranslationItem', () => {
     it('shows the status chip only for new and stale rows', () => {
       const needsWork = summary('common.buttons.save', 'Save', { es: ['Guardar viejo', 'stale'], fr: ['', 'new'] });
 
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' }));
       store.setDensityMode('compact');
       store.setSelectedLocales(['es']);
       fixture.componentRef.setInput('translation', needsWork);
@@ -181,7 +182,7 @@ describe('TranslationItem', () => {
         de: ['Hinzufügen', 'translated'],
       });
 
-      store.setSelectedCollection({ collectionName: 'ds', locales: ['ar', 'de'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'ds', locales: ['ar', 'de'], baseLocale: 'en' }));
       store.setDensityMode('compact');
       fixture.componentRef.setInput('translation', noBase);
       fixture.detectChanges();
@@ -193,7 +194,7 @@ describe('TranslationItem', () => {
     it('marks a translation that is the source text verbatim', () => {
       const untouched = summary('common.buttons.add', 'Add', { 'fr-ca': ['Add', 'translated'] });
 
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' }));
       store.setDensityMode('compact');
       store.setSelectedLocales(['fr-ca']);
       fixture.componentRef.setInput('translation', untouched);
@@ -209,7 +210,7 @@ describe('TranslationItem', () => {
     it('shows one marker at most: the status chip wins over same-as-source', () => {
       const untouchedNew = summary('common.buttons.add', 'Add', { 'fr-ca': ['Add', 'new'] });
 
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'fr-ca'], baseLocale: 'en' }));
       store.setDensityMode('compact');
       store.setSelectedLocales(['fr-ca']);
       fixture.componentRef.setInput('translation', untouchedNew);
@@ -223,7 +224,7 @@ describe('TranslationItem', () => {
   });
 
   it('should use filteredLocales from store (replaces locales input)', () => {
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' }));
     store.setDensityMode('full');
     store.clearAllLocales();
     fixture.componentRef.setInput('translation', mockTranslation);
@@ -233,7 +234,7 @@ describe('TranslationItem', () => {
   });
 
   it('should use baseLocale from store (replaces baseLocale input)', () => {
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'de'], baseLocale: 'de' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'de'], baseLocale: 'de' }));
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
 
@@ -251,7 +252,7 @@ describe('TranslationItem - Compact helpers', () => {
   });
 
   it('should follow the single compact selection', () => {
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
     store.setDensityMode('compact');
     fixture.componentRef.setInput('translation', mockTranslation);
     fixture.detectChanges();
@@ -273,7 +274,7 @@ describe('TranslationItem - Compact helpers', () => {
   it('statusBreakdown should return human readable counts in priority order', () => {
     const t = summary('k3', 'a', { es: ['b', 'stale'], fr: ['c', 'verified'], de: ['d', 'new'] });
 
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr', 'de'], baseLocale: 'en' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es', 'fr', 'de'], baseLocale: 'en' }));
     store.setDensityMode('full');
     store.clearAllLocales();
     fixture.componentRef.setInput('translation', t);
@@ -303,7 +304,7 @@ describe('TranslationItem - Full density expansion', () => {
   beforeEach(() => {
     ({ fixture, component, store, spectator } = renderTranslationItem());
 
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' }));
     store.setDensityMode('full');
     store.clearAllLocales();
   });
@@ -318,11 +319,13 @@ describe('TranslationItem - Full density expansion', () => {
   });
 
   it('needsExpansion should be true when locale rows are withheld by the collapsed state', () => {
-    store.setSelectedCollection({
-      collectionName: 'test',
-      locales: ['en', 'es', 'fr', 'de', 'ja', 'ru'],
-      baseLocale: 'en',
-    });
+    store.openCollection(
+      collectionSettings({
+        name: 'test',
+        locales: ['en', 'es', 'fr', 'de', 'ja', 'ru'],
+        baseLocale: 'en',
+      }),
+    );
     store.clearAllLocales();
 
     const t = summary('k-many-locales', 'short', {
@@ -372,7 +375,7 @@ describe('TranslationItem - Full density expansion', () => {
 
   describe('full-density source row', () => {
     it('should expose the base locale as the source row', () => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
       store.setDensityMode('full');
       fixture.componentRef.setInput('translation', mockTranslation);
       fixture.detectChanges();
@@ -381,7 +384,7 @@ describe('TranslationItem - Full density expansion', () => {
     });
 
     it('should render the source in the same grid as the translations', () => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' }));
       store.setDensityMode('full');
       fixture.componentRef.setInput('translation', mockTranslation);
       fixture.detectChanges();
@@ -401,7 +404,7 @@ describe('TranslationItem - Full density expansion', () => {
     it('should omit the source row when the collection has no base value', () => {
       const t = summary('k-no-base', '', { es: ['Guardar', 'translated'] });
 
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
       store.setDensityMode('full');
       fixture.componentRef.setInput('translation', t);
       fixture.detectChanges();
@@ -413,7 +416,7 @@ describe('TranslationItem - Full density expansion', () => {
 
   describe('double-click to edit', () => {
     beforeEach(() => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es', 'fr'], baseLocale: 'en' }));
       fixture.componentRef.setInput('translation', mockTranslation);
     });
 
@@ -466,12 +469,14 @@ describe('TranslationItem - Full density expansion', () => {
     });
 
     it('should refuse the Delete shortcut when the collection is read-only', () => {
-      store.setSelectedCollection({
-        collectionName: 'vendored',
-        locales: ['en', 'es'],
-        baseLocale: 'en',
-        readOnly: true,
-      });
+      store.openCollection(
+        collectionSettings({
+          name: 'vendored',
+          locales: ['en', 'es'],
+          baseLocale: 'en',
+          readOnly: true,
+        }),
+      );
       fixture.detectChanges();
 
       const listStore = spectator.inject(TranslationListStore, true);
@@ -483,7 +488,7 @@ describe('TranslationItem - Full density expansion', () => {
     });
 
     it('should run the Delete shortcut when the collection is writable', () => {
-      store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+      store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
       fixture.detectChanges();
 
       const listStore = spectator.inject(TranslationListStore, true);
@@ -495,12 +500,14 @@ describe('TranslationItem - Full density expansion', () => {
     });
 
     it('should show a lock in place of the drag handle when the collection is read-only', () => {
-      store.setSelectedCollection({
-        collectionName: 'vendored',
-        locales: ['en', 'es'],
-        baseLocale: 'en',
-        readOnly: true,
-      });
+      store.openCollection(
+        collectionSettings({
+          name: 'vendored',
+          locales: ['en', 'es'],
+          baseLocale: 'en',
+          readOnly: true,
+        }),
+      );
       fixture.detectChanges();
 
       const handle = fixture.nativeElement.querySelector('.translation-drag-handle');
@@ -525,7 +532,7 @@ describe('TranslationItem - compact key chip', () => {
 
   beforeEach(() => {
     ({ fixture, store, spectator } = renderTranslationItem());
-    store.setSelectedCollection({ collectionName: 'test', locales: ['en', 'es'], baseLocale: 'en' });
+    store.openCollection(collectionSettings({ name: 'test', locales: ['en', 'es'], baseLocale: 'en' }));
     store.setDensityMode('compact');
   });
 
@@ -611,12 +618,14 @@ describe('TranslationItem - compact key chip', () => {
   });
 
   it('shows the read-only collection a view control instead of an edit control', () => {
-    store.setSelectedCollection({
-      collectionName: 'vendored',
-      locales: ['en', 'es'],
-      baseLocale: 'en',
-      readOnly: true,
-    });
+    store.openCollection(
+      collectionSettings({
+        name: 'vendored',
+        locales: ['en', 'es'],
+        baseLocale: 'en',
+        readOnly: true,
+      }),
+    );
     store.setDensityMode('compact');
     render();
 

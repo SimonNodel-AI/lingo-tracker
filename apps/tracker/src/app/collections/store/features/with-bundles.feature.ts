@@ -1,9 +1,9 @@
 import { computed, inject } from '@angular/core';
-import { HttpErrorResponse } from '@angular/common/http';
 import { signalStoreFeature, withState, withComputed, withMethods, withHooks, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, tap, switchMap, mergeMap, catchError, of, timer, takeWhile } from 'rxjs';
+import { pipe, tap, switchMap, mergeMap, catchError, of, timer, takeWhile, type Observable } from 'rxjs';
 import { CollectionsApiService } from '../../services/collections-api.service';
+import { injectConfigWrite } from '../config-write';
 import type {
   BundleDefinitionDto,
   BundleGenerateJobDto,
@@ -13,6 +13,7 @@ import type {
   LingoTrackerConfigDto,
   UpdateBundleDto,
 } from '@simoncodes-ca/data-transfer';
+import { ApiError, apiErrorMessage } from '../../../shared/api-error/api-error';
 
 /** Client-side lifecycle of a bundle generation run. */
 export type BundleRunStatus = 'idle' | 'running' | 'completed' | 'failed';
@@ -89,31 +90,19 @@ function persistRuns(runs: Record<string, BundleRunState>): void {
   }
 }
 
-// TODO(step 7): replace these fallbacks with TRACKER_TOKENS.BUNDLES.TOAST.* translations.
-const FALLBACK_MESSAGES = {
-  create: 'Failed to create bundle.',
-  update: 'Failed to update bundle.',
-  delete: 'Failed to delete bundle.',
-  generate: 'Failed to generate bundle.',
-} as const;
+// TODO(step 7): replace this fallback with a TRACKER_TOKENS.BUNDLES.TOAST.* translation.
+const GENERATE_FAILED_FALLBACK = 'Failed to generate bundle.';
 
 /**
- * Extracts a human-readable message from an HTTP or generic error.
- * The API returns `{ message }` bodies, which `HttpErrorResponse` exposes on `error.error`.
- * An invalid bundle definition also carries `errors: string[]`; they are appended
- * (`Invalid bundle definition: a; b`) so the reason is readable.
+ * The message for a failed bundle run. An invalid bundle definition carries every rule
+ * message as `details`; they are appended (`Invalid bundle definition: a; b`) so the
+ * reason is readable.
  */
 function toBundleErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof HttpErrorResponse) {
-    const body: unknown = error.error;
-    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
-      const errors: unknown = 'errors' in body ? body.errors : undefined;
-      const details = Array.isArray(errors) ? errors.filter((item): item is string => typeof item === 'string') : [];
-      return details.length > 0 ? `${body.message}: ${details.join('; ')}` : body.message;
-    }
-    return error.message || fallback;
-  }
-  return error instanceof Error ? error.message : fallback;
+  const message = apiErrorMessage(error, fallback);
+  const details =
+    error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
+  return details.length > 0 ? `${message}: ${details.join('; ')}` : message;
 }
 
 function isJobFinished(job: BundleGenerateJobDto): boolean {
@@ -153,12 +142,14 @@ function mapJobToRun(job: BundleGenerateJobDto, previous: BundleRunState | undef
 /**
  * Adds bundle definitions and bundle generation runs to the collections store.
  *
- * Requires `config`, `isLoading` and `error` in the host store state.
+ * The definition mutations are Config Writes (`../config-write.ts`): each returns the
+ * reloaded config, or errors with the `ApiError` of the rejected write. Requires `config`
+ * and `error` in the host store state.
  */
 export function withBundlesFeature<_>() {
   return signalStoreFeature(
     {
-      state: type<{ config: LingoTrackerConfigDto | null; isLoading: boolean; error: string | null }>(),
+      state: type<{ config: LingoTrackerConfigDto | null; error: string | null }>(),
     },
     withState(initialBundlesState),
     withComputed(({ config, bundleRuns }) => {
@@ -187,6 +178,7 @@ export function withBundlesFeature<_>() {
     }),
     withMethods((store) => {
       const api = inject(CollectionsApiService);
+      const configWrite = injectConfigWrite(store);
 
       const writeRuns = (bundleRuns: Record<string, BundleRunState>): void => {
         patchState(store, { bundleRuns });
@@ -252,7 +244,7 @@ export function withBundlesFeature<_>() {
                 setRun(name, {
                   ...store.bundleRuns()[name],
                   status: 'failed',
-                  error: toBundleErrorMessage(error, FALLBACK_MESSAGES.generate),
+                  error: toBundleErrorMessage(error, GENERATE_FAILED_FALLBACK),
                   finishedAt: new Date().toISOString(),
                 });
                 return of(null);
@@ -268,75 +260,20 @@ export function withBundlesFeature<_>() {
       };
 
       return {
-        /**
-         * Creates a bundle definition and reloads the configuration.
-         */
-        createBundle: rxMethod<CreateBundleDto>(
-          pipe(
-            tap(() => patchState(store, { isLoading: true, error: null })),
-            switchMap((data) =>
-              api.createBundle(data).pipe(
-                switchMap(() => api.getConfig()),
-                tap((configData) => patchState(store, { config: configData, isLoading: false, error: null })),
-                catchError((error: unknown) => {
-                  patchState(store, {
-                    isLoading: false,
-                    error: toBundleErrorMessage(error, FALLBACK_MESSAGES.create),
-                  });
-                  return of(null);
-                }),
-              ),
-            ),
-          ),
-        ),
+        /** Creates a bundle definition. A taken name errors with a `conflict`; a definition the rules reject with an `invalid` whose `details` are the rule messages. */
+        createBundle(data: CreateBundleDto): Observable<LingoTrackerConfigDto | null> {
+          return configWrite(api.createBundle(data));
+        },
 
-        /**
-         * Updates (and optionally renames) a bundle definition and reloads the configuration.
-         */
-        updateBundle: rxMethod<{ oldName: string; newName?: string; bundle: BundleDefinitionDto }>(
-          pipe(
-            tap(() => patchState(store, { isLoading: true, error: null })),
-            switchMap(({ oldName, newName, bundle }) => {
-              const dto: UpdateBundleDto = { name: newName, bundle };
-              return api.updateBundle(oldName, dto).pipe(
-                switchMap(() => api.getConfig()),
-                tap((configData) => patchState(store, { config: configData, isLoading: false, error: null })),
-                catchError((error: unknown) => {
-                  patchState(store, {
-                    isLoading: false,
-                    error: toBundleErrorMessage(error, FALLBACK_MESSAGES.update),
-                  });
-                  return of(null);
-                }),
-              );
-            }),
-          ),
-        ),
+        /** Updates the bundle `name` names; `update.name` renames it. */
+        updateBundle(name: string, update: UpdateBundleDto): Observable<LingoTrackerConfigDto | null> {
+          return configWrite(api.updateBundle(name, update));
+        },
 
-        /**
-         * Deletes a bundle definition, drops its run state and reloads the configuration.
-         */
-        deleteBundle: rxMethod<string>(
-          pipe(
-            tap(() => patchState(store, { isLoading: true, error: null })),
-            switchMap((name) =>
-              api.deleteBundle(name).pipe(
-                switchMap(() => api.getConfig()),
-                tap((configData) => {
-                  patchState(store, { config: configData, isLoading: false, error: null });
-                  clearRun(name);
-                }),
-                catchError((error: unknown) => {
-                  patchState(store, {
-                    isLoading: false,
-                    error: toBundleErrorMessage(error, FALLBACK_MESSAGES.delete),
-                  });
-                  return of(null);
-                }),
-              ),
-            ),
-          ),
-        ),
+        /** Deletes a bundle definition and drops its run state once the server confirms it. */
+        deleteBundle(name: string): Observable<LingoTrackerConfigDto | null> {
+          return configWrite(api.deleteBundle(name)).pipe(tap(() => clearRun(name)));
+        },
 
         /**
          * Starts generation of one bundle and polls the job until it completes or fails.

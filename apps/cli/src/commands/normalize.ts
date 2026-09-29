@@ -1,4 +1,4 @@
-import { normalize, openCollection, ReadOnlyCollectionError } from '@simoncodes-ca/core';
+import { type Collection, normalize, openCollection, ReadOnlyCollectionError } from '@simoncodes-ca/core';
 import { CommandCancelledError, defineCommand, NO_COLLECTIONS_MESSAGE } from '../runner/command-runner';
 import { ALL_ITEMS_SENTINEL, aggregateNumericFields, ConsoleFormatter } from '../utils';
 
@@ -77,33 +77,35 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
     }
 
     // An explicitly named collection that does not exist throws CollectionNotFoundError (exit 1).
-    const collections = all
-      ? collectionNames.map((name) => openCollection(config, name, { cwd }))
-      : [openCollection(config, collectionName ?? '', { cwd })];
-
+    // Core refuses a read-only collection: an explicitly named one is opened `writable` and fails;
+    // under `--all`, read-only collections are skipped without failing the run.
     let failed = false;
+    const collections: Collection[] = [];
+    try {
+      collections.push(
+        ...(all
+          ? collectionNames.map((name) => openCollection(config, name, { cwd }))
+          : [openCollection(config, collectionName ?? '', { cwd, writable: true })]),
+      );
+    } catch (e: unknown) {
+      if (!(e instanceof ReadOnlyCollectionError)) throw e;
+      // stderr, so it is reported with --json too.
+      ConsoleFormatter.error(e.message);
+      failed = true;
+    }
+
     const collectionResults: CollectionNormalizeResult[] = [];
 
     for (const collection of collections) {
       const { name } = collection;
 
-      // Read-only collections cannot be normalized (it rewrites resource files).
-      // In a bulk `--all` run, skip them without failing; when one is explicitly targeted, fail.
       if (collection.readOnly) {
-        if (all) {
-          if (!answers.json) {
-            console.log('');
-            ConsoleFormatter.info(`Skipping read-only collection: ${name}`);
-          }
-        } else {
-          // stderr, so it is reported with --json too.
-          ConsoleFormatter.error(new ReadOnlyCollectionError(name).message);
-          failed = true;
+        if (!answers.json) {
+          console.log('');
+          ConsoleFormatter.info(`Skipping read-only collection: ${name}`);
         }
         continue;
       }
-
-      const { translationsFolder, baseLocale, locales } = collection;
 
       if (!answers.json) {
         console.log('');
@@ -114,12 +116,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       }
 
       try {
-        const result = await normalize({
-          translationsFolder,
-          baseLocale,
-          locales,
-          dryRun: answers.dryRun ?? false,
-        });
+        const result = await normalize(collection, { dryRun: answers.dryRun ?? false });
 
         collectionResults.push({
           collectionName: name,

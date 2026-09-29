@@ -14,9 +14,12 @@ import { isUnderNodeModules, normalizeProtectedTerms, normalizeTag, validateLoca
 import type { CollectionFormDialogData } from './collection-form-dialog-data';
 import type { LingoTrackerCollectionDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import { ConfirmationDialog } from '../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../shared/components/confirmation-dialog/confirmation-dialog-data';
+import { CollectionsStore } from '../store/collections.store';
 
+/** What the dialog closes with: the collection as the server has now accepted it. */
 export interface CollectionFormResult {
   name: string;
   config: LingoTrackerCollectionDto;
@@ -45,12 +48,24 @@ export class CollectionFormDialog implements OnInit {
   readonly #dialog = inject(MatDialog);
   readonly #translocoService = inject(TranslocoService);
   readonly #destroyRef = inject(DestroyRef);
+  readonly #store = inject(CollectionsStore);
 
   readonly TOKENS = TRACKER_TOKENS;
 
+  /** True from submit until the server has answered. */
+  readonly saving = signal(false);
+  /** Why the server refused the last submit, unless the refusal belongs to the name field. */
+  readonly submitError = signal<string | null>(null);
+
+  /** A name the server refused as taken; the name validator reports it until the name changes. */
+  #serverTakenName: string | undefined;
+
   readonly form = new FormGroup({
     name: new FormControl<string>('', {
-      validators: [Validators.required],
+      validators: [
+        Validators.required,
+        (control) => (control.value === this.#serverTakenName ? { nameExists: { name: control.value } } : null),
+      ],
       nonNullable: true,
     }),
     translationsFolder: new FormControl<string>('', {
@@ -100,7 +115,12 @@ export class CollectionFormDialog implements OnInit {
 
   get showNameError(): boolean {
     const control = this.form.controls.name;
-    return control.hasError('required') && control.touched;
+    return (control.hasError('required') || control.hasError('nameExists')) && control.touched;
+  }
+
+  /** The server refused the name as taken; the next keystroke on the field clears it. */
+  get showNameConflict(): boolean {
+    return this.form.controls.name.hasError('nameExists');
   }
 
   get showFolderError(): boolean {
@@ -144,6 +164,9 @@ export class CollectionFormDialog implements OnInit {
         this.form.controls.name.disable();
       }
     }
+
+    // A refusal stays on screen until the next edit.
+    this.form.valueChanges.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe(() => this.submitError.set(null));
 
     // Auto-default read-only for node_modules paths until the user overrides it.
     this.form.controls.translationsFolder.valueChanges
@@ -300,6 +323,7 @@ export class CollectionFormDialog implements OnInit {
   }
 
   async onSubmit(): Promise<void> {
+    if (this.saving()) return;
     if (this.form.invalid) {
       this.form.markAllAsTouched();
       return;
@@ -323,13 +347,61 @@ export class CollectionFormDialog implements OnInit {
 
         const confirmed = await firstValueFrom(confirmRef.afterClosed());
         if (confirmed) {
-          this.#dialogRef.close(this.#buildResult());
+          this.#save();
         }
         return;
       }
     }
 
-    this.#dialogRef.close(this.#buildResult());
+    this.#save();
+  }
+
+  /**
+   * Writes the collection through the store and closes with the result once the server has
+   * accepted it. A rejection keeps the dialog open with what was typed: a taken name lands
+   * on the name field, anything else on the error line above the buttons.
+   *
+   * The dialog cannot be closed while the write is in flight (Cancel, the close icon, Esc and
+   * the backdrop are all off): closing would destroy it and cancel the subscription, so the
+   * outcome of a write the server may already have made would be lost.
+   */
+  #save(): void {
+    const result = this.#buildResult();
+    const existingName = this.isEditMode ? this.#data.name : undefined;
+    const write =
+      existingName === undefined
+        ? this.#store.createCollection({ name: result.name, collection: result.config })
+        : this.#store.updateCollection(existingName, {
+            name: result.name !== existingName ? result.name : undefined,
+            collection: result.config,
+          });
+
+    const disableClose = this.#dialogRef.disableClose;
+    this.saving.set(true);
+    this.#dialogRef.disableClose = true;
+    this.submitError.set(null);
+    write.pipe(takeUntilDestroyed(this.#destroyRef)).subscribe({
+      next: () => this.#dialogRef.close(result),
+      error: (error: unknown) => {
+        this.saving.set(false);
+        this.#dialogRef.disableClose = disableClose;
+        this.#showRejection(error, result.name);
+      },
+    });
+  }
+
+  #showRejection(error: unknown, name: string): void {
+    const nameControl = this.form.controls.name;
+    if (error instanceof ApiError && error.kind === 'conflict' && nameControl.enabled) {
+      this.#serverTakenName = name;
+      nameControl.updateValueAndValidity();
+      nameControl.markAsTouched();
+      return;
+    }
+    const fallback = this.isEditMode
+      ? TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED
+      : TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED;
+    this.submitError.set(apiErrorMessage(error, this.#translocoService.translate(fallback)));
   }
 
   #buildResult(): CollectionFormResult {
@@ -342,13 +414,20 @@ export class CollectionFormDialog implements OnInit {
       name: raw.name,
       config: {
         translationsFolder: raw.translationsFolder,
-        ...(localesArray.length > 0 ? { locales: localesArray } : {}),
+        // Always sent: an empty list is how "remove every own locale, inherit global" reaches the API.
+        locales: localesArray,
+        // The base locale is create-time-only and locked once a collection exists (see
+        // `setBaseLocale`/`displayedBaseLocale`), so there is no form path that clears an existing
+        // override — omitting it here when unset is therefore always correct, never a lost edit.
         ...(raw.baseLocale ? { baseLocale: raw.baseLocale } : {}),
         readOnly: raw.readOnly,
-        ...(tags.length > 0 ? { tags } : {}),
-        // The pointer round-trips so an edit never drops it; the terms are only sent when
-        // there is a file to write them to.
-        ...(protectedTermsFile ? { protectedTermsFile, protectedTerms } : {}),
+        // Always sent: an empty list is how "remove every tag" reaches the API.
+        tags,
+        // Always sent: '' is how "no file for this collection" reaches the API. The pointer
+        // itself isn't user-editable here, so this mirrors whatever was loaded; the terms are
+        // only sent when there is a file to write them to.
+        protectedTermsFile: protectedTermsFile ?? '',
+        ...(protectedTermsFile ? { protectedTerms } : {}),
       },
     };
   }

@@ -1,7 +1,8 @@
 import {
+  describeTermFileProblem,
   generateValidationSummary,
-  loadPreferredTerminology,
   openCollection,
+  readProjectTerms,
   type LingoTrackerConfig,
   type ValidationOptions,
   validateResources,
@@ -193,12 +194,24 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
     return { exitCode: 1 };
   }
 
-  // Terminology findings are advisory, but a broken rule file is a failure:
-  // otherwise a typo in the file would silently switch the check off in CI.
-  const preferredTerminology = loadPreferredTerminology(config, cwd);
-  if (preferredTerminology.warning) {
-    ConsoleFormatter.warning(preferredTerminology.warning);
+  // Term-file problems of every collection, printed once each (collections share the global
+  // files). Validate checks translations, not protected terms, so a missing or broken
+  // protected-terms file only warns. The preferred terminology is one file for the project, so
+  // any collection's Project Terms carry its rules; findings are advisory, but a broken rule file
+  // is a failure (loadError), otherwise a typo in the file would silently switch the check off in
+  // CI. A rule file named but missing warns.
+  const projectTerms = collections.map((collection) => readProjectTerms(collection));
+  const problems = projectTerms.flatMap((terms) => terms.problems);
+  const warnings = problems
+    .filter((problem) => problem.file === 'protected-terms' || problem.severity === 'warning')
+    .map(describeTermFileProblem);
+  for (const warning of new Set(warnings)) {
+    ConsoleFormatter.warning(warning);
   }
+  const ruleFileError = problems.find(
+    (problem) => problem.file === 'preferred-terminology' && problem.severity === 'error',
+  )?.message;
+  const rules = [...projectTerms[0].preferredTerminology];
 
   const compileValues = !options.skipIcu;
   const requirePortablePlurals = options.requirePortablePlurals ?? false;
@@ -216,10 +229,7 @@ function validate(options: ValidateCommandOptions, config: LingoTrackerConfig, c
     placeholders: !options.skipPlaceholders,
     // Omitted when there is nothing to check, so a project without rules sees
     // no terminology output at all.
-    terminology:
-      preferredTerminology.rules.length > 0 || preferredTerminology.error !== undefined
-        ? { rules: preferredTerminology.rules, loadError: preferredTerminology.error }
-        : undefined,
+    terminology: rules.length > 0 || ruleFileError !== undefined ? { rules, loadError: ruleFileError } : undefined,
   };
 
   const validationResult = validateResources(collections, validationOptions);

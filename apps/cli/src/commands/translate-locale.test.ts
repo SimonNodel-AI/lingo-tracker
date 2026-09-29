@@ -97,14 +97,30 @@ describe('translateLocaleCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('reports disabled translation before a missing --locale', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, translation: undefined });
+  it.each([
+    ['disabled', { ...CONFIG, translation: { enabled: false, provider: 'none', apiKeyEnv: 'NONE' } }],
+    ['absent', { ...CONFIG, translation: undefined }],
+  ])('exits 1 with a configuration hint, before any core call, when auto-translation is %s', async (_label, config) => {
+    vi.mocked(loadConfig).mockReturnValue(config);
 
-    await translateLocaleCommand({});
+    await translateLocaleCommand({ locale: 'fr' });
 
     expect(console.error).toHaveBeenCalledWith(
-      '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration.',
+      '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
     );
+    expect(translateLocale).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('exits 1 when the collection has no target locales', async () => {
+    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, locales: ['en'] });
+
+    await translateLocaleCommand({ locale: 'fr' });
+
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ No target locales configured. Add locales other than the base locale "en".',
+    );
+    expect(translateLocale).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -139,6 +155,16 @@ describe('translateLocaleCommand', () => {
         expect.anything(),
       );
       expect(translateLocale).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ targetLocale: 'de' }));
+    });
+
+    it('refuses a collection with auto-translation disabled before asking for a locale', async () => {
+      vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, translation: undefined });
+
+      await translateLocaleCommand({});
+
+      expect(prompts).not.toHaveBeenCalled();
+      expect(translateLocale).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('cancelling prints one cancel line and exits 0', async () => {

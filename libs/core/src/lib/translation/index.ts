@@ -23,6 +23,7 @@ export {
   type TranslationProvider,
 } from './translation-provider';
 export {
+  assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
   openTranslator,
   type SkippedTranslation,

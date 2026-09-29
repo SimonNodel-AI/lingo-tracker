@@ -1,11 +1,17 @@
 import { isUntranslatedCopy, normalizeTags, translocoToICU } from '@simoncodes-ca/domain';
 import type { Collection } from '../lib/config/open-collection';
+import { readProjectTerms, type TerminologyFindings } from '../lib/config/project-terms';
 import { ensureDirectoryExists } from '../lib/file-io/directory-operations';
 import type { OpenTranslatorOptions } from '../lib/translation/translator';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder } from '../lib/resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
-import { assertCollectionLocales, type ResourceTranslation, seedLocales } from './locale-seeding';
+import {
+  assertCollectionLocales,
+  type ResourceTranslation,
+  seedLocales,
+  withTranslatorProblems,
+} from './locale-seeding';
 
 export interface AddResourceParams {
   /** Dot-delimited key, e.g., "apps.common.buttons.ok". */
@@ -37,6 +43,11 @@ export interface AddResourceResult {
   readonly skippedLocales?: string[];
   /** The `upsert` for the stored entry. */
   readonly mutations: ResourceMutation[];
+  /**
+   * Advisory: discouraged terms in the stored base value, any rule-file problem that limited the
+   * check, and, when auto-translation ran, a named protected-terms file that does not exist.
+   */
+  readonly terminology: TerminologyFindings;
 }
 
 /**
@@ -49,7 +60,8 @@ export interface AddResourceResult {
  * value is stored as `new` whatever its requested status (Staleness rule).
  *
  * Values are normalized to ICU before they are stored. Nothing is written when the
- * translation provider fails.
+ * translation provider fails. The stored base value is checked against the preferred
+ * terminology (Project Terms) and the findings returned; they never block the add.
  *
  * @param options - `provider` / `protectedTerms`: used instead of the collection's (see `openTranslator`).
  * @throws {InvalidResourceKeyError} The key or `targetFolder` is malformed.
@@ -106,5 +118,9 @@ export async function addResource(
     translations,
     ...(seeding.skippedLocales !== undefined && { skippedLocales: seeding.skippedLocales }),
     mutations: [upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey))],
+    terminology: withTranslatorProblems(
+      readProjectTerms(collection).checkBaseValue(paths.resolvedKey, baseValue),
+      seeding.problems,
+    ),
   };
 }

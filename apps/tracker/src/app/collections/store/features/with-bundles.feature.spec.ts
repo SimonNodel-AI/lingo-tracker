@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { toApiError } from '../../../shared/api-error/api-error';
 import { createEnvironmentInjector, EnvironmentInjector } from '@angular/core';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type { BundleDefinitionDto, BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
@@ -14,11 +15,9 @@ describe('withBundlesFeature', () => {
   let spectator: SpectatorService<InstanceType<typeof CollectionsStore>>;
   let reloadInjector: EnvironmentInjector | undefined;
 
+  // The definition writes are covered in ../config-write.spec.ts; this file covers the runs.
   const api = {
     getConfig: vi.fn(),
-    createBundle: vi.fn(),
-    updateBundle: vi.fn(),
-    deleteBundle: vi.fn(),
     generateBundle: vi.fn(),
     getBundleJob: vi.fn(),
   };
@@ -119,99 +118,6 @@ describe('withBundlesFeature', () => {
       expect(store.hasBundles()).toBe(false);
       expect(store.bundleCount()).toBe(0);
       expect(store.projectName()).toBeNull();
-    });
-  });
-
-  describe('definition mutations', () => {
-    beforeEach(createStoreInstance);
-
-    it('createBundle posts the DTO and refetches config', () => {
-      api.createBundle.mockReturnValue(of({ message: 'ok' }));
-      api.getConfig.mockReturnValue(of(config));
-
-      store.createBundle({ name: 'tracker', bundle: trackerBundle });
-
-      expect(api.createBundle).toHaveBeenCalledWith({ name: 'tracker', bundle: trackerBundle });
-      expect(api.getConfig).toHaveBeenCalled();
-      expect(store.config()).toEqual(config);
-      expect(store.isLoading()).toBe(false);
-      expect(store.error()).toBeNull();
-    });
-
-    it('createBundle surfaces the API error body message', () => {
-      api.createBundle.mockReturnValue(
-        throwError(
-          () => new HttpErrorResponse({ status: 409, error: { message: 'A bundle named tracker already exists.' } }),
-        ),
-      );
-
-      store.createBundle({ name: 'tracker', bundle: trackerBundle });
-
-      expect(store.error()).toBe('A bundle named tracker already exists.');
-      expect(store.isLoading()).toBe(false);
-      expect(api.getConfig).not.toHaveBeenCalled();
-    });
-
-    it('createBundle appends the validation errors of an invalid definition', () => {
-      api.createBundle.mockReturnValue(
-        throwError(
-          () =>
-            new HttpErrorResponse({
-              status: 400,
-              error: {
-                statusCode: 400,
-                message: 'Invalid bundle definition',
-                error: 'Bad Request',
-                errors: [
-                  'dist (output folder) is required.',
-                  "Collection 'ghost' does not exist in the configuration.",
-                ],
-              },
-            }),
-        ),
-      );
-
-      store.createBundle({ name: 'tracker', bundle: trackerBundle });
-
-      expect(store.error()).toBe(
-        "Invalid bundle definition: dist (output folder) is required.; Collection 'ghost' does not exist in the configuration.",
-      );
-    });
-
-    it('createBundle falls back to a generic message when the error has none', () => {
-      api.createBundle.mockReturnValue(throwError(() => ({ weird: true })));
-
-      store.createBundle({ name: 'tracker', bundle: trackerBundle });
-
-      expect(store.error()).toBe('Failed to create bundle.');
-    });
-
-    it('updateBundle sends the rename DTO and refetches config', () => {
-      api.updateBundle.mockReturnValue(of({ message: 'ok' }));
-      api.getConfig.mockReturnValue(of(config));
-
-      store.updateBundle({ oldName: 'old', newName: 'tracker', bundle: trackerBundle });
-
-      expect(api.updateBundle).toHaveBeenCalledWith('old', { name: 'tracker', bundle: trackerBundle });
-      expect(store.config()).toEqual(config);
-      expect(store.error()).toBeNull();
-    });
-
-    it('deleteBundle removes the bundle, its run state, and refetches config', () => {
-      api.getConfig.mockReturnValue(of(config));
-      api.generateBundle.mockReturnValue(of(completedJob));
-      store.generateBundle('tracker');
-      expect(store.bundleRuns()['tracker']?.status).toBe('completed');
-
-      api.deleteBundle.mockReturnValue(of({ message: 'ok' }));
-      const configAfterDelete = { ...config, bundles: { main: mainBundle } };
-      api.getConfig.mockReturnValue(of(configAfterDelete));
-
-      store.deleteBundle('tracker');
-
-      expect(api.deleteBundle).toHaveBeenCalledWith('tracker');
-      expect(store.config()).toEqual(configAfterDelete);
-      expect(store.bundleRuns()['tracker']).toBeUndefined();
     });
   });
 
@@ -338,7 +244,9 @@ describe('withBundlesFeature', () => {
 
     it('marks the run failed when the generate request is rejected', () => {
       api.generateBundle.mockReturnValue(
-        throwError(() => new HttpErrorResponse({ status: 404, error: { message: 'Bundle tracker not found' } })),
+        throwError(() =>
+          toApiError(new HttpErrorResponse({ status: 404, error: { message: 'Bundle tracker not found' } })),
+        ),
       );
 
       store.generateBundle('tracker');
@@ -361,7 +269,11 @@ describe('withBundlesFeature', () => {
     });
 
     it('retryBundle re-runs a failed bundle', () => {
-      api.generateBundle.mockReturnValueOnce(throwError(() => new Error('boom'))).mockReturnValueOnce(of(completedJob));
+      api.generateBundle
+        .mockReturnValueOnce(
+          throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
+        )
+        .mockReturnValueOnce(of(completedJob));
 
       store.generateBundle('tracker');
       expect(store.bundleRuns()['tracker']?.status).toBe('failed');
@@ -434,7 +346,9 @@ describe('withBundlesFeature', () => {
       api.getBundleJob.mockReturnValue(of(runningJob));
       store.generateBundle('tracker');
 
-      api.getBundleJob.mockReturnValue(throwError(() => new Error('job not found')));
+      api.getBundleJob.mockReturnValue(
+        throwError(() => toApiError(new HttpErrorResponse({ status: 404, error: { message: 'job not found' } }))),
+      );
       reloadStore();
       await Promise.resolve();
 

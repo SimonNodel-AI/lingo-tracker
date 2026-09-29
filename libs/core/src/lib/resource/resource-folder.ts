@@ -1,6 +1,6 @@
 import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { applyBaseChange, recordTranslation, type TranslationStatus } from '@simoncodes-ca/domain';
+import { applyBaseChange, isUntranslatedCopy, recordTranslation, type TranslationStatus } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { calculateChecksum } from '../../resource/checksum';
 import type { ResourceEntries, ResourceEntry } from '../../resource/resource-entry';
@@ -65,8 +65,24 @@ export interface ResourceFolder {
     status: TranslationStatus,
     options?: { readonly refreshBaseChecksum?: boolean },
   ): void;
-  /** Stores an entry and its metadata exactly as given (lossless copy, used by move and normalize). */
+  /** Stores an entry and its metadata exactly as given (lossless copy/replace: move, rename, add-resource reset). */
   setEntry(key: string, entry: Readonly<ResourceEntry>, meta: Readonly<ResourceEntryMetadata>): void;
+  /**
+   * Replaces an existing entry's values with `values` and makes its metadata true again:
+   * - a stray base-locale property is dropped (the base value lives in `source`),
+   * - every translation of a `targetLocales` locale is re-recorded with a current checksum and its
+   *   stored status (a translation without metadata counts as `new`, as the reader and validate count it),
+   * - a target translation whose stored `baseChecksum` differs from the base checksum was made from an
+   *   older base (Staleness): it becomes `stale` (`new` when its value is a copy of the base; a `new`
+   *   translation stays `new`) and gets the current `baseChecksum`,
+   * - the base value goes through the Staleness rule when it changed,
+   * - each of `targetLocales` the entry has no value for is seeded as a `new` copy of the base, and
+   * - values of other (non-target) locales are stored as given; their metadata is left alone.
+   *
+   * The normalize operation's write path.
+   * @returns the number of locales seeded, and whether the stored entry or its metadata changed
+   */
+  normalizeEntry(key: string, values: Readonly<ResourceEntry>, targetLocales: readonly string[]): NormalizeEntryReport;
   /**
    * Adds `locale` to every entry that has no value for it, as a copy of the base value with status `new`.
    * @returns number of entries seeded
@@ -95,6 +111,12 @@ export interface ResourceFolderEntry {
 export interface EntryDetails {
   readonly comment?: string | null;
   readonly tags?: readonly string[] | null;
+}
+
+export interface NormalizeEntryReport {
+  readonly localesAdded: number;
+  /** True when the stored entry or its metadata differs from what the folder held before the call. */
+  readonly changed: boolean;
 }
 
 export interface ResourceFolderSaveResult {
@@ -278,15 +300,41 @@ class FileResourceFolder implements ResourceFolder {
     this.meta[key] = { ...meta };
   }
 
+  normalizeEntry(key: string, values: Readonly<ResourceEntry>, targetLocales: readonly string[]): NormalizeEntryReport {
+    this.requireEntry(key);
+    const before = JSON.stringify(this.get(key));
+    const previousMeta = this.metaOf(key);
+    const baseChecksum = previousMeta[this.baseLocale]?.checksum ?? calculateChecksum(values.source);
+
+    const entry: ResourceEntry = { ...values };
+    if (this.baseLocale !== 'source') delete entry[this.baseLocale];
+    this.entries[key] = entry;
+
+    // Translations first, so the Staleness rule compares current checksums when the base changed.
+    for (const locale of translationLocales(entry)) {
+      if (!targetLocales.includes(locale)) continue;
+      const value = entry[locale] as string;
+      const previous = previousMeta[locale];
+      const status = previous?.status ?? 'new';
+      const madeFromOlderBase =
+        status !== 'new' && previous?.baseChecksum !== undefined && previous.baseChecksum !== baseChecksum;
+      const driftedStatus = isUntranslatedCopy(calculateChecksum(value), baseChecksum) ? 'new' : 'stale';
+      this.setTranslation(key, locale, value, madeFromOlderBase ? driftedStatus : status);
+    }
+    this.setBase(key, entry.source);
+
+    let localesAdded = 0;
+    for (const locale of targetLocales) {
+      if (this.seedEntryLocale(key, locale)) localesAdded++;
+    }
+
+    return { localesAdded, changed: JSON.stringify(this.get(key)) !== before };
+  }
+
   seedLocale(locale: string): number {
     let seeded = 0;
     for (const key of this.keys()) {
-      const entry = this.entries[key];
-      if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') continue;
-      if (typeof entry[locale] === 'string') continue;
-
-      this.setTranslation(key, locale, entry.source, 'new');
-      seeded++;
+      if (this.seedEntryLocale(key, locale)) seeded++;
     }
     return seeded;
   }
@@ -340,6 +388,16 @@ class FileResourceFolder implements ResourceFolder {
       this.metaExists = true;
     }
     return { written: [this.entriesPath, this.metaPath], created, removed: [] };
+  }
+
+  /** The one seeding rule: a missing `locale` becomes a copy of the base value with status `new`. */
+  private seedEntryLocale(key: string, locale: string): boolean {
+    const entry = this.entries[key];
+    if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') return false;
+    if (locale === this.baseLocale || typeof entry[locale] === 'string') return false;
+
+    this.setTranslation(key, locale, entry.source, 'new');
+    return true;
   }
 
   private metaOf(key: string): ResourceEntryMetadata {

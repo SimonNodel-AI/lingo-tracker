@@ -1,11 +1,11 @@
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
-import { AutoTranslationDisabledError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
-import { type OpenTranslatorOptions, openTranslator } from './translator';
+import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
 
 export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
@@ -14,6 +14,8 @@ export interface TranslateExistingResourceResult {
   readonly entry: ResourceTreeEntry;
   /** What changed on disk (empty when nothing was translated). */
   readonly mutations: ResourceMutation[];
+  /** Problems that did not stop the Translator (a named protected-terms file that does not exist). */
+  readonly warnings: string[];
 }
 
 /**
@@ -39,9 +41,7 @@ export async function translateExistingResource(
   options: OpenTranslatorOptions = {},
 ): Promise<TranslateExistingResourceResult> {
   const { baseLocale, translationsFolder } = collection;
-  if (!collection.translationConfig?.enabled) {
-    throw new AutoTranslationDisabledError(collection.name);
-  }
+  assertAutoTranslationEnabled(collection);
 
   const paths = validateAndResolvePaths({ key, translationsFolder });
 
@@ -61,10 +61,12 @@ export async function translateExistingResource(
       skippedLocales: [],
       entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
       mutations: [],
+      warnings: [],
     };
   }
 
-  const { values, skipped } = await openTranslator(collection, options).translate(
+  const translator = openTranslator(collection, options);
+  const { values, skipped } = await translator.translate(
     [{ key: paths.resolvedKey, source: entry.source }],
     targetLocales,
   );
@@ -84,6 +86,7 @@ export async function translateExistingResource(
     skippedLocales: skipped.map(({ locale }) => locale),
     entry: updatedEntry,
     mutations: values.length > 0 ? [upsertMutation(translationsFolder, paths.resolvedKey, updatedEntry)] : [],
+    warnings: [...translator.problems],
   };
 }
 

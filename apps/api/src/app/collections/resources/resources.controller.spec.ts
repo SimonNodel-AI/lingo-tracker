@@ -33,6 +33,9 @@ jest.mock('@simoncodes-ca/core', () => {
   };
 });
 
+/** What core returns when a stored value breaks no rule and the rule file is fine. */
+const noTerminology = { findings: [], problems: [] };
+
 describe('ResourcesController', () => {
   let resourcesModule: TestingModule;
   let resourcesController: ResourcesController;
@@ -94,10 +97,7 @@ describe('ResourcesController', () => {
   describe('createResources', () => {
     it('should successfully create a single resource', async () => {
       const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
+      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true });
 
       const dto = {
         key: 'app.button.ok',
@@ -129,10 +129,9 @@ describe('ResourcesController', () => {
 
     it('should successfully create multiple resources (bulk operation)', async () => {
       const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValueOnce({ resolvedKey: 'app.button.ok', created: true }).mockReturnValueOnce({
-        resolvedKey: 'app.button.cancel',
-        created: true,
-      });
+      addResource
+        .mockReturnValueOnce({ resolvedKey: 'app.button.ok', created: true, terminology: noTerminology })
+        .mockReturnValueOnce({ resolvedKey: 'app.button.cancel', created: true, terminology: noTerminology });
 
       const dtos = [
         { key: 'app.button.ok', baseValue: 'OK' },
@@ -150,10 +149,7 @@ describe('ResourcesController', () => {
 
     it('should handle idempotent repeat (update existing resource)', async () => {
       const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: false,
-      });
+      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: false });
 
       const dto = {
         key: 'app.button.ok',
@@ -171,12 +167,9 @@ describe('ResourcesController', () => {
     it('should aggregate results correctly when some resources are created and some are updated', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource
-        .mockReturnValueOnce({ resolvedKey: 'app.button.ok', created: true })
-        .mockReturnValueOnce({
-          resolvedKey: 'app.button.cancel',
-          created: false,
-        })
-        .mockReturnValueOnce({ resolvedKey: 'app.button.save', created: true });
+        .mockReturnValueOnce({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true })
+        .mockReturnValueOnce({ terminology: noTerminology, resolvedKey: 'app.button.cancel', created: false })
+        .mockReturnValueOnce({ terminology: noTerminology, resolvedKey: 'app.button.save', created: true });
 
       const dtos = [
         { key: 'app.button.ok', baseValue: 'OK' },
@@ -195,10 +188,7 @@ describe('ResourcesController', () => {
 
     it('should URI decode collection names with special characters', async () => {
       const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
+      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true });
 
       const configWithEncodedName = {
         ...mockConfig,
@@ -310,12 +300,13 @@ describe('ResourcesController', () => {
 
       const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
       expect(error.getStatus()).toBe(500);
-      expect(error.message).toBe('Internal server error');
+      expect(error.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
     });
 
     it('should handle resource with all optional fields', async () => {
       const addResource = core.addResource as jest.Mock;
       addResource.mockReturnValue({
+        terminology: noTerminology,
         resolvedKey: 'apps.common.buttons.cancel',
         created: true,
       });
@@ -352,10 +343,7 @@ describe('ResourcesController', () => {
 
     it('should handle resource with translations', async () => {
       const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        resolvedKey: 'app.button.ok',
-        created: true,
-      });
+      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true });
 
       const dto = {
         key: 'app.button.ok',
@@ -747,6 +735,56 @@ describe('ResourcesController', () => {
     });
   });
 
+  describe('terminology findings', () => {
+    const finding = {
+      key: 'app.button.ok',
+      discouraged: 'Expenditure',
+      preferred: 'Investment',
+      message: 'consider "Investment" instead of "Expenditure"',
+    };
+
+    it('carries the findings and problems of every created resource, problems deduped', async () => {
+      const addResource = core.addResource as jest.Mock;
+      addResource
+        .mockReturnValueOnce({
+          resolvedKey: 'app.button.ok',
+          created: true,
+          terminology: { findings: [finding], problems: ['Preferred terminology checks skipped: broken'] },
+        })
+        .mockReturnValueOnce({
+          resolvedKey: 'app.button.cancel',
+          created: true,
+          terminology: { findings: [], problems: ['Preferred terminology checks skipped: broken'] },
+        });
+
+      const result = await resourcesController.createResources('test-collection', [
+        { key: 'app.button.ok', baseValue: 'Expenditure' },
+        { key: 'app.button.cancel', baseValue: 'Cancel' },
+      ]);
+
+      expect(result.terminology).toEqual({
+        findings: [finding],
+        problems: ['Preferred terminology checks skipped: broken'],
+      });
+    });
+
+    it('carries the findings of an update, and omits the field when there is nothing to report', async () => {
+      const editResource = core.editResource as jest.Mock;
+      editResource.mockReturnValueOnce({
+        resolvedKey: 'app.button.ok',
+        updated: true,
+        terminology: { findings: [finding], problems: [] },
+      });
+
+      const flagged = await resourcesController.update('test-collection', { key: 'app.button.ok', baseValue: 'x' });
+      expect(flagged.terminology).toEqual({ findings: [finding], problems: [] });
+
+      editResource.mockReturnValueOnce({ resolvedKey: 'app.button.ok', updated: true, terminology: noTerminology });
+      const clean = await resourcesController.update('test-collection', { key: 'app.button.ok', baseValue: 'y' });
+      expect(clean).not.toHaveProperty('terminology');
+    });
+  });
+
   describe('update', () => {
     it('should successfully update a resource', async () => {
       const editResource = core.editResource as jest.Mock;
@@ -1037,7 +1075,7 @@ describe('ResourcesController', () => {
         resourcesController.getTree('test-collection', '', undefined, mockResponse() as any),
       );
       expect(error.getStatus()).toBe(500);
-      expect(error.message).toBe('Internal server error');
+      expect(error.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
     });
   });
 
@@ -1244,6 +1282,7 @@ describe('ResourcesController', () => {
         translatedCount: 2,
         skippedLocales: [],
         entry: mockEntry,
+        warnings: [],
       });
 
       const result = await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
@@ -1252,6 +1291,23 @@ describe('ResourcesController', () => {
       expect(result.skippedLocales).toEqual([]);
       expect(result.resource).toMatchObject({ fullKey: 'buttons.save', folderPath: 'buttons', entryKey: 'save' });
       expect(result.resource.targets.map((t) => t.status)).toEqual(['translated', 'translated']);
+      expect(result).not.toHaveProperty('warnings');
+    });
+
+    it('passes on the warnings of the translation, e.g. a named protected-terms file that does not exist', async () => {
+      (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
+      const warning = 'Protected terms file not found: /p/terms.json. Treating as an empty list.';
+      (core.translateExistingResource as jest.Mock).mockResolvedValue({
+        translatedCount: 1,
+        skippedLocales: [],
+        entry: mockEntry,
+        mutations: [],
+        warnings: [warning],
+      });
+
+      const result = await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
+
+      expect(result.warnings).toEqual([warning]);
     });
 
     it('should pass the opened collection and resource key to core', async () => {
@@ -1261,6 +1317,7 @@ describe('ResourcesController', () => {
         translatedCount: 1,
         skippedLocales: [],
         entry: mockEntry,
+        warnings: [],
       });
 
       await resourcesController.translateResource('test-collection', { key: 'buttons.save' });
@@ -1283,6 +1340,7 @@ describe('ResourcesController', () => {
         translatedCount: 1,
         skippedLocales: [],
         entry: mockEntry,
+        warnings: [],
         mutations,
       });
 
@@ -1299,6 +1357,7 @@ describe('ResourcesController', () => {
         translatedCount: 0,
         skippedLocales: ['fr-ca', 'es'],
         entry: mockEntry,
+        warnings: [],
       });
 
       const result = await resourcesController.translateResource('test-collection', { key: 'buttons.save' });

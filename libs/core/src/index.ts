@@ -48,8 +48,8 @@ export { exportTargetLocales, runExport } from './lib/export/run-export';
 
 // Operations: normalize, translate, validate
 export { normalize } from './lib/normalize';
-export { translateExistingResource, translateLocale } from './lib/translation';
-export { describePreferredTermRule, generateValidationSummary, validateResources } from './lib/validate';
+export { assertAutoTranslationEnabled, translateExistingResource, translateLocale } from './lib/translation';
+export { generateValidationSummary, validateResources } from './lib/validate';
 
 // Collection & config
 export type { LingoTrackerCollection } from './config/lingo-tracker-collection';
@@ -62,21 +62,26 @@ export {
   loadConfig,
   loadPreferredTerminology,
   openCollection,
-  type ProtectedTermsFiles,
   type ResolvedProtectedTerms,
   readCollectionProtectedTerms,
-  readEffectiveProtectedTerms,
   readGlobalProtectedTerms,
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
+  type StoredProtectedTerms,
+  type TermFile,
+  type TermFiles,
   writePreferredTerminology,
 } from './lib/config';
+
+// Project Terms: the protected terms and preferred terminology in force for an opened collection
+export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './lib/config';
 
 // ResourceFolder: one folder's entries and metadata, loaded and saved as a unit
 export {
   type EntryDetails,
+  type NormalizeEntryReport,
   openResourceFolder,
   type ResolvedResourcePaths,
   type ResourceFolder,
@@ -131,13 +136,17 @@ export {
   FolderNotFoundError,
   type FolderPathPart,
   InvalidBundleDefinitionError,
+  InvalidCollectionError,
+  InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  ParentDirectoryMissingError,
   ProtectedTermsFileError,
+  ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
@@ -191,7 +200,7 @@ export type {
   ImportSummaryOptions,
   StatusTransition,
 } from './lib/import';
-export type { NormalizeParams, NormalizeResult } from './lib/normalize';
+export type { NormalizeOptions, NormalizeResult } from './lib/normalize';
 export type {
   ComputeTreeFingerprintOptions,
   LoadResourceTreeOptions,

@@ -6,6 +6,7 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { openResourceFolder } from '../resource/resource-folder';
+import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
 import { type TranslateLocaleProgress, translateLocale } from './translate-locale';
 import { TranslationError } from './translation-provider';
@@ -56,6 +57,15 @@ describe('translateLocale', () => {
       const result = await translateLocale(collection(), { targetLocale: 'fr' });
 
       expect(result.totalResources).toBe(0);
+    });
+
+    it.each([
+      undefined,
+      { ...AUTO, enabled: false },
+    ])('still refuses a collection whose translation config is %j', async (translationConfig) => {
+      await expect(translateLocale(collection({ translationConfig }), { targetLocale: 'fr' })).rejects.toThrow(
+        AutoTranslationDisabledError,
+      );
     });
   });
 
@@ -195,6 +205,19 @@ describe('translateLocale', () => {
     expect(result).toMatchObject({ totalResources: 1, translatedCount: 1 });
     expect(result.warnings).toEqual([expect.stringContaining("Folder 'broken' was not translated:")]);
     expect(result.warnings[0]).toContain(RESOURCE_ENTRIES_FILENAME);
+  });
+
+  it('reports a named protected-terms file that does not exist in warnings', async () => {
+    const missing = join(dir(), 'typo.json');
+    const named = collection({
+      termFiles: { ...collection().termFiles, protectedTerms: { path: missing, explicit: true } },
+    });
+    seedResources(named, { ok: { source: 'OK' } });
+
+    const result = await translateLocale(named, { targetLocale: 'fr', provider: new InMemoryTranslationProvider() });
+
+    expect(result.translatedCount).toBe(1);
+    expect(result.warnings).toEqual([`Protected terms file not found: ${missing}. Treating as an empty list.`]);
   });
 
   it('reports unreadable folders in warnings even when nothing needs translating', async () => {

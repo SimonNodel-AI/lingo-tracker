@@ -1,24 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
-import { openCollection } from './open-collection';
 import {
   DEFAULT_PROTECTED_TERMS_FILENAME,
-  clearProtectedTermsFileCache,
   readCollectionProtectedTerms,
-  readEffectiveProtectedTerms,
   readGlobalProtectedTerms,
-  readProtectedTermsFile,
-  readProtectedTermsInForce,
+  requireProtectedTermsFile,
   resolveCollectionProtectedTermsFilePath,
+  resolveGlobalProtectedTermsFile,
   resolveGlobalProtectedTermsFilePath,
-  resolveProtectedTermsFilePath,
   resolveProtectedTermsForConfig,
-  writeProtectedTermsFile,
 } from './protected-terms-file';
 
 const baseConfig = (overrides: Partial<LingoTrackerConfig> = {}): LingoTrackerConfig => ({
@@ -30,17 +25,16 @@ const baseConfig = (overrides: Partial<LingoTrackerConfig> = {}): LingoTrackerCo
   ...overrides,
 });
 
+// The read, missing-file and write rules are the term file's, covered in term-file.spec.ts.
 describe('protected-terms-file', () => {
   let cwd: string;
 
   beforeEach(() => {
     cwd = mkdtempSync(join(tmpdir(), 'lingo-protected-terms-'));
-    clearProtectedTermsFileCache();
   });
 
   afterEach(() => {
     rmSync(cwd, { recursive: true, force: true });
-    vi.restoreAllMocks();
   });
 
   const write = (relativePath: string, contents: string): string => {
@@ -50,18 +44,23 @@ describe('protected-terms-file', () => {
   };
 
   describe('path resolution', () => {
-    it('resolves a relative pointer against the config directory', () => {
-      expect(resolveProtectedTermsFilePath('config/terms.json', cwd)).toBe(join(cwd, 'config/terms.json'));
-    });
-
-    it('uses an absolute pointer as-is', () => {
-      expect(resolveProtectedTermsFilePath('/etc/terms.json', cwd)).toBe('/etc/terms.json');
-    });
-
-    it('falls back to the default filename when the global config names no file', () => {
+    it('falls back to the default file, as not explicit, when the global config names none', () => {
+      expect(resolveGlobalProtectedTermsFile(baseConfig(), cwd)).toEqual({
+        path: resolve(cwd, DEFAULT_PROTECTED_TERMS_FILENAME),
+        explicit: false,
+      });
       expect(resolveGlobalProtectedTermsFilePath(baseConfig(), cwd)).toBe(
         resolve(cwd, DEFAULT_PROTECTED_TERMS_FILENAME),
       );
+    });
+
+    it('marks a named global file as explicit, even when it does not exist yet', () => {
+      mkdirSync(join(cwd, 'config'));
+
+      expect(resolveGlobalProtectedTermsFile(baseConfig({ protectedTermsFile: 'config/terms.json' }), cwd)).toEqual({
+        path: join(cwd, 'config/terms.json'),
+        explicit: true,
+      });
     });
 
     it('has no default path for a collection', () => {
@@ -72,156 +71,41 @@ describe('protected-terms-file', () => {
     });
   });
 
-  describe('readProtectedTermsFile', () => {
-    it('reads, trims, and dedupes a bare array', () => {
-      const filePath = write('terms.json', '[" iPhone ", "iPhone", "Node.js", "  "]');
-
-      expect(readProtectedTermsFile(filePath)).toEqual(['iPhone', 'Node.js']);
-    });
-
-    it('returns an empty list for a missing file at the default path, without warning', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-      expect(readProtectedTermsFile(join(cwd, 'absent.json'))).toEqual([]);
-      expect(warn).not.toHaveBeenCalled();
-    });
-
-    it('warns when an explicitly configured file is missing', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-      expect(readProtectedTermsFile(join(cwd, 'absent.json'), { explicit: true })).toEqual([]);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('absent.json'));
-    });
-
-    it('warns only once per missing explicit file', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-
-      readProtectedTermsFile(join(cwd, 'absent.json'), { explicit: true });
-      readProtectedTermsFile(join(cwd, 'absent.json'), { explicit: true });
-
-      expect(warn).toHaveBeenCalledTimes(1);
-    });
-
-    it('throws on malformed JSON', () => {
+  describe('stored-list readers (for the commands that show or rewrite a file)', () => {
+    it('throw ProtectedTermsFileError, naming the file, when it is not a JSON array of strings', () => {
       const filePath = write('terms.json', '["iPhone",');
 
-      expect(() => readProtectedTermsFile(filePath)).toThrow('not valid JSON');
-      expect(() => readProtectedTermsFile(filePath)).toThrow(
+      expect(() => requireProtectedTermsFile({ path: filePath, explicit: false })).toThrow(
         expect.objectContaining({ code: 'INVALID_PROTECTED_TERMS_FILE', filePath }),
       );
-      expect(() => readProtectedTermsFile(filePath)).toThrow(ProtectedTermsFileError);
+      expect(() => requireProtectedTermsFile({ path: filePath, explicit: false })).toThrow(ProtectedTermsFileError);
     });
 
-    it('throws when the payload is not an array', () => {
-      const filePath = write('terms.json', '{ "terms": ["iPhone"] }');
-
-      expect(() => readProtectedTermsFile(filePath)).toThrow('must contain a JSON array of strings');
-    });
-
-    it('throws when an element is not a string', () => {
-      const filePath = write('terms.json', '["iPhone", 42]');
-
-      expect(() => readProtectedTermsFile(filePath)).toThrow('must contain only strings');
-    });
-
-    it('serves a second read from cache without touching disk again', () => {
-      const filePath = write('terms.json', '["iPhone"]');
-      expect(readProtectedTermsFile(filePath)).toEqual(['iPhone']);
-
-      writeFileSync(filePath, '["Android"]', 'utf8');
-
-      expect(readProtectedTermsFile(filePath)).toEqual(['iPhone']);
-      clearProtectedTermsFileCache();
-      expect(readProtectedTermsFile(filePath)).toEqual(['Android']);
-    });
-
-    it('hands back a copy, so a caller mutating the result cannot poison the cache', () => {
-      const filePath = write('terms.json', '["iPhone"]');
-
-      readProtectedTermsFile(filePath).push('Android');
-
-      expect(readProtectedTermsFile(filePath)).toEqual(['iPhone']);
-    });
-  });
-
-  describe('writeProtectedTermsFile', () => {
-    it('writes sorted, normalized, 2-space JSON with a trailing newline', () => {
-      const filePath = join(cwd, 'terms.json');
-
-      writeProtectedTermsFile(filePath, ['Node.js', ' iPhone ', 'iPhone', '  ']);
-
-      expect(readFileSync(filePath, 'utf8')).toBe('[\n  "iPhone",\n  "Node.js"\n]\n');
-    });
-
-    it('creates the file when it does not exist', () => {
-      const filePath = join(cwd, 'terms.json');
-
-      writeProtectedTermsFile(filePath, ['iPhone']);
-
-      expect(readProtectedTermsFile(filePath)).toEqual(['iPhone']);
-    });
-
-    it('throws when the parent directory is missing', () => {
-      expect(() => writeProtectedTermsFile(join(cwd, 'nested/terms.json'), ['iPhone'])).toThrow(
-        'directory does not exist',
-      );
-    });
-
-    it('refreshes the cache so a following read sees the new terms', () => {
-      const filePath = write('terms.json', '["iPhone"]');
-      expect(readProtectedTermsFile(filePath)).toEqual(['iPhone']);
-
-      writeProtectedTermsFile(filePath, ['Android']);
-
-      expect(readProtectedTermsFile(filePath)).toEqual(['Android']);
-    });
-  });
-
-  describe('effective terms', () => {
-    it('unions the global and collection files, deduped', () => {
-      write(DEFAULT_PROTECTED_TERMS_FILENAME, '["SimonCodes", "iPhone"]');
-      write('collection-terms.json', '["iPhone", "Node.js"]');
-      const collection = { translationsFolder: './i18n', protectedTermsFile: 'collection-terms.json' };
-
-      expect(readEffectiveProtectedTerms(baseConfig(), collection, cwd)).toEqual(['SimonCodes', 'iPhone', 'Node.js']);
-    });
-
-    it('returns the global list alone when no collection is given', () => {
-      write(DEFAULT_PROTECTED_TERMS_FILENAME, '["SimonCodes"]');
-
-      expect(readEffectiveProtectedTerms(baseConfig(), undefined, cwd)).toEqual(['SimonCodes']);
-    });
-
-    it('contributes nothing from a collection with no pointer', () => {
-      write(DEFAULT_PROTECTED_TERMS_FILENAME, '["SimonCodes"]');
-
-      const collection: LingoTrackerCollection = { translationsFolder: './i18n' };
-
-      expect(readCollectionProtectedTerms(collection, cwd)).toEqual([]);
-      expect(readEffectiveProtectedTerms(baseConfig(), collection, cwd)).toEqual(['SimonCodes']);
-    });
-
-    it("reads an opened collection's terms from its resolved files, like readEffectiveProtectedTerms", () => {
-      write('global.json', '["SimonCodes", "iPhone"]');
-      write('collection-terms.json', '["iPhone", "Node.js"]');
-      const config = baseConfig({
-        protectedTermsFile: 'global.json',
-        collections: { app: { translationsFolder: './i18n', protectedTermsFile: 'collection-terms.json' } },
+    it('read a missing file as an empty list, warning when the config names it', () => {
+      expect(readGlobalProtectedTerms(baseConfig({ protectedTermsFile: 'absent.json' }), cwd)).toEqual({
+        terms: [],
+        warning: `Protected terms file not found: ${join(cwd, 'absent.json')}. Treating as an empty list.`,
       });
-
-      const collection = openCollection(config, 'app', { cwd });
-
-      expect(readProtectedTermsInForce(collection)).toEqual(['SimonCodes', 'iPhone', 'Node.js']);
-      expect(readProtectedTermsInForce(collection)).toEqual(
-        readEffectiveProtectedTerms(config, config.collections['app'], cwd),
-      );
+      expect(readGlobalProtectedTerms(baseConfig(), cwd)).toEqual({ terms: [] });
+      expect(readCollectionProtectedTerms({ protectedTermsFile: 'gone.json' }, cwd)).toEqual({
+        terms: [],
+        warning: `Protected terms file not found: ${join(cwd, 'gone.json')}. Treating as an empty list.`,
+      });
     });
 
-    it('honours an explicit global pointer over the default path', () => {
+    it('honour an explicit global pointer over the default path', () => {
       write(DEFAULT_PROTECTED_TERMS_FILENAME, '["Ignored"]');
       write('custom.json', '["Used"]');
 
-      expect(readGlobalProtectedTerms(baseConfig({ protectedTermsFile: 'custom.json' }), cwd)).toEqual(['Used']);
+      expect(readGlobalProtectedTerms(baseConfig({ protectedTermsFile: 'custom.json' }), cwd)).toEqual({
+        terms: ['Used'],
+      });
+    });
+
+    it('contribute nothing from a collection with no pointer', () => {
+      const collection: LingoTrackerCollection = { translationsFolder: './i18n' };
+
+      expect(readCollectionProtectedTerms(collection, cwd)).toEqual({ terms: [] });
     });
   });
 
@@ -243,13 +127,11 @@ describe('protected-terms-file', () => {
       expect(resolved.collections['app']).toEqual({ terms: ['iPhone'], filePath: join(cwd, 'app-terms.json') });
       expect(resolved.collections['other']).toEqual({ terms: [], filePath: undefined });
     });
-  });
 
-  it('reports the global file path even when the file does not exist yet', () => {
-    mkdirSync(join(cwd, 'config'));
+    it('throws for a malformed file, exactly as a direct read would', () => {
+      write(DEFAULT_PROTECTED_TERMS_FILENAME, '{ "terms": [] }');
 
-    expect(resolveGlobalProtectedTermsFilePath(baseConfig({ protectedTermsFile: 'config/terms.json' }), cwd)).toBe(
-      join(cwd, 'config/terms.json'),
-    );
+      expect(() => resolveProtectedTermsForConfig(baseConfig(), cwd)).toThrow(ProtectedTermsFileError);
+    });
   });
 });

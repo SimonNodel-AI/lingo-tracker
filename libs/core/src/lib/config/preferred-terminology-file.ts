@@ -1,5 +1,4 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, isAbsolute, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import {
   normalizePreferredTermRules,
   type PreferredTermRule,
@@ -8,7 +7,15 @@ import {
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { LingoTrackerError } from '../errors/lingo-tracker-error';
+import { InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
+import {
+  readTermFile,
+  resolveTermFilePath,
+  type TermFile,
+  type TermFileKind,
+  type TermFileRead,
+  writeTermFile,
+} from './term-file';
 
 /**
  * Default location of the preferred-terminology file, resolved against the directory
@@ -40,137 +47,74 @@ export class PreferredTerminologyValidationError extends LingoTrackerError {
   }
 }
 
-/** File identity recorded alongside cached rules; a change in either field means the file was edited. */
-interface FileStamp {
-  mtimeMs: number;
-  size: number;
-}
-
-interface CacheEntry {
-  rules: PreferredTermRule[];
-  stamp: FileStamp;
-}
+/** The preferred-terminology file: a bare JSON array of `{ discouraged, preferred, reason? }` rules, in file order. */
+const PREFERRED_TERMINOLOGY: TermFileKind<PreferredTermRule> = {
+  label: 'Preferred terminology file',
+  items: 'rules',
+  parse: (items, filePath) => {
+    const errors = validatePreferredTermRules(items);
+    return errors.length > 0
+      ? { error: `Preferred terminology file has invalid rules: ${filePath} (${formatRuleErrors(errors)})` }
+      : { value: normalizePreferredTermRules(items as PreferredTermRule[]) };
+  },
+  serialize: (rules) => sortPreferredTermRules(normalizePreferredTermRules(rules)),
+};
 
 /**
- * In-process cache keyed by absolute file path. Only successful loads are cached, and
- * writes refresh it. Each hit is revalidated against the file's `mtimeMs` and `size`, so
- * a long-lived process (the API server) picks up hand edits, `git pull`, or deletion on
- * the next load instead of serving stale rules until restart.
+ * The preferred-terminology file: the config's `preferredTerminologyFile` pointer resolved
+ * against `cwd` (the directory holding the config file), falling back to the default filename.
+ * A pointer that is neither a string nor unset (`null` counts as unset) is reported through
+ * `invalid`: `.lingo-tracker.json` is hand-edited and not schema-validated.
  */
-const cache = new Map<string, CacheEntry>();
-
-/** Drops every cached preferred-terminology file. Exported for tests and for callers that write out-of-band. */
-export function clearPreferredTerminologyCache(): void {
-  cache.clear();
+export function resolvePreferredTerminologyFile(
+  config: Pick<LingoTrackerConfig, 'preferredTerminologyFile'>,
+  cwd: string = process.cwd(),
+): TermFile {
+  const invalid = invalidPointerError(config);
+  if (invalid !== undefined) {
+    return { path: resolve(cwd, DEFAULT_PREFERRED_TERMINOLOGY_FILENAME), explicit: false, invalid };
+  }
+  const pointer = config.preferredTerminologyFile ?? DEFAULT_PREFERRED_TERMINOLOGY_FILENAME;
+  return { path: resolveTermFilePath(pointer, cwd), explicit: config.preferredTerminologyFile != null };
 }
 
 /**
- * Absolute path of the preferred-terminology file: the config's
- * `preferredTerminologyFile` pointer resolved against `cwd` (the directory holding the
- * config file), falling back to the default filename. Absolute pointers are used as-is.
+ * Absolute path of the preferred-terminology file (see {@link resolvePreferredTerminologyFile}).
  *
- * Throws a descriptive `Error` when the pointer is neither a string nor unset (`null`
- * counts as unset): `.lingo-tracker.json` is hand-edited and not schema-validated.
+ * @throws {InvalidConfigError} The pointer is neither a string nor unset.
  */
 export function resolvePreferredTerminologyFilePath(
   config: Pick<LingoTrackerConfig, 'preferredTerminologyFile'>,
   cwd: string = process.cwd(),
 ): string {
-  const pointerError = invalidPointerError(config);
-  if (pointerError) {
-    throw new Error(pointerError);
+  const file = resolvePreferredTerminologyFile(config, cwd);
+  if (file.invalid !== undefined) {
+    throw new InvalidConfigError(file.invalid);
   }
-  const pointer = config.preferredTerminologyFile ?? DEFAULT_PREFERRED_TERMINOLOGY_FILENAME;
-  return isAbsolute(pointer) ? pointer : resolve(cwd, pointer);
+  return file.path;
 }
 
 /**
- * Reads the preferred-terminology file: a bare JSON array of `{ discouraged, preferred,
- * reason? }` rules, normalized and kept in file order.
+ * Reads the preferred-terminology file (see `readTermFile` for the missing-file and problem rules).
  *
- * Never throws. A missing file at the default path reads as an empty list — the normal
- * state before any rule has been added. A missing file at an explicit pointer also
- * reads as empty but sets `warning`, since a pointer at nothing is usually a typo.
- * A non-string pointer, malformed JSON, a non-array payload, or any rule failing
- * validation sets `error` and returns no rules: terminology checks are advisory, so
- * callers warn and skip them rather than abort, except `validate`, which reports a
- * broken file as a failure.
+ * Never throws. A non-string pointer, malformed JSON, a non-array payload, or any rule failing
+ * validation sets `error` and returns no rules: terminology checks are advisory, so callers warn
+ * and skip them rather than abort, except `validate`, which reports a broken file as a failure.
  */
 export function loadPreferredTerminology(
   config: Pick<LingoTrackerConfig, 'preferredTerminologyFile'>,
   cwd: string = process.cwd(),
 ): LoadPreferredTerminologyResult {
-  const pointerError = invalidPointerError(config);
-  if (pointerError) {
-    return { rules: [], filePath: resolve(cwd, DEFAULT_PREFERRED_TERMINOLOGY_FILENAME), error: pointerError };
-  }
-  const filePath = resolvePreferredTerminologyFilePath(config, cwd);
+  const { value, filePath, error, warning } = readTermFile(
+    PREFERRED_TERMINOLOGY,
+    resolvePreferredTerminologyFile(config, cwd),
+  );
+  return { rules: value, filePath, ...(error !== undefined && { error }), ...(warning !== undefined && { warning }) };
+}
 
-  let stamp: FileStamp | undefined;
-  try {
-    stamp = readStamp(filePath);
-  } catch (error) {
-    cache.delete(filePath);
-    return { rules: [], filePath, error: unreadableFileError(filePath, error) };
-  }
-
-  const cached = cache.get(filePath);
-  if (cached) {
-    if (stamp && sameStamp(cached.stamp, stamp)) {
-      return { rules: cloneRules(cached.rules), filePath };
-    }
-    cache.delete(filePath);
-  }
-
-  if (!stamp) {
-    if (config.preferredTerminologyFile != null) {
-      return {
-        rules: [],
-        filePath,
-        warning: `Preferred terminology file not found: ${filePath}. Treating as an empty list.`,
-      };
-    }
-    return { rules: [], filePath };
-  }
-
-  let contents: string;
-  try {
-    contents = readFileSync(filePath, 'utf8');
-  } catch (error) {
-    return { rules: [], filePath, error: unreadableFileError(filePath, error) };
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(contents);
-  } catch (error) {
-    return {
-      rules: [],
-      filePath,
-      error: `Preferred terminology file is not valid JSON: ${filePath} (${errorDetail(error)})`,
-    };
-  }
-
-  if (!Array.isArray(parsed)) {
-    return {
-      rules: [],
-      filePath,
-      error: `Preferred terminology file must contain a JSON array of rules: ${filePath}`,
-    };
-  }
-
-  const errors = validatePreferredTermRules(parsed);
-  if (errors.length > 0) {
-    return {
-      rules: [],
-      filePath,
-      error: `Preferred terminology file has invalid rules: ${filePath} (${formatRuleErrors(errors)})`,
-    };
-  }
-
-  const rules = normalizePreferredTermRules(parsed as PreferredTermRule[]);
-  cache.set(filePath, { rules, stamp });
-  return { rules: cloneRules(rules), filePath };
+/** Reads the preferred-terminology file at a resolved location. Never throws. */
+export function readPreferredTerminologyFile(file: TermFile): TermFileRead<PreferredTermRule> {
+  return readTermFile(PREFERRED_TERMINOLOGY, file);
 }
 
 /**
@@ -179,7 +123,7 @@ export function loadPreferredTerminology(
  * of where it lands. An empty `reason` is dropped rather than written as `""`.
  *
  * Throws `PreferredTerminologyValidationError` (with the per-row errors attached) when
- * the rules fail validation, and a plain `Error` when the parent directory is missing;
+ * the rules fail validation, and `ParentDirectoryMissingError` when the parent directory is missing;
  * in both cases the file is left untouched. The file is created when absent.
  */
 export function writePreferredTerminology(filePath: string, rules: readonly PreferredTermRule[]): void {
@@ -189,26 +133,7 @@ export function writePreferredTerminology(filePath: string, rules: readonly Pref
   if (errors.length > 0) {
     throw new PreferredTerminologyValidationError(errors);
   }
-
-  const parent = dirname(filePath);
-  if (!existsSync(parent)) {
-    throw new Error(`Cannot write preferred terminology file — directory does not exist: ${parent}`);
-  }
-
-  const sorted = sortPreferredTermRules(normalizePreferredTermRules(rules));
-  writeFileSync(filePath, `${JSON.stringify(sorted, null, 2)}\n`, 'utf8');
-  // The write succeeded; failing to stat it afterwards only costs the cache entry.
-  let stamp: FileStamp | undefined;
-  try {
-    stamp = readStamp(filePath);
-  } catch {
-    stamp = undefined;
-  }
-  if (stamp) {
-    cache.set(filePath, { rules: sorted, stamp });
-  } else {
-    cache.delete(filePath);
-  }
+  writeTermFile(PREFERRED_TERMINOLOGY, filePath, [...rules]);
 }
 
 /** Error message for a `preferredTerminologyFile` that is set but not a string; `undefined` when usable. */
@@ -224,39 +149,4 @@ function invalidPointerError(config: Pick<LingoTrackerConfig, 'preferredTerminol
 /** One `row N field: message` entry per error, rows 1-based, joined into a single line. */
 function formatRuleErrors(errors: readonly PreferredTermRuleError[]): string {
   return errors.map((error) => `row ${error.index + 1} ${error.field}: ${error.message}`).join('; ');
-}
-
-function unreadableFileError(filePath: string, error: unknown): string {
-  return `Preferred terminology file cannot be read: ${filePath} (${errorDetail(error)})`;
-}
-
-function errorDetail(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * `mtimeMs` and `size` of the file, or `undefined` when it does not exist. Throws on any
- * other stat failure (EACCES, ENOTDIR, ELOOP, ...); a pointer through a regular file is a
- * misconfiguration, not a missing file.
- */
-function readStamp(filePath: string): FileStamp | undefined {
-  // Not `throwIfNoEntry: false`: Node folds ENOTDIR into "no entry" there too.
-  try {
-    const stats = statSync(filePath);
-    return { mtimeMs: stats.mtimeMs, size: stats.size };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
-function sameStamp(a: FileStamp, b: FileStamp): boolean {
-  return a.mtimeMs === b.mtimeMs && a.size === b.size;
-}
-
-/** Copies rules so a caller mutating the result cannot poison the cache. */
-function cloneRules(rules: readonly PreferredTermRule[]): PreferredTermRule[] {
-  return rules.map((rule) => ({ ...rule }));
 }

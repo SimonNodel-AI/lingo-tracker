@@ -2,44 +2,49 @@ import { basename } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
+  InvalidConfigError,
   loadPreferredTerminology,
+  ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
   setGlobalProtectedTerms,
   writePreferredTerminology,
 } from '@simoncodes-ca/core';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import * as mapper from '../mappers/config.mapper';
 import { ConfigController } from './config.controller';
 import { ConfigService } from './config.service';
 
-jest.mock('@simoncodes-ca/core', () => {
-  class PreferredTerminologyValidationError extends Error {
-    constructor(readonly errors: unknown[]) {
-      super('Invalid preferred terminology rules');
-    }
-  }
-  return {
-    setGlobalProtectedTerms: jest.fn(),
-    resolveProtectedTermsForConfig: jest.fn(),
-    loadPreferredTerminology: jest.fn(),
-    resolvePreferredTerminologyFilePath: jest.fn(),
-    writePreferredTerminology: jest.fn(),
-    PreferredTerminologyValidationError,
-  };
-});
+// Mock the file readers and writers; keep the real error classes so the filter mapping applies.
+jest.mock('@simoncodes-ca/core', () => ({
+  ...jest.requireActual('@simoncodes-ca/core'),
+  setGlobalProtectedTerms: jest.fn(),
+  resolveProtectedTermsForConfig: jest.fn(),
+  loadPreferredTerminology: jest.fn(),
+  resolvePreferredTerminologyFilePath: jest.fn(),
+  writePreferredTerminology: jest.fn(),
+}));
 
 const TERMINOLOGY_PATH = '/project/.lingo-tracker-preferred-terminology.json';
 
-/** Runs `fn`, expecting an HttpException, and returns it for status and body assertions. */
+/**
+ * Runs `fn`, expecting it to throw, and returns what the global exception filter would
+ * answer (controllers let core errors propagate).
+ */
 function catchHttpException(fn: () => unknown): HttpException {
   try {
     fn();
   } catch (error: unknown) {
-    expect(error).toBeInstanceOf(HttpException);
-    return error as HttpException;
+    return toHttpException(error);
   }
-  throw new Error('Expected an HttpException');
+  throw new Error('Expected an error');
+}
+
+/** The `message` of a Nest exception body. */
+function messageOf(http: HttpException): unknown {
+  const response = http.getResponse();
+  return typeof response === 'string' ? response : (response as { message: unknown }).message;
 }
 
 describe('ConfigController', () => {
@@ -213,7 +218,7 @@ describe('ConfigController', () => {
         );
 
         expect(error.getStatus()).toBe(400);
-        expect(error.getResponse()).toBe('preferredTerminology must be an array of rules');
+        expect(messageOf(error)).toBe('preferredTerminology must be an array of rules');
         expect(writePreferredTerminology).not.toHaveBeenCalled();
       });
 
@@ -276,46 +281,53 @@ describe('ConfigController', () => {
         const error = catchHttpException(() => controller.updateConfig({ preferredTerminology: rules }));
 
         expect(error.getStatus()).toBe(400);
-        expect(error.getResponse()).toEqual({ message: 'Invalid preferred terminology rules', errors });
+        expect(error.getResponse()).toEqual({
+          message: 'Invalid preferred terminology rules',
+          errors,
+          error: 'Bad Request',
+          statusCode: 400,
+        });
       });
 
-      it('answers a write failure such as a missing directory with 400', () => {
+      it('answers a missing directory (ParentDirectoryMissingError) with 400 and the message', () => {
         (writePreferredTerminology as jest.Mock).mockImplementationOnce(() => {
-          throw new Error('Cannot write preferred terminology file — directory does not exist: /nope');
+          throw new ParentDirectoryMissingError('preferred terminology file', '/nope/terms.json', '/nope');
         });
 
         const error = catchHttpException(() => controller.updateConfig({ preferredTerminology: rules }));
 
         expect(error.getStatus()).toBe(400);
-        expect(error.getResponse()).toBe('Cannot write preferred terminology file — directory does not exist: /nope');
+        expect(messageOf(error)).toBe('Cannot write preferred terminology file — directory does not exist: /nope');
       });
 
-      it('answers a malformed file pointer in the config with 400 and writes nothing', () => {
+      it('answers a malformed file pointer in the config (InvalidConfigError) with 500, its message, and writes nothing', () => {
         const message = '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)';
         (resolvePreferredTerminologyFilePath as jest.Mock).mockImplementationOnce(() => {
-          throw new Error(message);
+          throw new InvalidConfigError(message);
         });
 
-        const error = catchHttpException(() => controller.updateConfig({ preferredTerminology: rules }));
+        let thrown: unknown;
+        try {
+          controller.updateConfig({ preferredTerminology: rules });
+        } catch (error: unknown) {
+          thrown = error;
+        }
 
-        expect(error.getStatus()).toBe(400);
-        expect(error.getResponse()).toBe(message);
+        expect(thrown).toBeInstanceOf(InvalidConfigError);
+        const error = toHttpException(thrown);
+        expect(error.getStatus()).toBe(500);
+        expect(messageOf(error)).toBe(message);
         expect(writePreferredTerminology).not.toHaveBeenCalled();
       });
     });
 
-    it('throws HttpException with status 400 when the update fails', () => {
+    it('lets an unexpected error propagate (the filter answers 500)', () => {
       const setter = setGlobalProtectedTerms as jest.Mock;
       setter.mockImplementationOnce(() => {
         throw new Error('update failed');
       });
 
-      expect(() => controller.updateConfig({ protectedTerms: ['iPhone'] })).toThrow(HttpException);
-      try {
-        controller.updateConfig({ protectedTerms: ['iPhone'] });
-      } catch (error: unknown) {
-        expect((error as HttpException).getStatus()).toBe(400);
-      }
+      expect(() => controller.updateConfig({ protectedTerms: ['iPhone'] })).toThrow('update failed');
     });
   });
 });

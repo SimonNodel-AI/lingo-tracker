@@ -1,4 +1,5 @@
 import type { PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain';
+import type { TerminologyFinding } from '../config/project-terms';
 
 /**
  * Options for configuring resource validation behavior.
@@ -77,12 +78,7 @@ export interface TerminologyValidationOptions {
  * A base-locale value using a discouraged term. One per collection, key, and rule,
  * however many times the term occurs and however many target locales exist.
  */
-export interface TerminologyValidationDetail {
-  /**
-   * The full dot-delimited key of the resource (e.g., 'common.buttons.ok').
-   */
-  readonly key: string;
-
+export interface TerminologyValidationDetail extends TerminologyFinding {
   /**
    * The collection this resource belongs to.
    */
@@ -92,26 +88,6 @@ export interface TerminologyValidationDetail {
    * The collection's base locale, whose value was scanned.
    */
   readonly locale: string;
-
-  /**
-   * The discouraged term, as spelled in the rule.
-   */
-  readonly discouraged: string;
-
-  /**
-   * The suggested replacement, as spelled in the rule.
-   */
-  readonly preferred: string;
-
-  /**
-   * Why the preferred term is preferred, when the rule says.
-   */
-  readonly reason?: string;
-
-  /**
-   * A single-line suggestion, e.g. `consider "Investment" instead of "Expenditure"`.
-   */
-  readonly message: string;
 }
 
 /**

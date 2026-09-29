@@ -1,7 +1,6 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { TextFieldModule } from '@angular/cdk/text-field';
 import { CommonModule } from '@angular/common';
-import { HttpErrorResponse } from '@angular/common/http';
 import {
   type AfterViewInit,
   ChangeDetectionStrategy,
@@ -42,6 +41,7 @@ import {
 import { of, Subject } from 'rxjs';
 import { catchError, debounceTime, distinctUntilChanged, switchMap, takeUntil, tap } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { ApiError, apiErrorMessage } from '../../../shared/api-error/api-error';
 import { CollectionsStore } from '../../../collections/store/collections.store';
 import { ConfirmationDialog } from '../../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
@@ -1222,57 +1222,31 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   #handleCreateError(error: unknown, fullKey: string): void {
-    if (error instanceof HttpErrorResponse) {
-      if (error.status === 409) {
-        this.#showKeyConflictDialog(fullKey);
-        return;
-      }
-
-      if (error.status === 400) {
-        const message =
-          error.error?.message ||
-          error.message ||
-          this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.INVALIDREQUEST);
-        this.errorMessage.set(message);
-        return;
-      }
-
-      this.errorMessage.set(
-        error.error?.message ||
-          error.message ||
-          this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.CREATEFAILED),
-      );
+    const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
+    if (!(error instanceof ApiError)) {
+      this.errorMessage.set(this.transloco.translate(tokens.UNEXPECTED));
       return;
     }
-
-    this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.UNEXPECTED));
+    if (error.kind === 'conflict') {
+      this.#showKeyConflictDialog(fullKey);
+      return;
+    }
+    const fallback = error.kind === 'invalid' ? tokens.INVALIDREQUEST : tokens.CREATEFAILED;
+    this.errorMessage.set(apiErrorMessage(error, this.transloco.translate(fallback)));
   }
 
   #handleUpdateError(error: unknown): void {
-    if (error instanceof HttpErrorResponse) {
-      if (error.status === 404) {
-        this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.NOTFOUND));
-        return;
-      }
-
-      if (error.status === 400) {
-        const message =
-          error.error?.message ||
-          error.message ||
-          this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.INVALIDREQUEST);
-        this.errorMessage.set(message);
-        return;
-      }
-
-      this.errorMessage.set(
-        error.error?.message ||
-          error.message ||
-          this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.UPDATEFAILED),
-      );
+    const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
+    if (!(error instanceof ApiError)) {
+      this.errorMessage.set(this.transloco.translate(tokens.UNEXPECTED));
       return;
     }
-
-    this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.UNEXPECTED));
+    if (error.kind === 'not-found') {
+      this.errorMessage.set(this.transloco.translate(tokens.NOTFOUND));
+      return;
+    }
+    const fallback = error.kind === 'invalid' ? tokens.INVALIDREQUEST : tokens.UPDATEFAILED;
+    this.errorMessage.set(apiErrorMessage(error, this.transloco.translate(fallback)));
   }
 
   #showKeyConflictDialog(existingKey: string): void {

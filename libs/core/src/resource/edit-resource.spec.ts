@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { findPreferredTermFindings } from '@simoncodes-ca/domain';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import type { TranslationConfig } from '../config/translation-config';
 import { type Collection, openCollection } from '../lib/config/open-collection';
@@ -16,6 +17,12 @@ import { InMemoryTranslationProvider } from '../lib/translation/in-memory-transl
 import { TranslationError } from '../lib/translation/translation-provider';
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
+
+// Wrapped, not replaced: the specs below check which value the terminology check is given.
+vi.mock('@simoncodes-ca/domain', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@simoncodes-ca/domain')>();
+  return { ...actual, findPreferredTermFindings: vi.fn(actual.findPreferredTermFindings) };
+});
 
 const AUTO: TranslationConfig = { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' };
 
@@ -323,6 +330,84 @@ describe('editResource (real fs)', () => {
         // The edit itself was saved before the move was attempted.
         expect(read('resource_entries.json', 'common').save.source).toBe('Save all');
       });
+    });
+  });
+
+  describe('terminology (Project Terms)', () => {
+    const rules = [{ discouraged: 'Expenditure', preferred: 'Investment' }];
+
+    beforeEach(() => {
+      writeFileSync(join(root, '.lingo-tracker-preferred-terminology.json'), JSON.stringify(rules), 'utf8');
+    });
+
+    it('checks a supplied base value and returns the findings under the key', async () => {
+      const result = await editResource(collection(), 'common.save', { baseValue: 'Save the expenditure' });
+
+      expect(result.terminology).toEqual({
+        findings: [
+          {
+            key: 'common.save',
+            discouraged: 'Expenditure',
+            preferred: 'Investment',
+            message: 'consider "Investment" instead of "Expenditure"',
+          },
+        ],
+        problems: [],
+      });
+    });
+
+    it('reports the findings under the destination key when the edit also moves the entry', async () => {
+      const result = await editResource(collection(), 'common.save', {
+        baseValue: 'Save the expenditure',
+        moveTo: 'dialogs',
+      });
+
+      expect(result.terminology?.findings.map(({ key }) => key)).toEqual(['dialogs.save']);
+    });
+
+    it('checks the stored ICU value, not the Transloco input', async () => {
+      vi.mocked(findPreferredTermFindings).mockClear();
+
+      const result = await editResource(collection(), 'common.save', { baseValue: 'Save {{ expenditure }}' });
+
+      expect(read('resource_entries.json', 'common').save.source).toBe('Save {expenditure}');
+      expect(findPreferredTermFindings).toHaveBeenCalledWith('Save {expenditure}', rules);
+      // The placeholder is an argument, not wording.
+      expect(result.terminology).toEqual({ findings: [], problems: [] });
+    });
+
+    it('adds a named protected-terms file that does not exist to problems when auto-translation ran', async () => {
+      const config: LingoTrackerConfig = {
+        exportFolder: 'dist',
+        importFolder: 'import',
+        baseLocale: 'en',
+        locales: ['en', 'fr', 'de', 'es'],
+        protectedTermsFile: 'typo.json',
+        translation: AUTO,
+        collections: { main: { translationsFolder: join(root, 'translations') } },
+      };
+      const named = openCollection(config, 'main', { cwd: root });
+
+      const result = await editResource(
+        named,
+        'common.save',
+        { baseValue: 'Save now' },
+        { provider: new InMemoryTranslationProvider() },
+      );
+
+      expect(result.terminology?.problems).toEqual([
+        `Protected terms file not found: ${join(root, 'typo.json')}. Treating as an empty list.`,
+      ]);
+    });
+
+    it('leaves terminology out when the edit supplied no base value, or changed nothing', async () => {
+      const comment = await editResource(collection(), 'common.save', { comment: 'Expenditure' });
+      const unchanged = await editResource(collection(), 'common.save', { baseValue: 'Save' });
+
+      expect(comment.updated).toBe(true);
+      expect(comment.terminology).toBeUndefined();
+      expect(unchanged.updated).toBe(false);
+      expect(unchanged.terminology).toBeUndefined();
     });
   });
 });

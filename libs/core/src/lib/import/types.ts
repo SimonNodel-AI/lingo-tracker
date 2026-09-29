@@ -1,4 +1,4 @@
-import type { ImportStrategy, PreferredTermRule, TranslationStatus } from '@simoncodes-ca/domain';
+import type { ImportStrategy, TranslationStatus } from '@simoncodes-ca/domain';
 
 /**
  * Supported import formats
@@ -13,7 +13,9 @@ export type { ImportStrategy };
 
 /**
  * Options for one import run ({@link importResources}). The collection supplies the
- * translations folder and the base locale; these options say what to do with the resources.
+ * translations folder, the base locale and the Project Terms (protected terms, which a
+ * target-locale value must keep verbatim, and the preferred terminology a base-locale value
+ * is checked against); these options say what to do with the resources.
  */
 export interface ImportRunOptions {
   /** Target locale (e.g. 'es', 'fr-ca'). The collection's base locale needs the `migration` strategy. */
@@ -34,19 +36,6 @@ export interface ImportRunOptions {
   dryRun?: boolean;
   /** Report each resource through `onProgress` */
   verbose?: boolean;
-  /**
-   * Protected terms (union of global + collection) that must survive translation
-   * verbatim. On import, an entry whose source contains such a term but whose
-   * incoming value altered it is skipped and reported as failed. Unset skips the check.
-   */
-  protectedTerms?: string[];
-  /**
-   * Preferred-terminology rules. On a base-locale import, every value written (or,
-   * in a dry run, that would be written) is scanned, and each discouraged term found
-   * adds one entry to `warnings`. Advisory only: nothing is skipped or failed.
-   * Ignored for target-locale imports. Unset or empty skips the check.
-   */
-  preferredTerminology?: readonly PreferredTermRule[];
 
   /** Callbacks */
   onProgress?: (message: string) => void;

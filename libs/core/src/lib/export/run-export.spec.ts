@@ -176,16 +176,12 @@ describe('runExport', () => {
     expect(result.summary).toContain('# Export Summary (DRY RUN)');
   });
 
-  it('writes XLIFF with the base locale as source language and do-not-translate notes', async () => {
+  it('writes XLIFF with the base locale as source language and do-not-translate notes from the Project Terms', async () => {
     const common = open('common');
     seed(common, 'g', { brand: { source: 'Open Acme' } });
+    writeFileSync(join(projectDir, '.lingo-tracker-protected-terms.json'), '["Acme"]', 'utf8');
 
-    const result = await runExport([common], {
-      format: 'xliff',
-      outputDirectory,
-      locales: ['fr'],
-      protectedTerms: { global: ['Acme'] },
-    });
+    const result = await runExport([common], { format: 'xliff', outputDirectory, locales: ['fr'] });
 
     expect(result.filesCreated).toEqual(['fr.xliff']);
     const xliff = readFileSync(join(outputDirectory, 'fr.xliff'), 'utf8');
@@ -195,7 +191,15 @@ describe('runExport', () => {
   });
 
   it("uses each collection's own protected terms, and none when augmentation is off", async () => {
-    const common = open('common');
+    writeFileSync(join(projectDir, 'common-terms.json'), '["Widget"]', 'utf8');
+    const common = openCollection(
+      {
+        ...config,
+        collections: { common: { translationsFolder: 'translations/common', protectedTermsFile: 'common-terms.json' } },
+      },
+      'common',
+      { cwd: projectDir },
+    );
     seed(common, 'h', { brand: { source: 'Try Widget' } });
     const options = {
       format: 'json' as const,
@@ -203,7 +207,6 @@ describe('runExport', () => {
       locales: ['fr'],
       jsonStructure: 'flat' as const,
       richJson: true,
-      protectedTerms: { collections: { common: ['Widget'] } },
     };
 
     await runExport([common], options);
@@ -211,6 +214,50 @@ describe('runExport', () => {
 
     await runExport([common], { ...options, augmentProtectedTerms: false });
     expect(readJson('fr.json')).toEqual({ 'h.brand': { value: '' } });
+  });
+
+  it('fails on a protected-terms file it cannot use, once for collections that share it', async () => {
+    const common = open('common');
+    const frOnly = open('frOnly');
+    seed(common, 'i', { brand: { source: 'Open Acme' } });
+    seed(frOnly, 'j', { brand: { source: 'Acme Two' } });
+    const termsPath = join(projectDir, '.lingo-tracker-protected-terms.json');
+    writeFileSync(termsPath, '["Acme",', 'utf8');
+    const options = {
+      format: 'json' as const,
+      outputDirectory,
+      locales: ['fr'],
+      jsonStructure: 'flat' as const,
+      richJson: true,
+    };
+
+    const result = await runExport([common, frOnly], options);
+
+    expect(result.errors).toEqual([
+      expect.stringContaining(`Protected terms checks skipped: Protected terms file is not valid JSON: ${termsPath}`),
+    ]);
+    expect(result.warnings).toEqual([]);
+    expect(readJson('fr.json')).toEqual({ 'i.brand': { value: '' }, 'j.brand': { value: '' } });
+
+    // Without the notes the file is not read, so it cannot fail the run.
+    const unprotected = await runExport([common, frOnly], { ...options, augmentProtectedTerms: false });
+    expect(unprotected.errors).toEqual([]);
+    expect(unprotected.warnings).toEqual(['Overwriting existing file: fr.json']);
+  });
+
+  it('warns once about a named protected-terms file that does not exist', async () => {
+    const pointing = { ...config, protectedTermsFile: 'absent.json' };
+    const common = openCollection(pointing, 'common', { cwd: projectDir });
+    const frOnly = openCollection(pointing, 'frOnly', { cwd: projectDir });
+    seed(common, 'i', { ok: { source: 'OK' } });
+    seed(frOnly, 'j', { ok: { source: 'OK' } });
+
+    const result = await runExport([common, frOnly], { format: 'json', outputDirectory, locales: ['fr'] });
+
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([
+      `Protected terms file not found: ${join(projectDir, 'absent.json')}. Treating as an empty list.`,
+    ]);
   });
 
   it('reports hierarchical key conflicts separately from errors', async () => {

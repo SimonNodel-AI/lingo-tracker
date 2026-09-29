@@ -1,4 +1,4 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
@@ -7,6 +7,7 @@ import { unprotected } from '@ngrx/signals/testing';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { provideTrackerHttpClient, toApiError } from '../../shared/api-error/api-error';
 import { NotificationService } from '../../shared/notification';
 import { BrowserStore } from '../store/browser.store';
 import { BrowserApiService } from './browser-api.service';
@@ -41,7 +42,7 @@ describe('TranslationEditorLauncher', () => {
     TestBed.configureTestingModule({
       imports: [getTranslocoTestingModule()],
       providers: [
-        provideHttpClient(),
+        provideTrackerHttpClient(),
         provideHttpClientTesting(),
         { provide: MatDialog, useValue: mockDialog },
         { provide: BrowserApiService, useValue: mockApi },
@@ -107,7 +108,13 @@ describe('TranslationEditorLauncher', () => {
     });
 
     it('should report a failed lookup the same way', () => {
-      mockApi.getResourceTree.mockReturnValue(throwError(() => new Error('boom')));
+      mockApi.getResourceTree.mockReturnValue(
+        throwError(() =>
+          toApiError(
+            new HttpErrorResponse({ status: 500, error: { statusCode: 500, error: 'Internal Server Error' } }),
+          ),
+        ),
+      );
 
       launcher.openByFullKey('browser.header.backButton', 'test-collection');
 

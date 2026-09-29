@@ -11,7 +11,10 @@ const collection: Collection = {
   targetLocales: [],
   translationConfig: undefined,
   tags: [],
-  protectedTermsFiles: { global: '/nonexistent/.lingo-tracker-protected-terms.json', globalExplicit: false },
+  termFiles: {
+    protectedTerms: { path: '/nonexistent/.lingo-tracker-protected-terms.json', explicit: false },
+    preferredTerminology: { path: '/nonexistent/.lingo-tracker-preferred-terminology.json', explicit: false },
+  },
   readOnly: false,
   config: { translationsFolder: 'translations' },
 };

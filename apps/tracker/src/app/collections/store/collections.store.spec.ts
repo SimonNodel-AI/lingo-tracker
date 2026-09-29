@@ -1,25 +1,24 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { toApiError } from '../../shared/api-error/api-error';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from './collections.store';
 
+// The writes are covered in config-write.spec.ts; this file covers the load.
 describe('CollectionsStore', () => {
   let store: InstanceType<typeof CollectionsStore>;
   let spectator: SpectatorService<InstanceType<typeof CollectionsStore>>;
 
   const api = {
     getConfig: vi.fn(),
-    updateConfig: vi.fn(),
-    createCollection: vi.fn(),
-    updateCollection: vi.fn(),
-    deleteCollection: vi.fn(),
   };
 
-  const configAfterSave: LingoTrackerConfigDto = {
+  const config: LingoTrackerConfigDto = {
     exportFolder: 'dist/export',
     importFolder: 'dist/import',
     baseLocale: 'en',
@@ -40,65 +39,50 @@ describe('CollectionsStore', () => {
     store = spectator.service;
   });
 
-  it('updateGlobalConfig calls the API with the DTO and refetches config', () => {
-    api.updateConfig.mockReturnValue(of({ message: 'ok' }));
-    api.getConfig.mockReturnValue(of(configAfterSave));
+  it('loadCollections stores the config and clears the error', () => {
+    api.getConfig.mockReturnValue(of(config));
 
-    store.updateGlobalConfig({ protectedTerms: ['iPhone', 'C++'] });
+    store.loadCollections();
 
-    expect(api.updateConfig).toHaveBeenCalledWith({ protectedTerms: ['iPhone', 'C++'] });
-    expect(api.getConfig).toHaveBeenCalled();
-    expect(store.config()).toEqual(configAfterSave);
+    expect(store.config()).toEqual(config);
+    expect(store.isLoading()).toBe(false);
     expect(store.error()).toBeNull();
   });
 
-  it('updateGlobalConfig sets error state on failure without losing the previous config', () => {
-    api.updateConfig.mockReturnValue(throwError(() => new Error('save failed')));
-
-    store.updateGlobalConfig({ protectedTerms: ['iPhone'] });
-
-    expect(store.error()).toBe('save failed');
-    expect(store.config()).toBeNull();
-  });
-
-  it('updateGlobalConfig exposes per-row preferred terminology errors from a 400 body', () => {
-    const errors = [{ index: 1, field: 'discouraged', code: 'duplicate', message: 'dup' }];
-    api.updateConfig.mockReturnValue(
-      throwError(
-        () =>
-          new HttpErrorResponse({
-            status: 400,
-            error: { message: 'Invalid preferred terminology rules', errors },
-          }),
+  it('loadCollections shows the server message of a failed config read', () => {
+    api.getConfig.mockReturnValue(
+      throwError(() =>
+        toApiError(
+          new HttpErrorResponse({ status: 502, error: { statusCode: 502, message: 'Config file is not valid JSON' } }),
+        ),
       ),
     );
 
-    store.updateGlobalConfig({ preferredTerminology: [] });
+    store.loadCollections();
 
-    expect(store.configRuleErrors()).toEqual(errors);
-    expect(store.error()).toBeTruthy();
+    expect(store.error()).toBe('Config file is not valid JSON');
+    expect(store.isLoading()).toBe(false);
   });
 
-  it('updateGlobalConfig clears rule errors when a new save starts', () => {
-    api.updateConfig.mockReturnValueOnce(
-      throwError(() => new HttpErrorResponse({ status: 400, error: { message: 'x', errors: [{ index: 0 }] } })),
+  it('loadCollections falls back to the load-failed message for the generic 500, whose body carries no message', () => {
+    api.getConfig.mockReturnValue(
+      throwError(() =>
+        toApiError(new HttpErrorResponse({ status: 500, error: { statusCode: 500, error: 'Internal Server Error' } })),
+      ),
     );
-    store.updateGlobalConfig({ preferredTerminology: [] });
-    api.updateConfig.mockReturnValue(of({ message: 'ok' }));
-    api.getConfig.mockReturnValue(of(configAfterSave));
 
-    store.updateGlobalConfig({ preferredTerminology: [] });
+    store.loadCollections();
 
-    expect(store.configRuleErrors()).toEqual([]);
+    expect(store.error()).toBe(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED);
   });
 
-  it('updateGlobalConfig leaves rule errors empty for failures without an errors array', () => {
-    api.updateConfig.mockReturnValue(
-      throwError(() => new HttpErrorResponse({ status: 400, error: { message: 'protectedTerms must be…' } })),
+  it('loadCollections falls back to the load-failed message for a network failure', () => {
+    api.getConfig.mockReturnValue(
+      throwError(() => toApiError(new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }))),
     );
 
-    store.updateGlobalConfig({ protectedTerms: ['x'] });
+    store.loadCollections();
 
-    expect(store.configRuleErrors()).toEqual([]);
+    expect(store.error()).toBe(TRACKER_TOKENS.COLLECTIONS.TOAST.LOADFAILED);
   });
 });

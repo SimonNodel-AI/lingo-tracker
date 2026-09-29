@@ -9,16 +9,17 @@ import { sortTranslations } from '../../translations/utils/sort-translations';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { countByStatus, STATUS_PRECEDENCE, summaryTarget, type TranslationStatus } from '@simoncodes-ca/domain';
 import { displayStatus } from '../../../shared/translation-status/display-status';
-import { toErrorMessage } from '../async-error.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { captureSession, withinSession } from '../session-guard';
 
-interface TranslationsState {
+export interface TranslationsState {
   translations: ResourceSummaryDto[];
   isTranslationsLoading: boolean;
   showNestedResources: boolean;
 }
 
-const initialTranslationsState: TranslationsState = {
+export const initialTranslationsState: TranslationsState = {
   translations: [],
   isTranslationsLoading: false,
   showNestedResources: true,
@@ -47,6 +48,7 @@ export function withTranslationsFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{
+        sessionId: number;
         selectedCollection: string | null;
         currentFolderPath: string;
         error: string | null;
@@ -150,6 +152,7 @@ export function withTranslationsFeature<_>() {
               }),
             ),
             switchMap(({ path, shownFolderPath }) => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               const includeNested = store.showNestedResources();
               if (!collection) {
@@ -158,6 +161,7 @@ export function withTranslationsFeature<_>() {
               }
 
               return api.getResourceTree(collection, path, includeNested).pipe(
+                withinSession(inSession),
                 tap((tree) =>
                   patchState(store, {
                     translations: tree.resources,
@@ -166,7 +170,7 @@ export function withTranslationsFeature<_>() {
                   }),
                 ),
                 catchError((error: unknown) => {
-                  const message = toErrorMessage(
+                  const message = apiErrorMessage(
                     error,
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADTRANSLATIONSFAILED),
                   );

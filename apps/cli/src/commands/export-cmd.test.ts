@@ -45,8 +45,6 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     runExport: vi.fn(),
     validateOutputDirectory: vi.fn(),
     validateBasePropertyName: vi.fn(),
-    readGlobalProtectedTerms: vi.fn(() => ['Acme']),
-    readCollectionProtectedTerms: vi.fn(() => []),
   };
 });
 
@@ -187,7 +185,6 @@ describe('exportCommand', () => {
           locales: ['fr'],
           status: ['new', 'stale'],
           augmentProtectedTerms: true,
-          protectedTerms: { global: ['Acme'], collections: { common: [] } },
         }),
       );
     });

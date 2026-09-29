@@ -1,76 +1,25 @@
-import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
+import { addCollectionEntry } from '../lib/config/collection-entry';
 import { updateConfig } from '../lib/config/config-file-operations';
-import { CollectionAlreadyExistsError } from '../lib/errors/lingo-tracker-error';
 
 export interface AddCollectionOptions {
   cwd?: string;
 }
 
+/**
+ * Registers a collection in the config. The stored record is the [Collection Entry]
+ * (`lib/config/collection-entry.ts`): `translationsFolder` plus the settings that differ
+ * from the global config; a folder under `node_modules` is read-only unless told otherwise.
+ *
+ * @throws {CollectionAlreadyExistsError} A collection with this name exists.
+ * @throws {InvalidCollectionError} `translationsFolder` is missing or blank.
+ */
 export function addCollection(
   collectionName: string,
   collection: LingoTrackerCollection,
   options: AddCollectionOptions = {},
 ): { message: string } {
-  if (!collection || !collection.translationsFolder || !collection.translationsFolder.trim()) {
-    throw new Error('translationsFolder is required');
-  }
-
-  const trimmedTranslationsFolder = collection.translationsFolder.trim();
-
-  updateConfig((config) => {
-    if (!config.collections) {
-      config.collections = {};
-    }
-
-    if (config.collections[collectionName]) {
-      throw new CollectionAlreadyExistsError(collectionName);
-    }
-
-    const minimalCollection: LingoTrackerCollection = {
-      translationsFolder: trimmedTranslationsFolder,
-    };
-
-    // Append only properties that are explicitly different from the root config
-    if (collection.exportFolder !== undefined && collection.exportFolder !== config.exportFolder) {
-      minimalCollection.exportFolder = collection.exportFolder;
-    }
-
-    if (collection.importFolder !== undefined && collection.importFolder !== config.importFolder) {
-      minimalCollection.importFolder = collection.importFolder;
-    }
-
-    if (collection.baseLocale !== undefined && collection.baseLocale !== config.baseLocale) {
-      minimalCollection.baseLocale = collection.baseLocale;
-    }
-
-    if (collection.locales !== undefined && JSON.stringify(collection.locales) !== JSON.stringify(config.locales)) {
-      minimalCollection.locales = collection.locales;
-    }
-
-    // Persist read-only only when set, keeping writable collections clean.
-    if (collection.readOnly) {
-      minimalCollection.readOnly = true;
-    }
-
-    const normalizedTags = normalizeTags(collection.tags ?? []);
-    if (normalizedTags.length > 0) {
-      minimalCollection.tags = normalizedTags;
-    }
-
-    const protectedTermsFile = collection.protectedTermsFile?.trim();
-    if (protectedTermsFile) {
-      minimalCollection.protectedTermsFile = protectedTermsFile;
-    }
-
-    return {
-      ...config,
-      collections: {
-        ...config.collections,
-        [collectionName]: minimalCollection,
-      },
-    };
-  }, options.cwd);
+  updateConfig((config) => addCollectionEntry(config, collectionName, collection), options.cwd);
 
   return { message: `Collection "${collectionName}" added successfully` };
 }

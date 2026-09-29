@@ -2,14 +2,14 @@ import { computed } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 
-interface FilterState {
+export interface FilterState {
   selectedLocales: string[];
   selectedStatuses: TranslationStatus[];
   sortField: 'key' | 'status';
   sortDirection: 'asc' | 'desc';
 }
 
-const initialFilterState: FilterState = {
+export const initialFilterState: FilterState = {
   selectedLocales: [],
   selectedStatuses: [],
   sortField: 'key',

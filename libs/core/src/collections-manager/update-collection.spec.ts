@@ -1,24 +1,28 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { noop } from 'lodash';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
+import type { TranslationConfig } from '../config/translation-config';
+import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import {
+  CollectionAlreadyExistsError,
+  CollectionNotFoundError,
+  InvalidLocaleError,
+  ReadOnlyCollectionError,
+} from '../lib/errors/lingo-tracker-error';
+import type { ResourceEntries } from '../resource/resource-entry';
+import type { TrackerMetadata } from '../resource/tracker-metadata';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { updateCollection } from './update-collection';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { SafeAny } from '../constants';
 
-vi.mock('node:fs');
-vi.mock('./add-locale-to-collection', () => ({
-  addLocaleToCollection: vi
-    .fn()
-    .mockResolvedValue({ message: 'ok', entriesBackfilled: 0, filesUpdated: 0, mutations: [] }),
-}));
-vi.mock('./remove-locale-from-collection', () => ({
-  removeLocaleFromCollection: vi
-    .fn()
-    .mockResolvedValue({ message: 'ok', entriesPurged: 0, filesUpdated: 0, mutations: [] }),
-}));
+const TRANSLATION: TranslationConfig = { enabled: false, provider: 'none', apiKeyEnv: 'NONE' };
 
 describe('updateCollection', () => {
-  const baseConfig = {
+  const tempDir = useTempDir();
+  const cwd = (): string => tempDir();
+  const i18n = (): string => join(tempDir(), 'i18n');
+
+  const config = (): LingoTrackerConfig => ({
     exportFolder: 'dist/lingo-export',
     importFolder: 'dist/lingo-import',
     baseLocale: 'en',
@@ -26,180 +30,204 @@ describe('updateCollection', () => {
     collections: {
       myApp: {
         translationsFolder: './i18n',
+        exportFolder: 'custom/export',
+        importFolder: 'custom/import',
         locales: ['en', 'es', 'fr-ca'],
+        translation: TRANSLATION,
       },
+      other: { translationsFolder: './other' },
     },
-  } as SafeAny;
-
-  beforeEach(async () => {
-    vi.clearAllMocks();
-    vi.mocked(fs.existsSync).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(baseConfig, null, 2) as SafeAny);
-    vi.mocked(fs.writeFileSync).mockImplementation(noop);
   });
 
-  it('returns a success message', async () => {
+  const writeConfig = (value: LingoTrackerConfig = config()): void =>
+    writeFileSync(join(tempDir(), CONFIG_FILENAME), JSON.stringify(value));
+  const readConfig = (): LingoTrackerConfig => JSON.parse(readFileSync(join(tempDir(), CONFIG_FILENAME), 'utf8'));
+  const readFolder = (folder: string): { entries: ResourceEntries; meta: TrackerMetadata } => ({
+    entries: JSON.parse(readFileSync(join(i18n(), folder, RESOURCE_ENTRIES_FILENAME), 'utf8')),
+    meta: JSON.parse(readFileSync(join(i18n(), folder, TRACKER_META_FILENAME), 'utf8')),
+  });
+
+  beforeEach(() => {
+    writeConfig();
+    seedResources(testCollection(i18n(), { locales: ['en', 'es', 'fr-ca'] }), {
+      'apps.ok': { source: 'OK', translations: { es: 'Vale', 'fr-ca': 'OK' } },
+    });
+  });
+
+  it('keeps the translation override when only the tags change, whether the caller carries the record over (CLI) or not', async () => {
+    const stored = config().collections['myApp'];
+
+    const result = await updateCollection('myApp', undefined, { ...stored, tags: ['Team X'] }, { cwd: cwd() });
+    expect(result).toEqual({ message: 'Collection "myApp" updated successfully', mutations: [] });
+    expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-x'] });
+
+    await updateCollection('myApp', undefined, { tags: ['Team Y'] }, { cwd: cwd() });
+    expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-y'] });
+  });
+
+  it('keeps translation, exportFolder and importFolder through the Tracker form payload, which never sends them', async () => {
+    // The shape CollectionFormDialog#buildResult sends on PUT /collections/:name.
+    const trackerPayload = {
+      translationsFolder: './i18n',
+      locales: ['en', 'es', 'fr-ca'],
+      readOnly: false,
+      tags: ['Team X'],
+    };
+
+    await updateCollection('myApp', undefined, trackerPayload, { cwd: cwd() });
+
+    expect(readConfig().collections['myApp']).toEqual({ ...config().collections['myApp'], tags: ['team-x'] });
+  });
+
+  it('clears a setting with its empty value (tags: [], readOnly: false, protectedTermsFile: "")', async () => {
+    const stored = { ...config().collections['myApp'], readOnly: true, tags: ['a'], protectedTermsFile: 'terms.json' };
+    writeConfig({ ...config(), collections: { ...config().collections, myApp: stored } });
+
+    await updateCollection('myApp', undefined, { tags: [], readOnly: false, protectedTermsFile: '' }, { cwd: cwd() });
+
+    expect(readConfig().collections['myApp']).toEqual(config().collections['myApp']);
+  });
+
+  it('seeds the files for an added locale and purges a removed one, then writes the config once', async () => {
     const result = await updateCollection(
       'myApp',
       undefined,
-      { translationsFolder: './i18n', locales: ['en', 'es', 'fr-ca'] },
-      { cwd: '/test' },
+      { translationsFolder: './i18n', locales: ['en', 'es', 'de'] },
+      { cwd: cwd() },
     );
-    expect(result.message).toContain('updated successfully');
+
+    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
+    const { entries, meta } = readFolder('apps');
+    expect(entries['ok']).toEqual({ source: 'OK', es: 'Vale', de: 'OK' });
+    expect(meta['ok']?.['de']?.status).toBe('new');
+    expect(meta['ok']?.['fr-ca']).toBeUndefined();
+    expect(readConfig().collections['myApp']).toEqual({
+      ...config().collections['myApp'],
+      locales: ['en', 'es', 'de'],
+    });
   });
 
-  it('calls addLocaleToCollection for each newly added locale', async () => {
-    const { addLocaleToCollection } = await import('./add-locale-to-collection');
+  it('never removes the base locale, and touches no files when the locales are unchanged or left out', async () => {
+    for (const locales of [['es', 'fr-ca'], ['en', 'es', 'fr-ca'], undefined]) {
+      const result = await updateCollection(
+        'myApp',
+        undefined,
+        { translationsFolder: './i18n', locales },
+        { cwd: cwd() },
+      );
+
+      expect(result.mutations).toEqual([]);
+      expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
+    }
+  });
+
+  it('stores an empty locales list as inherit, and the files follow the global locales', async () => {
+    writeConfig({ ...config(), locales: ['en', 'es'] });
+
+    await updateCollection('myApp', undefined, { locales: [] }, { cwd: cwd() });
+
+    expect(readConfig().collections['myApp']).not.toHaveProperty('locales');
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale' });
+  });
+
+  it('seeds the added locales before purging the removed ones, so a seeding failure costs no data', async () => {
+    writeFolderFiles(i18n(), 'broken', { entries: '{ not json' });
+
+    await expect(
+      updateCollection('myApp', undefined, { locales: ['en', 'es', 'de'] }, { cwd: cwd() }),
+    ).rejects.toThrow();
+
+    expect(readFolder('apps').entries['ok']?.['fr-ca']).toBe('OK');
+    expect(readConfig()).toEqual(config());
+  });
+
+  it('applies the locale changes to the new translations folder when the folder changes in the same update', async () => {
+    const moved = join(tempDir(), 'moved');
+    seedResources(testCollection(moved, { locales: ['en', 'es', 'fr-ca'] }), {
+      'apps.ok': { source: 'OK', translations: { es: 'Vale', 'fr-ca': 'OK' } },
+    });
+
+    const result = await updateCollection(
+      'myApp',
+      'renamed',
+      { translationsFolder: './moved', locales: ['en', 'es', 'de'] },
+      { cwd: cwd() },
+    );
+
+    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: moved }]);
+    const movedEntries: ResourceEntries = JSON.parse(
+      readFileSync(join(moved, 'apps', RESOURCE_ENTRIES_FILENAME), 'utf8'),
+    );
+    expect(movedEntries['ok']).toEqual({ source: 'OK', es: 'Vale', de: 'OK' });
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
+    expect(readConfig().collections['renamed']?.translationsFolder).toBe('./moved');
+  });
+
+  it('never seeds or purges a base locale, old or new, when the base locale changes in the same update', async () => {
+    await updateCollection('myApp', undefined, { baseLocale: 'de', locales: ['de', 'es'] }, { cwd: cwd() });
+
+    // de is the new base (not seeded as a translation), en the old one (not purged), fr-ca is gone.
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale' });
+    expect(readConfig().collections['myApp']).toEqual({
+      ...config().collections['myApp'],
+      baseLocale: 'de',
+      locales: ['de', 'es'],
+    });
+  });
+
+  it('diffs against the global locales when the collection inherits them', async () => {
+    writeConfig({
+      ...config(),
+      locales: ['en', 'es', 'fr-ca'],
+      collections: { myApp: { translationsFolder: './i18n' } },
+    });
+
     await updateCollection(
       'myApp',
       undefined,
       { translationsFolder: './i18n', locales: ['en', 'es', 'fr-ca', 'de'] },
-      { cwd: '/test' },
-    );
-
-    expect(addLocaleToCollection).toHaveBeenCalledOnce();
-    expect(addLocaleToCollection).toHaveBeenCalledWith('myApp', 'de', { cwd: '/test' });
-  });
-
-  it('calls removeLocaleFromCollection for each removed locale', async () => {
-    const { removeLocaleFromCollection } = await import('./remove-locale-from-collection');
-    await updateCollection(
-      'myApp',
-      undefined,
-      { translationsFolder: './i18n', locales: ['en', 'es'] },
-      { cwd: '/test' },
-    );
-
-    expect(removeLocaleFromCollection).toHaveBeenCalledOnce();
-    expect(removeLocaleFromCollection).toHaveBeenCalledWith('myApp', 'fr-ca', { cwd: '/test' });
-  });
-
-  it('does not call add or remove when locales are unchanged', async () => {
-    const { addLocaleToCollection } = await import('./add-locale-to-collection');
-    const { removeLocaleFromCollection } = await import('./remove-locale-from-collection');
-
-    await updateCollection(
-      'myApp',
-      undefined,
-      { translationsFolder: './i18n', locales: ['en', 'es', 'fr-ca'] },
-      { cwd: '/test' },
-    );
-
-    expect(addLocaleToCollection).not.toHaveBeenCalled();
-    expect(removeLocaleFromCollection).not.toHaveBeenCalled();
-  });
-
-  it('does not diff when new locales list is empty (inherit global)', async () => {
-    const { addLocaleToCollection } = await import('./add-locale-to-collection');
-    const { removeLocaleFromCollection } = await import('./remove-locale-from-collection');
-
-    await updateCollection('myApp', undefined, { translationsFolder: './i18n', locales: [] }, { cwd: '/test' });
-
-    expect(addLocaleToCollection).not.toHaveBeenCalled();
-    expect(removeLocaleFromCollection).not.toHaveBeenCalled();
-  });
-
-  it('does not diff when locales is undefined', async () => {
-    const { addLocaleToCollection } = await import('./add-locale-to-collection');
-    const { removeLocaleFromCollection } = await import('./remove-locale-from-collection');
-
-    await updateCollection('myApp', undefined, { translationsFolder: './i18n' }, { cwd: '/test' });
-
-    expect(addLocaleToCollection).not.toHaveBeenCalled();
-    expect(removeLocaleFromCollection).not.toHaveBeenCalled();
-  });
-
-  it('never removes the base locale even if omitted from the new list', async () => {
-    const { removeLocaleFromCollection } = await import('./remove-locale-from-collection');
-
-    await updateCollection(
-      'myApp',
-      undefined,
-      { translationsFolder: './i18n', locales: ['es', 'fr-ca'] },
-      { cwd: '/test' },
-    );
-
-    // en is baseLocale — should not be passed to removeLocaleFromCollection
-    const calls = vi.mocked(removeLocaleFromCollection).mock.calls;
-    expect(calls.every(([, locale]) => locale !== 'en')).toBe(true);
-  });
-
-  it('returns a rename message when newCollectionName differs', async () => {
-    const result = await updateCollection('myApp', 'renamedApp', { translationsFolder: './i18n' }, { cwd: '/test' });
-    expect(result.message).toContain('renamed');
-  });
-
-  it('writes the config file to the correct path', async () => {
-    await updateCollection('myApp', undefined, { translationsFolder: './i18n' }, { cwd: '/project' });
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls.at(-1);
-    expect(writeCall?.[0]).toBe(path.resolve('/project', '.lingo-tracker.json'));
-  });
-
-  it('throws when translationsFolder is blank', async () => {
-    await expect(updateCollection('myApp', undefined, { translationsFolder: '  ' }, { cwd: '/test' })).rejects.toThrow(
-      'translationsFolder is required',
-    );
-  });
-
-  it('throws when collection is not found', async () => {
-    await expect(
-      updateCollection('nonexistent', undefined, { translationsFolder: './i18n' }, { cwd: '/test' }),
-    ).rejects.toThrow();
-  });
-
-  it('persists normalized tags when provided', async () => {
-    await updateCollection(
-      'myApp',
-      undefined,
-      { translationsFolder: './i18n', tags: ['Team X', 'feature-a', 'Team X'] },
-      { cwd: '/test' },
-    );
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls.at(-1);
-    const writtenConfig = JSON.parse(writeCall?.[1] as string);
-    expect(writtenConfig.collections.myApp.tags).toEqual(['team-x', 'feature-a']);
-  });
-
-  it('clears tags when empty array passed', async () => {
-    vi.mocked(fs.readFileSync).mockReturnValue(
-      JSON.stringify(
-        {
-          ...baseConfig,
-          collections: { myApp: { translationsFolder: './i18n', tags: ['team-x'] } },
-        },
-        null,
-        2,
-      ) as SafeAny,
-    );
-
-    await updateCollection('myApp', undefined, { translationsFolder: './i18n', tags: [] }, { cwd: '/test' });
-
-    const writeCall = vi.mocked(fs.writeFileSync).mock.calls.at(-1);
-    const writtenConfig = JSON.parse(writeCall?.[1] as string);
-    expect(writtenConfig.collections.myApp.tags).toBeUndefined();
-  });
-
-  it('uses global config locales as baseline when collection has no explicit locales', async () => {
-    const configWithoutCollectionLocales = {
-      ...baseConfig,
-      locales: ['en'],
-      collections: {
-        myApp: { translationsFolder: './i18n' }, // no locales key
+      {
+        cwd: cwd(),
       },
-    };
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(configWithoutCollectionLocales, null, 2) as SafeAny);
-
-    const { addLocaleToCollection } = await import('./add-locale-to-collection');
-    await updateCollection(
-      'myApp',
-      undefined,
-      { translationsFolder: './i18n', locales: ['en', 'de'] },
-      { cwd: '/test' },
     );
 
-    // 'en' is already in config.locales; only 'de' should be added
-    expect(addLocaleToCollection).toHaveBeenCalledOnce();
-    expect(addLocaleToCollection).toHaveBeenCalledWith('myApp', 'de', { cwd: '/test' });
+    expect(readFolder('apps').entries['ok']?.['de']).toBe('OK');
+  });
+
+  it('renames the collection', async () => {
+    const result = await updateCollection('myApp', 'renamed', { translationsFolder: './i18n' }, { cwd: cwd() });
+
+    expect(result.message).toBe('Collection "myApp" renamed to "renamed" and updated successfully');
+    expect(Object.keys(readConfig().collections)).toEqual(['renamed', 'other']);
+  });
+
+  it('throws on a rename collision before any locale file changes', async () => {
+    await expect(
+      updateCollection('myApp', 'other', { translationsFolder: './i18n', locales: ['en', 'de'] }, { cwd: cwd() }),
+    ).rejects.toThrow(CollectionAlreadyExistsError);
+
+    expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
+    expect(readConfig()).toEqual(config());
+  });
+
+  it.each([
+    ['an unknown collection', 'nope', { translationsFolder: './i18n' }, CollectionNotFoundError],
+    ['a blank translationsFolder', 'myApp', { translationsFolder: '  ' }, Error],
+    ['a malformed added locale', 'myApp', { translationsFolder: './i18n', locales: ['en', 'x!'] }, InvalidLocaleError],
+  ])('rejects %s and writes nothing', async (_label, name, collection, error) => {
+    await expect(updateCollection(name, undefined, collection, { cwd: cwd() })).rejects.toThrow(error);
+
+    expect(readConfig()).toEqual(config());
+  });
+
+  it('refuses a locale change on a read-only collection', async () => {
+    const readOnly = config();
+    readOnly.collections['myApp'].readOnly = true;
+    writeConfig(readOnly);
+
+    await expect(
+      updateCollection('myApp', undefined, { translationsFolder: './i18n', locales: ['en', 'de'] }, { cwd: cwd() }),
+    ).rejects.toThrow(ReadOnlyCollectionError);
+    expect(readConfig()).toEqual(readOnly);
   });
 });

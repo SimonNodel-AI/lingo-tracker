@@ -1,130 +1,100 @@
-import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
-import { createConfigFileOperations, updateConfig } from '../lib/config/config-file-operations';
-import { openCollection } from '../lib/config/open-collection';
-import { CollectionAlreadyExistsError, CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
-import type { ResourceMutation } from '../lib/resource/resource-mutation';
-import { addLocaleToCollection } from './add-locale-to-collection';
-import { removeLocaleFromCollection } from './remove-locale-from-collection';
+import { patchCollectionEntry } from '../lib/config/collection-entry';
+import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { type Collection, openCollection } from '../lib/config/open-collection';
+import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
+import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
+import { assertValidLocale } from './assert-valid-locale';
+import { dropLocaleFiles, seedLocaleFiles } from './locale-files';
 
 export interface UpdateCollectionOptions {
   cwd?: string;
 }
 
 /**
- * Updates (and optionally renames) a collection's config entry.
+ * Changes (and optionally renames) a collection's config entry.
  *
- * NOTE: This uses **full-replace** semantics — the stored collection is rebuilt from the
- * passed `collection`, persisting only fields that differ from the global config. Any
- * optional field omitted from `collection` (including `readOnly`, `translation`,
- * `exportFolder`, `importFolder`, `locales`) is therefore dropped from the entry. Callers
- * performing a partial update must send the full desired collection config, not just the
- * changed fields.
+ * **Patch** semantics, through the Collection Entry (`lib/config/collection-entry.ts`): a
+ * field `patch` sets replaces the stored value, and a field left out (or `undefined`) keeps
+ * it. So `{ tags: [] }` clears the tags, `{ readOnly: false }` clears the flag,
+ * `{ locales: [] }` returns to the global locales, `''` clears `exportFolder`, `importFolder`,
+ * `baseLocale` or `protectedTermsFile` (the collection inherits), and a patch that does not mention `translation`, `exportFolder` or `importFolder`
+ * leaves them as they are. The stored record is then re-minimized: a value equal to the
+ * global one is stored as inherited.
+ *
+ * The translation files follow the collection's effective locales (its own list, else the
+ * global one): every locale the update adds is seeded, every locale it removes is purged,
+ * and a base locale (old or new) is never seeded or purged. The files are those of the
+ * collection as it will be after the update, so a patch that also changes
+ * `translationsFolder` or `baseLocale` seeds and purges the new folder with the new base
+ * locale. The order is: validate everything (existence, rename collision, read-only, locale
+ * format), seed the added locales, purge the removed ones, then write the config once. A
+ * seeding failure therefore never costs a removed locale its data.
  *
  * `mutations` holds what the locale changes (if any) wrote to the translation files. The
  * config change itself is not a resource mutation; callers that cache a collection's tree
  * must also drop it for the old and new translations folders.
+ *
+ * @throws {CollectionNotFoundError} No collection named `collectionName`.
+ * @throws {CollectionAlreadyExistsError} A collection named `newCollectionName` exists.
+ * @throws {InvalidCollectionError} The resulting `translationsFolder` is missing or blank, or a field is `null`.
+ * @throws {ReadOnlyCollectionError} The locales change and the collection is read-only.
+ * @throws {InvalidLocaleError} An added locale is malformed.
  */
 export async function updateCollection(
   collectionName: string,
   newCollectionName: string | undefined,
-  collection: LingoTrackerCollection,
+  patch: Partial<LingoTrackerCollection>,
   options: UpdateCollectionOptions = {},
 ): Promise<{ message: string; mutations: ResourceMutation[] }> {
-  if (!collection || !collection.translationsFolder || !collection.translationsFolder.trim()) {
-    throw new Error('translationsFolder is required');
-  }
-
   const { cwd } = options;
-  const newLocales = collection.locales;
-  const mutations: ResourceMutation[] = [];
+  const configFile = createConfigFileOperations({ cwd });
+  const config = configFile.read();
 
-  // Only diff when caller provides an explicit, non-empty locales array.
-  // An empty/undefined list means "inherit from global" — no translation files are touched.
-  if (newLocales !== undefined && newLocales.length > 0) {
-    // Read config here only to diff existing vs new locales; updateConfig below will re-read the already-mutated file.
-    const existing = openCollection(createConfigFileOperations({ cwd }).read(), collectionName, { cwd });
-    const { locales: existingLocales, baseLocale } = existing;
-
-    const addedLocales = newLocales.filter((l) => !existingLocales.includes(l));
-    // Never try to remove the base locale — it can only be set at create time.
-    const removedLocales = existingLocales.filter((l) => !newLocales.includes(l) && l !== baseLocale);
-
-    for (const locale of removedLocales) {
-      mutations.push(...(await removeLocaleFromCollection(collectionName, locale, { cwd })).mutations);
-    }
-
-    for (const locale of addedLocales) {
-      mutations.push(...(await addLocaleToCollection(collectionName, locale, { cwd })).mutations);
-    }
-  }
-
-  const trimmedTranslationsFolder = collection.translationsFolder.trim();
+  // Validate and build the new config before anything is written.
+  const nextConfig = patchCollectionEntry(config, collectionName, patch, newCollectionName);
   const targetName = newCollectionName || collectionName;
-  const isRename = newCollectionName && newCollectionName !== collectionName;
+  const current = openCollection(config, collectionName, { cwd });
+  const next = openCollection(nextConfig, targetName, { cwd });
+  const { added, removed } = diffLocales(current, next);
 
-  updateConfig((config) => {
-    if (!config.collections || !config.collections[collectionName]) {
-      throw new CollectionNotFoundError(collectionName);
+  const mutations: ResourceMutation[] = [];
+  if (added.length > 0 || removed.length > 0) {
+    if (current.readOnly) {
+      throw new ReadOnlyCollectionError(collectionName);
     }
-
-    if (isRename && config.collections[targetName]) {
-      throw new CollectionAlreadyExistsError(targetName);
+    for (const locale of added) {
+      assertValidLocale(locale);
     }
-
-    const minimalCollection: LingoTrackerCollection = {
-      translationsFolder: trimmedTranslationsFolder,
-    };
-
-    if (collection.exportFolder !== undefined && collection.exportFolder !== config.exportFolder) {
-      minimalCollection.exportFolder = collection.exportFolder;
+    // Additive work first, so a failure here leaves every removed locale's data on disk.
+    for (const locale of added) {
+      seedLocaleFiles(next, locale);
     }
-
-    if (collection.importFolder !== undefined && collection.importFolder !== config.importFolder) {
-      minimalCollection.importFolder = collection.importFolder;
+    for (const locale of removed) {
+      dropLocaleFiles(next, locale);
     }
-
-    if (collection.baseLocale !== undefined && collection.baseLocale !== config.baseLocale) {
-      minimalCollection.baseLocale = collection.baseLocale;
-    }
-
-    if (collection.locales !== undefined && JSON.stringify(collection.locales) !== JSON.stringify(config.locales)) {
-      minimalCollection.locales = collection.locales;
-    }
-
-    // Persist read-only only when set; passing false (or omitting) clears the flag, making the collection writable.
-    if (collection.readOnly) {
-      minimalCollection.readOnly = true;
-    }
-
-    const normalizedTags = normalizeTags(collection.tags ?? []);
-    if (normalizedTags.length > 0) {
-      minimalCollection.tags = normalizedTags;
-    }
-
-    const protectedTermsFile = collection.protectedTermsFile?.trim();
-    if (protectedTermsFile) {
-      minimalCollection.protectedTermsFile = protectedTermsFile;
-    }
-
-    if (isRename) {
-      delete config.collections[collectionName];
-    }
-
-    return {
-      ...config,
-      collections: {
-        ...config.collections,
-        [targetName]: minimalCollection,
-      },
-    };
-  }, cwd);
-
-  if (isRename) {
-    return {
-      message: `Collection "${collectionName}" renamed to "${targetName}" and updated successfully`,
-      mutations,
-    };
+    mutations.push(reindexMutation(next.translationsFolder));
   }
-  return { message: `Collection "${collectionName}" updated successfully`, mutations };
+
+  configFile.write(nextConfig);
+
+  const message =
+    targetName === collectionName
+      ? `Collection "${collectionName}" updated successfully`
+      : `Collection "${collectionName}" renamed to "${targetName}" and updated successfully`;
+  return { message, mutations };
+}
+
+/** Which effective locales `next` adds to and removes from `current`. A base locale is never in either list. */
+function diffLocales(
+  current: Pick<Collection, 'locales' | 'baseLocale'>,
+  next: Pick<Collection, 'locales' | 'baseLocale'>,
+): { added: string[]; removed: string[] } {
+  // A base locale is always present: it is never seeded or purged. The old base locale is protected
+  // too, because purging it would destroy the source values.
+  const isBase = (locale: string): boolean => locale === current.baseLocale || locale === next.baseLocale;
+  return {
+    added: next.locales.filter((locale) => !current.locales.includes(locale) && !isBase(locale)),
+    removed: current.locales.filter((locale) => !next.locales.includes(locale) && !isBase(locale)),
+  };
 }

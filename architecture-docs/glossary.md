@@ -6,6 +6,16 @@ Return to [architecture README](README.md).
 
 ---
 
+## A
+
+### API Error
+
+The one error value the Tracker UI sees for a failed API request (`ApiError` in `apps/tracker/src/app/shared/api-error/api-error.ts`). A functional `HttpClient` interceptor, installed once by `provideTrackerHttpClient()`, converts every failed response at the HTTP seam — every `HttpClient` request goes through it, the API clients and the Transloco loader alike — so Angular's `HttpErrorResponse` never reaches a store or a dialog. An `ApiError` carries a `kind` shrunk to what a consumer branches on (`invalid`, `not-found`, `conflict`, `other`), the real HTTP `status`, the `serverMessage` of the API's `{ statusCode, message, error }` body when it had one, and the body's `errors` array as `details` (bundle rule messages, preferred-terminology rule errors). Consumers decide with `kind` and show `apiErrorMessage(error, fallback)`: the server's message, else their own localized fallback. No status is special: the API's catch-all answers an unmapped exception with a 500 that carries no message, so it lands on the fallback by the same rule, and a 500 that does carry one (an `InvalidConfigError` naming what is wrong with `.lingo-tracker.json`) is shown as is. It is the Tracker's counterpart of the [typed errors](#typed-errors) the API maps to HTTP.
+
+Explained in context: [`frontend.md`](frontend.md#api-errors--one-adapter-at-the-http-seam), [`api.md`](api.md#error-mapping)
+
+---
+
 ## B
 
 ### Base Locale
@@ -15,6 +25,14 @@ The authoritative source language for all translation resources — the locale w
 Tracker metadata for the base locale omits `status` and `baseChecksum`; only `checksum` is stored (the MD5 of the base value itself).
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
+
+---
+
+### Browser Session
+
+The one path that opens a [collection](#collection) in the Tracker UI. In code, `openCollection(settings)` in `apps/tracker/src/app/browser/store/features/with-browser-session.feature.ts`, a feature of the root-provided `BrowserStore`. It takes a `CollectionSettings`, the Tracker's [resolved collection](#collection) (`resolveCollectionSettings(config, name)` in `apps/tracker/src/app/collections/store/collection-settings.ts`, with core's rules: `baseLocale` is the collection value if it is non-empty, else the global one if non-empty, else `en` (`||`, so an empty string falls through); `locales` collection, else global, else none; `translationEnabled` from the collection `translation` config, else the global one, not merged; `readOnly`). It bumps the session counter `sessionId`, starts every store feature at its own initial state (each feature exports it; the session names no other feature's fields), stores the settings as `collectionSettings` (with the projections `selectedCollection`, `availableLocales`, `baseLocale`, `isReadOnly`), restores the collection's saved view preferences (`restoreViewPreferences`, owned by the view-preferences feature, which reads a missing or retired `medium` density as `compact`), and starts index polling. Store loaders capture `sessionId` when a request starts and drop the response if another open has happened since (`captureSession`/`withinSession` in `apps/tracker/src/app/browser/store/session-guard.ts`), so a slow response from the previous collection, or from an earlier open of the same one, never lands in the new session. This includes the entry writes (`createResource`, `updateResource`, `deleteResource`, `translateResource`): each still resolves its Observable for the caller, but only patches or drops a cache row while its own session is still open, so the translation editor dialog's save cannot land in a collection that replaced the one it was editing. Because the store outlives the route, this is what keeps one collection's search results, folder selection, folder tree or pending folder operation from showing up in the next collection. **Re-entering the open collection is not an open**: the user keeps their place (folder, expansion, search box and results, filters), and only `updateSettings(settings)` runs. A `readOnly` or `translationEnabled` change writes the changed settings in place; equal settings, as on an unrelated config reload, are a no-op. A change to `locales`, `baseLocale` or `translationsFolder` invalidates data cached under the old settings, so `updateSettings` runs `openCollection(settings)` instead — a fresh session, with the collection's saved view preferences restored against its current locales (dropping any locale the collection no longer has, so it cannot leave a stale column on screen or in storage). `collectionSettings` is the browser's one source of settings, `translationEnabled` and `translationsFolder` included. The `TranslationBrowser` route component is the only production caller of both methods.
+
+Explained in context: [`frontend.md`](frontend.md#browserstore--feature-composition)
 
 ---
 
@@ -67,9 +85,17 @@ Collections may declare a `tags?: string[]` array. These are **collection-level 
 
 Example collections from the project's own config: `trackerResources` (the Tracker UI's own strings), `TestDataPlayground`, and `mockDesignSystem`.
 
-**Collection (resolved).** Code outside the config module never reads a collection's raw entry to get its settings. `openCollection(config, name)` in `@simoncodes-ca/core` returns a `Collection` with the effective values: `baseLocale` (collection, else global, else `en`), `locales` (collection, else global, else none), `targetLocales` (the locales without the base locale), `translationConfig` (collection, else global; the two are not merged), the absolute `translationsFolder`, normalized `tags`, `protectedTermsFiles` (the paths of the global and collection [protected-terms](#protected-term) files, resolved but not read), and `readOnly`. It throws `CollectionNotFoundError` for an unknown name, and `ReadOnlyCollectionError` when `{ writable: true }` is set on a read-only collection. The CLI and the API both open collections this way. Every resource and folder operation (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `translateLocale`, `createFolder`, `deleteFolder`, `moveFolder`) takes the opened `Collection` as its first parameter, like the [Import run](#import-run), so the base locale and locales come only from it.
+**Collection (resolved).** Code outside the config module never reads a collection's raw entry to get its settings. `openCollection(config, name)` in `@simoncodes-ca/core` returns a `Collection` with the effective values: `baseLocale` (collection, else global, else `en`), `locales` (collection, else global, else none), `targetLocales` (the locales without the base locale), `translationConfig` (collection, else global; the two are not merged), the absolute `translationsFolder`, normalized `tags`, `termFiles` (the paths of the [protected-terms](#protected-term) and [preferred-terminology](#preferred-terminology) files, resolved but not read; `readProjectTerms(collection)` reads them as the [Project Terms](#project-terms)), and `readOnly`. It throws `CollectionNotFoundError` for an unknown name, and `ReadOnlyCollectionError` when `{ writable: true }` is set on a read-only collection. The CLI and the API both open collections this way. Every resource and folder operation (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `translateLocale`, `createFolder`, `deleteFolder`, `moveFolder`) takes the opened `Collection` as its first parameter, like the [Import run](#import-run), so the base locale and locales come only from it.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`cli.md`](cli.md), [`core-library.md`](core-library.md#config-and-collection-resolution)
+
+---
+
+### Collection Entry
+
+The write side of a [collection's](#collection) record in `.lingo-tracker.json`: the one place that decides what the stored entry contains. In code, `libs/core/src/lib/config/collection-entry.ts` holds three pure functions over the in-memory config: `toCollectionEntry(config, collection)` builds the record (`translationsFolder`, trimmed, plus only the settings that differ from the global config, so a collection inherits by omission; `translation` is kept verbatim; `readOnly` only when true; tags normalized), `addCollectionEntry` registers it (a folder under `node_modules` is read-only unless the caller decides) and `patchCollectionEntry` changes it, with an optional rename in place. Patch semantics: a field the patch sets replaces the stored value (a setting is cleared, so the collection inherits, with its empty value: `tags: []`, `readOnly: false`, `locales: []`, and `''` for `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`; `translation` has no empty value and cannot be cleared by a patch, only replaced), a field set to `null` is `InvalidCollectionError`, and a field left out or `undefined` keeps its stored value, so a client that never sends `translation`, `exportFolder` or `importFolder` cannot lose them; the merged record is then re-minimized. An empty `locales` list means inherit, never "no locales". The rule for every field is listed once, keyed by the `LingoTrackerCollection` type, so a new field does not compile until its rule is written. `addCollection`, `updateCollection` and `setCollectionProtectedTermsFile` build the new config through it and then write once; `updateCollection` validates first (existence, rename collision, read-only, locale format), seeds the added locales, purges the removed ones, then writes. The errors are typed: `CollectionNotFoundError`, `CollectionAlreadyExistsError`, `InvalidCollectionError`.
+
+Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
 
 ---
 
@@ -97,6 +123,14 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ---
 
+### Config Write
+
+One write to `.lingo-tracker.json` from the Tracker UI, and the one way its outcome comes back. In code, `injectConfigWrite(store)` in `apps/tracker/src/app/collections/store/config-write.ts` returns the function that runs one, and every mutation of `CollectionsStore` is: `createCollection`, `updateCollection`, `deleteCollection`, `updateGlobalConfig`, and the bundle feature's `createBundle`, `updateBundle`, `deleteBundle`. Each sends its request, reloads `GET /api/config`, stores the config, and returns an Observable of that config, so the caller hears back only once the store already holds what the server holds; if that reload fails, the write still happened, so the Observable resolves with `null` and the store reports the load failure in `error`; a rejected write errors with the [API Error](#api-error) of the request (`conflict` for a taken name, `invalid` with the rule messages or the per-row preferred-terminology errors as `details`, anything else) and leaves the store as it was. The Observable is cold, like the browser store's entry writes: nothing is sent until the caller subscribes, and the caller owns the reaction. The collection and bundle form dialogs write through the store themselves, cannot be closed while the write is in flight, and close only on success; a taken name lands on the name field, any other refusal on an error line in the dialog (the bundle dialog lists the server's rule messages). The collections manager toasts a create or edit only when a dialog closes with a saved result, and awaits a delete's outcome before it toasts. The settings page handles its save outcome in the subscription: the saved config reseeds both lists and earns one toast (a failed reload earns the toast but keeps the lists); a refusal keeps every edit, shows its message, and maps rule errors onto the rows that were sent. The store's `error` signal reports only a failed load (the initial one, or the reload after a write).
+
+Explained in context: [`frontend.md`](frontend.md#collectionsstore)
+
+---
+
 ## E
 
 ### Export Run
@@ -121,7 +155,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Import Run
 
-One import of a set of resources into one locale of one [collection](#collection). A format adapter (`parseJsonImport`, `parseXliffImport`) turns a file into resources; `importResources(collection, resources, options)` in `libs/core/src/lib/import/import-resources.ts` does the rest: strategy defaults, Transloco reference resolution (migration only), placeholder normalization and auto-fix, validation, and the per-[folder](#resource-folder) merge. The state of one run (settings, changes, warnings, errors, written files) lives in an `ImportSession`.
+One import of a set of resources into one locale of one [collection](#collection). A format adapter (`parseJsonImport`, `parseXliffImport`) turns a file into resources; `importResources(collection, resources, options)` in `libs/core/src/lib/import/import-resources.ts` does the rest: strategy defaults, the collection's [Project Terms](#project-terms) (read once; a broken protected-terms file stops the run, a rule-file problem opens its warnings), Transloco reference resolution (migration only), placeholder normalization and auto-fix, validation, and the per-[folder](#resource-folder) merge. The state of one run (settings, terms, changes, warnings, errors, written files) lives in an `ImportSession`.
 
 Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 
@@ -131,7 +165,7 @@ Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 
 ### Locale Seeding
 
-What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. The API, the CLI and the Tracker do not decide this themselves.
+What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
 
 Explained in context: [`core-library.md`](core-library.md#locale-seeding)
 
@@ -159,13 +193,23 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 A global list of rules. Each rule maps a **discouraged** source-language term to the **preferred** term, with an optional `reason`. LingoTracker warns when a base-locale value uses a discouraged term, and suggests the preferred one. It never blocks. Only an unreadable rule file fails `validate`.
 
-The rules are project configuration rather than resource data. They live in a standalone JSON file, a bare array of rule objects. `.lingo-tracker.json` names that file with `preferredTerminologyFile`. Omit the setting and the rules fall back to `.lingo-tracker-preferred-terminology.json` beside the config. Collections cannot override the rules.
+The rules are project configuration rather than resource data. They live in a standalone JSON file, a bare array of rule objects. `.lingo-tracker.json` names that file with `preferredTerminologyFile`. Omit the setting and the rules fall back to `.lingo-tracker-preferred-terminology.json` beside the config. Collections cannot override the rules. Core reads the file as a term file (`lib/config/term-file.ts`, shared with the protected-terms files): a missing default file is an empty list, a missing named file is a warning, a file that exists but cannot be used (malformed JSON, the wrong shape, an invalid rule) is an error and reads as empty. Nothing is thrown; the problem travels with the [Project Terms](#project-terms) to whoever ran the check.
 
 Matching is case-insensitive and whole-word, and it covers only the text a reader sees. ICU arguments and selectors, Transloco placeholders, and tags are skipped. The pure rule and matching functions live in `libs/domain`, so the Tracker UI and core share them.
+
+The check runs in core, where the value is stored: `addResource` and `editResource` (on a supplied base value) return `terminology` (`findings`, one per rule the value breaks, and the rule-file `problems`); an [import run](#import-run) into the base locale adds one warning per finding and opens its warnings with a rule-file problem; `validateResources` reports findings as warnings and a broken rule file as a failure. The CLI and the API only render what core returned.
 
 Contrast with [Protected Term](#protected-term), which keeps a word unchanged in translations and blocks imports that alter it.
 
 Explained in context: [`docs/features/preferred-terminology.md`](../docs/features/preferred-terminology.md)
+
+---
+
+### Project Terms
+
+The terms and rules in force for an opened [collection](#collection): its [protected terms](#protected-term) (the global list united with the collection's own) and the project's [preferred terminology](#preferred-terminology). In code, `readProjectTerms(collection)` in `libs/core/src/lib/config/project-terms.ts` reads the files `openCollection` resolved into `Collection.termFiles` and returns `ProjectTerms`: `protectedTerms`, `preferredTerminology`, `problems` (every term file that is named but missing, a warning, or exists but cannot be used, an error) and `checkBaseValue(key, value)`, the advisory terminology check of a stored base value (its findings, and the rule-file problems that limited it). Opening a collection reads nothing; each operation reads the Project Terms once, and nothing is cached, so a long-running API sees a hand edit or `git pull` on its next request. Reading never throws. A consumer that guards values with the protected terms and has no advisory channel asks for `requireProtectedTerms(terms)`, which throws `ProtectedTermsFileError` for a broken protected-terms file: the [Translator](#translator) when it opens, and the [import run](#import-run) before it writes. The Translator reports a missing named protected-terms file in its `problems`. Every other consumer reports the problems: `addResource` and `editResource` in their `terminology` result, import in its `warnings`, export in its `warnings` and, for a broken protected-terms file, its `errors` (the command exits 1), `validate` as printed warnings and, for a broken rule file, a failure. The two file kinds share one term-file module (`term-file.ts`: pointer resolution, the missing-file rule, the read that reports instead of throwing, the write with typed errors); each kind adds only its item check and its serialization.
+
+Explained in context: [`core-library.md`](core-library.md#project-terms)
 
 ---
 
@@ -187,9 +231,9 @@ Example file:
 ]
 ```
 
-A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. The terms in force for a collection are read from `Collection.protectedTermsFiles` with `readProtectedTermsInForce`.
+A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. The commands that show or rewrite one file (`protected-terms`, the config endpoint) read it directly with `readGlobalProtectedTerms` / `readCollectionProtectedTerms`, which return the stored `terms` (and a `warning` for a named file that does not exist) and throw `ProtectedTermsFileError` for a file that is not a JSON array of strings.
 
-Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms), [`core-library.md`](core-library.md#protected-terms-resolution)
+Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms), [`core-library.md`](core-library.md#project-terms)
 
 ---
 
@@ -239,7 +283,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Resource Folder
 
-One folder of the translation hierarchy, seen as a unit: its `resource_entries.json` ([resource entries](#resource-entry)) and `tracker_meta.json` ([tracker metadata](#tracker-metadata)) are always read and written together. In code, `openResourceFolder()` returns a `ResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), and every core operation that changes resources goes through it. Whole-collection reads go through it too, by way of the [Collection Reader](#collection-reader). It computes checksums and applies the [staleness rule](#staleness-rule).
+One folder of the translation hierarchy, seen as a unit: its `resource_entries.json` ([resource entries](#resource-entry)) and `tracker_meta.json` ([tracker metadata](#tracker-metadata)) are always read and written together. In code, `openResourceFolder()` returns a `ResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), and every core operation that changes resources goes through it. Whole-collection reads go through it too, by way of the [Collection Reader](#collection-reader). It computes checksums and applies the [staleness rule](#staleness-rule); no caller builds `{ checksum, baseChecksum, status }` itself. Its operations: `setBase` (the staleness rule on a base change), `setTranslation`, `setStatus`, `setDetails`, `setEntry` (a lossless copy/replace: move, rename, add-resource reset), `seedLocale` (the one seeding rule: a missing locale becomes a copy of the base with status `new`, for add-locale and normalize), `dropLocale`, `remove`, and `normalizeEntry(key, values, targetLocales)`, [normalize's](core-library.md#normalization-pipeline) write path: it stores the given values, drops a stray base-locale property, re-records every target-locale translation with a current checksum and its stored status (a translation whose stored `baseChecksum` differs from the base checksum becomes `stale`, see [staleness](#staleness)), puts a changed base through the staleness rule and seeds the missing target locales. Locales outside the collection keep their values and metadata as they are. One rule holds everywhere: a locale value with no metadata counts as `new`, in the reader, in validate and after normalize.
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
@@ -301,13 +345,15 @@ The condition where a translation's `baseChecksum` no longer matches the [base l
 
 Staleness is detected automatically during resource reads — no explicit re-scan is required.
 
+Normalize makes the condition explicit. A target translation whose stored `baseChecksum` differs from the base checksum (for example after a git merge, where one branch changed the base and another verified the translation) becomes `stale` and gets the current `baseChecksum`. A translation whose value is a copy of the base becomes `new`, and a `new` translation stays `new`. Normalize does not erase the signal by re-recording the translation with its old status.
+
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`core-library.md`](core-library.md)
 
 ---
 
 ### Staleness Rule
 
-The one rule for what happens to translations when the [base locale](#base-locale) value changes (`applyBaseChange` in `libs/domain/src/lib/staleness.ts`): the base checksum is updated, every other locale's `baseChecksum` is set to the new base checksum, and its status becomes `stale` — or `new` when the translation is identical to the new base value (an untranslated copy). Edit, import, and normalize all use this rule. The same module holds `recordTranslation`, `needsTranslation`, and `resolveImportStatus`.
+The one rule for what happens to translations when the [base locale](#base-locale) value changes (`applyBaseChange` in `libs/domain/src/lib/staleness.ts`): the base checksum is updated, every other locale's `baseChecksum` is set to the new base checksum, and its status becomes `stale` — or `new` when the translation is identical to the new base value (an untranslated copy). Edit, import, and normalize all use this rule, through the [Resource Folder](#resource-folder)'s `setBase`; normalize re-records the translation checksums first, so the rule compares current values. The same module holds `recordTranslation`, `needsTranslation`, and `resolveImportStatus`.
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
@@ -382,7 +428,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Typed Errors
 
-The errors core raises on purpose. Each is a subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) with a stable `code` (for example `RESOURCE_NOT_FOUND`) and typed payload fields (for example `key`). The message text comes from `ErrorMessages`. Adapters decide with `instanceof`, never by matching the message: the API maps each class to one HTTP status in `LingoTrackerExceptionFilter`, and the CLI prints the message. Domain validators throw plain `Error`; core converts them to typed errors in one place.
+The errors core raises on purpose. Each is a subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) with a stable `code` (for example `RESOURCE_NOT_FOUND`) and typed payload fields (for example `key`). The message text comes from `ErrorMessages`. Adapters decide with `instanceof`, never by matching the message: the API maps each class to one HTTP status in `LingoTrackerExceptionFilter`, and the CLI prints the message. Domain validators throw plain `Error`; core converts them to typed errors in one place. A `.lingo-tracker.json` the server cannot use is typed too (`InvalidConfigError`, whose message names the field or pointer to fix), so its message survives the API's 500; an untyped failure answers a 500 with no message at all. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
 
 Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
 
@@ -415,6 +461,6 @@ Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
 
 ### Translator
 
-The one way core machine-translates text for a [collection](#collection). In code, `openTranslator(collection, { provider?, protectedTerms? })` in `libs/core/src/lib/translation/translator.ts` returns a `Translator` with one method, `translate(entries, locales) → { values, skipped }`. Opening it checks that the collection's translation config is enabled (`AutoTranslationDisabledError`) and, unless a provider is injected, reads the API key (`TranslationError` `MISSING_API_KEY`) and builds the configured provider. It reads the collection's protected terms once, unless they are passed (`ProtectedTermsFileError` for a malformed file). `translate` makes one provider call per locale and ignores the base locale. It never sends complex [ICU](#icu-format). It protects simple placeholders and skips a translation that lost a marker. It skips a translation that dropped a [protected term](#protected-term) present in the source. It returns every value normalized to ICU. Each skip carries a reason: `complex-icu`, `placeholder-mismatch` or `protected-term`. [Locale seeding](#locale-seeding), `translateExistingResource` and `translateLocale` all translate through it; they only choose what needs work (the [staleness rule](#staleness-rule)) and store the values. The provider is the seam: `GoogleTranslateV2Provider` in production, `InMemoryTranslationProvider` (a deterministic transform that records its calls, internal to core) in core's specs.
+The one way core machine-translates text for a [collection](#collection). In code, `openTranslator(collection, { provider?, protectedTerms? })` in `libs/core/src/lib/translation/translator.ts` returns a `Translator`: `translate(entries, locales) → { values, skipped }`, and `problems` (a named protected-terms file that does not exist). Opening it checks that the collection's translation config is enabled (`AutoTranslationDisabledError`) and, unless a provider is injected, reads the API key (`TranslationError` `MISSING_API_KEY`) and builds the configured provider. It reads the collection's [Project Terms](#project-terms) once for the protected terms, unless they are passed (`ProtectedTermsFileError` for a malformed file; a named file that does not exist is in `Translator.problems`, which its callers pass on as warnings). `translate` makes one provider call per locale and ignores the base locale. It never sends complex [ICU](#icu-format). It protects simple placeholders and skips a translation that lost a marker. It skips a translation that dropped a [protected term](#protected-term) present in the source. It returns every value normalized to ICU. Each skip carries a reason: `complex-icu`, `placeholder-mismatch` or `protected-term`. [Locale seeding](#locale-seeding), `translateExistingResource` and `translateLocale` all translate through it; they only choose what needs work (the [staleness rule](#staleness-rule)) and store the values. The provider is the seam: `GoogleTranslateV2Provider` in production, `InMemoryTranslationProvider` (a deterministic transform that records its calls, internal to core) in core's specs.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline)

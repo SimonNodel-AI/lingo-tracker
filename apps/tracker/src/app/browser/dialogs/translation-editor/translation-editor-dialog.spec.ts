@@ -1,4 +1,5 @@
-import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
+import { provideTrackerHttpClient, toApiError } from '../../../shared/api-error/api-error';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal, type WritableSignal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
@@ -96,7 +97,7 @@ describe('TranslationEditorDialog', () => {
     imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
     // Root-level, so the BrowserStore the dialog writes through sees the same mock.
     providers: [
-      provideHttpClient(),
+      provideTrackerHttpClient(),
       provideHttpClientTesting(),
       { provide: BrowserApiService, useFactory: () => mockBrowserApi },
     ],
@@ -1133,6 +1134,73 @@ describe('TranslationEditorDialog', () => {
     });
   });
 
+  describe('Create errors from the server', () => {
+    it('should open the conflict dialog and set shouldOpenEdit/existingResourceKey on a server-side 409', async () => {
+      mockBrowserApi.createResource.mockReturnValue(
+        throwError(() =>
+          toApiError(
+            new HttpErrorResponse({
+              status: 409,
+              statusText: 'Conflict',
+              error: { statusCode: 409, message: 'Resource already exists: common.buttons.ok' },
+            }),
+          ),
+        ),
+      );
+      mockDialog.open.mockReturnValue({ afterClosed: () => of(true) });
+
+      component.form.controls.key.setValue('ok');
+      component.form.controls.baseValue.setValue('OK');
+      component.form.controls.comment.setValue('The affirmative button');
+
+      await component.onSubmit();
+
+      expect(mockDialog.open).toHaveBeenCalled();
+      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
+      expect(result.shouldOpenEdit).toBe(true);
+      expect(result.existingResourceKey).toBe('common.buttons.ok');
+    });
+
+    it('should show the server message for a 400 the API rejected as invalid', async () => {
+      mockBrowserApi.createResource.mockReturnValue(
+        throwError(() =>
+          toApiError(
+            new HttpErrorResponse({
+              status: 400,
+              statusText: 'Bad Request',
+              error: { statusCode: 400, message: 'Invalid resource key' },
+            }),
+          ),
+        ),
+      );
+
+      component.form.controls.key.setValue('ok');
+      component.form.controls.baseValue.setValue('OK');
+      component.form.controls.comment.setValue('A comment');
+
+      await component.onSubmit();
+
+      expect(component.errorMessage()).toBe('Invalid resource key');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(mockDialog.open).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to the create-failed message for a network failure, which carries no server message', async () => {
+      mockBrowserApi.createResource.mockReturnValue(
+        throwError(() => toApiError(new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }))),
+      );
+
+      component.form.controls.key.setValue('ok');
+      component.form.controls.baseValue.setValue('OK');
+      component.form.controls.comment.setValue('A comment');
+
+      await component.onSubmit();
+
+      expect(component.errorMessage()).toBe('Failed to create translation');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Sticky similar values', () => {
     const hit = (fullKey: string, value: string): SearchResultDto => ({
       ...summary(fullKey, value),
@@ -1405,13 +1473,14 @@ describe('TranslationEditorDialog', () => {
 
       const editData = createMockData('edit', mockResource);
       mockBrowserApi.updateResource.mockReturnValue(
-        throwError(
-          () =>
+        throwError(() =>
+          toApiError(
             new HttpErrorResponse({
               status: 404,
               statusText: 'Not Found',
               error: { message: 'Resource not found' },
             }),
+          ),
         ),
       );
       renderDialog(editData);

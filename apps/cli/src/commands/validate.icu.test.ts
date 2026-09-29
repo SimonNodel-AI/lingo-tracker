@@ -14,9 +14,12 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CONFIG_FILENAME: '.lingo-tracker.json',
     validateResources: vi.fn(),
     generateValidationSummary: vi.fn(),
-    loadPreferredTerminology: vi.fn(() => ({
-      rules: [],
-      filePath: '/project/.lingo-tracker-preferred-terminology.json',
+    describeTermFileProblem: actual.describeTermFileProblem,
+    readProjectTerms: vi.fn(() => ({
+      protectedTerms: [],
+      preferredTerminology: [],
+      problems: [],
+      checkBaseValue: () => ({ findings: [], problems: [] }),
     })),
   };
 });

@@ -5,8 +5,6 @@ import {
   exportTargetLocales,
   type LingoTrackerConfig,
   openCollection,
-  readCollectionProtectedTerms,
-  readGlobalProtectedTerms,
   runExport,
   validateBasePropertyName,
   validateOutputDirectory,
@@ -105,8 +103,8 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       includeComment: options.includeComment,
       includeTags: options.includeTags,
       basePropertyName: options.basePropertyName,
+      // The do-not-translate notes come from each collection's Project Terms, read by the run.
       augmentProtectedTerms: options.protectNotes !== false,
-      protectedTerms: readProtectedTerms(config, collections, cwd),
       onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
     });
 
@@ -132,13 +130,6 @@ function openCollections(config: LingoTrackerConfig, cwd: string, names?: string
     throw new Error(NO_COLLECTIONS_MESSAGE);
   }
   return [...new Set(names ?? configured)].map((name) => openCollection(config, name, { cwd }));
-}
-
-function readProtectedTerms(config: LingoTrackerConfig, collections: readonly Collection[], cwd: string) {
-  return {
-    global: readGlobalProtectedTerms(config, cwd),
-    collections: Object.fromEntries(collections.map((c) => [c.name, readCollectionProtectedTerms(c.config, cwd)])),
-  };
 }
 
 function displayResults(result: ExportRunResult): void {

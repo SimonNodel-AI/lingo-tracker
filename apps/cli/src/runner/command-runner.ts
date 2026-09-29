@@ -161,8 +161,8 @@ function getCwd(): string {
  *
  * The runner owns, in order: the project root and the interactive rule; loading the
  * config; resolving and opening the collection; asking the questions; checking the
- * required options; cancellation; and turning a thrown error into `❌ <message>` and exit
- * code 1. It sets `process.exitCode` and returns; it never calls `process.exit()`.
+ * required options; cancellation; and turning a thrown error into `❌ <message>` (plus its `cause`'s
+ * message when that is an Error) and exit code 1. It sets `process.exitCode` and returns; it never calls `process.exit()`.
  */
 export function defineCommand<Options extends object>() {
   return <
@@ -287,7 +287,12 @@ function report(error: unknown, name: string): 0 | 1 {
     console.error(`❌ Failed to parse configuration file: ${error.reason}`);
     return 1;
   }
-  ConsoleFormatter.error(error instanceof Error ? error.message : String(error));
+  // A wrapping error may keep its message fixed (it can reach an API client) and hold the
+  // underlying reason, such as `EACCES: permission denied`, in `cause`; the CLI shows it.
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
+  if (cause instanceof Error) ConsoleFormatter.error(message, [cause.message]);
+  else ConsoleFormatter.error(message);
   return 1;
 }
 

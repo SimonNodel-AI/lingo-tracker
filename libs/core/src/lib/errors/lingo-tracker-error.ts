@@ -10,11 +10,16 @@ import { ErrorMessages, type FolderPathPart } from './error-messages';
  */
 export class LingoTrackerError extends Error {
   readonly code: string;
+  /** The underlying error, when this one wraps it. Not part of the message, so it never reaches a client. */
+  readonly cause?: unknown;
 
-  constructor(message: string, code: string) {
+  constructor(message: string, code: string, options?: { readonly cause?: unknown }) {
     super(message);
     this.name = new.target.name;
     this.code = code;
+    if (options && 'cause' in options) {
+      this.cause = options.cause;
+    }
   }
 }
 
@@ -39,6 +44,18 @@ export class ConfigParseError extends LingoTrackerError {
     super(ErrorMessages.jsonParseFailed(configPath, reason), 'CONFIG_PARSE_FAILED');
     this.configPath = configPath;
     this.reason = reason;
+  }
+}
+
+/**
+ * `.lingo-tracker.json` cannot be used: a required field is missing or has the wrong shape, a
+ * file pointer in it is not a string, or the file cannot be read or written. The message is
+ * fixed text that names only `.lingo-tracker.json` and, for a shape problem, the field; it never
+ * holds a path or an I/O detail, so an adapter can show it as is. An I/O failure is in `cause`.
+ */
+export class InvalidConfigError extends LingoTrackerError {
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message, 'INVALID_CONFIG', options);
   }
 }
 
@@ -84,6 +101,35 @@ export class ReadOnlyCollectionError extends LingoTrackerError {
   constructor(collectionName: string) {
     super(ErrorMessages.collectionReadOnly(collectionName), 'COLLECTION_READ_ONLY');
     this.collectionName = collectionName;
+  }
+}
+
+/** A collection record cannot be stored as given (for example a blank `translationsFolder`). */
+export class InvalidCollectionError extends LingoTrackerError {
+  constructor(message: string) {
+    super(message, 'INVALID_COLLECTION');
+  }
+}
+
+/** Terms were given for a collection that has no `protectedTermsFile` pointer to write them to. */
+export class ProtectedTermsFileNotSetError extends LingoTrackerError {
+  readonly collectionName: string;
+
+  constructor(collectionName: string) {
+    super(ErrorMessages.protectedTermsFileNotSet(collectionName), 'PROTECTED_TERMS_FILE_NOT_SET');
+    this.collectionName = collectionName;
+  }
+}
+
+/** A terminology file cannot be written because its parent directory does not exist. */
+export class ParentDirectoryMissingError extends LingoTrackerError {
+  readonly filePath: string;
+  readonly directory: string;
+
+  constructor(what: string, filePath: string, directory: string) {
+    super(ErrorMessages.parentDirectoryMissing(what, directory), 'PARENT_DIRECTORY_MISSING');
+    this.filePath = filePath;
+    this.directory = directory;
   }
 }
 

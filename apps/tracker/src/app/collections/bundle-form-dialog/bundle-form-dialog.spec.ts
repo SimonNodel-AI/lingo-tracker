@@ -1,12 +1,14 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory } from '@ngneat/spectator/vitest';
 import type { BundleDefinitionDto, BundleDryRunResultDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { toApiError } from '../../shared/api-error/api-error';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from '../store/collections.store';
 import { BundleFormDialog } from './bundle-form-dialog';
@@ -51,9 +53,17 @@ const dryRunResult: BundleDryRunResultDto = {
 interface Harness {
   fixture: ComponentFixture<BundleFormDialog>;
   component: BundleFormDialog;
-  dialogRef: { close: ReturnType<typeof vi.fn> };
+  /** `close`, and `disableClose`, which the dialog sets while a write is in flight. */
+  dialogRef: { close: ReturnType<typeof vi.fn>; disableClose: boolean | undefined };
   api: { dryRunBundle: ReturnType<typeof vi.fn> };
+  /** The two Config Writes the dialog makes; both accept by default. */
+  store: { createBundle: ReturnType<typeof vi.fn>; updateBundle: ReturnType<typeof vi.fn> };
 }
+
+const apiError = (status: number, body: object) =>
+  toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } }));
+
+const rejection = (status: number, body: object) => throwError(() => apiError(status, body));
 
 const createComponent = createComponentFactory({
   component: BundleFormDialog,
@@ -62,7 +72,7 @@ const createComponent = createComponentFactory({
 });
 
 const buildHarness = (data: BundleFormDialogData): Harness => {
-  const dialogRef = { close: vi.fn() };
+  const dialogRef: Harness['dialogRef'] = { close: vi.fn(), disableClose: false };
   const api = { dryRunBundle: vi.fn().mockReturnValue(of(dryRunResult)) };
   const store = {
     config: signal<LingoTrackerConfigDto | null>(config),
@@ -70,6 +80,8 @@ const buildHarness = (data: BundleFormDialogData): Harness => {
       Object.entries(config.collections).map(([name, collection]) => ({ name, config: collection })),
     ),
     bundleEntries: signal([{ name: 'tracker', definition: trackerBundle }]),
+    createBundle: vi.fn(() => of(config)),
+    updateBundle: vi.fn(() => of(config)),
   };
 
   const spectator = createComponent({
@@ -82,8 +94,18 @@ const buildHarness = (data: BundleFormDialogData): Harness => {
   });
   spectator.detectChanges();
   const fixture = spectator.fixture;
-  return { fixture, component: fixture.componentInstance, dialogRef, api };
+  return { fixture, component: fixture.componentInstance, dialogRef, api, store };
 };
+
+const submitErrorsText = (harness: Harness): string | null =>
+  (harness.fixture.nativeElement as HTMLElement).querySelector('[data-testid="submit-errors"]')?.textContent?.trim() ??
+  null;
+
+/** Cancel in the footer and the close icon in the header. */
+const closeButtons = (harness: Harness): HTMLButtonElement[] =>
+  Array.from(
+    (harness.fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[data-testid="cancel"]'),
+  );
 
 const fillOutput = (component: BundleFormDialog): void => {
   component.form.controls.name.setValue('admin');
@@ -314,6 +336,106 @@ describe('BundleFormDialog — create mode', () => {
     expect(harness.dialogRef.close).toHaveBeenCalledWith(undefined);
   });
 
+  describe('writing through the store', () => {
+    it('should create the bundle through the store and close only once the server has accepted it', () => {
+      fillOutput(component);
+
+      component.onSubmit();
+
+      expect(harness.store.createBundle).toHaveBeenCalledWith({
+        name: 'admin',
+        bundle: expect.objectContaining({ bundleName: 'admin.{locale}', dist: './dist/i18n' }),
+      });
+      expect(harness.dialogRef.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'admin' }));
+    });
+
+    it('should stay open on a taken name and show the conflict on the name field', () => {
+      harness.store.createBundle.mockReturnValue(
+        rejection(409, { message: 'Bundle "admin" already exists', error: 'Conflict' }),
+      );
+      fillOutput(component);
+      component.activate('types');
+
+      component.onSubmit();
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.close).not.toHaveBeenCalled();
+      expect(component.saving()).toBe(false);
+      expect(component.form.controls.name.hasError('nameExists')).toBe(true);
+      expect(component.activeSection()).toBe('output');
+      expect(harness.fixture.nativeElement.textContent).toContain('A bundle named admin already exists.');
+      expect(submitErrorsText(harness)).toBeNull();
+    });
+
+    it('should stay open and list every rule message of a definition the server rejects', () => {
+      harness.store.createBundle.mockReturnValue(
+        rejection(400, {
+          message: 'Invalid bundle definition',
+          error: 'Bad Request',
+          errors: ['dist (output folder) is required.', "Collection 'ghost' does not exist in the configuration."],
+        }),
+      );
+      fillOutput(component);
+
+      component.onSubmit();
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.close).not.toHaveBeenCalled();
+      expect(component.submitErrors()).toEqual([
+        'dist (output folder) is required.',
+        "Collection 'ghost' does not exist in the configuration.",
+      ]);
+      expect(submitErrorsText(harness)).toContain("Collection 'ghost' does not exist in the configuration.");
+
+      // The next edit clears the server's answer like any other submit error.
+      component.form.controls.dist.setValue('./dist/other');
+      expect(component.submitErrors()).toEqual([]);
+    });
+
+    it('should show the server message, else the create-failed text, for any other refusal', () => {
+      harness.store.createBundle
+        .mockReturnValueOnce(rejection(403, { message: 'Config is read-only', error: 'Forbidden' }))
+        .mockReturnValueOnce(rejection(500, { error: 'Internal Server Error' }));
+      fillOutput(component);
+
+      component.onSubmit();
+      expect(component.submitErrors()).toEqual(['Config is read-only']);
+
+      component.form.controls.dist.setValue('./dist/other');
+      component.onSubmit();
+      expect(component.submitErrors()).toEqual(['Failed to create bundle']);
+      expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('should not let the dialog close while the write is in flight, and allow it again after a refusal', () => {
+      const write = new Subject<LingoTrackerConfigDto | null>();
+      harness.store.createBundle.mockReturnValue(write);
+      fillOutput(component);
+
+      component.onSubmit();
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.disableClose).toBe(true);
+      expect(closeButtons(harness).every((button) => button.disabled)).toBe(true);
+
+      write.error(apiError(403, { message: 'Config is read-only', error: 'Forbidden' }));
+      harness.fixture.detectChanges();
+
+      expect(harness.dialogRef.disableClose).toBe(false);
+      expect(closeButtons(harness).some((button) => button.disabled)).toBe(false);
+    });
+
+    it('should ignore a second submit while the first is in flight', () => {
+      harness.store.createBundle.mockReturnValue(new Subject<LingoTrackerConfigDto | null>());
+      fillOutput(component);
+
+      component.onSubmit();
+      component.onSubmit();
+
+      expect(harness.store.createBundle).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('should not close when the domain rules reject what the field validators allowed', () => {
     fillOutput(component);
     component.form.controls.collections.at(0).controls.name.setValue('ghost');
@@ -400,7 +522,9 @@ describe('BundleFormDialog — dry run', () => {
 
   it('should fall back to the client-side tree when the dry run fails', async () => {
     const { component, api } = buildHarness({ mode: 'create' });
-    api.dryRunBundle.mockReturnValue(throwError(() => new Error('boom')));
+    api.dryRunBundle.mockReturnValue(
+      throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
+    );
     fillOutput(component);
     component.form.controls.typesEnabled.setValue(true);
     component.form.controls.typeDistFile.setValue('./dist/i18n-types/admin.ts');
@@ -428,7 +552,9 @@ describe('BundleFormDialog — dry run', () => {
 
   it('should split tree paths and names after separators so they wrap between segments', async () => {
     const { component, api } = buildHarness({ mode: 'create' });
-    api.dryRunBundle.mockReturnValue(throwError(() => new Error('boom')));
+    api.dryRunBundle.mockReturnValue(
+      throwError(() => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'boom' } }))),
+    );
     fillOutput(component);
     vi.advanceTimersByTime(300);
 
@@ -543,6 +669,26 @@ describe('BundleFormDialog — edit mode', () => {
         bundle: expect.objectContaining({ collections: trackerBundle.collections, transformICUToTransloco: true }),
       }),
     );
+  });
+
+  it('should update the bundle under its existing name through the store', () => {
+    component.onSubmit();
+
+    expect(harness.store.updateBundle).toHaveBeenCalledWith('tracker', {
+      name: undefined,
+      bundle: expect.objectContaining({ dist: './apps/tracker/src/assets/i18n' }),
+    });
+    expect(harness.store.createBundle).not.toHaveBeenCalled();
+  });
+
+  it('should show a refusal above the footer when the name is locked, so a conflict has no field to land on', () => {
+    harness.store.updateBundle.mockReturnValue(rejection(409, { message: 'Bundle "tracker" already exists' }));
+
+    component.onSubmit();
+    harness.fixture.detectChanges();
+
+    expect(harness.dialogRef.close).not.toHaveBeenCalled();
+    expect(component.submitErrors()).toEqual(['Bundle "tracker" already exists']);
   });
 
   it('should collapse an ICU choice equal to the project default (on) back to inherit', () => {

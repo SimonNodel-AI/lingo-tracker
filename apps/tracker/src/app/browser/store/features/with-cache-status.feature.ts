@@ -5,16 +5,16 @@ import { pipe, switchMap, interval, startWith, takeWhile, catchError, of, tap } 
 import { TranslocoService } from '@jsverse/transloco';
 import { BrowserApiService } from '../../services/browser-api.service';
 import type { CacheStatusType } from '@simoncodes-ca/data-transfer';
-import { toErrorMessage } from '../async-error.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
-interface CacheStatusState {
+export interface CacheStatusState {
   cacheStatus: CacheStatusType | null;
   cacheError: string | null;
   collectionStats: { totalKeys: number; localeCount: number } | null;
 }
 
-const initialCacheStatusState: CacheStatusState = {
+export const initialCacheStatusState: CacheStatusState = {
   cacheStatus: null,
   cacheError: null,
   collectionStats: null,
@@ -46,8 +46,11 @@ export function withCacheStatusFeature<_>() {
       const transloco = inject(TranslocoService);
 
       return {
+        /** Polls the index status every 2s until it is ready, then loads the root tree once. */
         checkCacheStatus: rxMethod<void>(
           pipe(
+            // Show the indexing state from the first request on, before the server has answered.
+            tap(() => patchState(store, { cacheStatus: 'not-started', cacheError: null, collectionStats: null })),
             switchMap(() => {
               const collection = store.selectedCollection();
               if (!collection) return of(null);
@@ -75,7 +78,7 @@ export function withCacheStatusFeature<_>() {
                 catchError((error: unknown) => {
                   patchState(store, {
                     cacheStatus: 'error',
-                    cacheError: toErrorMessage(
+                    cacheError: apiErrorMessage(
                       error,
                       transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CHECKCACHESTATUSFAILED),
                     ),

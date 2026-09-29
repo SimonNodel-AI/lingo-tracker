@@ -18,16 +18,21 @@ import {
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  CollectionAlreadyExistsError,
   CollectionNotFoundError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidCollectionError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  ParentDirectoryMissingError,
+  PreferredTerminologyValidationError,
+  ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
@@ -44,13 +49,19 @@ import {
  *
  * Every mapped answer has the same `{ statusCode, message, error }` body. An invalid bundle
  * definition also carries `errors`, every problem the domain rules found, under the fixed
- * message `Invalid bundle definition`.
+ * message `Invalid bundle definition`; invalid preferred-terminology rules carry the per-row
+ * `errors` under `Invalid preferred terminology rules`. Any other typed error is a 500 that
+ * keeps its message, because a typed message is written to be shown: an `InvalidConfigError`
+ * (a `.lingo-tracker.json` the server cannot use), for example, says what to fix in the file.
  */
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
   const { message } = error;
 
   if (error instanceof InvalidBundleDefinitionError) {
     return invalidBundleDefinitionToHttp(error);
+  }
+  if (error instanceof PreferredTerminologyValidationError) {
+    return withErrors('Invalid preferred terminology rules', error.errors);
   }
 
   if (
@@ -64,7 +75,11 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   if (error instanceof ReadOnlyCollectionError) {
     return new ForbiddenException(message);
   }
-  if (error instanceof BundleAlreadyExistsError || error instanceof ResourceAlreadyExistsError) {
+  if (
+    error instanceof BundleAlreadyExistsError ||
+    error instanceof ResourceAlreadyExistsError ||
+    error instanceof CollectionAlreadyExistsError
+  ) {
     return new ConflictException(message);
   }
   if (error instanceof AutoTranslationDisabledError) {
@@ -78,7 +93,10 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
     error instanceof InvalidLocaleError ||
     error instanceof LocaleNotFoundError ||
     error instanceof LocaleAlreadyExistsError ||
-    error instanceof BaseLocaleImmutableError
+    error instanceof BaseLocaleImmutableError ||
+    error instanceof InvalidCollectionError ||
+    error instanceof ProtectedTermsFileNotSetError ||
+    error instanceof ParentDirectoryMissingError
   ) {
     return new BadRequestException(message);
   }
@@ -89,11 +107,13 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
 }
 
 function invalidBundleDefinitionToHttp(error: InvalidBundleDefinitionError): HttpException {
+  return withErrors('Invalid bundle definition', error.errors);
+}
+
+/** A 400 whose body also lists every problem found. */
+function withErrors(message: string, errors: readonly unknown[]): HttpException {
   const status = HttpStatus.BAD_REQUEST;
-  return new BadRequestException({
-    ...HttpException.createBody('Invalid bundle definition', 'Bad Request', status),
-    errors: [...error.errors],
-  });
+  return new BadRequestException({ ...HttpException.createBody(message, 'Bad Request', status), errors: [...errors] });
 }
 
 /** Translation codes that mean the server's translation setup is wrong, not the request. */
@@ -122,7 +142,8 @@ function translationErrorToHttp(error: TranslationError): HttpException {
 /**
  * The HTTP answer for anything a handler throws: an `HttpException` as is, a
  * `LingoTrackerError` by `lingoTrackerErrorToHttp`, and anything else as a generic 500
- * (`Internal server error`) that does not disclose the error's message.
+ * whose body has no `message` at all (`{ statusCode, error }`), so a client that shows a
+ * server message when there is one falls back to its own text for an undisclosed failure.
  */
 export function toHttpException(error: unknown): HttpException {
   if (error instanceof HttpException) {
@@ -131,14 +152,15 @@ export function toHttpException(error: unknown): HttpException {
   if (error instanceof LingoTrackerError) {
     return lingoTrackerErrorToHttp(error);
   }
-  return new InternalServerErrorException('Internal server error');
+  const status = HttpStatus.INTERNAL_SERVER_ERROR;
+  return new InternalServerErrorException({ statusCode: status, error: 'Internal Server Error' });
 }
 
 /**
  * Global filter (registered with `APP_FILTER`). It turns typed core errors and unexpected
  * errors into HTTP exceptions with `toHttpException`, then lets Nest's base filter write
  * the body. An unexpected error is logged (message and stack) and answered with a generic
- * 500, so internal details stay on the server. Errors from HTTP middleware that carry their
+ * 500 without a message, so internal details stay on the server. Errors from HTTP middleware that carry their
  * own `statusCode` (body-parser, for example) keep Nest's default handling.
  */
 @Catch()

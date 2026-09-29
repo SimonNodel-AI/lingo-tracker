@@ -10,8 +10,9 @@
  * - **Placeholder guard**: simple placeholders (`{name}`, `{{ name }}`) are sent as notranslate
  *   markers and restored afterwards; a translation that loses or duplicates a marker is skipped.
  * - **Protected-term guard**: a translation that drops a protected term present in the source
- *   (the collection's terms in force, read once when the Translator is opened) is skipped, as
- *   import would reject it.
+ *   (the collection's Project Terms, read once when the Translator is opened) is skipped, as
+ *   import would reject it. A protected-terms file the config names but that does not exist
+ *   guards nothing; the Translator reports it in `problems` for the caller to pass on.
  * - **Normalisation**: every returned value is ICU (`translocoToICU`).
  *
  * Callers decide which entries and locales need work (the Staleness rule) and what to store.
@@ -20,8 +21,9 @@
  */
 
 import { classifyICUContent, findProtectedTermViolations, translocoToICU } from '@simoncodes-ca/domain';
+import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
-import { readProtectedTermsInForce } from '../config/protected-terms-file';
+import { protectedTermsWarnings, readProjectTerms, requireProtectedTerms } from '../config/project-terms';
 import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
 import { type ExtractedPlaceholder, protectPlaceholders, restorePlaceholders } from './placeholder-protector';
 import { TranslationError, type TranslationProvider } from './translation-provider';
@@ -64,6 +66,11 @@ export interface TranslationOutcome {
 
 export interface Translator {
   /**
+   * Protected-terms problems that did not stop the Translator (a file the config names that does
+   * not exist, read as an empty list), as printable lines. Empty when `protectedTerms` was passed.
+   */
+  readonly problems: readonly string[];
+  /**
    * Translates every entry into every locale: one provider call per locale (the provider chunks
    * internally), locales in parallel. The base locale is ignored. Results are ordered by locale,
    * then by entry.
@@ -76,8 +83,23 @@ export interface Translator {
 export interface OpenTranslatorOptions {
   /** The provider to use instead of the one the collection's translation config names. */
   readonly provider?: TranslationProvider;
-  /** The protected terms to guard instead of the collection's terms files. */
+  /** The protected terms to guard instead of the collection's Project Terms. */
   readonly protectedTerms?: readonly string[];
+}
+
+/**
+ * The precondition of every auto-translate operation: the collection's translation config,
+ * which must be enabled. Callers check it up front (before prompting, before deciding there
+ * is nothing to do), so a disabled collection is always refused the same way.
+ *
+ * @throws {AutoTranslationDisabledError} The collection has no enabled translation config.
+ */
+export function assertAutoTranslationEnabled(collection: Collection): TranslationConfig {
+  const config = collection.translationConfig;
+  if (!config?.enabled) {
+    throw new AutoTranslationDisabledError(collection.name);
+  }
+  return config;
 }
 
 /**
@@ -89,16 +111,15 @@ export interface OpenTranslatorOptions {
  * @throws {ProtectedTermsFileError} No terms were passed and a terms file is not a JSON array of strings.
  */
 export function openTranslator(collection: Collection, options: OpenTranslatorOptions = {}): Translator {
-  const config = collection.translationConfig;
-  if (!config?.enabled) {
-    throw new AutoTranslationDisabledError(collection.name);
-  }
+  const config = assertAutoTranslationEnabled(collection);
 
   const provider = options.provider ?? createTranslationProvider(config.provider, readApiKey(config.apiKeyEnv));
-  const protectedTerms = options.protectedTerms ?? readProtectedTermsInForce(collection);
+  const terms = options.protectedTerms === undefined ? readProjectTerms(collection) : undefined;
+  const protectedTerms = options.protectedTerms ?? (terms ? requireProtectedTerms(terms) : []);
   const { baseLocale } = collection;
 
   return {
+    problems: terms ? protectedTermsWarnings(terms) : [],
     async translate(entries, locales) {
       const prepared = entries.map(prepare);
       const targets = [...new Set(locales)].filter((locale) => locale !== baseLocale);

@@ -1,4 +1,4 @@
-import { Controller, Delete, Param, HttpException, HttpStatus, Post, Body, Put } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from '@nestjs/common';
 import {
   addCollection,
   deleteCollectionByName,
@@ -8,7 +8,6 @@ import {
   setCollectionProtectedTerms,
   updateCollection,
 } from '@simoncodes-ca/core';
-import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
@@ -17,16 +16,55 @@ import { mapDtoToCollection } from '../mappers/collection.mapper';
 /**
  * Persists a collection's protected terms to its configured file. Terms live in a file
  * rather than the config, so a collection with no `protectedTermsFile` has nowhere to put
- * them — `setCollectionProtectedTerms` throws, and the caller turns that into a 400.
+ * them — `setCollectionProtectedTerms` throws `ProtectedTermsFileNotSetError` (400).
  */
 function writeCollectionProtectedTerms(collectionName: string, terms: string[] | undefined): void {
   if (terms === undefined) {
     return;
   }
   if (!Array.isArray(terms) || terms.some((term) => typeof term !== 'string')) {
-    throw new HttpException('protectedTerms must be an array of strings', HttpStatus.BAD_REQUEST);
+    throw new BadRequestException('protectedTerms must be an array of strings');
   }
   setCollectionProtectedTerms(collectionName, terms);
+}
+
+/** True for a plain object (not `null`, not an array). */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
+ * The request-shape checks for a collection body, before anything reaches core: `collection`
+ * must be an object with a string `translationsFolder` and no `null` field, and `name` a
+ * non-empty string (required on create, optional on update; a blank one is refused rather than
+ * read as "no rename").
+ */
+function assertCollectionBody(
+  body: unknown,
+  nameIs: 'required' | 'optional',
+): asserts body is { name?: string; collection: { translationsFolder: string } } {
+  if (!isRecord(body)) {
+    throw new BadRequestException('request body must be an object');
+  }
+  if ((nameIs === 'required' || body.name !== undefined) && !isNonEmptyString(body.name)) {
+    throw new BadRequestException('name must be a non-empty string');
+  }
+  const { collection } = body;
+  if (!isRecord(collection)) {
+    throw new BadRequestException('collection must be an object');
+  }
+  // `null` is no value for any field: leave a field out to keep it, send its empty value to clear it.
+  const nullField = Object.keys(collection).find((key) => collection[key] === null);
+  if (nullField !== undefined) {
+    throw new BadRequestException(`collection.${nullField} must not be null`);
+  }
+  if (typeof collection.translationsFolder !== 'string') {
+    throw new BadRequestException('collection.translationsFolder must be a string');
+  }
 }
 
 @Controller('collections')
@@ -57,66 +95,51 @@ export class CollectionsController {
     this.#index.apply([...mutations, ...unique.map((folder) => reindexMutation(folder))]);
   }
 
+  /** Core's typed errors (for example `CollectionNotFoundError`, 404) reach the global exception filter. */
   @Delete(':collectionName')
   async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
-    try {
-      const decodedCollectionName = decodeURIComponent(collectionName);
-      const translationsFolder = this.#translationsFolderOf(decodedCollectionName);
-      deleteCollectionByName(decodedCollectionName);
-      this.#reindex([translationsFolder]);
-      return {
-        message: `Collection "${decodedCollectionName}" deleted successfully`,
-      };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error deleting collection';
-      throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
-    }
-  }
-
-  @Post()
-  async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
-    try {
-      const { name, collection } = body;
-      const mapped = mapDtoToCollection(collection);
-      // Default to read-only for collections vendored under node_modules unless the caller was explicit.
-      if (mapped.readOnly === undefined && isUnderNodeModules(mapped.translationsFolder)) {
-        mapped.readOnly = true;
-      }
-      const result = addCollection(name, mapped);
-      writeCollectionProtectedTerms(name, collection.protectedTerms);
-      return { message: result.message };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error creating collection';
-      throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
-    }
+    const decodedCollectionName = decodeURIComponent(collectionName);
+    const translationsFolder = this.#translationsFolderOf(decodedCollectionName);
+    deleteCollectionByName(decodedCollectionName);
+    this.#reindex([translationsFolder]);
+    return {
+      message: `Collection "${decodedCollectionName}" deleted successfully`,
+    };
   }
 
   /**
-   * Replaces a collection's config entry (full-replace semantics, per HTTP PUT). The body
-   * must carry the complete desired collection config: any optional field omitted from
-   * `body.collection` — including `readOnly` — is dropped from the stored entry. To keep a
-   * collection read-only across an update, send `readOnly: true`; to clear it, send `false`
-   * or omit it.
+   * Core defaults a collection under `node_modules` to read-only unless `readOnly` is sent.
+   * A body without a non-empty `name`, an object `collection` or a string `translationsFolder` is 400.
+   */
+  @Post()
+  async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
+    assertCollectionBody(body, 'required');
+    const { name, collection } = body;
+    const result = addCollection(name, mapDtoToCollection(collection));
+    writeCollectionProtectedTerms(name, collection.protectedTerms);
+    return { message: result.message };
+  }
+
+  /**
+   * Changes a collection's config entry with patch semantics (core `updateCollection`, through
+   * the Collection Entry): a field present in `body.collection` replaces the stored value, so
+   * `tags: []`, `readOnly: false` or `locales: []` clear a setting, and a field left out keeps
+   * its stored value (`translation`, `exportFolder`, `importFolder` survive a client that does
+   * not edit them). `name` renames; a blank one is 400 rather than "no rename".
    */
   @Put(':collectionName')
   async updateCollectionByName(
     @Param('collectionName') collectionName: string,
     @Body() body: UpdateCollectionDto,
   ): Promise<{ message: string }> {
-    try {
-      const decodedCollectionName = decodeURIComponent(collectionName);
-      const { name, collection } = body;
-      const oldTranslationsFolder = this.#translationsFolderOf(decodedCollectionName);
-      const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
-      this.#reindex(
-        [oldTranslationsFolder, this.#translationsFolderOf(name || decodedCollectionName)],
-        result.mutations,
-      );
-      writeCollectionProtectedTerms(name ?? decodedCollectionName, collection.protectedTerms);
-      return { message: result.message };
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Error updating collection';
-      throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
-    }
+    assertCollectionBody(body, 'optional');
+    const decodedCollectionName = decodeURIComponent(collectionName);
+    const { name, collection } = body;
+    const targetName = name ?? decodedCollectionName;
+    const oldTranslationsFolder = this.#translationsFolderOf(decodedCollectionName);
+    const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
+    this.#reindex([oldTranslationsFolder, this.#translationsFolderOf(targetName)], result.mutations);
+    writeCollectionProtectedTerms(targetName, collection.protectedTerms);
+    return { message: result.message };
   }
 }

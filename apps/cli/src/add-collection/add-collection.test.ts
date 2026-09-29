@@ -1,4 +1,4 @@
-import { addCollection, type LingoTrackerConfig, loadConfig } from '@simoncodes-ca/core';
+import { addCollection, CollectionAlreadyExistsError, type LingoTrackerConfig, loadConfig } from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -51,10 +51,10 @@ describe('addCollectionCommand', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('marks a folder under node_modules read-only by default when non-interactive', async () => {
+  it('leaves the read-only default to core when non-interactive and no flag is given', async () => {
     await addCollectionCommand({ collectionName: 'vendor', translationsFolder: 'node_modules/lib/i18n' });
 
-    expect(addCollection).toHaveBeenCalledWith('vendor', expect.objectContaining({ readOnly: true }), {
+    expect(addCollection).toHaveBeenCalledWith('vendor', expect.objectContaining({ readOnly: undefined }), {
       cwd: '/project',
     });
   });
@@ -81,11 +81,14 @@ describe('addCollectionCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('exits 1 when the collection already exists', async () => {
+  it('exits 1 with the core message when the collection already exists', async () => {
+    vi.mocked(addCollection).mockImplementation(() => {
+      throw new CollectionAlreadyExistsError('existing');
+    });
+
     await addCollectionCommand({ collectionName: 'existing', translationsFolder: 'src/x' });
 
-    expect(console.error).toHaveBeenCalledWith('❌ Collection "existing" already exists.');
-    expect(addCollection).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ Collection "existing" already exists');
     expect(process.exitCode).toBe(1);
   });
 

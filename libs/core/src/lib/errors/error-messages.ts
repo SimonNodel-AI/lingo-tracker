@@ -35,6 +35,12 @@ export const ErrorMessages = {
 
   collectionAlreadyExists: (name: string) => `Collection "${name}" already exists`,
 
+  protectedTermsFileNotSet: (name: string) =>
+    `Collection "${name}" has no protected terms file. Set one first with --file <path>.`,
+
+  parentDirectoryMissing: (what: string, directory: string) =>
+    `Cannot write ${what} — directory does not exist: ${directory}`,
+
   localeAlreadyExists: (locale: string, collection: string) =>
     `Locale "${locale}" already exists in collection "${collection}"`,
 

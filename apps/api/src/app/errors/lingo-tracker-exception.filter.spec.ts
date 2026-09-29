@@ -6,17 +6,23 @@ import {
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  CollectionAlreadyExistsError,
   CollectionNotFoundError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidCollectionError,
+  InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  ParentDirectoryMissingError,
+  PreferredTerminologyValidationError,
   ProtectedTermsFileError,
+  ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
@@ -60,6 +66,11 @@ describe('toHttpException', () => {
       new ResourceAlreadyExistsError('apps.ok'),
       409,
       { message: 'Resource already exists: apps.ok', error: 'Conflict', statusCode: 409 },
+    ],
+    [
+      new CollectionAlreadyExistsError('app'),
+      409,
+      { message: 'Collection "app" already exists', error: 'Conflict', statusCode: 409 },
     ],
     [
       new AutoTranslationDisabledError('app'),
@@ -119,10 +130,53 @@ describe('toHttpException', () => {
       { message: 'Invalid bundle definition', error: 'Bad Request', statusCode: 400, errors: ['a', 'b'] },
     ],
     [
+      new PreferredTerminologyValidationError([{ index: 0, field: 'preferred', code: 'empty', message: 'empty' }]),
+      400,
+      {
+        message: 'Invalid preferred terminology rules',
+        error: 'Bad Request',
+        statusCode: 400,
+        errors: [{ index: 0, field: 'preferred', code: 'empty', message: 'empty' }],
+      },
+    ],
+    [
+      new InvalidCollectionError('translationsFolder is required'),
+      400,
+      { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
+      new ProtectedTermsFileNotSetError('app'),
+      400,
+      {
+        message: 'Collection "app" has no protected terms file. Set one first with --file <path>.',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
+    ],
+    [
+      new ParentDirectoryMissingError('protected terms file', '/p/terms.json', '/p'),
+      400,
+      {
+        message: 'Cannot write protected terms file — directory does not exist: /p',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
+    ],
+    [
       new ProtectedTermsFileError('/p/terms.json', 'Protected terms file is not valid JSON: /p/terms.json'),
       500,
       {
         message: 'Protected terms file is not valid JSON: /p/terms.json',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    // Any other typed error is a 500 that keeps its message.
+    [
+      new InvalidConfigError('"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)'),
+      500,
+      {
+        message: '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)',
         error: 'Internal Server Error',
         statusCode: 500,
       },
@@ -132,12 +186,9 @@ describe('toHttpException', () => {
       500,
       { message: 'Unmapped', error: 'Internal Server Error', statusCode: 500 },
     ],
-    [
-      new Error('Disk write failure'),
-      500,
-      { message: 'Internal server error', error: 'Internal Server Error', statusCode: 500 },
-    ],
-    ['not an error', 500, { message: 'Internal server error', error: 'Internal Server Error', statusCode: 500 }],
+    // Not typed: nothing about it is safe to disclose, so the body carries no message at all.
+    [new Error('Disk write failure'), 500, { error: 'Internal Server Error', statusCode: 500 }],
+    ['not an error', 500, { error: 'Internal Server Error', statusCode: 500 }],
   ])('maps %p to %i', (error, status, response) => {
     const http = toHttpException(error);
 
@@ -251,10 +302,10 @@ describe('LingoTrackerExceptionFilter (registered with APP_FILTER)', () => {
     });
   });
 
-  it('answers an unexpected error with a generic 500 that hides its message, and logs it', async () => {
+  it('answers an unexpected error with a generic 500 that carries no message, and logs it', async () => {
     await expect(get('plain')).resolves.toEqual({
       status: 500,
-      body: { statusCode: 500, message: 'Internal server error', error: 'Internal Server Error' },
+      body: { statusCode: 500, error: 'Internal Server Error' },
     });
     expect(loggerError).toHaveBeenCalledWith('Disk write failure', expect.any(String));
   });

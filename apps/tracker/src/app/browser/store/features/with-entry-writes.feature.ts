@@ -12,6 +12,7 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { type Observable, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
+import { captureSession } from '../session-guard';
 
 /**
  * How a Resource entry is written from the UI.
@@ -19,7 +20,12 @@ import { BrowserApiService } from '../../services/browser-api.service';
  * Every method takes the entry's full dot-delimited key (or a DTO carrying it)
  * and returns the API call, so the caller still owns its own error handling —
  * the editor's 409 conflict dialog, a failure toast. On success the store brings
- * its caches in line before the caller hears back.
+ * its caches in line before the caller hears back, but only in the Browser
+ * Session (`sessionId`) that was open when the call was made: a write whose
+ * response arrives after another collection has opened (the translation editor
+ * dialog's `updateResource` subscription can outlive the browser) still resolves
+ * for the caller, but does not patch or drop a row in the session that replaced
+ * it.
  *
  * Both caches (the folder list and the search results) are keyed by each
  * entry's full key, so an entry is found the same way in either.
@@ -28,6 +34,7 @@ export function withEntryWritesFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{
+        sessionId: number;
         currentFolderPath: string;
         translations: ResourceSummaryDto[];
         searchResults: SearchResultDto[];
@@ -63,7 +70,11 @@ export function withEntryWritesFeature<_>() {
       return {
         /** Creates an entry, then reloads the current folder so the list shows it in place. */
         createResource(collectionName: string, dto: CreateResourceDto): Observable<CreateResourceResponseDto> {
-          return api.createResource(collectionName, dto).pipe(tap(() => store.selectFolder(store.currentFolderPath())));
+          const inSession = captureSession(store);
+          // The caller still gets its response; only the store write is session-guarded.
+          return api
+            .createResource(collectionName, dto)
+            .pipe(tap(() => inSession() && store.selectFolder(store.currentFolderPath())));
         },
 
         /**
@@ -72,8 +83,11 @@ export function withEntryWritesFeature<_>() {
          * one is patched in place.
          */
         updateResource(collectionName: string, dto: UpdateResourceDto): Observable<UpdateResourceResponseDto> {
+          const inSession = captureSession(store);
+          // The caller still gets its response; only the store write is session-guarded.
           return api.updateResource(collectionName, dto).pipe(
             tap((response) => {
+              if (!inSession()) return;
               if (dto.moveTo !== undefined) {
                 dropEntry(dto.key);
               } else if (response.resource) {
@@ -85,9 +99,11 @@ export function withEntryWritesFeature<_>() {
 
         /** Deletes one entry and drops it from the caches once the server confirms it. */
         deleteResource(collectionName: string, fullKey: string): Observable<DeleteResourceResponseDto> {
+          const inSession = captureSession(store);
+          // The caller still gets its response; only the store write is session-guarded.
           return api.deleteResource(collectionName, [fullKey]).pipe(
             tap((response) => {
-              if (response.entriesDeleted > 0) {
+              if (inSession() && response.entriesDeleted > 0) {
                 dropEntry(fullKey);
               }
             }),
@@ -96,9 +112,11 @@ export function withEntryWritesFeature<_>() {
 
         /** Auto-translates one entry and patches the caches with the result. */
         translateResource(collectionName: string, fullKey: string): Observable<TranslateResourceResponseDto> {
+          const inSession = captureSession(store);
+          // The caller still gets its response; only the store write is session-guarded.
           return api
             .translateResource(collectionName, fullKey)
-            .pipe(tap((response) => patchEntry(fullKey, response.resource)));
+            .pipe(tap((response) => inSession() && patchEntry(fullKey, response.resource)));
         },
       };
     }),

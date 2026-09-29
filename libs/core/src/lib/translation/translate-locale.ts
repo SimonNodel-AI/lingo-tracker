@@ -17,7 +17,12 @@ import type { Collection } from '../config/open-collection';
 import { readCollection } from '../resource/read-collection';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
-import { type OpenTranslatorOptions, openTranslator, type TranslatedValue } from './translator';
+import {
+  assertAutoTranslationEnabled,
+  type OpenTranslatorOptions,
+  openTranslator,
+  type TranslatedValue,
+} from './translator';
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -105,20 +110,21 @@ function writeTranslatedValues(
  * results back to disk with status `translated` (values ICU-normalised by the Translator).
  *
  * Resources are read with the Collection Reader (a folder it cannot read is not translated and is
- * reported in `warnings`) and
+ * reported in `warnings`, as is a named protected-terms file that does not exist) and
  * processed in batches of `translationConfig.batchSize` (default 5). A configurable delay
  * (`translationConfig.delayMs`, default 1000 ms) is inserted between batches to avoid hitting
  * provider rate limits.
  *
- * When nothing needs translation, returns zeros without opening the Translator (so without
- * needing an API key). Skipped resources are listed in `skippedKeys`. A provider error marks
- * every resource in the failing batch as failed but does not abort the run.
+ * A collection without an enabled translation config is refused first, even when nothing needs
+ * translation. When nothing needs translation, returns zeros without opening the Translator (so
+ * without needing an API key). Skipped resources are listed in `skippedKeys`. A provider error
+ * marks every resource in the failing batch as failed but does not abort the run.
  *
  * @param collection - The opened collection.
  * @param params - The target locale, an optional progress callback, and optional `provider` /
  *   `protectedTerms` to use instead of the collection's (see {@link openTranslator}).
  * @returns A summary of how many resources were translated, skipped, or failed.
- * @throws {AutoTranslationDisabledError} There is work and the collection has no enabled translation config.
+ * @throws {AutoTranslationDisabledError} The collection has no enabled translation config (checked first).
  * @throws {TranslationError} There is work, no provider was injected, and the API key env var is unset
  *   (`MISSING_API_KEY`).
  * @throws {ProtectedTermsFileError} There is work and a protected-terms file is malformed.
@@ -129,6 +135,7 @@ export async function translateLocale(
 ): Promise<TranslateLocaleResult> {
   const { targetLocale, onProgress } = params;
   const { baseLocale, translationsFolder } = collection;
+  assertAutoTranslationEnabled(collection);
 
   const { resources, problems } = readCollection(collection);
   const warnings = problems.map(
@@ -149,6 +156,7 @@ export async function translateLocale(
   }
 
   const translator = openTranslator(collection, params);
+  warnings.push(...translator.problems);
 
   const batchSize = collection.translationConfig?.batchSize ?? 5;
   const delayMs = collection.translationConfig?.delayMs ?? 1000;

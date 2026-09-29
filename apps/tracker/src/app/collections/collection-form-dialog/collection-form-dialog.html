@@ -17,7 +17,9 @@
       mat-icon-button
       type="button"
       class="dialog-close"
+      data-testid="cancel"
       (click)="onCancel()"
+      [disabled]="saving()"
       [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.CLOSEDIALOG | transloco"
     >
       <mat-icon>close</mat-icon>
@@ -56,7 +58,11 @@
             </div>
             @if (showNameError) {
               <p id="collection-name-error" class="field-error" role="alert">
-                {{ TOKENS.COLLECTIONS.DIALOG.NAMEREQUIRED | transloco }}
+                @if (showNameConflict) {
+                  {{ TOKENS.COLLECTIONS.DIALOG.NAMEEXISTSX | transloco: { name: form.controls.name.value } }}
+                } @else {
+                  {{ TOKENS.COLLECTIONS.DIALOG.NAMEREQUIRED | transloco }}
+                }
               </p>
             }
           }
@@ -335,11 +341,18 @@
     </form>
   </mat-dialog-content>
 
+  @if (submitError(); as message) {
+    <p class="submit-error" role="alert" data-testid="submit-error">
+      <mat-icon aria-hidden="true">error_outline</mat-icon>
+      <span>{{ message }}</span>
+    </p>
+  }
+
   <mat-dialog-actions class="dialog-footer" align="end">
-    <button mat-button type="button" (click)="onCancel()">
+    <button mat-button type="button" data-testid="cancel" (click)="onCancel()" [disabled]="saving()">
       {{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}
     </button>
-    <button mat-flat-button color="primary" type="button" (click)="onSubmit()" [disabled]="form.invalid">
+    <button mat-flat-button color="primary" type="button" (click)="onSubmit()" [disabled]="form.invalid || saving()">
       {{ (isEditMode ? TOKENS.COMMON.ACTIONS.SAVE : TOKENS.COLLECTIONS.DIALOG.CREATE.TITLE) | transloco }}
     </button>
   </mat-dialog-actions>

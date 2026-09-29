@@ -6,13 +6,14 @@ import {
   translocoToICU,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../lib/config/open-collection';
+import { readProjectTerms, type TerminologyFindings } from '../lib/config/project-terms';
 import { ResourceAlreadyExistsError, ResourceNotFoundError } from '../lib/errors/lingo-tracker-error';
 import type { ResourceTreeEntry } from '../lib/resource/load-resource-tree';
 import { validateAndResolvePaths } from '../lib/resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../lib/resource/resource-folder';
 import { removeMutation, type ResourceMutation, upsertMutation } from '../lib/resource/resource-mutation';
 import type { OpenTranslatorOptions } from '../lib/translation/translator';
-import { assertCollectionLocales, seedLocales } from './locale-seeding';
+import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
 
 /** What to change on an entry. `undefined` leaves a field alone. */
 export interface EditResourceChanges {
@@ -40,6 +41,13 @@ export interface EditResourceResult {
   readonly skippedLocales?: string[];
   /** What changed on disk (empty when nothing was updated). */
   readonly mutations: ResourceMutation[];
+  /**
+   * Advisory: discouraged terms in the base value, any rule-file problem that limited the check,
+   * and, when auto-translation ran, a named protected-terms file that does not exist. Present
+   * only when the edit supplied a base value and updated the entry; editing a comment or a
+   * translation does not re-raise advice about untouched wording.
+   */
+  readonly terminology?: TerminologyFindings;
 }
 
 /**
@@ -135,6 +143,7 @@ export async function editResource(
   }
 
   let skippedLocales: string[] | undefined;
+  let translatorProblems: readonly string[] | undefined;
   if (baseChanged) {
     const seeding = await seedLocales(
       collection,
@@ -159,6 +168,7 @@ export async function editResource(
     if (seeding.skippedLocales && seeding.skippedLocales.length > 0) {
       skippedLocales = seeding.skippedLocales;
     }
+    translatorProblems = seeding.problems;
   }
 
   const moved = destination ? moveEntry(collection, folder, paths.resolvedKey, destination) : undefined;
@@ -174,6 +184,12 @@ export async function editResource(
     entry: updatedEntry,
     mutations: moved?.mutations ?? [upsertMutation(translationsFolder, resolvedKey, updatedEntry)],
     ...(skippedLocales !== undefined && { skippedLocales }),
+    ...(baseValue !== undefined && {
+      terminology: withTranslatorProblems(
+        readProjectTerms(collection).checkBaseValue(resolvedKey, baseValue),
+        translatorProblems,
+      ),
+    }),
   };
 }
 

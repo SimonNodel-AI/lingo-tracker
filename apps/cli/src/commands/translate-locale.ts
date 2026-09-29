@@ -1,4 +1,4 @@
-import { type Collection, translateLocale } from '@simoncodes-ca/core';
+import { assertAutoTranslationEnabled, translateLocale } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -19,10 +19,19 @@ export interface TranslateLocaleOptions {
 export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
   name: 'Translate locale',
   collection: 'writable',
-  // Called in both modes before `required` is checked, so a collection that cannot be
-  // translated is reported as such rather than as a missing --locale.
+  // Core's precondition runs before the locale prompt, so a disabled collection is refused before any question.
   prompts: (options, { collection }) => {
-    assertTranslatable(collection);
+    try {
+      assertAutoTranslationEnabled(collection);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${message}. Set translation.enabled = true in your configuration`);
+    }
+    if (collection.targetLocales.length === 0) {
+      throw new Error(
+        `No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`,
+      );
+    }
     return options.locale
       ? []
       : [
@@ -91,16 +100,3 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
     return result.failedCount > 0 ? { exitCode: 1 } : undefined;
   },
 });
-
-/** Auto-translation must be enabled, and there must be a locale other than the base locale. */
-function assertTranslatable(collection: Collection): void {
-  if (!collection.translationConfig?.enabled) {
-    throw new Error(
-      `Auto-translation is not enabled for collection "${collection.name}". ` +
-        `Set translation.enabled = true in your configuration.`,
-    );
-  }
-  if (collection.targetLocales.length === 0) {
-    throw new Error(`No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`);
-  }
-}

@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { ConfigNotFoundError, editResource, loadConfig, loadPreferredTerminology } from '@simoncodes-ca/core';
+import { ConfigNotFoundError, editResource, loadConfig } from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -13,7 +13,6 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     ...actual,
     loadConfig: vi.fn(),
     editResource: vi.fn(),
-    loadPreferredTerminology: vi.fn(() => ({ rules: [], filePath: '/test/project/terms.json' })),
   };
 });
 
@@ -281,18 +280,28 @@ describe('editResourceCommand', () => {
   });
 
   describe('preferred terminology', () => {
-    const rules = [{ discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' }];
+    const terminology = {
+      findings: [
+        {
+          key: 'budget.title',
+          discouraged: 'Expenditure',
+          preferred: 'Investment',
+          reason: 'Finance style guide',
+          message: 'consider "Investment" instead of "Expenditure"',
+        },
+      ],
+      problems: [],
+    };
 
     beforeEach(() => {
       vi.mocked(loadConfig).mockReturnValue(mockConfig);
-      vi.mocked(loadPreferredTerminology).mockReturnValue({ rules, filePath: '/test/project/terms.json' });
     });
 
     const logged = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.map((call) => String(call[0]));
 
-    it('warns about the new base value after a successful edit', async () => {
+    it('prints the findings core returned for the new base value after a successful edit', async () => {
       const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
+      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [], terminology });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 
@@ -302,7 +311,7 @@ describe('editResourceCommand', () => {
       stderrSpy.mockRestore();
     });
 
-    it('does not check when the base value was not part of the edit', async () => {
+    it('prints nothing when the result carries no terminology (no base value in the edit)', async () => {
       const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
@@ -314,34 +323,18 @@ describe('editResourceCommand', () => {
         localeValue: 'Expenditure',
       });
 
-      expect(loadPreferredTerminology).not.toHaveBeenCalled();
       expect(logged(stderrSpy).some((line) => line.includes('Preferred terminology'))).toBe(false);
       stderrSpy.mockRestore();
     });
 
-    it('does not check when nothing changed', async () => {
+    it('prints one warning per rule-file problem', async () => {
       const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
       mockEditResource.mockResolvedValue({
         resolvedKey: 'budget.title',
-        updated: false,
-        message: 'No changes detected',
+        updated: true,
         mutations: [],
+        terminology: { findings: [], problems: ['Preferred terminology checks skipped: not valid JSON'] },
       });
-
-      await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
-
-      expect(loadPreferredTerminology).not.toHaveBeenCalled();
-      stderrSpy.mockRestore();
-    });
-
-    it('prints one config warning and skips the check when the rule file is broken', async () => {
-      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      vi.mocked(loadPreferredTerminology).mockReturnValue({
-        rules: [],
-        filePath: '/test/project/terms.json',
-        error: 'not valid JSON',
-      });
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, mutations: [] });
 
       await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
 

@@ -1,4 +1,5 @@
 import { findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
+import { describePreferredTermRule } from '../config/project-terms';
 import type { LoadedResource } from '../export/export-common';
 import type { TerminologyValidationDetail, TerminologyValidationOptions, TerminologyValidationResult } from './types';
 
@@ -57,14 +58,6 @@ export function validateTerminology(
   }
 
   return { warnings, valuesChecked };
-}
-
-/**
- * The suggestion as one line, e.g. `consider "Investment" instead of "Expenditure"`.
- * Shared with import and the CLI so every surface words it the same way.
- */
-export function describePreferredTermRule(rule: PreferredTermRule): string {
-  return `consider "${rule.preferred}" instead of "${rule.discouraged}"`;
 }
 
 /** @internal */

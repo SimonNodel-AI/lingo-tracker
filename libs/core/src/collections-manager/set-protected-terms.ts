@@ -1,3 +1,4 @@
+import { patchCollectionEntry } from '../lib/config/collection-entry';
 import { createConfigFileOperations, updateConfig } from '../lib/config/config-file-operations';
 import {
   assertWritableProtectedTermsPath,
@@ -8,8 +9,7 @@ import {
   resolveProtectedTermsFilePath,
   writeProtectedTermsFile,
 } from '../lib/config/protected-terms-file';
-import { CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
-import { updateCollection } from './update-collection';
+import { CollectionNotFoundError, ProtectedTermsFileNotSetError } from '../lib/errors/lingo-tracker-error';
 
 export interface SetProtectedTermsOptions {
   cwd?: string;
@@ -58,7 +58,7 @@ export function setCollectionProtectedTerms(
 
   const filePath = resolveCollectionProtectedTermsFilePath(collection, cwd);
   if (!filePath) {
-    throw new Error(`Collection "${collectionName}" has no protected terms file. Set one first with --file <path>.`);
+    throw new ProtectedTermsFileNotSetError(collectionName);
   }
 
   writeProtectedTermsFile(filePath, terms);
@@ -69,15 +69,16 @@ export function setCollectionProtectedTerms(
 /**
  * Points the global config at a protected-terms file. Any terms already in the previous
  * file are carried over, so switching paths never silently drops the list. Passing
- * `undefined` clears the pointer, returning to the default path.
+ * `undefined` (or a blank string) clears the pointer, returning to the default path.
  */
 export function setGlobalProtectedTermsFile(
-  pointer: string | undefined,
+  rawPointer: string | undefined,
   options: SetProtectedTermsOptions = {},
 ): SetProtectedTermsResult {
   const cwd = options.cwd ?? process.cwd();
+  const pointer = normalizePointer(rawPointer);
   const previousConfig = createConfigFileOperations({ cwd }).read();
-  const carried = readGlobalProtectedTerms(previousConfig, cwd);
+  const carried = readGlobalProtectedTerms(previousConfig, cwd).terms;
 
   // Validate before touching config, so a bad path never leaves a dangling pointer behind.
   if (pointer !== undefined) {
@@ -101,15 +102,16 @@ export function setGlobalProtectedTermsFile(
 
 /**
  * Points a collection at its own protected-terms file, carrying over any terms already
- * in its previous file. Passing `undefined` clears the pointer, leaving the collection
- * with no terms of its own.
+ * in its previous file. Passing `undefined` (or a blank string) clears the pointer, leaving
+ * the collection with no terms of its own.
  */
-export async function setCollectionProtectedTermsFile(
+export function setCollectionProtectedTermsFile(
   collectionName: string,
-  pointer: string | undefined,
+  rawPointer: string | undefined,
   options: SetProtectedTermsOptions = {},
-): Promise<SetProtectedTermsResult | { message: string; filePath: undefined }> {
+): SetProtectedTermsResult | { message: string; filePath: undefined } {
   const cwd = options.cwd ?? process.cwd();
+  const pointer = normalizePointer(rawPointer);
   const config = createConfigFileOperations({ cwd }).read();
   const collection = config.collections?.[collectionName];
 
@@ -117,24 +119,27 @@ export async function setCollectionProtectedTermsFile(
     throw new CollectionNotFoundError(collectionName);
   }
 
-  const carried = readCollectionProtectedTerms(collection, cwd);
+  const carried = readCollectionProtectedTerms(collection, cwd).terms;
 
   // Validate before touching config, so a bad path never leaves a dangling pointer behind.
-  if (pointer !== undefined) {
-    assertWritableProtectedTermsPath(resolveProtectedTermsFilePath(pointer, cwd));
+  const filePath = pointer === undefined ? undefined : resolveProtectedTermsFilePath(pointer, cwd);
+  if (filePath !== undefined) {
+    assertWritableProtectedTermsPath(filePath);
   }
 
-  await updateCollection(collectionName, undefined, { ...collection, protectedTermsFile: pointer }, { cwd });
+  // A patch of one key (`''` clears it): the rest of the record (including a `translation` override) stays as is.
+  updateConfig((current) => patchCollectionEntry(current, collectionName, { protectedTermsFile: pointer ?? '' }), cwd);
 
-  if (pointer === undefined) {
+  if (filePath === undefined) {
     return { message: `Collection "${collectionName}" protected terms file cleared`, filePath: undefined };
   }
 
-  const filePath = resolveCollectionProtectedTermsFilePath({ protectedTermsFile: pointer }, cwd);
-  if (!filePath) {
-    throw new Error(`Failed to resolve protected terms file path for collection "${collectionName}"`);
-  }
   writeProtectedTermsFile(filePath, carried);
 
   return { message: `Collection "${collectionName}" protected terms file set to ${filePath}`, filePath };
+}
+
+/** A blank pointer is no pointer: `''` would otherwise resolve to the config directory itself. */
+function normalizePointer(pointer: string | undefined): string | undefined {
+  return pointer?.trim() || undefined;
 }

@@ -18,6 +18,7 @@ Return to [architecture README](README.md).
   - [BrowserStore Feature Breakdown](#browserstore-feature-breakdown)
   - [TranslationListStore](#translationliststore)
   - [CollectionsStore](#collectionsstore)
+  - [API Errors — One Adapter at the HTTP Seam](#api-errors--one-adapter-at-the-http-seam)
 - [Key UI Patterns](#key-ui-patterns)
   - [Virtual Scrolling](#virtual-scrolling)
   - [Optimistic Updates with Rollback](#optimistic-updates-with-rollback)
@@ -131,13 +132,13 @@ flowchart TD
 
 ### BrowserStore — Feature Composition
 
-`BrowserStore` is a single `signalStore` provided in root. Its state is split across seven `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call; each feature adds its own slice.
+`BrowserStore` is a single `signalStore` provided in root. Its state is split across eight `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call (`store/root-state.ts`); each feature adds its own slice and exports its initial state. The last feature is the [Browser Session](glossary.md#browser-session): `openCollection(settings)` is the one way a collection is opened or switched, and `updateSettings(settings)` the one way the open collection's settings change.
 
 <!-- BrowserStore feature composition — how with-* files build up the root store -->
 
 ```mermaid
 flowchart TD
-    Root["BrowserStore root state\n─────────────────────────\nselectedCollection\navailableLocales / baseLocale\nisDisabled / error\ncurrentFolderPath\ndensityMode / compactLocale\ncompactLocaleManuallyChanged\nnonCompactSelectedLocales\n─────────────────────────\nmethods: setSelectedCollection, moveResource, reset, …"]
+    Root["BrowserStore root state (root-state.ts)\n─────────────────────────\nsessionId / collectionSettings\nselectedCollection\navailableLocales / baseLocale / isReadOnly\nisDisabled / error\ncurrentFolderPath\ndensityMode / compactLocale\ncompactLocaleManuallyChanged\nnonCompactSelectedLocales\n─────────────────────────\nmethods: moveResource, clearError"]
 
     Root --> WS["withSearchFeature\n(with-search.feature.ts)\nAdds: searchQuery, isSearchMode,\nsearchResults, isSearchLoading, searchError\nMethods: setSearchQuery, clearSearch,\nsearchTranslations (rxMethod)"]
 
@@ -145,22 +146,32 @@ flowchart TD
 
     Root --> WT["withTranslationsFeature\n(with-translations.feature.ts)\nAdds: translations, isTranslationsLoading,\nshowNestedResources\nComputed: sortedTranslations, displayedTranslations,\nisEmpty, translationCount, _statusLocales (private)\nMethods: selectFolder (rxMethod),\nsetNestedResources"]
 
-    Root --> WEW["withEntryWritesFeature\n(with-entry-writes.feature.ts)\nNo new state\nMethods: createResource, updateResource,\ndeleteResource, translateResource\n(return the API Observable; patch\ntranslations / searchResults on success)"]
+    Root --> WEW["withEntryWritesFeature\n(with-entry-writes.feature.ts)\nNo new state\nMethods: createResource, updateResource,\ndeleteResource, translateResource\n(return the API Observable; patch\ntranslations / searchResults on success,\nsession-guarded via captureSession)"]
 
-    Root --> WFT["withFolderTreeFeature\n(with-folder-tree.feature.ts)\nAdds: rootFolders, expandedFolders,\nfolderTreeFilter, isFolderTreeLoading,\nisAddingFolder, addFolderParentPath,\nnewlyCreatedFolderPath, isDeletingFolder\nComputed: filteredFolders, breadcrumbs, isLoading\nMethods: loadRootFolders, loadFolderChildren,\ncreateFolder, deleteFolder, moveFolder (rxMethods)"]
+    Root --> WFT["withFolderTreeFeature\n(with-folder-tree.feature.ts)\nAdds: rootFolders, folderTreeLoaded,\nexpandedFolders, preFilterExpandedFolders,\nisRootExpanded, folderTreeFilter, isFolderTreeLoading,\nisAddingFolder, addFolderParentPath,\nnewlyCreatedFolderPath, isDeletingFolder\nComputed: filteredFolders, breadcrumbs, isLoading\nMethods: loadRootFolders, loadFolderChildren,\ncreateFolder, deleteFolder, moveFolder (rxMethods)"]
 
     Root --> WCS["withCacheStatusFeature\n(with-cache-status.feature.ts)\nAdds: cacheStatus, cacheError, collectionStats\nComputed: isCacheReady, isCacheIndexing,\ncollectionTotalKeys, collectionLocaleCount\nMethods: checkCacheStatus (rxMethod — polls every 2s\nuntil status = 'ready')"]
 
-    Root --> WVP["withViewPreferencesFeature\n(with-view-preferences.feature.ts)\nNo new state (reads from root + other features)\nComputed: canShowMultipleLocales\nMethods: setDensityMode, loadViewPreferences\nHook: onInit effect → persists prefs to\nlocalStorage on every signal change"]
+    Root --> WVP["withViewPreferencesFeature\n(with-view-preferences.feature.ts)\nNo new state (reads from root + other features)\nComputed: canShowMultipleLocales\nMethods: setDensityMode, restoreViewPreferences\nHook: onInit effect → persists prefs to\nlocalStorage on every signal change"]
+
+    Root --> WBS["withBrowserSessionFeature\n(with-browser-session.feature.ts)\nNo new state\nMethods: openCollection(settings) — sessionId\nbumped, every feature back to its initial state,\nsettings applied, prefs restored, polling started;\nupdateSettings(settings) — reopens when locales,\nbaseLocale or translationsFolder differ,\nelse patches readOnly/translationEnabled in place"]
 
     WS -.->|"isSearchMode, searchResults\nread by"| WT
+    WBS -.->|"calls restoreViewPreferences\nprovided by"| WVP
+    WBS -.->|"calls checkCacheStatus\nprovided by"| WCS
     WF -.->|"selectedLocales, selectedStatuses\nread by"| WT
     WFT -.->|"calls selectFolder\nprovided by"| WT
     WEW -.->|"calls selectFolder,\npatches translations"| WT
     WCS -.->|"calls loadRootFolders\nprovided by"| WFT
 ```
 
-**Composition order matters.** `withEntryWritesFeature` and `withFolderTreeFeature` require `selectFolder` (and the folder tree also `setTranslationsLoading`) from `withTranslationsFeature`, so `withTranslationsFeature` must appear first. `withCacheStatusFeature` requires `loadRootFolders` from `withFolderTreeFeature`, so it follows. `withViewPreferencesFeature` reads from every other feature's state and is last.
+**Composition order matters.** `withEntryWritesFeature` and `withFolderTreeFeature` require `selectFolder` (and the folder tree also `setTranslationsLoading`) from `withTranslationsFeature`, so `withTranslationsFeature` must appear first. `withCacheStatusFeature` requires `loadRootFolders` from `withFolderTreeFeature`, so it follows. `withViewPreferencesFeature` reads from every other feature's state. `withBrowserSessionFeature` calls `restoreViewPreferences` and `checkCacheStatus`, and is last.
+
+**Opening a collection.** The store is root-provided, so it outlives the `/browser/:collectionName` route. `TranslationBrowser` resolves the routed collection's settings from the loaded config (`resolveCollectionSettings(config, name)`, the Tracker's counterpart of core's `openCollection`: collection value, else global, else default) each time the config changes. When the routed collection is not the open one, it calls `store.openCollection(settings)`. The session bumps `sessionId`, patches every feature's exported initial state together with the root state, stores the settings (`collectionSettings`, plus the projections `selectedCollection`, `availableLocales`, `baseLocale`, `isReadOnly`), then has the view-preferences feature restore what `localStorage` holds for that collection (a saved `medium` density, or none, reads as `compact`; in compact the one displayed locale is resolved against the collection's locales), and starts index polling. The folder, search, filter, translations, folder-tree and cache-status state of the previous collection does not survive the switch.
+
+**Responses from a closed session.** A loader captures `sessionId` when its request starts (`captureSession`, `store/session-guard.ts`) and pipes the API response through `withinSession`. When another `openCollection` has run in the meantime, the response is dropped: a value is not written and an error completes without a rollback, toast or follow-up navigation. `selectFolder`, `loadRootFolders`, `loadFolderChildren`, `createFolder`, `deleteFolder`, `moveFolder`, `moveResource` and `searchTranslations` use it; `createFolderAt` and the entry writes (`with-entry-writes.feature.ts`: `createResource`, `updateResource`, `deleteResource`, `translateResource`) still return their response to the caller but write the store only in their own session — the translation editor dialog's `updateResource` subscription can outlive the browser, so a save that resolves after another collection has opened must not patch or drop a row in the session that replaced it. The counter, not the collection name, is compared, so a response from an earlier open of the same collection (A, B, A) is dropped too. `checkCacheStatus` needs no guard: every open calls it, and its `switchMap` cancels the previous poll.
+
+**Re-entering the open collection.** Going back to the Collections page and opening the same collection again is not an open: the user keeps their place (selected folder, expansion, search query and results, filters). `TranslationSearch` starts its box from `store.searchQuery()`, and `FolderTree` only reads `isDisabled`, so the remounted tree stays disabled while the search is active. When the config has changed, `TranslationBrowser` calls `store.updateSettings(settings)`. Settings equal to the stored ones (`sameCollectionSettings`), as on an unrelated config reload, are a no-op. Otherwise `updateSettings` branches on what changed (`collectionNeedsReopen` in `collection-settings.ts`): a `readOnly` or `translationEnabled` edit alone writes `collectionSettings` and its projections in place and changes nothing else; a `locales`, `baseLocale` or `translationsFolder` edit invalidates data cached under the old settings — the folder tree, translations, filter selections, the cache-status check — so `updateSettings` calls `openCollection(settings)` instead, a fresh session that restores the collection's saved view preferences against its current locales (a saved locale the collection no longer has is dropped, not kept selected, so it cannot leave a stale column on screen or get written back to `localStorage`). `collectionSettings` is the one source of settings in the browser: `translationEnabled` and `translationsFolder` are read from it, and no component resolves settings from the raw config.
 
 ---
 
@@ -172,18 +183,17 @@ flowchart TD
 | `with-filter.feature.ts` | `selectedLocales`, `selectedStatuses`, `sortField`, `sortDirection` | `filteredLocales`, `filterableLocales`, `localeFilterText`, `statusFilterText`, `isShowingAllLocales`, `isShowingAllStatuses` | `toggleLocale`, `setSelectedLocales`, `setSortField`, `toggleSortDirection`, `toggleStatus`, `selectNeedsWorkStatuses` |
 | `with-translations.feature.ts` | `translations`, `isTranslationsLoading`, `showNestedResources` | `sortedTranslations`, `displayedTranslations`, `isEmpty`, `translationCount`, `hasTranslations` | `selectFolder`, `setTranslationsLoading`, `setNestedResources` |
 | `with-entry-writes.feature.ts` | (no new state) | — | `createResource`, `updateResource`, `deleteResource`, `translateResource` — see [Writing a Resource Entry](#writing-a-resource-entry) |
-| `with-folder-tree.feature.ts` | `rootFolders`, `expandedFolders`, `folderTreeFilter`, `isFolderTreeLoading`, `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath` | `filteredFolders`, `breadcrumbs`, `isLoading` | `loadRootFolders`, `loadFolderChildren`, `createFolder`, `createFolderAt`, `deleteFolder`, `moveFolder`, `toggleFolderExpanded`, `startAddingFolder`, `cancelAddingFolder` |
-| `with-cache-status.feature.ts` | `cacheStatus`, `cacheError`, `collectionStats` | `isCacheReady`, `isCacheIndexing`, `collectionTotalKeys`, `collectionLocaleCount`, `hasCollectionStats` | `checkCacheStatus` (polls every 2 s via `interval`, stops when `status === 'ready'`) |
-| `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `loadViewPreferences` (reads `localStorage`) |
+| `with-folder-tree.feature.ts` | `rootFolders`, `folderTreeLoaded`, `expandedFolders` and `preFilterExpandedFolders` (both `ReadonlySet<string>`, replaced on every change), `isRootExpanded`, `folderTreeFilter`, `isFolderTreeLoading`, `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath` | `filteredFolders`, `breadcrumbs`, `isLoading`, `visibleExpandedFolders`, `areAllFoldersExpanded` | `loadRootFolders`, `loadFolderChildren`, `createFolder`, `createFolderAt`, `deleteFolder`, `moveFolder`, `setFolderTreeFilter`, `toggleFolderExpanded`, `expandFolder`, `toggleRootExpanded`, `expandAllFolders`, `collapseAllFolders`, `startAddingFolder`, `cancelAddingFolder` |
+| `with-cache-status.feature.ts` | `cacheStatus`, `cacheError`, `collectionStats` | `isCacheReady`, `isCacheIndexing`, `collectionTotalKeys`, `collectionLocaleCount`, `hasCollectionStats` | `checkCacheStatus` (sets `cacheStatus: 'not-started'` and clears `cacheError`/`collectionStats` on every call, including an overlay retry; then polls every 2 s via `interval` until the status is no longer indexing) |
+| `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `restoreViewPreferences` (reads `localStorage` for one collection and applies it) |
+| `with-browser-session.feature.ts` | (no new state; writes the root `sessionId` and `collectionSettings`) | — | `openCollection(settings)` — the [Browser Session](glossary.md#browser-session): `sessionId` bumped, every feature to its initial state, settings applied, preferences restored, polling started; `updateSettings(settings)` — a no-op when equal; reopens via `openCollection` when `locales`, `baseLocale` or `translationsFolder` differ; otherwise patches `readOnly`/`translationEnabled` in place |
 
 Root-level methods on `BrowserStore` (not in a feature):
 
 | Method | Purpose |
 |---|---|
-| `setSelectedCollection` | Switches active collection, restores view preferences from `localStorage`, triggers cache polling |
 | `moveResource` | Optimistic remove from `translations` (matched by `fullKey`, so it works for rows in any folder) → API call → re-fetch on success, rollback on error |
-| `reset` | Clears all state slices back to initial values |
-| `setBaseLocale`, `setDisabled`, `clearError` | Simple `patchState` helpers |
+| `clearError` | Simple `patchState` helper |
 
 ---
 
@@ -200,19 +210,17 @@ Because `TranslationListStore` is component-provided, each `TranslationList` ins
 
 ### CollectionsStore
 
-`CollectionsStore` is a flat, root-provided signal store, with no feature decomposition. It holds `config: LingoTrackerConfigDto | null`, `isLoading`, and `error`. Computed signals derive `collectionEntries`, `collectionEntriesWithLocales`, `hasCollections`, and `collections`.
+`CollectionsStore` is a root-provided signal store: `config: LingoTrackerConfigDto | null`, `isLoading` (a load in flight) and `error` (a failed load's message), with `withBundlesFeature` composed on for bundle definitions and runs. Computed signals derive `collectionEntries`, `collectionEntriesWithLocales`, `hasCollections`, and `collections`.
 
-The store exposes five methods: `loadCollections`, `createCollection`, `updateCollection`, `deleteCollection`, and `updateGlobalConfig`. Each one reloads the full config from the API after it mutates, instead of updating local state optimistically. Collections change rarely, so this keeps the store simple.
+`loadCollections` is the one `rxMethod`. Every mutation is a [Config Write](glossary.md#config-write) (`collections/store/config-write.ts`): `createCollection`, `updateCollection(name, update)`, `deleteCollection`, `updateGlobalConfig`, and the bundle feature's `createBundle`, `updateBundle(name, update)` and `deleteBundle`. Each returns a cold `Observable<LingoTrackerConfigDto | null>`: on subscribe it sends the request, reloads the full config from the API (collections change rarely, so nothing is updated optimistically), stores it, and only then resolves with it. If that reload fails, the write still happened: the Observable resolves with `null`, and the store reports the failed load in `error`, as a failed initial load does, so a caller closes and toasts as usual and a retry never meets a 409. A rejected write errors with the request's [`ApiError`](#api-errors--one-adapter-at-the-http-seam) and leaves the store untouched, so the caller decides: the form dialogs stay open and show the refusal, the manager toasts a delete only after it happened, the settings page reseeds from the saved config. Mutations never touch `isLoading`, and touch `error` only through that reload, so a rejected write never blanks the page or leaves a stale banner.
 
-`updateCollection` is async. Locale diffing and file-system mutations happen inside `PUT /collections/:name` on the core side. The store awaits the response and reloads.
-
-`updateGlobalConfig` posts the writable top-level fields to `PUT /config`. Today that is the global protected-terms list.
+`updateCollection` sends `PUT /collections/:name`; locale diffing and file-system changes happen on the core side. `updateGlobalConfig` sends the writable top-level fields to `PUT /config`: the global protected-terms list and the preferred-terminology rules; rejected rules come back as an `invalid` error whose `details` are the per-row `PreferredTermRuleErrorDto`s.
 
 ### Protected Terms in the UI
 
 Protected terms live in JSON files on disk rather than in `.lingo-tracker.json`. The UI handles no paths of its own. It edits the terms, and the API decides which file receives them.
 
-**Settings** (`/settings`) seeds a `protectedTermsList` signal from `config().protectedTerms` exactly once. A `#seeded` flag guards the seeding, so a later config refetch leaves edits in progress alone. The user edits terms as Material chips, and `store.updateGlobalConfig({ protectedTerms })` saves them.
+**Settings** (`/settings`) seeds its staged term rows and its `PreferredTerminologyDraft` from the first config to arrive, through one effect that then destroys itself; a config the store reloads for another reason never reseeds them, so edits in progress are safe. `save()` subscribes to `store.updateGlobalConfig(...)`: the saved config it resolves with reseeds both lists and earns one success toast; a `null` answer (the write was accepted but the reload failed) reseeds both lists from the lists it sent, earns the same toast, and leaves the load error to `store.error`; a refusal keeps every edit, shows `apiErrorMessage` in the page banner, and maps the `details` of an `invalid` answer (read through a type guard, never a cast) onto the rows that were sent. Both editors are locked while the config is still `null` and while a save is in flight (`editingLocked`); there is no other state for it.
 
 A read-only line beneath the field renders `config().protectedTermsFilePath`. Someone who later meets the file in a diff can then see where it came from.
 
@@ -221,6 +229,21 @@ A read-only line beneath the field renders `config().protectedTermsFilePath`. So
 The dialog returns `protectedTermsFile` unchanged in its submit payload. It includes `protectedTerms` only when that setting exists. An edit therefore keeps the setting intact, and it sends no terms that the API would reject.
 
 ---
+
+### API Errors — One Adapter at the HTTP Seam
+
+The API clients (`BrowserApiService`, `CollectionsApiService`) never expose Angular's `HttpErrorResponse`. `provideTrackerHttpClient()` (`shared/api-error/api-error.ts`) installs one functional interceptor, `apiErrorInterceptor`, on the app's `HttpClient`. Every `HttpClient` request goes through it — the API clients and the Transloco loader alike — so it is the only place in the Tracker that reads a status code or an error body: every failed response becomes an `ApiError`, an `Error` with four fields.
+
+| Field | Value |
+|---|---|
+| `kind` | Shrunk to what a consumer actually branches on: `invalid` (400, 422), `not-found` (404), `conflict` (409), `other` (everything else — network failures, 403, every 5xx, any other status). |
+| `status` | The real HTTP status (or 0 for a network failure), for logs or for a future consumer that needs more than `kind`. |
+| `serverMessage` | The `message` of the API's `{ statusCode, message, error }` body; `undefined` for a network failure, a non-JSON body (an HTML page from a proxy), or the API's generic 500, whose body has no message. |
+| `details` | The body's `errors` array when present: bundle rule messages (`string[]`) or preferred-terminology rule errors (`PreferredTermRuleErrorDto[]`). |
+
+Consumers use two things. `apiErrorMessage(error, fallback)` is the text to show: the server's message when the API sent one, the message of an `Error` the Tracker raised itself (`CollectionIndexNotReadyError`), else the caller's localized fallback for that operation (`browser.toast.loadFoldersFailed` and the like). `kind` drives a decision: the translation editor opens the key-conflict dialog on `conflict` and shows its not-found text on `not-found`; the collection and bundle form dialogs put a `conflict` on the name field; the settings page reads the `details` of an `invalid` answer as rule errors (through a type guard, not a cast — a row missing `index`/`field`/`code`/`message` is dropped); the bundle dialog lists the string `details` of an `invalid` definition, and `withBundlesFeature` appends them to a failed run's message (`Invalid bundle definition: a; b`). No store, dialog or picker matches on a status or parses a body.
+
+**No status is special.** `LingoTrackerExceptionFilter` (`apps/api/src/app/errors/lingo-tracker-exception.filter.ts`) answers every exception it does not otherwise map — anything that is not an `HttpException` or a typed `LingoTrackerError` — with a 500 whose body carries no `message` at all, so `apiErrorMessage` lands on the caller's localized fallback by its one rule. A 500 that does carry a message is deliberate and shown as is: an `InvalidConfigError` says what is wrong with `.lingo-tracker.json` (the settings page shows it when a save hits a malformed `preferredTerminologyFile` pointer), and a translation provider left unconfigured names the problem. So does a 502 or 429 from `translationErrorToHttp` in the same filter.
 
 ## Key UI Patterns
 
@@ -364,7 +387,7 @@ All UI writes of a resource entry go through `withEntryWritesFeature` on `Browse
 | `deleteResource(collectionName, fullKey)` | `withItemActions.deleteTranslation` | Removes the entry when `entriesDeleted > 0`. |
 | `translateResource(collectionName, fullKey)` | `withItemActions.translateResource` | Patches the entry in place. |
 
-Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling, for example the dialog's 409 conflict dialog and its 400 and 404 messages. The store changes its caches only on success.
+Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling on the [`ApiError`](#api-errors--one-adapter-at-the-http-seam) it receives, for example the dialog's key-conflict dialog on `conflict` and its `invalid` and `not-found` messages. The store changes its caches only on success.
 
 `toUpdateDto` includes `moveTo` only when the entry changes folder, and `''` means the collection root. The server edits the entry, then moves it there (core `editResource` with `moveTo`). The store then drops the row, and it does not check whether the destination is still in the list's scope. The store rule and the DTO rule use the same test: the `moveTo` property is present or absent. Limitation: with nested resources on (`includeNested`), the list shows a folder and its descendants. An entry that moves from one descendant to another stays in scope, but its row disappears until the next reload of the folder.
 
@@ -378,7 +401,7 @@ Both caches (`translations` and `searchResults`) are keyed by each resource's `f
 
 - **Field validators** give live feedback on each control: required fields, the unique name, `segmentValidator` for the name, a non-empty collection list and rule list. The rules the server also applies call the domain predicates: `hasLocalePlaceholder` for the file name pattern, `isTypeScriptFile` for the types file and `isValidJavaScriptIdentifier` for the constant name.
 - **On populate**, the dialog reads the definition through `normalizeBundleDefinition`, so a legacy `typeDist` shows as the types file and is saved as `typeDistFile`.
-- **On submit**, after the field validators pass, the dialog runs the domain `checkBundleDefinition(definition, collectionNames, name)` (the name only while it can be edited), the same check core and the API dry run apply. Any message stops the submit and shows above the footer (`submitErrors`, an alert, in the domain's English text). The next edit clears it. So the dialog does not close on a definition the server would reject. If a server 400 still happens, `withBundlesFeature` shows `Invalid bundle definition: <errors joined by "; ">`.
+- **On submit**, after the field validators pass, the dialog runs the domain `checkBundleDefinition(definition, collectionNames, name)` (the name only while it can be edited), the same check core and the API dry run apply. Any message stops the submit and shows above the footer (`submitErrors`, an alert, in the domain's English text). The next edit clears it. Then the dialog writes through the store itself (`createBundle`, or `updateBundle` under the existing name), a [Config Write](glossary.md#config-write), and closes with the result only once the server has accepted it; the submit button is disabled meanwhile (`saving`), and so is closing: Cancel and the close icon are disabled and `dialogRef.disableClose` blocks Esc and the backdrop, because closing would destroy the dialog and cancel a write the server may already have made. A refusal restores both, and a second submit while one is in flight is ignored. A `conflict` (a taken name) lands on the name field and opens the Output section; an `invalid` answer lists the server's rule messages in the same `submitErrors` area; any other refusal shows its message, else the localized fallback. The collection form dialog follows the same shape: a name conflict under the name field, anything else on an error line above the buttons (`submitError`), which the next edit clears; it locks closing the same way while it saves.
 - **Output paths** come from the domain `bundleOutputFile`: the rail summary (with the `{locale}` placeholder kept), the "writes" hint and the local "Will write" tree. The dry-run tree comes from the API plan, which uses the same rule, so both trees show the paths core writes.
 
 ---
@@ -460,6 +483,7 @@ Specs are co-located `*.spec.ts` files run by Vitest (jsdom, `globals: true`) th
 - Update a store's protected state with `patchState(unprotected(store), …)` (`@ngrx/signals/testing`).
 - Type a `SpectatorService` over a signal store as `SpectatorService<InstanceType<typeof Store>>`.
 - Mocks carry the real DTO shape (a `ResourceSummaryDto` has `tags` and `inheritedTags`). A partial fake of a DOM or library type takes one `as unknown as` cast with a comment at the point where it is handed over.
+- A mocked API service fails with the adapter's value, `toApiError(new HttpErrorResponse({ status, error: { message } }))`, never a plain `new Error(...)` standing in for HTTP. A spec that provides `HttpClient` uses `provideTrackerHttpClient()`, so a flushed `HttpTestingController` failure goes through the interceptor.
 
 ---
 

@@ -254,9 +254,9 @@ sequenceDiagram
 
     Note over Dev,Dialog: A. Open collection
     Dev->>TB: navigate to /browser/:collectionName
-    TB->>BS: setSelectedCollection({ collectionName, locales, baseLocale })
-    BS->>BS: reset transient state (folders, cache, translations)
-    BS->>BS: loadViewPreferences(collectionName) — restore from localStorage
+    TB->>BS: openCollection(settings) — resolveCollectionSettings(config, name)
+    BS->>BS: bump sessionId; reset every feature to its initial state
+    BS->>BS: restoreViewPreferences(collectionName) — restore from localStorage,<br/>dropping any saved locale the collection no longer has
     BS->>CS: checkCacheStatus() [rxMethod — starts interval(2000)]
 
     Note over CS,API: B. Cache indexing poll (every 2 s until "ready")
@@ -431,7 +431,7 @@ The sequence from opening a collection to having a fully populated resource tree
 flowchart TD
     START([Developer navigates to\n/browser/:collectionName]) --> SET_COLLECTION
 
-    SET_COLLECTION["BrowserStore.setSelectedCollection()\nReset: cacheStatus=null, rootFolders=[], translations=[]\nRestore view preferences from localStorage"]
+    SET_COLLECTION["BrowserStore.openCollection(settings)\nsessionId bumped; every feature reset to its initial state\nRestore view preferences from localStorage\n(dropping locales the collection no longer has)"]
 
     SET_COLLECTION --> POLL_START["withCacheStatusFeature.checkCacheStatus()\nStart interval(2000ms)"]
 

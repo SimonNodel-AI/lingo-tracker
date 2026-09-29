@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -5,18 +6,26 @@ import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat'
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto, PreferredTermRuleErrorDto } from '@simoncodes-ca/data-transfer';
 import { icuToTransloco, validateICUSyntax } from '@simoncodes-ca/domain';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ruleErrorEntries from '../../i18n/settings/preferredTerminology/error/resource_entries.json';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
 import { CollectionsStore } from '../collections/store/collections.store';
+import { toApiError } from '../shared/api-error/api-error';
+import { NotificationService } from '../shared/notification';
 import { Settings } from './settings';
+
+/** A refused save, as the Config Write reports it. */
+const rejection = (status: number, body: object) =>
+  throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } })));
 
 describe('Settings', () => {
   let fixture: ComponentFixture<Settings>;
   let component: Settings;
   let spectator: Spectator<Settings>;
   const updateGlobalConfigMock = vi.fn();
+  const notifications = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
 
   const baseConfig: LingoTrackerConfigDto = {
     exportFolder: 'dist/export',
@@ -32,14 +41,16 @@ describe('Settings', () => {
     config: signal(config),
     error: signal(error),
     isLoading: signal(false),
-    configRuleErrors: signal<PreferredTermRuleErrorDto[]>([]),
     updateGlobalConfig: updateGlobalConfigMock,
   });
 
   const createComponent = createComponentFactory({
     component: Settings,
     imports: [NoopAnimationsModule, getTranslocoTestingModule()],
-    providers: [{ provide: CollectionsStore, useFactory: () => buildStore(null) }],
+    providers: [
+      { provide: CollectionsStore, useFactory: () => buildStore(null) },
+      { provide: NotificationService, useValue: notifications },
+    ],
     detectChanges: false,
   });
 
@@ -66,6 +77,8 @@ describe('Settings', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // A save is accepted unless a test says otherwise; its answer is the config as saved.
+    updateGlobalConfigMock.mockReturnValue(of(baseConfig));
   });
 
   it('renders global protected terms seeded from the store config', () => {
@@ -348,19 +361,18 @@ describe('Settings', () => {
       expect(component.hasChanges()).toBe(false);
     });
 
-    it('surfaces a failed save error to the user', () => {
+    it('surfaces a failed config load to the user', () => {
       render(null, 'update failed');
 
       expect(fixture.nativeElement.textContent).toContain('update failed');
     });
 
-    it('does not clobber in-progress edits on a config refetch we did not ask for', () => {
+    it('does not clobber in-progress edits on a config reload it did not ask for', () => {
       const config = signal(baseConfig);
       renderStore({
         config,
         error: signal(null),
         isLoading: signal(false),
-        configRuleErrors: signal<PreferredTermRuleErrorDto[]>([]),
         updateGlobalConfig: updateGlobalConfigMock,
       });
 
@@ -372,24 +384,72 @@ describe('Settings', () => {
       expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
     });
 
-    it('adopts the refetched config as the new baseline after a save', () => {
-      const config = signal(baseConfig);
-      renderStore({
-        config,
-        error: signal(null),
-        isLoading: signal(false),
-        configRuleErrors: signal<PreferredTermRuleErrorDto[]>([]),
-        updateGlobalConfig: updateGlobalConfigMock,
-      });
+    it('adopts the saved config as the new baseline and toasts once when the save is accepted', () => {
+      render(baseConfig);
+      updateGlobalConfigMock.mockReturnValueOnce(of({ ...baseConfig, protectedTerms: ['C++', 'iPhone', 'Node.js'] }));
 
       component.onAddDraftChange('C++');
       component.addTerm();
       component.save();
-      config.set({ ...baseConfig, protectedTerms: ['C++', 'iPhone', 'Node.js'] });
       fixture.detectChanges();
 
       expect(component.hasChanges()).toBe(false);
       expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(notifications.success).toHaveBeenCalledTimes(1);
+      expect(notifications.success).toHaveBeenCalledWith('Global settings saved');
+      expect(component.saveError()).toBeNull();
+    });
+
+    it('treats the sent lists as saved and toasts once when the save is accepted but its reload fails', () => {
+      render(baseConfig);
+      updateGlobalConfigMock.mockReturnValueOnce(of(null));
+
+      component.onAddDraftChange('C++');
+      component.addTerm();
+      component.addRule();
+      const [rule] = component.terminology.rowViews();
+      expect(rule).toBeDefined();
+      component.onRuleInput(rule?.row.id ?? -1, 'discouraged', 'utilize');
+      component.onRuleInput(rule?.row.id ?? -1, 'preferred', 'use');
+      component.save();
+      fixture.detectChanges();
+
+      expect(component.saving()).toBe(false);
+      expect(component.hasAnyChanges()).toBe(false);
+      expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(component.terminology.rulesToSave()).toEqual([{ discouraged: 'utilize', preferred: 'use' }]);
+      expect(notifications.success).toHaveBeenCalledTimes(1);
+      expect(notifications.success).toHaveBeenCalledWith('Global settings saved');
+      expect(component.saveError()).toBeNull();
+    });
+
+    it('shows the refusal, keeps the edits and toasts nothing when the save is rejected', () => {
+      render(baseConfig);
+      updateGlobalConfigMock.mockReturnValueOnce(
+        rejection(400, { message: 'protectedTerms must be an array of strings' }),
+      );
+
+      component.onAddDraftChange('C++');
+      component.addTerm();
+      component.save();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('protectedTerms must be an array of strings');
+      expect(component.hasChanges()).toBe(true);
+      expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(notifications.success).not.toHaveBeenCalled();
+    });
+
+    it('falls back to the save-failed text for a refusal without a message', () => {
+      render(baseConfig);
+      updateGlobalConfigMock.mockReturnValueOnce(rejection(500, { error: 'Internal Server Error' }));
+
+      component.onAddDraftChange('C++');
+      component.addTerm();
+      component.save();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('Failed to save settings');
     });
   });
 
@@ -637,27 +697,22 @@ describe('Settings', () => {
       });
     });
 
-    it('re-seeds rows from the reloaded config after a save, in the server order', () => {
-      const config = signal<LingoTrackerConfigDto>(terminologyConfig);
-      renderStore({
-        config,
-        error: signal(null),
-        isLoading: signal(false),
-        configRuleErrors: signal<PreferredTermRuleErrorDto[]>([]),
-        updateGlobalConfig: updateGlobalConfigMock,
-      });
+    it('re-seeds rows from the saved config a save answers with, in the server order', () => {
+      render(terminologyConfig);
+      updateGlobalConfigMock.mockReturnValueOnce(
+        of({
+          ...terminologyConfig,
+          preferredTerminology: [
+            { discouraged: 'Cost', preferred: 'Price' },
+            ...(terminologyConfig.preferredTerminology ?? []),
+          ],
+        }),
+      );
       clickAdd();
       type(2, 'discouraged', 'Cost');
       type(2, 'preferred', 'Price');
 
       component.save();
-      config.set({
-        ...terminologyConfig,
-        preferredTerminology: [
-          { discouraged: 'Cost', preferred: 'Price' },
-          ...(terminologyConfig.preferredTerminology ?? []),
-        ],
-      });
       spectator.detectChanges();
       spectator.flushEffects();
       spectator.detectChanges();
@@ -670,26 +725,24 @@ describe('Settings', () => {
       expect(component.terminology.hasChanges()).toBe(false);
     });
 
-    it('maps server errors onto the submitted rows and clears one when its field is edited', () => {
-      const configRuleErrors = signal<PreferredTermRuleErrorDto[]>([]);
-      const error = signal<string | null>(null);
-      renderStore({
-        config: signal<LingoTrackerConfigDto | null>(terminologyConfig),
-        error,
-        isLoading: signal(false),
-        configRuleErrors,
-        updateGlobalConfig: updateGlobalConfigMock,
-      });
+    it('maps the rule errors of a rejected save onto the submitted rows and clears one when its field is edited', () => {
+      render(terminologyConfig);
+      const errors: PreferredTermRuleErrorDto[] = [
+        { index: 1, field: 'preferred', code: 'self-mapping', message: 'server says no' },
+      ];
+      updateGlobalConfigMock.mockReturnValueOnce(
+        rejection(400, { message: 'Invalid preferred terminology rules', errors: [...errors, 'not a rule error'] }),
+      );
       type(1, 'reason', 'Changed.');
-      component.save();
 
-      error.set('server says no');
-      configRuleErrors.set([{ index: 1, field: 'preferred', code: 'self-mapping', message: 'server says no' }]);
-      spectator.flushEffects();
+      component.save();
       spectator.detectChanges();
 
       expect(errorFor(1, 'preferred')).toBe('settings.preferredTerminology.error.selfMapping');
       expect(errorFor(0, 'preferred')).toBeNull();
+      expect(fixture.nativeElement.textContent).toContain('Invalid preferred terminology rules');
+      expect(notifications.success).not.toHaveBeenCalled();
+      expect(component.terminology.changeCount()).toBe(1);
 
       type(1, 'preferred', 'Capital');
 
@@ -771,9 +824,15 @@ describe('Settings', () => {
         config: signal<LingoTrackerConfigDto | null>(terminologyConfig),
         error: signal<string | null>(null),
         isLoading: signal(false),
-        configRuleErrors: signal<PreferredTermRuleErrorDto[]>([]),
         updateGlobalConfig: updateGlobalConfigMock,
       });
+      const saved: LingoTrackerConfigDto = {
+        ...terminologyConfig,
+        preferredTerminology: [
+          { discouraged: 'E-mail', preferred: 'Email' },
+          { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Current planning term.' },
+        ],
+      };
       const settle = () => {
         spectator.detectChanges();
         spectator.flushEffects();
@@ -812,9 +871,10 @@ describe('Settings', () => {
         expect(component.terminology.hasChanges()).toBe(false);
       });
 
-      it('locks every edit control while a save is in flight and unlocks once the reloaded config arrives', () => {
-        const store = buildPendingStore();
-        renderStore(store);
+      it('locks every edit control while a save is in flight and unlocks once its answer arrives', () => {
+        const answer = new Subject<LingoTrackerConfigDto>();
+        updateGlobalConfigMock.mockReturnValueOnce(answer);
+        renderStore(buildPendingStore());
         type(0, 'preferred', 'Email');
 
         saveButton().click();
@@ -829,56 +889,41 @@ describe('Settings', () => {
         clickAdd();
         expect(ruleRows()).toHaveLength(2);
 
-        // The store clears its loading flag once the write lands, before the refetch: still locked.
-        store.isLoading.set(true);
-        spectator.detectChanges();
-        store.isLoading.set(false);
-        spectator.detectChanges();
-        expect(addRuleButton().disabled).toBe(true);
-
-        store.config.set({
-          ...terminologyConfig,
-          preferredTerminology: [
-            { discouraged: 'E-mail', preferred: 'Email' },
-            { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Current planning term.' },
-          ],
-        });
+        answer.next(saved);
+        answer.complete();
         settle();
 
         expect(editControls().every((control) => !control.disabled)).toBe(true);
         expect(ruleInput(0, 'preferred').value).toBe('Email');
+        expect(notifications.success).toHaveBeenCalledTimes(1);
       });
 
-      it('unlocks after a failed save and keeps the unsaved edits', () => {
-        const store = buildPendingStore();
-        renderStore(store);
+      it('unlocks after a rejected save and keeps the unsaved edits', () => {
+        const answer = new Subject<LingoTrackerConfigDto>();
+        updateGlobalConfigMock.mockReturnValueOnce(answer);
+        renderStore(buildPendingStore());
         type(0, 'preferred', 'Email');
 
         saveButton().click();
         spectator.detectChanges();
         expect(addRuleButton().disabled).toBe(true);
 
-        store.error.set('update failed');
+        answer.error(toApiError(new HttpErrorResponse({ status: 502, error: { message: 'update failed' } })));
         settle();
 
         expect(editControls().every((control) => !control.disabled)).toBe(true);
         expect(ruleInput(0, 'preferred').value).toBe('Email');
         expect(component.terminology.changeCount()).toBe(1);
+        expect(host().textContent).toContain('update failed');
+        expect(notifications.success).not.toHaveBeenCalled();
       });
 
-      it('keeps an edit made once a save has completed when a later config refetch arrives', () => {
+      it('keeps an edit made once a save has completed when a later config reload arrives', () => {
         const store = buildPendingStore();
+        updateGlobalConfigMock.mockReturnValueOnce(of(saved));
         renderStore(store);
         type(0, 'preferred', 'Email');
         saveButton().click();
-        const saved = {
-          ...terminologyConfig,
-          preferredTerminology: [
-            { discouraged: 'E-mail', preferred: 'Email' },
-            { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Current planning term.' },
-          ],
-        };
-        store.config.set(saved);
         settle();
 
         clickAdd();

@@ -5,10 +5,11 @@ import { inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { BrowserApiService } from '../../services/browser-api.service';
 import type { SearchResultDto, SearchResultsDto } from '@simoncodes-ca/data-transfer';
-import { toErrorMessage } from '../async-error.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { captureSession, withinSession } from '../session-guard';
 
-interface SearchState {
+export interface SearchState {
   searchQuery: string;
   isSearchMode: boolean;
   searchResults: SearchResultDto[];
@@ -16,7 +17,7 @@ interface SearchState {
   searchError: string | null;
 }
 
-const initialSearchState: SearchState = {
+export const initialSearchState: SearchState = {
   searchQuery: '',
   isSearchMode: false,
   searchResults: [],
@@ -26,7 +27,7 @@ const initialSearchState: SearchState = {
 
 export function withSearchFeature<_>() {
   return signalStoreFeature(
-    { state: type<{ selectedCollection: string | null; isDisabled: boolean }>() },
+    { state: type<{ sessionId: number; selectedCollection: string | null; isDisabled: boolean }>() },
     withState(initialSearchState),
     withMethods((store) => {
       const api = inject(BrowserApiService);
@@ -56,6 +57,7 @@ export function withSearchFeature<_>() {
           pipe(
             tap(() => patchState(store, { isSearchLoading: true, searchError: null })),
             switchMap((query) => {
+              const inSession = captureSession(store);
               const collection = store.selectedCollection();
               if (!collection || query.trim().length === 0) {
                 patchState(store, { isSearchLoading: false });
@@ -63,6 +65,7 @@ export function withSearchFeature<_>() {
               }
 
               return api.searchTranslations(collection, query).pipe(
+                withinSession(inSession),
                 tap((response: SearchResultsDto) =>
                   patchState(store, {
                     searchResults: response.results,
@@ -73,7 +76,7 @@ export function withSearchFeature<_>() {
                 catchError((error: unknown) => {
                   patchState(store, {
                     isSearchLoading: false,
-                    searchError: toErrorMessage(
+                    searchError: apiErrorMessage(
                       error,
                       transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SEARCHTRANSLATIONSFAILED),
                     ),

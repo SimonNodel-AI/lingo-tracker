@@ -137,11 +137,6 @@ export class PreferredTerminologyDraft {
     this.#submittedIds = [];
   }
 
-  /** Restores the last saved list. */
-  revert(): void {
-    this.seed(this.#baseline());
-  }
-
   /** Appends a blank row and returns its id. */
   addRow(): number {
     const id = this.#nextId++;
