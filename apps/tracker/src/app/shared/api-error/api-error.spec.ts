@@ -139,7 +139,11 @@ describe('apiErrorInterceptor (through provideTrackerHttpClient)', () => {
   it('converts a failed response into an ApiError', () => {
     const { http, controller } = setup();
     let caught: unknown;
-    http.get('/api/collections/app').subscribe({ error: (error: unknown) => (caught = error) });
+    http.get('/api/collections/app').subscribe({
+      error: (error: unknown) => {
+        caught = error;
+      },
+    });
 
     controller
       .expectOne('/api/collections/app')
@@ -153,7 +157,11 @@ describe('apiErrorInterceptor (through provideTrackerHttpClient)', () => {
   it('converts a network failure into an ApiError', () => {
     const { http, controller } = setup();
     let caught: unknown;
-    http.get('/api/config').subscribe({ error: (error: unknown) => (caught = error) });
+    http.get('/api/config').subscribe({
+      error: (error: unknown) => {
+        caught = error;
+      },
+    });
 
     controller.expectOne('/api/config').error(new ProgressEvent('error'));
 
@@ -165,7 +173,9 @@ describe('apiErrorInterceptor (through provideTrackerHttpClient)', () => {
   it('leaves successful responses untouched', () => {
     const { http, controller } = setup();
     let body: unknown;
-    http.get('/api/config').subscribe((response) => (body = response));
+    http.get('/api/config').subscribe((response) => {
+      body = response;
+    });
 
     controller.expectOne('/api/config').flush({ baseLocale: 'en' });
 
