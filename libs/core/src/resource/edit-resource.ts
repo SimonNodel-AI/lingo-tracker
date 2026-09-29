@@ -223,6 +223,8 @@ function resolveDestination(
  * Moves the entry, as saved, to the destination through the Entry Relocation (`relocateEntries`),
  * which reads both folders from disk again, so writes made to the destination meanwhile are kept
  * and a new collision is caught. The destination is written before the source entry is removed.
+ * A failed write throws, and the relocation's `reindex` mutations are dropped with it: the API's
+ * index finds the change by fingerprint revalidation (see api.md, "Writes: Resource Mutations").
  * @throws {ResourceAlreadyExistsError} The destination has the entry key now.
  */
 function moveEntry(
