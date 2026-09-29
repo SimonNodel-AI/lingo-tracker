@@ -42,22 +42,11 @@ export function withItemActions() {
             .catch(() => notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPYFAILED)));
         },
 
-        editTranslation(translation: ResourceSummaryDto, collectionName: string): void {
-          launcher.openEditor({
-            resource: translation,
-            collectionName,
-            onUpdated: (fullKey) => store.flashRecentlyUpdated(fullKey),
+        /** Opens the editor on a row; a save that keeps the entry in this list flashes its row. */
+        editTranslation(translation: ResourceSummaryDto): void {
+          void launcher.openEdit(translation).then((outcome) => {
+            if (outcome.kind === 'saved') store.flashRecentlyUpdated(outcome.fullKey);
           });
-        },
-
-        /**
-         * Opens the editor for a full dot-delimited key, moving the browser to the
-         * folder that holds it. The create dialog's "Open existing" ends here: the
-         * user asked for the entry they collided with, not for the folder they
-         * happened to be standing in.
-         */
-        openResourceByKey(fullKey: string, collectionName: string): void {
-          launcher.openByFullKey(fullKey, collectionName, (key) => store.flashRecentlyUpdated(key));
         },
 
         deleteTranslation(translation: ResourceSummaryDto, collectionName: string): void {

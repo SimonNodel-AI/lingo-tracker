@@ -133,6 +133,14 @@ Explained in context: [`frontend.md`](frontend.md#collectionsstore)
 
 ## E
 
+### Editor Outcome
+
+How the Tracker's translation editor closed: the one result its launcher reads. In code, the `EditorOutcome` union in `apps/tracker/src/app/browser/dialogs/translation-editor/translation-editor-dialog.ts`, with five kinds: `saved` (an edit stayed in its folder), `moved` (an edit with a `moveTo`, with the new key and folder), `created`, `open-existing` (the key is taken and the user asked for the entry that holds it) and `cancelled` (no write, a dialog closed without a result, or an edit the server found nothing to change in). `saved`, `moved` and `created` carry the locales auto-translation skipped. `TranslationEditorLauncher` opens every create and edit (`openCreate`, `openEdit`, `openByFullKey`) and gives the feedback for each outcome: the toasts, and for `open-existing` the move of the list to the entry's folder and an edit of it. The reload after a write is the store's, not the launcher's.
+
+Explained in context: [`frontend.md`](frontend.md#the-editor-outcome)
+
+---
+
 ### Export Run
 
 One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it chooses the locales (every collection's target locales, narrowed to the requested ones), filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, and the Markdown summary. The collections must share one [base locale](#base-locale).

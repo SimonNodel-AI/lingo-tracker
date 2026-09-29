@@ -29,6 +29,7 @@ Return to [architecture README](README.md).
   - [Translation Status Summary](#translation-status-summary)
   - [Translation Rows and the Row View](#translation-rows-and-the-row-view)
   - [Writing a Resource Entry](#writing-a-resource-entry)
+  - [The Editor Outcome](#the-editor-outcome)
   - [Bundle Form Dialog](#bundle-form-dialog)
 - [Theming System](#theming-system)
 - [i18n — Transloco Integration](#i18n--transloco-integration)
@@ -317,7 +318,7 @@ Both moves live in `withMovesFeature`. While one is in flight, `movesInFlight` c
 
 **Edit translation** (via `TranslationListStore.withItemActions`):
 
-Editing happens inside the dialog, which saves through `BrowserStore.updateResource`. When the `PATCH` succeeds, the store replaces the stale entry in `translations` (and in `searchResults` during a search) with the resource in the response. There is no second request. The dialog then closes with `result.success`, and `TranslationListStore.flashRecentlyUpdated` sets `recentlyUpdatedKey` for 1.5 s to drive the highlight animation. If the `PATCH` fails, the caches do not change and the dialog shows the error.
+Editing happens inside the dialog, which saves through `BrowserStore.updateResource`. When the `PATCH` succeeds, the store replaces the stale entry in `translations` (and in `searchResults` during a search) with the resource in the response. There is no second request. The dialog then closes with the `saved` [Editor Outcome](#the-editor-outcome), the launcher toasts, and `TranslationListStore.flashRecentlyUpdated` sets `recentlyUpdatedKey` for 1.5 s to drive the highlight animation. If the `PATCH` fails, the caches do not change and the dialog shows the error.
 
 ---
 
@@ -354,7 +355,7 @@ import('./path/to/dialog').then((m) => {
 This keeps dialog modules out of the initial bundle entirely. The pattern is used for:
 
 - `CollectionFormDialog` — create / edit collection (from `CollectionsManager`)
-- `TranslationEditorDialog` — create / edit resource (from `TranslationMainHeader` and `TranslationListStore.withItemActions`)
+- `TranslationEditorDialog` — create / edit resource (only from `TranslationEditorLauncher`, which the header, the list's rows and the "Open existing" hand-off call)
 - `ConfirmationDialog` — delete collection, delete resource, delete folder, move folder (from multiple call sites)
 
 `TranslationEditorDialog` opens the `FolderPicker` (a nested dialog via `MatDialog`) if the user wants to move the resource to a different folder. `FolderPicker` in turn calls `BrowserStore.createFolderAt` to create folders inline without leaving the dialog.
@@ -430,7 +431,30 @@ Each method takes the full dot-delimited key and returns the API `Observable`. T
 
 Both caches (`translations` and `searchResults`) are keyed by each resource's `fullKey`, in folder mode, nested mode and search mode alike. The API returns the updated resource with its own full address, so the store swaps it in by `fullKey`; there is no key conversion anywhere. A drag carries the row's `fullKey` and its real `folderPath`, also for nested rows.
 
-`TranslationEditorLauncher` and `TranslationMainHeader` only give feedback after the dialog closes: the row flash and the toasts.
+`TranslationEditorLauncher` only gives feedback after the dialog closes, from its [Editor Outcome](#the-editor-outcome); the list adds the row flash.
+
+### The Editor Outcome
+
+`TranslationEditorLauncher` (`browser/services/translation-editor-launcher.ts`) opens every create and edit: `openCreate()` (the header's add button, in the folder the list shows), `openEdit(resource)` (a list row) and `openByFullKey(fullKey)` (the "Open existing" hand-off). It holds the one dialog configuration and reads the one result the dialog closes with, the [Editor Outcome](glossary.md#editor-outcome):
+
+```typescript
+type EditorOutcome =
+  | { kind: 'saved'; fullKey: string; skippedLocales: string[] }
+  | { kind: 'moved'; fullKey: string; folderPath: string; skippedLocales: string[] }
+  | { kind: 'created'; fullKey: string; skippedLocales: string[] }
+  | { kind: 'open-existing'; fullKey: string }
+  | { kind: 'cancelled' };
+```
+
+| Outcome | Feedback |
+|---|---|
+| `saved` | "Translation updated" toast, then the skipped-locales warning when auto-translation skipped any. |
+| `moved` | "Moved … to …" toast (the edit had a `moveTo`, the same test the store uses to drop the row), then the skipped-locales warning. |
+| `created` | "Resource created" toast; the skipped-locales warning follows after `CREATE_WARNING_DELAY_MS` (3.2 s), so the two toasts do not overlap. |
+| `open-existing` | `openByFullKey`: a session-guarded lookup of the entry, `showFolder` on its folder (which leaves a search), then an edit of it. A key the folder no longer holds, or a failed lookup, is a "not found" toast. |
+| `cancelled` | Nothing. A dialog closed without a result (backdrop) and an edit the server found nothing to change in are cancels too. |
+
+Each method resolves with the outcome once the feedback is given. The list's `editTranslation` flashes the row on `saved`. The reload after a write stays in the store (`with-entry-writes.feature.ts`): it runs inside the write's Browser Session, before the dialog closes, so the launcher has nothing to reload. `translation-editor-launcher.spec.ts` tests every outcome with a fake `MatDialog`.
 
 ### Bundle Form Dialog
 

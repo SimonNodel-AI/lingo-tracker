@@ -15,7 +15,7 @@ import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { collectionSettings } from '../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { NotificationService } from '../../../shared/notification';
-import type { TranslationEditorResult } from '../../dialogs/translation-editor';
+import type { EditorOutcome } from '../../dialogs/translation-editor';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../../store/browser.store';
 import { TranslationEditorLauncher } from '../../services/translation-editor-launcher';
@@ -326,167 +326,6 @@ describe('TranslationList - Virtual Scrolling', () => {
   });
 });
 
-describe('TranslationList - skippedLocales warning snackbar', () => {
-  let fixture: ComponentFixture<TranslationList>;
-  let notificationsSpy: {
-    success: ReturnType<typeof vi.fn>;
-    info: ReturnType<typeof vi.fn>;
-    warning: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-  };
-  let mockDialogRef: { afterClosed: ReturnType<typeof vi.fn> };
-  let mockDialog: { open: ReturnType<typeof vi.fn> };
-
-  const mockResource = summary('common.test', 'Test Value', ['Valeur test', 'translated']);
-
-  beforeEach(async () => {
-    notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-    mockDialogRef = { afterClosed: vi.fn() };
-    mockDialog = { open: vi.fn().mockReturnValue(mockDialogRef) };
-
-    fixture = renderList([
-      { provide: NotificationService, useValue: notificationsSpy },
-      { provide: MatDialog, useValue: mockDialog },
-    ]);
-    fixture.componentRef.setInput('collectionName', 'test-collection');
-    fixture.detectChanges();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('should show warning snackbar when edit result contains skippedLocales', async () => {
-    vi.useFakeTimers();
-
-    const result: TranslationEditorResult = {
-      key: 'common.test',
-      baseValue: 'Test Value',
-      folderPath: 'common',
-      success: true,
-      resource: mockResource,
-      skippedLocales: ['fr', 'de'],
-    };
-    mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-    const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.editTranslation(mockResource, 'test-collection');
-    await vi.advanceTimersByTimeAsync(2200);
-
-    const transloco = fixture.debugElement.injector.get(TranslocoService);
-    const expectedSkippedMessage = transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SKIPPEDLOCALESX, {
-      locales: 'fr, de',
-    });
-
-    expect(notificationsSpy.warning).toHaveBeenCalledWith(expectedSkippedMessage);
-  });
-
-  it('should not show warning snackbar when skippedLocales is empty or absent', async () => {
-    vi.useFakeTimers();
-
-    for (const skippedLocales of [[], undefined] as Array<string[] | undefined>) {
-      notificationsSpy.warning.mockClear();
-
-      const result: TranslationEditorResult = {
-        key: 'common.test',
-        baseValue: 'Test Value',
-        folderPath: 'common',
-        success: true,
-        resource: mockResource,
-        skippedLocales,
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      const listStore = fixture.debugElement.injector.get(TranslationListStore);
-      listStore.editTranslation(mockResource, 'test-collection');
-      await vi.advanceTimersByTimeAsync(2200);
-
-      expect(notificationsSpy.warning).not.toHaveBeenCalled();
-    }
-  });
-
-  it('should not show any snackbar when edit dialog is dismissed without success', () => {
-    mockDialogRef.afterClosed.mockReturnValue(of(undefined));
-
-    const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.editTranslation(mockResource, 'test-collection');
-
-    expect(notificationsSpy.success).not.toHaveBeenCalled();
-    expect(notificationsSpy.warning).not.toHaveBeenCalled();
-    expect(notificationsSpy.error).not.toHaveBeenCalled();
-  });
-
-  it('should flash the edited row when the edit result contains skippedLocales', () => {
-    const result: TranslationEditorResult = {
-      key: 'common.test',
-      baseValue: 'Test Value',
-      folderPath: 'common',
-      success: true,
-      resource: mockResource,
-      skippedLocales: ['fr', 'de'],
-    };
-    mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-    const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.editTranslation(mockResource, 'test-collection');
-
-    expect(listStore.recentlyUpdatedKey()).toBe(mockResource.fullKey);
-  });
-});
-
-describe('TranslationList - handleEdit full key', () => {
-  let fixture: ComponentFixture<TranslationList>;
-  let notificationsSpy: {
-    success: ReturnType<typeof vi.fn>;
-    info: ReturnType<typeof vi.fn>;
-    warning: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-  };
-  let mockDialogRef: { afterClosed: ReturnType<typeof vi.fn> };
-  let mockDialog: { open: ReturnType<typeof vi.fn> };
-
-  beforeEach(async () => {
-    notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-    mockDialogRef = { afterClosed: vi.fn() };
-    mockDialog = { open: vi.fn().mockReturnValue(mockDialogRef) };
-
-    fixture = renderList([
-      { provide: NotificationService, useValue: notificationsSpy },
-      { provide: MatDialog, useValue: mockDialog },
-    ]);
-    fixture.componentRef.setInput('collectionName', 'test-collection');
-    fixture.detectChanges();
-  });
-
-  // The cache itself is patched by BrowserStore.updateResource (see
-  // with-entry-writes.feature.spec.ts); the list only has to flash the right row.
-  it('should flash the row under its full key', () => {
-    const store = fixture.debugElement.injector.get(BrowserStore);
-
-    store.showQuery('buttons');
-
-    const storeResource = summary('buttons.save', 'Save', ['', 'new']);
-    const apiResource = summary('buttons.save', 'Save', ['Enregistrer', 'translated']);
-
-    const result: TranslationEditorResult = {
-      key: 'save',
-      baseValue: 'Save',
-      // folderPath matches what resolveEffectiveFolderPath returns for "buttons.save"
-      // in search mode (all segments except the last), so no move occurs.
-      folderPath: 'buttons',
-      success: true,
-      resource: apiResource,
-      skippedLocales: [],
-    };
-    mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-    const listStore = fixture.debugElement.injector.get(TranslationListStore);
-    listStore.editTranslation(storeResource, 'test-collection');
-
-    expect(listStore.recentlyUpdatedKey()).toBe(storeResource.fullKey);
-  });
-});
-
 describe('TranslationList - Locale Filtering', () => {
   let fixture: ComponentFixture<TranslationList>;
   let store: InstanceType<typeof BrowserStore>;
@@ -700,12 +539,13 @@ describe('TranslationList - handleTranslate', () => {
   });
 });
 
-describe('TranslationList - openResourceByKey', () => {
+describe('TranslationList - editTranslation', () => {
   let fixture: ComponentFixture<TranslationList>;
-  let launcherSpy: { openEditor: ReturnType<typeof vi.fn>; openByFullKey: ReturnType<typeof vi.fn> };
+  let launcherSpy: { openEdit: ReturnType<typeof vi.fn> };
+  const row = summary('browser.header.backButton', 'Back');
 
   beforeEach(() => {
-    launcherSpy = { openEditor: vi.fn(), openByFullKey: vi.fn() };
+    launcherSpy = { openEdit: vi.fn() };
 
     fixture = renderList([
       { provide: NotificationService, useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() } },
@@ -716,32 +556,31 @@ describe('TranslationList - openResourceByKey', () => {
     fixture.detectChanges();
   });
 
-  it('should hand a full key to the launcher, with a flash callback for the row', () => {
+  // The toasts belong to the launcher (translation-editor-launcher.spec.ts); the list flashes the row.
+  it('should open the row in the launcher and flash it once the save lands in this list', async () => {
+    launcherSpy.openEdit.mockResolvedValue({ kind: 'saved', fullKey: row.fullKey, skippedLocales: [] });
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
 
-    listStore.openResourceByKey('browser.header.backButton', 'my-collection');
+    listStore.editTranslation(row);
 
-    expect(launcherSpy.openByFullKey).toHaveBeenCalledWith(
-      'browser.header.backButton',
-      'my-collection',
-      expect.any(Function),
-    );
-
-    const onUpdated = launcherSpy.openByFullKey.mock.calls[0][2] as (key: string) => void;
-    onUpdated('backButton');
-    expect(listStore.recentlyUpdatedKey()).toBe('backButton');
+    expect(launcherSpy.openEdit).toHaveBeenCalledWith(row);
+    await vi.waitFor(() => expect(listStore.recentlyUpdatedKey()).toBe(row.fullKey));
   });
 
-  it('should open the row editor through the same launcher', () => {
+  it('should not flash a row that moved away or was not saved', async () => {
     const listStore = fixture.debugElement.injector.get(TranslationListStore);
+    const outcomes: EditorOutcome[] = [
+      { kind: 'moved', fullKey: 'backButton', folderPath: '', skippedLocales: [] },
+      { kind: 'cancelled' },
+    ];
 
-    listStore.editTranslation(summary('browser.header.backButton', 'Back'), 'my-collection');
+    for (const outcome of outcomes) {
+      launcherSpy.openEdit.mockResolvedValue(outcome);
+      listStore.editTranslation(row);
+      await Promise.resolve();
+    }
 
-    expect(launcherSpy.openEditor).toHaveBeenCalledWith(
-      expect.objectContaining({
-        collectionName: 'my-collection',
-        resource: expect.objectContaining({ fullKey: 'browser.header.backButton' }),
-      }),
-    );
+    expect(launcherSpy.openEdit).toHaveBeenCalledTimes(2);
+    expect(listStore.recentlyUpdatedKey()).toBeUndefined();
   });
 });

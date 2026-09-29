@@ -301,7 +301,7 @@ sequenceDiagram
     BS->>BS: patch translations[] and searchResults[] (both by fullKey)
     Note right of BS: Uses the API response payload.<br/>No second HTTP request.
     BS-->>Dialog: response
-    Dialog-->>TLS: afterClosed() → { success: true, resource, folderPath }
+    Dialog-->>TLS: afterClosed() → { kind: 'saved', fullKey, skippedLocales } [Editor Outcome, read by TranslationEditorLauncher: toast]
     TLS->>TLS: flashRecentlyUpdated(key) — 1.5 s highlight
 
     Note over BS,Dialog: G. Error path

@@ -59,7 +59,6 @@ import {
   type ContextTreeNode,
   collisionFor,
   contextTree,
-  editedLocales,
   folderEntryKeys,
   hasUnsavedChanges,
   type KnownEntries,
@@ -98,19 +97,20 @@ export interface TranslationEditorDialogData {
   readOnly?: boolean;
 }
 
-export interface TranslationEditorResult {
-  key: string;
-  baseValue: string;
-  comment?: string;
-  folderPath: string;
-  translations?: LocaleDraft[];
-  success?: boolean;
-  shouldOpenEdit?: boolean;
-  existingResourceKey?: string;
-  resource?: ResourceSummaryDto;
-  /** Locales skipped during auto-translation due to ICU format incompatibility. */
-  skippedLocales?: string[];
-}
+/**
+ * How the editor closed: the one result its launcher (`TranslationEditorLauncher`) reads.
+ * `skippedLocales` are the locales auto-translation skipped (ICU format), possibly none.
+ */
+export type EditorOutcome =
+  /** An edit was saved and the entry stayed in its folder. */
+  | { kind: 'saved'; fullKey: string; skippedLocales: string[] }
+  /** An edit was saved into another folder (`folderPath`, `''` for the root); `fullKey` is the new key. */
+  | { kind: 'moved'; fullKey: string; folderPath: string; skippedLocales: string[] }
+  | { kind: 'created'; fullKey: string; skippedLocales: string[] }
+  /** The key is taken and the user asked for the entry that holds it instead. */
+  | { kind: 'open-existing'; fullKey: string }
+  /** Closed without a write, or the server found nothing to change. */
+  | { kind: 'cancelled' };
 
 @Component({
   standalone: true,
@@ -137,7 +137,7 @@ export interface TranslationEditorResult {
   ],
 })
 export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit {
-  private readonly dialogRef = inject(MatDialogRef<TranslationEditorDialog>);
+  private readonly dialogRef = inject<MatDialogRef<TranslationEditorDialog, EditorOutcome>>(MatDialogRef);
   private readonly dialog = inject(MatDialog);
   private readonly browserApi = inject(BrowserApiService);
   private readonly browserStore = inject(BrowserStore);
@@ -968,7 +968,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
       return;
     }
-    this.dialogRef.close();
+    this.#close({ kind: 'cancelled' });
+  }
+
+  #close(outcome: EditorOutcome): void {
+    this.dialogRef.close(outcome);
   }
 
   #confirmDiscard(): Promise<boolean> {
@@ -1054,14 +1058,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       return;
     }
 
-    this.dialogRef.close({
-      key: this.form.controls.key.value,
-      baseValue: this.form.controls.baseValue.value,
-      comment: this.form.controls.comment.value.trim() || undefined,
-      folderPath: this.selectedFolderPath(),
-      shouldOpenEdit: true,
-      existingResourceKey: existingKey,
-    });
+    this.#close({ kind: 'open-existing', fullKey: existingKey });
   }
 
   onSimilarResourceClick(result: SearchResultDto): void {
@@ -1174,20 +1171,20 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
     // The key control is readonly in edit mode (`html`), so `draft.key` can only
     // ever equal the original; renaming is a move, handled by the CLI.
-    const edited = editedLocales(draft, original);
+    const dto = toUpdateDto(draft, original);
 
-    this.browserStore.updateResource(this.data.collectionName, toUpdateDto(draft, original)).subscribe({
+    this.browserStore.updateResource(this.data.collectionName, dto).subscribe({
       next: (response: UpdateResourceResponseDto) => {
-        this.dialogRef.close({
-          key: draft.key,
-          baseValue: draft.baseValue,
-          comment: draft.comment.trim() || undefined,
-          folderPath: draft.folderPath,
-          translations: edited.length > 0 ? edited : undefined,
-          success: true,
-          resource: response.resource,
-          skippedLocales: response.skippedLocales?.length ? response.skippedLocales : undefined,
-        });
+        const skippedLocales = response.skippedLocales ?? [];
+        // The same test as the store's: a DTO with `moveTo` moved the entry.
+        if (dto.moveTo !== undefined) {
+          const fullKey = resolveResourceKey(original.entryKey, dto.moveTo);
+          this.#close({ kind: 'moved', fullKey, folderPath: dto.moveTo, skippedLocales });
+        } else if (response.updated) {
+          this.#close({ kind: 'saved', fullKey: original.fullKey, skippedLocales });
+        } else {
+          this.#close({ kind: 'cancelled' });
+        }
       },
       error: (error: unknown) => {
         this.isSubmitting.set(false);
@@ -1204,15 +1201,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
     this.browserStore.createResource(this.data.collectionName, createDto).subscribe({
       next: (response: CreateResourceResponseDto) => {
-        this.dialogRef.close({
-          key: draft.key,
-          baseValue: draft.baseValue,
-          comment: createDto.comment,
-          folderPath: draft.folderPath,
-          translations: createDto.translations,
-          success: true,
-          skippedLocales: response.skippedLocales?.length ? response.skippedLocales : undefined,
-        });
+        this.#close({ kind: 'created', fullKey: createDto.key, skippedLocales: response.skippedLocales ?? [] });
       },
       error: (error: unknown) => {
         this.isSubmitting.set(false);
@@ -1266,14 +1255,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
     dialogRef.afterClosed().subscribe((shouldEditExisting) => {
       if (shouldEditExisting) {
-        this.dialogRef.close({
-          key: this.form.controls.key.value,
-          baseValue: this.form.controls.baseValue.value,
-          comment: this.form.controls.comment.value.trim() || undefined,
-          folderPath: this.selectedFolderPath(),
-          shouldOpenEdit: true,
-          existingResourceKey: existingKey,
-        });
+        this.#close({ kind: 'open-existing', fullKey: existingKey });
       }
     });
   }

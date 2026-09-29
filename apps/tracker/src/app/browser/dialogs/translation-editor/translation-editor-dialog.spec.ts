@@ -9,6 +9,7 @@ import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest
 import { patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
 import type {
+  CreateResourceDto,
   LingoTrackerConfigDto,
   ResourceSummaryDto,
   SearchResultDto,
@@ -28,7 +29,7 @@ import {
   TRANSLATION_EDITOR_TITLE_ID,
   TranslationEditorDialog,
   type TranslationEditorDialogData,
-  type TranslationEditorResult,
+  type EditorOutcome,
 } from './translation-editor-dialog';
 
 describe('TranslationEditorDialog', () => {
@@ -77,6 +78,11 @@ describe('TranslationEditorDialog', () => {
       ...extra,
     };
   };
+
+  /** The outcome the dialog closed with. */
+  const closedWith = (): EditorOutcome | undefined => dialogRef.close.mock.calls.at(-1)?.[0];
+  /** The create request the dialog sent through the store. */
+  const sentCreate = (): CreateResourceDto | undefined => mockBrowserApi.createResource.mock.calls.at(-1)?.[1];
 
   const createMockData = (mode: 'create' | 'edit', resource?: ResourceSummaryDto): TranslationEditorDialogData => ({
     mode,
@@ -318,10 +324,12 @@ describe('TranslationEditorDialog', () => {
 
       // In create mode, dialogRef.close is called after API success
       expect(dialogRef.close).toHaveBeenCalled();
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.key).toBe('test_key');
-      expect(result.baseValue).toBe('Test Value');
-      expect(result.comment).toBe('Test comment');
+      expect(closedWith()).toEqual({ kind: 'created', fullKey: 'common.buttons.test_key', skippedLocales: [] });
+      expect(sentCreate()).toMatchObject({
+        key: 'common.buttons.test_key',
+        baseValue: 'Test Value',
+        comment: 'Test comment',
+      });
     });
 
     it('should exclude empty comment from result', async () => {
@@ -337,8 +345,8 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.comment).toBeUndefined();
+      expect(closedWith()?.kind).toBe('created');
+      expect(sentCreate()?.comment).toBeUndefined();
     });
 
     it('should use empty string for folderPath when not provided', async () => {
@@ -351,15 +359,14 @@ describe('TranslationEditorDialog', () => {
       component.form.controls.comment.setValue('Test comment'); // Add comment to skip confirmation
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.folderPath).toBe('');
+      expect(closedWith()).toEqual({ kind: 'created', fullKey: 'test_key', skippedLocales: [] });
     });
   });
 
   describe('Dialog Interaction', () => {
     it('should close dialog on cancel when nothing has been edited', async () => {
       await component.onCancel();
-      expect(dialogRef.close).toHaveBeenCalledWith();
+      expect(dialogRef.close).toHaveBeenCalledWith({ kind: 'cancelled' });
     });
 
     it('should confirm before discarding unsaved edits', async () => {
@@ -370,7 +377,7 @@ describe('TranslationEditorDialog', () => {
       await component.onCancel();
 
       expect(mockDialog.open).toHaveBeenCalled();
-      expect(dialogRef.close).toHaveBeenCalledWith();
+      expect(dialogRef.close).toHaveBeenCalledWith({ kind: 'cancelled' });
     });
 
     it('should keep the dialog open when the user chooses to keep editing', async () => {
@@ -516,10 +523,12 @@ describe('TranslationEditorDialog', () => {
 
       expect(mockDialog.open).not.toHaveBeenCalled();
       expect(dialogRef.close).toHaveBeenCalled();
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.key).toBe('test_key');
-      expect(result.baseValue).toBe('Test Value');
-      expect(result.comment).toBe('Test comment');
+      expect(closedWith()).toEqual({ kind: 'created', fullKey: 'common.buttons.test_key', skippedLocales: [] });
+      expect(sentCreate()).toMatchObject({
+        key: 'common.buttons.test_key',
+        baseValue: 'Test Value',
+        comment: 'Test comment',
+      });
     });
 
     it('should show confirmation dialog when comment is empty', async () => {
@@ -578,10 +587,9 @@ describe('TranslationEditorDialog', () => {
       await component.onSubmit();
 
       expect(dialogRef.close).toHaveBeenCalled();
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.key).toBe('test_key');
-      expect(result.baseValue).toBe('Test Value');
-      expect(result.comment).toBeUndefined();
+      expect(closedWith()?.kind).toBe('created');
+      expect(sentCreate()).toMatchObject({ key: 'common.buttons.test_key', baseValue: 'Test Value' });
+      expect(sentCreate()?.comment).toBeUndefined();
     });
 
     it('should not save when user clicks "Add Comment"', async () => {
@@ -726,8 +734,7 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.skippedLocales).toEqual(['fr', 'de']);
+      expect(closedWith()).toMatchObject({ kind: 'created', skippedLocales: ['fr', 'de'] });
     });
 
     it('should omit skippedLocales from create result when API returns empty array', async () => {
@@ -739,8 +746,7 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.skippedLocales).toBeUndefined();
+      expect(closedWith()).toMatchObject({ skippedLocales: [] });
     });
 
     it('should omit skippedLocales from create result when API omits the field', async () => {
@@ -752,8 +758,7 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.skippedLocales).toBeUndefined();
+      expect(closedWith()).toMatchObject({ skippedLocales: [] });
     });
 
     it('should include skippedLocales in update result when API returns them', async () => {
@@ -770,8 +775,11 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.skippedLocales).toEqual(['es']);
+      expect(closedWith()).toEqual({
+        kind: 'saved',
+        fullKey: 'common.buttons.existing_key',
+        skippedLocales: ['es'],
+      });
     });
 
     it('should omit skippedLocales from update result when API returns empty array', async () => {
@@ -788,8 +796,7 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.skippedLocales).toBeUndefined();
+      expect(closedWith()).toMatchObject({ skippedLocales: [] });
     });
   });
 
@@ -1111,9 +1118,7 @@ describe('TranslationEditorDialog', () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.shouldOpenEdit).toBe(true);
-      expect(result.existingResourceKey).toBe('common.buttons.ok');
+      expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' });
     });
 
     it('should offer the conflict dialog instead of saving when the key is taken', async () => {
@@ -1128,9 +1133,7 @@ describe('TranslationEditorDialog', () => {
 
       expect(mockBrowserApi.createResource).not.toHaveBeenCalled();
       expect(mockDialog.open).toHaveBeenCalled();
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.shouldOpenEdit).toBe(true);
-      expect(result.existingResourceKey).toBe('common.buttons.ok');
+      expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' });
     });
   });
 
@@ -1156,9 +1159,7 @@ describe('TranslationEditorDialog', () => {
       await component.onSubmit();
 
       expect(mockDialog.open).toHaveBeenCalled();
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.shouldOpenEdit).toBe(true);
-      expect(result.existingResourceKey).toBe('common.buttons.ok');
+      expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' });
     });
 
     it('should show the server message for a 400 the API rejected as invalid', async () => {
@@ -1507,10 +1508,11 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      const result = dialogRef.close.mock.calls.at(-1)?.[0] as TranslationEditorResult;
-      expect(result.success).toBe(true);
-      expect(result.key).toBe('existing_key');
-      expect(result.baseValue).toBe('Updated Value');
+      expect(closedWith()).toEqual({ kind: 'saved', fullKey: 'common.buttons.existing_key', skippedLocales: [] });
+      expect(mockBrowserApi.updateResource.mock.calls.at(-1)?.[1]).toMatchObject({
+        key: 'common.buttons.existing_key',
+        baseValue: 'Updated Value',
+      });
     });
   });
 

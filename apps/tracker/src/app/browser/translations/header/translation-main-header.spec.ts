@@ -1,15 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { MatDialog } from '@angular/material/dialog';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
-import { patchState } from '@ngrx/signals';
-import { unprotected } from '@ngrx/signals/testing';
-import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { NotificationService } from '../../../shared/notification';
-import { TRANSLATION_EDITOR_TITLE_ID, type TranslationEditorResult } from '../../dialogs/translation-editor';
 import { BrowserStore } from '../../store/browser.store';
 import { TranslationEditorLauncher } from '../../services/translation-editor-launcher';
 import { TranslationMainHeader } from './translation-main-header';
@@ -23,9 +18,7 @@ describe('TranslationMainHeader', () => {
     warning: ReturnType<typeof vi.fn>;
     error: ReturnType<typeof vi.fn>;
   };
-  let mockDialogRef: { afterClosed: ReturnType<typeof vi.fn> };
-  let mockDialog: { open: ReturnType<typeof vi.fn> };
-  let launcherSpy: { openEditor: ReturnType<typeof vi.fn>; openByFullKey: ReturnType<typeof vi.fn> };
+  let launcherSpy: { openCreate: ReturnType<typeof vi.fn> };
 
   const createComponent = createComponentFactory({
     component: TranslationMainHeader,
@@ -34,16 +27,13 @@ describe('TranslationMainHeader', () => {
       provideHttpClient(),
       provideHttpClientTesting(),
       { provide: NotificationService, useFactory: () => notificationsSpy },
-      { provide: MatDialog, useFactory: () => mockDialog },
       { provide: TranslationEditorLauncher, useFactory: () => launcherSpy },
     ],
   });
 
   beforeEach(() => {
     notificationsSpy = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
-    mockDialogRef = { afterClosed: vi.fn() };
-    mockDialog = { open: vi.fn().mockReturnValue(mockDialogRef) };
-    launcherSpy = { openEditor: vi.fn(), openByFullKey: vi.fn() };
+    launcherSpy = { openCreate: vi.fn().mockResolvedValue({ kind: 'cancelled' }) };
 
     spectator = createComponent();
     component = spectator.component;
@@ -60,166 +50,12 @@ describe('TranslationMainHeader', () => {
     expect(component).toBeTruthy();
   });
 
-  describe('handleAddTranslation — dialog configuration', () => {
-    it('should label the dialog container with the editor heading id', () => {
-      mockDialogRef.afterClosed.mockReturnValue(of(undefined));
+  // The dialog, its outcome and the feedback belong to the launcher
+  // (translation-editor-launcher.spec.ts); the header only asks for a create.
+  it('should ask the launcher for a create', () => {
+    component.handleAddTranslation();
 
-      component.handleAddTranslation();
-
-      const config = mockDialog.open.mock.calls[0][1];
-      expect(config.ariaLabelledBy).toBe(TRANSLATION_EDITOR_TITLE_ID);
-    });
-  });
-
-  describe('handleAddTranslation — success notification', () => {
-    it('should show success notification when translation is created', async () => {
-      const result: TranslationEditorResult = {
-        key: 'new_key',
-        baseValue: 'New Value',
-        folderPath: '',
-        success: true,
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      component.handleAddTranslation();
-      await vi.advanceTimersByTimeAsync(3200);
-
-      expect(notificationsSpy.success).toHaveBeenCalledWith('Resource created successfully');
-    });
-
-    it('should not show any notification when dialog is dismissed without success', async () => {
-      mockDialogRef.afterClosed.mockReturnValue(of(undefined));
-
-      component.handleAddTranslation();
-      await vi.advanceTimersByTimeAsync(3200);
-
-      expect(notificationsSpy.success).not.toHaveBeenCalled();
-      expect(notificationsSpy.warning).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('handleAddTranslation — "Open existing"', () => {
-    it('should open the editor on the existing key the create dialog handed back', () => {
-      const store = spectator.inject(BrowserStore);
-      patchState(unprotected(store), { selectedCollection: 'test-collection' });
-      const result: TranslationEditorResult = {
-        key: 'backButton',
-        baseValue: 'Back',
-        folderPath: 'browser.header',
-        shouldOpenEdit: true,
-        existingResourceKey: 'browser.header.backButton',
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      component.handleAddTranslation();
-
-      expect(launcherSpy.openByFullKey).toHaveBeenCalledWith('browser.header.backButton', 'test-collection');
-      expect(notificationsSpy.success).not.toHaveBeenCalled();
-    });
-
-    it('should not route anywhere when the dialog closes normally', () => {
-      mockDialogRef.afterClosed.mockReturnValue(of(undefined));
-
-      component.handleAddTranslation();
-
-      expect(launcherSpy.openByFullKey).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('handleAddTranslation — skippedLocales warning notification', () => {
-    it('should show warning notification after success when skippedLocales is present', async () => {
-      const result: TranslationEditorResult = {
-        key: 'new_key',
-        baseValue: 'New Value',
-        folderPath: '',
-        success: true,
-        skippedLocales: ['fr', 'de'],
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      component.handleAddTranslation();
-
-      // Success notification fires immediately (synchronously in subscribe)
-      expect(notificationsSpy.success).toHaveBeenCalledWith('Resource created successfully');
-
-      // Warning notification fires after 3200ms
-      await vi.advanceTimersByTimeAsync(3200);
-
-      expect(notificationsSpy.warning).toHaveBeenCalledWith(
-        'Auto-translation skipped for fr, de (ICU format not supported)',
-      );
-    });
-
-    it('should show warning for a single skipped locale', async () => {
-      const result: TranslationEditorResult = {
-        key: 'new_key',
-        baseValue: 'New Value',
-        folderPath: '',
-        success: true,
-        skippedLocales: ['es'],
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      component.handleAddTranslation();
-      await vi.advanceTimersByTimeAsync(3200);
-
-      expect(notificationsSpy.warning).toHaveBeenCalledWith(
-        'Auto-translation skipped for es (ICU format not supported)',
-      );
-    });
-
-    it('should not show warning notification when skippedLocales is an empty array', async () => {
-      const result: TranslationEditorResult = {
-        key: 'new_key',
-        baseValue: 'New Value',
-        folderPath: '',
-        success: true,
-        skippedLocales: [],
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      component.handleAddTranslation();
-      await vi.advanceTimersByTimeAsync(3200);
-
-      expect(notificationsSpy.warning).not.toHaveBeenCalled();
-    });
-
-    it('should not show warning notification when skippedLocales is absent', async () => {
-      const result: TranslationEditorResult = {
-        key: 'new_key',
-        baseValue: 'New Value',
-        folderPath: '',
-        success: true,
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      component.handleAddTranslation();
-      await vi.advanceTimersByTimeAsync(3200);
-
-      expect(notificationsSpy.warning).not.toHaveBeenCalled();
-    });
-
-    // BrowserStore.createResource reloads the folder as the save succeeds
-    // (with-entry-writes.feature.spec.ts), so the header must not do it twice.
-    it('should leave reloading the folder to the store', async () => {
-      const store = spectator.inject(BrowserStore);
-      const selectFolderSpy = vi.spyOn(store, 'showFolder');
-
-      const result: TranslationEditorResult = {
-        key: 'new_key',
-        baseValue: 'New Value',
-        folderPath: '',
-        success: true,
-        skippedLocales: ['fr'],
-      };
-      mockDialogRef.afterClosed.mockReturnValue(of(result));
-
-      component.handleAddTranslation();
-      await vi.advanceTimersByTimeAsync(3200);
-
-      expect(selectFolderSpy).not.toHaveBeenCalled();
-      expect(notificationsSpy.success).toHaveBeenCalled();
-    });
+    expect(launcherSpy.openCreate).toHaveBeenCalledTimes(1);
   });
 
   describe('handleDensityToggle — toggle animation', () => {
