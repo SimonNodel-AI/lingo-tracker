@@ -39,7 +39,6 @@ import type {
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import { segmentValidator } from '../../shared/validators/segment.validator';
-import { CollectionsApiService } from '../services/collections-api.service';
 import { CollectionsStore } from '../store/collections.store';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { SegmentedControl, type SegmentOption } from './segmented-control';
@@ -127,7 +126,6 @@ const stripDotSlash = (path: string): string => path.replace(/^\.\//, '').replac
 export class BundleFormDialog {
   readonly #dialogRef = inject(MatDialogRef<BundleFormDialog, BundleFormResult | undefined>);
   readonly #data = inject<BundleFormDialogData>(MAT_DIALOG_DATA);
-  readonly #api = inject(CollectionsApiService);
   readonly #destroyRef = inject(DestroyRef);
   readonly #transloco = inject(TranslocoService);
   readonly store = inject(CollectionsStore);
@@ -689,7 +687,7 @@ export class BundleFormDialog {
             return of({ status: 'waiting' as const, result: undefined });
           }
           this.previewStatus.update((status) => (status === 'ready' ? status : 'loading'));
-          return this.#api.dryRunBundle(request).pipe(
+          return this.store.dryRunBundle(request).pipe(
             map((result) => ({ status: 'ready' as const, result })),
             catchError(() => of({ status: 'error' as const, result: undefined })),
           );

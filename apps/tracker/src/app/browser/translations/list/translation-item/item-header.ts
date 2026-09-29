@@ -8,6 +8,7 @@ import { CdkDragHandle } from '@angular/cdk/drag-drop';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { KeyMarkupPipe, hasKeyLeaf } from '../../../../shared/pipes/key-markup.pipe';
+import { hasSearchLength } from '../../../../shared/search/search-minimum';
 import { TagList } from '../../../../shared/tag-list/tag-list.component';
 import { TranslationRollup } from './translation-rollup';
 import type { RowView } from './row-view';
@@ -167,7 +168,7 @@ export class TranslationItemHeader {
     const query = this.searchQuery();
     const commentText = this.comment();
 
-    if (!query || !commentText || query.length < 3) {
+    if (!query || !commentText || !hasSearchLength(query)) {
       return false;
     }
 

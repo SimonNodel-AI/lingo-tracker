@@ -6,6 +6,8 @@ import { CollectionsApiService } from '../../services/collections-api.service';
 import { injectConfigWrite } from '../config-write';
 import type {
   BundleDefinitionDto,
+  BundleDryRunRequestDto,
+  BundleDryRunResultDto,
   BundleGenerateJobDto,
   BundleGenerateJobProgressDto,
   BundleGenerateJobResultDto,
@@ -260,6 +262,10 @@ export function withBundlesFeature<_>() {
       };
 
       return {
+        /** Plans a bundle without changing config or writing output files. */
+        dryRunBundle(request: BundleDryRunRequestDto): Observable<BundleDryRunResultDto> {
+          return api.dryRunBundle(request);
+        },
         /** Creates a bundle definition. A taken name errors with a `conflict`; a definition the rules reject with an `invalid` whose `details` are the rule messages. */
         createBundle(data: CreateBundleDto): Observable<LingoTrackerConfigDto | null> {
           return configWrite(api.createBundle(data));

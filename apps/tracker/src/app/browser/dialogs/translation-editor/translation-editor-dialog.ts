@@ -38,18 +38,21 @@ import {
   resolveResourceKey,
   summaryTarget,
 } from '@simoncodes-ca/domain';
-import { of, Subject } from 'rxjs';
-import { catchError, debounceTime, distinctUntilChanged, switchMap, takeUntil, tap } from 'rxjs/operators';
+import { Subject } from 'rxjs';
+import { debounceTime, takeUntil } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { ApiError, apiErrorMessage } from '../../../shared/api-error/api-error';
 import { CollectionsStore } from '../../../collections/store/collections.store';
 import { ConfirmationDialog } from '../../../shared/components/confirmation-dialog/confirmation-dialog';
 import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import { NotificationService } from '../../../shared/notification';
+import { hasSearchLength } from '../../../shared/search/search-minimum';
 import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
 import { segmentValidator } from '../../../shared/validators/segment.validator';
-import { BrowserApiService } from '../../services/browser-api.service';
+import { FolderPeek } from '../../services/folder-peek';
+import { SimilarValues } from '../../services/similar-values';
 import { BrowserStore } from '../../store/browser.store';
+import { doesUpdateMoveEntry } from '../../store/does-update-move-entry';
 import { filterFolderTree } from '../../store/folder-tree.utils';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
@@ -83,9 +86,7 @@ export const PREFERRED_TERM_ADVISORIES_ID = 'translation-editor-preferred-terms'
 /** Typing pause before preferred-terminology findings refresh; matches the similar search. */
 export const PREFERRED_TERM_DEBOUNCE_MS = 300;
 
-/** How many similar values the context column ever pins. */
-export const SIMILAR_DISPLAY_LIMIT = 10;
-
+/** The collection and entry to edit, or the folder in which to create one. */
 export interface TranslationEditorDialogData {
   mode: 'create' | 'edit';
   resource?: ResourceSummaryDto;
@@ -139,13 +140,13 @@ export type EditorOutcome =
 export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit {
   private readonly dialogRef = inject<MatDialogRef<TranslationEditorDialog, EditorOutcome>>(MatDialogRef);
   private readonly dialog = inject(MatDialog);
-  private readonly browserApi = inject(BrowserApiService);
+  private readonly folderPeek = inject(FolderPeek).openFolderPeek();
+  private readonly similarValues = inject(SimilarValues);
   private readonly browserStore = inject(BrowserStore);
   private readonly notifications = inject(NotificationService);
   private readonly transloco = inject(TranslocoService);
   readonly #collectionsStore = inject(CollectionsStore);
   private readonly destroy$ = new Subject<void>();
-  private readonly baseValueSearch$ = new Subject<string>();
 
   readonly data = inject<TranslationEditorDialogData>(MAT_DIALOG_DATA);
   readonly TOKENS = TRACKER_TOKENS;
@@ -202,14 +203,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly isLocalesDrawerOpen = signal(false);
   /** The context disclosure shown in place of the column below 1100px. */
   readonly isContextOpen = signal(false);
-  /**
-   * Entry keys per folder path, loaded once each and kept for the dialog's life.
-   * The browser's own folder is never re-fetched — the store already holds it —
-   * and picking a folder in the popover never moves the browser behind us.
-   */
-  readonly #loadedFolderEntries = signal<ReadonlyMap<string, readonly string[]>>(new Map());
-  /** Folders whose entries are in flight. A folder in here claims no collision yet. */
-  readonly #loadingFolders = signal<ReadonlySet<string>>(new Set());
 
   /**
    * The base value preferred terminology is checked against. Lags the field by a
@@ -303,7 +296,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UPDATEBUTTON
       : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.SAVEBUTTON,
   );
-  readonly hasSearchQuery = computed(() => this.baseValueLength() >= 3);
+  readonly hasSearchQuery = computed(() => hasSearchLength(this.baseValueText().trim()));
 
   /**
    * Bumped on every form status change. Reactive forms are not signal-based, so
@@ -322,7 +315,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     rootFolders: this.rootFolders(),
     browserFolderPath: this.browserStore.currentFolderPath(),
     browserEntries: this.browserStore.translations(),
-    fetched: this.#loadedFolderEntries(),
+    fetched: this.folderPeek.folderEntries(),
   }));
 
   /** Live "this key is already taken in the target folder" state; see `collisionFor`. */
@@ -459,7 +452,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
         folderPath: this.selectedFolderPath(),
         key: this.form.controls.key.value,
         known: this.#knownEntries(),
-        loadingFolders: this.#loadingFolders(),
+        loadingFolders: this.folderPeek.loadingFolders(),
         ownKey: this.#ownKey,
       },
       (count) => this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
@@ -641,59 +634,22 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.form.controls.baseValue.valueChanges.pipe(takeUntil(this.destroy$)).subscribe((value) => {
       this.baseValueLength.set(value.trim().length);
       this.baseValueText.set(value);
-
-      // Hits are pinned to the text that produced them. The moment that text
-      // changes they are stale, so they go now rather than after the debounce —
-      // a list that no longer describes the field is worse than no list.
-      this.similarResources.set([]);
-
-      if (this.#shouldSearchForSimilar(value)) {
-        this.baseValueSearch$.next(value);
-      } else {
-        this.isSearchingSimilar.set(false);
-      }
     });
 
-    this.baseValueSearch$
-      .pipe(
-        debounceTime(300),
-        distinctUntilChanged(),
-        tap(() => this.isSearchingSimilar.set(true)),
-        switchMap((query) => {
-          if (!query || query.trim().length < 3) {
-            return of({
-              query: '',
-              results: [],
-              totalFound: 0,
-              limited: false,
-            });
-          }
-
-          // The API ranks by similarity. One extra hit, so a full list survives dropping the entry being edited.
-          return this.browserApi
-            .searchTranslations(this.data.collectionName, query, SIMILAR_DISPLAY_LIMIT + 1, 'similar')
-            .pipe(
-              catchError(() =>
-                of({
-                  query: '',
-                  results: [],
-                  totalFound: 0,
-                  limited: false,
-                }),
-              ),
-            );
-        }),
-        tap(() => this.isSearchingSimilar.set(false)),
-        takeUntil(this.destroy$),
+    this.similarValues
+      .suggestions(
+        this.form.controls.baseValue.valueChanges,
+        this.data.collectionName,
+        this.isEditMode() ? this.#initialDraft?.baseValue : undefined,
+        this.#originalEntry()?.fullKey,
       )
-      .subscribe((searchResults) => {
-        // In edit mode the entry itself is not a similar value.
-        const original = this.#originalEntry();
-        const withoutSelf = original
-          ? searchResults.results.filter((r) => r.fullKey !== original.fullKey)
-          : searchResults.results;
-
-        this.similarResources.set(withoutSelf.slice(0, SIMILAR_DISPLAY_LIMIT));
+      .pipe(takeUntil(this.destroy$))
+      .subscribe((suggestion) => {
+        if (suggestion.kind === 'clear') this.similarResources.set([]);
+        if (suggestion.kind === 'ready') this.similarResources.set(suggestion.results);
+        if (suggestion.kind === 'clear' && !suggestion.searching) this.isSearchingSimilar.set(false);
+        if (suggestion.kind === 'loading') this.isSearchingSimilar.set(true);
+        if (suggestion.kind === 'ready') this.isSearchingSimilar.set(false);
       });
   }
 
@@ -780,18 +736,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.#locationFlashTimer = setTimeout(() => this.locationAbsorbedFlash.set(false), 900);
   }
 
-  #shouldSearchForSimilar(currentValue: string): boolean {
-    if (!currentValue || currentValue.trim().length < 3) {
-      return false;
-    }
-
-    if (this.isEditMode()) {
-      return currentValue !== this.#initialDraft?.baseValue;
-    }
-
-    return true;
-  }
-
   // Escape is handled through `dialogRef.keydownEvents()` in
   // `#guardAgainstAccidentalClose`. A window-scoped listener also fired for
   // keystrokes aimed at the confirmation dialogs stacked on top of this one,
@@ -820,34 +764,19 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     if (
       this.isEditMode() ||
       folderEntryKeys(folderPath, this.#knownEntries()) ||
-      this.#loadingFolders().has(folderPath)
+      this.folderPeek.loadingFolders().has(folderPath)
     ) {
       return;
     }
 
-    this.#loadingFolders.update((paths) => new Set(paths).add(folderPath));
-
-    this.browserApi
-      .getResourceTree(this.data.collectionName, folderPath, false)
+    this.folderPeek
+      .peekFolder(this.data.collectionName, folderPath)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: (tree) => {
-          const keys = tree.resources.map((resource) => resource.entryKey);
-          this.#loadedFolderEntries.update((entries) => new Map(entries).set(folderPath, keys));
-          this.#finishFolderLoad(folderPath);
-        },
+        next: () => this.formRevision.update((revision) => revision + 1),
         // A folder we cannot read claims nothing. The save path still guards.
-        error: () => this.#finishFolderLoad(folderPath),
+        error: () => this.formRevision.update((revision) => revision + 1),
       });
-  }
-
-  #finishFolderLoad(folderPath: string): void {
-    this.#loadingFolders.update((paths) => {
-      const next = new Set(paths);
-      next.delete(folderPath);
-      return next;
-    });
-    this.formRevision.update((revision) => revision + 1);
   }
 
   // ── Location popover ──────────────────────────────────────────────────────
@@ -1176,8 +1105,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.browserStore.updateResource(this.data.collectionName, dto).subscribe({
       next: (response: UpdateResourceResponseDto) => {
         const skippedLocales = response.skippedLocales ?? [];
-        // The same test as the store's: a DTO with `moveTo` moved the entry.
-        if (dto.moveTo !== undefined) {
+        if (doesUpdateMoveEntry(dto)) {
           const fullKey = resolveResourceKey(original.entryKey, dto.moveTo);
           this.#close({ kind: 'moved', fullKey, folderPath: dto.moveTo, skippedLocales });
         } else if (response.updated) {

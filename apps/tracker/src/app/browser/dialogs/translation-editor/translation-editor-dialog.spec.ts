@@ -44,7 +44,7 @@ describe('TranslationEditorDialog', () => {
     disableClose: boolean;
   };
   let mockDialog: { open: Mock };
-  let mockBrowserApi: {
+  let apiSpies: {
     createResource: Mock;
     updateResource: Mock;
     searchTranslations: Mock;
@@ -82,7 +82,7 @@ describe('TranslationEditorDialog', () => {
   /** The outcome the dialog closed with. */
   const closedWith = (): EditorOutcome | undefined => dialogRef.close.mock.calls.at(-1)?.[0];
   /** The create request the dialog sent through the store. */
-  const sentCreate = (): CreateResourceDto | undefined => mockBrowserApi.createResource.mock.calls.at(-1)?.[1];
+  const sentCreate = (): CreateResourceDto | undefined => apiSpies.createResource.mock.calls.at(-1)?.[1];
 
   const createMockData = (mode: 'create' | 'edit', resource?: ResourceSummaryDto): TranslationEditorDialogData => ({
     mode,
@@ -101,12 +101,7 @@ describe('TranslationEditorDialog', () => {
   const createDialog = createComponentFactory({
     component: TranslationEditorDialog,
     imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
-    // Root-level, so the BrowserStore the dialog writes through sees the same mock.
-    providers: [
-      provideTrackerHttpClient(),
-      provideHttpClientTesting(),
-      { provide: BrowserApiService, useFactory: () => mockBrowserApi },
-    ],
+    providers: [provideTrackerHttpClient(), provideHttpClientTesting()],
     componentProviders: [
       { provide: MatDialogRef, useFactory: () => dialogRef },
       { provide: MatDialog, useFactory: () => mockDialog },
@@ -143,18 +138,25 @@ describe('TranslationEditorDialog', () => {
       }),
     };
 
-    mockBrowserApi = {
-      createResource: vi.fn().mockReturnValue(of({})),
-      updateResource: vi.fn().mockReturnValue(of({})),
-      searchTranslations: vi.fn().mockReturnValue(of({ results: [], total: 0 })),
-      getResourceTree: vi.fn().mockReturnValue(of({ path: '', resources: [], children: [] })),
+    // The dialog uses the real SimilarValues and FolderPeek services; the API client is spied at its boundary.
+    apiSpies = {
+      createResource: vi.spyOn(BrowserApiService.prototype, 'createResource') as Mock,
+      updateResource: vi.spyOn(BrowserApiService.prototype, 'updateResource') as Mock,
+      searchTranslations: vi.spyOn(BrowserApiService.prototype, 'searchTranslations') as Mock,
+      getResourceTree: vi.spyOn(BrowserApiService.prototype, 'getResourceTree') as Mock,
     };
+    apiSpies.createResource.mockReturnValue(of({}));
+    apiSpies.updateResource.mockReturnValue(of({}));
+    apiSpies.searchTranslations.mockReturnValue(of({ results: [], total: 0 }));
+    apiSpies.getResourceTree.mockReturnValue(of({ path: '', resources: [], children: [] }));
 
     mockNotifications = { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() };
     mockConfig = signal<LingoTrackerConfigDto | null>(null);
 
     renderDialog(createMockData('create'));
   });
+
+  afterEach(() => vi.restoreAllMocks());
 
   describe('Component Initialization', () => {
     it('should create', () => {
@@ -238,14 +240,14 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should submit the absorbed folder as part of the full key', async () => {
-      mockBrowserApi.createResource.mockReturnValue(of({ entriesCreated: 1, created: true }));
+      apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true }));
 
       component.form.controls.key.setValue('apps.common.buttons.ok');
       component.form.controls.baseValue.setValue('OK');
       component.form.controls.comment.setValue('A comment');
       await component.onSubmit();
 
-      expect(mockBrowserApi.createResource).toHaveBeenCalledWith(
+      expect(apiSpies.createResource).toHaveBeenCalledWith(
         'test-collection',
         expect.objectContaining({ key: 'apps.common.buttons.ok' }),
       );
@@ -724,9 +726,7 @@ describe('TranslationEditorDialog', () => {
 
   describe('skippedLocales propagation', () => {
     it('should include skippedLocales in create result when API returns them', async () => {
-      mockBrowserApi.createResource.mockReturnValue(
-        of({ entriesCreated: 1, created: true, skippedLocales: ['fr', 'de'] }),
-      );
+      apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true, skippedLocales: ['fr', 'de'] }));
 
       component.form.controls.key.setValue('test_key');
       component.form.controls.baseValue.setValue('Test Value');
@@ -738,7 +738,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should omit skippedLocales from create result when API returns empty array', async () => {
-      mockBrowserApi.createResource.mockReturnValue(of({ entriesCreated: 1, created: true, skippedLocales: [] }));
+      apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true, skippedLocales: [] }));
 
       component.form.controls.key.setValue('test_key');
       component.form.controls.baseValue.setValue('Test Value');
@@ -750,7 +750,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should omit skippedLocales from create result when API omits the field', async () => {
-      mockBrowserApi.createResource.mockReturnValue(of({ entriesCreated: 1, created: true }));
+      apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true }));
 
       component.form.controls.key.setValue('test_key');
       component.form.controls.baseValue.setValue('Test Value');
@@ -765,7 +765,7 @@ describe('TranslationEditorDialog', () => {
       const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
 
       const editData = createMockData('edit', mockResource);
-      mockBrowserApi.updateResource.mockReturnValue(
+      apiSpies.updateResource.mockReturnValue(
         of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: ['es'] }),
       );
       renderDialog(editData);
@@ -786,7 +786,7 @@ describe('TranslationEditorDialog', () => {
       const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
 
       const editData = createMockData('edit', mockResource);
-      mockBrowserApi.updateResource.mockReturnValue(
+      apiSpies.updateResource.mockReturnValue(
         of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: [] }),
       );
       renderDialog(editData);
@@ -1014,7 +1014,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should detect a collision in a folder chosen from the popover', () => {
-      mockBrowserApi.getResourceTree.mockImplementation((_collection: string, path: string) =>
+      apiSpies.getResourceTree.mockImplementation((_collection: string, path: string) =>
         of({ path, resources: path === 'common.errors' ? [entry('notFound')] : [], children: [] }),
       );
 
@@ -1027,7 +1027,7 @@ describe('TranslationEditorDialog', () => {
       component.confirmStagedFolder();
       spectator.detectChanges();
 
-      expect(mockBrowserApi.getResourceTree).toHaveBeenCalledWith('test-collection', 'common.errors', false);
+      expect(apiSpies.getResourceTree).toHaveBeenCalledWith('test-collection', 'common.errors', false);
       expect(component.keyCollision()).toBe(true);
     });
 
@@ -1036,13 +1036,13 @@ describe('TranslationEditorDialog', () => {
       component.onFolderConfirmed('common.buttons');
       component.onFolderConfirmed('common.errors');
 
-      const errorFolderLoads = mockBrowserApi.getResourceTree.mock.calls.filter((call) => call[1] === 'common.errors');
+      const errorFolderLoads = apiSpies.getResourceTree.mock.calls.filter((call) => call[1] === 'common.errors');
       expect(errorFolderLoads).toHaveLength(1);
     });
 
     it('should claim nothing while a folder is still loading', () => {
       const pending = new Subject<unknown>();
-      mockBrowserApi.getResourceTree.mockReturnValue(pending);
+      apiSpies.getResourceTree.mockReturnValue(pending);
 
       component.onFolderConfirmed('common.errors');
       component.form.controls.key.setValue('notFound');
@@ -1131,7 +1131,7 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      expect(mockBrowserApi.createResource).not.toHaveBeenCalled();
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
       expect(mockDialog.open).toHaveBeenCalled();
       expect(closedWith()).toEqual({ kind: 'open-existing', fullKey: 'common.buttons.ok' });
     });
@@ -1139,7 +1139,7 @@ describe('TranslationEditorDialog', () => {
 
   describe('Create errors from the server', () => {
     it('should open the conflict dialog and set shouldOpenEdit/existingResourceKey on a server-side 409', async () => {
-      mockBrowserApi.createResource.mockReturnValue(
+      apiSpies.createResource.mockReturnValue(
         throwError(() =>
           toApiError(
             new HttpErrorResponse({
@@ -1163,7 +1163,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should show the server message for a 400 the API rejected as invalid', async () => {
-      mockBrowserApi.createResource.mockReturnValue(
+      apiSpies.createResource.mockReturnValue(
         throwError(() =>
           toApiError(
             new HttpErrorResponse({
@@ -1187,7 +1187,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should fall back to the create-failed message for a network failure, which carries no server message', async () => {
-      mockBrowserApi.createResource.mockReturnValue(
+      apiSpies.createResource.mockReturnValue(
         throwError(() => toApiError(new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }))),
       );
 
@@ -1209,7 +1209,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     const searchReturns = (results: ReturnType<typeof hit>[]): void => {
-      mockBrowserApi.searchTranslations.mockReturnValue(
+      apiSpies.searchTranslations.mockReturnValue(
         of({ query: '', results, totalFound: results.length, limited: false }),
       );
     };
@@ -1266,11 +1266,34 @@ describe('TranslationEditorDialog', () => {
       expect(component.showSimilarContext()).toBe(false);
     });
 
+    it('keeps the similar-values spinner through an eligible value’s debounce', () => {
+      const pending = new Subject<{
+        query: string;
+        results: SearchResultDto[];
+        totalFound: number;
+        limited: boolean;
+      }>();
+      apiSpies.searchTranslations.mockReturnValue(pending);
+      typeAndSettle('Save changes');
+      expect(component.isSearchingSimilar()).toBe(true);
+
+      component.form.controls.baseValue.setValue('Save changes now');
+      expect(component.isSearchingSimilar()).toBe(true);
+      vi.advanceTimersByTime(299);
+      expect(component.isSearchingSimilar()).toBe(true);
+      vi.advanceTimersByTime(1);
+      pending.next({ query: 'Save changes now', results: [], totalFound: 0, limited: false });
+      expect(component.isSearchingSimilar()).toBe(false);
+
+      component.form.controls.baseValue.setValue('Sa');
+      expect(component.isSearchingSimilar()).toBe(false);
+    });
+
     it('should stay silent below the three-character floor', () => {
       searchReturns([hit('common.actions.ok', 'OK')]);
       typeAndSettle('OK');
 
-      expect(mockBrowserApi.searchTranslations).not.toHaveBeenCalled();
+      expect(apiSpies.searchTranslations).not.toHaveBeenCalled();
       expect(component.showSimilarContext()).toBe(false);
     });
 
@@ -1281,7 +1304,7 @@ describe('TranslationEditorDialog', () => {
       searchReturns([hit('common.actions.save', 'Press Ctrl + Enter')]);
 
       typeAndSettle('Press Ctrl + Enter');
-      expect(mockBrowserApi.searchTranslations).not.toHaveBeenCalled();
+      expect(apiSpies.searchTranslations).not.toHaveBeenCalled();
       expect(component.showSimilarContext()).toBe(false);
 
       typeAndSettle('Press Ctrl + Enter to save');
@@ -1322,7 +1345,7 @@ describe('TranslationEditorDialog', () => {
       searchReturns(Array.from({ length: 11 }, (_, index) => hit(`common.actions.save${index}`, 'Save changes')));
       typeAndSettle('Save changes');
 
-      expect(mockBrowserApi.searchTranslations).toHaveBeenCalledWith('test-collection', 'Save changes', 11, 'similar');
+      expect(apiSpies.searchTranslations).toHaveBeenCalledWith('test-collection', 'Save changes', 11, 'similar');
       expect(component.similarCount()).toBe(10);
     });
 
@@ -1425,7 +1448,7 @@ describe('TranslationEditorDialog', () => {
       );
 
       const editData = createMockData('edit', mockResource);
-      mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
+      apiSpies.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
@@ -1433,7 +1456,7 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      expect(mockBrowserApi.updateResource).toHaveBeenCalledWith(
+      expect(apiSpies.updateResource).toHaveBeenCalledWith(
         'test-collection',
         expect.objectContaining({
           key: 'common.buttons.existing_key',
@@ -1450,7 +1473,7 @@ describe('TranslationEditorDialog', () => {
       });
 
       const editData = createMockData('edit', mockResource);
-      mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
+      apiSpies.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       renderDialog(editData);
 
       const translationsArray = component.form.controls.translations;
@@ -1459,7 +1482,7 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
 
-      expect(mockBrowserApi.updateResource).toHaveBeenCalledWith(
+      expect(apiSpies.updateResource).toHaveBeenCalledWith(
         'test-collection',
         expect.objectContaining({
           locales: {
@@ -1473,7 +1496,7 @@ describe('TranslationEditorDialog', () => {
       const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
       const editData = createMockData('edit', mockResource);
-      mockBrowserApi.updateResource.mockReturnValue(
+      apiSpies.updateResource.mockReturnValue(
         throwError(() =>
           toApiError(
             new HttpErrorResponse({
@@ -1501,7 +1524,7 @@ describe('TranslationEditorDialog', () => {
       );
 
       const editData = createMockData('edit', mockResource);
-      mockBrowserApi.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
+      apiSpies.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       renderDialog(editData);
 
       component.form.controls.baseValue.setValue('Updated Value');
@@ -1509,7 +1532,7 @@ describe('TranslationEditorDialog', () => {
       await component.onSubmit();
 
       expect(closedWith()).toEqual({ kind: 'saved', fullKey: 'common.buttons.existing_key', skippedLocales: [] });
-      expect(mockBrowserApi.updateResource.mock.calls.at(-1)?.[1]).toMatchObject({
+      expect(apiSpies.updateResource.mock.calls.at(-1)?.[1]).toMatchObject({
         key: 'common.buttons.existing_key',
         baseValue: 'Updated Value',
       });
@@ -1657,8 +1680,8 @@ describe('TranslationEditorDialog', () => {
 
       expect(component.form.controls.baseValue.value).toBe('Investment, Investment-report and {expenditure} stay');
       expect(component.form.controls.baseValue.dirty).toBe(true);
-      expect(mockBrowserApi.createResource).not.toHaveBeenCalled();
-      expect(mockBrowserApi.updateResource).not.toHaveBeenCalled();
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
+      expect(apiSpies.updateResource).not.toHaveBeenCalled();
       expect(dialogRef.close).not.toHaveBeenCalled();
       // Gone without waiting out the debounce.
       expect(advisories()).toHaveLength(0);
@@ -1677,13 +1700,13 @@ describe('TranslationEditorDialog', () => {
 
     it('should run the normal value-change flow on Use', () => {
       type('Total expenditure for the year');
-      mockBrowserApi.searchTranslations.mockClear();
+      apiSpies.searchTranslations.mockClear();
 
       spectator.click('[data-testid="preferred-term-use"]');
       vi.advanceTimersByTime(300);
 
       expect(component.baseValueText()).toBe('Total Investment for the year');
-      expect(mockBrowserApi.searchTranslations).toHaveBeenCalledWith(
+      expect(apiSpies.searchTranslations).toHaveBeenCalledWith(
         'test-collection',
         'Total Investment for the year',
         expect.any(Number),
@@ -1720,7 +1743,7 @@ describe('TranslationEditorDialog', () => {
 
       void component.onSubmit();
 
-      expect(mockBrowserApi.createResource).toHaveBeenCalled();
+      expect(apiSpies.createResource).toHaveBeenCalled();
       expect(mockDialog.open).not.toHaveBeenCalled();
     });
 
