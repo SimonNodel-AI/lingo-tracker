@@ -16,6 +16,7 @@ Return to [architecture README](README.md).
 - [State Management Architecture](#state-management-architecture)
   - [BrowserStore — Feature Composition](#browserstore--feature-composition)
   - [BrowserStore Feature Breakdown](#browserstore-feature-breakdown)
+  - [List Scope — What the List Shows](#list-scope--what-the-list-shows)
   - [TranslationListStore](#translationliststore)
   - [CollectionsStore](#collectionsstore)
   - [API Errors — One Adapter at the HTTP Seam](#api-errors--one-adapter-at-the-http-seam)
@@ -28,6 +29,7 @@ Return to [architecture README](README.md).
   - [Translation Status Summary](#translation-status-summary)
   - [Translation Rows and the Row View](#translation-rows-and-the-row-view)
   - [Writing a Resource Entry](#writing-a-resource-entry)
+  - [The Editor Outcome](#the-editor-outcome)
   - [Bundle Form Dialog](#bundle-form-dialog)
 - [Theming System](#theming-system)
 - [i18n — Transloco Integration](#i18n--transloco-integration)
@@ -132,23 +134,25 @@ flowchart TD
 
 ### BrowserStore — Feature Composition
 
-`BrowserStore` is a single `signalStore` provided in root. Its state is split across eight `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call (`store/root-state.ts`); each feature adds its own slice and exports its initial state. The last feature is the [Browser Session](glossary.md#browser-session): `openCollection(settings)` is the one way a collection is opened or switched, and `updateSettings(settings)` the one way the open collection's settings change.
+`BrowserStore` is a single `signalStore` provided in root. Its state is split across nine `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call (`store/root-state.ts`); each feature adds its own slice and exports its initial state. The last feature is the [Browser Session](glossary.md#browser-session): `openCollection(settings)` is the one way a collection is opened or switched, and `updateSettings(settings)` the one way the open collection's settings change.
 
 <!-- BrowserStore feature composition — how with-* files build up the root store -->
 
 ```mermaid
 flowchart TD
-    Root["BrowserStore root state (root-state.ts)\n─────────────────────────\nsessionId / collectionSettings\nselectedCollection\navailableLocales / baseLocale / isReadOnly\nisDisabled / error\ncurrentFolderPath\ndensityMode / compactLocale\ncompactLocaleManuallyChanged\nnonCompactSelectedLocales\n─────────────────────────\nmethods: moveResource, clearError"]
+    Root["BrowserStore root state (root-state.ts)\n─────────────────────────\nsessionId / collectionSettings\nselectedCollection\navailableLocales / baseLocale / isReadOnly\nerror\ncurrentFolderPath (written by the List Scope)\ndensityMode / compactLocale\ncompactLocaleManuallyChanged\nnonCompactSelectedLocales\n─────────────────────────\ncomputed: isDisabled, effectiveDisabled\nmethods: clearError, retryLoad"]
 
-    Root --> WS["withSearchFeature\n(with-search.feature.ts)\nAdds: searchQuery, isSearchMode,\nsearchResults, isSearchLoading, searchError\nMethods: setSearchQuery, clearSearch,\nsearchTranslations (rxMethod)"]
+    Root --> WLS["withListScopeFeature\n(with-list-scope.feature.ts)\nAdds: listScope, translations, loadedFolderPath,\nsearchResults, isListLoading, listLoaded,\nshowNestedResources\nComputed: isSearchMode, searchQuery,\nisTranslationsLoading, isSearchLoading\nMethods: showFolder, showQuery, clearSearch,\nreloadList, setNestedResources"]
 
     Root --> WF["withFilterFeature\n(with-filter.feature.ts)\nAdds: selectedLocales, selectedStatuses,\nsortField, sortDirection\nComputed: filteredLocales, filterableLocales,\nlocaleFilterText, statusFilterText\nMethods: toggleLocale, setSortField,\ntoggleStatus, selectNeedsWorkStatuses, …"]
 
-    Root --> WT["withTranslationsFeature\n(with-translations.feature.ts)\nAdds: translations, isTranslationsLoading,\nshowNestedResources\nComputed: sortedTranslations, displayedTranslations,\nisEmpty, translationCount, _statusLocales (private)\nMethods: selectFolder (rxMethod),\nsetNestedResources"]
+    Root --> WT["withTranslationsFeature\n(with-translations.feature.ts)\nNo new state\nComputed: sortedTranslations, displayedTranslations,\nstatusCounts, needsWorkCount, isEmpty,\ntranslationCount, _statusLocales (private)"]
 
     Root --> WEW["withEntryWritesFeature\n(with-entry-writes.feature.ts)\nNo new state\nMethods: createResource, updateResource,\ndeleteResource, translateResource\n(return the API Observable; patch\ntranslations / searchResults on success,\nsession-guarded via captureSession)"]
 
-    Root --> WFT["withFolderTreeFeature\n(with-folder-tree.feature.ts)\nAdds: rootFolders, folderTreeLoaded,\nexpandedFolders, preFilterExpandedFolders,\nisRootExpanded, folderTreeFilter, isFolderTreeLoading,\nisAddingFolder, addFolderParentPath,\nnewlyCreatedFolderPath, isDeletingFolder\nComputed: filteredFolders, breadcrumbs, isLoading\nMethods: loadRootFolders, loadFolderChildren,\ncreateFolder, deleteFolder, moveFolder (rxMethods)"]
+    Root --> WFT["withFolderTreeFeature\n(with-folder-tree.feature.ts)\nAdds: rootFolders, folderTreeLoaded,\nexpandedFolders, preFilterExpandedFolders,\nisRootExpanded, folderTreeFilter, isFolderTreeLoading,\nisAddingFolder, addFolderParentPath,\nnewlyCreatedFolderPath, isDeletingFolder\nComputed: filteredFolders, breadcrumbs, isLoading\nMethods: loadRootFolders, loadFolderChildren,\ncreateFolder, deleteFolder (rxMethods)"]
+
+    Root --> WM["withMovesFeature\n(with-moves.feature.ts)\nAdds: movesInFlight\nComputed: isMoving\nMethods: moveResource, moveFolder (rxMethods)"]
 
     Root --> WCS["withCacheStatusFeature\n(with-cache-status.feature.ts)\nAdds: cacheStatus, cacheError, collectionStats\nComputed: isCacheReady, isCacheIndexing,\ncollectionTotalKeys, collectionLocaleCount\nMethods: checkCacheStatus (rxMethod — polls every 2s\nuntil status = 'ready')"]
 
@@ -156,22 +160,25 @@ flowchart TD
 
     Root --> WBS["withBrowserSessionFeature\n(with-browser-session.feature.ts)\nNo new state\nMethods: openCollection(settings) — sessionId\nbumped, every feature back to its initial state,\nsettings applied, prefs restored, polling started;\nupdateSettings(settings) — reopens when locales,\nbaseLocale or translationsFolder differ,\nelse patches readOnly/translationEnabled in place"]
 
-    WS -.->|"isSearchMode, searchResults\nread by"| WT
+    WLS -.->|"translations, searchResults,\nisSearchMode read by"| WT
     WBS -.->|"calls restoreViewPreferences\nprovided by"| WVP
     WBS -.->|"calls checkCacheStatus\nprovided by"| WCS
     WF -.->|"selectedLocales, selectedStatuses\nread by"| WT
-    WFT -.->|"calls selectFolder\nprovided by"| WT
-    WEW -.->|"calls selectFolder,\npatches translations"| WT
-    WCS -.->|"calls loadRootFolders\nprovided by"| WFT
+    WFT -.->|"calls showFolder\nprovided by"| WLS
+    WEW -.->|"calls reloadList,\npatches translations"| WLS
+    WM -.->|"calls showFolder / reloadList"| WLS
+    WM -.->|"calls loadRootFolders,\nloadFolderChildren"| WFT
+    WCS -.->|"calls reloadList, loadRootFolders"| WFT
+    WBS -.->|"calls _cancelListLoads"| WLS
 ```
 
-**Composition order matters.** `withEntryWritesFeature` and `withFolderTreeFeature` require `selectFolder` (and the folder tree also `setTranslationsLoading`) from `withTranslationsFeature`, so `withTranslationsFeature` must appear first. `withCacheStatusFeature` requires `loadRootFolders` from `withFolderTreeFeature`, so it follows. `withViewPreferencesFeature` reads from every other feature's state. `withBrowserSessionFeature` calls `restoreViewPreferences` and `checkCacheStatus`, and is last.
+**Composition order matters.** `withListScopeFeature` comes first after the root state: `withTranslationsFeature` derives from its rows, and `withEntryWritesFeature`, `withFolderTreeFeature` and `withMovesFeature` ask it to show a folder or reload. `withMovesFeature` also calls the folder tree's loads, so it follows `withFolderTreeFeature`. `withCacheStatusFeature` requires `reloadList` and `loadRootFolders`, so it follows both. `withViewPreferencesFeature` reads from every other feature's state. `withBrowserSessionFeature` calls `restoreViewPreferences` and `checkCacheStatus`, and is last.
 
 **Opening a collection.** The store is root-provided, so it outlives the `/browser/:collectionName` route. `TranslationBrowser` resolves the routed collection's settings from the loaded config (`resolveCollectionSettings(config, name)`, the Tracker's counterpart of core's `openCollection`: collection value, else global, else default) each time the config changes. When the routed collection is not the open one, it calls `store.openCollection(settings)`. The session bumps `sessionId`, patches every feature's exported initial state together with the root state, stores the settings (`collectionSettings`, plus the projections `selectedCollection`, `availableLocales`, `baseLocale`, `isReadOnly`), then has the view-preferences feature restore what `localStorage` holds for that collection (a saved `medium` density, or none, reads as `compact`; in compact the one displayed locale is resolved against the collection's locales), and starts index polling. The folder, search, filter, translations, folder-tree and cache-status state of the previous collection does not survive the switch.
 
-**Responses from a closed session.** A loader captures `sessionId` when its request starts (`captureSession`, `store/session-guard.ts`) and pipes the API response through `withinSession`. When another `openCollection` has run in the meantime, the response is dropped: a value is not written and an error completes without a rollback, toast or follow-up navigation. `selectFolder`, `loadRootFolders`, `loadFolderChildren`, `createFolder`, `deleteFolder`, `moveFolder`, `moveResource` and `searchTranslations` use it; `createFolderAt` and the entry writes (`with-entry-writes.feature.ts`: `createResource`, `updateResource`, `deleteResource`, `translateResource`) still return their response to the caller but write the store only in their own session — the translation editor dialog's `updateResource` subscription can outlive the browser, so a save that resolves after another collection has opened must not patch or drop a row in the session that replaced it. The counter, not the collection name, is compared, so a response from an earlier open of the same collection (A, B, A) is dropped too. `checkCacheStatus` needs no guard: every open calls it, and its `switchMap` cancels the previous poll.
+**Responses from a closed session.** A loader captures `sessionId` when its request starts (`captureSession`, `store/session-guard.ts`) and pipes the API response through `withinSession`. When another `openCollection` has run in the meantime, the response is dropped: a value is not written and an error completes without a rollback, toast or follow-up navigation. The List Scope's loads, `loadRootFolders`, `loadFolderChildren`, `createFolder`, `deleteFolder`, `moveFolder` and `moveResource` use it, and so does the launcher's lookup in `openByFullKey`; `createFolderAt` and the entry writes (`with-entry-writes.feature.ts`: `createResource`, `updateResource`, `deleteResource`, `translateResource`) still return their response to the caller but write the store only in their own session — the translation editor dialog's `updateResource` subscription can outlive the browser, so a save that resolves after another collection has opened must not patch or drop a row in the session that replaced it. The counter, not the collection name, is compared, so a response from an earlier open of the same collection (A, B, A) is dropped too. `checkCacheStatus` needs no guard: every open calls it, and its `switchMap` cancels the previous poll. The List Scope goes one step further: `openCollection` calls `_cancelListLoads`, so a list load of the previous session is unsubscribed, its HTTP request cancelled and its not-ready retries stopped, rather than left to run and be dropped.
 
-**Re-entering the open collection.** Going back to the Collections page and opening the same collection again is not an open: the user keeps their place (selected folder, expansion, search query and results, filters). `TranslationSearch` starts its box from `store.searchQuery()`, and `FolderTree` only reads `isDisabled`, so the remounted tree stays disabled while the search is active. When the config has changed, `TranslationBrowser` calls `store.updateSettings(settings)`. Settings equal to the stored ones (`sameCollectionSettings`), as on an unrelated config reload, are a no-op. Otherwise `updateSettings` branches on what changed (`collectionNeedsReopen` in `collection-settings.ts`): a `readOnly` or `translationEnabled` edit alone writes `collectionSettings` and its projections in place and changes nothing else; a `locales`, `baseLocale` or `translationsFolder` edit invalidates data cached under the old settings — the folder tree, translations, filter selections, the cache-status check — so `updateSettings` calls `openCollection(settings)` instead, a fresh session that restores the collection's saved view preferences against its current locales (a saved locale the collection no longer has is dropped, not kept selected, so it cannot leave a stale column on screen or get written back to `localStorage`). `collectionSettings` is the one source of settings in the browser: `translationEnabled` and `translationsFolder` are read from it, and no component resolves settings from the raw config.
+**Re-entering the open collection.** Going back to the Collections page and opening the same collection again is not an open: the user keeps their place (selected folder, expansion, search query and results, filters). `TranslationSearch` starts its box from `store.searchQuery()`, and `isDisabled` is derived from the List Scope, so the remounted tree stays disabled while the search is active. When the config has changed, `TranslationBrowser` calls `store.updateSettings(settings)`. Settings equal to the stored ones (`sameCollectionSettings`), as on an unrelated config reload, are a no-op. Otherwise `updateSettings` branches on what changed (`collectionNeedsReopen` in `collection-settings.ts`): a `readOnly` or `translationEnabled` edit alone writes `collectionSettings` and its projections in place and changes nothing else; a `locales`, `baseLocale` or `translationsFolder` edit invalidates data cached under the old settings — the folder tree, translations, filter selections, the cache-status check — so `updateSettings` calls `openCollection(settings)` instead, a fresh session that restores the collection's saved view preferences against its current locales (a saved locale the collection no longer has is dropped, not kept selected, so it cannot leave a stale column on screen or get written back to `localStorage`). `collectionSettings` is the one source of settings in the browser: `translationEnabled` and `translationsFolder` are read from it, and no component resolves settings from the raw config.
 
 ---
 
@@ -179,21 +186,51 @@ flowchart TD
 
 | Feature file | State owned | Key computed signals | Key methods |
 |---|---|---|---|
-| `with-search.feature.ts` | `searchQuery`, `isSearchMode`, `searchResults`, `isSearchLoading`, `searchError` | — | `setSearchQuery`, `clearSearch`, `searchTranslations` |
+| `with-list-scope.feature.ts` | `listScope`, `translations`, `loadedFolderPath`, `searchResults`, `isListLoading`, `shownScope`, `listError`, `showNestedResources` | `listLoaded`, `isSearchMode`, `searchQuery`, `isTranslationsLoading`, `isSearchLoading` | `showFolder`, `showQuery`, `clearSearch`, `reloadList`, `setNestedResources` — see [List Scope](#list-scope--what-the-list-shows) |
 | `with-filter.feature.ts` | `selectedLocales`, `selectedStatuses`, `sortField`, `sortDirection` | `filteredLocales`, `filterableLocales`, `localeFilterText`, `statusFilterText`, `isShowingAllLocales`, `isShowingAllStatuses` | `toggleLocale`, `setSelectedLocales`, `setSortField`, `toggleSortDirection`, `toggleStatus`, `selectNeedsWorkStatuses` |
-| `with-translations.feature.ts` | `translations`, `isTranslationsLoading`, `showNestedResources` | `sortedTranslations`, `displayedTranslations`, `isEmpty`, `translationCount`, `hasTranslations` | `selectFolder`, `setTranslationsLoading`, `setNestedResources` |
+| `with-translations.feature.ts` | (no new state) | `sortedTranslations`, `displayedTranslations`, `statusCounts`, `needsWorkCount`, `isEmpty`, `translationCount`, `hasTranslations` | — |
 | `with-entry-writes.feature.ts` | (no new state) | — | `createResource`, `updateResource`, `deleteResource`, `translateResource` — see [Writing a Resource Entry](#writing-a-resource-entry) |
-| `with-folder-tree.feature.ts` | `rootFolders`, `folderTreeLoaded`, `expandedFolders` and `preFilterExpandedFolders` (both `ReadonlySet<string>`, replaced on every change), `isRootExpanded`, `folderTreeFilter`, `isFolderTreeLoading`, `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath` | `filteredFolders`, `breadcrumbs`, `isLoading`, `visibleExpandedFolders`, `areAllFoldersExpanded` | `loadRootFolders`, `loadFolderChildren`, `createFolder`, `createFolderAt`, `deleteFolder`, `moveFolder`, `setFolderTreeFilter`, `toggleFolderExpanded`, `expandFolder`, `toggleRootExpanded`, `expandAllFolders`, `collapseAllFolders`, `startAddingFolder`, `cancelAddingFolder` |
+| `with-folder-tree.feature.ts` | `rootFolders`, `folderTreeLoaded`, `expandedFolders` and `preFilterExpandedFolders` (both `ReadonlySet<string>`, replaced on every change), `isRootExpanded`, `folderTreeFilter`, `isFolderTreeLoading`, `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath` | `filteredFolders`, `breadcrumbs`, `isLoading`, `visibleExpandedFolders`, `areAllFoldersExpanded` | `loadRootFolders` (the tree only, without nested resources), `loadFolderChildren`, `createFolder`, `createFolderAt`, `deleteFolder`, `setFolderTreeFilter`, `toggleFolderExpanded`, `expandFolder`, `toggleRootExpanded`, `expandAllFolders`, `collapseAllFolders`, `startAddingFolder`, `cancelAddingFolder` |
+| `with-moves.feature.ts` | `movesInFlight` | `isMoving` | `moveResource`, `moveFolder` — see [Optimistic Updates with Rollback](#optimistic-updates-with-rollback) |
 | `with-cache-status.feature.ts` | `cacheStatus`, `cacheError`, `collectionStats` | `isCacheReady`, `isCacheIndexing`, `collectionTotalKeys`, `collectionLocaleCount`, `hasCollectionStats` | `checkCacheStatus` (sets `cacheStatus: 'not-started'` and clears `cacheError`/`collectionStats` on every call, including an overlay retry; then polls every 2 s via `interval` until the status is no longer indexing) |
 | `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `restoreViewPreferences` (reads `localStorage` for one collection and applies it) |
 | `with-browser-session.feature.ts` | (no new state; writes the root `sessionId` and `collectionSettings`) | — | `openCollection(settings)` — the [Browser Session](glossary.md#browser-session): `sessionId` bumped, every feature to its initial state, settings applied, preferences restored, polling started; `updateSettings(settings)` — a no-op when equal; reopens via `openCollection` when `locales`, `baseLocale` or `translationsFolder` differ; otherwise patches `readOnly`/`translationEnabled` in place |
 
-Root-level methods on `BrowserStore` (not in a feature):
+Root-level members of `BrowserStore` (not in a feature):
 
-| Method | Purpose |
+| Member | Purpose |
 |---|---|
-| `moveResource` | Optimistic remove from `translations` (matched by `fullKey`, so it works for rows in any folder) → API call → re-fetch on success, rollback on error |
-| `clearError` | Simple `patchState` helper |
+| `isDisabled` | Computed: `isSearchMode() \|\| isMoving()`. Locks folder navigation and moves. It has no writer: a search shown by the List Scope or a move in flight is the only way it becomes true. |
+| `effectiveDisabled` | Computed: `isDisabled() \|\| isReadOnly()`, for editing affordances. |
+| `listErrorMessage` | Computed: `listError() ?? error()`, what the list's error view shows. |
+| `retryLoad` | The list's Retry: clears `error`, then the List Scope's `reloadList`, plus `loadRootFolders` when the folder tree never loaded in this session. |
+| `clearError` | Clears `error` and `listError` |
+
+### List Scope — What the List Shows
+
+The [List Scope](glossary.md#list-scope) (`with-list-scope.feature.ts`) owns what the translation list shows and is the only loader of its rows. The scope is a folder or a search query:
+
+```typescript
+type ListScope = { kind: 'folder'; path: string } | { kind: 'search'; query: string };
+```
+
+| Method | Effect |
+|---|---|
+| `showFolder(path)` | Shows the folder (leaving a search, if one is shown) and loads its rows with the nested setting. Sets `currentFolderPath`. |
+| `showQuery(query)` | Shows the hits of a text search. A blank query is `clearSearch`. Hits of an earlier search are dropped when a search starts from a folder, so they never stand in for the new one. |
+| `clearSearch()` | Goes back to the folder behind the search. Its rows are shown as they are when they were loaded for that folder (`loadedFolderPath`); when a search cut the folder's load short, the folder is loaded. Without a search shown it does nothing (the search box calls it whenever its query empties), so it never cancels a folder load. |
+| `reloadList()` | Loads the current scope again: after a create, after a resource move, from the list's Retry, and for the first list of a session once the index is ready. |
+| `setNestedResources(value)` | Changes the nested setting and reloads a folder scope. |
+
+The callers are the folder tree (a folder click, a delete shows the parent), `TranslationSearch`, the moves, the entry writes, the cache-status poll and `TranslationEditorLauncher.openByFullKey`. None of them loads rows or writes `currentFolderPath`, `listError` or a loading flag itself. Entry writes (`patchEntry`/`dropEntry`) and moves (the optimistic drop and its undo) patch the loaded rows in place.
+
+**One pipeline.** Every load goes through one `switchMap`: a newer scope cancels the older load (its HTTP request and any not-ready retries), so answers cannot land out of order. `openCollection` cancels it too (`_cancelListLoads`).
+
+**One busy state.** `isListLoading`. `isSearchLoading` (the search box's spinner) is the flag in a search scope. `isTranslationsLoading` (the list's spinner) is the flag in a folder scope, and in a search scope with no hits yet (the first search from a folder), so the list does not show its empty state while that search loads; a refined search keeps its hits up.
+
+**One failure rule.** When a load fails with `CollectionIndexNotReadyError` and a list has already loaded in this session (`listLoaded`), the scope goes back to `shownScope`, the last scope that loaded (or that `clearSearch` went back to), so the scope and `currentFolderPath` match the rows on screen even when a newer scope was cancelled before it loaded; a toast gives the message. Any other failure is `listError`, with the Retry button. Only the List Scope writes `listError` (a list load clears it as it starts), so the folder tree's loads, which clear the shared `error`, cannot bring the previous folder's rows back under a new breadcrumb. The fallback message is `browser.toast.loadTranslationsFailed` for a folder and `browser.toast.searchTranslationsFailed` for a search.
+
+**Tests.** `with-list-scope.feature.spec.ts` drives the store through the real HTTP seam (`HttpTestingController`) and checks scope changes: show folder A, a query, folder B, and check the rows, the busy flags and that a cancelled load never lands.
 
 ---
 
@@ -262,25 +299,27 @@ The viewport recalculates its size via `viewport.checkViewportSize()` inside `re
 
 ### Optimistic Updates with Rollback
 
-**Move resource** (`BrowserStore.moveResource`):
+Both moves live in `withMovesFeature`. While one is in flight, `movesInFlight` counts it (the one writer is `whileMoving`), so `isMoving` and `isDisabled` are true.
+
+**Move resource** (`moveResource`):
 
 1. Snapshot current `translations` array.
 2. Immediately `patchState` with the resource removed (`optimisticTranslations`).
 3. Call `api.moveResource()`.
-4. On success: reload folder tree and re-select the current folder.
-5. On error: restore the snapshot, set `error`, show an error notification.
+4. On success: reload the folder tree (`loadRootFolders`, the tree only) and the list (`reloadList`). The list stays on the folder it showed.
+5. On error: put back the moved row (only when the rows are still the folder it came from, and it is not there already, so a reload that landed meanwhile is kept), set `error`, show an error notification.
 
-**Move folder** (`withFolderTreeFeature.moveFolder`):
+**Move folder** (`moveFolder`):
 
 1. Show a confirmation dialog (lazy-loaded).
 2. On confirm: snapshot `rootFolders`, immediately remove the source folder from the tree.
 3. Call `api.moveFolder()`.
-4. On success: rebase the folder node's paths and insert it at the destination, expand the destination, reload translations.
-5. On error: restore the snapshot, clear `isDisabled` and `isDeletingFolder`, show an error notification.
+4. On success: rebase the folder node's paths and insert it at the destination, expand the destination, and show the moved folder (`showFolder`). A failure of that load follows the List Scope's rule (before, it was dropped without a message).
+5. On error: restore the snapshot, clear `isDeletingFolder`, show an error notification.
 
 **Edit translation** (via `TranslationListStore.withItemActions`):
 
-Editing happens inside the dialog, which saves through `BrowserStore.updateResource`. When the `PATCH` succeeds, the store replaces the stale entry in `translations` (and in `searchResults` during a search) with the resource in the response. There is no second request. The dialog then closes with `result.success`, and `TranslationListStore.flashRecentlyUpdated` sets `recentlyUpdatedKey` for 1.5 s to drive the highlight animation. If the `PATCH` fails, the caches do not change and the dialog shows the error.
+Editing happens inside the dialog, which saves through `BrowserStore.updateResource`. When the `PATCH` succeeds, the store replaces the stale entry in `translations` (and in `searchResults` during a search) with the resource in the response. There is no second request. The dialog then closes with the `saved` [Editor Outcome](#the-editor-outcome), the launcher toasts, and `TranslationListStore.flashRecentlyUpdated` sets `recentlyUpdatedKey` for 1.5 s to drive the highlight animation. If the `PATCH` fails, the caches do not change and the dialog shows the error.
 
 ---
 
@@ -317,7 +356,7 @@ import('./path/to/dialog').then((m) => {
 This keeps dialog modules out of the initial bundle entirely. The pattern is used for:
 
 - `CollectionFormDialog` — create / edit collection (from `CollectionsManager`)
-- `TranslationEditorDialog` — create / edit resource (from `TranslationMainHeader` and `TranslationListStore.withItemActions`)
+- `TranslationEditorDialog` — create / edit resource (only from `TranslationEditorLauncher`, which the header, the list's rows and the "Open existing" hand-off call)
 - `ConfirmationDialog` — delete collection, delete resource, delete folder, move folder (from multiple call sites)
 
 `TranslationEditorDialog` opens the `FolderPicker` (a nested dialog via `MatDialog`) if the user wants to move the resource to a different folder. `FolderPicker` in turn calls `BrowserStore.createFolderAt` to create folders inline without leaving the dialog.
@@ -343,9 +382,9 @@ The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autoc
 
 The key field validator is `segmentValidator` (`shared/validators/segment.validator.ts`). It uses the domain `isValidSegment` rule and reports under the `pattern` error key. The bundle name and the inline new-folder name use the same validator. The folder filter in the location popover uses `filterFolderTree` from `browser/store/folder-tree.utils.ts`, the same function as `BrowserStore.filteredFolders`.
 
-The dialog reads two things directly from `BrowserApiService`: `searchTranslations` for similar values, and `getResourceTree` for the entries of a folder picked in the popover. Both are dialog-local reads. The store's `selectFolder` would move the browser list behind the dialog, so the dialog does not use it.
+The dialog reads two things directly from `BrowserApiService`: `searchTranslations` for similar values, and `getResourceTree` for the entries of a folder picked in the popover. Both are dialog-local reads. The List Scope's `showFolder` would move the browser list behind the dialog, so the dialog does not use it.
 
-**Similar values.** After a 300 ms typing pause, and when the base value has at least 3 characters (and, in edit mode, differs from the stored value), the dialog calls `searchTranslations(collectionName, value, SIMILAR_DISPLAY_LIMIT + 1, 'similar')`. The API answers with [Resource Search](glossary.md#resource-search)'s similar-value mode: base values at least 80% similar to the typed text, or that contain it or are contained in it as whole words with a similarity of at least 40%, ranked by similarity. The dialog does no matching of its own. It drops the entry being edited (by `fullKey`) and keeps the first `SIMILAR_DISPLAY_LIMIT` (10) hits in the API's order. It asks for one extra hit so that a full list of 10 remains after it drops the entry itself. The count badge, the exact-duplicate caption and the pinned list all read this one signal. Before, the dialog ran a 25-hit text search and kept the hits whose base value contained the typed text (or was contained in it) by substring, so the list was in text-search order and a key-only hit could use up the 25. The header full-text search (`with-search.feature.ts`) still uses the default text mode. Each row shows the hit's `similarity` (0..1, sent in similar mode) as a quiet percentage chip at the end of its key line: `Math.round(similarity * 100)%`, computed in the row view (`displayedRows`). A hit without `similarity` shows no chip. The visible number is `aria-hidden`; screen readers get `browser.similarTranslations.similarityX` ("85% similar") instead.
+**Similar values.** After a 300 ms typing pause, and when the base value has at least 3 characters (and, in edit mode, differs from the stored value), the dialog calls `searchTranslations(collectionName, value, SIMILAR_DISPLAY_LIMIT + 1, 'similar')`. The API answers with [Resource Search](glossary.md#resource-search)'s similar-value mode: base values at least 80% similar to the typed text, or that contain it or are contained in it as whole words with a similarity of at least 40%, ranked by similarity. The dialog does no matching of its own. It drops the entry being edited (by `fullKey`) and keeps the first `SIMILAR_DISPLAY_LIMIT` (10) hits in the API's order. It asks for one extra hit so that a full list of 10 remains after it drops the entry itself. The count badge, the exact-duplicate caption and the pinned list all read this one signal. Before, the dialog ran a 25-hit text search and kept the hits whose base value contained the typed text (or was contained in it) by substring, so the list was in text-search order and a key-only hit could use up the 25. The header full-text search (the List Scope's `showQuery`) still uses the default text mode. Each row shows the hit's `similarity` (0..1, sent in similar mode) as a quiet percentage chip at the end of its key line: `Math.round(similarity * 100)%`, computed in the row view (`displayedRows`). A hit without `similarity` shows no chip. The visible number is `aria-hidden`; screen readers get `browser.similarTranslations.similarityX` ("85% similar") instead.
 
 Status labels in the editor (the status pill, its menu and the context column dots) come from `statusLabelTokenFor` in the shared translation-status presentation module, the same tokens the rows use.
 
@@ -374,7 +413,7 @@ The pure module `browser/translations/list/translation-item/row-view.ts` (no Ang
 
 `sharedStatus(rows)` gives the locale grid's single chip when every rendered row shares one status. `TranslationItem` computes the view once and passes it to `TranslationItemHeader`; `TranslationItemLocales` and `TranslationRollup` receive rows. The components keep only the DOM parts: expansion, overlays, drag, touch and keyboard handling. The rules are tested in `row-view.spec.ts` as pure functions.
 
-`BrowserApiService.getResourceTree` hides the collection index's "not ready" answer (HTTP 202): it retries and gives the stores only a tree, so `selectFolder`, `loadRootFolders`, `loadFolderChildren`, `moveFolder`, the launcher and the editor have no retry or shape check of their own. If the index is still not ready after the retries, the error is a `CollectionIndexNotReadyError`. When a root tree has already loaded for the collection (`folderTreeLoaded`), the folder tree loads keep the tree and show a toast; `selectFolder` keeps the list and the folder it shows. On the first load, the store goes to the `error` state. `folderTreeLoaded` is not the same as "some root folders": a collection with only root resources has no folders. It is reset when the collection changes.
+`BrowserApiService.getResourceTree` hides the collection index's "not ready" answer (HTTP 202): it retries and gives the stores only a tree, so the List Scope, `loadRootFolders`, `loadFolderChildren`, the launcher and the editor have no retry or shape check of their own. If the index is still not ready after the retries, the error is a `CollectionIndexNotReadyError`. When a root tree has already loaded for the collection (`folderTreeLoaded`), the folder tree loads keep the tree and show a toast; when a list has already loaded (`listLoaded`), the List Scope keeps the list and the scope it shows. On the first load, the store goes to the `error` state. `folderTreeLoaded` is not the same as "some root folders": a collection with only root resources has no folders. It is reset when the collection changes.
 
 ### Writing a Resource Entry
 
@@ -382,7 +421,7 @@ All UI writes of a resource entry go through `withEntryWritesFeature` on `Browse
 
 | Method | Caller | After a successful write |
 |---|---|---|
-| `createResource(collectionName, dto)` | `TranslationEditorDialog` (create) | Reloads the current folder with `selectFolder`. |
+| `createResource(collectionName, dto)` | `TranslationEditorDialog` (create) | Reloads the List Scope (`reloadList`). |
 | `updateResource(collectionName, dto)` | `TranslationEditorDialog` (edit) | Patches the entry in place. If the DTO has a `moveTo` property, removes the entry from the list instead, whatever the destination. |
 | `deleteResource(collectionName, fullKey)` | `withItemActions.deleteTranslation` | Removes the entry when `entriesDeleted > 0`. |
 | `translateResource(collectionName, fullKey)` | `withItemActions.translateResource` | Patches the entry in place. |
@@ -393,7 +432,30 @@ Each method takes the full dot-delimited key and returns the API `Observable`. T
 
 Both caches (`translations` and `searchResults`) are keyed by each resource's `fullKey`, in folder mode, nested mode and search mode alike. The API returns the updated resource with its own full address, so the store swaps it in by `fullKey`; there is no key conversion anywhere. A drag carries the row's `fullKey` and its real `folderPath`, also for nested rows.
 
-`TranslationEditorLauncher` and `TranslationMainHeader` only give feedback after the dialog closes: the row flash and the toasts.
+`TranslationEditorLauncher` only gives feedback after the dialog closes, from its [Editor Outcome](#the-editor-outcome); the list adds the row flash.
+
+### The Editor Outcome
+
+`TranslationEditorLauncher` (`browser/services/translation-editor-launcher.ts`) opens every create and edit: `openCreate()` (the header's add button, in the folder the list shows), `openEdit(resource)` (a list row) and `openByFullKey(fullKey)` (the "Open existing" hand-off). It holds the one dialog configuration and reads the one result the dialog closes with, the [Editor Outcome](glossary.md#editor-outcome):
+
+```typescript
+type EditorOutcome =
+  | { kind: 'saved'; fullKey: string; skippedLocales: string[] }
+  | { kind: 'moved'; fullKey: string; folderPath: string; skippedLocales: string[] }
+  | { kind: 'created'; fullKey: string; skippedLocales: string[] }
+  | { kind: 'open-existing'; fullKey: string }
+  | { kind: 'cancelled' };
+```
+
+| Outcome | Feedback |
+|---|---|
+| `saved` | "Translation updated" toast, then the skipped-locales warning when auto-translation skipped any. |
+| `moved` | "Moved … to …" toast (the edit had a `moveTo`, the same test the store uses to drop the row), then the skipped-locales warning. |
+| `created` | "Resource created" toast; the skipped-locales warning follows after `CREATE_WARNING_DELAY_MS` (3.2 s), so the two toasts do not overlap. |
+| `open-existing` | `openByFullKey`: a session-guarded lookup of the entry, `showFolder` on its folder (which leaves a search), then an edit of it. The hand-off resolves with that edit's outcome, so a caller never sees `open-existing`. A key the folder no longer holds, or a failed lookup, is a "not found" toast. |
+| `cancelled` | Nothing. A dialog closed without a result (backdrop) and an edit the server found nothing to change in are cancels too. |
+
+Each method resolves with the outcome once the feedback is given. The list's `editTranslation` flashes the row on `saved`. The reload after a write stays in the store (`with-entry-writes.feature.ts`): it runs inside the write's Browser Session, before the dialog closes, so the launcher has nothing to reload. `translation-editor-launcher.spec.ts` tests every outcome with a fake `MatDialog`.
 
 ### Bundle Form Dialog
 

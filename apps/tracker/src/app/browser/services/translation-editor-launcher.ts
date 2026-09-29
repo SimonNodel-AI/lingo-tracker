@@ -2,35 +2,35 @@ import { inject, Injectable } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { splitResolvedKey } from '@simoncodes-ca/domain';
+import { catchError, firstValueFrom, map, of } from 'rxjs';
 import { NotificationService } from '../../shared/notification';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import {
+  type EditorOutcome,
   TranslationEditorDialog,
   TRANSLATION_EDITOR_TITLE_ID,
   type TranslationEditorDialogData,
-  type TranslationEditorResult,
 } from '../dialogs/translation-editor';
 import { BrowserApiService } from './browser-api.service';
 import { BrowserStore } from '../store/browser.store';
-import { splitResolvedKey } from '@simoncodes-ca/domain';
+import { captureSession, withinSession } from '../store/session-guard';
 
-/** What the caller knows about the entry it wants opened in the editor. */
-export interface OpenEditorParams {
-  /** The resource; its explicit address (`fullKey`, `folderPath`, `entryKey`) says where it lives. */
-  resource: ResourceSummaryDto;
-  collectionName: string;
-  /** Called with the resource's full key after an in-place update, for the row's flash. */
-  onUpdated?: (fullKey: string) => void;
-}
+/** A create's skipped-locales warning waits out the success toast, so the two do not overlap. */
+export const CREATE_WARNING_DELAY_MS = 3200;
 
 /**
- * Opens the translation editor in edit mode, from wherever the request came.
+ * Opens the translation editor, for a create or an edit, and gives the feedback for how it closed.
  *
- * The list's row menu and the create dialog's "Open existing" both need the same
- * dialog with the same post-save feedback, and they sit in different injector
- * branches — the list store is component-scoped, the header is its sibling. The
- * launcher is the one place that knows the dialog's configuration, so neither
- * call site carries a copy of it.
+ * The header's "add" button, the list's rows and the "Open existing" hand-off all open the same
+ * dialog. The launcher is the one place that knows its configuration and reads its
+ * {@link EditorOutcome}: the toasts, and the hand-off to the entry the user collided with. The
+ * store has already brought the list in line before the dialog closes (see
+ * `with-entry-writes.feature.ts`), so there is nothing left to reload here.
+ *
+ * Each method resolves with the outcome once the feedback is given, for a caller that has its
+ * own reaction (the list flashes a saved row). An "Open existing" hand-off resolves with the
+ * outcome of the edit it hands over to, so a caller never sees `open-existing`.
  */
 @Injectable({ providedIn: 'root' })
 export class TranslationEditorLauncher {
@@ -39,90 +39,132 @@ export class TranslationEditorLauncher {
   readonly #browserStore = inject(BrowserStore);
   readonly #notifications = inject(NotificationService);
   readonly #transloco = inject(TranslocoService);
+  #createWarning: ReturnType<typeof setTimeout> | undefined;
+
+  /** Opens the editor to create an entry in the folder the list shows. */
+  openCreate(): Promise<EditorOutcome> {
+    return this.#open({ mode: 'create', folderPath: this.#browserStore.currentFolderPath() });
+  }
 
   /** Opens the editor for a resource the caller already holds. */
-  openEditor(params: OpenEditorParams): void {
-    const { resource, collectionName, onUpdated } = params;
-    const { folderPath } = resource;
+  openEdit(resource: ResourceSummaryDto): Promise<EditorOutcome> {
+    return this.#open({ mode: 'edit', resource, folderPath: resource.folderPath });
+  }
+
+  /**
+   * Opens the editor for a full dot-delimited key, from a caller that has nothing but the key:
+   * the "Open existing" hand-off, with the key of the entry the user collided with.
+   *
+   * The list is moved to the entry's folder first (leaving a search), so the dialog closes onto
+   * the list the entry is actually in rather than back onto an unrelated folder.
+   */
+  async openByFullKey(fullKey: string): Promise<EditorOutcome> {
+    const collectionName = this.#browserStore.selectedCollection();
+    if (!collectionName) return { kind: 'cancelled' };
+    const folderPath = splitResolvedKey(fullKey).folderPath.join('.');
+
+    // A lookup, not a list load: the List Scope loads the rows once the entry is known to exist.
+    // It is session-guarded: `null` means another collection opened meanwhile, so that one gets
+    // neither the folder nor the editor. `undefined` means the lookup failed or found no entry.
+    const resource = await firstValueFrom(
+      this.#api.getResourceTree(collectionName, folderPath, false).pipe(
+        withinSession(captureSession(this.#browserStore)),
+        map((tree) => tree.resources.find((item) => item.fullKey === fullKey)),
+        catchError(() => of(undefined)),
+      ),
+      { defaultValue: null },
+    );
+    if (resource === null) return { kind: 'cancelled' };
+    if (!resource) {
+      this.#notifications.error(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.NOTFOUND));
+      return { kind: 'cancelled' };
+    }
+
+    this.#browserStore.showFolder(folderPath);
+    return this.openEdit(resource);
+  }
+
+  async #open(data: Pick<TranslationEditorDialogData, 'mode' | 'resource' | 'folderPath'>): Promise<EditorOutcome> {
+    const collectionName = this.#browserStore.selectedCollection();
+    if (!collectionName) return { kind: 'cancelled' };
 
     const dialogData: TranslationEditorDialogData = {
-      mode: 'edit',
-      resource,
+      ...data,
       collectionName,
-      folderPath,
       availableLocales: this.#browserStore.availableLocales(),
       baseLocale: this.#browserStore.baseLocale(),
       readOnly: this.#browserStore.isReadOnly(),
     };
 
-    const dialogRef = this.#dialog.open(TranslationEditorDialog, {
-      // Size, max-height and the small-viewport full-screen mode live in
-      // `.translation-editor-dialog-panel` (styles.scss) so the call sites
-      // don't each carry their own copy of the numbers. `maxWidth` is
-      // overridden only to lift the CDK's inline 80vw default, which would
-      // otherwise beat the stylesheet.
-      panelClass: 'translation-editor-dialog-panel',
-      maxWidth: '100vw',
-      data: dialogData,
-      autoFocus: false,
-      ariaLabelledBy: TRANSLATION_EDITOR_TITLE_ID,
-      restoreFocus: false,
-    });
+    const dialogRef = this.#dialog.open<TranslationEditorDialog, TranslationEditorDialogData, EditorOutcome>(
+      TranslationEditorDialog,
+      {
+        // Size, max-height and the small-viewport full-screen mode live in
+        // `.translation-editor-dialog-panel` (styles.scss). `maxWidth` is overridden
+        // only to lift the CDK's inline 80vw default, which would otherwise beat the
+        // stylesheet.
+        panelClass: 'translation-editor-dialog-panel',
+        maxWidth: '100vw',
+        data: dialogData,
+        autoFocus: false,
+        ariaLabelledBy: TRANSLATION_EDITOR_TITLE_ID,
+        // An edit hands focus back to the list's own keyboard handling, not to the opener.
+        restoreFocus: data.mode === 'create',
+      },
+    );
 
-    // The save went through `BrowserStore.updateResource`, which has already
-    // brought the list in line; what is left here is telling the user.
-    dialogRef.afterClosed().subscribe((result: TranslationEditorResult | undefined) => {
-      if (!result?.success) return;
-      if (!result.resource) return;
-      // Saved into another folder: the entry has left this list, so there is no row to flash.
-      if (result.folderPath !== folderPath) return;
+    // Closing without a result (a backdrop click) is a cancel too.
+    const outcome = (await firstValueFrom(dialogRef.afterClosed(), { defaultValue: undefined })) ?? {
+      kind: 'cancelled',
+    };
+    return this.#followUp(outcome);
+  }
 
-      onUpdated?.(resource.fullKey);
-      this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.TRANSLATIONUPDATED));
-
-      if (result.skippedLocales?.length) {
-        this.#notifications.warning(
-          this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SKIPPEDLOCALESX, {
-            locales: result.skippedLocales.join(', '),
+  /** The feedback for one outcome. An "Open existing" hand-off resolves with the outcome of the edit it opens. */
+  async #followUp(outcome: EditorOutcome): Promise<EditorOutcome> {
+    const toast = TRACKER_TOKENS.BROWSER.TOAST;
+    switch (outcome.kind) {
+      case 'saved':
+        this.#notifications.success(this.#transloco.translate(toast.TRANSLATIONUPDATED));
+        this.#warnSkipped(outcome.skippedLocales);
+        return outcome;
+      case 'moved':
+        this.#notifications.success(
+          this.#transloco.translate(toast.RESOURCEMOVEDX, {
+            name: splitResolvedKey(outcome.fullKey).entryKey,
+            folder: outcome.folderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
           }),
         );
-      }
-    });
+        this.#warnSkipped(outcome.skippedLocales);
+        return outcome;
+      case 'created':
+        this.#notifications.success(this.#transloco.translate(toast.RESOURCECREATED));
+        this.#warnSkippedAfterCreate(outcome.skippedLocales);
+        return outcome;
+      case 'open-existing':
+        // A hand-off, not a save: the create closes and the editor opens on the entry the user meant.
+        return this.openByFullKey(outcome.fullKey);
+      case 'cancelled':
+        return outcome;
+    }
   }
 
-  /**
-   * Opens the editor for a full dot-delimited key, from a caller that has nothing
-   * but the key — the create dialog's "Open existing", which hands back the key of
-   * the entry the user collided with.
-   *
-   * The browser is moved to the entry's folder first, so the dialog closes onto the
-   * list the entry is actually in rather than back onto an unrelated folder.
-   */
-  openByFullKey(fullKey: string, collectionName: string, onUpdated?: (fullKey: string) => void): void {
-    const folderPath = splitResolvedKey(fullKey).folderPath.join('.');
-
-    this.#api.getResourceTree(collectionName, folderPath, false).subscribe({
-      next: (tree) => {
-        const resource = tree.resources.find((item) => item.fullKey === fullKey);
-        if (!resource) {
-          this.#notifyNotFound();
-          return;
-        }
-
-        // A search result list would survive the folder change and leave the user
-        // looking at the wrong set of rows behind the dialog.
-        if (this.#browserStore.isSearchMode()) {
-          this.#browserStore.clearSearch();
-        }
-        this.#browserStore.selectFolder(folderPath);
-
-        this.openEditor({ resource, collectionName, onUpdated });
-      },
-      error: () => this.#notifyNotFound(),
-    });
+  #warnSkipped(skippedLocales: string[]): void {
+    if (skippedLocales.length === 0) return;
+    this.#notifications.warning(
+      this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SKIPPEDLOCALESX, { locales: skippedLocales.join(', ') }),
+    );
   }
 
-  #notifyNotFound(): void {
-    this.#notifications.error(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.NOTFOUND));
+  #warnSkippedAfterCreate(skippedLocales: string[]): void {
+    if (skippedLocales.length === 0) return;
+    const locales = skippedLocales.join(', ');
+    clearTimeout(this.#createWarning);
+    this.#createWarning = setTimeout(() => {
+      this.#notifications.warning(
+        this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.AUTOTRANSLATIONSKIPPEDX, { locales }),
+      );
+      this.#createWarning = undefined;
+    }, CREATE_WARNING_DELAY_MS);
   }
 }

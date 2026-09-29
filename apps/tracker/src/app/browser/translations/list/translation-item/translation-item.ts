@@ -207,7 +207,7 @@ export class TranslationItem {
       return;
     }
 
-    this.#listStore.editTranslation(this.translation(), this.#collectionName());
+    this.#listStore.editTranslation(this.translation());
   }
 
   // Touch handlers ---------------------------------------------------------
@@ -223,7 +223,7 @@ export class TranslationItem {
 
     // Long press -> open edit
     if (duration > LONG_PRESS_THRESHOLD) {
-      this.#listStore.editTranslation(this.translation(), this.#collectionName());
+      this.#listStore.editTranslation(this.translation());
     }
   }
 
@@ -238,7 +238,7 @@ export class TranslationItem {
 
     switch (key) {
       case 'e':
-        action = () => this.#listStore.editTranslation(this.translation(), this.#collectionName());
+        action = () => this.#listStore.editTranslation(this.translation());
         break;
 
       case 'delete':

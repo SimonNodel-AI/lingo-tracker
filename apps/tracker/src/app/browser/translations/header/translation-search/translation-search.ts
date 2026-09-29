@@ -52,8 +52,7 @@ export class TranslationSearch implements OnDestroy {
         .subscribe((query) => {
           // Only trigger search if query has at least 3 characters
           if (query.trim().length >= 3) {
-            this.store.setSearchQuery(query);
-            this.store.searchTranslations(query);
+            this.store.showQuery(query);
           } else if (query.trim().length === 0) {
             // Clear search when input is empty
             this.store.clearSearch();

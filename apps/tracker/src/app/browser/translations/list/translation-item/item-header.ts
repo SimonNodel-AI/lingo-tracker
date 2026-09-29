@@ -211,11 +211,11 @@ export class TranslationItemHeader {
   onKeyChipDoubleClick(event: MouseEvent): void {
     event.preventDefault();
     event.stopPropagation();
-    this.#listStore.editTranslation(this.translation(), this.#collectionName());
+    this.#listStore.editTranslation(this.translation());
   }
 
   onEdit(): void {
-    this.#listStore.editTranslation(this.translation(), this.#collectionName());
+    this.#listStore.editTranslation(this.translation());
   }
 
   onDelete(): void {
