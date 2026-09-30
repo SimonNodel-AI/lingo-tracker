@@ -6,6 +6,7 @@ import * as domain from './index';
 describe('domain public surface', () => {
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(domain).sort()).toEqual([
+      'DEFAULT_IMPORT_STRATEGY',
       'JS_IDENTIFIER_PATTERN',
       'STATUS_PRECEDENCE',
       'applyBaseChange',
@@ -14,6 +15,7 @@ describe('domain public surface', () => {
       'autoFixTranslocoPlaceholders',
       'buildResourceSummary',
       'bundleOutputFile',
+      'canImportLocale',
       'checkBundleDefinition',
       'classifyICUContent',
       'compareIcuArguments',
@@ -35,6 +37,7 @@ describe('domain public surface', () => {
       'hasTypeDistConfigured',
       'hasUnbundlableBranchBody',
       'icuToTransloco',
+      'importableLocales',
       'isEmptyValue',
       'isIcuLocaleSupported',
       'isJavaScriptReservedWord',

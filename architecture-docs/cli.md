@@ -94,6 +94,8 @@ The command resolves input (`--text` → `--input` → stdin), selects one or al
 
 For the full description of what each core function does internally, see [core-library.md](core-library.md).
 
+`export` maps flags and prompt answers to `runExport`. Core validates the base property name and output directory, resolves the output folder, and returns an empty `locales` list when no target remains. The command prints the plan from `onStart`, then renders the result and writes the summary. Its prompt uses `DEFAULT_CONFIG.exportFolder` when the config has no export folder. `import` uses domain's default strategy and importable-locale rule for prompt choices; the import session enforces the same locale rule.
+
 For the import and export sequence diagrams showing the full end-to-end flow, see [user-flows.md](user-flows.md).
 
 ---

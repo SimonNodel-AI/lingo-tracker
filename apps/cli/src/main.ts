@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { DEFAULT_IMPORT_STRATEGY } from '@simoncodes-ca/domain';
 import type { EditCollectionOptions } from './commands/edit-collection';
 import type { findSimilarCommand } from './commands/find-similar';
 import { importHelpText, preferredTerminologyHelpText, validateHelpText } from './runner/help-text';
@@ -265,7 +266,7 @@ registerCommand(program, {
     option({
       flags: '--strategy <strategy>',
       description: 'Import strategy (translation-service | verification | migration | update)',
-      defaultValue: 'translation-service',
+      defaultValue: DEFAULT_IMPORT_STRATEGY,
     }),
     option({
       flags: '--update-comments',

@@ -37,10 +37,6 @@ export {
 } from './lib/import';
 
 // Operations: export
-export {
-  validateBasePropertyName,
-  validateOutputDirectory,
-} from './lib/export/export-common';
 export { exportTargetLocales, runExport } from './lib/export/run-export';
 
 // Operations: glossary

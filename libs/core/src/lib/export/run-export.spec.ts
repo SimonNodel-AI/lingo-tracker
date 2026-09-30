@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { openResourceFolder } from '../resource/resource-folder';
 import * as jsonExporter from './export-to-json';
 import { exportTargetLocales, runExport } from './run-export';
@@ -77,15 +78,80 @@ describe('runExport', () => {
     });
   });
 
+  it('rejects an invalid base property name before exporting', async () => {
+    await expect(
+      runExport([open('common')], { format: 'json', outputDirectory, basePropertyName: 'value' }),
+    ).rejects.toThrow(CoreOperationError);
+    await expect(
+      runExport([open('common')], { format: 'json', outputDirectory, basePropertyName: '' }),
+    ).rejects.toThrow('basePropertyName cannot be empty');
+  });
+
+  it('rejects an output path whose parent is a file', async () => {
+    const parent = join(projectDir, 'file');
+    writeFileSync(parent, 'occupied');
+    const run = runExport([open('common')], { format: 'json', outputDirectory: join(parent, 'out') });
+    await expect(run).rejects.toBeInstanceOf(CoreOperationError);
+    await expect(run).rejects.toMatchObject({
+      kind: 'internal',
+      code: 'CORE_OPERATION_ERROR',
+      message: expect.stringContaining(`Could not create output directory '${join(parent, 'out')}'`),
+    });
+  });
+
+  it('resolves explicit, configured, and default output folders in order', async () => {
+    const common = open('common');
+    const explicit = await runExport([common], {
+      format: 'json',
+      cwd: projectDir,
+      outputDirectory: 'chosen',
+      exportFolder: 'configured',
+      locales: ['en'],
+    });
+    const configured = await runExport([common], {
+      format: 'json',
+      cwd: projectDir,
+      exportFolder: 'configured',
+      locales: ['en'],
+    });
+    const fallback = await runExport([common], { format: 'json', cwd: projectDir, locales: ['en'] });
+    expect(explicit.outputDirectory).toBe(join(projectDir, 'chosen'));
+    expect(configured.outputDirectory).toBe(join(projectDir, 'configured'));
+    expect(fallback.outputDirectory).toBe(join(projectDir, 'dist', 'lingo-export'));
+  });
+
+  it('reports no target locales without starting an export', async () => {
+    const onStart = vi.fn();
+    const result = await runExport([open('common')], { format: 'json', outputDirectory, locales: ['en'], onStart });
+    expect(result.locales).toEqual([]);
+    expect(result.filesCreated).toEqual([]);
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
   it('writes one file per target locale and totals the run', async () => {
     const common = open('common');
     seed(common, 'buttons', { ok: { source: 'OK', translations: { fr: "D'accord" } }, cancel: { source: 'Cancel' } });
 
-    const result = await runExport([common], { format: 'json', outputDirectory, jsonStructure: 'flat' });
+    const onStart = vi.fn(() => {
+      expect(existsSync(join(outputDirectory, 'fr.json'))).toBe(false);
+      expect(existsSync(join(outputDirectory, 'es.json'))).toBe(false);
+    });
 
+    const result = await runExport([common], {
+      format: 'json',
+      cwd: projectDir,
+      outputDirectory: 'out',
+      jsonStructure: 'flat',
+      onStart,
+    });
+
+    expect(onStart).toHaveBeenCalledOnce();
+    expect(onStart).toHaveBeenCalledWith({ outputDirectory, locales: ['fr', 'es'] });
     expect(result.locales).toEqual(['fr', 'es']);
+    expect(result.locales).not.toContain('en');
     expect(result.collections).toEqual(['common']);
     expect(result.filesCreated).toEqual(['fr.json', 'es.json']);
+    expect(existsSync(join(outputDirectory, 'en.json'))).toBe(false);
     expect(result.resourcesExported).toBe(4);
     expect(result.errors).toEqual([]);
     expect(result.localeResults).toEqual([
@@ -390,10 +456,13 @@ describe('runExport', () => {
     );
   });
 
-  it('refuses collections with different base locales even when no target locale is left', async () => {
-    await expect(
-      runExport([open('common'), open('french')], { format: 'json', outputDirectory, locales: ['unknown'] }),
-    ).rejects.toThrow('Cannot export collections with different base locales together');
+  it('reports no target locales before comparing base locales', async () => {
+    const result = await runExport([open('common'), open('french')], {
+      format: 'json',
+      outputDirectory,
+      locales: ['unknown'],
+    });
+    expect(result.locales).toEqual([]);
   });
 
   it('does nothing when no target locale is left', async () => {
