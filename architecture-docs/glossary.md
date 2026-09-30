@@ -175,7 +175,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### Config Write
 
-One write to `.lingo-tracker.json` from the Tracker UI, and the one way its outcome comes back. In code, `injectConfigWrite(store)` in `apps/tracker/src/app/collections/store/config-write.ts` returns the function that runs one, and every mutation of `CollectionsStore` is: `createCollection`, `updateCollection`, `deleteCollection`, `updateGlobalConfig`, and the bundle feature's `createBundle`, `updateBundle`, `deleteBundle`. Each sends its request, reloads `GET /api/config`, stores the config, and returns an Observable of that config, so the caller hears back only once the store already holds what the server holds; if that reload fails, the write still happened, so the Observable resolves with `null` and the store reports the load failure in `error`; a rejected write errors with the [API Error](#api-error) of the request (`conflict` for a taken name, `invalid` with the rule messages or the per-row preferred-terminology errors as `details`, anything else) and leaves the store as it was. The Observable is cold, like the browser store's entry writes: nothing is sent until the caller subscribes, and the caller owns the reaction. The collection and bundle form dialogs write through the store themselves, cannot be closed while the write is in flight, and close only on success; a taken name lands on the name field, any other refusal on an error line in the dialog (the bundle dialog lists the server's rule messages). The collections manager toasts a create or edit only when a dialog closes with a saved result, and awaits a delete's outcome before it toasts. The settings page handles its save outcome in the subscription: the saved config reseeds both lists and earns one toast (a failed reload earns the toast but keeps the lists); a refusal keeps every edit, shows its message, and maps rule errors onto the rows that were sent. The store's `error` signal reports only a failed load (the initial one, or the reload after a write).
+One write to `.lingo-tracker.json` from the Tracker UI, and the one way its outcome comes back. In code, `injectConfigWrite(store)` in `apps/tracker/src/app/collections/store/config-write.ts` returns the function that runs one, and every mutation of `CollectionsStore` is: `createCollection`, `updateCollection`, `deleteCollection`, `updateGlobalConfig`, and the bundle feature's `createBundle`, `updateBundle`, `deleteBundle`. Each sends its request, reloads `GET /api/config`, stores the config, and returns an Observable of that config, so the caller hears back only once the store already holds what the server holds; if that reload fails, the write still happened, so the Observable resolves with `null` and the store reports the load failure in `error`; a rejected write errors with the [API Error](#api-error) of the request (`conflict` for a taken name, `invalid` with the rule messages or the per-row preferred-terminology errors as `details`, anything else) and leaves the store as it was. The Observable is cold, like the browser store's entry writes: nothing is sent until the caller subscribes, and the caller owns the reaction. The collection and bundle form dialogs write through the store themselves, cannot be closed while the write is in flight, and close only on success; a taken name lands on the name field, any other refusal on an error line in the dialog (the bundle dialog lists the server's rule messages). The collections manager toasts a create or edit only when a dialog closes with a saved result, and awaits a delete's outcome before it toasts. Settings Draft handles the save outcome: the saved config reseeds both lists, while the page gives one toast (a failed reload still earns the toast); a refusal keeps every edit and maps rule errors onto the rows that were sent, while the page shows its message. The store's `error` signal reports only a failed load (the initial one, or the reload after a write).
 
 Explained in context: [`frontend.md`](frontend.md#collectionsstore)
 
@@ -351,7 +351,7 @@ Explained in context: [`docs/features/preferred-terminology.md`](../docs/feature
 
 ### Preferred Terminology Draft
 
-`PreferredTerminologyDraft` in `apps/tracker/src/app/settings/preferred-terminology-draft.ts` stages settings-page rule edits. It owns rows, normalization, client validation, error visibility, change counts, and mapping server rule-error indexes back to submitted rows. It has no API dependency; Settings owns the Config Write.
+`PreferredTerminologyDraft` in `apps/tracker/src/app/settings/preferred-terminology-draft.ts` stages settings-page rule edits. It owns rows, normalization, client validation, error visibility, change counts, and mapping server rule-error indexes back to submitted rows. It has no API dependency; [Settings Draft](#settings-draft) owns the Config Write.
 
 Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
@@ -407,7 +407,7 @@ Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ### Protected Terms Draft
 
-`ProtectedTermsDraft` in `apps/tracker/src/app/shared/protected-terms/protected-terms-draft.ts` stages protected-term edits for Settings. It uses the shared add rule and domain normalization, and owns removed and restored rows, rename status, filtering and reveal requests, change counts, and the sorted save list. It has no API or DOM dependency; Settings owns scrolling and the Config Write.
+`ProtectedTermsDraft` in `apps/tracker/src/app/shared/protected-terms/protected-terms-draft.ts` stages protected-term edits for Settings. It uses the shared add rule and domain normalization, and owns removed and restored rows, rename status, filtering and reveal requests, change counts, and the sorted save list. It has no API or DOM dependency; Settings owns scrolling and [Settings Draft](#settings-draft) owns the Config Write.
 
 Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
@@ -531,9 +531,9 @@ Explained in context: [`cli.md`](cli.md#shared-utilities), [`core-library.md`](c
 
 ## S
 
-### Settings Save
+### Settings Draft
 
-`settings-save.ts` in the Tracker settings directory assembles the changed lists for one [Config Write](#config-write) and extracts valid preferred-terminology row errors from an invalid [API Error](#api-error)'s `details`. The Settings page owns the subscription, banner, and toast.
+`SettingsDraft` in `apps/tracker/src/app/settings/settings-draft.ts` composes the protected-terms and preferred-terminology drafts. It owns the combined change count, save gate, revert, reseeding, and one [Config Write](#config-write) through a write function supplied by the page. `save(write)` records submitted rule rows when it builds the payload and emits `saved`, `blocked`, `refused`, or `unchanged`; a refusal maps valid rule errors onto the submitted rows. The page owns focus, the banner, and the toast. Both child drafts remain free of API dependencies.
 
 Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
