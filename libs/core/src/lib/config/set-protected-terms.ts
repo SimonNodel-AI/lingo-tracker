@@ -7,15 +7,12 @@ import {
   readCollectionProtectedTerms,
   readGlobalProtectedTerms,
   resolveCollectionProtectedTermsFilePath,
+  resolveWritableCollectionProtectedTermsPath,
   resolveGlobalProtectedTermsFilePath,
   resolveProtectedTermsFilePath,
   writeProtectedTermsFile,
 } from './protected-terms-file';
-import {
-  CollectionNotFoundError,
-  InvalidCollectionError,
-  ProtectedTermsFileNotSetError,
-} from '../errors/lingo-tracker-error';
+import { CollectionNotFoundError, InvalidCollectionError } from '../errors/lingo-tracker-error';
 
 /** Rejects an untyped request before it can change a term file or a collection entry. */
 export function assertProtectedTerms(terms: unknown): asserts terms is string[] {
@@ -146,10 +143,7 @@ export function setCollectionProtectedTerms(
     throw new CollectionNotFoundError(collectionName);
   }
 
-  const filePath = resolveCollectionProtectedTermsFilePath(collection, cwd);
-  if (!filePath) {
-    throw new ProtectedTermsFileNotSetError(collectionName);
-  }
+  const filePath = resolveWritableCollectionProtectedTermsPath(collectionName, collection, cwd);
 
   writeProtectedTermsFile(filePath, terms);
 

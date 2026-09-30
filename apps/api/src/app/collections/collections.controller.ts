@@ -1,26 +1,8 @@
 import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from '@nestjs/common';
-import {
-  addCollection,
-  assertProtectedTerms,
-  deleteCollectionByName,
-  setCollectionProtectedTerms,
-  updateCollection,
-} from '@simoncodes-ca/core';
+import { addCollection, deleteCollectionByName, updateCollection } from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { mapDtoToCollection } from '../mappers/collection.mapper';
-
-/**
- * Persists a collection's protected terms to its configured file. Terms live in a file
- * rather than the config, so a collection with no `protectedTermsFile` has nowhere to put
- * them — `setCollectionProtectedTerms` throws `ProtectedTermsFileNotSetError` (400).
- */
-function writeCollectionProtectedTerms(collectionName: string, terms: string[] | undefined): void {
-  if (terms === undefined) {
-    return;
-  }
-  setCollectionProtectedTerms(collectionName, terms);
-}
 
 /** True for a plain object (not `null`, not an array). */
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -86,9 +68,7 @@ export class CollectionsController {
   async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
     assertCollectionBody(body, 'required');
     const { name, collection } = body;
-    if (collection.protectedTerms !== undefined) assertProtectedTerms(collection.protectedTerms);
-    const result = addCollection(name, mapDtoToCollection(collection));
-    writeCollectionProtectedTerms(name, collection.protectedTerms);
+    const result = addCollection(name, mapDtoToCollection(collection), { protectedTerms: collection.protectedTerms });
     return { message: result.message };
   }
 
@@ -107,11 +87,10 @@ export class CollectionsController {
     assertCollectionBody(body, 'optional');
     const decodedCollectionName = decodeURIComponent(collectionName);
     const { name, collection } = body;
-    if (collection.protectedTerms !== undefined) assertProtectedTerms(collection.protectedTerms);
-    const targetName = name ?? decodedCollectionName;
-    const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection));
+    const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection), {
+      protectedTerms: collection.protectedTerms,
+    });
     this.#index.apply(result.mutations);
-    writeCollectionProtectedTerms(targetName, collection.protectedTerms);
     return { message: result.message };
   }
 }

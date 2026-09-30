@@ -10,7 +10,7 @@ import {
 /**
  * Collection Entry: the one place that decides what a collection's record in
  * `.lingo-tracker.json` contains. Every writer of a collection record (`addCollection`,
- * `updateCollection`, `setCollectionProtectedTermsFile`) builds the new config through
+ * `updateCollection`, `editCollectionTags`, `setCollectionProtectedTermsFile`) builds the new config through
  * these pure functions and then writes it once.
  *
  * The stored record is minimal: `translationsFolder` plus only the settings that differ

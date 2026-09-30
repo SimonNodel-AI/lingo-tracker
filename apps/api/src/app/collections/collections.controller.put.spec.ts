@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONFIG_FILENAME, type LingoTrackerConfig } from '@simoncodes-ca/core';
@@ -90,6 +90,18 @@ describe('CollectionsController PUT (real core)', () => {
     expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
   });
 
+  it('answers 400 for malformed terms even when the create name is taken', async () => {
+    const before = readFileSync(join(projectDir, CONFIG_FILENAME));
+    const error = await controller
+      .createCollection({
+        name: 'app',
+        collection: { translationsFolder: './other', protectedTerms: ['valid', 42] },
+      } as unknown as CreateCollectionDto)
+      .catch((cause: unknown) => cause);
+    expect(toHttpException(error).getStatus()).toBe(400);
+    expect(readFileSync(join(projectDir, CONFIG_FILENAME))).toEqual(before);
+  });
+
   it('answers 400 for invalid protected terms on update without changing config', async () => {
     const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
     const error = await controller
@@ -126,5 +138,65 @@ describe('CollectionsController PUT (real core)', () => {
 
     expect(readConfig().collections['app'].protectedTermsFile).toBe('app-terms.json');
     expect(JSON.parse(readFileSync(join(projectDir, 'app-terms.json'), 'utf8'))).toEqual(['Pixel']);
+  });
+
+  it('refuses create with terms and no pointer without changing either file', async () => {
+    const termsPath = join(projectDir, 'app-terms.json');
+    writeFileSync(termsPath, '["old"]');
+    const before = readFileSync(join(projectDir, CONFIG_FILENAME));
+    const termsBefore = readFileSync(termsPath);
+    const error = await controller
+      .createCollection({
+        name: 'new',
+        collection: { translationsFolder: './new', protectedTerms: ['iPhone'] },
+      })
+      .catch((cause: unknown) => cause);
+    expect(toHttpException(error).getStatus()).toBe(400);
+    expect(readFileSync(join(projectDir, CONFIG_FILENAME))).toEqual(before);
+    expect(readFileSync(termsPath)).toEqual(termsBefore);
+    expect(existsSync(join(projectDir, 'new-terms.json'))).toBe(false);
+  });
+
+  it('refuses update with terms and no pointer without changing either file', async () => {
+    const termsPath = join(projectDir, 'app-terms.json');
+    writeFileSync(termsPath, '["old"]');
+    const before = readFileSync(join(projectDir, CONFIG_FILENAME));
+    const termsBefore = readFileSync(termsPath);
+    const error = await controller
+      .updateCollectionByName('app', {
+        collection: { translationsFolder: './changed', protectedTerms: ['iPhone'] },
+      })
+      .catch((cause: unknown) => cause);
+    expect(toHttpException(error).getStatus()).toBe(400);
+    expect(readFileSync(join(projectDir, CONFIG_FILENAME))).toEqual(before);
+    expect(readFileSync(termsPath)).toEqual(termsBefore);
+  });
+
+  it('uses the stored pointer and writes terms under the renamed entry', async () => {
+    const withPointer: LingoTrackerConfig = {
+      ...config,
+      collections: { app: { ...stored, protectedTermsFile: 'renamed-terms.json' } },
+    };
+    writeFileSync(join(projectDir, CONFIG_FILENAME), JSON.stringify(withPointer));
+    await controller.updateCollectionByName('app', {
+      name: 'renamed',
+      collection: { translationsFolder: './i18n', protectedTerms: ['iPhone'] },
+    });
+    expect(readConfig().collections['renamed'].protectedTermsFile).toBe('renamed-terms.json');
+    expect(JSON.parse(readFileSync(join(projectDir, 'renamed-terms.json'), 'utf8'))).toEqual(['iPhone']);
+  });
+
+  it('uses a pointer supplied with a rename for its terms write', async () => {
+    await controller.updateCollectionByName('app', {
+      name: 'renamed',
+      collection: {
+        translationsFolder: './i18n',
+        protectedTermsFile: 'new-name-terms.json',
+        protectedTerms: ['Pixel'],
+      },
+    });
+    expect(readConfig().collections['app']).toBeUndefined();
+    expect(readConfig().collections['renamed'].protectedTermsFile).toBe('new-name-terms.json');
+    expect(JSON.parse(readFileSync(join(projectDir, 'new-name-terms.json'), 'utf8'))).toEqual(['Pixel']);
   });
 });

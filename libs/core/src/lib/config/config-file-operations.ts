@@ -3,6 +3,7 @@ import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
+import { ErrorMessages } from '../errors/error-messages';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { loadConfig } from './load-config';
 
@@ -11,6 +12,8 @@ export interface ConfigFileOperations {
   read(): LingoTrackerConfig;
   /** Write the configuration file */
   write(config: LingoTrackerConfig): void;
+  /** Create the file only if absent, using the same validation and serialization as write. */
+  create(config: LingoTrackerConfig): void;
   /** Update configuration with a partial modification */
   update(updater: (config: LingoTrackerConfig) => LingoTrackerConfig): LingoTrackerConfig;
 }
@@ -37,6 +40,18 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
   const validate = params.validate ?? true;
   const configPath = resolve(cwd, CONFIG_FILENAME);
 
+  const writeConfig = (config: LingoTrackerConfig, createOnly: boolean): void => {
+    if (validate) validateConfig(config);
+    try {
+      writeJsonFile({ filePath: configPath, data: config, pretty: true, createOnly });
+    } catch (error) {
+      if (createOnly && error instanceof Error && (error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new InvalidConfigError(ErrorMessages.configAlreadyExists());
+      }
+      throw new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: error });
+    }
+  };
+
   return {
     read(): LingoTrackerConfig {
       let config: LingoTrackerConfig;
@@ -57,19 +72,11 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
     },
 
     write(config: LingoTrackerConfig): void {
-      if (validate) {
-        validateConfig(config);
-      }
+      writeConfig(config, false);
+    },
 
-      try {
-        writeJsonFile({
-          filePath: configPath,
-          data: config,
-          pretty: true,
-        });
-      } catch (error) {
-        throw new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: error });
-      }
+    create(config: LingoTrackerConfig): void {
+      writeConfig(config, true);
     },
 
     update(updater: (config: LingoTrackerConfig) => LingoTrackerConfig): LingoTrackerConfig {
