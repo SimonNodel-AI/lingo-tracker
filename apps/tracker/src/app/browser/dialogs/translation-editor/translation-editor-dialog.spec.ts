@@ -1,5 +1,4 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { provideTrackerHttpClient, toApiError } from '../../../shared/api-error/api-error';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal, type WritableSignal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
@@ -20,16 +19,17 @@ import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vite
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { CollectionsStore } from '../../../collections/store/collections.store';
+import { provideTrackerHttpClient, toApiError } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../../store/browser.store';
 import {
+  type EditorOutcome,
   PREFERRED_TERM_ADVISORIES_ID,
   PREFERRED_TERM_DEBOUNCE_MS,
   TRANSLATION_EDITOR_TITLE_ID,
   TranslationEditorDialog,
   type TranslationEditorDialogData,
-  type EditorOutcome,
 } from './translation-editor-dialog';
 
 describe('TranslationEditorDialog', () => {
@@ -794,6 +794,21 @@ describe('TranslationEditorDialog', () => {
       expect(component.stagedFolderPath()).toBeNull();
     });
 
+    it('should select and stage a newly created folder', () => {
+      component.form.controls.key.setValue('a.');
+      component.openFolderPopover();
+
+      component.onFolderCreated({ name: 'new', fullPath: 'common.new', loaded: false });
+
+      expect(component.selectedFolderPath()).toBe('common.new');
+      expect(component.stagedFolderPath()).toBe('common.new');
+      expect(component.popoverFolderPath()).toBe('common.new');
+
+      component.closeFolderPopover();
+      component.form.controls.key.setValue('b.ok');
+      expect(component.selectedFolderPath()).toBe('b');
+    });
+
     it('should keep the current folder when nothing was staged', () => {
       component.openFolderPopover();
 
@@ -979,6 +994,22 @@ describe('TranslationEditorDialog', () => {
 
       expect(apiSpies.getResourceTree).toHaveBeenCalledWith('test-collection', 'common.errors', false);
       expect(component.keyCollision()).toBe(true);
+    });
+
+    it('should detect a collision when an edit picks a folder holding its key', () => {
+      apiSpies.getResourceTree.mockImplementation((_collection: string, path: string) =>
+        of({ path, resources: path === 'common.errors' ? [entry('common.errors.save')] : [], children: [] }),
+      );
+      renderDialog(createMockData('edit', entry('common.buttons.save')));
+
+      component.openFolderPopover();
+      component.onFolderStaged('common.errors');
+      component.confirmStagedFolder();
+      spectator.detectChanges();
+
+      expect(apiSpies.getResourceTree).toHaveBeenCalledWith('test-collection', 'common.errors', false);
+      expect(component.keyCollision()).toBe(true);
+      expect(spectator.query('[data-testid="key-collision-error"]')).not.toBeNull();
     });
 
     it('should not re-fetch a folder it has already loaded', () => {

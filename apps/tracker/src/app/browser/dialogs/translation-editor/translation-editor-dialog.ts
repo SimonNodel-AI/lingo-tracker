@@ -1,7 +1,6 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { TextFieldModule } from '@angular/cdk/text-field';
 import { CommonModule } from '@angular/common';
-import { toSignal } from '@angular/core/rxjs-interop';
 import {
   type AfterViewInit,
   ChangeDetectionStrategy,
@@ -15,6 +14,7 @@ import {
   signal,
   ViewChild,
 } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatAutocompleteModule, type MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
@@ -40,8 +40,8 @@ import {
 import { merge, Subject } from 'rxjs';
 import { debounceTime, map, takeUntil } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { CollectionsStore } from '../../../collections/store/collections.store';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import { injectConfirm } from '../../../shared/confirm';
 import { NotificationService } from '../../../shared/notification';
@@ -52,21 +52,17 @@ import { FolderPeek } from '../../services/folder-peek';
 import { SimilarValues } from '../../services/similar-values';
 import { BrowserStore } from '../../store/browser.store';
 import { filterFolderTree } from '../../store/folder-tree.utils';
-import { editorEntrySources } from './editor-entry-sources';
+import { editorTagSuggestions } from './editor-entry-sources';
+import { EditorLocation } from './editor-location';
 import { type EditorOutcome, type EditorRefusal, isEditorRefusal, submitEditor, submitGate } from './editor-submit';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
 import {
-  absorbDottedKey,
   addTag,
-  type ContextTreeNode,
-  collisionFor,
-  contextTree,
-  folderEntryKeys,
   hasUnsavedChanges,
   type LocaleDraft,
-  removeTag,
   type ResourceEntryDraft,
+  removeTag,
 } from './resource-entry-draft';
 import { SimilarTranslations } from './similar-translations';
 
@@ -131,7 +127,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   private readonly folderPeek = inject(FolderPeek).openFolderPeek();
   private readonly similarValues = inject(SimilarValues);
   private readonly browserStore = inject(BrowserStore);
-  readonly #entrySources = editorEntrySources(this.browserStore, this.folderPeek);
   private readonly notifications = inject(NotificationService);
   private readonly transloco = inject(TranslocoService);
   readonly #collectionsStore = inject(CollectionsStore);
@@ -157,12 +152,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   #commentConfirmationShown = false;
   /** The draft as the dialog opened, for the unsaved-work check and the similar search. */
   #initialDraft: ResourceEntryDraft | undefined;
-  /**
-   * The folder path this dialog last derived from a dotted key. Typing `a.` then
-   * `b.` has to extend `a`, not re-anchor on `b`; a folder the user picked on the
-   * Location tab is never extended, only replaced.
-   */
-  #folderFromKey: string | null = null;
   #locationFlashTimer: ReturnType<typeof setTimeout> | undefined;
   #keyCopiedTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -257,9 +246,19 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     >([]),
   });
 
-  readonly selectedFolderPath = signal<string>('');
-
-  readonly rootFolders = this.#entrySources.rootFolders;
+  readonly #location = new EditorLocation({
+    collectionName: this.data.collectionName,
+    mode: this.data.mode,
+    original: this.data.resource,
+    rootFolders: this.browserStore.rootFolders,
+    browserFolderPath: this.browserStore.currentFolderPath,
+    browserEntries: this.browserStore.translations,
+    peek: this.folderPeek,
+    moreLabel: (count) =>
+      this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
+  });
+  readonly selectedFolderPath = this.#location.selectedFolderPath;
+  readonly rootFolders = this.browserStore.rootFolders;
 
   readonly otherLocales = computed(() =>
     this.data.availableLocales.filter((locale) => locale !== this.data.baseLocale),
@@ -299,20 +298,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     { initialValue: this.form.getRawValue() },
   );
 
-  /**
-   * The entry being edited, by its own key. Edit mode locks the key, so the
-   * draft module never lets it collide with itself and marks it `editing`.
-   */
-  readonly #ownKey = this.data.mode === 'edit' ? this.data.resource?.entryKey : undefined;
-
-  /** Everything the draft module needs to know which entries a folder holds. */
-  readonly #knownEntries = this.#entrySources.knownEntries;
-
-  /** Live "this key is already taken in the target folder" state; see `collisionFor`. */
-  readonly keyCollision = computed(() => {
-    this.#formState();
-    return collisionFor(this.form.controls.key.value, this.selectedFolderPath(), this.#knownEntries(), this.#ownKey);
-  });
+  /** Live "this key is already taken in the target folder" state. */
+  readonly keyCollision = this.#location.keyCollision;
 
   /** Live form validity, for the footer's earned check glyph. */
   readonly isFormValid = computed(() => {
@@ -348,22 +335,13 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   );
 
   /** The complete dot-delimited key, for the location pill's tooltip. */
-  readonly fullKeyPreview = computed(() => {
-    this.#formState();
-    const folder = this.selectedFolderPath();
-    const key = this.form.controls.key.value.trim();
-    return key ? resolveResourceKey(key, folder) : folder;
-  });
+  readonly fullKeyPreview = this.#location.fullKeyPreview;
 
   /** The base locale under a name a reader recognises ("English"), for the value label. */
   readonly baseLocaleName = computed(() => this.getLocaleDisplayName(this.data.baseLocale));
 
   /** The target folder split into the segments the location pill renders with `›` between them. */
-  readonly folderSegments = computed(() =>
-    this.selectedFolderPath()
-      .split('.')
-      .filter((segment) => segment.length > 0),
-  );
+  readonly folderSegments = this.#location.folderSegments;
 
   /** Every non-base locale with the value and status the form currently holds. */
   readonly localeSummaries = computed<LocaleDraft[]>(() => {
@@ -434,20 +412,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     return parts.join(' · ');
   });
 
-  /** The mini tree in "Where it lands"; see `contextTree` in the draft module. */
-  readonly contextTree = computed<ContextTreeNode[]>(() => {
-    this.#formState();
-    return contextTree(
-      {
-        folderPath: this.selectedFolderPath(),
-        key: this.form.controls.key.value,
-        known: this.#knownEntries(),
-        loadingFolders: this.folderPeek.loadingFolders(),
-        ownKey: this.#ownKey,
-      },
-      (count) => this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
-    );
-  });
+  /** The mini tree in "Where it lands". */
+  readonly contextTree = this.#location.contextTree;
 
   /** Root folders narrowed by the popover's filter, pruned to the matching subtrees. */
   readonly filteredRootFolders = computed(() => filterFolderTree(this.rootFolders(), this.folderFilter()));
@@ -462,7 +428,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    */
   readonly icuPlaceholderMarkup = '<code>&#123;count&#125;</code>';
 
-  readonly allTagSuggestions = this.#entrySources.tagSuggestions;
+  readonly allTagSuggestions = editorTagSuggestions(this.browserStore);
 
   readonly filteredTagSuggestions = computed(() => {
     const input = this.tagInputText().toLowerCase();
@@ -472,7 +438,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   ngOnInit(): void {
     // Initialize folder path from dialog data
-    this.#setSelectedFolder(this.data.folderPath || '');
+    this.#location.pick(this.data.folderPath || '');
     this.#initializeOtherLocaleFormControls();
 
     if (this.isEditMode() && this.data.resource) {
@@ -495,9 +461,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.#setupSimilarResourcesSearch();
     this.#setupPreferredTermCheck();
 
-    if (!this.isEditMode()) {
-      this.#setupDottedKeyAbsorption();
-    }
+    this.#setupDottedKeyAbsorption();
 
     // View-only mode: lock down all inputs. Save is hidden in the template.
     if (this.isReadOnly()) {
@@ -557,6 +521,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.destroy$.next();
     this.destroy$.complete();
     this.#silentFormChanges.complete();
+    this.#location.destroy();
   }
 
   ngAfterViewInit(): void {
@@ -671,8 +636,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * backstop for characters that are invalid in any position.
    */
   #setupDottedKeyAbsorption(): void {
+    this.#location.typeKey(this.form.controls.key.value);
     this.form.controls.key.valueChanges.pipe(takeUntil(this.destroy$)).subscribe((value) => {
-      const absorbed = absorbDottedKey(value, this.selectedFolderPath(), this.#folderFromKey);
+      const absorbed = this.#location.typeKey(value);
       if (!absorbed) {
         return;
       }
@@ -680,8 +646,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       this.#setKeyControl(absorbed.leaf);
 
       if (absorbed.folder !== undefined) {
-        this.#folderFromKey = absorbed.folder;
-        this.#setSelectedFolder(absorbed.folder);
         this.#announceLocationAbsorbed(absorbed.folder);
       }
     });
@@ -727,36 +691,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   onCtrlEnter(event: Event): void {
     event.preventDefault();
     void this.onSubmit();
-  }
-
-  /** The single writer of the target folder, so nothing can move it unseen. */
-  #setSelectedFolder(folderPath: string): void {
-    this.selectedFolderPath.set(folderPath);
-    this.#ensureFolderEntries(folderPath);
-  }
-
-  /**
-   * Fetches a folder's own entries once, so the collision check and the "Where
-   * it lands" tree work for any folder the user picks — not only the one the
-   * browser happens to be showing. Deliberately a plain read: the List Scope's
-   * `showFolder` would navigate the list behind the dialog.
-   */
-  #ensureFolderEntries(folderPath: string): void {
-    if (
-      this.isEditMode() ||
-      folderEntryKeys(folderPath, this.#knownEntries()) ||
-      this.folderPeek.loadingFolders().has(folderPath)
-    ) {
-      return;
-    }
-
-    this.folderPeek
-      .peekFolder(this.data.collectionName, folderPath)
-      .pipe(takeUntil(this.destroy$))
-      .subscribe({
-        // A folder we cannot read claims nothing. The save path still guards.
-        error: () => undefined,
-      });
   }
 
   // ── Location popover ──────────────────────────────────────────────────────
@@ -810,7 +744,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   confirmStagedFolder(): void {
     const staged = this.stagedFolderPath();
     if (staged !== null) {
-      this.onFolderConfirmed(staged);
+      this.#location.pick(staged);
     }
     this.closeFolderPopover();
   }
@@ -901,14 +835,12 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   onFolderConfirmed(folderPath: string): void {
-    this.#folderFromKey = null;
-    this.#setSelectedFolder(folderPath);
+    this.#location.pick(folderPath);
   }
 
   onFolderCreated(folder: FolderNodeDto): void {
     // The store's createFolder already updated rootFolders; update the selection.
-    this.#folderFromKey = null;
-    this.#setSelectedFolder(folder.fullPath);
+    this.#location.pick(folder.fullPath);
     this.stagedFolderPath.set(folder.fullPath);
   }
 
