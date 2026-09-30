@@ -6,15 +6,16 @@
  * are sent in batches so that the number of provider calls is bounded regardless of how many
  * resources exist.
  *
- * Resources the Translator skips (complex ICU, a lost placeholder, a dropped protected term) are
- * reported in `skippedKeys` and left as they are.
+ * Resources the Translator skips (complex ICU, a lost placeholder, a dropped protected term),
+ * and resources whose base or target locale changes before the write, are reported in `skippedKeys` and left as they are.
  *
  * @module translate-locale
  */
 
-import { needsTranslation } from '@simoncodes-ca/domain';
+import { type LocaleMetadata, needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { CannotTranslateBaseLocaleError, TranslationLocaleNotConfiguredError } from '../errors/lingo-tracker-error';
+import { calculateChecksum } from '../resource/checksum';
 import { readCollection } from '../resource/read-collection';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
@@ -73,21 +74,40 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+interface TranslationSnapshot {
+  readonly baseChecksum: string;
+  readonly targetChecksum: string | undefined;
+  readonly targetStatus: LocaleMetadata['status'];
+}
+
 /**
  * Opens a folder once, stores every translated value for it, and saves once.
- * Values whose entry is no longer on disk are not written.
+ * Values whose entry, base value, or target locale changed during translation are not written.
  */
 function writeTranslatedValues(
   folderPath: string,
-  values: readonly { readonly entryKey: string; readonly value: TranslatedValue }[],
+  values: readonly {
+    readonly entryKey: string;
+    readonly value: TranslatedValue;
+    readonly snapshot?: TranslationSnapshot;
+  }[],
   baseLocale: string,
 ): { writtenKeys: string[]; skippedKeys: string[] } {
   const folder = openResourceFolder(folderPath, { baseLocale });
   const writtenKeys: string[] = [];
   const skippedKeys: string[] = [];
 
-  for (const { entryKey, value } of values) {
-    if (!folder.has(entryKey)) {
+  for (const { entryKey, value, snapshot } of values) {
+    const current = folder.get(entryKey);
+    const currentTarget = current?.meta?.[value.locale];
+    if (
+      !current ||
+      !snapshot ||
+      calculateChecksum(current.entry.source) !== snapshot.baseChecksum ||
+      currentTarget?.checksum !== snapshot.targetChecksum ||
+      currentTarget?.status !== snapshot.targetStatus ||
+      !needsTranslation(currentTarget)
+    ) {
       skippedKeys.push(value.key);
       continue;
     }
@@ -130,7 +150,7 @@ export function assertCanTranslateLocale(collection: Collection, locale: string)
  * A collection without an enabled translation config is refused first, even when nothing needs
  * translation. When nothing needs translation, returns zeros without opening the Translator (so
  * without needing an API key). Skipped resources are listed in `skippedKeys`. A provider error
- * marks every resource in the failing batch as failed but does not abort the run.
+ * marks every resource in the failing batch as failed and continues with later batches.
  *
  * @param collection - The opened collection.
  * @param params - The target locale, an optional progress callback, and optional `provider` /
@@ -187,6 +207,16 @@ export async function translateLocale(
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
     const batchStart = batchIndex * batchSize;
     const batch = resourcesToTranslate.slice(batchStart, batchStart + batchSize);
+    const snapshots = new Map<string, TranslationSnapshot>(
+      batch.map((resource) => [
+        resource.fullKey,
+        {
+          baseChecksum: calculateChecksum(resource.entry.source),
+          targetChecksum: resource.entry.metadata[targetLocale]?.checksum,
+          targetStatus: resource.entry.metadata[targetLocale]?.status,
+        },
+      ]),
+    );
 
     try {
       const { values, skipped } = await translator.translate(
@@ -200,11 +230,14 @@ export async function translateLocale(
       }
 
       // Group by folder so each folder's files are read and written only once per batch.
-      const byFolder = new Map<string, { entryKey: string; value: TranslatedValue }[]>();
+      const byFolder = new Map<
+        string,
+        { entryKey: string; value: TranslatedValue; snapshot?: TranslationSnapshot }[]
+      >();
       for (const value of values) {
         const { folderPath, entryKey } = resolveResourcePaths({ key: value.key, translationsFolder });
         const folderValues = byFolder.get(folderPath) ?? [];
-        folderValues.push({ entryKey, value });
+        folderValues.push({ entryKey, value, snapshot: snapshots.get(value.key) });
         byFolder.set(folderPath, folderValues);
       }
 

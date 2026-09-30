@@ -178,6 +178,22 @@ describe('BundleJobService', () => {
     expect(service.getJob(jobId)?.error).toBe('An unexpected error occurred');
   });
 
+  it('keeps the failed job DTO JSON key order', async () => {
+    mockGenerateBundle.mockRejectedValue(new Error('disk full'));
+    const jobId = service.startJob(makeParams());
+    await flush();
+
+    expect(Object.keys(service.getJob(jobId) ?? {})).toEqual([
+      'jobId',
+      'bundleName',
+      'status',
+      'progress',
+      'error',
+      'startedAt',
+      'completedAt',
+    ]);
+  });
+
   it('runs jobs one at a time, in order', async () => {
     let resolveFirst: ((value: GenerateBundleResult) => void) | undefined;
     mockGenerateBundle

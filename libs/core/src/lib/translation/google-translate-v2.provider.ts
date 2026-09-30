@@ -1,7 +1,7 @@
 import type {
+  ProviderCapabilities,
   TranslateRequest,
   TranslateResult,
-  ProviderCapabilities,
   TranslationProvider,
 } from './translation-provider';
 import { TranslationError } from './translation-provider';
@@ -9,9 +9,12 @@ import { TranslationError } from './translation-provider';
 const GOOGLE_TRANSLATE_API_URL = 'https://translation.googleapis.com/language/translate/v2';
 const PROVIDER_NAME = 'google-translate';
 const MAX_BATCH_SIZE = 128;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 interface GoogleTranslateV2Config {
   readonly apiKey: string;
+  /** Maximum time for one Google request, including reading its response. */
+  readonly requestTimeoutMs?: number;
 }
 
 interface GoogleTranslationItem {
@@ -128,9 +131,19 @@ function mapGoogleErrorToTranslationError(httpStatus: number, errorBody: GoogleE
  */
 export class GoogleTranslateV2Provider implements TranslationProvider {
   readonly #apiKey: string;
+  readonly #requestTimeoutMs: number;
 
   constructor(config: GoogleTranslateV2Config) {
     this.#apiKey = config.apiKey;
+    const requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+      throw new TranslationError(
+        'Google Translate requestTimeoutMs must be a positive finite number',
+        'INVALID_REQUEST_TIMEOUT',
+        false,
+      );
+    }
+    this.#requestTimeoutMs = requestTimeoutMs;
   }
 
   getCapabilities(): ProviderCapabilities {
@@ -179,29 +192,62 @@ export class GoogleTranslateV2Provider implements TranslationProvider {
     sourceLocale: string,
     targetLocale: string,
   ): Promise<GoogleTranslationItem[]> {
-    const response = await fetch(GOOGLE_TRANSLATE_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-goog-api-key': this.#apiKey,
-      },
-      body: JSON.stringify({
-        q: texts,
-        source: sourceLocale,
-        target: targetLocale,
-        format: 'text',
-      }),
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(
+          new TranslationError(
+            `Google Translate request timed out after ${this.#requestTimeoutMs} ms`,
+            'TIMEOUT',
+            true,
+          ),
+        );
+      }, this.#requestTimeoutMs);
     });
+    try {
+      return await Promise.race([
+        (async () => {
+          const response = await fetch(GOOGLE_TRANSLATE_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-goog-api-key': this.#apiKey,
+            },
+            body: JSON.stringify({
+              q: texts,
+              source: sourceLocale,
+              target: targetLocale,
+              format: 'text',
+            }),
+            signal: controller.signal,
+          });
 
-    if (!response.ok) {
-      const errorBody = (await response.json().catch(() => ({
-        error: { code: response.status, message: response.statusText },
-      }))) as GoogleErrorResponse;
+          if (!response.ok) {
+            const errorBody = (await response.json().catch(() => ({
+              error: { code: response.status, message: response.statusText },
+            }))) as GoogleErrorResponse;
 
-      throw mapGoogleErrorToTranslationError(response.status, errorBody);
+            throw mapGoogleErrorToTranslationError(response.status, errorBody);
+          }
+
+          const body = (await response.json()) as GoogleTranslateResponse;
+          return body.data.translations;
+        })(),
+        deadline,
+      ]);
+    } catch (error: unknown) {
+      if (controller.signal.aborted) {
+        throw new TranslationError(
+          `Google Translate request timed out after ${this.#requestTimeoutMs} ms`,
+          'TIMEOUT',
+          true,
+        );
+      }
+      throw error;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
-
-    const body = (await response.json()) as GoogleTranslateResponse;
-    return body.data.translations;
   }
 }
