@@ -1,12 +1,6 @@
 import { basename } from 'node:path';
 import { Body, Controller, Get, Put } from '@nestjs/common';
-import {
-  assertProtectedTerms,
-  loadPreferredTerminology,
-  editPreferredTerminology,
-  resolveProtectedTermsForConfig,
-  setGlobalProtectedTerms,
-} from '@simoncodes-ca/core';
+import { loadPreferredTerminology, resolveProtectedTermsForConfig, updateProjectTerms } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
 import { mapConfigToDto, mapDtoToConfigUpdate } from '../mappers/config.mapper';
 import { ConfigService } from './config.service';
@@ -41,16 +35,20 @@ export class ConfigController {
    */
   @Put()
   updateConfig(@Body() dto: UpdateConfigDto): { message: string } {
-    const protectedTerms = dto?.protectedTerms;
-    if (protectedTerms !== undefined) assertProtectedTerms(protectedTerms);
-
     const update = mapDtoToConfigUpdate(dto ?? {});
-    if (update.preferredTerminology !== undefined) {
-      editPreferredTerminology(this.configService.getConfig(), { set: update.preferredTerminology }, process.cwd());
+    if (update.protectedTerms === undefined && update.preferredTerminology === undefined) {
+      return { message: 'Configuration updated successfully' };
     }
-    if (update.protectedTerms !== undefined) {
-      setGlobalProtectedTerms(update.protectedTerms);
-    }
+    updateProjectTerms(
+      update.preferredTerminology === undefined ? undefined : this.configService.getConfig(),
+      {
+        ...(update.protectedTerms !== undefined && { protectedTerms: { replace: update.protectedTerms } }),
+        ...(update.preferredTerminology !== undefined && {
+          preferredTerminology: { set: update.preferredTerminology },
+        }),
+      },
+      { cwd: process.cwd() },
+    );
     return { message: 'Configuration updated successfully' };
   }
 }

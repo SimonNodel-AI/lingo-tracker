@@ -60,13 +60,10 @@ export type { LingoTrackerConfig } from './config/lingo-tracker-config';
 export type { TranslationConfig } from './config/translation-config';
 export { CONFIG_FILENAME, DEFAULT_CONFIG } from './constants';
 export {
-  assertProtectedTerms,
   type Collection,
   displayTermPath,
-  editPreferredTerminology,
-  editProtectedTerms,
   initConfig,
-  readProtectedTermsTarget,
+  updateProjectTerms,
   type LoadPreferredTerminologyResult,
   loadConfig,
   loadPreferredTerminology,
@@ -78,13 +75,9 @@ export {
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
-  setCollectionProtectedTermsFile,
-  setGlobalProtectedTerms,
-  setGlobalProtectedTermsFile,
   type StoredProtectedTerms,
   type TermFile,
   type TermFiles,
-  writePreferredTerminology,
 } from './lib/config';
 
 // Project Terms: the protected terms and preferred terminology in force for an opened collection
@@ -152,6 +145,7 @@ export {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -198,12 +192,7 @@ export type {
   UpdateBundleDefinitionOptions,
 } from './lib/bundle';
 export type { LoadConfigOptions, OpenCollectionOptions } from './lib/config';
-export type {
-  PreferredTerminologyEdit,
-  PreferredTerminologyEditResult,
-  SetProtectedTermsOptions,
-  SetProtectedTermsResult,
-} from './lib/config';
+export type { PreferredTerminologyEditResult } from './lib/config';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 export type { ExportFormat, ExportResult } from './lib/export/types';
 export type {

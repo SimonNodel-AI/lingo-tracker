@@ -49,6 +49,8 @@ describe('domain public surface', () => {
       'isUntranslatedCopy',
       'isValidJavaScriptIdentifier',
       'isValidSegment',
+      'listEditProblem',
+      'mergeListEdit',
       'needsTranslation',
       'normalizeBundleDefinition',
       'normalizePreferredTermRules',

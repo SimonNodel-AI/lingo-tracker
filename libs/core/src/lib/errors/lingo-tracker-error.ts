@@ -133,6 +133,15 @@ export class ProtectedTermsFileError extends LingoTrackerError {
   }
 }
 
+/** A Project Terms edit has missing or conflicting options. */
+export class InvalidProjectTermsEditError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+
+  constructor(message: string) {
+    super(message, 'INVALID_PROJECT_TERMS_EDIT');
+  }
+}
+
 // --- Collections -------------------------------------------------------------
 
 /** The config has no collection with this name. */
