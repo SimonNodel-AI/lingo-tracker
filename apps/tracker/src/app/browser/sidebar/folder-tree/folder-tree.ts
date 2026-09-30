@@ -29,7 +29,9 @@ import { CdkDropList, type CdkDrag, type CdkDragDrop } from '@angular/cdk/drag-d
 import type { DragData } from '../../types/drag-data';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 import { NotificationService } from '../../../shared/notification';
-import { folderMoveNoOp } from '../../store/folder-tree.utils';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
+import { resourceMovedToast } from '../../services/resource-moved-toast';
+import type { MoveFolderOutcome, MoveResourceOutcome } from '../../store/features/with-folder-writes.feature';
 import { injectConfirm } from '../../../shared/confirm';
 
 const NESTED_ANIMATION_DURATION_MS = 250;
@@ -99,6 +101,17 @@ export class FolderTree {
 
   /** True while a drag hovers the root row, for drop-target styling */
   readonly isRootHoveredDuringDrag = signal(false);
+
+  /** The store advances this epoch on a new draft or a successful create. */
+  readonly #folderWriteFailure = signal<{
+    message: string;
+    inSession: () => boolean;
+    epoch: number;
+  } | null>(null);
+  readonly folderWriteError = computed(() => {
+    const failure = this.#folderWriteFailure();
+    return failure?.inSession() && this.store.folderCreateErrorEpoch() === failure.epoch ? failure.message : null;
+  });
 
   /** Root accepts folders only: a resource is moved between folders, never onto the collection. */
   readonly isValidRootDropTarget = computed(() => {
@@ -270,17 +283,20 @@ export class FolderTree {
    * Calls the store to create the folder.
    */
   onFolderConfirm(folderName: string, parentPath: string | null = this.store.addFolderParentPath()): void {
-    const sessionId = this.store.sessionId();
-    this.store.clearFolderError();
-    this.store.createFolder(folderName, parentPath).subscribe({
-      next: () => {
-        if (this.store.sessionId() === sessionId) this.store.cancelAddingFolder();
-      },
-      error: (error: unknown) => {
-        if (this.store.sessionId() !== sessionId) return;
+    this.store.createFolder(folderName, parentPath).subscribe((outcome) => {
+      if (outcome.kind === 'created') this.store.cancelAddingFolder();
+      if (outcome.kind === 'no-collection' || outcome.kind === 'read-only') this.store.cancelAddingFolder();
+      if (outcome.kind === 'refused') {
         this.store.cancelAddingFolder();
-        this.store.reportCreateFolderError(error);
-      },
+        this.#folderWriteFailure.set({
+          message: apiErrorMessage(
+            outcome.error,
+            this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED),
+          ),
+          inSession: this.store.captureFolderWriteSession(),
+          epoch: this.store.folderCreateErrorEpoch(),
+        });
+      }
     });
   }
 
@@ -307,6 +323,7 @@ export class FolderTree {
    */
   onDeleteFolder(folderPath: string): void {
     const folderName = extractFolderNameFromPath(folderPath);
+    const inSession = this.store.captureFolderWriteSession();
 
     this.#confirm(
       {
@@ -317,21 +334,30 @@ export class FolderTree {
       },
       { width: '400px' },
     ).then((confirmed) => {
-      if (confirmed) this.store.deleteFolder(folderPath);
+      if (confirmed && inSession())
+        this.store.deleteFolder(folderPath).subscribe((outcome) => {
+          if (outcome.kind === 'refused') {
+            this.#notifications.error(
+              apiErrorMessage(
+                outcome.error,
+                this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFOLDERFAILED),
+              ),
+            );
+          }
+        });
     });
   }
 
   /** Confirms a folder move before handing the write to the store. */
   confirmMoveFolder(sourceFolderPath: string, destinationFolderPath: string): void {
-    this.store.clearFolderError();
-    const noOp = folderMoveNoOp(sourceFolderPath, destinationFolderPath);
-    if (noOp === 'same-folder') return;
-    if (noOp === 'already-at-location') {
-      this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERALREADYATLOCATION));
+    const noOp = this.store.folderMoveNoOp(sourceFolderPath, destinationFolderPath);
+    if (noOp) {
+      this.store
+        .moveFolder({ sourceFolderPath, destinationFolderPath })
+        .subscribe((outcome) => this.#showFolderMoveOutcome(outcome));
       return;
     }
-
-    const sessionId = this.store.sessionId();
+    const inSession = this.store.captureFolderWriteSession();
     const folderName = extractFolderNameFromPath(sourceFolderPath);
     this.#confirm(
       {
@@ -343,10 +369,12 @@ export class FolderTree {
         confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
         actionType: 'standard',
       },
-      { width: '400px', canOpen: () => this.store.sessionId() === sessionId },
+      { width: '400px', canOpen: inSession },
     ).then((confirmed) => {
-      if (confirmed && this.store.sessionId() === sessionId) {
-        this.store.moveFolder({ sourceFolderPath, destinationFolderPath });
+      if (confirmed && inSession()) {
+        this.store
+          .moveFolder({ sourceFolderPath, destinationFolderPath })
+          .subscribe((outcome) => this.#showFolderMoveOutcome(outcome));
       }
     });
   }
@@ -363,10 +391,42 @@ export class FolderTree {
       return;
     }
 
-    this.store.moveResource({
-      sourceKey: dragData.key,
-      destinationFolderPath: targetFolderPath,
-    });
+    this.store
+      .moveResource({
+        sourceKey: dragData.key,
+        destinationFolderPath: targetFolderPath,
+      })
+      .subscribe((outcome) => this.#showResourceMoveOutcome(outcome));
+  }
+
+  #showFolderMoveOutcome(outcome: MoveFolderOutcome): void {
+    if (outcome.kind === 'moved') {
+      this.#notifications.success(
+        this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERMOVEDX, {
+          name: outcome.folderName,
+          dest:
+            outcome.destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
+        }),
+      );
+    } else if (outcome.kind === 'noop' && outcome.reason === 'already-at-location') {
+      this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERALREADYATLOCATION));
+    } else if (outcome.kind === 'refused') {
+      this.#notifications.error(
+        apiErrorMessage(outcome.error, this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVEFOLDERFAILED)),
+      );
+    }
+  }
+
+  #showResourceMoveOutcome(outcome: MoveResourceOutcome): void {
+    if (outcome.kind === 'moved') {
+      this.#notifications.success(resourceMovedToast(this.#transloco, outcome.entryKey, outcome.destinationFolderPath));
+    } else if (outcome.kind === 'noop') {
+      this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEALREADYINFOLDER));
+    } else if (outcome.kind === 'refused') {
+      this.#notifications.error(
+        apiErrorMessage(outcome.error, this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVERESOURCEFAILED)),
+      );
+    }
   }
 
   /**

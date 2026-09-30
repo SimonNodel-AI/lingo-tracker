@@ -150,6 +150,238 @@ describe('BrowserStore', () => {
       await waitForSignals();
     });
 
+    it('refuses every folder write in a read-only collection without HTTP', () => {
+      store.openCollection(collectionSettings({ name: 'readonly', locales: [], readOnly: true }));
+      const create = vi.spyOn(apiService, 'createFolder');
+      const remove = vi.spyOn(apiService, 'deleteFolder');
+      const moveFolder = vi.spyOn(apiService, 'moveFolder');
+      const moveResource = vi.spyOn(apiService, 'moveResource');
+      const outcomes: string[] = [];
+      store.createFolder('new', null).subscribe((result) => outcomes.push(result.kind));
+      store.deleteFolder('common').subscribe((result) => outcomes.push(result.kind));
+      store
+        .moveFolder({
+          sourceFolderPath: 'common',
+          destinationFolderPath: 'errors',
+        })
+        .subscribe((result) => outcomes.push(result.kind));
+      store
+        .moveResource({
+          sourceKey: 'common.save',
+          destinationFolderPath: 'errors',
+        })
+        .subscribe((result) => outcomes.push(result.kind));
+      expect(outcomes).toEqual(['read-only', 'read-only', 'read-only', 'read-only']);
+      expect(create).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      expect(moveFolder).not.toHaveBeenCalled();
+      expect(moveResource).not.toHaveBeenCalled();
+    });
+
+    it('reports folder and resource no-ops without HTTP', () => {
+      const folder = vi.spyOn(apiService, 'moveFolder');
+      const resource = vi.spyOn(apiService, 'moveResource');
+      const kinds: string[] = [];
+      store
+        .moveFolder({
+          sourceFolderPath: 'common.buttons',
+          destinationFolderPath: 'common',
+        })
+        .subscribe((outcome) => {
+          if (outcome.kind === 'noop') kinds.push(outcome.reason);
+        });
+      store
+        .moveResource({
+          sourceKey: 'common.save',
+          destinationFolderPath: 'common',
+        })
+        .subscribe((outcome) => {
+          if (outcome.kind === 'noop') kinds.push(outcome.reason);
+        });
+      expect(kinds).toEqual(['already-at-location', 'already-in-folder']);
+      expect(folder).not.toHaveBeenCalled();
+      expect(resource).not.toHaveBeenCalled();
+    });
+
+    it('returns the server refusal for a direct folder move into a descendant', () => {
+      const failure = serverError(409, 'Cannot move into descendant');
+      const move = vi.spyOn(apiService, 'moveFolder').mockReturnValue(throwError(() => failure));
+      let received: unknown;
+
+      store.moveFolder({ sourceFolderPath: 'common', destinationFolderPath: 'common.buttons' }).subscribe((outcome) => {
+        if (outcome.kind === 'refused') received = outcome.error;
+      });
+
+      expect(move).toHaveBeenCalledWith('app-translations', 'common', 'common.buttons');
+      expect(received).toBe(failure);
+    });
+
+    it('does not cancel the sidebar draft when the picker creates a folder', () => {
+      vi.spyOn(apiService, 'createFolder').mockReturnValue(of(createdFolder));
+      store.startAddingFolder('errors');
+
+      store.createFolder('new', 'common').subscribe();
+
+      expect(store.isAddingFolder()).toBe(true);
+      expect(store.addFolderParentPath()).toBe('errors');
+    });
+
+    it('preserves a newer tree load when a folder move fails', async () => {
+      const pending = new Subject<{
+        movedCount: number;
+        foldersDeleted: number;
+        warnings: string[];
+        errors: string[];
+      }>();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
+      store
+        .moveFolder({
+          sourceFolderPath: 'common.buttons',
+          destinationFolderPath: 'errors',
+        })
+        .subscribe();
+      const refreshed = {
+        ...mockTreeWithNesting,
+        children: [
+          {
+            ...mockTreeWithNesting.children[0],
+            tree: { path: 'common', resources: [], children: [] },
+          },
+          ...mockTreeWithNesting.children.slice(1),
+          { name: 'fresh', fullPath: 'fresh', loaded: false },
+        ],
+      };
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(refreshed));
+      store.loadRootFolders();
+      await waitForSignals();
+      pending.error(serverError(409, 'Cannot move'));
+      expect(store.rootFolders().map((folder) => folder.fullPath)).toContain('fresh');
+      expect(store.rootFolders()[0].tree?.children.map((folder) => folder.fullPath)).toContain('common.buttons');
+    });
+
+    it('leaves an unloaded parent untouched when a folder move fails after a tree refresh', async () => {
+      const pending = new Subject<{
+        movedCount: number;
+        foldersDeleted: number;
+        warnings: string[];
+        errors: string[];
+      }>();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
+      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' }).subscribe();
+      const refreshed: ResourceTreeDto = {
+        path: '',
+        resources: [],
+        children: [
+          { name: 'common', fullPath: 'common', loaded: false },
+          { name: 'fresh', fullPath: 'fresh', loaded: false },
+        ],
+      };
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(refreshed));
+      store.loadRootFolders();
+      await waitForSignals();
+
+      pending.error(serverError(409, 'Cannot move'));
+
+      expect(store.rootFolders()).toEqual(refreshed.children);
+      expect(store.rootFolders()[0].loaded).toBe(false);
+      expect(store.rootFolders()[0].tree).toBeUndefined();
+      expect(store.movesInFlight()).toBe(0);
+      expect(store.isMoving()).toBe(false);
+    });
+
+    it('does not apply a successful folder move after its session was replaced', async () => {
+      const pending = new Subject<{
+        movedCount: number;
+        foldersDeleted: number;
+        warnings: string[];
+        errors: string[];
+      }>();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
+      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' }).subscribe();
+      store.openCollection(collectionSettings({ name: 'other', locales: [] }));
+      await waitForSignals();
+      const newTree = store.rootFolders();
+
+      pending.next({ movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] });
+      pending.complete();
+      await waitForSignals();
+
+      expect(store.rootFolders()).toBe(newTree);
+      expect(store.currentFolderPath()).toBe('');
+      expect(store.movesInFlight()).toBe(0);
+    });
+
+    it('does not roll back a failed folder move into a replacement session', async () => {
+      const pending = new Subject<{
+        movedCount: number;
+        foldersDeleted: number;
+        warnings: string[];
+        errors: string[];
+      }>();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
+      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' }).subscribe();
+      store.openCollection(collectionSettings({ name: 'other', locales: [] }));
+      await waitForSignals();
+      const newTree = store.rootFolders();
+
+      pending.error(serverError(409, 'Old failure'));
+      await waitForSignals();
+
+      expect(store.rootFolders()).toBe(newTree);
+      expect(store.error()).toBeNull();
+      expect(store.movesInFlight()).toBe(0);
+    });
+
+    it('does not reload or patch a successful resource move after its session was replaced', async () => {
+      const pending = new Subject<{ movedCount: number }>();
+      vi.spyOn(apiService, 'moveResource').mockReturnValue(pending);
+      patchState(unprotected(store), { translations: [summary('common.save', 'Save')], loadedFolderPath: 'common' });
+      store.moveResource({ sourceKey: 'common.save', destinationFolderPath: 'errors' }).subscribe();
+      store.openCollection(collectionSettings({ name: 'other', locales: [] }));
+      await waitForSignals();
+      const newRows = [summary('other.key', 'Other')];
+      patchState(unprotected(store), { translations: newRows });
+
+      pending.next({ movedCount: 1 });
+      pending.complete();
+      await waitForSignals();
+
+      expect(store.translations()).toBe(newRows);
+      expect(store.movesInFlight()).toBe(0);
+    });
+
+    it('does not roll back a failed resource move into a replacement session', async () => {
+      const pending = new Subject<{ movedCount: number }>();
+      vi.spyOn(apiService, 'moveResource').mockReturnValue(pending);
+      patchState(unprotected(store), { translations: [summary('common.save', 'Save')], loadedFolderPath: 'common' });
+      store.moveResource({ sourceKey: 'common.save', destinationFolderPath: 'errors' }).subscribe();
+      store.openCollection(collectionSettings({ name: 'other', locales: [] }));
+      await waitForSignals();
+      const newRows = [summary('other.key', 'Other')];
+      patchState(unprotected(store), { translations: newRows });
+
+      pending.error(serverError(409, 'Old failure'));
+      await waitForSignals();
+
+      expect(store.translations()).toBe(newRows);
+      expect(store.error()).toBeNull();
+      expect(store.movesInFlight()).toBe(0);
+    });
+
+    it('navigates on delete only when the shown folder is affected', async () => {
+      vi.spyOn(apiService, 'deleteFolder').mockReturnValue(
+        of({ deleted: true, folderPath: 'errors', resourcesDeleted: 0 }),
+      );
+      store.showFolder('common');
+      await waitForSignals();
+      store.deleteFolder('errors').subscribe();
+      expect(store.currentFolderPath()).toBe('common');
+      store.showFolder('errors.http');
+      await waitForSignals();
+      store.deleteFolder('errors').subscribe();
+      expect(store.currentFolderPath()).toBe('');
+    });
+
     it('creates in the explicit parent only on subscription and inserts the response', () => {
       const create = vi.spyOn(apiService, 'createFolder').mockReturnValue(of(createdFolder));
       const result = store.createFolder('new', 'common');
@@ -172,10 +404,8 @@ describe('BrowserStore', () => {
       const original = store.rootFolders();
       let received: unknown;
 
-      store.createFolder('new', 'common').subscribe({
-        error: (error: unknown) => {
-          received = error;
-        },
+      store.createFolder('new', 'common').subscribe((outcome) => {
+        if (outcome.kind === 'refused') received = outcome.error;
       });
 
       expect(received).toBe(failure);
@@ -226,8 +456,18 @@ describe('BrowserStore', () => {
       const info = vi.spyOn(spectator.inject(NotificationService), 'info');
       const original = store.rootFolders();
 
-      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'common.buttons' });
-      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'common' });
+      store
+        .moveFolder({
+          sourceFolderPath: 'common.buttons',
+          destinationFolderPath: 'common.buttons',
+        })
+        .subscribe();
+      store
+        .moveFolder({
+          sourceFolderPath: 'common.buttons',
+          destinationFolderPath: 'common',
+        })
+        .subscribe();
       await waitForSignals();
 
       expect(move).not.toHaveBeenCalled();
@@ -239,10 +479,25 @@ describe('BrowserStore', () => {
       const remove = vi
         .spyOn(apiService, 'deleteFolder')
         .mockReturnValue(of({ deleted: true, folderPath: 'errors', resourcesDeleted: 0 }));
-      store.deleteFolder('errors');
+      store.deleteFolder('errors').subscribe();
       await waitForSignals();
       expect(remove).toHaveBeenCalledWith('app-translations', 'errors');
       expect(store.rootFolders().map((folder) => folder.fullPath)).not.toContain('errors');
+    });
+
+    it('returns a delete refusal without writing the shared load error', () => {
+      const failure = serverError(409, 'Cannot delete');
+      vi.spyOn(apiService, 'deleteFolder').mockReturnValue(throwError(() => failure));
+      let received: unknown;
+
+      store.deleteFolder('errors').subscribe((outcome) => {
+        if (outcome.kind === 'refused') received = outcome.error;
+      });
+
+      expect(received).toBe(failure);
+      expect(store.error()).toBeNull();
+      expect(store.isDeletingFolder()).toBe(false);
+      expect(store.deletingFolderPath()).toBeNull();
     });
 
     it('moves a folder directly and counts the in-flight move without setting the delete flag', async () => {
@@ -254,7 +509,12 @@ describe('BrowserStore', () => {
       }>();
       const move = vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
 
-      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' });
+      store
+        .moveFolder({
+          sourceFolderPath: 'common.buttons',
+          destinationFolderPath: 'errors',
+        })
+        .subscribe();
       await waitForSignals();
       expect(move).toHaveBeenCalledWith('app-translations', 'common.buttons', 'errors');
       expect(store.movesInFlight()).toBe(1);
@@ -282,20 +542,26 @@ describe('BrowserStore', () => {
       vi.spyOn(apiService, 'moveFolder').mockReturnValue(pending);
       const original = store.rootFolders();
 
-      store.moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' });
+      store
+        .moveFolder({
+          sourceFolderPath: 'common.buttons',
+          destinationFolderPath: 'errors',
+        })
+        .subscribe();
       await waitForSignals();
       pending.error(serverError(409, 'Cannot move'));
       await waitForSignals();
 
-      expect(store.rootFolders()).toBe(original);
+      expect(store.rootFolders()).toEqual(original);
       expect(store.movesInFlight()).toBe(0);
+      expect(store.isMoving()).toBe(false);
       expect(store.isDeletingFolder()).toBe(false);
-      expect(store.error()).toBe('Cannot move');
+      expect(store.error()).toBeNull();
     });
   });
 
   describe('Initialization', () => {
-    it('returns null for a folder create when no collection is open', () => {
+    it('returns no-collection for a folder create when no collection is open', () => {
       const create = vi.spyOn(apiService, 'createFolder');
       let response: unknown = 'pending';
 
@@ -303,7 +569,7 @@ describe('BrowserStore', () => {
         response = value;
       });
 
-      expect(response).toBeNull();
+      expect(response).toEqual({ kind: 'no-collection' });
       expect(create).not.toHaveBeenCalled();
     });
 
@@ -894,7 +1160,7 @@ describe('BrowserStore', () => {
       await waitForSignals();
 
       store.expandAllFolders();
-      store.deleteFolder('common');
+      store.deleteFolder('common').subscribe();
       await waitForSignals();
 
       expect(store.expandedFolders().has('common')).toBe(false);
@@ -1399,7 +1665,12 @@ describe('BrowserStore', () => {
       await waitForSignals();
       expect(store.translations()).toEqual([row]);
 
-      store.moveResource({ sourceKey: 'common.buttons.save', destinationFolderPath: 'archive' });
+      store
+        .moveResource({
+          sourceKey: 'common.buttons.save',
+          destinationFolderPath: 'archive',
+        })
+        .subscribe();
 
       expect(store.translations()).toEqual([]);
       expect(apiService.moveResource).toHaveBeenCalledWith('app-translations', 'common.buttons.save', 'archive.save');
@@ -1876,7 +2147,12 @@ describe('BrowserStore', () => {
 
       store.openCollection(collectionSettings({ name: 'a' }));
       await waitForSignals();
-      store.moveResource({ sourceKey: 'a.welcome', destinationFolderPath: 'archive' });
+      store
+        .moveResource({
+          sourceKey: 'a.welcome',
+          destinationFolderPath: 'archive',
+        })
+        .subscribe();
       store.openCollection(collectionSettings({ name: 'b' }));
       await waitForSignals();
       aMove.error(serverError(500, 'late'));
@@ -1896,7 +2172,7 @@ describe('BrowserStore', () => {
 
       store.openCollection(collectionSettings({ name: 'a' }));
       await waitForSignals();
-      store.deleteFolder('common');
+      store.deleteFolder('common').subscribe();
       store.openCollection(collectionSettings({ name: 'b' }));
       await waitForSignals();
       getTree.mockClear();

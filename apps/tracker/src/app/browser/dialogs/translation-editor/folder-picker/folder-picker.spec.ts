@@ -7,7 +7,7 @@ import { getTranslocoTestingModule } from '../../../../../testing/transloco-test
 import { NotificationService } from '../../../../shared/notification';
 import { BrowserStore } from '../../../store/browser.store';
 import { FolderPicker } from './folder-picker';
-import { of, throwError } from 'rxjs';
+import { of } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toApiError } from '../../../../shared/api-error/api-error';
 
@@ -49,7 +49,15 @@ describe('FolderPicker', () => {
     component: FolderPicker,
     imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
     providers: [
-      { provide: NotificationService, useValue: { success: vi.fn(), info: vi.fn(), warning: vi.fn(), error: vi.fn() } },
+      {
+        provide: NotificationService,
+        useValue: {
+          success: vi.fn(),
+          info: vi.fn(),
+          warning: vi.fn(),
+          error: vi.fn(),
+        },
+      },
       { provide: BrowserStore, useValue: mockStore },
     ],
     detectChanges: true,
@@ -179,7 +187,7 @@ describe('FolderPicker', () => {
         created: true,
         folder: { name: 'new', fullPath: 'common.new', loaded: false },
       };
-      mockStore.createFolder.mockReturnValue(of(response));
+      mockStore.createFolder.mockReturnValue(of({ kind: 'created', folder: response.folder, created: true }));
       const created = vi.fn();
       component.folderCreated.subscribe(created);
       component.onAddFolder('common');
@@ -193,8 +201,13 @@ describe('FolderPicker', () => {
     });
 
     it('shows one failure toast without reporting an error to the store', () => {
-      const error = toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Already exists' } }));
-      mockStore.createFolder.mockReturnValue(throwError(() => error));
+      const error = toApiError(
+        new HttpErrorResponse({
+          status: 409,
+          error: { message: 'Already exists' },
+        }),
+      );
+      mockStore.createFolder.mockReturnValue(of({ kind: 'refused', error }));
       const notifications = spectator.inject(NotificationService);
       component.onAddFolder('common');
 
@@ -206,7 +219,7 @@ describe('FolderPicker', () => {
     });
 
     it('closes the inline input without a toast when no collection is open', () => {
-      mockStore.createFolder.mockReturnValue(of(null));
+      mockStore.createFolder.mockReturnValue(of({ kind: 'no-collection' }));
       const notifications = spectator.inject(NotificationService);
       const created = vi.fn();
       component.folderCreated.subscribe(created);
@@ -273,7 +286,11 @@ describe('FolderPicker', () => {
     it('should auto-expand tree and set selectedPath when initiallyExpanded is true with currentPath', () => {
       // Create a fresh component with initiallyExpanded
       const expanded = createComponent({
-        props: { currentPath: 'common.buttons', rootFolders: mockRootFolders, initiallyExpanded: true },
+        props: {
+          currentPath: 'common.buttons',
+          rootFolders: mockRootFolders,
+          initiallyExpanded: true,
+        },
         detectChanges: true,
       });
 
@@ -286,7 +303,11 @@ describe('FolderPicker', () => {
 
     it('should auto-expand tree without setting selectedPath when currentPath is empty', () => {
       const expanded = createComponent({
-        props: { currentPath: '', rootFolders: mockRootFolders, initiallyExpanded: true },
+        props: {
+          currentPath: '',
+          rootFolders: mockRootFolders,
+          initiallyExpanded: true,
+        },
         detectChanges: true,
       });
 
@@ -303,7 +324,11 @@ describe('FolderPicker', () => {
 
     it('should keep the tree expanded after folder selection when initiallyExpanded is true', () => {
       const expanded = createComponent({
-        props: { currentPath: 'common', rootFolders: mockRootFolders, initiallyExpanded: true },
+        props: {
+          currentPath: 'common',
+          rootFolders: mockRootFolders,
+          initiallyExpanded: true,
+        },
         detectChanges: true,
       });
 
@@ -320,7 +345,11 @@ describe('FolderPicker', () => {
 
     it('should not collapse the tree when toggleExpanded is called and initiallyExpanded is true', () => {
       const expanded = createComponent({
-        props: { currentPath: 'common', rootFolders: mockRootFolders, initiallyExpanded: true },
+        props: {
+          currentPath: 'common',
+          rootFolders: mockRootFolders,
+          initiallyExpanded: true,
+        },
         detectChanges: true,
       });
 
