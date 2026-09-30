@@ -40,7 +40,7 @@ export class CollectionsApiService {
 
   /**
    * Updates an existing collection (including renaming).
-   * @param name Current collection name (URI encoded by HttpClient)
+   * @param name Current collection name (encoded as a URL path segment here)
    * @param data Update payload with optional new name and collection config
    */
   updateCollection(name: string, data: UpdateCollectionDto): Observable<{ message: string }> {
@@ -49,7 +49,7 @@ export class CollectionsApiService {
 
   /**
    * Deletes a collection by name.
-   * @param name Collection name to delete (URI encoded by HttpClient)
+   * @param name Collection name to delete (encoded as a URL path segment here)
    */
   deleteCollection(name: string): Observable<{ message: string }> {
     return this.http.delete<{ message: string }>(`${this.apiBase}/collections/${encodeURIComponent(name)}`);

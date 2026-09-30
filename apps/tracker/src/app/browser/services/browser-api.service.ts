@@ -78,8 +78,7 @@ export class BrowserApiService {
    */
   getResourceTree(collectionName: string, path = '', includeNested = false): Observable<ResourceTreeDto> {
     const encodedName = encodeURIComponent(collectionName);
-    const encodedPath = encodeURIComponent(path);
-    const params = new HttpParams().set('path', encodedPath).set('includeNested', includeNested.toString());
+    const params = new HttpParams().set('path', path).set('includeNested', includeNested.toString());
 
     return this.#http
       .get<ResourceTreeDto | TreeStatusResponseDto>(`${this.#baseUrl}/${encodedName}/resources/tree`, { params })

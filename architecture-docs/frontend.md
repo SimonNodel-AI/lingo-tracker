@@ -49,6 +49,8 @@ The app shell boots at `/collections`. The translation browser is accessed at `/
 /settings                 → Settings (lazy)
 ```
 
+`CollectionsManager` passes the collection name as a plain path segment to `router.navigate`; Angular encodes it for the URL. `TranslationBrowser` uses the already-decoded `ActivatedRoute` parameter directly to resolve the collection. API clients encode collection names once when interpolating URL path segments. For query values such as a resource tree's folder `path`, `HttpParams` performs the encoding from the plain value.
+
 ---
 
 ## Component Trees

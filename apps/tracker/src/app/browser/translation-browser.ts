@@ -96,7 +96,7 @@ export class TranslationBrowser {
       const name = this.#route.snapshot.paramMap.get('collectionName');
       if (!name) return;
 
-      const settings = resolveCollectionSettings(config, decodeURIComponent(name));
+      const settings = resolveCollectionSettings(config, name);
 
       untracked(() => {
         // Re-entering the open collection keeps the user's place (folder, search); only its
