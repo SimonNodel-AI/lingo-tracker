@@ -600,7 +600,9 @@ flowchart TD
     style VALUE fill:#d4edda,stroke:#28a745,color:#000
 ```
 
-**What the Translator owns.** Setup (the enabled check, the API key, the provider), the ICU skip, the placeholder guard, the protected-term guard, and normalisation. Each happens in one place, for every caller. There is one code path: a single text is a batch of one. A provider failure (`TranslationError`) propagates; locale seeding passes it on, and `translateLocale` marks the batch as failed and goes on with the next one.
+**What the Translator owns.** Setup (the enabled check, the API key, the provider), the ICU skip, the placeholder guard, the protected-term guard, and normalisation. Each happens in one place, for every caller. There is one code path: a single text is a batch of one. A provider failure (`TranslationError`) propagates; locale seeding passes it on, and `translateLocale` marks the batch as failed and goes on with the next one, including after a `TIMEOUT`.
+
+The Google Translate v2 provider bounds each HTTP request to 30 seconds. A timeout aborts the request and raises a retryable `TranslationError` with code `TIMEOUT`; `translateLocale` records the affected batch in `failures`, then continues with later batches. The provider rejects an invalid timeout option at construction with `INVALID_REQUEST_TIMEOUT`. When `translateLocale` reopens each Resource Folder to write, it compares the current base checksum and the target locale's checksum and status with those read before the provider call. If the entry was removed, either locale changed, or the target no longer needs translation, it leaves that entry untouched and includes its key in `skippedKeys`.
 
 **Skip reasons.** `SkippedTranslation.reason` is `complex-icu`, `placeholder-mismatch` or `protected-term` (with the dropped `terms`). A translation that drops a protected term would be rejected by import, so it is not stored. The callers report skipped locales (`skippedLocales`) or keys (`skippedKeys`) without the reason.
 

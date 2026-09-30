@@ -1,6 +1,6 @@
 # REST API (`apps/api`)
 
-The NestJS API is LingoTracker's HTTP interface. It exposes all translation management operations over REST, serves the Angular Tracker UI as static files from the same process, and owns two cross-cutting systems: an in-memory [Collection Index](glossary.md#collection-index) that makes the resource tree fast to browse, and an async job runner for long-running locale translation operations. All API routes are prefixed with `/api`; Swagger docs are available at `/api` when the server is running.
+The NestJS API is LingoTracker's HTTP interface. It exposes all translation management operations over REST, serves the Angular Tracker UI as static files from the same process, and owns two cross-cutting systems: an in-memory [Collection Index](glossary.md#collection-index) that makes the resource tree fast to browse, and the [Job Registry](glossary.md#job-registry) for long-running locale translation and bundle generation. All API routes are prefixed with `/api`; Swagger docs are available at `/api` when the server is running.
 
 Return to [architecture README](README.md).
 
@@ -80,7 +80,7 @@ All paths are relative to the `/api` global prefix. URL path parameters that con
 
 ### Bundles
 
-Bundle definitions live under `bundles` in `.lingo-tracker.json` and are exposed on `GET /config`. Generation runs as an async job (one at a time, in order) that the client polls, mirroring the translation job flow.
+Bundle definitions live under `bundles` in `.lingo-tracker.json` and are exposed on `GET /config`. Generation runs as an async job (one at a time, in order) that the client polls. Its service has a separate [Job Registry](glossary.md#job-registry) instance from translation jobs.
 
 The [Bundle Definition](glossary.md#bundle-definition) type and its rules are in `@simoncodes-ca/domain`; `BundleDefinitionDto` is an alias of the domain type, so no mapper copies it. The controller does not validate for create and update: it passes the trimmed name and the body definition to core's `addBundleDefinition` / `updateBundleDefinition`, which normalize, validate and throw typed errors. The dry run, which plans an unsaved definition, runs the domain `checkBundleDefinition` itself. For generation, the job service calls core's `validateGenerateBundleRequest` before queuing, so unknown names (including `constructor`) answer 404 and invalid locale filters answer 400. Core repeats this check before writing. Invalid definitions answer 400 `{ statusCode, message: 'Invalid bundle definition', error, errors[] }`, where `errors` holds every message from the domain rules (see [Error Mapping](#error-mapping)). The Tracker bundle form runs the same check before it submits, and the Tracker store shows a 400 as `Invalid bundle definition: <errors joined by "; ">`.
 
@@ -117,7 +117,7 @@ graph TD
         subgraph services["Services / Infrastructure"]
             CONFIGS["ConfigService\ncore loadConfig() on every request\n(errors → 404 / 500)"]
             INDEX["CollectionIndex\ntree · search · status · apply\nin-memory ResourceTreeNode per collection"]
-            JOBS["TranslationJobService\nIn-memory job map\nUUID → TranslationJob"]
+            JOBS["TranslationJobService · BundleJobService\nJob Registry per service\nserial queue · UUID → job"]
         end
 
         subgraph mappers["Mappers"]
@@ -348,11 +348,11 @@ sequenceDiagram
 
     UI->>RC: POST /translate-locale { locale: "fr" }
     RC->>JS: startJob(collection, locale)
-    JS->>JS: generate UUID jobId
-    JS->>JS: store job (status: "pending")
-    JS->>Core: translateLocale(collection, { targetLocale, onProgress }) [no await — runs in background]
+    JS->>JS: Job Registry creates UUID and queues job (status: "pending")
     JS-->>RC: jobId
     RC-->>UI: 202 Accepted TranslateLocaleJobDto\n{ jobId, status: "pending", ... }
+
+    JS->>Core: translateLocale(collection, { targetLocale, onProgress }) [when earlier translations settle]
 
     loop Poll until status is "completed" or "failed"
         UI->>RC: GET /translate-locale/{jobId}
@@ -370,13 +370,13 @@ sequenceDiagram
 
 **Starting a job.** The handler opens the collection with `openRouteCollection`, then calls core `assertCanTranslateLocale(collection, locale)` synchronously before `startJob(collection, locale)`. The precondition raises typed errors for disabled auto-translation (422), the base locale (400), or a locale outside the collection's configured locales (400). The job runs core `translateLocale(collection, { targetLocale, onProgress })`, which checks the same precondition and translates through the [Translator](glossary.md#translator). When the job ends, successfully or not, the service applies `reindexMutation(collection.translationsFolder)` to the [Collection Index](glossary.md#collection-index), because `translateLocale` may have written files.
 
-**Job lifecycle states:** `pending` → `running` → `completed` | `failed`. `TranslationJobService` stores jobs in a plain `Map<string, TranslationJob>` in process memory. Jobs are never evicted — this is appropriate for a single-user development tool. If the process restarts, all jobs are lost and the UI must re-issue any in-progress operations.
+**Job lifecycle states:** `pending` → `running` → `completed` | `failed`. The [Job Registry](glossary.md#job-registry) owns the map, queue, timestamps, error text, and DTO snapshots for both services. Each service has one registry instance: translations run serially with translations, and bundles run serially with bundles. A bundle and a translation may run concurrently. Bundle generation reads resource folders and writes its configured `dist` and optional type output; translation writes resource folders. Their usual output paths do not overlap, so this avoids two jobs writing the same files. Output paths are configurable and are not checked for overlap; a bundle may also read resources while translation writes them. Finished jobs older than 30 minutes are evicted on the next start; when the count would exceed 100, the oldest finished jobs are evicted first. Queued and running jobs are never evicted. If the process restarts, all jobs are lost and the UI must re-issue any in-progress operations.
 
 **Progress reporting.** `translateLocale()` in `@simoncodes-ca/core` accepts an `onProgress` callback. `TranslationJobService` subscribes to this callback and updates the in-memory job's `translatedCount`, `failedCount`, and `skippedCount` fields on each tick. Polling clients see live progress, not just a final result.
 
 **Unreadable folders.** `translateLocale` returns a `warnings` line for each folder the Collection Reader could not read (its resources are not translated). The service logs each one with `Logger.warn`; the DTO does not carry them.
 
-**Skips.** `skippedCount` and `skippedKeys` cover every resource the Translator did not store: complex ICU, a lost placeholder, or a translation that dropped a [protected term](glossary.md#protected-term). The DTO does not carry the reason.
+**Skips.** `skippedCount` and `skippedKeys` cover every resource the Translator did not store: complex ICU, a lost placeholder, a translation that dropped a [protected term](glossary.md#protected-term), or a base or target value changed during the provider call. The DTO does not carry the reason.
 
 **Error handling.** If `translateLocale()` rejects with a `TranslationError` (a missing API key, which is only checked when some resource needs work) or any other error, the job transitions to `failed` and its `error` is set: the error's message, or `An unexpected error occurred` for a rejection that is not an `Error`. `TranslateLocaleJobDto.error` carries it, so a polling client can show why the job failed. The DTO has `error` only when it is set. A provider failure in one batch does not reject: that batch's resources are listed in `failures`. No retry is attempted.
 
