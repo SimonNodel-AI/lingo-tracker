@@ -5,24 +5,12 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import {
-  type BundleDefinition,
-  bundleOutputFile,
-  findBundleDefinition,
-  hasTypeDistConfigured,
-  type TokenCasing,
-} from '@simoncodes-ca/domain';
+import { bundleOutputFile, hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { BundleNotFoundError, InvalidBundleLocalesError } from '../errors';
-import {
-  type BundleSelection,
-  resolveBundleCollections,
-  selectBundleEntries,
-  selectionValues,
-} from './bundle-selection';
+import { type BundleSelection, selectBundleEntries, selectionValues } from './bundle-selection';
 import { buildHierarchy } from './hierarchy-builder';
-import { resolveBundleSettings } from './resolve-bundle-settings';
-import { type BundleLocale, COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
+import { type PreparedBundleRun, prepareBundleRun, selectPreparedBundleLocale } from './prepare-bundle-run';
+import { COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
 import {
   type GenerateBundleTypesParams,
   type GenerateTypesResult,
@@ -94,32 +82,6 @@ export type BundleTypeOutcome =
   | { readonly status: 'failed'; readonly reason: string; readonly warning?: string }
   | { readonly status: 'not-configured'; readonly warning?: string };
 
-/** Checks a saved bundle request before a job is queued or any output is written. */
-export function validateGenerateBundleRequest(
-  params: Pick<GenerateBundleParams, 'bundleKey' | 'config' | 'locales'>,
-): BundleDefinition {
-  const definition = findBundleDefinition(params.config.bundles, params.bundleKey);
-  if (!definition) throw new BundleNotFoundError(params.bundleKey);
-
-  validateBundleLocales(params.locales, params.config);
-  return definition;
-}
-
-/** Validates an optional project locale subset, including malformed API bodies. */
-export function validateBundleLocales(locales: readonly string[] | undefined, config: LingoTrackerConfig): void {
-  if (locales !== undefined) {
-    if (!Array.isArray(locales) || locales.some((locale) => typeof locale !== 'string')) {
-      throw new InvalidBundleLocalesError('locales must be an array of strings');
-    }
-    const unknown = locales.filter((locale) => !config.locales.includes(locale));
-    if (unknown.length > 0) {
-      throw new InvalidBundleLocalesError(
-        `Unknown locale${unknown.length > 1 ? 's' : ''} ${unknown.map((locale) => `"${locale}"`).join(', ')}: must be defined in the project locales`,
-      );
-    }
-  }
-}
-
 /**
  * Generates a bundle's files: one JSON file per locale (a locale with no entries is skipped with a
  * warning), the debug-keys file when `debugKeysLocale` is set, and the type file when the
@@ -127,32 +89,34 @@ export function validateBundleLocales(locales: readonly string[] | undefined, co
  * not carry to Transloco are reported in `warnings`; type generation has its own outcome.
  */
 export async function generateBundle(params: GenerateBundleParams): Promise<GenerateBundleResult> {
-  const bundleDefinition = validateGenerateBundleRequest(params);
-  return generateValidatedBundle(params, bundleDefinition);
+  const prepared = prepareBundleRun({ ...params, source: 'saved' });
+  const { bundleKey, debugKeysLocale, onProgress, cwd } = params;
+  return generatePreparedBundle({ bundleKey, debugKeysLocale, onProgress, cwd }, prepared);
 }
 
-/** The run coordinator uses an already validated definition. */
-export async function generateValidatedBundle(
-  params: GenerateBundleParams,
-  bundleDefinition: BundleDefinition,
+/** The job service and run coordinator use an already prepared run. */
+export async function generatePreparedBundle(
+  params: Pick<GenerateBundleParams, 'bundleKey' | 'debugKeysLocale' | 'onProgress' | 'cwd'>,
+  prepared: PreparedBundleRun,
 ): Promise<GenerateBundleResult> {
-  const { bundleKey, config, debugKeysLocale, onProgress } = params;
+  const { bundleKey, debugKeysLocale, onProgress } = params;
   const cwd = params.cwd ?? process.cwd();
-
-  const { tokenCasing, transformICUToTransloco } = resolveBundleSettings(config, bundleDefinition, params);
-
-  const { collections, warnings: missing } = resolveBundleCollections(bundleDefinition, config, { cwd });
-  const warnings = [...missing];
+  const bundleDefinition = prepared.definition;
+  const { tokenCasing } = prepared.settings;
+  const warnings = [...prepared.collections.warnings];
   const cache: CollectionReadCache = new Map();
-  const select = (locale: BundleLocale, transform: boolean): BundleSelection => {
-    const selection = selectBundleEntries(collections, locale, { transformICUToTransloco: transform, cache });
+  const selectBase = (): BundleSelection => {
+    const selection = selectBundleEntries(prepared.collections.collections, COLLECTION_BASE_LOCALE, {
+      transformICUToTransloco: false,
+      cache,
+    });
     warnings.push(...selection.warnings);
     return selection;
   };
   // Every collection's base keys, so a collection with its own base locale is not left out.
   let baseKeys: string[] | undefined;
   const selectBaseKeys = (): string[] => {
-    baseKeys ??= Array.from(select(COLLECTION_BASE_LOCALE, false).entries.keys());
+    baseKeys ??= Array.from(selectBase().entries.keys());
     return baseKeys;
   };
 
@@ -168,16 +132,16 @@ export async function generateValidatedBundle(
     keysPerLocale[locale] = Object.keys(data).length;
   };
 
-  const targetLocales = params.locales ?? config.locales;
+  const targetLocales = prepared.locales;
   const total = targetLocales.length + (debugKeysLocale ? 1 : 0);
   const progress = (locale: string, index: number): void =>
     onProgress?.({ locale, index, total, file: bundleOutputFile(bundleDefinition, locale) });
 
   targetLocales.forEach((locale, index) => {
     progress(locale, index + 1);
-    const selection = select(locale, transformICUToTransloco);
+    const selection = selectPreparedBundleLocale(prepared, bundleKey, locale, cache);
+    warnings.push(...selection.warnings);
     if (selection.entries.size === 0) {
-      warnings.push(`Bundle '${bundleKey}' for locale '${locale}' is empty`);
       return;
     }
     write(locale, selectionValues(selection));
@@ -195,7 +159,14 @@ export async function generateValidatedBundle(
 
   const typeOutcome = hasTypeDistConfigured(bundleDefinition)
     ? generateTypes(
-        { bundleKey, definition: bundleDefinition, tokenCasing, tokenConstantName: params.tokenConstantName, cwd },
+        {
+          bundleKey,
+          definition: prepared.definition,
+          tokenCasing,
+          tokenConstantName: prepared.tokenConstantNameOverride,
+          warning: prepared.typeWarning,
+          cwd,
+        },
         selectBaseKeys,
       )
     : { status: 'not-configured' as const };

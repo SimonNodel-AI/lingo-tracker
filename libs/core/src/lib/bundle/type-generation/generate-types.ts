@@ -8,7 +8,7 @@ import {
 } from '@simoncodes-ca/domain';
 import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
 import { generateFileHeader } from './file-header';
-import { bundleKeyToConstantName } from './key-transformer';
+import { resolveBundleSettings } from '../resolve-bundle-settings';
 
 export interface GenerateTypesResult {
   bundleKey: string;
@@ -29,6 +29,8 @@ export interface GenerateBundleTypesParams {
   readonly tokenCasing: TokenCasing;
   /** CLI override for the constant name; wins over `definition.tokenConstantName`. */
   readonly tokenConstantName?: string;
+  /** Warning captured while preparing a saved bundle with deprecated `typeDist`. */
+  readonly warning?: string;
   /** The project directory `typeDistFile` resolves against. Default: `process.cwd()`. */
   readonly cwd?: string;
 }
@@ -48,10 +50,7 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
   const resolvedTypeDistFile =
     bundleDef.typeDistFile ?? (typeof legacyTypeDist === 'string' ? legacyTypeDist : undefined);
 
-  const warning =
-    typeof legacyTypeDist === 'string' && !bundleDef.typeDistFile
-      ? `Warning: Bundle '${bundleKey}': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.`
-      : undefined;
+  const warning = params.warning ?? legacyTypeDistWarning(bundleKey, bundleDef);
 
   try {
     if (!hasTypeDistConfigured(bundleDef) || !resolvedTypeDistFile) {
@@ -106,22 +105,21 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
       };
     }
 
-    // Resolve constant name: explicit override (from CLI or bundle config) → derive from bundle key
-    const nameOverride = tokenConstantName ?? bundleDef.tokenConstantName;
-    if (nameOverride) {
-      const validationError = validateJavaScriptIdentifier(nameOverride);
-      if (validationError) {
-        return {
-          bundleKey,
-          typeDistFile: resolvedTypeDistFile,
-          keysCount: 0,
-          fileGenerated: false,
-          errorReason: `Invalid tokenConstantName for bundle '${bundleKey}': ${validationError}`,
-          warning,
-        };
-      }
+    const resolvedConstantName = resolveBundleSettings(bundleKey, {}, bundleDef, {
+      tokenConstantName,
+    }).tokenConstantName;
+    const explicitName = tokenConstantName ?? bundleDef.tokenConstantName;
+    const validationError = explicitName ? validateJavaScriptIdentifier(explicitName) : undefined;
+    if (validationError) {
+      return {
+        bundleKey,
+        typeDistFile: resolvedTypeDistFile,
+        keysCount: 0,
+        fileGenerated: false,
+        errorReason: `Invalid tokenConstantName for bundle '${bundleKey}': ${validationError}`,
+        warning,
+      };
     }
-    const resolvedConstantName = nameOverride ?? bundleKeyToConstantName(bundleKey);
 
     // Generate content
     const hierarchy = buildTypeHierarchy(sortedKeys, tokenCasing);
@@ -154,4 +152,11 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
       warning,
     };
   }
+}
+
+export function legacyTypeDistWarning(bundleKey: string, definition: BundleDefinition): string | undefined {
+  const legacyTypeDist = (definition as BundleDefinition & { typeDist?: unknown }).typeDist;
+  return typeof legacyTypeDist === 'string' && !definition.typeDistFile
+    ? `Warning: Bundle '${bundleKey}': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.`
+    : undefined;
 }

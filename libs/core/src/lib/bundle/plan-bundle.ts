@@ -17,21 +17,17 @@ import {
   type TokenCasing,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { type BundleSelection, resolveBundleCollections, selectBundleEntries } from './bundle-selection';
+import { type BundleSelection, selectBundleEntries } from './bundle-selection';
+import { prepareBundleRun, selectPreparedBundleLocale } from './prepare-bundle-run';
 import { type BundleLocale, COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
-import { resolveBundleSettings } from './resolve-bundle-settings';
-import {
-  bundleKeyToConstantName,
-  segmentToPropertyName,
-  splitKeyIntoSegments,
-} from './type-generation/key-transformer';
+import { segmentToPropertyName, splitKeyIntoSegments } from './type-generation/key-transformer';
 
 export interface PlanBundleParams {
   readonly bundleKey: string;
   readonly bundleDefinition: BundleDefinition;
   readonly config: LingoTrackerConfig;
   /** Subset of locales to plan for (defaults to `config.locales`). */
-  readonly locales?: string[];
+  readonly locales?: readonly string[];
   /** Override for token casing; same precedence as `generateBundle`. */
   readonly tokenCasing?: TokenCasing;
   /** Override for the generated constant name; same precedence as `generateBundle`. */
@@ -97,44 +93,26 @@ export interface BundlePlan {
  * Plans a bundle run without writing anything.
  */
 export function planBundle(params: PlanBundleParams): BundlePlan {
-  const {
-    bundleKey,
-    bundleDefinition,
-    config,
-    locales,
-    tokenCasing: tokenCasingOverride,
-    tokenConstantName: tokenConstantNameOverride,
-    transformICUToTransloco: transformICUToTranslocoOverride,
-  } = params;
+  const { bundleKey } = params;
   const cwd = params.cwd ?? process.cwd();
-
-  const { tokenCasing: resolvedTokenCasing, transformICUToTransloco: resolvedTransformICUToTransloco } =
-    resolveBundleSettings(config, bundleDefinition, {
-      tokenCasing: tokenCasingOverride,
-      transformICUToTransloco: transformICUToTranslocoOverride,
-    });
-  const resolvedConstantName =
-    tokenConstantNameOverride ?? bundleDefinition.tokenConstantName ?? bundleKeyToConstantName(bundleKey);
-
-  const targetLocales = locales ?? config.locales;
-  const { collections, warnings: missing } = resolveBundleCollections(bundleDefinition, config, { cwd });
-  const warnings = [...missing];
+  const prepared = prepareBundleRun({ ...params, source: 'supplied' });
+  const { definition: bundleDefinition, settings, locales: targetLocales } = prepared;
+  const warnings = [...prepared.collections.warnings];
   const keysPerLocale: Record<string, number> = {};
   const files: BundlePlanFile[] = [];
   const cache: CollectionReadCache = new Map();
   const select = (locale: BundleLocale): BundleSelection =>
-    selectBundleEntries(collections, locale, { transformICUToTransloco: resolvedTransformICUToTransloco, cache });
+    selectBundleEntries(prepared.collections.collections, locale, {
+      transformICUToTransloco: settings.transformICUToTransloco,
+      cache,
+    });
 
   for (const locale of targetLocales) {
-    const selection = select(locale);
+    const selection = selectPreparedBundleLocale(prepared, bundleKey, locale, cache);
     warnings.push(...selection.warnings);
 
     const keysCount = selection.entries.size;
     keysPerLocale[locale] = keysCount;
-
-    if (keysCount === 0) {
-      warnings.push(`Bundle '${bundleKey}' for locale '${locale}' is empty`);
-    }
 
     const outputPath = bundleOutputFile(bundleDefinition, locale);
     files.push(describeFile(outputPath, 'bundle', keysCount, cwd, locale));
@@ -168,7 +146,7 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
     );
   }
 
-  const exampleKey = pickExampleKey(base, typesConfigured, resolvedConstantName, resolvedTokenCasing);
+  const exampleKey = pickExampleKey(base, typesConfigured, settings.tokenConstantName, settings.tokenCasing);
 
   return {
     bundleKey,

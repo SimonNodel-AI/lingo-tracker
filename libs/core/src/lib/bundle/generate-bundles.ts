@@ -1,12 +1,7 @@
-import type { BundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { MultipleBundleConstantNameError } from '../errors';
-import {
-  type GenerateBundleParams,
-  type GenerateBundleResult,
-  generateValidatedBundle,
-  validateGenerateBundleRequest,
-} from './generate-bundle';
+import { type GenerateBundleParams, type GenerateBundleResult, generatePreparedBundle } from './generate-bundle';
+import { prepareBundleRun, type PreparedBundleRun } from './prepare-bundle-run';
 
 export interface GenerateBundlesOptions {
   readonly names?: readonly string[];
@@ -46,9 +41,9 @@ export async function generateBundles(
   const totals = { bundlesProcessed: 0, filesGenerated: 0, warningsCount: 0 };
   for (const name of selected) {
     let outcome: BundleRunOutcome;
-    let definition: BundleDefinition;
+    let prepared: PreparedBundleRun;
     try {
-      definition = validateGenerateBundleRequest({ bundleKey: name, config, locales });
+      prepared = prepareBundleRun({ source: 'saved', bundleKey: name, config, locales, cwd, ...overrides });
     } catch (error) {
       outcome = { name, error };
       outcomes.push(outcome);
@@ -57,8 +52,8 @@ export async function generateBundles(
     }
     onEvent?.({ kind: 'start', name });
     try {
-      const params: GenerateBundleParams = { bundleKey: name, config, locales, cwd, ...overrides };
-      const result = await generateValidatedBundle(params, definition);
+      const params = { bundleKey: name, cwd, debugKeysLocale: overrides?.debugKeysLocale };
+      const result = await generatePreparedBundle(params, prepared);
       outcome = { name, result };
       totals.bundlesProcessed++;
       totals.filesGenerated += result.filesGenerated;
