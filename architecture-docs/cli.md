@@ -52,7 +52,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `parseJsonImport()` / `parseXliffImport()` → `importResources()` |
 | `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | Command Runner opens every collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
 | `find-similar` | `--collection`, `--value`, `--max-results` | `readCollection()` → `searchResources(…, { mode: 'similar-value', limit })` ([Resource Search](glossary.md#resource-search)) |
-| `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `readCollection()` (matching/extraction done in the command, not core) |
+| `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `buildGlossary()` ([Term Glossary](glossary.md#term-glossary)) |
 | `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `setGlobal/CollectionProtectedTermsFile()`, `readProtectedTermsTarget()`, `editProtectedTerms()` |
 | `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | `loadPreferredTerminology()` for display, then `editPreferredTerminology()` for case-insensitive upsert/remove, validation and write |
 | `install-skill` | `--collection <spec>` (repeatable), `--dir`, `--token-casing` | No core call — generates a `.claude/` skill file by template |
@@ -88,11 +88,7 @@ The Command Runner resolves the configured collections before `normalize` checks
 
 ### `glossary` pipeline
 
-The `glossary` command is intentionally CLI-only (no new core API surface) but reads resources through the core [Collection Reader](glossary.md#collection-reader), `readCollection()` (the same reader that `export`, `validate` and `bundle` use). Its logic lives in three sibling modules under `apps/cli/src/commands/`:
-
-- `glossary-extractor.ts` — the **extraction seam**. `CandidateExtractor = (block) => Candidate[]`, with a deterministic stopword + unigram/bigram default (`ngramExtractor`). `resolveExtractor(mode)` selects the implementation; `ai` is reserved and throws a clear not-implemented error today. This boundary lets an AI-based extractor replace the n-gram one without touching matching/output.
-- `glossary-matcher.ts` — matches candidates (over `FlatEntry[]`) against base-locale values only, scores (exact > whole-word containment), keeps top-1 per candidate, dedupes across candidates, and applies the per-locale status filter.
-- `glossary.ts` — orchestration: resolve input (`--text` → `--input` → stdin), read each collection with `readCollection()` (stripping each collection's base locale from `translations`; an unreadable folder is a warning on stderr, so `--stdout` output stays valid JSON), run extractor → matcher, serialize the header + term-array schema, write to a file or stdout.
+The command resolves input (`--text` → `--input` → stdin), selects one or all opened collections through the runner, maps flags to `buildGlossary(collections, text, options)`, and writes the returned JSON payload to a file or stdout. Core owns extraction, matching, the [Collection Reader](glossary.md#collection-reader) call, and each collection's effective base and target locales. Without `--locales`, it uses each opened collection's targets; an explicit `--locales` list can include stored translations outside those targets and removes only the base locale. Reader problems return separately from the payload; the command prints them as warnings on stderr, so `--stdout` stays valid JSON. With different base locales, core raises a typed error and the runner exits 1. See [Term Glossary](glossary.md#term-glossary) for the matching and locale rules.
 
 For the full description of what each core function does internally, see [core-library.md](core-library.md).
 

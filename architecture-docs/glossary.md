@@ -475,6 +475,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### Term Glossary
+
+A ranked list of existing translations that match candidate terms in a block of base-locale text. In core, `buildGlossary(collections, text, { extractor?, locales?, includeAll? })` reads each opened [collection](#collection) through the [Collection Reader](#collection-reader), extracts unique unigrams and bigrams by default, and matches them against base values. It returns the JSON payload (`baseLocale`, target `locales`, source counts, `matchCount`, `terms`) and separate unreadable-folder `readProblems`. By default, each entry contributes only its own collection's target locales. An explicit locale list can select stored translations outside those targets; only the base locale is removed. New and stale translations are omitted unless `includeAll` is set. An empty collection set raises `GlossaryNoCollectionsError`; different base locales raise `GlossaryBaseLocaleMismatchError`, because one glossary has one source language. The CLI selects input and prints or saves the payload, reporting reader problems on stderr.
+
+Explained in context: [`core-library.md`](core-library.md#term-glossary), [`cli.md`](cli.md#glossary-pipeline)
+
+---
+
 ### Term List Edit
 
 The direct file-edit side of [Project Terms](#project-terms), owned by core config. Collection create and update can also provide a whole protected-terms list through the [Collection Lifecycle](#collection-lifecycle). Core’s pointer setters change `protectedTermsFile` and carry over the old list. `readProtectedTermsTarget(config, target, cwd)` returns stored terms, paths, warnings and the effective union before a write. `editProtectedTerms(target, view, edit)` applies add, remove or set and returns the resulting list and path. The CLI prints the read result before it writes. `loadPreferredTerminology(config, cwd)` reads the project-wide rules; `editPreferredTerminology(config, edit, cwd)` replaces, upserts or removes them. Upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched. The CLI prints these results, and the API uses core’s rule validation.
