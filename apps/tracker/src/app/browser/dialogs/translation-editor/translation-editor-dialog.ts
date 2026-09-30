@@ -1,6 +1,7 @@
 import { OverlayModule } from '@angular/cdk/overlay';
 import { TextFieldModule } from '@angular/cdk/text-field';
 import { CommonModule } from '@angular/common';
+import { toSignal } from '@angular/core/rxjs-interop';
 import {
   type AfterViewInit,
   ChangeDetectionStrategy,
@@ -24,12 +25,10 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type {
-  CreateResourceResponseDto,
   FolderNodeDto,
   ResourceSummaryDto,
   SearchResultDto,
   TranslationStatus,
-  UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 import {
   applyPreferredTerm,
@@ -38,10 +37,10 @@ import {
   resolveResourceKey,
   summaryTarget,
 } from '@simoncodes-ca/domain';
-import { Subject } from 'rxjs';
-import { debounceTime, takeUntil } from 'rxjs/operators';
+import { merge, Subject } from 'rxjs';
+import { debounceTime, map, takeUntil } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { ApiError, apiErrorMessage } from '../../../shared/api-error/api-error';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { CollectionsStore } from '../../../collections/store/collections.store';
 import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import { injectConfirm } from '../../../shared/confirm';
@@ -52,8 +51,9 @@ import { segmentValidator } from '../../../shared/validators/segment.validator';
 import { FolderPeek } from '../../services/folder-peek';
 import { SimilarValues } from '../../services/similar-values';
 import { BrowserStore } from '../../store/browser.store';
-import { doesUpdateMoveEntry } from '../../store/does-update-move-entry';
 import { filterFolderTree } from '../../store/folder-tree.utils';
+import { editorEntrySources } from './editor-entry-sources';
+import { type EditorOutcome, type EditorRefusal, isEditorRefusal, submitEditor, submitGate } from './editor-submit';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
 import {
@@ -64,12 +64,9 @@ import {
   contextTree,
   folderEntryKeys,
   hasUnsavedChanges,
-  type KnownEntries,
   type LocaleDraft,
   removeTag,
   type ResourceEntryDraft,
-  toCreateDto,
-  toUpdateDto,
 } from './resource-entry-draft';
 import { SimilarTranslations } from './similar-translations';
 
@@ -102,16 +99,7 @@ export interface TranslationEditorDialogData {
  * How the editor closed: the one result its launcher (`TranslationEditorLauncher`) reads.
  * `skippedLocales` are the locales auto-translation skipped (ICU format), possibly none.
  */
-export type EditorOutcome =
-  /** An edit was saved and the entry stayed in its folder. */
-  | { kind: 'saved'; fullKey: string; skippedLocales: string[] }
-  /** An edit was saved into another folder (`folderPath`, `''` for the root); `fullKey` is the new key. */
-  | { kind: 'moved'; fullKey: string; folderPath: string; skippedLocales: string[] }
-  | { kind: 'created'; fullKey: string; skippedLocales: string[] }
-  /** The key is taken and the user asked for the entry that holds it instead. */
-  | { kind: 'open-existing'; fullKey: string }
-  /** Closed without a write, or the server found nothing to change. */
-  | { kind: 'cancelled' };
+export type { EditorOutcome } from './editor-submit';
 
 @Component({
   standalone: true,
@@ -143,6 +131,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   private readonly folderPeek = inject(FolderPeek).openFolderPeek();
   private readonly similarValues = inject(SimilarValues);
   private readonly browserStore = inject(BrowserStore);
+  readonly #entrySources = editorEntrySources(this.browserStore, this.folderPeek);
   private readonly notifications = inject(NotificationService);
   private readonly transloco = inject(TranslocoService);
   readonly #collectionsStore = inject(CollectionsStore);
@@ -270,7 +259,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   readonly selectedFolderPath = signal<string>('');
 
-  readonly rootFolders = computed(() => this.browserStore.rootFolders());
+  readonly rootFolders = this.#entrySources.rootFolders;
 
   readonly otherLocales = computed(() =>
     this.data.availableLocales.filter((locale) => locale !== this.data.baseLocale),
@@ -299,10 +288,16 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly hasSearchQuery = computed(() => hasSearchLength(this.baseValueText().trim()));
 
   /**
-   * Bumped on every form status change. Reactive forms are not signal-based, so
-   * anything computed from validity has to read this to stay live.
+   * Publish a fresh raw snapshot for either event. Repeated status strings can
+   * otherwise hide a changed key from computeds before the next render.
    */
-  readonly formRevision = signal(0);
+  readonly #silentFormChanges = new Subject<void>();
+  readonly #formState = toSignal(
+    merge(this.form.valueChanges, this.form.statusChanges, this.#silentFormChanges).pipe(
+      map(() => this.form.getRawValue()),
+    ),
+    { initialValue: this.form.getRawValue() },
+  );
 
   /**
    * The entry being edited, by its own key. Edit mode locks the key, so the
@@ -311,34 +306,29 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly #ownKey = this.data.mode === 'edit' ? this.data.resource?.entryKey : undefined;
 
   /** Everything the draft module needs to know which entries a folder holds. */
-  readonly #knownEntries = computed<KnownEntries>(() => ({
-    rootFolders: this.rootFolders(),
-    browserFolderPath: this.browserStore.currentFolderPath(),
-    browserEntries: this.browserStore.translations(),
-    fetched: this.folderPeek.folderEntries(),
-  }));
+  readonly #knownEntries = this.#entrySources.knownEntries;
 
   /** Live "this key is already taken in the target folder" state; see `collisionFor`. */
   readonly keyCollision = computed(() => {
-    this.formRevision();
+    this.#formState();
     return collisionFor(this.form.controls.key.value, this.selectedFolderPath(), this.#knownEntries(), this.#ownKey);
   });
 
   /** Live form validity, for the footer's earned check glyph. */
   readonly isFormValid = computed(() => {
-    this.formRevision();
+    this.#formState();
     return this.form.valid && !this.keyCollision();
   });
 
   /** True once the key control is both invalid and worth complaining about. */
   readonly showKeyError = computed(() => {
-    this.formRevision();
+    this.#formState();
     return this.form.controls.key.invalid && (this.form.controls.key.touched || this.submitAttempted());
   });
 
   /** True once the English value is both missing and worth complaining about. */
   readonly showBaseValueError = computed(() => {
-    this.formRevision();
+    this.#formState();
     return this.form.controls.baseValue.invalid && (this.form.controls.baseValue.touched || this.submitAttempted());
   });
 
@@ -359,7 +349,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   /** The complete dot-delimited key, for the location pill's tooltip. */
   readonly fullKeyPreview = computed(() => {
-    this.formRevision();
+    this.#formState();
     const folder = this.selectedFolderPath();
     const key = this.form.controls.key.value.trim();
     return key ? resolveResourceKey(key, folder) : folder;
@@ -377,7 +367,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   /** Every non-base locale with the value and status the form currently holds. */
   readonly localeSummaries = computed<LocaleDraft[]>(() => {
-    this.formRevision();
+    this.#formState();
     return this.form.controls.translations.controls.map((group) => group.getRawValue());
   });
 
@@ -446,7 +436,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   /** The mini tree in "Where it lands"; see `contextTree` in the draft module. */
   readonly contextTree = computed<ContextTreeNode[]>(() => {
-    this.formRevision();
+    this.#formState();
     return contextTree(
       {
         folderPath: this.selectedFolderPath(),
@@ -472,15 +462,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    */
   readonly icuPlaceholderMarkup = '<code>&#123;count&#125;</code>';
 
-  readonly allTagSuggestions = computed(() => {
-    const seen = new Set<string>();
-    for (const resource of this.browserStore.translations()) {
-      for (const tag of resource.tags) {
-        seen.add(tag);
-      }
-    }
-    return [...seen].sort();
-  });
+  readonly allTagSuggestions = this.#entrySources.tagSuggestions;
 
   readonly filteredTagSuggestions = computed(() => {
     const input = this.tagInputText().toLowerCase();
@@ -516,13 +498,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     if (!this.isEditMode()) {
       this.#setupDottedKeyAbsorption();
     }
-
-    this.form.statusChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
-      this.formRevision.update((revision) => revision + 1);
-    });
-    this.form.valueChanges.pipe(takeUntil(this.destroy$)).subscribe(() => {
-      this.formRevision.update((revision) => revision + 1);
-    });
 
     // View-only mode: lock down all inputs. Save is hidden in the template.
     if (this.isReadOnly()) {
@@ -581,6 +556,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     clearTimeout(this.#keyCopiedTimer);
     this.destroy$.next();
     this.destroy$.complete();
+    this.#silentFormChanges.complete();
   }
 
   ngAfterViewInit(): void {
@@ -711,13 +687,18 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     });
   }
 
-  /** Writes the leaf back without re-entering the subscription that produced it. */
+  /** Writes the leaf without re-entering the key's valueChanges subscription. */
   #setKeyControl(leaf: string): void {
     const control = this.form.controls.key;
     control.setValue(leaf, { emitEvent: false });
     control.markAsDirty();
     control.updateValueAndValidity({ emitEvent: false });
-    this.formRevision.update((revision) => revision + 1);
+    this.#publishFormSnapshot();
+  }
+
+  /** Publishes the one silent form write to the same signal bridge as regular form events. */
+  #publishFormSnapshot(): void {
+    this.#silentFormChanges.next();
   }
 
   /**
@@ -773,9 +754,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       .peekFolder(this.data.collectionName, folderPath)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
-        next: () => this.formRevision.update((revision) => revision + 1),
         // A folder we cannot read claims nothing. The save path still guards.
-        error: () => this.formRevision.update((revision) => revision + 1),
+        error: () => undefined,
       });
   }
 
@@ -1024,39 +1004,48 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   async onSubmit(): Promise<void> {
-    if (this.isReadOnly() || this.isSubmitting()) {
-      return;
-    }
+    const gate = submitGate({
+      readOnly: this.isReadOnly(),
+      submitting: this.isSubmitting(),
+      invalid: this.form.invalid,
+      collision: this.keyCollision(),
+      needsCommentConfirmation: !this.form.controls.comment.value.trim() && !this.#commentConfirmationShown,
+    });
+    if (gate === 'read-only' || gate === 'submitting') return;
 
-    // The save button stays enabled so an invalid form can explain itself
-    // rather than presenting a dead control with no error anywhere on screen.
-    if (this.form.invalid) {
+    if (gate === 'invalid') {
       this.#revealValidationFailure();
       return;
     }
 
-    // The key is already taken, and the writer would overwrite the entry rather
-    // than refuse it. Stop before the network and offer the same two ways out
-    // the save-time conflict offers, so both routes end in the same place.
-    if (this.keyCollision()) {
+    if (gate === 'collision') {
       this.#showKeyConflictDialog(resolveResourceKey(this.form.controls.key.value.trim(), this.selectedFolderPath()));
       return;
     }
 
-    if (!this.form.controls.comment.value.trim() && !this.#commentConfirmationShown) {
+    if (gate === 'needs-comment-confirmation') {
       const shouldProceed = await this.#showCommentConfirmation();
+      if (!shouldProceed) return;
+    }
 
-      if (!shouldProceed) {
-        return;
+    this.isSubmitting.set(true);
+    this.errorMessage.set(null);
+    submitEditor({
+      mode: this.data.mode,
+      draft: this.#draft(),
+      original: this.#originalEntry(),
+      writes: {
+        create: (dto) => this.browserStore.createResource(this.data.collectionName, dto),
+        update: (dto) => this.browserStore.updateResource(this.data.collectionName, dto),
+      },
+    }).subscribe((result) => {
+      if (isEditorRefusal(result)) {
+        this.isSubmitting.set(false);
+        this.#handleSubmitRefusal(result);
+      } else {
+        this.#close(result);
       }
-    }
-
-    const draft = this.#draft();
-    if (this.isEditMode()) {
-      this.#handleEditSubmit(draft);
-    } else {
-      this.#handleCreateSubmit(draft);
-    }
+    });
   }
 
   /**
@@ -1066,7 +1055,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   #revealValidationFailure(): void {
     this.submitAttempted.set(true);
     this.form.markAllAsTouched();
-    this.formRevision.update((revision) => revision + 1);
     this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS));
 
     // Focus belongs to the offending field, not to whatever opened the panel.
@@ -1079,82 +1067,31 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     });
   }
 
-  #handleEditSubmit(draft: ResourceEntryDraft): void {
-    const original = this.#originalEntry();
-    if (!original) {
-      this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.MISSINGRESOURCE));
-      return;
-    }
-
-    this.isSubmitting.set(true);
-    this.errorMessage.set(null);
-
-    // The key control is readonly in edit mode (`html`), so `draft.key` can only
-    // ever equal the original; renaming is a move, handled by the CLI.
-    const dto = toUpdateDto(draft, original);
-
-    this.browserStore.updateResource(this.data.collectionName, dto).subscribe({
-      next: (response: UpdateResourceResponseDto) => {
-        const skippedLocales = response.skippedLocales ?? [];
-        if (doesUpdateMoveEntry(dto)) {
-          const fullKey = resolveResourceKey(original.entryKey, dto.moveTo);
-          this.#close({ kind: 'moved', fullKey, folderPath: dto.moveTo, skippedLocales });
-        } else if (response.updated) {
-          this.#close({ kind: 'saved', fullKey: original.fullKey, skippedLocales });
-        } else {
-          this.#close({ kind: 'cancelled' });
-        }
-      },
-      error: (error: unknown) => {
-        this.isSubmitting.set(false);
-        this.#handleUpdateError(error);
-      },
-    });
-  }
-
-  #handleCreateSubmit(draft: ResourceEntryDraft): void {
-    this.isSubmitting.set(true);
-    this.errorMessage.set(null);
-
-    const createDto = toCreateDto(draft);
-
-    this.browserStore.createResource(this.data.collectionName, createDto).subscribe({
-      next: (response: CreateResourceResponseDto) => {
-        this.#close({ kind: 'created', fullKey: createDto.key, skippedLocales: response.skippedLocales ?? [] });
-      },
-      error: (error: unknown) => {
-        this.isSubmitting.set(false);
-        this.#handleCreateError(error, createDto.key);
-      },
-    });
-  }
-
-  #handleCreateError(error: unknown, fullKey: string): void {
+  #handleSubmitRefusal(refusal: EditorRefusal): void {
     const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
-    if (!(error instanceof ApiError)) {
-      this.errorMessage.set(this.transloco.translate(tokens.UNEXPECTED));
-      return;
+    switch (refusal.kind) {
+      case 'missing-original':
+        this.errorMessage.set(this.transloco.translate(tokens.MISSINGRESOURCE));
+        return;
+      case 'conflict':
+        this.#showKeyConflictDialog(refusal.key);
+        return;
+      case 'not-found':
+        this.errorMessage.set(this.transloco.translate(tokens.NOTFOUND));
+        return;
+      case 'invalid':
+        this.errorMessage.set(apiErrorMessage(refusal.error, this.transloco.translate(tokens.INVALIDREQUEST)));
+        return;
+      case 'create-failed':
+        this.errorMessage.set(apiErrorMessage(refusal.error, this.transloco.translate(tokens.CREATEFAILED)));
+        return;
+      case 'update-failed':
+        this.errorMessage.set(apiErrorMessage(refusal.error, this.transloco.translate(tokens.UPDATEFAILED)));
+        return;
+      case 'unexpected':
+        this.errorMessage.set(this.transloco.translate(tokens.UNEXPECTED));
+        return;
     }
-    if (error.kind === 'conflict') {
-      this.#showKeyConflictDialog(fullKey);
-      return;
-    }
-    const fallback = error.kind === 'invalid' ? tokens.INVALIDREQUEST : tokens.CREATEFAILED;
-    this.errorMessage.set(apiErrorMessage(error, this.transloco.translate(fallback)));
-  }
-
-  #handleUpdateError(error: unknown): void {
-    const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
-    if (!(error instanceof ApiError)) {
-      this.errorMessage.set(this.transloco.translate(tokens.UNEXPECTED));
-      return;
-    }
-    if (error.kind === 'not-found') {
-      this.errorMessage.set(this.transloco.translate(tokens.NOTFOUND));
-      return;
-    }
-    const fallback = error.kind === 'invalid' ? tokens.INVALIDREQUEST : tokens.UPDATEFAILED;
-    this.errorMessage.set(apiErrorMessage(error, this.transloco.translate(fallback)));
   }
 
   #showKeyConflictDialog(existingKey: string): void {
