@@ -24,16 +24,16 @@ export interface TranslateLocaleOptions {
 export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
   name: 'Translate locale',
   collection: 'writable',
+  formatError: (error, duringRun) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof AutoTranslationDisabledError) {
+      return `${message}. Set translation.enabled = true in your configuration`;
+    }
+    return duringRun ? `Translation failed: ${message}` : undefined;
+  },
   // Core's precondition runs before the locale prompt, so a disabled collection is refused before any question.
   prompts: (options, { collection }) => {
-    try {
-      assertAutoTranslationEnabled(collection);
-    } catch (error) {
-      if (error instanceof AutoTranslationDisabledError) {
-        throw new Error(`${error.message}. Set translation.enabled = true in your configuration`);
-      }
-      throw error;
-    }
+    assertAutoTranslationEnabled(collection);
     if (collection.targetLocales.length === 0) {
       throw new Error(
         `No target locales configured. Add locales other than the base locale "${collection.baseLocale}".`,
@@ -61,22 +61,17 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
     console.log('');
     ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);
 
-    let result: Awaited<ReturnType<typeof translateLocale>>;
-    try {
-      result = await translateLocale(collection, {
-        targetLocale,
-        onProgress: answers.verbose
-          ? (progress) => {
-              ConsoleFormatter.indent(
-                `[batch ${progress.currentBatch}/${progress.totalBatches}] ` +
-                  `translated: ${progress.translatedCount}, skipped: ${progress.skippedCount}, failed: ${progress.failedCount}`,
-              );
-            }
-          : undefined,
-      });
-    } catch (error) {
-      throw new Error(`Translation failed: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    const result = await translateLocale(collection, {
+      targetLocale,
+      onProgress: answers.verbose
+        ? (progress) => {
+            ConsoleFormatter.indent(
+              `[batch ${progress.currentBatch}/${progress.totalBatches}] ` +
+                `translated: ${progress.translatedCount}, skipped: ${progress.skippedCount}, failed: ${progress.failedCount}`,
+            );
+          }
+        : undefined,
+    });
 
     console.log('');
     ConsoleFormatter.success(`Translated locale '${targetLocale}' in collection '${collectionName}'`);

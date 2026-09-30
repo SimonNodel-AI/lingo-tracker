@@ -120,6 +120,8 @@ export interface CommandSpec<
    * missing. `run` sees them typed as present.
    */
   readonly required?: readonly Required[];
+  /** Formats a command error without replacing the original error seen by the runner. */
+  readonly formatError?: (error: unknown, duringRun: boolean) => string | undefined;
   /** The core call(s) and the output. Throw to fail with `❌ <message>`. */
   readonly run: (
     ctx: CommandContext<Options, Need, WithConfig, Required>,
@@ -199,6 +201,7 @@ async function execute<
   WithConfig extends boolean,
   Required extends keyof Options & string,
 >(spec: CommandSpec<Options, Need, WithConfig, Required>, options: Options): Promise<0 | 1> {
+  let duringRun = false;
   try {
     const cwd = getCwd();
     const interactive = isInteractiveTerminal();
@@ -248,10 +251,11 @@ async function execute<
       resources = { ...resources, collections };
     }
 
+    duringRun = true;
     const result = await spec.run({ ...promptContext, ...resources, answers });
     return result ? result.exitCode : 0;
   } catch (error) {
-    return report(error, spec.name);
+    return report(error, spec.name, spec.formatError?.(error, duringRun));
   }
 }
 
@@ -307,7 +311,7 @@ async function ask(questions: prompts.PromptObject | prompts.PromptObject[]): Pr
 }
 
 /** Prints the failure and returns the exit code: 0 for a cancel, 1 for anything else. */
-function report(error: unknown, name: string): 0 | 1 {
+function report(error: unknown, name: string, formattedMessage?: string): 0 | 1 {
   if (error instanceof CommandCancelledError) {
     ConsoleFormatter.error(`${name} cancelled.`);
     return 0;
@@ -323,7 +327,7 @@ function report(error: unknown, name: string): 0 | 1 {
   }
   // A wrapping error may keep its message fixed (it can reach an API client) and hold the
   // underlying reason, such as `EACCES: permission denied`, in `cause`; the CLI shows it.
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formattedMessage ?? (error instanceof Error ? error.message : String(error));
   const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
   if (cause instanceof Error) ConsoleFormatter.error(message, [cause.message]);
   else ConsoleFormatter.error(message);

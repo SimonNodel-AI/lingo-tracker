@@ -1,4 +1,13 @@
-import { type LingoTrackerConfig, loadConfig, type TranslateLocaleResult, translateLocale } from '@simoncodes-ca/core';
+import {
+  assertAutoTranslationEnabled,
+  AutoTranslationDisabledError,
+  InvalidConfigError,
+  type LingoTrackerConfig,
+  loadConfig,
+  type TranslateLocaleResult,
+  translateLocale,
+  TranslationError,
+} from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -8,7 +17,12 @@ vi.mock('prompts');
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  return { ...actual, loadConfig: vi.fn(), translateLocale: vi.fn() };
+  return {
+    ...actual,
+    assertAutoTranslationEnabled: vi.fn(actual.assertAutoTranslationEnabled),
+    loadConfig: vi.fn(),
+    translateLocale: vi.fn(),
+  };
 });
 
 const CONFIG: LingoTrackerConfig = {
@@ -28,6 +42,7 @@ const RESULT: TranslateLocaleResult = {
   warnings: [],
   failures: [],
   skippedKeys: ['a.plural'],
+  mutations: [],
 };
 
 describe('translateLocaleCommand', () => {
@@ -84,6 +99,47 @@ describe('translateLocaleCommand', () => {
 
     expect(console.error).toHaveBeenCalledWith('❌ Translation failed: API key missing');
     expect(process.exitCode).toBe(1);
+  });
+
+  it('keeps a typed translation error while printing the existing prefix', async () => {
+    const error = new TranslationError('API key missing', 'MISSING_API_KEY', false);
+    vi.mocked(translateLocale).mockRejectedValue(error);
+
+    await translateLocaleCommand({ locale: 'fr' });
+
+    expect(error).toBeInstanceOf(TranslationError);
+    expect(error.code).toBe('MISSING_API_KEY');
+    expect(error.message).toBe('API key missing');
+    expect(console.error).toHaveBeenCalledWith('❌ Translation failed: API key missing');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('keeps a disabled-translation error and prints its configuration hint', async () => {
+    const error = new AutoTranslationDisabledError('main');
+    vi.mocked(assertAutoTranslationEnabled).mockImplementationOnce(() => {
+      throw error;
+    });
+
+    await translateLocaleCommand({ locale: 'fr' });
+
+    expect(error).toBeInstanceOf(AutoTranslationDisabledError);
+    expect(error.kind).toBe('unavailable');
+    expect(error.message).toBe('Auto-translation is not enabled for collection "main"');
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints a typed error cause under the translation failure', async () => {
+    const error = new InvalidConfigError('Cannot translate', { cause: new Error('API request failed') });
+    vi.mocked(translateLocale).mockRejectedValue(error);
+
+    await translateLocaleCommand({ locale: 'fr' });
+
+    expect(console.error).toHaveBeenCalledWith('❌ Translation failed: Cannot translate');
+    expect(console.error).toHaveBeenCalledWith('  API request failed');
+    expect(error.message).toBe('Cannot translate');
   });
 
   it.each([

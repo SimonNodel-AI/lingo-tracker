@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import type { Collection, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
+import type { Collection, ResourceMutation, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
 import { TranslationError } from '@simoncodes-ca/core';
 import type { CollectionIndex } from '../cache/collection-index.service';
 import { TranslationJobService } from './translation-job.service';
@@ -22,6 +22,7 @@ const makeSuccessResult = (overrides: Partial<TranslateLocaleResult> = {}): Tran
   failures: [{ key: 'apps.button.ok', error: 'Rate limit exceeded' }],
   skippedKeys: [],
   warnings: [],
+  mutations: [],
   ...overrides,
 });
 
@@ -172,18 +173,52 @@ describe('TranslationJobService', () => {
     ]);
   });
 
-  it.each([
-    ['completes', () => mockTranslateLocale.mockResolvedValue(makeSuccessResult())],
-    ['fails', () => mockTranslateLocale.mockRejectedValue(new Error('Unexpected network failure'))],
-  ])('drops the collection index for the translations folder when the job %s', async (_outcome, arrange) => {
-    arrange();
+  it.each(['completes', 'fails'])('applies only reported mutations when the job %s', async (outcome) => {
+    const mutation: ResourceMutation = { kind: 'reindex', translationsFolder: collection.translationsFolder };
+    const mutations = [mutation];
+    if (outcome === 'completes') {
+      mockTranslateLocale.mockImplementationOnce(
+        (_collection: Collection, params: { onWrite?: (mutation: ResourceMutation) => void }) => {
+          params.onWrite?.(mutation);
+          return Promise.resolve(makeSuccessResult({ mutations }));
+        },
+      );
+    } else {
+      mockTranslateLocale.mockImplementationOnce(
+        (_collection: Collection, params: { onWrite?: (mutation: ResourceMutation) => void }) => {
+          params.onWrite?.(mutation);
+          return Promise.reject(new Error('later failure'));
+        },
+      );
+    }
 
-    startJob(service);
+    const jobId = startJob(service);
     expect(mockIndex.apply).not.toHaveBeenCalled();
 
     await flush();
 
-    expect(mockIndex.apply).toHaveBeenCalledWith([{ kind: 'reindex', translationsFolder: '/path/to/translations' }]);
+    expect(service.getJob(jobId)?.status).toBe(outcome === 'completes' ? 'completed' : 'failed');
+    expect(mockIndex.apply).toHaveBeenCalledTimes(1);
+    expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
+  });
+
+  it('does not apply a mutation when no folder was written', async () => {
+    mockTranslateLocale.mockResolvedValue(makeSuccessResult());
+
+    startJob(service);
+    await flush();
+
+    expect(mockIndex.apply).not.toHaveBeenCalled();
+  });
+
+  it('does not apply a mutation when the job fails before a write', async () => {
+    mockTranslateLocale.mockRejectedValue(new TranslationError('No API key', 'MISSING_API_KEY', false));
+
+    const jobId = startJob(service);
+    await flush();
+
+    expect(service.getJob(jobId)?.status).toBe('failed');
+    expect(mockIndex.apply).not.toHaveBeenCalled();
   });
 
   it('logs the folders translateLocale could not read', async () => {

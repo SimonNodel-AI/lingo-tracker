@@ -1,19 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Collection, TranslateLocaleProgress } from '@simoncodes-ca/core';
-import { reindexMutation, translateLocale } from '@simoncodes-ca/core';
+import type { Collection, ResourceMutation, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
+import { translateLocale } from '@simoncodes-ca/core';
 import type { TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { JobRegistry } from '../jobs/job-registry';
 
-interface TranslationState {
+interface TranslationState
+  extends Pick<TranslateLocaleResult, 'totalResources' | 'translatedCount' | 'failedCount' | 'skippedCount'> {
   collectionName: string;
   targetLocale: string;
-  totalResources: number;
-  translatedCount: number;
-  failedCount: number;
-  skippedCount: number;
-  failures: Array<{ key: string; error: string }>;
-  skippedKeys: string[];
+  failures: TranslateLocaleResult['failures'];
+  skippedKeys: TranslateLocaleResult['skippedKeys'];
 }
 
 @Injectable()
@@ -54,6 +51,7 @@ export class TranslationJobService {
         skippedKeys: [],
       },
       execute: async (jobId, update) => {
+        let mutations: ResourceMutation[] = [];
         const onProgress = (progress: TranslateLocaleProgress): void => {
           update({
             totalResources: progress.totalResources,
@@ -63,7 +61,12 @@ export class TranslationJobService {
           });
         };
         try {
-          const result = await translateLocale(collection, { targetLocale, onProgress });
+          const result = await translateLocale(collection, {
+            targetLocale,
+            onProgress,
+            onWrite: (mutation) => mutations.push(mutation),
+          });
+          mutations = result.mutations;
           for (const warning of result.warnings) {
             this.#logger.warn(`Translation job ${jobId}: ${warning}`);
           }
@@ -76,8 +79,7 @@ export class TranslationJobService {
             skippedKeys: [...result.skippedKeys],
           });
         } finally {
-          // Core may have written resource files even when translation failed part-way.
-          this.#index.apply([reindexMutation(collection.translationsFolder)]);
+          if (mutations.length > 0) this.#index.apply(mutations);
         }
       },
       onError: (jobId, message) => {
