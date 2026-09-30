@@ -9,7 +9,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import type { MatChipInputEvent } from '@angular/material/chips';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { isUnderNodeModules, normalizeProtectedTerms, normalizeTag, validateLocale } from '@simoncodes-ca/domain';
+import { isUnderNodeModules, normalizeTag, validateLocale } from '@simoncodes-ca/domain';
 import type { CollectionFormDialogData } from './collection-form-dialog-data';
 import type { LingoTrackerCollectionDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
@@ -17,6 +17,7 @@ import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsStore } from '../store/collections.store';
 import { injectConfirm } from '../../shared/confirm';
 import { submitDialogConfigWrite, type ConfigRefusal } from '../store/dialog-config-submit';
+import { ProtectedTermsChips } from '../../shared/protected-terms/protected-terms-chips';
 
 /** What the dialog closes with: the collection as the server has now accepted it. */
 export interface CollectionFormResult {
@@ -80,7 +81,8 @@ export class CollectionFormDialog implements OnInit {
   /** The config file name, wrapped in our own `<code>` so hints can set it in mono inside translated prose. */
   readonly configFileMarkup = '<code>.lingo-tracker.json</code>';
   readonly tagsList = signal<string[]>([]);
-  readonly protectedTermsList = signal<string[]>([]);
+  readonly protectedTerms = new ProtectedTermsChips();
+  readonly protectedTermsList = this.protectedTerms.values;
   /** The collection's `protectedTermsFile` pointer, preserved across an edit but not editable here. */
   readonly protectedTermsFile = signal<string | undefined>(undefined);
   /** Resolved path of that file, shown read-only so the source of a diff is obvious. */
@@ -148,7 +150,7 @@ export class CollectionFormDialog implements OnInit {
       });
 
       this.tagsList.set(this.#data.config.tags ?? []);
-      this.protectedTermsList.set(this.#data.config.protectedTerms ?? []);
+      this.protectedTerms.seedRaw(this.#data.config.protectedTerms ?? []);
       this.protectedTermsFile.set(this.#data.config.protectedTermsFile);
       this.protectedTermsFilePath.set(this.#data.config.protectedTermsFilePath);
       this.advancedOpen.set(this.tagsList().length > 0 || this.protectedTermsList().length > 0);
@@ -288,10 +290,7 @@ export class CollectionFormDialog implements OnInit {
    * the entered casing and punctuation (`iPhone`, `Node.js`, `C++` stay verbatim).
    */
   addProtectedTermValue(value: string): void {
-    const [term] = normalizeProtectedTerms([value]);
-    if (term && !this.protectedTermsList().includes(term)) {
-      this.protectedTermsList.update((terms) => [...terms, term]);
-    }
+    this.protectedTerms.add(value);
   }
 
   addProtectedTerm(event: MatChipInputEvent): void {
@@ -300,7 +299,7 @@ export class CollectionFormDialog implements OnInit {
   }
 
   removeProtectedTerm(term: string): void {
-    this.protectedTermsList.update((terms) => terms.filter((t) => t !== term));
+    this.protectedTerms.remove(term);
   }
 
   removeLocale(index: number): void {
