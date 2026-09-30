@@ -337,6 +337,7 @@ describe('FoldersController', () => {
 
       const mockCreateResult = {
         folderPath: 'apps.common.buttons',
+        folderAddress: 'apps.common.buttons',
         created: true,
       };
 
@@ -351,6 +352,21 @@ describe('FoldersController', () => {
 
       expect(result.created).toBe(true);
       expect(result.folderPath).toBe('apps.common.buttons');
+    });
+
+    it('uses the folder address returned by core for a whitespace-only parent', async () => {
+      (core.createFolder as jest.Mock).mockReturnValue({
+        folderPath: '/translations/buttons',
+        folderAddress: 'buttons',
+        created: true,
+        mutations: [],
+      });
+
+      const result = await foldersController.create('test-collection', { folderName: 'buttons', parentPath: '  ' });
+
+      expect(result.folder.fullPath).toBe('buttons');
+      expect(result.folder.tree.path).toBe('buttons');
+      expect(core.createFolder).toHaveBeenCalledWith(expect.any(Object), { folderName: 'buttons', parentPath: '  ' });
     });
 
     it('lets an invalid folder name propagate; the exception filter answers 400', async () => {

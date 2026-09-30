@@ -3,7 +3,7 @@
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
-export { addResource, deleteResource, editResource, moveResource } from './lib/resource';
+export { addResource, addResources, deleteResource, editResource, moveResource, moveResources } from './lib/resource';
 
 // Operations: folders
 export { createFolder, deleteFolder, moveFolder } from './lib/folder';
@@ -115,6 +115,7 @@ export {
 // Read models: the resource tree, Resource Search and fingerprints behind the API's CollectionIndex and CLI find-similar
 export {
   computeTreeFingerprint,
+  clampSearchLimit,
   extractResourcesRecursively,
   extractSubtree,
   type FolderChild,
@@ -179,6 +180,7 @@ export type {
   RemoveLocaleFromCollectionResult,
   UpdateCollectionOptions,
 } from './collections-manager';
+export type { AddResourcesResult, MoveResourcesOperation } from './lib/resource';
 export type {
   BundleDefinitionOperationOptions,
   BundlePlan,

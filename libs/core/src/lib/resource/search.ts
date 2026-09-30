@@ -85,6 +85,11 @@ export const CONTAINMENT_MIN_SCORE = 0.4;
 
 const DEFAULT_LIMIT = 100;
 
+/** API search page size: default 100 for invalid input, maximum 500. */
+export function clampSearchLimit(requested: number): number {
+  return Number.isInteger(requested) && requested > 0 ? Math.min(requested, 500) : DEFAULT_LIMIT;
+}
+
 const TEXT_RANK: Record<MatchType, number> = {
   'exact-key': 1,
   'exact-value': 2,

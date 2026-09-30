@@ -3,7 +3,7 @@ import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import type { OpenTranslatorOptions } from '../translation/translator';
-import { validateAndResolvePaths } from './resource-file-paths';
+import { type ResolvedResourcePaths, validateAndResolvePaths } from './resource-file-paths';
 import { openResourceFolder } from './resource-folder';
 import { type ResourceMutation, upsertMutation } from './resource-mutation';
 import {
@@ -50,6 +50,15 @@ export interface AddResourceResult {
   readonly terminology: TerminologyFindings;
 }
 
+export interface PreparedResourceAdd {
+  readonly params: AddResourceParams;
+  readonly paths: ResolvedResourcePaths;
+  readonly baseValue: string;
+  readonly translations: ResourceTranslation[];
+  readonly skippedLocales?: string[];
+  readonly terminology: TerminologyFindings;
+}
+
 /**
  * Adds a resource entry to a collection, or replaces the entry at that key (its previous
  * translations and metadata are dropped). Creates the folders it needs.
@@ -74,6 +83,15 @@ export async function addResource(
   params: AddResourceParams,
   options: OpenTranslatorOptions = {},
 ): Promise<AddResourceResult> {
+  return writePreparedResourceAdd(collection, await prepareResourceAdd(collection, params, options));
+}
+
+/** Resolves all per-entry validation and translation work before a batch writes. */
+export async function prepareResourceAdd(
+  collection: Collection,
+  params: AddResourceParams,
+  options: OpenTranslatorOptions = {},
+): Promise<PreparedResourceAdd> {
   const { baseLocale, translationsFolder } = collection;
   const paths = validateAndResolvePaths({ key: params.key, translationsFolder, targetFolder: params.targetFolder });
 
@@ -96,6 +114,23 @@ export async function addResource(
     ),
   ];
 
+  return {
+    params,
+    paths,
+    baseValue,
+    translations,
+    ...(seeding.skippedLocales !== undefined && { skippedLocales: seeding.skippedLocales }),
+    terminology: withTranslatorProblems(
+      readProjectTerms(collection).checkBaseValue(paths.resolvedKey, baseValue),
+      seeding.problems,
+    ),
+  };
+}
+
+/** Stores an already prepared entry through the same Resource Folder path as a single add. */
+export function writePreparedResourceAdd(collection: Collection, prepared: PreparedResourceAdd): AddResourceResult {
+  const { paths, params, baseValue, translations } = prepared;
+  const { translationsFolder, baseLocale } = collection;
   ensureDirectoryExists({ directoryPath: paths.folderPath, errorContext: 'Creating resource folder' });
   const folder = openResourceFolder(paths.folderPath, { baseLocale });
   const created = !folder.has(paths.entryKey);
@@ -116,11 +151,8 @@ export async function addResource(
     resolvedKey: paths.resolvedKey,
     created,
     translations,
-    ...(seeding.skippedLocales !== undefined && { skippedLocales: seeding.skippedLocales }),
+    ...(prepared.skippedLocales !== undefined && { skippedLocales: prepared.skippedLocales }),
     mutations: [upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey))],
-    terminology: withTranslatorProblems(
-      readProjectTerms(collection).checkBaseValue(paths.resolvedKey, baseValue),
-      seeding.problems,
-    ),
+    terminology: prepared.terminology,
   };
 }
