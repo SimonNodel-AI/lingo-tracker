@@ -1,4 +1,5 @@
 import type { Collection } from '../config/open-collection';
+import { canImportLocale, DEFAULT_IMPORT_STRATEGY } from '@simoncodes-ca/domain';
 import { InvalidImportLocaleError } from '../errors';
 import {
   describeTermFileProblem,
@@ -56,11 +57,11 @@ export interface ImportSession {
  * @throws {ProtectedTermsFileError} A protected-terms file exists but is not a JSON array of strings.
  */
 export function openImportSession(collection: Collection, options: ImportRunOptions): ImportSession {
-  const strategy = options.strategy ?? 'translation-service';
+  const strategy = options.strategy ?? DEFAULT_IMPORT_STRATEGY;
   const defaults = getStrategyDefaults(strategy);
   const isBaseLocaleImport = options.locale === collection.baseLocale;
 
-  if (isBaseLocaleImport && strategy !== 'migration') {
+  if (!canImportLocale(options.locale, collection.baseLocale, strategy)) {
     throw new InvalidImportLocaleError(collection.baseLocale, strategy);
   }
 

@@ -1,14 +1,12 @@
 import {
   type ExportFormat,
   type ExportRunResult,
+  DEFAULT_CONFIG,
   exportTargetLocales,
   type LingoTrackerConfig,
   runExport,
-  validateBasePropertyName,
-  validateOutputDirectory,
 } from '@simoncodes-ca/core';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
-import * as path from 'path';
 import type prompts from 'prompts';
 import { type Answers, defineCommand } from '../runner/command-runner';
 import {
@@ -57,34 +55,12 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       ConsoleFormatter.warning('--base-property-name has no effect without --include-base');
     }
 
-    // Validate --base-property-name if provided (throws a message the runner prints)
-    if (options.basePropertyName) {
-      validateBasePropertyName(options.basePropertyName);
-    }
-
-    // Resolve output directory
-    const outputDir = options.output
-      ? path.resolve(cwd, options.output)
-      : path.resolve(cwd, config.exportFolder || 'dist/lingo-export');
-
-    validateOutputDirectory(outputDir);
-
-    const targetLocales = exportTargetLocales(collections, parseCommaSeparatedList(options.locale));
-    if (targetLocales.length === 0) {
-      ConsoleFormatter.warning('No target locales selected.');
-      return;
-    }
-
-    ConsoleFormatter.progress(`Exporting to ${format.toUpperCase()}...`);
-    ConsoleFormatter.indent(`Collections: ${collections.map((c) => c.name).join(', ')}`);
-    ConsoleFormatter.indent(`Locales: ${targetLocales.join(', ')}`);
-    ConsoleFormatter.indent(`Output: ${outputDir}`);
-    if (options.dryRun) ConsoleFormatter.indent('[DRY RUN]');
-
     const result = await runExport(collections, {
       format,
-      outputDirectory: outputDir,
-      locales: targetLocales,
+      outputDirectory: options.output,
+      exportFolder: config.exportFolder,
+      cwd,
+      locales: parseCommaSeparatedList(options.locale),
       status: parseCommaSeparatedList(options.status)?.map((s) => s as TranslationStatus),
       tags: parseCommaSeparatedList(options.tags),
       filenamePattern: options.filename,
@@ -100,7 +76,19 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       // The do-not-translate notes come from each collection's Project Terms, read by the run.
       augmentProtectedTerms: options.protectNotes !== false,
       onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
+      onStart: ({ outputDirectory, locales }) => {
+        ConsoleFormatter.progress(`Exporting to ${format.toUpperCase()}...`);
+        ConsoleFormatter.indent(`Collections: ${collections.map((c) => c.name).join(', ')}`);
+        ConsoleFormatter.indent(`Locales: ${locales.join(', ')}`);
+        ConsoleFormatter.indent(`Output: ${outputDirectory}`);
+        if (options.dryRun) ConsoleFormatter.indent('[DRY RUN]');
+      },
     });
+
+    if (result.locales.length === 0) {
+      ConsoleFormatter.warning('No target locales selected.');
+      return;
+    }
 
     displayResults(result);
 
@@ -232,7 +220,7 @@ function buildQuestions(
 
   // Output directory
   if (!options.output) {
-    const defaultOutput = config.exportFolder || 'dist/lingo-export';
+    const defaultOutput = config.exportFolder || DEFAULT_CONFIG.exportFolder;
     questions.push({
       type: 'text',
       name: 'output',

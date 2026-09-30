@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -42,9 +42,8 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CollectionNotFoundError: actual.CollectionNotFoundError,
     ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
     CONFIG_FILENAME: '.lingo-tracker.json',
+    DEFAULT_CONFIG: actual.DEFAULT_CONFIG,
     runExport: vi.fn(),
-    validateOutputDirectory: vi.fn(),
-    validateBasePropertyName: vi.fn(),
   };
 });
 
@@ -52,8 +51,6 @@ import type { ExportRunResult } from '@simoncodes-ca/core';
 import * as core from '@simoncodes-ca/core';
 
 const mockRunExport = vi.mocked(core.runExport);
-const mockValidateOutputDirectory = vi.mocked(core.validateOutputDirectory);
-const mockValidateBasePropertyName = vi.mocked(core.validateBasePropertyName);
 
 /** A run that exported fr and es; override any field. */
 const runResult = (overrides: Partial<ExportRunResult> = {}): ExportRunResult => ({
@@ -114,8 +111,20 @@ describe('exportCommand', () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
 
-    mockValidateOutputDirectory.mockReturnValue(undefined);
-    mockRunExport.mockResolvedValue(runResult());
+    mockRunExport.mockImplementation(async (collections, options) => {
+      const locales = core.exportTargetLocales(collections, options.locales);
+      if (locales.length === 0) {
+        return runResult({ locales: [], filesCreated: [], localeResults: [] });
+      }
+      options.onStart?.({
+        outputDirectory: resolve(
+          options.cwd ?? '/project',
+          options.outputDirectory || options.exportFolder || core.DEFAULT_CONFIG.exportFolder,
+        ),
+        locales,
+      });
+      return runResult();
+    });
   });
 
   afterEach(() => {
@@ -157,9 +166,7 @@ describe('exportCommand', () => {
     });
 
     it('should handle validateOutputDirectory errors', async () => {
-      mockValidateOutputDirectory.mockImplementation(() => {
-        throw new Error('Invalid output directory');
-      });
+      mockRunExport.mockRejectedValueOnce(new Error('Invalid output directory'));
 
       await exportCommand({ format: 'json' });
       expect(process.exitCode).toBe(1);
@@ -213,7 +220,7 @@ describe('exportCommand', () => {
         format: 'json',
       });
 
-      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ locales: ['fr', 'es'] }));
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ locales: undefined }));
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Locales: fr, es'));
     });
 
@@ -243,10 +250,12 @@ describe('exportCommand', () => {
         output: 'custom/output',
       });
 
-      expect(mockValidateOutputDirectory).toHaveBeenCalledWith(expect.stringContaining(join('custom', 'output')));
       expect(mockRunExport).toHaveBeenCalledWith(
         expect.any(Array),
-        expect.objectContaining({ outputDirectory: expect.stringContaining(join('custom', 'output')) }),
+        expect.objectContaining({ outputDirectory: 'custom/output' }),
+      );
+      expect(console.log).toHaveBeenCalledWith(
+        expect.stringContaining(`Output: ${resolve('/project', 'custom/output')}`),
       );
     });
 
@@ -332,7 +341,9 @@ describe('exportCommand', () => {
       });
 
       expect(console.error).toHaveBeenCalledWith('⚠️  No target locales selected.');
-      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ locales: ['en'] }));
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+      expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Exporting to'));
     });
   });
 
@@ -808,9 +819,7 @@ describe('exportCommand', () => {
     });
 
     it('should exit with error when --base-property-name validation fails', async () => {
-      mockValidateBasePropertyName.mockImplementationOnce(() => {
-        throw new Error('basePropertyName "value" is a reserved key');
-      });
+      mockRunExport.mockRejectedValueOnce(new Error('basePropertyName "value" is a reserved key'));
 
       await exportCommand({
         format: 'json',
@@ -819,7 +828,7 @@ describe('exportCommand', () => {
         includeBase: true,
       });
       expect(process.exitCode).toBe(1);
-      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(mockRunExport).toHaveBeenCalled();
 
       expect(console.error).toHaveBeenCalledWith(expect.stringContaining('basePropertyName "value" is a reserved key'));
     });

@@ -40,6 +40,7 @@ export {
 } from './lib/resource-key';
 
 // Staleness: how edits and imports move a locale's status
+export { canImportLocale, DEFAULT_IMPORT_STRATEGY, importableLocales } from './lib/import-rules';
 export {
   applyBaseChange,
   type EntryLocaleMetadata,
