@@ -47,7 +47,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `move` | `--collection`, `--source`, `--dest`, `--dest-collection`, `--override` | `moveResource()`. `--dest-collection` opens that collection with core `openCollection(config, name, { cwd, writable: true })` and passes it as `destinationCollection`; `--dest` is then a key in that collection. An unknown or read-only destination is the core typed error (exit 1). It is never prompted for. Core copies the entry and its metadata verbatim, so a move between collections with different base locales keeps the source-locale `source` text and checksums, and does not add or drop target locales (a known limitation of core) |
 | `normalize` | `--collection`, `--all`, `--dry-run`, `--json` | `normalize()` |
 | `translate-locale` | `--collection`, `--locale`, `--verbose` | `translateLocale(collection, { targetLocale, onProgress })` (through the [Translator](glossary.md#translator)); the summary prints `Skipped (needs human translation)` for complex ICU, lost placeholders and dropped protected terms |
-| `bundle` | `--name`, `--locale`, `--quiet`, `--verbose`, `--token-casing`, `--token-constant-name`, `--no-transform-icu-to-transloco`, `--debug-keys` | `generateBundle()` (with the project `cwd`) |
+| `bundle` | `--name`, `--locale`, `--quiet`, `--verbose`, `--token-casing`, `--token-constant-name`, `--no-transform-icu-to-transloco`, `--debug-keys` | `generateBundles()` (with the project `cwd`) |
 | `export` | `-f/--format`, `-c/--collection`, `-l/--locale`, `-s/--status`, `-t/--tags`, `-o/--output`, `--structure`, `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name`, `--filename`, `--no-protect-notes`, `--dry-run`, `--verbose` | `runExport()` |
 | `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `runImport()` |
 | `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | Command Runner opens every collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
@@ -65,8 +65,8 @@ The command passes `--file` to core's `updateProjectTerms()` before it writes an
 
 Both scopes read through `updateProjectTerms()`. Its `beforeWrite` callback lets the command print warnings and lists before the file write. Core validates flag combinations and uses the shared list merge with protected-term normalization.
 
-- **Global** — `readGlobalProtectedTerms(config, cwd)`. When `protectedTermsFile` is absent, this falls back to `.lingo-tracker-protected-terms.json` beside the config.
-- **Collection** — `readCollectionProtectedTerms(collection, cwd)`. This returns an empty list when the collection names no file. A collection has no default path.
+- **Global** — `updateProjectTerms()` reads the configured protected-terms file, or `.lingo-tracker-protected-terms.json` beside the config when no global pointer is set.
+- **Collection** — `updateProjectTerms()` reads the collection file when configured and combines those terms with the global list. A collection with no file contributes an empty list.
 
 `--list` on a collection prints three lists: the global terms, the collection's terms, and `effectiveProtectedTerms()` of the two. It names the resolved file behind each list. Paths inside the project root print as relative paths.
 
@@ -74,7 +74,7 @@ The core layer raises errors for a malformed file, for a collection with no file
 
 ### `validate` locales
 
-`validate` opens every collection with `openCollection()` and hands the collections to `validateResources()`. Each collection is validated with its own base locale and target locales (its `locales`, else the global `locales`, without its base locale). The command reads no global `baseLocale` or `locales` itself. When no collection has a target locale, the command exits 1.
+`validate` opens every collection with `openCollection()` and hands the collections to `runValidate()`; core uses `validateResources()` internally. Each collection is validated with its own base locale and target locales (its `locales`, else the global `locales`, without its base locale). The command reads no global `baseLocale` or `locales` itself. When no collection has a target locale, the command exits 1.
 
 `--skip-locales` removes locales from every collection. A locale that is some collection's target locale is skipped. A locale that is only a base locale is ignored without a message. Any other locale gets an `unknown locale` warning. When every target locale is skipped, the command exits 1.
 
@@ -86,7 +86,7 @@ The Command Runner resolves the configured collections before `normalize` checks
 
 `normalizeCollections` in core decides what to do with the opened read-only collections. The command maps flags, prints core events, and prints the returned totals and JSON payload. Any read-only collection in a named selection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
 
-The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and leaves single-bundle API jobs on `generateBundle`. A legacy `typeDist` warning comes from the type outcome and is printed on the same console stream.
+The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and the API job service prepares a run then calls `generatePreparedBundle`. A legacy `typeDist` warning comes from the type outcome and is printed on the same console stream.
 
 ### `glossary` pipeline
 

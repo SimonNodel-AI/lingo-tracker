@@ -1,5 +1,5 @@
 // The public surface of @simoncodes-ca/core: the Node-side operations the API and CLI call.
-// Only names with a consumer outside this library are listed, plus the types their signatures use.
+// Only names with an outside consumer, plus the types those names' signatures need, are listed.
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
@@ -23,7 +23,6 @@ export {
 export {
   addBundleDefinition,
   deleteBundleDefinition,
-  generateBundle,
   generateBundles,
   generatePreparedBundle,
   prepareBundleRun,
@@ -53,7 +52,7 @@ export {
   translateExistingResource,
   translateLocale,
 } from './lib/translation';
-export { generateValidationSummary, runValidate, validateResources } from './lib/validate';
+export { runValidate } from './lib/validate';
 export type { ValidateRunOptions, ValidateRunResult } from './lib/validate';
 
 // Collection & config
@@ -71,11 +70,6 @@ export {
   loadPreferredTerminology,
   openCollection,
   type ResolvedProtectedTerms,
-  readCollectionProtectedTerms,
-  readGlobalProtectedTerms,
-  resolveCollectionProtectedTermsFilePath,
-  resolveGlobalProtectedTermsFilePath,
-  resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
   type StoredProtectedTerms,
   type TermFile,
@@ -83,7 +77,7 @@ export {
 } from './lib/config';
 
 // Project Terms: the protected terms and preferred terminology in force for an opened collection
-export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './lib/config';
+export type { TerminologyFindings } from './lib/config';
 
 // ResourceFolder: one folder's entries and metadata, loaded and saved as a unit
 export {
@@ -117,7 +111,6 @@ export {
   type ResourceMutation,
   type ResourceTreeEntry,
   type ResourceTreeNode,
-  reindexMutation,
   type SearchableResource,
   type SearchMode,
   type SearchOptions,
@@ -250,3 +243,9 @@ export type {
   ResourceEntryMetadata,
   ResourceTranslation,
 } from './lib/resource';
+
+export type {
+  ProjectTermsUpdate,
+  ProjectTermsUpdateResult,
+  ProjectTermsUpdateView,
+} from './lib/config/update-project-terms';
