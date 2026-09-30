@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ResourceTreeEntry, ResourceTreeNode } from './load-resource-tree';
 import { readCollection } from './read-collection';
-import { clampSearchLimit, type SearchableResource, searchResources, treeResources } from './search';
+import { clampSearchLimit, type SearchableResource, searchPage, searchResources, treeResources } from './search';
 
 const EN = { baseLocale: 'en' };
 
@@ -27,6 +27,40 @@ it('clamps the API search limit to the default and maximum', () => {
   expect(clampSearchLimit(2.5)).toBe(100);
   expect(clampSearchLimit(7)).toBe(7);
   expect(clampSearchLimit(1000)).toBe(500);
+});
+
+describe('searchPage', () => {
+  it('caps the page at 500 and asks for one extra hit', () => {
+    const hits = searchResources(
+      Array.from({ length: 501 }, (_, i) => resource(`key${i}`, 'value')),
+      EN,
+      'key',
+      { limit: 501 },
+    );
+    const search = vi.fn(() => hits);
+    const page = searchPage(search, { maxResults: 1000 });
+    expect(search).toHaveBeenCalledWith({ mode: 'text', limit: 501 });
+    expect(page.results).toHaveLength(500);
+    expect(page).toMatchObject({ limited: true, limit: 500 });
+  });
+
+  it('maps similar mode to similar-value', () => {
+    const search = vi.fn(() => []);
+    expect(searchPage(search, { mode: 'similar', maxResults: 11 }).limited).toBe(false);
+    expect(search).toHaveBeenCalledWith({ mode: 'similar-value', limit: 12 });
+  });
+
+  it.each(['abc', '-2', '0', '2.5'])('defaults invalid maxResults %s to 100', (maxResults) => {
+    const search = vi.fn(() => []);
+    expect(searchPage(search, { maxResults }).limit).toBe(100);
+    expect(search).toHaveBeenCalledWith({ mode: 'text', limit: 101 });
+  });
+
+  it('accepts a numeric string and treats unknown mode as text', () => {
+    const search = vi.fn(() => []);
+    expect(searchPage(search, { maxResults: '7', mode: 'fuzzy' }).limit).toBe(7);
+    expect(search).toHaveBeenCalledWith({ mode: 'text', limit: 8 });
+  });
 });
 
 describe('searchResources — text mode', () => {

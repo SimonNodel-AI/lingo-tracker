@@ -1,5 +1,5 @@
-import { Controller, Post, Delete, Param, Body, HttpException, HttpStatus, UseGuards } from '@nestjs/common';
-import { createFolder, deleteFolder, moveFolder } from '@simoncodes-ca/core';
+import { Controller, Post, Delete, Body, HttpException, HttpStatus } from '@nestjs/common';
+import { type Collection, createFolder, deleteFolder, moveFolder } from '@simoncodes-ca/core';
 import type {
   CreateFolderDto,
   CreateFolderResponseDto,
@@ -11,10 +11,9 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
 import { CollectionIndex } from '../../cache/collection-index.service';
-import { WritableCollectionGuard } from '../guards/writable-collection.guard';
-import { openDestinationCollection, openRouteCollection } from '../open-route-collection';
+import { openDestinationCollection } from '../open-route-collection';
+import { RouteCollection } from '../route-collection';
 
-@UseGuards(WritableCollectionGuard)
 @Controller('collections/:collectionName/folders')
 export class FoldersController {
   constructor(
@@ -24,11 +23,9 @@ export class FoldersController {
 
   @Post()
   async create(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() createFolderDto: CreateFolderDto,
   ): Promise<CreateFolderResponseDto> {
-    const collection = openRouteCollection(this.configService.getConfig(), collectionName);
-
     const result = createFolder(collection, {
       folderName: createFolderDto.folderName,
       parentPath: createFolderDto.parentPath,
@@ -60,11 +57,9 @@ export class FoldersController {
   /** Failures are typed core errors: a missing folder answers 404, a malformed path 400. */
   @Delete()
   async delete(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() deleteFolderDto: DeleteFolderDto,
   ): Promise<DeleteFolderResponseDto> {
-    const collection = openRouteCollection(this.configService.getConfig(), collectionName);
-
     const result = deleteFolder(collection, {
       folderPath: deleteFolderDto.folderPath,
     });
@@ -84,11 +79,11 @@ export class FoldersController {
    */
   @Post('move')
   async move(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() moveFolderDto: MoveFolderDto,
   ): Promise<MoveFolderResponseDto> {
+    // Cross-collection moves need the config to resolve the destination.
     const config = this.configService.getConfig();
-    const collection = openRouteCollection(config, collectionName);
 
     if (
       !moveFolderDto.sourceFolderPath ||

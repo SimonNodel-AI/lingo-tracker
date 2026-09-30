@@ -9,6 +9,7 @@ import { CollectionsController } from './collections/collections.controller';
 import { FoldersController } from './collections/folders/folders.controller';
 import { LocalesController } from './collections/locales/locales.controller';
 import { ResourcesController } from './collections/resources/resources.controller';
+import { RouteCollectionPipe } from './collections/route-collection';
 import { ConfigController } from './config/config.controller';
 import { ConfigService } from './config/config.service';
 import { LingoTrackerExceptionFilter } from './errors/lingo-tracker-exception.filter';
@@ -28,6 +29,7 @@ import { TranslationJobService } from './translation-job/translation-job.service
   providers: [
     AppService,
     ConfigService,
+    RouteCollectionPipe,
     CollectionIndex,
     TranslationJobService,
     BundleJobService,

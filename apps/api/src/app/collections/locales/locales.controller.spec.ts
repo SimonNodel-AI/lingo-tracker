@@ -1,10 +1,11 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { HttpException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
 import { LocalesController } from './locales.controller';
 import { ConfigService } from '../../config/config.service';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import * as core from '@simoncodes-ca/core';
+import { RouteCollectionPipe } from '../route-collection';
 
 jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
@@ -20,6 +21,8 @@ describe('LocalesController', () => {
   let localesController: LocalesController;
 
   const mockConfig = {
+    exportFolder: 'dist/export',
+    importFolder: 'dist/import',
     baseLocale: 'en',
     locales: ['en', 'fr'],
     collections: {
@@ -30,6 +33,9 @@ describe('LocalesController', () => {
       },
     },
   };
+
+  const collectionFor = (name: string): core.Collection =>
+    new RouteCollectionPipe(localesModule.get<ConfigService>(ConfigService)).transform({ name, writable: true });
 
   const mockIndex = { apply: jest.fn() };
 
@@ -56,6 +62,18 @@ describe('LocalesController', () => {
   });
 
   describe('POST /locales (addLocale)', () => {
+    it('refuses a read-only collection in the route pipe', () => {
+      const configService = localesModule.get<ConfigService>(ConfigService);
+      jest.spyOn(configService, 'getConfig').mockReturnValue({
+        ...mockConfig,
+        collections: {
+          ...mockConfig.collections,
+          vendor: { translationsFolder: './translations/vendor', readOnly: true },
+        },
+      });
+      expect(() => collectionFor('vendor')).toThrow(ForbiddenException);
+    });
+
     it('returns 200 with message, entriesBackfilled, and filesUpdated on success', async () => {
       const mockResult = {
         message: 'Locale "de" added to collection "test-collection" successfully',
@@ -65,7 +83,7 @@ describe('LocalesController', () => {
       const mutations = [{ kind: 'reindex', translationsFolder: '/t' }];
       (core.addLocaleToCollection as jest.Mock).mockResolvedValue({ ...mockResult, mutations });
 
-      const result = await localesController.addLocale('test-collection', { locale: 'de' });
+      const result = await localesController.addLocale(collectionFor('test-collection'), { locale: 'de' });
 
       expect(core.addLocaleToCollection).toHaveBeenCalledWith('test-collection', 'de');
       expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
@@ -78,25 +96,27 @@ describe('LocalesController', () => {
         new core.LocaleAlreadyExistsError('fr', 'test-collection'),
       );
 
-      await expect(localesController.addLocale('test-collection', { locale: 'fr' })).rejects.toThrow(
+      await expect(localesController.addLocale(collectionFor('test-collection'), { locale: 'fr' })).rejects.toThrow(
         core.LocaleAlreadyExistsError,
       );
 
-      const error = await localesController.addLocale('test-collection', { locale: 'fr' }).catch(toHttpException);
+      const error = await localesController
+        .addLocale(collectionFor('test-collection'), { locale: 'fr' })
+        .catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(400);
     });
 
     it('returns 404 when collection is not in config', async () => {
-      await expect(localesController.addLocale('nonexistent-collection', { locale: 'de' })).rejects.toThrow(
-        NotFoundException,
-      );
+      expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
     });
 
     it('returns 400 when trying to add the base locale', async () => {
       (core.addLocaleToCollection as jest.Mock).mockRejectedValue(new core.BaseLocaleImmutableError('en'));
 
-      const error = await localesController.addLocale('test-collection', { locale: 'en' }).catch(toHttpException);
+      const error = await localesController
+        .addLocale(collectionFor('test-collection'), { locale: 'en' })
+        .catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(400);
     });
@@ -107,7 +127,7 @@ describe('LocalesController', () => {
       );
 
       const error = await localesController
-        .addLocale('test-collection', { locale: 'not-valid-123' })
+        .addLocale(collectionFor('test-collection'), { locale: 'not-valid-123' })
         .catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(400);
@@ -116,7 +136,9 @@ describe('LocalesController', () => {
     it('returns 500 for unexpected errors', async () => {
       (core.addLocaleToCollection as jest.Mock).mockRejectedValue(new Error('Disk write failure'));
 
-      const error = await localesController.addLocale('test-collection', { locale: 'de' }).catch(toHttpException);
+      const error = await localesController
+        .addLocale(collectionFor('test-collection'), { locale: 'de' })
+        .catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(500);
     });
@@ -124,13 +146,15 @@ describe('LocalesController', () => {
     it('returns 403 when core refuses a read-only collection', async () => {
       (core.addLocaleToCollection as jest.Mock).mockRejectedValue(new core.ReadOnlyCollectionError('test-collection'));
 
-      const error = await localesController.addLocale('test-collection', { locale: 'de' }).catch(toHttpException);
+      const error = await localesController
+        .addLocale(collectionFor('test-collection'), { locale: 'de' })
+        .catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(403);
     });
 
     it('does not touch the index when collection lookup fails before core is called', async () => {
-      await localesController.addLocale('nonexistent-collection', { locale: 'de' }).catch(() => undefined);
+      expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
 
       expect(mockIndex.apply).not.toHaveBeenCalled();
     });
@@ -146,7 +170,7 @@ describe('LocalesController', () => {
       const mutations = [{ kind: 'reindex', translationsFolder: '/t' }];
       (core.removeLocaleFromCollection as jest.Mock).mockResolvedValue({ ...mockResult, mutations });
 
-      const result = await localesController.removeLocale('test-collection', 'fr');
+      const result = await localesController.removeLocale(collectionFor('test-collection'), 'fr');
 
       expect(core.removeLocaleFromCollection).toHaveBeenCalledWith('test-collection', 'fr');
       expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
@@ -155,7 +179,7 @@ describe('LocalesController', () => {
     });
 
     it('returns 404 when collection is not in config', async () => {
-      await expect(localesController.removeLocale('nonexistent-collection', 'fr')).rejects.toThrow(NotFoundException);
+      expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
     });
 
     it('returns 400 when locale is not in the collection', async () => {
@@ -163,7 +187,7 @@ describe('LocalesController', () => {
         new core.LocaleNotFoundError('ja', 'test-collection'),
       );
 
-      const error = await localesController.removeLocale('test-collection', 'ja').catch(toHttpException);
+      const error = await localesController.removeLocale(collectionFor('test-collection'), 'ja').catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(400);
     });
@@ -171,7 +195,7 @@ describe('LocalesController', () => {
     it('returns 400 when trying to remove the base locale', async () => {
       (core.removeLocaleFromCollection as jest.Mock).mockRejectedValue(new core.BaseLocaleImmutableError('en'));
 
-      const error = await localesController.removeLocale('test-collection', 'en').catch(toHttpException);
+      const error = await localesController.removeLocale(collectionFor('test-collection'), 'en').catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(400);
     });
@@ -181,7 +205,9 @@ describe('LocalesController', () => {
         new core.InvalidLocaleError('bad!', 'Invalid locale format: "bad!"'),
       );
 
-      const error = await localesController.removeLocale('test-collection', 'bad!').catch(toHttpException);
+      const error = await localesController
+        .removeLocale(collectionFor('test-collection'), 'bad!')
+        .catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(400);
     });
@@ -189,7 +215,7 @@ describe('LocalesController', () => {
     it('returns 500 for unexpected errors', async () => {
       (core.removeLocaleFromCollection as jest.Mock).mockRejectedValue(new Error('Disk write failure'));
 
-      const error = await localesController.removeLocale('test-collection', 'fr').catch(toHttpException);
+      const error = await localesController.removeLocale(collectionFor('test-collection'), 'fr').catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(500);
     });
@@ -199,13 +225,13 @@ describe('LocalesController', () => {
         new core.ReadOnlyCollectionError('test-collection'),
       );
 
-      const error = await localesController.removeLocale('test-collection', 'fr').catch(toHttpException);
+      const error = await localesController.removeLocale(collectionFor('test-collection'), 'fr').catch(toHttpException);
 
       expect((error as HttpException).getStatus()).toBe(403);
     });
 
     it('does not touch the index when collection lookup fails before core is called', async () => {
-      await localesController.removeLocale('nonexistent-collection', 'fr').catch(() => undefined);
+      expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
 
       expect(mockIndex.apply).not.toHaveBeenCalled();
     });
@@ -218,7 +244,7 @@ describe('LocalesController', () => {
       };
       (core.removeLocaleFromCollection as jest.Mock).mockResolvedValue(mockResult);
 
-      await localesController.removeLocale('test-collection', 'fr');
+      await localesController.removeLocale(collectionFor('test-collection'), 'fr');
 
       expect(core.removeLocaleFromCollection).toHaveBeenCalledWith('test-collection', 'fr');
     });
