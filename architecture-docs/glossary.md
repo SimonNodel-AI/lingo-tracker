@@ -267,6 +267,14 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ---
 
+### Folder Move Plan
+
+The Tracker's pure store-side decision for a successful or failed folder move. In `apps/tracker/src/app/browser/store/folder-move-plan.ts`, `planFolderMove` receives the current tree and expansion plus the source node captured before HTTP, then returns expansion changes, the path to show, and either a tree patch with any destination-child load or a root reload. `planFolderMoveRollback` restores an absent source only when its parent is loaded. `withFolderWritesFeature` applies these decisions after its [Browser Session](#browser-session) guard; it still owns HTTP, loaders, navigation, and outcomes.
+
+Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollback)
+
+---
+
 ### Folder Peek
 
 A read of one folder's entries without changing the [List Scope](#list-scope). `FolderPeek.openFolderPeek()` gives each translation editor dialog a scope with its own successful-read cache. A later dialog gets a fresh scope and fresh data. `openByFullKey` also opens a fresh scope for each hand-off. Concurrent scopes share an in-flight API request, but no completed result. A response from an earlier [Browser Session](#browser-session) is dropped; a failed read can be retried.
@@ -277,7 +285,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Folder Writes
 
-The Tracker UI's one store feature for creating, deleting and moving folders, and for dropping a resource into a folder. `withFolderWritesFeature` in `apps/tracker/src/app/browser/store/features/with-folder-writes.feature.ts` returns a cold `Observable` of a typed outcome from each write. The feature refuses every write in a read-only collection before HTTP, owns move no-op checks, and updates cached tree and rows only in the [Browser Session](#browser-session) where the write began. A failed optimistic move restores only the moved item against current state when its parent is loaded; an unloaded parent gets its children on its next load, so a newer tree load survives. Deletion shows the parent only if the current folder is the deleted folder or one of its descendants. Callers turn outcomes into their existing toasts or inline feedback; folder writes do not set the shared load `error`. The sidebar draft lives in this feature. The picker keeps an independent draft because it can be open alongside the sidebar; both drafts use `folder-draft.ts` for their transitions.
+The Tracker UI's one store feature for creating, deleting and moving folders, and for dropping a resource into a folder. `withFolderWritesFeature` in `apps/tracker/src/app/browser/store/features/with-folder-writes.feature.ts` returns a cold `Observable` of a typed outcome from each write. The feature refuses every write in a read-only collection before HTTP, owns move no-op checks, and updates cached tree and rows only in the [Browser Session](#browser-session) where the write began. The [Folder Move Plan](#folder-move-plan) decides the tree, expansion, reload, navigation, and rollback effects of folder moves. A failed optimistic move restores only the moved item against current state when its parent is loaded; an unloaded parent gets its children on its next load, so a newer tree load survives. Deletion shows the parent only if the current folder is the deleted folder or one of its descendants. Callers turn outcomes into their existing toasts or inline feedback; folder writes do not set the shared load `error`. The sidebar draft lives in this feature. The picker keeps an independent draft because it can be open alongside the sidebar; both drafts use `folder-draft.ts` for their transitions.
 
 Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollback)
 
