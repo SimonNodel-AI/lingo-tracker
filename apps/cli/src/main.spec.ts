@@ -6,9 +6,11 @@ vi.mock('./commands/validate', () => ({ validateCommand: vi.fn() }));
 vi.mock('./add-resource/add-resource', () => ({ addResourceCommand: vi.fn() }));
 vi.mock('./delete-collection/delete-collection', () => ({ deleteCollectionCommand: vi.fn() }));
 vi.mock('./commands/move', () => ({ moveResourceCommand: vi.fn() }));
+vi.mock('./commands/find-similar', () => ({ findSimilarCommand: vi.fn() }));
 
 import { addResourceCommand } from './add-resource/add-resource';
 import { moveResourceCommand } from './commands/move';
+import { findSimilarCommand } from './commands/find-similar';
 import { validateCommand } from './commands/validate';
 import { deleteCollectionCommand } from './delete-collection/delete-collection';
 
@@ -20,9 +22,13 @@ async function runCli(...args: string[]): Promise<void> {
   vi.resetModules();
   await import('./main');
   await vi.waitFor(() => {
-    const calls = [validateCommand, addResourceCommand, deleteCollectionCommand, moveResourceCommand].map(
-      (command) => vi.mocked(command).mock.calls.length,
-    );
+    const calls = [
+      validateCommand,
+      addResourceCommand,
+      deleteCollectionCommand,
+      moveResourceCommand,
+      findSimilarCommand,
+    ].map((command) => vi.mocked(command).mock.calls.length);
     if (calls.every((count) => count === 0)) {
       throw new Error('command not called yet');
     }
@@ -68,5 +74,11 @@ describe('main.ts flag wiring', () => {
       dest: 'b.ok',
       destCollection: 'admin',
     });
+  });
+
+  it('converts --max-results before calling find-similar', async () => {
+    await runCli('find-similar', '--collection', 'main', '--value', 'Hello', '--max-results', '8');
+
+    expect(findSimilarCommand).toHaveBeenCalledWith({ collection: 'main', value: 'Hello', maxResults: 8 });
   });
 });
