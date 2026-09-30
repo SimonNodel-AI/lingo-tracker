@@ -107,7 +107,7 @@ describe('CollectionFormDialog — create mode', () => {
       expect(mockDialogRef.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'my-collection' }));
     });
 
-    it('should stay open on a taken name and show the conflict on the name field until it is edited', async () => {
+    it('should render a taken-name refusal on the name field and keep the dialog open', async () => {
       store.createCollection.mockReturnValue(
         rejection(409, { message: 'Collection "my-collection" already exists', error: 'Conflict' }),
       );
@@ -123,7 +123,6 @@ describe('CollectionFormDialog — create mode', () => {
       expect(submitError()).toBeNull();
 
       component.form.controls.name.setValue('other');
-
       expect(component.showNameConflict).toBe(false);
       expect(component.form.controls.name.valid).toBe(true);
     });

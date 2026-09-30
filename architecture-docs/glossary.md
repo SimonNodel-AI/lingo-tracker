@@ -161,7 +161,7 @@ Explained in context: [`frontend.md`](frontend.md#lazy-loaded-dialogs)
 
 ### Dialog Config Submit
 
-Dialog Config Submit is how the collection and bundle form dialogs submit a [Config Write](#config-write). `submitDialogConfigWrite()` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` sets `saving`, locks closing during the write, closes with the caller's saved result on success, and restores the previous close setting and `saving` on refusal. `classifyConfigRefusal()` gives the caller a `conflict`, `invalid`, or `other` refusal and preserves API details for every kind. Each form renders that refusal on its own fields; the settings page uses the same classification for preferred-terminology rule errors but owns its save subscription because it is a page and must keep saving after navigation.
+Dialog Config Submit is how the collection and bundle form dialogs submit a [Config Write](#config-write). `submitDialogConfigWrite()` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` sets `saving`, locks closing during the write, closes with the caller's saved result on success, and restores the previous close setting and `saving` on refusal. `NamedEntrySubmit` in the same module owns the server-taken-name validator, the create/update choice and rename patch, the editable-name conflict, and the localized refusal fallback for both forms. It returns a name conflict or a message with API details; each form renders that outcome in its own fields. `classifyConfigRefusal()` still gives other callers a `conflict`, `invalid`, or `other` refusal and preserves API details for every kind. The settings page uses that classification for preferred-terminology rule errors but owns its save subscription because it is a page and must keep saving after navigation.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -488,6 +488,14 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 ---
 
 ## T
+
+### Tag List Edit
+
+The pure Tracker helper in `apps/tracker/src/app/shared/tag-list-edit.ts` adds a normalized, deduplicated tag or removes all matching tags. An empty or duplicate add returns the original list. Resource-entry removal passes inherited tags so those stay in place; collection and bundle editors remove their own tags without that option.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft), [`frontend.md`](frontend.md#bundle-form-dialog)
+
+---
 
 ### Target Folder
 

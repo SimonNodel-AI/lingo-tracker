@@ -18,6 +18,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
 import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
+import type { Observable } from 'rxjs';
 import { CollectionsStore } from './store/collections.store';
 import type { BundleEntry } from './store/features/with-bundles.feature';
 import { BundleCard } from './bundle-card/bundle-card';
@@ -390,24 +391,12 @@ export class CollectionsManager {
   }
 
   openDeleteBundleDialog(name: string): void {
-    this.#confirm(
-      {
-        title: this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMTITLE),
-        message: this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMMESSAGEX, { name }),
-        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-        cancelButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
-        actionType: 'destructive',
-      },
-      { width: '400px' },
-    ).then((confirmed) => {
-      if (!confirmed) return;
-      this.store.deleteBundle(name).subscribe({
-        next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETED)),
-        error: (error: unknown) =>
-          this.#notifications.error(
-            apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.DELETEFAILED)),
-          ),
-      });
+    this.#confirmThenDelete({
+      title: TRACKER_TOKENS.BUNDLES.DELETECONFIRMTITLE,
+      message: () => this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMMESSAGEX, { name }),
+      success: TRACKER_TOKENS.BUNDLES.TOAST.DELETED,
+      failure: TRACKER_TOKENS.BUNDLES.TOAST.DELETEFAILED,
+      delete: () => this.store.deleteBundle(name),
     });
   }
 
@@ -475,10 +464,26 @@ export class CollectionsManager {
 
   /** Opens a confirmation and toasts only after the delete Config Write resolves. */
   openDeleteDialog(name: string): void {
+    this.#confirmThenDelete({
+      title: TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.TITLE,
+      message: () => this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.MESSAGE, { name }),
+      success: TRACKER_TOKENS.COLLECTIONS.TOAST.DELETED,
+      failure: TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED,
+      delete: () => this.store.deleteCollection(name),
+    });
+  }
+
+  #confirmThenDelete(options: {
+    title: string;
+    message: () => string;
+    success: string;
+    failure: string;
+    delete: () => Observable<unknown>;
+  }): void {
     this.#confirm(
       {
-        title: this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.TITLE),
-        message: this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.MESSAGE, { name }),
+        title: this.#transloco.translate(options.title),
+        message: options.message(),
         confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
         cancelButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
         actionType: 'destructive',
@@ -486,12 +491,10 @@ export class CollectionsManager {
       { width: '400px' },
     ).then((confirmed) => {
       if (!confirmed) return;
-      this.store.deleteCollection(name).subscribe({
-        next: () => this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETED)),
+      options.delete().subscribe({
+        next: () => this.#notifications.success(this.#transloco.translate(options.success)),
         error: (error: unknown) =>
-          this.#notifications.error(
-            apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED)),
-          ),
+          this.#notifications.error(apiErrorMessage(error, this.#transloco.translate(options.failure))),
       });
     });
   }

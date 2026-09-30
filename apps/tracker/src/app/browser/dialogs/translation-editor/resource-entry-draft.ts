@@ -5,8 +5,9 @@ import type {
   TranslationStatus,
   UpdateResourceDto,
 } from '@simoncodes-ca/data-transfer';
-import { isValidSegment, normalizeTag, resolveResourceKey, summaryTarget } from '@simoncodes-ca/domain';
+import { isValidSegment, resolveResourceKey, summaryTarget } from '@simoncodes-ca/domain';
 import { findFolderInTree } from '../../store/folder-tree.utils';
+import { addTagToList, removeTagFromList } from '../../../shared/tag-list-edit';
 
 /*
  * Resource Entry Draft: the translation editor's rules, as plain data and functions.
@@ -273,13 +274,12 @@ function entryNodes(input: ContextTreeInput, depth: number, moreLabel: (hidden: 
 
 /** The tag list with `raw` added in normalized form; the same list when it adds nothing new. */
 export function addTag(tags: readonly string[], raw: string): readonly string[] {
-  const tag = normalizeTag(raw);
-  return tag && !tags.includes(tag) ? [...tags, tag] : tags;
+  return addTagToList(tags, raw);
 }
 
 /** The tag list without `tag`. An inherited tag belongs to a folder and stays. */
 export function removeTag(tags: readonly string[], tag: string, inherited: readonly string[]): readonly string[] {
-  return inherited.includes(tag) ? tags : tags.filter((existing) => existing !== tag);
+  return removeTagFromList(tags, tag, { inherited });
 }
 
 // ── Saving ───────────────────────────────────────────────────────────────────
