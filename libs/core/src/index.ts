@@ -43,6 +43,9 @@ export {
 } from './lib/export/export-common';
 export { exportTargetLocales, runExport } from './lib/export/run-export';
 
+// Operations: glossary
+export { buildGlossary, type BuildGlossaryOptions, type BuildGlossaryResult } from './lib/glossary/build-glossary';
+
 // Operations: normalize, translate, validate
 export { emptyNormalizeCollectionsResult, normalize, normalizeCollections } from './lib/normalize';
 export {

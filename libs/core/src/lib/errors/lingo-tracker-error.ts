@@ -44,6 +44,33 @@ export class InvalidImportLocaleError extends LingoTrackerError {
   }
 }
 
+/** A glossary cannot combine source text from different base locales. */
+export class GlossaryBaseLocaleMismatchError extends LingoTrackerError {
+  readonly collections: readonly { name: string; baseLocale: string }[];
+
+  constructor(collections: readonly { name: string; baseLocale: string }[]) {
+    super(ErrorMessages.glossaryBaseLocaleMismatch(collections), 'GLOSSARY_BASE_LOCALE_MISMATCH');
+    this.collections = collections;
+  }
+}
+
+/** A glossary needs at least one opened collection. */
+export class GlossaryNoCollectionsError extends LingoTrackerError {
+  constructor() {
+    super(ErrorMessages.glossaryNoCollections(), 'GLOSSARY_NO_COLLECTIONS');
+  }
+}
+
+/** The requested glossary extraction mode is unavailable. */
+export class GlossaryExtractorError extends LingoTrackerError {
+  readonly mode: string;
+
+  constructor(mode: string) {
+    super(ErrorMessages.glossaryExtractorUnavailable(mode), 'GLOSSARY_EXTRACTOR_ERROR');
+    this.mode = mode;
+  }
+}
+
 // --- Config ------------------------------------------------------------------
 
 /** `.lingo-tracker.json` does not exist in the directory that was searched. */

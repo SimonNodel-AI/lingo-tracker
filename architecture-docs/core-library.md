@@ -28,6 +28,7 @@ Return to [architecture README](README.md).
   - [Provider abstraction](#provider-abstraction)
 - [Import Pipeline](#import-pipeline)
 - [Export Pipeline](#export-pipeline)
+- [Term Glossary](#term-glossary)
 - [Bundle Generation](#bundle-generation)
 - [Validation for CI/CD](#validation-for-cicd)
 
@@ -83,6 +84,11 @@ libs/core/src/
     │   ├── export-to-xliff.ts    # XLIFF 1.2 exporter (internal to runExport)
     │   ├── export-summary.ts     # Markdown export summary (internal to runExport)
     │   └── types.ts              # ExportOptions, ExportResult, FilteredResource, etc.
+    │
+    ├── glossary/                 # Term Glossary: Collection Reader → candidates → ranked terms
+    │   ├── build-glossary.ts     # buildGlossary(): opened-collection orchestration and locale selection
+    │   ├── glossary-extractor.ts # CandidateExtractor and deterministic n-gram implementation
+    │   └── glossary-matcher.ts   # value matching, ranking, and per-locale status filtering
     │
     ├── import/                   # The Import run; barrel exports only the public interface
     │   ├── run-import.ts         # runImport(): source file through summary
@@ -250,21 +256,21 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 ## Public Surface
 
-`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): 179 names, listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing`, `ImportStrategy` and the [Bundle Definition](glossary.md#bundle-definition) type and rules from `@simoncodes-ca/domain`.
+`libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): names listed one by one and grouped by role. It exports only what the API or CLI uses, plus the types in those names' signatures. It does not re-export `domain` names; callers import `TranslationStatus`, `TokenCasing`, `ImportStrategy` and the [Bundle Definition](glossary.md#bundle-definition) type and rules from `@simoncodes-ca/domain`.
 
 | Group | What it holds |
 |---|---|
-| Operations | The entry points the apps call. Resources: `addResource`, `addResources`, `editResource`, `deleteResource`, `moveResource`, `moveResources`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition` (the definition type, its validators, `bundleOutputFile` and `hasTypeDistConfigured` are domain names). Import: `runImport` (with `importResources` and format adapters inside core). Export: `runExport`, `exportTargetLocales`, the export argument checks. Validate: `runValidate`. Also `normalize`, `assertCanTranslateLocale`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`. |
+| Operations | The entry points the apps call. Resources: `addResource`, `addResources`, `editResource`, `deleteResource`, `moveResource`, `moveResources`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollectionByName`, `addLocaleToCollection`, `removeLocaleFromCollection`, `setGlobal/CollectionProtectedTerms[File]`. Bundles: `generateBundle`, `planBundle`, `add/update/deleteBundleDefinition` (the definition type, its validators, `bundleOutputFile` and `hasTypeDistConfigured` are domain names). Import: `runImport` (with `importResources` and format adapters inside core). Export: `runExport`, `exportTargetLocales`, the export argument checks. Glossary: `buildGlossary`. Validate: `runValidate`. Also `normalize`, `assertCanTranslateLocale`, `translateLocale`, `translateExistingResource`, `validateResources`, `generateValidationSummary`. |
 | Translator | Only the types in the translate operations' signatures: `OpenTranslatorOptions` (the optional `{ provider?, protectedTerms? }` of `addResource`, `editResource`, `translateExistingResource`, `translateLocale`) and the `TranslationProvider` seam (`TranslateRequest`, `TranslateResult`, `ProviderCapabilities`). `openTranslator`, the `Translator` types and `InMemoryTranslationProvider` stay internal to core (the translation barrel), because no app uses them. See [Auto-Translation Pipeline](#auto-translation-pipeline). |
 | Collection & config | `loadConfig`, `openCollection`, `Collection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, the config types (`LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, ...; `LingoTrackerConfig.bundles` holds domain `BundleDefinition`s), and the protected-terms and preferred-terminology file readers and writers. |
 | Project Terms | `readProjectTerms` (the CLI's `validate`), `TerminologyFindings` (the `terminology` of `addResource` / `editResource`), `describeTermFileProblem` (`validate` prints the problems). See [Project Terms](#project-terms). |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder` and the types in its methods, `resolveResourcePaths`. |
 | Collection Reader | `readCollection`, `StoredResource`, `CollectionRead`, `CollectionReadProblem`, `CollectionReadTarget`. See [Collection Reader](#collection-reader). |
 | Read models | `loadResourceTree`, `extractSubtree`, `extractResourcesRecursively`, `computeTreeFingerprint`, `treeFingerprintsMatch`, `reindexMutation` and their types, and [Resource Search](#resource-search): `searchResources`, `treeResources`, `SearchableResource`, `SearchMode`, `SearchOptions`, `SearchResult`, `MatchType`. The API's [Collection Index](glossary.md#collection-index) is built from these, and the CLI `find-similar` uses Resource Search. A `ResourceTreeEntry` and a `SearchResult` (which carries the entry's `source`, `translations` and `metadata`) both fit the domain `buildResourceSummary` input, which the API uses to answer with a [Resource Summary](glossary.md#resource-summary). |
-| Errors | `LingoTrackerError` and every typed subclass, `TranslationError`, `PreferredTerminologyValidationError`. See [Error Model](#error-model). |
+| Errors | `LingoTrackerError` and typed subclasses used by apps, `TranslationError`, `PreferredTerminologyValidationError`. Glossary's typed failures stay internal until an adapter branches on them. See [Error Model](#error-model). |
 | Types | Parameter and result types for the operations above (`AddResourceParams`, `GenerateBundleResult`, `ImportResult`, ...). |
 
-Each sub-module with a barrel (`collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` has no barrel, so the root barrel imports its files directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the [Bundle Selection](#bundle-selection) and the other bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
+Each sub-module with a barrel (`collections-manager/`, and `lib/bundle`, `config`, `errors`, `folder`, `import`, `normalize`, `resource`, `translation`, `validate`) lists its own public names the same way, and the root barrel re-exports from it. `lib/export/` and `lib/glossary/` have no barrels, so the root barrel imports their entry points directly. `lib/file-io/` is internal and has no barrel. Everything else is internal: `ErrorMessages`, `calculateChecksum`, the Translator, the provider classes and `createTranslationProvider`, the [Bundle Selection](#bundle-selection) and the other bundle helpers, the normalize walker, `SafeAny`, and the like. Core's specs import these by relative path. Test helpers live in `*.spec-helpers.ts` files, which `tsconfig.lib.json` excludes from the build: `setupMockFs` (`collections-manager/locale.spec-helpers.ts`) and the real-filesystem fixtures `useTempDir`, `testCollection`, `seedResources`, `writeFolderFiles` (`testing/temp-dir.spec-helpers.ts`). New reader specs use real temp directories rather than a mocked `fs`.
 
 ---
 
@@ -483,7 +489,7 @@ The caller decides what a problem means:
 | `validateResources` | Lists it in `unreadableFolders`, and validation fails. |
 | `runExport` | Lists it under `malformedFiles` in the result and the summary. The other resources are exported. |
 | Bundle generation, the dry-run plan and type generation (the [Bundle Selection](#bundle-selection), through `loadCollectionResources`) | Adds a warning to the bundle result or the plan, once for each collection per run. |
-| `glossary` (CLI) | Writes a warning to stderr. |
+| [Term Glossary](#term-glossary) | Returns the problem with the readable terms; the CLI writes a warning to stderr. |
 | `find-similar` (CLI, through [Resource Search](#resource-search)) | Prints one `⚠️  Skipped unreadable folder: <message>` line for each problem, then the matches from the other folders. |
 | `CollectionIndex.search` (API disk search, before the collection is indexed) | Logs one `Logger.warn` line per search that names the count and the messages. The results come from the other folders. |
 | `loadResourceTree` | Logs it. The tree keeps the folder, with no resources. |
@@ -684,6 +690,16 @@ Export writes the resources of one or more collections to one file per target lo
 6. **Report** — `ExportRunResult` is the totals over all locales (`ExportResult`: files, resource count, warnings and errors, each deduped, hierarchical conflicts), one `localeResults` entry per locale (`exported`, `skipped`, or `failed`, with the exception message when an exporter threw), and the Markdown `summary`.
 
 For the full sequence diagram, see [user-flows.md — Import / Export Flow](user-flows.md#2-import--export-flow).
+
+---
+
+## Term Glossary
+
+**Entry point:** `buildGlossary(collections, text, { extractor?, locales?, includeAll? })` in `lib/glossary/build-glossary.ts` (the [Term Glossary](glossary.md#term-glossary)). It returns the existing JSON fields (`baseLocale`, `locales`, `source`, `matchCount`, `terms`) plus `readProblems` for adapters to report separately. The CLI removes `readProblems` before serialization, so the file and `--stdout` payload keep their shape.
+
+Every input is an opened `Collection`. An empty set raises `GlossaryNoCollectionsError`; collections with different base locales raise `GlossaryBaseLocaleMismatchError` before a read, as in the Export run. With no `locales` request, the output locale list is the union of `collection.targetLocales` in first-appearance order, and each entry contributes only its own collection's targets. An explicit locale list passes through in request order after removing the shared base locale. It can include a stored translation outside the collection's configured targets, matching the CLI's original `--locales` behavior. Core reads through the [Collection Reader](#collection-reader), removes a stray base-locale translation, and returns unreadable-folder problems while retaining readable entries.
+
+The default n-gram extractor lowercases and removes stopwords, then emits unique unigrams and bigrams. A custom `CandidateExtractor` can be injected; `ai` remains unavailable and raises `GlossaryExtractorError`. The matcher scores candidate text against base values, keeps the best entry per candidate, deduplicates and ranks terms, and includes only `translated` or `verified` locales unless `includeAll` is set. The CLI owns input selection, output path and printing.
 
 ---
 
