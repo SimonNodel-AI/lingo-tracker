@@ -7,16 +7,14 @@ import { ApiError } from '../../../shared/api-error/api-error';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 import {
-  collectAncestorPaths,
   findFolderInTree,
   folderMoveNoOp,
   insertFolderIntoTree,
   parentFolderPath,
   prunePathsUnder,
-  rebaseExpandedPaths,
-  rebaseFolderPaths,
   removeFolderFromTree,
 } from '../folder-tree.utils';
+import { planFolderMove, planFolderMoveRollback } from '../folder-move-plan';
 import { captureSession } from '../session-guard';
 import { startFolderDraft, cancelFolderDraft } from '../folder-draft';
 
@@ -220,46 +218,23 @@ export function withFolderWritesFeature<_>() {
               api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
                 map((): MoveFolderOutcome => {
                   if (!inSession()) return { kind: 'stale-session' };
-                  const destinationLoaded = destinationFolderPath
-                    ? (findFolderInTree(store.rootFolders(), destinationFolderPath)?.loaded ?? false)
-                    : true;
-                  if (sourceNode) {
-                    const current = removeFolderFromTree(store.rootFolders(), sourceFolderPath);
-                    patchState(store, {
-                      rootFolders: insertFolderIntoTree(
-                        current,
-                        rebaseFolderPaths(sourceNode, destinationFolderPath),
-                        destinationFolderPath || null,
-                      ),
-                    });
-                    if (!destinationLoaded && destinationFolderPath) store.loadFolderChildren(destinationFolderPath);
-                  } else store.loadRootFolders();
-                  const expanded = rebaseExpandedPaths(
-                    store.expandedFolders(),
+                  const plan = planFolderMove(
+                    { tree: store.rootFolders(), expanded: store.expandedFolders(), sourceNode },
                     sourceFolderPath,
                     destinationFolderPath,
                   );
-                  if (destinationFolderPath) {
-                    expanded.add(destinationFolderPath);
-                    for (const ancestor of collectAncestorPaths(destinationFolderPath)) expanded.add(ancestor);
-                  }
-                  patchState(store, { expandedFolders: expanded });
-                  store.showFolder(destinationFolderPath ? `${destinationFolderPath}.${folderName}` : folderName);
+                  if (plan.kind === 'patch-tree') {
+                    patchState(store, { rootFolders: plan.tree });
+                    if (plan.loadChildrenFor) store.loadFolderChildren(plan.loadChildrenFor);
+                  } else store.loadRootFolders();
+                  patchState(store, { expandedFolders: plan.expanded });
+                  store.showFolder(plan.showPath);
                   return { kind: 'moved', folderName, destinationFolderPath };
                 }),
                 catchError((error: unknown) => {
-                  if (inSession() && sourceNode) {
-                    // Undo only this removal against the current tree. Never restore a pre-move snapshot.
-                    const current = store.rootFolders();
-                    if (!findFolderInTree(current, sourceFolderPath)) {
-                      const parentPath = parentFolderPath(sourceFolderPath);
-                      const parent = parentPath ? findFolderInTree(current, parentPath) : null;
-                      if (!parentPath || (parent?.loaded && parent.tree)) {
-                        patchState(store, {
-                          rootFolders: insertFolderIntoTree(current, sourceNode, parentPath),
-                        });
-                      }
-                    }
+                  if (inSession()) {
+                    const tree = planFolderMoveRollback(store.rootFolders(), sourceFolderPath, sourceNode);
+                    if (tree) patchState(store, { rootFolders: tree });
                   }
                   return of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const));
                 }),
