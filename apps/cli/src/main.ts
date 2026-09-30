@@ -99,6 +99,7 @@ registerCommand(program, {
   options: [
     collectionOption('Name of the collection'),
     ...resourceFieldOptions('add'),
+    option({ flags: '--override', description: 'Replace the resource if it already exists' }),
     option({
       flags: '--translations <json>',
       description:

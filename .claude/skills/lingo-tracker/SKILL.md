@@ -66,6 +66,8 @@ bash .claude/skills/lingo-tracker/scripts/find-similar.sh "<the string value>"
 
 When reusing, use the existing key directly in the code — do not call `add-resource`.
 
+If the key already exists the command exits 1; reuse the key, use `edit-resource`, or pass `--override` to replace it.
+
 ## Default Collection & Bundle
 
 - **Collection**: `trackerResources` (translations in `apps/tracker/src/i18n`, locales: `en`, `es`, `fr-ca`)

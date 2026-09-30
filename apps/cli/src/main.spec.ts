@@ -59,6 +59,12 @@ describe('main.ts flag wiring', () => {
     expect(addResourceCommand).toHaveBeenCalledWith(expect.objectContaining({ translations: '[{"locale":' }));
   });
 
+  it('passes --override to add-resource', async () => {
+    await runCli('add-resource', '--key', 'a.b', '--value', 'OK', '--override');
+
+    expect(addResourceCommand).toHaveBeenCalledWith(expect.objectContaining({ override: true }));
+  });
+
   it('passes --yes to delete-collection', async () => {
     await runCli('delete-collection', '--collection-name', 'app', '--yes');
 

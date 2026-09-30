@@ -512,9 +512,12 @@ interface CreateResourceResponseDto {
 }
 ```
 
+`POST /resources` is no longer an upsert. If any requested key already exists, the whole batch is refused and nothing is written.
+
 **Status Codes**:
-- `201 Created`: Resources processed successfully (check `entriesCreated` to see how many were new)
+- `201 Created`: Resources created successfully (`entriesCreated` equals the number requested)
 - `400 Bad Request`: Invalid request body, validation error, or empty resource array
+- `409 Conflict`: A resource key already exists
 - `404 Not Found`: Collection not found
 - `500 Internal Server Error`: Unexpected error during resource creation
 

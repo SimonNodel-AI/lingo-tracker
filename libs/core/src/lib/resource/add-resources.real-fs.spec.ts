@@ -13,6 +13,7 @@ import { InMemoryTranslationProvider } from '../translation/in-memory-translatio
 import { TranslationError } from '../translation/translation-provider';
 import { addResource } from './add-resource';
 import { addResources } from './add-resources';
+import { openResourceFolder } from './resource-folder';
 
 describe('addResources (real fs)', () => {
   let root: string;
@@ -149,7 +150,7 @@ describe('addResources (real fs)', () => {
     const target = collection();
     await addResource(target, { key: 'common.ok', baseValue: 'Old', comment: 'Old note' });
 
-    const result = await addResources(target, [{ key: 'common.ok', baseValue: 'New' }]);
+    const result = await addResources(target, [{ key: 'common.ok', baseValue: 'New' }], { onExisting: 'replace' });
 
     expect(result.entriesCreated).toBe(0);
     expect(result.created).toBe(false);
@@ -160,6 +161,85 @@ describe('addResources (real fs)', () => {
       de: 'New',
     });
     expect(JSON.parse(readFileSync(file('common', 'tracker_meta.json'), 'utf8')).ok.en.checksum).toBeDefined();
+  });
+
+  it('refuses an on-disk key before translating any item or writing either file', async () => {
+    await addResource(collection(), { key: 'common.ok', baseValue: 'Old' });
+    const entriesBefore = readFileSync(file('common', 'resource_entries.json'));
+    const metaBefore = readFileSync(file('common', 'tracker_meta.json'));
+    const target = collection({ translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' } });
+    const provider = new InMemoryTranslationProvider();
+
+    await expect(
+      addResources(
+        target,
+        [
+          { key: 'fresh.first', baseValue: 'First' },
+          { key: 'common.ok', baseValue: 'New' },
+        ],
+        { provider, onExisting: 'fail' },
+      ),
+    ).rejects.toMatchObject({ key: 'common.ok' });
+
+    expect(provider.calls).toEqual([]);
+    expect(readFileSync(file('common', 'resource_entries.json'))).toEqual(entriesBefore);
+    expect(readFileSync(file('common', 'tracker_meta.json'))).toEqual(metaBefore);
+    expect(existsSync(file('fresh', 'resource_entries.json'))).toBe(false);
+  });
+
+  it('writes no batch item when a key appears during translation', async () => {
+    await addResource(collection(), { key: 'stable.keep', baseValue: 'Keep' });
+    const stableEntriesPath = file('stable', 'resource_entries.json');
+    const stableMetaPath = file('stable', 'tracker_meta.json');
+    const stableEntriesBefore = readFileSync(stableEntriesPath);
+    const stableMetaBefore = readFileSync(stableMetaPath);
+    const target = collection({ translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' } });
+    const entriesPath = file('common', 'resource_entries.json');
+    const metaPath = file('common', 'tracker_meta.json');
+    let entriesAfterProvider: Buffer | undefined;
+    let metaAfterProvider: Buffer | undefined;
+    const provider = new InMemoryTranslationProvider(() => {
+      const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+      folder.setEntry('ok', { source: 'Concurrent' }, {});
+      folder.setBase('ok', 'Concurrent');
+      folder.save();
+      entriesAfterProvider = readFileSync(entriesPath);
+      metaAfterProvider = readFileSync(metaPath);
+      return 'Translated';
+    });
+
+    await expect(
+      addResources(
+        target,
+        [
+          { key: 'fresh.first', baseValue: 'First' },
+          { key: 'common.ok', baseValue: 'Requested' },
+        ],
+        { provider, onExisting: 'fail' },
+      ),
+    ).rejects.toMatchObject({ key: 'common.ok' });
+
+    expect(provider.calls.length).toBeGreaterThan(0);
+    expect(existsSync(file('fresh', 'resource_entries.json'))).toBe(false);
+    expect(readFileSync(entriesPath)).toEqual(entriesAfterProvider);
+    expect(readFileSync(metaPath)).toEqual(metaAfterProvider);
+    expect(readFileSync(stableEntriesPath)).toEqual(stableEntriesBefore);
+    expect(readFileSync(stableMetaPath)).toEqual(stableMetaBefore);
+  });
+
+  it('refuses duplicate resolved keys within a batch even with replace', async () => {
+    const target = collection();
+    await expect(
+      addResources(
+        target,
+        [
+          { key: 'ok', targetFolder: 'common', baseValue: 'First' },
+          { key: 'common.ok', baseValue: 'Second' },
+        ],
+        { onExisting: 'replace' },
+      ),
+    ).rejects.toThrow(ResourceAlreadyExistsError);
+    expect(existsSync(join(root, 'translations'))).toBe(false);
   });
 
   it('keeps earlier writes when a later target folder path is an existing file', async () => {

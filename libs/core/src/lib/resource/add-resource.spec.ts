@@ -7,11 +7,16 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { TranslationConfig } from '../../config/translation-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../config/protected-terms-file';
-import { InvalidResourceKeyError, LocaleNotFoundError } from '../errors/lingo-tracker-error';
+import {
+  InvalidResourceKeyError,
+  LocaleNotFoundError,
+  ResourceAlreadyExistsError,
+} from '../errors/lingo-tracker-error';
 import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
 import { TranslationError } from '../translation/translation-provider';
 import { addResource } from './add-resource';
 import { calculateChecksum as md5 } from './checksum';
+import { openResourceFolder } from './resource-folder';
 
 // Wrapped, not replaced: the specs below check which value the terminology check is given.
 vi.mock('@simoncodes-ca/domain', async (importOriginal) => {
@@ -290,11 +295,101 @@ describe('addResource (real fs)', () => {
       await addResource(target, { key: 'a', baseValue: 'A', comment: 'old' });
       await addResource(target, { key: 'b', baseValue: 'B' });
 
-      const result = await addResource(target, { key: 'a', baseValue: 'A2' });
+      const result = await addResource(target, { key: 'a', baseValue: 'A2' }, { onExisting: 'replace' });
 
       expect(result.created).toBe(false);
       expect(Object.keys(read('resource_entries.json'))).toEqual(['a', 'b']);
       expect(read('resource_entries.json').a).toEqual({ source: 'A2', fr: 'A2', de: 'A2' });
+    });
+
+    it('fails by default on an existing key and leaves both files byte-identical', async () => {
+      const target = collection();
+      await addResource(target, { key: 'common.ok', baseValue: 'Old' });
+      const entriesPath = join(root, 'translations', 'common', 'resource_entries.json');
+      const metaPath = join(root, 'translations', 'common', 'tracker_meta.json');
+      const entriesBefore = readFileSync(entriesPath);
+      const metaBefore = readFileSync(metaPath);
+
+      await expect(addResource(target, { key: 'common.ok', baseValue: 'New' })).rejects.toThrow(
+        ResourceAlreadyExistsError,
+      );
+
+      expect(readFileSync(entriesPath)).toEqual(entriesBefore);
+      expect(readFileSync(metaPath)).toEqual(metaBefore);
+    });
+
+    it('does not call the translation provider when the key exists and the policy is fail', async () => {
+      const target = collection({ translation: AUTO });
+      await addResource(collection(), { key: 'common.ok', baseValue: 'Old' });
+      const provider = new InMemoryTranslationProvider();
+
+      await expect(
+        addResource(target, { key: 'common.ok', baseValue: 'New' }, { provider, onExisting: 'fail' }),
+      ).rejects.toThrow(ResourceAlreadyExistsError);
+      expect(provider.calls).toEqual([]);
+    });
+
+    it('refuses a key created during translation without changing the late entry or another folder', async () => {
+      const target = collection({ translation: AUTO });
+      await addResource(collection(), { key: 'stable.keep', baseValue: 'Keep' });
+      const stableEntriesPath = join(root, 'translations', 'stable', 'resource_entries.json');
+      const stableMetaPath = join(root, 'translations', 'stable', 'tracker_meta.json');
+      const stableEntriesBefore = readFileSync(stableEntriesPath);
+      const stableMetaBefore = readFileSync(stableMetaPath);
+      const entriesPath = join(root, 'translations', 'common', 'resource_entries.json');
+      const metaPath = join(root, 'translations', 'common', 'tracker_meta.json');
+      let entriesAfterProvider: Buffer | undefined;
+      let metaAfterProvider: Buffer | undefined;
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        folder.setEntry('ok', { source: 'Concurrent' }, {});
+        folder.setBase('ok', 'Concurrent');
+        folder.save();
+        entriesAfterProvider = readFileSync(entriesPath);
+        metaAfterProvider = readFileSync(metaPath);
+        return 'Translated';
+      });
+
+      await expect(
+        addResource(target, { key: 'common.ok', baseValue: 'Requested' }, { provider, onExisting: 'fail' }),
+      ).rejects.toMatchObject({ key: 'common.ok' });
+
+      expect(provider.calls.length).toBeGreaterThan(0);
+      expect(readFileSync(entriesPath)).toEqual(entriesAfterProvider);
+      expect(readFileSync(metaPath)).toEqual(metaAfterProvider);
+      expect(readFileSync(stableEntriesPath)).toEqual(stableEntriesBefore);
+      expect(readFileSync(stableMetaPath)).toEqual(stableMetaBefore);
+      expect(read('resource_entries.json', 'common').ok.source).toBe('Concurrent');
+    });
+
+    it('reports created false when replace finds a key created during translation', async () => {
+      const target = collection({ translation: AUTO });
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        folder.setEntry('ok', { source: 'Concurrent' }, {});
+        folder.setBase('ok', 'Concurrent');
+        folder.save();
+        return 'Translated';
+      });
+
+      const result = await addResource(
+        target,
+        { key: 'common.ok', baseValue: 'Requested' },
+        { provider, onExisting: 'replace' },
+      );
+
+      expect(result.created).toBe(false);
+      expect(read('resource_entries.json', 'common').ok.source).toBe('Requested');
+    });
+
+    it('resolves targetFolder before checking whether the key exists', async () => {
+      const target = collection();
+      await addResource(target, { key: 'apps.common.ok', baseValue: 'Old' });
+
+      await expect(
+        addResource(target, { key: 'ok', targetFolder: 'apps.common', baseValue: 'New' }),
+      ).rejects.toMatchObject({ key: 'apps.common.ok' });
+      expect(read('resource_entries.json', 'apps', 'common').ok.source).toBe('Old');
     });
 
     it('returns an upsert mutation for the stored entry', async () => {

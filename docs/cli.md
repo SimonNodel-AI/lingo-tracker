@@ -476,6 +476,9 @@ lingo-tracker add-resource [options]
 - `--tags <tags>` - Optional comma-separated tags for filtering/exporting. Values are normalized on write: lowercased, whitespace replaced with hyphens, non-`[a-z0-9-]` characters stripped, max 50 chars.
 - `--target-folder <folder>` - Optional dot-delimited path override for folder placement
 - `--translations <json>` - Optional JSON array with translation objects
+- `--override` - Replace the resource if it already exists
+
+Non-interactive `add-resource` used to overwrite an existing key. It now exits 1 with `❌ Resource already exists: <key>` and a hint unless you pass `--override`. Interactive mode asks for confirmation before replacing.
 
 **Translation Object Format:**
 
