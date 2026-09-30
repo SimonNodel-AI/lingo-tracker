@@ -113,6 +113,20 @@ describe('BundleJobService', () => {
     expect('locales' in params).toBe(false);
   });
 
+  it('logs the legacy type setting warning returned by core', async () => {
+    const warning = "Warning: Bundle 'main': 'typeDist' is deprecated";
+    mockGenerateBundle.mockResolvedValue(
+      makeResult({
+        typeOutcome: { status: 'failed', reason: 'disk full', warning },
+      }),
+    );
+
+    service.startJob(makeParams());
+    await flush();
+
+    expect(logger.warn).toHaveBeenCalledWith(warning);
+  });
+
   it('reflects onProgress events in the job snapshot while running', async () => {
     let capturedProgress: ((event: BundleProgressEvent) => void) | undefined;
     mockGenerateBundle.mockImplementation((params: GenerateBundleParams) => {

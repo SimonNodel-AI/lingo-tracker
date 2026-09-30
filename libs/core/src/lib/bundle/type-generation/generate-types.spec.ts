@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
@@ -204,7 +204,7 @@ describe('generateBundleTypes (real fs)', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('supports deprecated typeDist and emits a deprecation warning', () => {
+  it('supports deprecated typeDist and returns a deprecation warning', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const legacy = {
       ...definition({ typeDistFile: undefined }),
@@ -214,8 +214,23 @@ describe('generateBundleTypes (real fs)', () => {
 
     expect(result.fileGenerated).toBe(true);
     expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Bundle 'main'"));
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("'typeDist' is deprecated"));
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("'typeDistFile'"));
+    expect(result.warning).toContain("Bundle 'main'");
+    expect(result.warning).toContain("'typeDist' is deprecated");
+    expect(result.warning).toContain("'typeDistFile'");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('keeps the legacy warning when creating the type directory fails', () => {
+    writeFileSync(join(root(), 'blocked'), 'a file');
+    const legacy = {
+      ...definition({ typeDistFile: undefined }),
+      typeDist: 'blocked/legacy.ts',
+    } as unknown as BundleDefinition;
+
+    const result = generate({ definition: legacy });
+
+    expect(result.fileGenerated).toBe(false);
+    expect(result.errorReason).toBeDefined();
+    expect(result.warning).toContain("'typeDist' is deprecated");
   });
 });

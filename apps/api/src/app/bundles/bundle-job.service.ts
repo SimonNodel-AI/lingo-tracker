@@ -95,6 +95,8 @@ export class BundleJobService {
         cwd: process.cwd(),
       });
 
+      if (result.typeOutcome.warning) this.#logger.warn(result.typeOutcome.warning);
+
       const completed = this.#jobs.get(jobId);
       if (!completed) return;
 

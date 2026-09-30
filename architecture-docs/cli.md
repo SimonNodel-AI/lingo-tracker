@@ -84,7 +84,9 @@ A folder whose files cannot be read fails validation. The summary lists it under
 
 The Command Runner resolves the configured collections before `normalize` checks its own options. With an empty config, it reports `No collections found. Run \`lingo-tracker add-collection\` first.` before checking `--collection` or `--all`. The command keeps its interactive collection select, the `All collections` choice, and the `Are you sure?` confirmation for all.
 
-`normalize` decides what to do with the opened read-only collections. An explicitly named read-only collection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
+`normalizeCollections` in core decides what to do with the opened read-only collections. The command maps flags, prints core events, and prints the returned totals and JSON payload. Any read-only collection in a named selection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
+
+The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and leaves single-bundle API jobs on `generateBundle`. A legacy `typeDist` warning comes from the type outcome and is printed on the same console stream.
 
 ### `glossary` pipeline
 
@@ -350,7 +352,7 @@ It then opens the name with core `openCollection(config, name, { cwd, writable }
 
 **Many-collection resolution.** The runner first opens every configured collection for prompt choices and fails immediately when the config is empty. After prompts, `many.select` chooses `'all'` or an explicit name list. The runner deduplicates names in order and opens the selected set. `validate` reads all; `export` parses its comma-separated `--collection` choice; `glossary` reads all or one; `normalize` selects one or all and confirms all interactively. An unknown name raises core's `CollectionNotFoundError` and exits 1.
 
-**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for one read-only collection: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. The many-collection mode opens for reading; [normalize applies its own read-only rule](#normalize-collection-selection). `move` still opens its destination with core's `writable: true`.
+**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for one read-only collection: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. The many-collection mode opens for reading; [core normalizeCollections applies the read-only rule](#normalize-collection-selection). `move` still opens its destination with core's `writable: true`.
 
 ### Resolution Flowchart
 
@@ -421,7 +423,7 @@ Prompting itself is done by the runner (`prompts` in the spec, `ctx.ask` in `run
 
 ### Result Aggregator (`result-aggregator.ts`)
 
-`aggregateNumericFields<T>(results, numericFields)` — sums a specified list of numeric fields across an array of result objects. Used by `normalize` (which processes multiple collections) to compute combined totals before printing the summary. Eliminates boilerplate `reduce` patterns and ensures new metric fields are not silently missed in the aggregate.
+`aggregateNumericFields<T>(results, numericFields)` — sums a specified list of numeric fields across an array of result objects. Normalization totals are now computed by core `normalizeCollections`; this utility remains available to other CLI callers.
 
 ---
 

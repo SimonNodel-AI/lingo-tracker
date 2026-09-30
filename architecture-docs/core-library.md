@@ -530,7 +530,7 @@ Before the sweep, each of these walked the folders with `walkFolders` itself: ad
 
 ## Normalization Pipeline
 
-**Entry point:** `normalize(collection, { dryRun? })` in `lib/normalize/normalize.ts`
+**Entry points:** `normalize(collection, { dryRun? })` and `normalizeCollections(collections, { dryRun?, all?, onEvent? })` in `lib/normalize/`
 
 Normalization is a repair and synchronization pass over a [collection's](glossary.md#collection) `translationsFolder`. It takes the opened `Collection`, like every other write operation, and throws `ReadOnlyCollectionError` for a read-only one (the CLI opens an explicitly named collection with `writable: true`, so the refusal is core's). It is idempotent and non-destructive — it never removes existing translation values.
 
@@ -546,6 +546,8 @@ Steps:
 6. **Cleanup empty folders** — `cleanupEmptyFolders()` removes collection folders with no entries and no subfolders, deepest first. It walks by the same collection-folder policy, so it never removes anything inside a hidden folder, and a folder that holds a hidden subfolder is kept.
 
 Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `tagsNormalized`, `filesCreated`, `filesUpdated`, `foldersRemoved`, `dryRun`, and `problems` (the folders it could not read).
+
+`normalizeCollections` runs the selected opened collections, refuses any read-only collection in a named selection with `ReadOnlyCollectionError`, and skips read-only collections in all mode. It returns per-collection results, errors, and totals computed from one list of the seven numeric fields. The CLI prints its events and the returned JSON shape; an event callback error propagates instead of becoming a normalization failure.
 
 `filesUpdated` can be higher than with earlier versions on the first run. A folder is now rewritten when its only drift is a stray base-locale property, the key order of its metadata, or a translation made from an older base. This is a one-time rewrite; the next run reports 0 for those folders.
 
@@ -722,13 +724,13 @@ The [Term List Edit](glossary.md#term-list-edit) uses the stored list, not the u
 
 ## Bundle Generation
 
-**Entry point:** `generateBundle(params)` in `lib/bundle/generate-bundle.ts`
+**Entry points:** `generateBundle(params)` for one saved bundle and `generateBundles(config, options)` for an all or named run in `lib/bundle/`
 
 [Bundle](glossary.md#bundle) generation aggregates resources from one or more collections into a single locale JSON file per configured locale, converting [ICU format](glossary.md#icu-format) to Transloco syntax in the process.
 
 Key steps:
 
-1. **Resolve configuration** — token casing, ICU-to-Transloco transformation flag, and target locales are resolved via a three-level priority chain: CLI override → bundle config → global config → default. `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API `process.cwd()`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
+1. **Resolve configuration** — token casing and ICU-to-Transloco transformation use `resolveBundleSettings(config, definition, overrides)`, shared with `planBundle`, and target locales are selected by the request. Settings follow a priority chain: CLI override → bundle config → global config → default. `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API `process.cwd()`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
 2. **Resolve the collections** — `resolveBundleCollections(definition, config, { cwd })` opens each collection the definition reads once per run, with `openCollection(config, name, { cwd })`. See [Bundle Selection](#bundle-selection).
 3. **Select, per locale** — `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` returns the locale's final keys with their values and origins. It reads, filters, prefixes, converts ICU and merges.
 4. **Build hierarchy** — `buildHierarchy()` converts the flat `{dotKey: value}` map into a nested object matching the Angular Transloco expected structure.

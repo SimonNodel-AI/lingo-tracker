@@ -21,6 +21,7 @@ export {
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,
+  MultipleBundleConstantNameError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   TranslationLocaleNotConfiguredError,

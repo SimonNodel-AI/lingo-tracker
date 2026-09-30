@@ -23,6 +23,7 @@ export {
   addBundleDefinition,
   deleteBundleDefinition,
   generateBundle,
+  generateBundles,
   validateBundleLocales,
   validateGenerateBundleRequest,
   planBundle,
@@ -46,7 +47,7 @@ export {
 export { exportTargetLocales, runExport } from './lib/export/run-export';
 
 // Operations: normalize, translate, validate
-export { normalize } from './lib/normalize';
+export { emptyNormalizeCollectionsResult, normalize, normalizeCollections } from './lib/normalize';
 export {
   assertAutoTranslationEnabled,
   assertCanTranslateLocale,
@@ -158,6 +159,7 @@ export {
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
+  MultipleBundleConstantNameError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
@@ -189,8 +191,12 @@ export type {
   BundlePlanExampleKey,
   BundlePlanFile,
   BundleProgressEvent,
+  BundleRunOutcome,
+  BundleTypeOutcome,
   GenerateBundleParams,
   GenerateBundleResult,
+  GenerateBundlesOptions,
+  GenerateBundlesResult,
   PlanBundleParams,
   UpdateBundleDefinitionOptions,
 } from './lib/bundle';
@@ -224,7 +230,13 @@ export type {
   ImportSummaryOptions,
   StatusTransition,
 } from './lib/import';
-export type { NormalizeOptions, NormalizeResult } from './lib/normalize';
+export type {
+  CollectionNormalizeResult,
+  NormalizeOptions,
+  NormalizeResult,
+  NormalizeCollectionsOptions,
+  NormalizeCollectionsResult,
+} from './lib/normalize';
 export type {
   ComputeTreeFingerprintOptions,
   LoadResourceTreeOptions,

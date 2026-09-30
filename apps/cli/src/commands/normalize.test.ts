@@ -11,8 +11,55 @@ vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false)
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+  const normalize = vi.fn();
   // Collection resolution runs for real against the mocked config.
-  return { ...actual, loadConfig: vi.fn(), normalize: vi.fn() };
+  return {
+    ...actual,
+    loadConfig: vi.fn(),
+    normalize,
+    normalizeCollections: vi.fn(
+      async (
+        collections: Parameters<typeof actual.normalizeCollections>[0],
+        options: Parameters<typeof actual.normalizeCollections>[1] = {},
+      ) => {
+        if (!options.all && collections[0]?.readOnly) throw new actual.ReadOnlyCollectionError(collections[0].name);
+        const output = await actual.normalizeCollections([]);
+        const results = [...output.collections];
+        const errors: { name: string; error: unknown }[] = [];
+        for (const collection of collections) {
+          if (collection.readOnly) {
+            options.onEvent?.({ kind: 'skip', name: collection.name });
+            continue;
+          }
+          options.onEvent?.({ kind: 'start', name: collection.name });
+          try {
+            const { dryRun: _dryRun, ...result } = await normalize(collection, { dryRun: options.dryRun ?? false });
+            const item = { collectionName: collection.name, ...result };
+            results.push(item);
+            options.onEvent?.({ kind: 'result', result: item });
+          } catch (error) {
+            errors.push({ name: collection.name, error });
+            options.onEvent?.({ kind: 'error', name: collection.name, error });
+          }
+        }
+        const totals = { ...output.totals, collectionsProcessed: results.length };
+        for (const result of results) {
+          for (const field of [
+            'entriesProcessed',
+            'localesAdded',
+            'valuesConverted',
+            'tagsNormalized',
+            'filesCreated',
+            'filesUpdated',
+            'foldersRemoved',
+          ] as const) {
+            totals[field] += result[field];
+          }
+        }
+        return { collections: results, totals, errors };
+      },
+    ),
+  };
 });
 
 const CONFIG: LingoTrackerConfig = {

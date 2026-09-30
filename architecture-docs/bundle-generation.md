@@ -37,11 +37,13 @@ Return to [architecture README](README.md).
 
 ## Where Bundle Generation Lives
 
-Bundle generation is a sub-module of `@simoncodes-ca/core`. The entry point is `generateBundle()` in `libs/core/src/lib/bundle/generate-bundle.ts`. For the module map of the full core library and its internal dependency graph, see [core-library.md](core-library.md).
+Bundle generation is a sub-module of `@simoncodes-ca/core`. The single-bundle entry point is `generateBundle()` in `libs/core/src/lib/bundle/generate-bundle.ts`; `generateBundles()` coordinates a CLI run. For the module map of the full core library and its internal dependency graph, see [core-library.md](core-library.md).
 
 ```
 libs/core/src/lib/bundle/
-├── generate-bundle.ts          # generateBundle(): main entry point, GenerateBundleParams, GenerateBundleResult
+├── generate-bundle.ts          # generateBundle(): single saved bundle
+├── generate-bundles.ts         # generateBundles(): all or named bundles, outcomes and totals
+├── resolve-bundle-settings.ts # one setting precedence rule for generate and plan
 ├── plan-bundle.ts              # planBundle(): the dry-run plan, writes nothing
 ├── bundle-selection.ts         # resolveBundleCollections() + selectBundleEntries(): the Bundle Selection
 ├── resource-loader.ts          # loadCollectionResources(): one collection's FlatResource list per locale, via readCollection()
@@ -585,7 +587,7 @@ Rule: if the name contains underscores, split on `_`, title-case each segment, j
 
 ## Priority Chain for Overridable Settings
 
-Three bundle settings can be overridden at multiple levels. The resolution order for each is:
+`resolveBundleSettings(config, definition, overrides)` applies the shared casing and ICU transformation precedence for `generateBundle` and `planBundle`. Constant naming remains the type generator’s rule. The resolution order is:
 
 ```
 CLI flag  →  BundleDefinition field  →  global config field  →  hard default
@@ -596,6 +598,10 @@ CLI flag  →  BundleDefinition field  →  global config field  →  hard defau
 | Token casing | `--token-casing` | `tokenCasing` | `tokenCasing` | `'upperCase'` |
 | Constant name | `--token-constant-name` | `tokenConstantName` | *(none)* | `<BUNDLE_KEY>_TOKENS` |
 | ICU transformation | `--transform-icu-to-transloco` | `transformICUToTransloco` | `transformICUToTransloco` | `true` |
+
+---
+
+`generateBundles(config, { names?, locales?, overrides, cwd })` validates each selected bundle once, catches individual failures in its outcomes, and totals successful bundles, generated files, and warnings. It rejects `tokenConstantName` with more than one selected bundle using `MultipleBundleConstantNameError`. The CLI receives start, type-warning and result events to print in run order. Callback errors propagate instead of becoming bundle failures. The API continues to use `generateBundle` by name. A legacy `typeDist` warning remains on the type outcome even when writing the type file fails; the CLI prints it before the outcome line, and the API job logs it with Nest `Logger.warn`.
 
 ---
 
