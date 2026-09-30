@@ -1,6 +1,7 @@
 // Collection and locale operations: each edits .lingo-tracker.json (and, for locales, the resource tree).
 
 export { addCollection, type AddCollectionOptions } from './add-collection';
+export { editCollectionTags, type CollectionTagEdit } from './edit-collection-tags';
 export {
   type AddLocaleToCollectionOptions,
   type AddLocaleToCollectionResult,

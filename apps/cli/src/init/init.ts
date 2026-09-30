@@ -1,10 +1,11 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type prompts from 'prompts';
 import type { InitOptions } from '../types/init-options.js';
 import {
   CONFIG_FILENAME,
   DEFAULT_CONFIG,
+  initConfig,
   type LingoTrackerConfig,
   type LingoTrackerCollection,
   type TranslationConfig,
@@ -58,7 +59,7 @@ function writeConfig(cwd: string, result: Answers<InitOptions>, interactive: boo
     ...(answers.translation !== undefined && { translation: answers.translation }),
   };
 
-  writeFileSync(configPath, JSON.stringify(config, null, 2));
+  initConfig(config, { cwd });
   console.log(`Created ${CONFIG_FILENAME} in ${cwd}`);
 }
 

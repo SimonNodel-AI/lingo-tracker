@@ -35,6 +35,12 @@ export const ErrorMessages = {
 
   collectionAlreadyExists: (name: string) => `Collection "${name}" already exists`,
 
+  collectionTagEditConflict: () => '--set-tags cannot be combined with --add-tag or --remove-tag',
+
+  collectionTagEditMissing: () => 'Provide at least one of --add-tag, --remove-tag, or --set-tags',
+
+  configAlreadyExists: () => '.lingo-tracker.json already exists',
+
   protectedTermsFileNotSet: (name: string) =>
     `Collection "${name}" has no protected terms file. Set one first with --file <path>.`,
 

@@ -13,6 +13,7 @@ export {
   addCollection,
   addLocaleToCollection,
   deleteCollectionByName,
+  editCollectionTags,
   removeLocaleFromCollection,
   updateCollection,
 } from './collections-manager';
@@ -66,6 +67,7 @@ export {
   displayTermPath,
   editPreferredTerminology,
   editProtectedTerms,
+  initConfig,
   readProtectedTermsTarget,
   type LoadPreferredTerminologyResult,
   loadConfig,
@@ -78,7 +80,6 @@ export {
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
-  setCollectionProtectedTerms,
   setCollectionProtectedTermsFile,
   setGlobalProtectedTerms,
   setGlobalProtectedTermsFile,
@@ -172,6 +173,7 @@ export { TranslationError } from './lib/translation';
 // Types: operation parameters and results
 export type {
   AddCollectionOptions,
+  CollectionTagEdit,
   AddLocaleToCollectionOptions,
   AddLocaleToCollectionResult,
   DeleteCollectionOptions,
