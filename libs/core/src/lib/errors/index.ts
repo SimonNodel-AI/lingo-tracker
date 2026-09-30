@@ -18,6 +18,8 @@ export {
   InvalidCollectionError,
   InvalidConfigError,
   InvalidFolderPathError,
+  ImportSourceError,
+  InvalidImportLocaleError,
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,

@@ -1,21 +1,17 @@
 import {
   detectImportFormat,
-  generateImportSummary,
+  ImportSourceError,
   type ImportFormat,
   type ImportResult,
   type ImportRunOptions,
-  importResources,
-  parseJsonImport,
-  parseXliffImport,
+  runImport,
 } from '@simoncodes-ca/core';
 import type { ImportStrategy } from '@simoncodes-ca/domain';
 import * as fs from 'fs';
 import * as path from 'path';
 import type prompts from 'prompts';
 import { defineCommand } from '../runner/command-runner';
-import { buildSummaryPath, ConsoleFormatter } from '../utils';
-
-export const LARGE_FILE_SIZE_THRESHOLD = 5;
+import { buildSummaryPath, ConsoleFormatter, writeRunSummary } from '../utils';
 
 export interface ImportCommandOptions {
   format?: ImportFormat;
@@ -39,24 +35,6 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
   required: ['source', 'locale'],
   run: async ({ cwd, collection, answers }) => {
     const { source } = answers;
-    // A relative --source is relative to the project root, like --output on export.
-    const sourcePath = path.resolve(cwd, source);
-
-    // Check file size and warn if large
-    try {
-      if (fs.existsSync(sourcePath)) {
-        const stats = fs.statSync(sourcePath);
-        const fileSizeMB = stats.size / (1024 * 1024);
-
-        if (fileSizeMB > LARGE_FILE_SIZE_THRESHOLD) {
-          ConsoleFormatter.warning(`Large import file detected: ${fileSizeMB.toFixed(2)} MB`, [
-            'Import may take longer than usual.',
-          ]);
-        }
-      }
-    } catch (_error) {
-      // File size check is non-critical, continue with import
-    }
 
     // The collection carries the base locale and the Project Terms (protected terms, preferred
     // terminology); a rule-file problem comes back in the result's warnings.
@@ -73,45 +51,37 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       onProgress: answers.verbose ? (msg: string) => console.log(`  ${msg}`) : undefined,
     };
 
-    // Auto-detect format if not specified
-    let format = answers.format;
-    if (!format) {
-      format = detectImportFormat(source);
-      if (runOptions.verbose) {
-        console.log(`Detected format: ${format}`);
-      }
-    }
-
-    // Display import summary
-    console.log('');
-    ConsoleFormatter.progress('Starting import...');
-    ConsoleFormatter.indent(`Format: ${format}`);
-    ConsoleFormatter.indent(`Source: ${source}`);
-    ConsoleFormatter.indent(`Locale: ${runOptions.locale}`);
-    ConsoleFormatter.indent(`Strategy: ${runOptions.strategy}`);
-    ConsoleFormatter.indent(`Collection: ${collection.name}`);
-    if (runOptions.dryRun) {
-      ConsoleFormatter.indent('Mode: DRY RUN (no changes will be made)');
-    }
-    console.log('');
-
-    // Performance logging for verbose mode
-    const startTime = runOptions.verbose ? Date.now() : 0;
-    if (runOptions.verbose) {
-      console.log(`Started at: ${new Date(startTime).toLocaleTimeString()}`);
-    }
-
-    let result: ImportResult;
+    let startTime = 0;
+    let run: Awaited<ReturnType<typeof runImport>>;
     try {
-      const parseOptions = { onProgress: runOptions.onProgress };
-      const resources =
-        format === 'json'
-          ? parseJsonImport(sourcePath, parseOptions)
-          : await parseXliffImport(sourcePath, parseOptions);
-      result = importResources(collection, resources, runOptions);
+      run = await runImport(collection, {
+        ...runOptions,
+        source,
+        cwd,
+        format: answers.format,
+        onWarning: ({ message, details }) => ConsoleFormatter.warning(message, details),
+        onStart: (format) => {
+          if (!answers.format && runOptions.verbose) console.log(`Detected format: ${format}`);
+          console.log('');
+          ConsoleFormatter.progress('Starting import...');
+          ConsoleFormatter.indent(`Format: ${format}`);
+          ConsoleFormatter.indent(`Source: ${source}`);
+          ConsoleFormatter.indent(`Locale: ${runOptions.locale}`);
+          ConsoleFormatter.indent(`Strategy: ${runOptions.strategy}`);
+          ConsoleFormatter.indent(`Collection: ${collection.name}`);
+          if (runOptions.dryRun) ConsoleFormatter.indent('Mode: DRY RUN (no changes will be made)');
+          console.log('');
+          startTime = runOptions.verbose ? Date.now() : 0;
+          if (runOptions.verbose) console.log(`Started at: ${new Date(startTime).toLocaleTimeString()}`);
+        },
+      });
     } catch (error) {
+      // The runner prints an Error's cause as another line. Format detection already
+      // has the complete user-facing message, so pass it through without its cause.
+      if (error instanceof ImportSourceError && error.stage === 'format') throw new Error(error.message);
       throw new Error(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+    const { result } = run;
 
     // Log elapsed time in verbose mode
     if (runOptions.verbose) {
@@ -126,17 +96,16 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     displayResults(result, runOptions);
 
     // Generate and write summary
-    const summaryPath = buildSummaryPath('import');
     if (!runOptions.dryRun) {
       try {
-        const summary = generateImportSummary(result, { ...runOptions, format, source });
-        fs.writeFileSync(summaryPath, summary, 'utf8');
+        const summaryPath = writeRunSummary('import', run.summary());
         console.log('');
         console.log(`Import summary written to: ${summaryPath}`);
       } catch (error) {
         ConsoleFormatter.warning(`Failed to write summary file: ${(error as Error).message}`);
       }
     } else {
+      const summaryPath = buildSummaryPath('import');
       console.log('');
       console.log(`Import summary would be written to: ${summaryPath}`);
     }

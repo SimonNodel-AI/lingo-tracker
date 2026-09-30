@@ -23,6 +23,27 @@ export class LingoTrackerError extends Error {
   }
 }
 
+/** A source file could not be detected, read, or parsed before an import writes resources. */
+export class ImportSourceError extends LingoTrackerError {
+  /** `format` keeps the CLI's format-detection message free of the `Import failed:` prefix. */
+  readonly stage: 'format' | 'source';
+  constructor(message: string, options?: { readonly cause?: unknown; readonly stage?: 'format' | 'source' }) {
+    super(message, 'IMPORT_SOURCE_ERROR', options);
+    this.stage = options?.stage ?? 'source';
+  }
+}
+
+/** An import strategy cannot write to the collection's base locale. */
+export class InvalidImportLocaleError extends LingoTrackerError {
+  constructor(baseLocale: string, strategy: string) {
+    super(
+      `Cannot import into base locale "${baseLocale}" with strategy "${strategy}". ` +
+        'Only "migration" strategy supports base locale imports.',
+      'INVALID_IMPORT_LOCALE',
+    );
+  }
+}
+
 // --- Config ------------------------------------------------------------------
 
 /** `.lingo-tracker.json` does not exist in the directory that was searched. */

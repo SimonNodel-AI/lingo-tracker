@@ -1,4 +1,5 @@
 import type { Collection } from '../config/open-collection';
+import { InvalidImportLocaleError } from '../errors';
 import {
   describeTermFileProblem,
   type ProjectTerms,
@@ -51,7 +52,7 @@ export interface ImportSession {
  * advisory check, so it opens the run's warnings (on a base-locale import, the only kind that
  * checks), as does a named protected-terms file that does not exist (on a target-locale import).
  *
- * @throws {Error} The target locale is the collection's base locale and the strategy is not `migration`.
+ * @throws {InvalidImportLocaleError} The target locale is the collection's base locale and the strategy is not `migration`.
  * @throws {ProtectedTermsFileError} A protected-terms file exists but is not a JSON array of strings.
  */
 export function openImportSession(collection: Collection, options: ImportRunOptions): ImportSession {
@@ -60,10 +61,7 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
   const isBaseLocaleImport = options.locale === collection.baseLocale;
 
   if (isBaseLocaleImport && strategy !== 'migration') {
-    throw new Error(
-      `Cannot import into base locale "${collection.baseLocale}" with strategy "${strategy}". ` +
-        `Only "migration" strategy supports base locale imports.`,
-    );
+    throw new InvalidImportLocaleError(collection.baseLocale, strategy);
   }
 
   const terms = readProjectTerms(collection);
