@@ -19,6 +19,7 @@ import {
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type BundleSelection, resolveBundleCollections, selectBundleEntries } from './bundle-selection';
 import { type BundleLocale, COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
+import { resolveBundleSettings } from './resolve-bundle-settings';
 import {
   bundleKeyToConstantName,
   segmentToPropertyName,
@@ -107,13 +108,11 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
   } = params;
   const cwd = params.cwd ?? process.cwd();
 
-  const resolvedTokenCasing: TokenCasing =
-    tokenCasingOverride ?? bundleDefinition.tokenCasing ?? config.tokenCasing ?? 'upperCase';
-  const resolvedTransformICUToTransloco: boolean =
-    transformICUToTranslocoOverride ??
-    bundleDefinition.transformICUToTransloco ??
-    config.transformICUToTransloco ??
-    true;
+  const { tokenCasing: resolvedTokenCasing, transformICUToTransloco: resolvedTransformICUToTransloco } =
+    resolveBundleSettings(config, bundleDefinition, {
+      tokenCasing: tokenCasingOverride,
+      transformICUToTransloco: transformICUToTranslocoOverride,
+    });
   const resolvedConstantName =
     tokenConstantNameOverride ?? bundleDefinition.tokenConstantName ?? bundleKeyToConstantName(bundleKey);
 

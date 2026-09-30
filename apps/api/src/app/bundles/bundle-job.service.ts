@@ -62,6 +62,7 @@ export class BundleJobService {
           onProgress,
           cwd: process.cwd(),
         });
+        if (result.typeOutcome.warning) this.#logger.warn(result.typeOutcome.warning);
         update({
           progress: { current: total, total },
           result: mapGenerateBundleResultToJobResult(result),

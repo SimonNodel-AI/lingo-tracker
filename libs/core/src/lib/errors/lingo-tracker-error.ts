@@ -305,6 +305,16 @@ export class TranslationLocaleNotConfiguredError extends LingoTrackerError {
 
 // --- Bundles -----------------------------------------------------------------
 
+/** A constant-name override was supplied for more than one bundle. */
+export class MultipleBundleConstantNameError extends LingoTrackerError {
+  constructor() {
+    super(
+      'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
+      'MULTIPLE_BUNDLE_CONSTANT_NAME',
+    );
+  }
+}
+
 /** The config has no bundle with this name. */
 export class BundleNotFoundError extends LingoTrackerError {
   readonly bundleName: string;

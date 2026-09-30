@@ -1,6 +1,6 @@
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import type { TokenCasing } from '@simoncodes-ca/domain';
-import { BundleNotFoundError, generateBundle, validateGenerateBundleRequest } from '@simoncodes-ca/core';
+import { BundleNotFoundError, type BundleTypeOutcome, generateBundles } from '@simoncodes-ca/core';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { ALL_ITEMS_SENTINEL, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
 
@@ -25,14 +25,6 @@ export interface BundleOptions {
    * A string value is used as the locale code directly.
    */
   debugKeys?: string | boolean;
-}
-
-interface BundleGenerationResult {
-  bundleKey: string;
-  filesGenerated: number;
-  warnings: string[];
-  localesProcessed: string[];
-  error?: string;
 }
 
 const DEFAULT_DEBUG_KEYS_LOCALE = '99';
@@ -72,17 +64,8 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
 
   const picked = typeof options.bundleOrAll === 'string' ? options.bundleOrAll : undefined;
   const names = options.name ? parseCommaSeparatedList(options.name) : undefined;
-  const bundlesToProcess =
-    names && names.length > 0
-      ? names
-      : picked && picked !== ALL_ITEMS_SENTINEL
-        ? [picked]
-        : Object.keys(config.bundles);
-
-  // --token-constant-name is only valid for a single bundle
-  if (options.tokenConstantName && bundlesToProcess.length > 1) {
-    throw new Error('Cannot use --token-constant-name with multiple bundles. Please target a single bundle.');
-  }
+  const selectedNames =
+    names && names.length > 0 ? names : picked && picked !== ALL_ITEMS_SENTINEL ? [picked] : undefined;
 
   // Parse locale filter if provided
   const locales = parseCommaSeparatedList(options.locale);
@@ -90,110 +73,75 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
 
   const debugKeysLocale = options.debugKeys === true ? DEFAULT_DEBUG_KEYS_LOCALE : options.debugKeys || undefined;
 
-  // Process each bundle
-  const bundleResults: BundleGenerationResult[] = [];
-
-  for (const bundleKey of bundlesToProcess) {
-    try {
-      validateGenerateBundleRequest({ bundleKey, config, locales: localeFilter });
-      if (!options.quiet) {
-        console.log('');
-        ConsoleFormatter.progress(`Generating bundle: ${bundleKey}`);
+  const runResult = await generateBundles(config, {
+    names: selectedNames,
+    locales: localeFilter,
+    overrides: {
+      tokenCasing: options.tokenCasing,
+      tokenConstantName: options.tokenConstantName,
+      transformICUToTransloco: options.transformICUToTransloco,
+      debugKeysLocale,
+    },
+    cwd,
+    onEvent: (event) => {
+      if (event.kind === 'start') {
+        if (!options.quiet) {
+          console.log('');
+          ConsoleFormatter.progress(`Generating bundle: ${event.name}`);
+          if (options.verbose && localeFilter) ConsoleFormatter.indent(`Locales: ${localeFilter.join(', ')}`);
+        }
+        return;
       }
-      if (!options.quiet && options.verbose && localeFilter) {
-        ConsoleFormatter.indent(`Locales: ${localeFilter.join(', ')}`);
+      if (event.kind === 'type-warning') {
+        console.warn(event.warning);
+        return;
       }
-
-      const result = await generateBundle({
-        bundleKey,
-        config,
-        locales: localeFilter,
-        tokenCasing: options.tokenCasing,
-        tokenConstantName: options.tokenConstantName,
-        transformICUToTransloco: options.transformICUToTransloco,
-        debugKeysLocale,
-        cwd,
-      });
-
-      bundleResults.push({
-        bundleKey,
-        filesGenerated: result.filesGenerated,
-        warnings: result.warnings,
-        localesProcessed: result.localesProcessed,
-      });
-
+      const { outcome } = event;
+      if (outcome.error !== undefined) {
+        const errorMessage =
+          outcome.error instanceof BundleNotFoundError
+            ? `Bundle "${outcome.name}" not found.`
+            : outcome.error instanceof Error
+              ? outcome.error.message
+              : 'Failed to generate bundle';
+        ConsoleFormatter.error(errorMessage);
+        return;
+      }
+      const result = outcome.result;
       if (!options.quiet) {
         ConsoleFormatter.indent(`✅ Files generated: ${result.filesGenerated}`);
         ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
       }
-
       const typeLine = typeOutcomeLine(result.typeOutcome);
       if (result.typeOutcome.status === 'failed') ConsoleFormatter.error(typeLine);
       else if (!options.quiet) ConsoleFormatter.indent(typeLine);
-
       if (result.warnings.length > 0) {
         ConsoleFormatter.warning(
           `Warnings: ${result.warnings.length}`,
           options.verbose ? result.warnings.map((warning) => `- ${warning}`) : [],
         );
       }
-    } catch (e: unknown) {
-      const errorMessage =
-        e instanceof BundleNotFoundError
-          ? `Bundle "${bundleKey}" not found.`
-          : e instanceof Error
-            ? e.message
-            : 'Failed to generate bundle';
-      bundleResults.push({
-        bundleKey,
-        filesGenerated: 0,
-        warnings: [],
-        localesProcessed: [],
-        error: errorMessage,
-      });
+    },
+  });
 
-      ConsoleFormatter.error(errorMessage);
-    }
-  }
-
-  // Output results
-  if (bundlesToProcess.length > 1) {
-    // Show summary for multiple bundles
-    const totals = bundleResults.reduce(
-      (acc, result) => ({
-        bundlesProcessed: acc.bundlesProcessed + (result.error ? 0 : 1),
-        filesGenerated: acc.filesGenerated + result.filesGenerated,
-        warningsCount: acc.warningsCount + result.warnings.length,
-      }),
-      {
-        bundlesProcessed: 0,
-        filesGenerated: 0,
-        warningsCount: 0,
-      },
-    );
-
+  if (runResult.outcomes.length > 1) {
+    const { totals } = runResult;
     if (!options.quiet) {
       ConsoleFormatter.section(`Summary (${totals.bundlesProcessed} bundles)`);
       ConsoleFormatter.keyValue('Total files generated', totals.filesGenerated);
     }
-
     if (totals.warningsCount > 0) {
       ConsoleFormatter.keyValue('Total warnings', totals.warningsCount);
-      if (!options.verbose) {
-        ConsoleFormatter.indent('Run with --verbose to see warning details');
-      }
+      if (!options.verbose) ConsoleFormatter.indent('Run with --verbose to see warning details');
     }
-
-    const errors = bundleResults.filter((r) => r.error);
-    if (errors.length > 0) {
-      ConsoleFormatter.warning(`${errors.length} bundle(s) failed to generate`);
-    }
+    const failures = runResult.outcomes.filter((outcome) => outcome.error !== undefined).length;
+    if (failures > 0) ConsoleFormatter.warning(`${failures} bundle(s) failed to generate`);
   }
 
-  return bundleResults.some((r) => r.error) ? { exitCode: 1 } : undefined;
+  return runResult.outcomes.some((outcome) => outcome.error !== undefined) ? { exitCode: 1 } : undefined;
 }
 
-function typeOutcomeLine(outcome: Awaited<ReturnType<typeof generateBundle>>['typeOutcome']): string {
+function typeOutcomeLine(outcome: BundleTypeOutcome): string {
   switch (outcome.status) {
     case 'written':
       return `└─ Types: ${outcome.path} (${outcome.keysCount} keys)`;
