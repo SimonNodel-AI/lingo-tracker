@@ -20,34 +20,43 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { catchError, debounceTime, map, of, startWith, switchMap, tap } from 'rxjs';
 import {
-  bundleOutputFile,
   checkBundleDefinition,
   hasLocalePlaceholder,
   isTypeScriptFile,
   isValidJavaScriptIdentifier,
-  normalizeBundleDefinition,
 } from '@simoncodes-ca/domain';
-import type {
-  BundleDefinitionDto,
-  BundleDryRunRequestDto,
-  BundleDryRunResultDto,
-  CollectionBundleDefinitionDto,
-  EntrySelectionRuleDto,
-  TokenCasingDto,
-} from '@simoncodes-ca/data-transfer';
+import type { BundleDryRunResultDto, TokenCasingDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
 import { CollectionsStore } from '../store/collections.store';
 import { NamedEntrySubmit } from '../store/dialog-config-submit';
+import {
+  LOCALE_PLACEHOLDER,
+  collectionsRequired,
+  dryRunRequest,
+  firstErrorSection,
+  localTree,
+  outputSummary,
+  patternFiles,
+  plannedTree,
+  rulesRequired,
+  splitAfterSeparators,
+  toDefinition,
+  toDraft,
+  typeFileName,
+  type BundleDraft,
+  type BundleDraftCollection,
+  type BundleDraftRule,
+  type BundleSection,
+  type IcuChoice,
+  type MergeStrategy,
+  type PreviewFolder,
+  type TagOperator,
+  type TokenCasingChoice,
+} from './bundle-draft';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { SegmentedControl, type SegmentOption } from './segmented-control';
-
-export type BundleSection = 'output' | 'collections' | `coll:${number}` | 'types' | 'options';
-export type MergeStrategy = 'merge' | 'override';
-export type TagOperator = 'Any' | 'All';
-export type TokenCasingChoice = 'inherit' | TokenCasingDto;
-export type IcuChoice = 'inherit' | 'on' | 'off';
 
 export type RuleGroup = FormGroup<{
   matchingPattern: FormControl<string>;
@@ -63,26 +72,7 @@ export type CollectionGroup = FormGroup<{
   rules: FormArray<RuleGroup>;
 }>;
 
-/** One folder of the "Will write" tree. */
-export interface PreviewFolder {
-  readonly path: string;
-  /** `path` split after each separator so the template can offer break opportunities. */
-  readonly pathParts: readonly string[];
-  readonly files: readonly PreviewFile[];
-}
-
-export interface PreviewFile {
-  readonly name: string;
-  /** `name` split after each separator so the template can offer break opportunities. */
-  readonly nameParts: readonly string[];
-  readonly kind: 'bundle' | 'types';
-  /** `undefined` when the dry run failed and existence is unknown. */
-  readonly exists: boolean | undefined;
-}
-
 export type PreviewStatus = 'waiting' | 'loading' | 'ready' | 'error';
-
-const LOCALE_PLACEHOLDER = '{locale}';
 
 const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -92,19 +82,7 @@ const code = (value: string): string => `<code>${escapeHtml(value)}</code>`;
 /** Mirrors core's `bundleKeyToConstantName` without importing core into the browser. */
 const deriveConstantName = (bundleKey: string): string => `${bundleKey.replace(/-/g, '_').toUpperCase()}_TOKENS`;
 
-/** Split after each separator so long paths break between segments instead of mid-identifier. */
-const splitAfterSeparators = (value: string, separators: RegExp): readonly string[] =>
-  value.length === 0 ? [] : value.split(separators);
-
-const PATH_SEPARATORS = /(?<=[._\-/])/;
 const TOKEN_SEPARATORS = /(?<=[._])/;
-
-/**
- * Tidies a types file path for display: the one typed in the form, and the one the dry-run
- * plan returns (the plan echoes `typeDistFile` as configured). Bundle file paths come from
- * `bundleOutputFile` and need no tidying.
- */
-const stripDotSlash = (path: string): string => path.replace(/^\.\//, '').replace(/\/+$/, '');
 
 @Component({
   selector: 'app-bundle-form-dialog',
@@ -195,6 +173,10 @@ export class BundleFormDialog {
    * signal so the computeds below re-read the form.
    */
   readonly #formTick = toSignal(this.form.events.pipe(map(() => Symbol())), { initialValue: Symbol() });
+  readonly #draft = computed<BundleDraft>(() => {
+    this.#formTick();
+    return this.form.getRawValue();
+  });
 
   readonly activeSection = signal<BundleSection>(this.#initialSection());
   readonly submitAttempted = signal(false);
@@ -250,41 +232,14 @@ export class BundleFormDialog {
   });
 
   /** Rail summary under Output: `dist/pattern.json` (the placeholder kept), or nothing until one is typed. */
-  readonly outputSummary = computed(() => {
-    this.#formTick();
-    const { dist, bundleName } = this.form.getRawValue();
-    if (!dist.trim() && !bundleName.trim()) return '';
-    return bundleOutputFile({ dist: dist.trim(), bundleName: bundleName.trim() }, LOCALE_PLACEHOLDER);
-  });
+  readonly outputSummary = computed(() => outputSummary(this.#draft()));
 
-  readonly typeFileName = computed(() => {
-    this.#formTick();
-    const { typesEnabled, typeDistFile } = this.form.getRawValue();
-    if (!typesEnabled) return '';
-    return typeDistFile.trim().split('/').pop() ?? '';
-  });
+  readonly typeFileName = computed(() => typeFileName(this.#draft()));
 
-  readonly derivedConstantName = computed(() => {
-    this.#formTick();
-    return deriveConstantName(this.form.getRawValue().name.trim() || 'bundle');
-  });
+  readonly derivedConstantName = computed(() => deriveConstantName(this.#draft().name.trim() || 'bundle'));
 
   /** The bundle file per project locale, relative to the output folder. */
-  readonly patternFiles = computed(() => {
-    this.#formTick();
-    const bundleName = this.form.getRawValue().bundleName.trim();
-    if (!bundleName) return [];
-    return this.projectLocales().map((locale) => bundleOutputFile({ dist: '', bundleName }, locale));
-  });
-
-  /** The bundle file per project locale as core will write it (domain `bundleOutputFile`). */
-  readonly outputFiles = computed(() => {
-    this.#formTick();
-    const raw = this.form.getRawValue();
-    const bundleName = raw.bundleName.trim();
-    if (!bundleName) return [];
-    return this.projectLocales().map((locale) => bundleOutputFile({ dist: raw.dist.trim(), bundleName }, locale));
-  });
+  readonly patternFiles = computed(() => patternFiles(this.#draft(), this.projectLocales()));
 
   readonly writesHintParams = computed(() => {
     const files = this.patternFiles();
@@ -309,25 +264,12 @@ export class BundleFormDialog {
   });
 
   /** Client-side tree from the form alone; used while waiting and when the dry run fails. */
-  readonly localTree = computed<readonly PreviewFolder[]>(() => {
-    this.#formTick();
-    const raw = this.form.getRawValue();
-    const files: { path: string; kind: 'bundle' | 'types' }[] = this.outputFiles().map((path) => ({
-      path,
-      kind: 'bundle',
-    }));
-    if (raw.typesEnabled && raw.typeDistFile.trim()) {
-      files.push({ path: stripDotSlash(raw.typeDistFile.trim()), kind: 'types' });
-    }
-    return groupIntoFolders(files.map((file) => ({ ...file, exists: undefined })));
-  });
+  readonly localTree = computed<readonly PreviewFolder[]>(() => localTree(this.#draft(), this.projectLocales()));
 
   readonly previewTree = computed<readonly PreviewFolder[]>(() => {
     const result = this.dryRun();
     if (!result || this.previewStatus() === 'error') return this.localTree();
-    return groupIntoFolders(
-      result.files.map((file) => ({ path: stripDotSlash(file.path), kind: file.kind, exists: file.exists })),
-    );
+    return plannedTree(result.files);
   });
 
   readonly previewFileCount = computed(() =>
@@ -424,7 +366,15 @@ export class BundleFormDialog {
 
   addCollection(name: string): void {
     const collections = this.form.controls.collections;
-    collections.push(this.#buildCollectionGroup({ name, entriesSelectionRules: 'All' }));
+    collections.push(
+      this.#buildCollectionGroup({
+        name,
+        bundledKeyPrefix: '',
+        mergeStrategy: 'merge',
+        allEntries: true,
+        rules: [],
+      }),
+    );
     collections.markAsDirty();
     this.activate(`coll:${collections.length - 1}`);
   }
@@ -452,7 +402,9 @@ export class BundleFormDialog {
   // ───────────────────────────── rules ─────────────────────────────
 
   addRule(group: CollectionGroup): void {
-    group.controls.rules.push(this.#buildRuleGroup({ matchingPattern: '' }));
+    group.controls.rules.push(
+      this.#buildRuleGroup({ matchingPattern: '', matchingTags: [], matchingTagOperator: 'Any' }),
+    );
     group.controls.rules.markAsDirty();
   }
 
@@ -552,40 +504,17 @@ export class BundleFormDialog {
   }
 
   #populate(): void {
-    // Read through the domain normaliser, so a legacy `typeDist` shows as the types file.
-    const bundle = this.#data.bundle ? normalizeBundleDefinition(this.#data.bundle) : undefined;
+    const draft = toDraft(this.#data.bundle, this.isEditMode ? [] : this.allCollectionNames());
     const name = this.#data.name ?? '';
-    const collections = bundle?.collections;
+    this.form.patchValue({ ...draft, name });
 
-    this.form.patchValue({
-      name,
-      dist: bundle?.dist ?? '',
-      bundleName: bundle?.bundleName ?? '',
-      allCollections: collections === 'All',
-      typesEnabled: Boolean(bundle?.typeDistFile),
-      typeDistFile: bundle?.typeDistFile ?? '',
-      tokenCasing: bundle?.tokenCasing ?? 'inherit',
-      tokenConstantName: bundle?.tokenConstantName ?? '',
-      transformICUToTransloco:
-        bundle?.transformICUToTransloco === undefined ? 'inherit' : bundle.transformICUToTransloco ? 'on' : 'off',
-    });
-
-    if (Array.isArray(collections)) {
-      for (const collection of collections) {
-        this.form.controls.collections.push(this.#buildCollectionGroup(collection), { emitEvent: false });
-      }
+    for (const collection of draft.collections) {
+      this.form.controls.collections.push(this.#buildCollectionGroup(collection), { emitEvent: false });
     }
 
-    // In create mode the first collection pane opens straight away when there is one; a brand
-    // new bundle starts with its first collection so the user lands on something to fill in.
-    if (!this.isEditMode && this.form.controls.collections.length === 0 && !this.form.controls.allCollections.value) {
-      const [first] = this.allCollectionNames();
-      if (first) {
-        this.form.controls.collections.push(this.#buildCollectionGroup({ name: first, entriesSelectionRules: 'All' }), {
-          emitEvent: false,
-        });
-        this.activeSection.set('coll:0');
-      }
+    // A new bundle opens on its first collection, including an explicitly empty list.
+    if (!this.isEditMode && this.form.controls.collections.length > 0 && !this.form.controls.allCollections.value) {
+      this.activeSection.set('coll:0');
     }
 
     if (this.isEditMode && name) {
@@ -597,15 +526,14 @@ export class BundleFormDialog {
     this.form.controls.collections.updateValueAndValidity({ emitEvent: false });
   }
 
-  #buildCollectionGroup(collection: CollectionBundleDefinitionDto): CollectionGroup {
-    const rules = Array.isArray(collection.entriesSelectionRules) ? collection.entriesSelectionRules : [];
+  #buildCollectionGroup(collection: BundleDraftCollection): CollectionGroup {
     const group: CollectionGroup = new FormGroup({
       name: new FormControl<string>(collection.name, { nonNullable: true, validators: [Validators.required] }),
-      bundledKeyPrefix: new FormControl<string>(collection.bundledKeyPrefix ?? '', { nonNullable: true }),
-      mergeStrategy: new FormControl<MergeStrategy>(collection.mergeStrategy ?? 'merge', { nonNullable: true }),
-      allEntries: new FormControl<boolean>(collection.entriesSelectionRules === 'All', { nonNullable: true }),
+      bundledKeyPrefix: new FormControl<string>(collection.bundledKeyPrefix, { nonNullable: true }),
+      mergeStrategy: new FormControl<MergeStrategy>(collection.mergeStrategy, { nonNullable: true }),
+      allEntries: new FormControl<boolean>(collection.allEntries, { nonNullable: true }),
       rules: new FormArray<RuleGroup>(
-        rules.map((rule) => this.#buildRuleGroup(rule)),
+        collection.rules.map((rule) => this.#buildRuleGroup(rule)),
         { validators: [rulesRequiredValidator] },
       ),
     });
@@ -618,14 +546,14 @@ export class BundleFormDialog {
     return group;
   }
 
-  #buildRuleGroup(rule: EntrySelectionRuleDto): RuleGroup {
+  #buildRuleGroup(rule: BundleDraftRule): RuleGroup {
     return new FormGroup({
       matchingPattern: new FormControl<string>(rule.matchingPattern, {
         nonNullable: true,
         validators: [Validators.required],
       }),
-      matchingTags: new FormControl<string[]>([...(rule.matchingTags ?? [])], { nonNullable: true }),
-      matchingTagOperator: new FormControl<TagOperator>(rule.matchingTagOperator ?? 'Any', { nonNullable: true }),
+      matchingTags: new FormControl<string[]>([...rule.matchingTags], { nonNullable: true }),
+      matchingTagOperator: new FormControl<TagOperator>(rule.matchingTagOperator, { nonNullable: true }),
     });
   }
 
@@ -662,7 +590,7 @@ export class BundleFormDialog {
         startWith(null),
         tap(() => this.previewStale.set(true)),
         debounceTime(300),
-        map(() => this.#buildDryRunRequest()),
+        map(() => dryRunRequest(this.#draft())),
         switchMap((request) => {
           if (!request) {
             return of({ status: 'waiting' as const, result: undefined });
@@ -682,55 +610,9 @@ export class BundleFormDialog {
       });
   }
 
-  /** The dry run needs a name, a folder and a pattern; anything less would only 400. */
-  #buildDryRunRequest(): BundleDryRunRequestDto | undefined {
-    const raw = this.form.getRawValue();
-    const name = raw.name.trim();
-    if (!name || !raw.dist.trim() || !raw.bundleName.trim()) return undefined;
-    return { name, bundle: this.#buildDefinition() };
-  }
-
-  #buildDefinition(): BundleDefinitionDto {
-    const raw = this.form.getRawValue();
-    const collections: BundleDefinitionDto['collections'] = raw.allCollections
-      ? 'All'
-      : raw.collections.map((collection) => {
-          const prefix = collection.bundledKeyPrefix.trim();
-          const entriesSelectionRules: CollectionBundleDefinitionDto['entriesSelectionRules'] = collection.allEntries
-            ? 'All'
-            : collection.rules.map((rule) => ({
-                matchingPattern: rule.matchingPattern.trim(),
-                ...(rule.matchingTags.length > 0
-                  ? { matchingTags: [...rule.matchingTags], matchingTagOperator: rule.matchingTagOperator }
-                  : {}),
-              }));
-          return {
-            name: collection.name,
-            ...(prefix ? { bundledKeyPrefix: prefix } : {}),
-            entriesSelectionRules,
-            ...(collection.mergeStrategy === 'override' ? { mergeStrategy: 'override' as const } : {}),
-          };
-        });
-
-    const typeDistFile = raw.typeDistFile.trim();
-    const tokenConstantName = raw.tokenConstantName.trim();
-    const typesOn = raw.typesEnabled && typeDistFile.length > 0;
-
-    return {
-      bundleName: raw.bundleName.trim(),
-      dist: raw.dist.trim(),
-      collections,
-      ...(typesOn ? { typeDistFile } : {}),
-      ...(typesOn && raw.tokenCasing !== 'inherit' ? { tokenCasing: raw.tokenCasing } : {}),
-      ...(typesOn && tokenConstantName ? { tokenConstantName } : {}),
-      ...(raw.transformICUToTransloco !== 'inherit'
-        ? { transformICUToTransloco: raw.transformICUToTransloco === 'on' }
-        : {}),
-    };
-  }
-
   #buildResult(): BundleFormResult {
-    return { name: this.form.getRawValue().name.trim(), bundle: this.#buildDefinition() };
+    const draft = this.#draft();
+    return { name: draft.name.trim(), bundle: toDefinition(draft) };
   }
 
   /**
@@ -745,14 +627,7 @@ export class BundleFormDialog {
 
   /** After a failed submit, land on the first section that has something to fix. */
   #revealFirstError(): void {
-    const order: BundleSection[] = [
-      'output',
-      'collections',
-      ...this.form.controls.collections.controls.map((_, index) => `coll:${index}` as const),
-      'types',
-    ];
-    const errors = this.sectionErrors();
-    const first = order.find((section) => errors.has(section));
+    const first = firstErrorSection(this.sectionErrors(), this.form.controls.collections.length);
     if (first) this.activate(first);
   }
 }
@@ -788,29 +663,11 @@ function identifierValidator(control: AbstractControl): ValidationErrors | null 
 function collectionsRequiredValidator(control: AbstractControl): ValidationErrors | null {
   const parent = control.parent;
   const all = parent?.get('allCollections')?.value === true;
-  if (all) return null;
-  return control instanceof FormArray && control.length === 0 ? { collectionsEmpty: true } : null;
+  return control instanceof FormArray && collectionsRequired(all, control.length) ? { collectionsEmpty: true } : null;
 }
 
 function rulesRequiredValidator(control: AbstractControl): ValidationErrors | null {
   const parent = control.parent;
   const all = parent?.get('allEntries')?.value === true;
-  if (all) return null;
-  return control instanceof FormArray && control.length === 0 ? { rulesEmpty: true } : null;
-}
-
-function groupIntoFolders(files: readonly { path: string; kind: 'bundle' | 'types'; exists: boolean | undefined }[]) {
-  const folders = new Map<string, PreviewFile[]>();
-  for (const file of files) {
-    const slash = file.path.lastIndexOf('/');
-    const folder = slash >= 0 ? file.path.slice(0, slash) : '';
-    const name = slash >= 0 ? file.path.slice(slash + 1) : file.path;
-    const list = folders.get(folder) ?? [];
-    list.push({ name, nameParts: splitAfterSeparators(name, PATH_SEPARATORS), kind: file.kind, exists: file.exists });
-    folders.set(folder, list);
-  }
-  return [...folders.entries()].map(
-    ([path, list]) =>
-      ({ path, pathParts: splitAfterSeparators(path, PATH_SEPARATORS), files: list }) satisfies PreviewFolder,
-  );
+  return control instanceof FormArray && rulesRequired(all, control.length) ? { rulesEmpty: true } : null;
 }

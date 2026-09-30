@@ -56,6 +56,14 @@ Explained in context: [`core-library.md`](core-library.md#bundle-definition), [`
 
 ---
 
+### Bundle Draft
+
+The Tracker bundle form's raw choices, including inherited settings and disabled type options. `apps/tracker/src/app/collections/bundle-form-dialog/bundle-draft.ts` maps definitions to and from those choices, gates dry-run requests, derives preview paths and trees, and chooses the first invalid section. It has no Angular dependency; the dialog owns the form and preview state.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
+
+---
+
 ### Bundle Selection
 
 What a [bundle](#bundle) holds for one locale: each final key, its value, and the resource the value came from. In code, `libs/core/src/lib/bundle/bundle-selection.ts` has two functions. `resolveBundleCollections(definition, config, { cwd })` opens each [collection](#collection) the definition reads once per run (`'All'` means every collection, with every entry and no prefix), and reports a name the config does not have once: `Collection '<name>' not found in config`. `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` reads each collection for the locale through the [Collection Reader](#collection-reader), keeps the entries that match a rule (key pattern and [tags](#tags)), prepends `bundledKeyPrefix`, converts [ICU](#icu-format) to [Transloco](#transloco) when asked, and merges: the first value of a key wins, unless a later collection's `mergeStrategy` is `'override'`. It returns `{ entries, conflicts, warnings }`; each entry has a `value` and an `origin` (`collectionName`, `sourceKey`). Each collection's base value comes from its own [base locale](#base-locale); `COLLECTION_BASE_LOCALE` asks for every collection's base value. `generateBundle` writes the JSON files from it, `planBundle` counts keys and reports conflicts from it, and the type file takes its keys from it. None of them selects entries itself.

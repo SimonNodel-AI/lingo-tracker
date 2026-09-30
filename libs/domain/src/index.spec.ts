@@ -29,6 +29,8 @@ describe('domain public surface', () => {
       'findProtectedTermViolations',
       'findProtectedTerms',
       'findUnportablePluralCases',
+      'hasBundleCollections',
+      'hasBundleRules',
       'hasICUPlaceholders',
       'hasLocalePlaceholder',
       'hasTranslocoPlaceholders',
