@@ -10,8 +10,8 @@ import {
   type BundleProgressEvent,
   type GenerateBundleParams,
   generateBundle as generateBundleByName,
-  validateBundleLocales,
 } from './generate-bundle';
+import { validateBundleLocales } from './prepare-bundle-run';
 import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors';
 
 async function generateBundle(params: GenerateBundleParams & { bundleDefinition: BundleDefinition }) {
@@ -161,7 +161,7 @@ describe('generateBundle (real fs)', () => {
     expect(result.warnings).toContain("Bundle 'main' for locale 'es' is empty");
   });
 
-  it('warns for a missing collection once per run rather than once per locale', async () => {
+  it('warns for a missing collection once per run and writes the remaining files', async () => {
     const common = seed('common', {
       welcome: { source: 'Welcome', translations: { fr: 'Bienvenue' } },
     });
@@ -176,10 +176,60 @@ describe('generateBundle (real fs)', () => {
       config: config({ common }, { locales: ['en', 'fr'] }),
       cwd: root(),
     });
-
     expect(
       result.warnings.filter((warning) => warning === "Collection 'nonexistent' not found in config"),
     ).toHaveLength(1);
+    expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/fr.json']);
+    expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ welcome: 'Welcome' });
+  });
+
+  it.each([
+    { label: 'legacy bundle key', bundleKey: 'legacy.name', overrides: {} },
+    { label: 'filename without a locale placeholder', bundleKey: 'main', overrides: { bundleName: 'fixed' } },
+    {
+      label: 'duplicate collection without a prefix',
+      bundleKey: 'main',
+      overrides: {
+        collections: [
+          { name: 'common', entriesSelectionRules: 'All' as const },
+          { name: 'common', entriesSelectionRules: 'All' as const },
+        ],
+      },
+    },
+    {
+      label: 'unknown merge strategy',
+      bundleKey: 'main',
+      overrides: {
+        collections: [{ name: 'common', entriesSelectionRules: 'All' as const, mergeStrategy: 'unknown' as never }],
+      },
+    },
+    { label: 'unknown token casing', bundleKey: 'main', overrides: { tokenCasing: 'unknown' as never } },
+    {
+      label: 'unknown tag operator',
+      bundleKey: 'main',
+      overrides: {
+        collections: [
+          {
+            name: 'common',
+            entriesSelectionRules: [
+              { matchingPattern: '*', matchingTags: ['ui'], matchingTagOperator: 'unknown' as never },
+            ],
+          },
+        ],
+      },
+    },
+  ])('still generates JSON from a saved bundle with $label', async ({ bundleKey, overrides }) => {
+    const common = seed('common', { welcome: { source: 'Welcome', tags: ['ui'] } });
+    const result = await generateBundle({
+      bundleKey,
+      bundleDefinition: definition(overrides as Partial<BundleDefinition>),
+      config: config({ common }),
+      locales: ['en'],
+      cwd: root(),
+    });
+    const file = 'bundleName' in overrides && overrides.bundleName === 'fixed' ? 'fixed.json' : 'en.json';
+    expect(result.writtenFiles).toEqual([`dist/bundles/${file}`]);
+    expect(readJson(join(root(), 'dist/bundles', file))).toEqual({ welcome: 'Welcome' });
   });
 
   it('uses {locale} in a filename', async () => {
@@ -361,10 +411,26 @@ describe('generateBundle (real fs)', () => {
         locales: ['en'],
         cwd: root(),
       });
-
       expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
       expect(result.warnings).toEqual([]);
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
+    });
+
+    it('writes JSON and reports a failed type outcome for an invalid saved constant name', async () => {
+      const common = seed('common', { welcome: { source: 'Welcome' } });
+      const result = await generateBundle({
+        bundleKey: 'main',
+        bundleDefinition: definition({ typeDistFile: 'types/main.ts', tokenConstantName: '1bad' }),
+        config: config({ common }),
+        locales: ['en'],
+        cwd: root(),
+      });
+      expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
+      expect(result.typeOutcome).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('Invalid tokenConstantName'),
+      });
+      expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ welcome: 'Welcome' });
     });
 
     it('reports an empty type key set as a skipped outcome', async () => {

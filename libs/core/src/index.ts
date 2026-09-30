@@ -25,8 +25,10 @@ export {
   deleteBundleDefinition,
   generateBundle,
   generateBundles,
-  validateBundleLocales,
-  validateGenerateBundleRequest,
+  generatePreparedBundle,
+  prepareBundleRun,
+  type PreparedBundleRun,
+  type PrepareBundleRunParams,
   planBundle,
   updateBundleDefinition,
 } from './lib/bundle';

@@ -14,27 +14,30 @@ const definition: BundleDefinition = { bundleName: '{locale}', dist: 'dist', col
 
 describe('resolveBundleSettings', () => {
   it.each([
-    ['defaults', {}, {}, {}, 'upperCase', true],
-    ['global', { tokenCasing: 'camelCase', transformICUToTransloco: false }, {}, {}, 'camelCase', false],
+    ['defaults', {}, {}, {}, 'upperCase', 'MAIN_TOKENS', true],
+    ['global', { tokenCasing: 'camelCase', transformICUToTransloco: false }, {}, {}, 'camelCase', 'MAIN_TOKENS', false],
     [
       'definition',
       { tokenCasing: 'upperCase', transformICUToTransloco: true },
       { tokenCasing: 'camelCase', transformICUToTransloco: false },
       {},
       'camelCase',
+      'MAIN_TOKENS',
       false,
     ],
     [
       'overrides',
       { tokenCasing: 'upperCase', transformICUToTransloco: true },
-      { tokenCasing: 'upperCase', transformICUToTransloco: true },
-      { tokenCasing: 'camelCase', transformICUToTransloco: false },
+      { tokenCasing: 'upperCase', tokenConstantName: 'DEF_TOKENS', transformICUToTransloco: true },
+      { tokenCasing: 'camelCase', tokenConstantName: 'CLI_TOKENS', transformICUToTransloco: false },
       'camelCase',
+      'CLI_TOKENS',
       false,
     ],
-  ] as const)('%s wins in precedence', (_label, global, bundle, overrides, tokenCasing, transformICUToTransloco) => {
-    expect(resolveBundleSettings({ ...base, ...global }, { ...definition, ...bundle }, overrides)).toEqual({
+  ] as const)('%s wins in precedence', (_label, global, bundle, overrides, tokenCasing, tokenConstantName, transformICUToTransloco) => {
+    expect(resolveBundleSettings('main', { ...base, ...global }, { ...definition, ...bundle }, overrides)).toEqual({
       tokenCasing,
+      tokenConstantName,
       transformICUToTransloco,
     });
   });

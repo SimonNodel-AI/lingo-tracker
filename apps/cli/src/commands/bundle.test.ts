@@ -237,6 +237,15 @@ describe('bundleCommand', () => {
       expect(console.error).toHaveBeenCalledWith('❌ Unknown locale "xx": must be defined in the project locales');
       expect(process.exitCode).toBe(1);
     });
+
+    it('prints a missing-collection warning and exits 0 for a completed bundle', async () => {
+      setSingle({ warnings: ["Collection 'deleted' not found in config"], writtenFiles: ['dist/i18n/en.json'] });
+
+      await bundleCommand({ name: 'core', verbose: true });
+
+      expect(console.error).toHaveBeenCalledWith("  - Collection 'deleted' not found in config");
+      expect(process.exitCode).toBe(0);
+    });
   });
 
   describe('project directory', () => {

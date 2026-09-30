@@ -59,6 +59,7 @@ libs/core/src/
     ├── bundle/                   # Bundle generation pipeline
     │   ├── generate-bundle.ts    # generateBundle(): main entry point
     │   ├── plan-bundle.ts        # planBundle(): the dry-run plan (files, key counts, conflicts), writes nothing
+    │   ├── prepare-bundle-run.ts  # Bundle Run Preparation: definition, settings, locales and collections
     │   ├── bundle-definition-operations.ts # add/update/deleteBundleDefinition(): edit `bundles` in the config file
     │   ├── bundle-selection.ts   # Bundle Selection: resolveBundleCollections() + selectBundleEntries()
     │   ├── resource-loader.ts    # loadCollectionResources(): one collection's values for one locale, via readCollection()
@@ -752,7 +753,7 @@ The [Term List Edit](glossary.md#term-list-edit) uses the stored list, not the u
 
 Key steps:
 
-1. **Resolve configuration** — token casing and ICU-to-Transloco transformation use `resolveBundleSettings(config, definition, overrides)`, shared with `planBundle`, and target locales are selected by the request. Settings follow a priority chain: CLI override → bundle config → global config → default. `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API `process.cwd()`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
+1. **Prepare the run** — `prepareBundleRun` checks a supplied dry-run definition with the full domain rules. For a saved generation run, it checks only the definition lookup and requested locales, preserving generation of older saved definitions. Both modes resolve token casing, constant name and ICU transformation, and return collections that open on first use. `planBundle`, `generateBundle` and `generateBundles` use this step. The API job service calls it synchronously before queueing and passes the result to `generatePreparedBundle`. Settings follow a priority chain: CLI override → bundle config → global config → default. `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API `process.cwd()`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
 2. **Resolve the collections** — `resolveBundleCollections(definition, config, { cwd })` opens each collection the definition reads once per run, with `openCollection(config, name, { cwd })`. See [Bundle Selection](#bundle-selection).
 3. **Select, per locale** — `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` returns the locale's final keys with their values and origins. It reads, filters, prefixes, converts ICU and merges.
 4. **Build hierarchy** — `buildHierarchy()` converts the flat `{dotKey: value}` map into a nested object matching the Angular Transloco expected structure.
@@ -768,7 +769,7 @@ Key steps:
 
 The [Bundle Selection](glossary.md#bundle-selection) is the one place that decides what a bundle holds. `generateBundle`, `planBundle` and the type file all consume it.
 
-- `resolveBundleCollections` expands `'All'` to every collection in the config, with `entriesSelectionRules: 'All'` and no prefix. It opens each named collection once and pairs it with its `CollectionBundleDefinition` (a `BundleCollection`). A name the config does not have is left out and reported once per run: `Collection '<name>' not found in config`.
+- `resolveBundleCollections` expands `'All'` to every collection in the config, with `entriesSelectionRules: 'All'` and no prefix. It opens each named collection once and pairs it with its `CollectionBundleDefinition` (a `BundleCollection`). For saved generation, an unknown collection is omitted with one warning per run. A supplied dry-run definition with that name fails the full definition check before selection.
 - `selectBundleEntries` reads each collection for the locale with `loadCollectionResources` (the `source` for the collection's own base locale or `COLLECTION_BASE_LOCALE`, otherwise the stored translation). It keeps the entries that match any rule (`matchesPattern()` and `matchesTags()` on the reader's effective tags), prepends `bundledKeyPrefix`, and converts ICU to Transloco when asked. Then it merges in definition order: the first value of a final key wins, unless a later collection's `mergeStrategy` is `'override'`.
 - The result is `{ entries, conflicts, warnings }`. `entries` maps each final key to `{ value, origin: { collectionName, sourceKey } }` in first-selected order. `conflicts` holds the final keys that more than one resource defines. `warnings` holds the unreadable folders (on the first read of a run, through the shared `cache`) and the ICU warnings: a malformed value, and a branch body that cannot be carried to Transloco.
 

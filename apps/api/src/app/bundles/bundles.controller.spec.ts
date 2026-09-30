@@ -101,6 +101,7 @@ describe('BundlesController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     configService.getConfig.mockReturnValue(config);
+    (core.planBundle as jest.Mock).mockImplementation(jest.requireActual('@simoncodes-ca/core').planBundle);
   });
 
   describe('POST /bundles', () => {
@@ -157,18 +158,25 @@ describe('BundlesController', () => {
       );
     });
 
-    it('returns 400 for a failure core does not type', () => {
+    it('returns 500 for a failure core does not type', () => {
       (core.addBundleDefinition as jest.Mock).mockImplementation(() => {
         throw new Error('Failed to write configuration file');
       });
 
       expect(statusOf(() => controller.createBundle({ name: 'main', bundle: requestDefinition }))).toBe(
-        HttpStatus.BAD_REQUEST,
+        HttpStatus.INTERNAL_SERVER_ERROR,
       );
     });
   });
 
   describe('PUT /bundles/:name', () => {
+    it('returns 400 for malformed name encoding', () => {
+      expect(statusOf(() => controller.updateBundle('%ZZ', { bundle: requestDefinition }))).toBe(
+        HttpStatus.BAD_REQUEST,
+      );
+      expect(core.updateBundleDefinition).not.toHaveBeenCalled();
+    });
+
     it('returns 404 when core reports the bundle missing', () => {
       (core.updateBundleDefinition as jest.Mock).mockImplementation(() => {
         throw new core.BundleNotFoundError('missing');
@@ -259,7 +267,7 @@ describe('BundlesController', () => {
   });
 
   describe('POST /bundles/dry-run', () => {
-    it('plans the normalised definition from the request body, not the saved one', () => {
+    it('plans the request definition through core, not the saved one', () => {
       (core.planBundle as jest.Mock).mockReturnValue(plan);
 
       const result = controller.dryRun({
@@ -270,7 +278,7 @@ describe('BundlesController', () => {
 
       expect(core.planBundle).toHaveBeenCalledWith({
         bundleKey: 'preview',
-        bundleDefinition: { bundleName: 'main.{locale}', dist: './dist/i18n', collections: 'All' },
+        bundleDefinition: { ...requestDefinition, dist: ' ./dist/i18n ', typeDistFile: '' },
         config,
         locales: ['en'],
         cwd: process.cwd(),
@@ -309,7 +317,7 @@ describe('BundlesController', () => {
           ],
         },
       });
-      expect(core.planBundle).not.toHaveBeenCalled();
+      expect(core.planBundle).toHaveBeenCalledTimes(1);
     });
 
     it('returns 400 when the name or the definition is missing', () => {
@@ -318,18 +326,44 @@ describe('BundlesController', () => {
         body: { errors: ['Bundle name is required.'] },
       });
       expect(statusOf(() => controller.dryRun({ name: 'preview' } as never))).toBe(HttpStatus.BAD_REQUEST);
-      expect(core.planBundle).not.toHaveBeenCalled();
+      expect(answerOf(() => controller.dryRun({ name: 'preview', bundle: null } as never))).toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        body: { errors: ['bundle definition is required.'] },
+      });
+      expect(answerOf(() => controller.dryRun(null as never))).toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        body: { errors: ['bundle definition is required.'] },
+      });
+      expect(core.planBundle).toHaveBeenCalledTimes(4);
     });
 
     it('returns 400 for a locale outside the project locales', () => {
       expect(statusOf(() => controller.dryRun({ name: 'preview', bundle: requestDefinition, locales: ['xx'] }))).toBe(
         HttpStatus.BAD_REQUEST,
       );
-      expect(core.planBundle).not.toHaveBeenCalled();
+      expect(core.planBundle).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('POST /bundles/:name/generate', () => {
+    it('answers 202 for a saved bundle whose collection was deleted', () => {
+      const withDeletedCollection = {
+        ...config,
+        bundles: {
+          tracker: { ...existingDefinition, collections: [{ name: 'deleted', entriesSelectionRules: 'All' }] },
+        },
+      };
+      configService.getConfig.mockReturnValue(withDeletedCollection);
+      jobService.startJob.mockReturnValue('job-1');
+      jobService.getJob.mockReturnValue({ jobId: 'job-1', status: 'pending' });
+      const { response, status } = makeResponse();
+
+      controller.generateBundle('tracker', {}, response);
+
+      expect(jobService.startJob).toHaveBeenCalledWith({ bundleName: 'tracker', config: withDeletedCollection });
+      expect(status).toHaveBeenCalledWith(HttpStatus.ACCEPTED);
+    });
+
     it('starts a job and answers 202 with its snapshot', () => {
       const snapshot = { jobId: 'job-1', bundleName: 'tracker', status: 'pending', progress: { current: 0, total: 0 } };
       jobService.startJob.mockReturnValue('job-1');

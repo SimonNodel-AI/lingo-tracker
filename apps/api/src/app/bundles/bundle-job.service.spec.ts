@@ -8,7 +8,7 @@ jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
   return {
     ...actual,
-    generateBundle: (params: unknown) => mockGenerateBundle(params),
+    generatePreparedBundle: (params: unknown, prepared: unknown) => mockGenerateBundle(params, prepared),
   };
 });
 
@@ -71,6 +71,29 @@ describe('BundleJobService', () => {
     expect(mockGenerateBundle).not.toHaveBeenCalled();
   });
 
+  it('queues a saved definition without revalidating its shape', () => {
+    mockGenerateBundle.mockResolvedValue(makeResult());
+    const jobId = service.startJob({
+      bundleName: 'main',
+      config: { ...config, bundles: { main: { ...bundleDefinition, bundleName: 'fixed' } } },
+    });
+    expect(service.getJob(jobId)?.status).toBe('pending');
+  });
+
+  it('completes a saved bundle with an unknown collection and its warning', async () => {
+    mockGenerateBundle.mockResolvedValue(makeResult({ warnings: ["Collection 'deleted' not found in config"] }));
+    const jobId = service.startJob({
+      bundleName: 'main',
+      config: {
+        ...config,
+        bundles: { main: { ...bundleDefinition, collections: [{ name: 'deleted', entriesSelectionRules: 'All' }] } },
+      },
+    });
+    await flush();
+    expect(service.getJob(jobId)?.status).toBe('completed');
+    expect(service.getJob(jobId)?.result?.warnings).toEqual(["Collection 'deleted' not found in config"]);
+  });
+
   it('startJob returns an ID and getJob exposes the pending job', () => {
     mockGenerateBundle.mockReturnValue(new Promise(() => {}));
 
@@ -88,7 +111,7 @@ describe('BundleJobService', () => {
     expect(service.getJob('nope')).toBeUndefined();
   });
 
-  it('passes the bundle params, locales, the project directory and an onProgress callback to generateBundle', async () => {
+  it('passes run options and an onProgress callback to generatePreparedBundle', async () => {
     mockGenerateBundle.mockResolvedValue(makeResult());
 
     service.startJob({ ...makeParams(), locales: ['fr'] });
@@ -97,13 +120,17 @@ describe('BundleJobService', () => {
     expect(mockGenerateBundle).toHaveBeenCalledTimes(1);
     const params = mockGenerateBundle.mock.calls[0][0] as GenerateBundleParams;
     expect(params.bundleKey).toBe('main');
-    expect(params.config).toBe(config);
-    expect(params.locales).toEqual(['fr']);
+    expect('config' in params).toBe(false);
+    expect('locales' in params).toBe(false);
     expect(params.cwd).toBe(process.cwd());
     expect(typeof params.onProgress).toBe('function');
+    expect(mockGenerateBundle.mock.calls[0][1]).toMatchObject({
+      definition: bundleDefinition,
+      locales: ['fr'],
+    });
   });
 
-  it('omits locales from the core call when none were requested', async () => {
+  it('keeps the default locales only in the prepared run', async () => {
     mockGenerateBundle.mockResolvedValue(makeResult());
 
     service.startJob(makeParams());
@@ -111,6 +138,7 @@ describe('BundleJobService', () => {
 
     const params = mockGenerateBundle.mock.calls[0][0] as GenerateBundleParams;
     expect('locales' in params).toBe(false);
+    expect(mockGenerateBundle.mock.calls[0][1]).toMatchObject({ locales: ['en', 'fr'] });
   });
 
   it('logs the legacy type setting warning returned by core', async () => {

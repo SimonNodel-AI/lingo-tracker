@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { BundleProgressEvent, LingoTrackerConfig } from '@simoncodes-ca/core';
-import { generateBundle, validateGenerateBundleRequest } from '@simoncodes-ca/core';
+import { generatePreparedBundle, prepareBundleRun } from '@simoncodes-ca/core';
 import type {
   BundleGenerateJobDto,
   BundleGenerateJobProgressDto,
@@ -46,7 +46,13 @@ export class BundleJobService {
 
   /** Validates synchronously, then registers a pending job and returns its ID. */
   startJob(params: StartBundleJobParams): string {
-    validateGenerateBundleRequest({ bundleKey: params.bundleName, config: params.config, locales: params.locales });
+    const prepared = prepareBundleRun({
+      source: 'saved',
+      bundleKey: params.bundleName,
+      config: params.config,
+      locales: params.locales,
+      cwd: process.cwd(),
+    });
     return this.#jobs.start({
       initial: { bundleName: params.bundleName, progress: { current: 0, total: 0 } },
       execute: async (_jobId, update) => {
@@ -55,13 +61,14 @@ export class BundleJobService {
           total = event.total;
           update({ progress: { current: event.index, total: event.total, currentFile: event.file } });
         };
-        const result = await generateBundle({
-          bundleKey: params.bundleName,
-          config: params.config,
-          ...(params.locales && { locales: params.locales }),
-          onProgress,
-          cwd: process.cwd(),
-        });
+        const result = await generatePreparedBundle(
+          {
+            bundleKey: params.bundleName,
+            onProgress,
+            cwd: process.cwd(),
+          },
+          prepared,
+        );
         if (result.typeOutcome.warning) this.#logger.warn(result.typeOutcome.warning);
         update({
           progress: { current: total, total },
