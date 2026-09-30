@@ -2,10 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { Collection } from '../config/open-collection';
 import { moveFolder } from '../folder/move-folder';
 import { calculateChecksum } from './checksum';
 import { moveResource } from './move-resource';
+import { moveResources } from './move-resources';
 
 const md5 = calculateChecksum;
 
@@ -136,5 +138,54 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(result.movedCount).toBe(1);
     expect(read('resource_entries.json', 'buttons')).toEqual(entries);
     expect(read('tracker_meta.json', 'buttons')).toEqual(meta);
+  });
+
+  it('reports a missing destination and still runs later moves', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { main: { translationsFolder: root } },
+    };
+
+    const result = await moveResources(
+      collection(),
+      [
+        { source: 'common.ok', destination: 'ignored.ok', toCollection: 'missing' },
+        { source: 'common.ok', destination: 'shared.ok' },
+      ],
+      { config },
+    );
+
+    expect(result.errors).toEqual(['Destination collection "missing" not found']);
+    expect(result.movedCount).toBe(1);
+    expect(read('resource_entries.json', 'shared')).toEqual(entries);
+    expect(result.mutations.map(({ kind }) => kind)).toEqual(['remove', 'upsert']);
+  });
+
+  it('preserves the read-only destination error text', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: {
+        main: { translationsFolder: root },
+        vendor: { translationsFolder: join(root, 'vendor'), readOnly: true },
+      },
+    };
+
+    const result = await moveResources(
+      collection(),
+      [{ source: 'common.ok', destination: 'shared.ok', toCollection: 'vendor' }],
+      { config },
+    );
+
+    expect(result.errors).toEqual(['Collection "vendor" is read-only. Its resources cannot be modified.']);
+    expect(result.movedCount).toBe(0);
+    expect(existsSync(join(root, 'common', 'resource_entries.json'))).toBe(true);
   });
 });

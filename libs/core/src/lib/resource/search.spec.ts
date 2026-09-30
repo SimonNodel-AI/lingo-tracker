@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ResourceTreeEntry, ResourceTreeNode } from './load-resource-tree';
 import { readCollection } from './read-collection';
-import { type SearchableResource, searchResources, treeResources } from './search';
+import { clampSearchLimit, type SearchableResource, searchResources, treeResources } from './search';
 
 const EN = { baseLocale: 'en' };
 
@@ -20,6 +20,14 @@ function resource(
 }
 
 const keys = (results: { key: string }[]): string[] => results.map((result) => result.key);
+
+it('clamps the API search limit to the default and maximum', () => {
+  expect(clampSearchLimit(0)).toBe(100);
+  expect(clampSearchLimit(Number.NaN)).toBe(100);
+  expect(clampSearchLimit(2.5)).toBe(100);
+  expect(clampSearchLimit(7)).toBe(7);
+  expect(clampSearchLimit(1000)).toBe(500);
+});
 
 describe('searchResources — text mode', () => {
   describe('match types', () => {

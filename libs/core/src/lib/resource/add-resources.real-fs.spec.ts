@@ -1,0 +1,218 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { openCollection } from '../config/open-collection';
+import {
+  InvalidResourceKeyError,
+  LocaleNotFoundError,
+  ResourceAlreadyExistsError,
+} from '../errors/lingo-tracker-error';
+import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
+import { TranslationError } from '../translation/translation-provider';
+import { addResource } from './add-resource';
+import { addResources } from './add-resources';
+
+describe('addResources (real fs)', () => {
+  let root: string;
+  const config = (): LingoTrackerConfig => ({
+    exportFolder: 'dist',
+    importFolder: 'import',
+    baseLocale: 'en',
+    locales: ['en', 'fr', 'de'],
+    collections: { main: { translationsFolder: join(root, 'translations') } },
+  });
+  const collection = (overrides: Partial<LingoTrackerConfig> = {}) =>
+    openCollection({ ...config(), ...overrides }, 'main', { cwd: root });
+  const file = (folder: string, name: 'resource_entries.json' | 'tracker_meta.json') =>
+    join(root, 'translations', folder, name);
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'add-resources-'));
+  });
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('writes nothing when the third item has an invalid key, including both files of touched folders', async () => {
+    const target = collection();
+    await addResource(target, { key: 'existing.keep', baseValue: 'Keep' });
+    const beforeEntries = readFileSync(file('existing', 'resource_entries.json'), 'utf8');
+    const beforeMeta = readFileSync(file('existing', 'tracker_meta.json'), 'utf8');
+
+    await expect(
+      addResources(target, [
+        { key: 'existing.new', baseValue: 'New' },
+        { key: 'fresh.first', baseValue: 'First' },
+        { key: 'invalid@key', baseValue: 'Bad' },
+      ]),
+    ).rejects.toThrow(InvalidResourceKeyError);
+
+    expect(readFileSync(file('existing', 'resource_entries.json'), 'utf8')).toBe(beforeEntries);
+    expect(readFileSync(file('existing', 'tracker_meta.json'), 'utf8')).toBe(beforeMeta);
+    expect(existsSync(file('fresh', 'resource_entries.json'))).toBe(false);
+    expect(existsSync(file('fresh', 'tracker_meta.json'))).toBe(false);
+  });
+
+  it('rejects duplicate resolved keys but allows parent/child keys in a batch and on disk', async () => {
+    const target = collection();
+    await expect(
+      addResources(target, [
+        { key: 'ok', targetFolder: 'common', baseValue: 'OK' },
+        { key: 'common.ok', baseValue: 'Again' },
+      ]),
+    ).rejects.toThrow(ResourceAlreadyExistsError);
+    expect(existsSync(join(root, 'translations'))).toBe(false);
+
+    await addResource(target, { key: 'common.deep.item', baseValue: 'Existing child' });
+    const result = await addResources(target, [
+      { key: 'common', baseValue: 'Parent' },
+      { key: 'common.ok', baseValue: 'Child' },
+    ]);
+    expect(result.entriesCreated).toBe(2);
+    expect(JSON.parse(readFileSync(join(root, 'translations', 'resource_entries.json'), 'utf8')).common.source).toBe(
+      'Parent',
+    );
+    expect(JSON.parse(readFileSync(file('common', 'resource_entries.json'), 'utf8')).ok.source).toBe('Child');
+  });
+
+  it('writes nothing when a later item has an invalid target folder', async () => {
+    const target = collection();
+    await addResource(target, { key: 'existing.keep', baseValue: 'Keep' });
+    const beforeEntries = readFileSync(file('existing', 'resource_entries.json'), 'utf8');
+    const beforeMeta = readFileSync(file('existing', 'tracker_meta.json'), 'utf8');
+
+    await expect(
+      addResources(target, [
+        { key: 'existing.new', baseValue: 'New' },
+        { key: 'fresh.first', baseValue: 'First' },
+        { key: 'last', targetFolder: 'bad@folder', baseValue: 'Bad' },
+      ]),
+    ).rejects.toThrow(InvalidResourceKeyError);
+
+    expect(readFileSync(file('existing', 'resource_entries.json'), 'utf8')).toBe(beforeEntries);
+    expect(readFileSync(file('existing', 'tracker_meta.json'), 'utf8')).toBe(beforeMeta);
+    expect(existsSync(file('fresh', 'resource_entries.json'))).toBe(false);
+    expect(existsSync(file('fresh', 'tracker_meta.json'))).toBe(false);
+  });
+
+  it('writes nothing when a later item supplies a locale outside the collection', async () => {
+    const target = collection();
+    await addResource(target, { key: 'existing.keep', baseValue: 'Keep' });
+    const beforeEntries = readFileSync(file('existing', 'resource_entries.json'), 'utf8');
+    const beforeMeta = readFileSync(file('existing', 'tracker_meta.json'), 'utf8');
+
+    await expect(
+      addResources(target, [
+        { key: 'existing.new', baseValue: 'New' },
+        { key: 'fresh.first', baseValue: 'First' },
+        { key: 'last', baseValue: 'Bad', translations: [{ locale: 'es', value: 'Mal', status: 'translated' }] },
+      ]),
+    ).rejects.toThrow(LocaleNotFoundError);
+
+    expect(readFileSync(file('existing', 'resource_entries.json'), 'utf8')).toBe(beforeEntries);
+    expect(readFileSync(file('existing', 'tracker_meta.json'), 'utf8')).toBe(beforeMeta);
+    expect(existsSync(file('fresh', 'resource_entries.json'))).toBe(false);
+    expect(existsSync(file('fresh', 'tracker_meta.json'))).toBe(false);
+  });
+
+  it('writes nothing when the translation provider fails on a later item', async () => {
+    await addResource(collection(), { key: 'existing.keep', baseValue: 'Keep' });
+    const beforeEntries = readFileSync(file('existing', 'resource_entries.json'), 'utf8');
+    const beforeMeta = readFileSync(file('existing', 'tracker_meta.json'), 'utf8');
+    const target = collection({ translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' } });
+    const provider = new InMemoryTranslationProvider(({ text }) => {
+      if (text === 'Fail') throw new TranslationError('provider failed', 'SERVER_ERROR', true);
+      return text;
+    });
+
+    await expect(
+      addResources(
+        target,
+        [
+          { key: 'existing.new', baseValue: 'New' },
+          { key: 'fresh.first', baseValue: 'First' },
+          { key: 'fresh.last', baseValue: 'Fail' },
+        ],
+        { provider },
+      ),
+    ).rejects.toThrow(TranslationError);
+
+    expect(readFileSync(file('existing', 'resource_entries.json'), 'utf8')).toBe(beforeEntries);
+    expect(readFileSync(file('existing', 'tracker_meta.json'), 'utf8')).toBe(beforeMeta);
+    expect(existsSync(file('fresh', 'resource_entries.json'))).toBe(false);
+    expect(existsSync(file('fresh', 'tracker_meta.json'))).toBe(false);
+  });
+
+  it('replaces an existing exact key through the same write path as addResource', async () => {
+    const target = collection();
+    await addResource(target, { key: 'common.ok', baseValue: 'Old', comment: 'Old note' });
+
+    const result = await addResources(target, [{ key: 'common.ok', baseValue: 'New' }]);
+
+    expect(result.entriesCreated).toBe(0);
+    expect(result.created).toBe(false);
+    expect(result.mutations).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.ok' })]);
+    expect(JSON.parse(readFileSync(file('common', 'resource_entries.json'), 'utf8')).ok).toEqual({
+      source: 'New',
+      fr: 'New',
+      de: 'New',
+    });
+    expect(JSON.parse(readFileSync(file('common', 'tracker_meta.json'), 'utf8')).ok.en.checksum).toBeDefined();
+  });
+
+  it('keeps earlier writes when a later target folder path is an existing file', async () => {
+    const target = collection();
+    mkdirSync(join(root, 'translations'));
+    const blockedPath = join(root, 'translations', 'blocked');
+    writeFileSync(blockedPath, 'ordinary file', 'utf8');
+
+    await expect(
+      addResources(target, [
+        { key: 'created.ok', baseValue: 'OK' },
+        { key: 'later', targetFolder: 'blocked', baseValue: 'Later' },
+      ]),
+    ).rejects.toThrow(/Creating resource folder/);
+
+    expect(JSON.parse(readFileSync(file('created', 'resource_entries.json'), 'utf8'))).toEqual({
+      ok: { source: 'OK', fr: 'OK', de: 'OK' },
+    });
+    expect(JSON.parse(readFileSync(file('created', 'tracker_meta.json'), 'utf8')).ok.en.checksum).toBeDefined();
+    expect(readFileSync(blockedPath, 'utf8')).toBe('ordinary file');
+    expect(existsSync(file('blocked', 'resource_entries.json'))).toBe(false);
+    expect(existsSync(file('blocked', 'tracker_meta.json'))).toBe(false);
+  });
+
+  it('merges skipped locales and terminology and returns every mutation in input order', async () => {
+    writeFileSync(
+      join(root, '.lingo-tracker-preferred-terminology.json'),
+      JSON.stringify([{ discouraged: 'Expenditure', preferred: 'Investment' }]),
+    );
+    const target = collection({
+      protectedTermsFile: 'missing-terms.json',
+      translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' },
+    });
+    const provider = new InMemoryTranslationProvider();
+
+    const result = await addResources(
+      target,
+      [
+        { key: 'budget.one', baseValue: 'Expenditure {count, plural, other {items}}' },
+        { key: 'budget.two', baseValue: 'More expenditure {count, plural, other {items}}' },
+      ],
+      { provider },
+    );
+
+    expect(result.entriesCreated).toBe(2);
+    expect(result.created).toBe(true);
+    expect(result.skippedLocales).toEqual(['fr', 'de']);
+    expect(result.terminology.findings.map(({ key }) => key)).toEqual(['budget.one', 'budget.two']);
+    expect(result.terminology.problems).toHaveLength(1);
+    expect(result.mutations.map(({ kind }) => kind)).toEqual(['upsert', 'upsert']);
+    expect(result.mutations.map((mutation) => (mutation.kind === 'upsert' ? mutation.key : ''))).toEqual([
+      'budget.one',
+      'budget.two',
+    ]);
+  });
+});

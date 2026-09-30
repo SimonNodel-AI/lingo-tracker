@@ -37,9 +37,7 @@ export class FoldersController {
     this.index.apply(result.mutations);
 
     // Build the folder node for the frontend to insert into tree
-    const fullPath = createFolderDto.parentPath
-      ? `${createFolderDto.parentPath}.${createFolderDto.folderName}`
-      : createFolderDto.folderName;
+    const fullPath = result.folderAddress;
 
     const folderNode: FolderNodeDto = {
       name: createFolderDto.folderName,
