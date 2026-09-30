@@ -14,31 +14,12 @@ import {
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import {
-  AutoTranslationDisabledError,
-  BaseLocaleImmutableError,
-  CannotTranslateBaseLocaleError,
-  BundleAlreadyExistsError,
-  BundleNotFoundError,
-  CollectionAlreadyExistsError,
-  CollectionNotFoundError,
+  type ErrorKind,
   FolderMoveIntoDescendantError,
-  FolderNotFoundError,
   InvalidBundleDefinitionError,
-  InvalidBundleLocalesError,
-  InvalidCollectionError,
   InvalidFolderPathError,
-  InvalidLocaleError,
-  InvalidResourceKeyError,
   LingoTrackerError,
-  LocaleAlreadyExistsError,
-  LocaleNotFoundError,
-  TranslationLocaleNotConfiguredError,
-  ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
-  ProtectedTermsFileNotSetError,
-  ReadOnlyCollectionError,
-  ResourceAlreadyExistsError,
-  ResourceNotFoundError,
   TranslationError,
 } from '@simoncodes-ca/core';
 
@@ -46,70 +27,44 @@ import {
  * The HTTP answer for a typed core error. This is the only place the API maps a core
  * error to a status; controllers let core errors propagate.
  *
- * Some statuses are kept from before the mapping moved here, although they are not
- * what the class name suggests: locale conflicts and missing locales answer 400 (bundle
- * conflicts answer 409).
+ * Locale conflicts and missing locales declare `invalid`, retaining their 400 answers.
  *
  * Every mapped answer has the same `{ statusCode, message, error }` body. An invalid bundle
  * definition also carries `errors`, every problem the domain rules found, under the fixed
  * message `Invalid bundle definition`; invalid preferred-terminology rules carry the per-row
- * `errors` under `Invalid preferred terminology rules`. Any other typed error is a 500 that
- * keeps its message, because a typed message is written to be shown: an `InvalidConfigError`
+ * `errors` under `Invalid preferred terminology rules`. A runtime subclass with an unknown kind
+ * is a 500 that keeps its message. An `InvalidConfigError`
  * (a `.lingo-tracker.json` the server cannot use), for example, says what to fix in the file.
  */
-export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
-  const { message } = error;
+const HTTP_BY_KIND: Record<ErrorKind, (message: string) => HttpException> = {
+  'not-found': (message) => new NotFoundException(message),
+  conflict: (message) => new ConflictException(message),
+  invalid: (message) => new BadRequestException(message),
+  forbidden: (message) => new ForbiddenException(message),
+  unavailable: (message) => new UnprocessableEntityException(message),
+  upstream: (message) => new BadGatewayException(message),
+  internal: (message) => new InternalServerErrorException(message),
+};
 
+export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
+  if (!error.exposeMessage) {
+    return new InternalServerErrorException({ statusCode: 500, error: 'Internal Server Error' });
+  }
   if (error instanceof InvalidBundleDefinitionError) {
     return invalidBundleDefinitionToHttp(error);
   }
   if (error instanceof PreferredTerminologyValidationError) {
     return withErrors('Invalid preferred terminology rules', error.errors);
   }
-
-  if (
-    error instanceof CollectionNotFoundError ||
-    error instanceof ResourceNotFoundError ||
-    error instanceof FolderNotFoundError ||
-    error instanceof BundleNotFoundError
-  ) {
-    return new NotFoundException(message);
-  }
-  if (error instanceof ReadOnlyCollectionError) {
-    return new ForbiddenException(message);
-  }
-  if (
-    error instanceof BundleAlreadyExistsError ||
-    error instanceof ResourceAlreadyExistsError ||
-    error instanceof CollectionAlreadyExistsError
-  ) {
-    return new ConflictException(message);
-  }
-  if (error instanceof AutoTranslationDisabledError) {
-    return new UnprocessableEntityException(message);
-  }
   if (error instanceof InvalidFolderPathError || error instanceof FolderMoveIntoDescendantError) {
-    return new BadRequestException(`Validation error: ${message}`);
-  }
-  if (
-    error instanceof InvalidResourceKeyError ||
-    error instanceof InvalidBundleLocalesError ||
-    error instanceof InvalidLocaleError ||
-    error instanceof LocaleNotFoundError ||
-    error instanceof LocaleAlreadyExistsError ||
-    error instanceof BaseLocaleImmutableError ||
-    error instanceof CannotTranslateBaseLocaleError ||
-    error instanceof TranslationLocaleNotConfiguredError ||
-    error instanceof InvalidCollectionError ||
-    error instanceof ProtectedTermsFileNotSetError ||
-    error instanceof ParentDirectoryMissingError
-  ) {
-    return new BadRequestException(message);
+    return HTTP_BY_KIND.invalid(`Validation error: ${error.message}`);
   }
   if (error instanceof TranslationError) {
     return translationErrorToHttp(error);
   }
-  return new InternalServerErrorException(message);
+  // A runtime subclass with an unrecognised kind retains the old typed 500 response.
+  const mapper = HTTP_BY_KIND[error.kind];
+  return mapper ? mapper(error.message) : new InternalServerErrorException(error.message);
 }
 
 function invalidBundleDefinitionToHttp(error: InvalidBundleDefinitionError): HttpException {
@@ -175,6 +130,9 @@ export class LingoTrackerExceptionFilter extends BaseExceptionFilter {
 
   override catch(exception: unknown, host: ArgumentsHost): void {
     if (exception instanceof HttpException || exception instanceof LingoTrackerError) {
+      if (exception instanceof LingoTrackerError && !exception.exposeMessage) {
+        this.#logger.error(exception.message, exception.stack);
+      }
       super.catch(toHttpException(exception), host);
     } else if (exception instanceof Error && !('statusCode' in exception)) {
       this.#logger.error(exception.message, exception.stack);

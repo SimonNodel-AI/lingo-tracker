@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync } from 'node:fs';
 import type { Collection } from '../config/open-collection';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
@@ -168,7 +169,7 @@ function sharedBaseLocale(collections: readonly Collection[]): string {
   const [baseLocale] = baseLocales;
   if (baseLocales.size !== 1 || baseLocale === undefined) {
     const listed = collections.map((collection) => `${collection.name}: ${collection.baseLocale}`).join(', ');
-    throw new Error(
+    throw new CoreOperationError(
       `Cannot export collections with different base locales together (${listed}). Export them separately.`,
     );
   }

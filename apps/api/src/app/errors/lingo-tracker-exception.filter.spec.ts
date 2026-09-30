@@ -1,6 +1,9 @@
 import { Controller, Get, HttpException, type INestApplication, Logger, NotFoundException } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import * as core from '@simoncodes-ca/core';
+// Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
+import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
@@ -9,6 +12,8 @@ import {
   BundleNotFoundError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
+  ConfigNotFoundError,
+  ConfigParseError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
@@ -18,9 +23,11 @@ import {
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
+  ImportSourceError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  MultipleBundleConstantNameError,
   TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
@@ -34,7 +41,7 @@ import {
 import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-exception.filter';
 
 describe('toHttpException', () => {
-  it.each([
+  const cases = [
     [
       new CollectionNotFoundError('app'),
       404,
@@ -204,18 +211,127 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new LingoTrackerError('Unmapped', 'UNMAPPED'),
+      new ConfigNotFoundError('/p/.lingo-tracker.json'),
+      500,
+      {
+        message: 'LingoTracker configuration file (.lingo-tracker.json) not found: /p/.lingo-tracker.json',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    [
+      new ConfigParseError('/p/.lingo-tracker.json', 'bad JSON'),
+      500,
+      {
+        message: 'Failed to parse JSON file /p/.lingo-tracker.json: bad JSON',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    [
+      new ImportSourceError('Source file not found: /p/source.json'),
+      500,
+      { message: 'Source file not found: /p/source.json', error: 'Internal Server Error', statusCode: 500 },
+    ],
+    [
+      new MultipleBundleConstantNameError(),
+      500,
+      {
+        message: 'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    [
+      new internalErrors.InvalidImportLocaleError('en', 'translation-service'),
+      500,
+      {
+        message:
+          'Cannot import into base locale "en" with strategy "translation-service". Only "migration" strategy supports base locale imports.',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    [
+      new internalErrors.GlossaryBaseLocaleMismatchError([
+        { name: 'a', baseLocale: 'en' },
+        { name: 'b', baseLocale: 'fr' },
+      ]),
+      500,
+      {
+        message:
+          'Cannot build a glossary from collections with different base locales together (a: en, b: fr). Build them separately.',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    [
+      new internalErrors.GlossaryNoCollectionsError(),
+      500,
+      { message: 'Cannot build a glossary without collections.', error: 'Internal Server Error', statusCode: 500 },
+    ],
+    [
+      new internalErrors.GlossaryExtractorError('ai'),
+      500,
+      {
+        message: 'The "ai" extractor is not yet implemented. Use --extractor ngram (the default).',
+        error: 'Internal Server Error',
+        statusCode: 500,
+      },
+    ],
+    [
+      new internalErrors.CoreOperationError('Failed to read file /private/config.json'),
+      500,
+      { error: 'Internal Server Error', statusCode: 500 },
+    ],
+    [
+      new (class UnmappedError extends LingoTrackerError {
+        readonly kind = 'internal' as const;
+      })('Unmapped', 'UNMAPPED'),
       500,
       { message: 'Unmapped', error: 'Internal Server Error', statusCode: 500 },
     ],
     // Not typed: nothing about it is safe to disclose, so the body carries no message at all.
     [new Error('Disk write failure'), 500, { error: 'Internal Server Error', statusCode: 500 }],
     ['not an error', 500, { error: 'Internal Server Error', statusCode: 500 }],
-  ])('maps %p to %i', (error, status, response) => {
+  ] as const;
+
+  it.each(cases)('maps %p to %i', (error, status, response) => {
     const http = toHttpException(error);
 
     expect(http.getStatus()).toBe(status);
     expect(http.getResponse()).toEqual(response);
+  });
+
+  it('pins every public and internal core error subclass', () => {
+    const errorExports = [...Object.entries(core), ...Object.entries(internalErrors)];
+    const exported = [
+      ...new Set(
+        errorExports
+          .filter(([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError)
+          .map(([name]) => name),
+      ),
+    ].sort();
+    const pinned = cases
+      .map(([error]) => error)
+      .filter((error): error is LingoTrackerError => error instanceof LingoTrackerError)
+      .map((error) => error.constructor.name)
+      .filter((name) => name !== 'UnmappedError')
+      // Its code-dependent responses are pinned in the TranslationError table below.
+      .concat('TranslationError')
+      .sort();
+    expect(pinned).toEqual(exported);
+    for (const name of exported) {
+      if (name === 'TranslationError') {
+        expect(new TranslationError('Provider said no', 'SERVER_ERROR', false).kind).toBe('upstream');
+        continue;
+      }
+      const instance = cases.map(([error]) => error).find((error) => error?.constructor.name === name);
+      expect(instance).toBeInstanceOf(LingoTrackerError);
+      expect((instance as LingoTrackerError).kind).toMatch(
+        /^(not-found|conflict|invalid|forbidden|unavailable|upstream|internal)$/,
+      );
+    }
   });
 
   it.each([
@@ -241,6 +357,28 @@ describe('toHttpException', () => {
     const exception = new NotFoundException('Path "x" not found in collection tree');
 
     expect(toHttpException(exception)).toBe(exception);
+  });
+
+  it('keeps a formerly plain core failure hidden in the HTTP body', () => {
+    class HiddenCoreError extends LingoTrackerError {
+      readonly kind = 'internal' as const;
+      override readonly exposeMessage = false;
+    }
+    const http = toHttpException(new HiddenCoreError('Failed to write /private/file', 'CORE_OPERATION_ERROR'));
+    expect(http.getStatus()).toBe(500);
+    expect(http.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
+  });
+
+  it('keeps the message of a typed error with an unknown runtime kind', () => {
+    class FutureError extends LingoTrackerError {
+      readonly kind = 'internal' as const;
+    }
+    const error = new FutureError('Future failure', 'FUTURE_FAILURE');
+    Object.defineProperty(error, 'kind', { value: 'future-kind' });
+
+    const http = toHttpException(error);
+    expect(http.getStatus()).toBe(500);
+    expect(http.getResponse()).toEqual({ statusCode: 500, message: 'Future failure', error: 'Internal Server Error' });
   });
 });
 

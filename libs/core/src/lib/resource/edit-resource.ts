@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import {
   isUntranslatedCopy,
   needsTranslation,
@@ -238,7 +239,7 @@ function moveEntry(
   }
   const [moved] = relocation.moved;
   if (!moved) {
-    throw new Error(relocation.errors.join('; ') || `Resource ${sourceKey} was not moved`);
+    throw new CoreOperationError(relocation.errors.join('; ') || `Resource ${sourceKey} was not moved`);
   }
   return { resolvedKey: moved.to, entry: moved.entry, mutations: relocation.mutations };
 }
