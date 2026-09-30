@@ -19,6 +19,7 @@ import { calculateChecksum } from '../resource/checksum';
 import { readCollection } from '../resource/read-collection';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
+import { reindexMutation, type ResourceMutation } from '../resource/resource-mutation';
 import {
   assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
@@ -34,9 +35,11 @@ export interface TranslateLocaleParams extends OpenTranslatorOptions {
   /** One of the collection's target locales. */
   readonly targetLocale: string;
   readonly onProgress?: (progress: TranslateLocaleProgress) => void;
+  /** Called once after the first save attempt, including a partial save failure. */
+  readonly onWrite?: (mutation: ResourceMutation) => void;
 }
 
-export interface TranslateLocaleProgress {
+interface TranslateLocaleCounts {
   /**
    * Number of resources eligible for translation (status `new`, `stale`, or missing metadata
    * for the target locale). Does NOT represent the total collection size.
@@ -46,24 +49,19 @@ export interface TranslateLocaleProgress {
   readonly translatedCount: number;
   readonly failedCount: number;
   readonly skippedCount: number;
+}
+
+export interface TranslateLocaleProgress extends TranslateLocaleCounts {
   readonly currentBatch: number;
   readonly totalBatches: number;
 }
 
-export interface TranslateLocaleResult {
-  /**
-   * Number of resources eligible for translation (status `new`, `stale`, or missing metadata
-   * for the target locale). Does NOT represent the total collection size.
-   * Returns 0 when no resources needed translation.
-   */
-  readonly totalResources: number;
-  readonly translatedCount: number;
-  readonly failedCount: number;
-  readonly skippedCount: number;
+export interface TranslateLocaleResult extends TranslateLocaleCounts {
   readonly failures: ReadonlyArray<{ key: string; error: string }>;
   readonly skippedKeys: string[];
   /** One line per folder the Collection Reader could not read (its resources were not translated). */
   readonly warnings: string[];
+  readonly mutations: ResourceMutation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +90,7 @@ function writeTranslatedValues(
     readonly snapshot?: TranslationSnapshot;
   }[],
   baseLocale: string,
+  onSave: () => void,
 ): { writtenKeys: string[]; skippedKeys: string[] } {
   const folder = openResourceFolder(folderPath, { baseLocale });
   const writtenKeys: string[] = [];
@@ -116,7 +115,12 @@ function writeTranslatedValues(
   }
 
   if (writtenKeys.length > 0) {
-    folder.save();
+    try {
+      folder.save();
+    } finally {
+      // The first JSON file may have been written even if the second failed.
+      onSave();
+    }
   }
 
   return { writtenKeys, skippedKeys };
@@ -167,7 +171,7 @@ export async function translateLocale(
   collection: Collection,
   params: TranslateLocaleParams,
 ): Promise<TranslateLocaleResult> {
-  const { targetLocale, onProgress } = params;
+  const { targetLocale, onProgress, onWrite } = params;
   const { baseLocale, translationsFolder } = collection;
   assertCanTranslateLocale(collection, targetLocale);
 
@@ -186,6 +190,7 @@ export async function translateLocale(
       failures: [],
       skippedKeys: [],
       warnings,
+      mutations: [],
     };
   }
 
@@ -203,6 +208,12 @@ export async function translateLocale(
   let skippedCount = 0;
   const failures: Array<{ key: string; error: string }> = [];
   const skippedKeys: string[] = [];
+  let mutation: ResourceMutation | undefined;
+  const reportWrite = (): void => {
+    if (mutation) return;
+    mutation = reindexMutation(translationsFolder);
+    onWrite?.(mutation);
+  };
 
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
     const batchStart = batchIndex * batchSize;
@@ -242,7 +253,7 @@ export async function translateLocale(
       }
 
       for (const [folderPath, folderValues] of byFolder) {
-        const written = writeTranslatedValues(folderPath, folderValues, baseLocale);
+        const written = writeTranslatedValues(folderPath, folderValues, baseLocale, reportWrite);
         translatedCount += written.writtenKeys.length;
         skippedCount += written.skippedKeys.length;
         skippedKeys.push(...written.skippedKeys);
@@ -270,5 +281,14 @@ export async function translateLocale(
     }
   }
 
-  return { totalResources, translatedCount, failedCount, skippedCount, failures, skippedKeys, warnings };
+  return {
+    totalResources,
+    translatedCount,
+    failedCount,
+    skippedCount,
+    failures,
+    skippedKeys,
+    warnings,
+    mutations: mutation ? [mutation] : [],
+  };
 }

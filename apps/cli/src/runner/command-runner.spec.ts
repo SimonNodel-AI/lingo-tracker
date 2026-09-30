@@ -516,6 +516,29 @@ describe('defineCommand', () => {
       expect(process.exitCode).toBe(1);
     });
 
+    it('formats a message without replacing the typed error', async () => {
+      const error = new InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
+      const formatError = vi.fn((caught: unknown, duringRun: boolean) => {
+        expect(caught).toBe(error);
+        expect(duringRun).toBe(true);
+        return `Could not continue: ${error.message}`;
+      });
+      const { invoke } = command({
+        collection: 'none',
+        formatError,
+        run: () => {
+          throw error;
+        },
+      });
+
+      await invoke({});
+
+      expect(formatError).toHaveBeenCalledTimes(1);
+      expect(error.message).toBe('Invalid key "bad..key"');
+      expect(console.error).toHaveBeenCalledWith('❌ Could not continue: Invalid key "bad..key"');
+      expect(process.exitCode).toBe(1);
+    });
+
     it('prints the message of an Error cause as a detail line under the error', async () => {
       const { invoke } = command({
         collection: 'none',
