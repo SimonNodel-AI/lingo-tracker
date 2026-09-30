@@ -37,7 +37,7 @@ Return to [architecture README](README.md).
 
 ## Where Bundle Generation Lives
 
-Bundle generation is a sub-module of `@simoncodes-ca/core`. The single-bundle entry point is `generateBundle()` in `libs/core/src/lib/bundle/generate-bundle.ts`; `generateBundles()` coordinates a CLI run. For the module map of the full core library and its internal dependency graph, see [core-library.md](core-library.md).
+Bundle generation is a sub-module of `@simoncodes-ca/core`. The internal `generateBundle()` implementation in `libs/core/src/lib/bundle/generate-bundle.ts` powers the public `generateBundles()` CLI entry and the API’s `prepareBundleRun()` / `generatePreparedBundle()` path. For the module map of the full core library and its internal dependency graph, see [core-library.md](core-library.md).
 
 ```
 libs/core/src/lib/bundle/
@@ -611,6 +611,6 @@ CLI flag  →  BundleDefinition field  →  global config field  →  hard defau
 - [core-library.md](core-library.md) — bundle generation is a sub-module of `@simoncodes-ca/core`; see the module map and the Bundle Generation section for the high-level summary.
 - [domain-and-data-model.md](domain-and-data-model.md) — ICU format, resource entry structure (`ResourceEntry`, `TrackerMetadata`), and the full explanation of internal vs. bundle-time format.
 - [frontend.md](frontend.md) — how the Tracker UI imports and uses the generated type constants via Transloco.
-- [cli.md](cli.md) — the `bundle` CLI command that invokes `generateBundle()`, including interactive bundle selection and locale filtering.
+- [cli.md](cli.md) — the `bundle` CLI command that invokes `generateBundles()`, including interactive bundle selection and locale filtering.
 - [api.md](api.md) — the REST API's bundle endpoints: definition CRUD, `POST /bundles/dry-run` (`planBundle`), `POST /bundles/:name/generate` (a `generateBundle` job) and `GET /bundles/jobs/:jobId`.
 - [glossary.md](glossary.md) — definitions for [bundle](glossary.md#bundle), [resource key](glossary.md#resource-key), [ICU format](glossary.md#icu-format), [Transloco](glossary.md#transloco), [collection](glossary.md#collection), [base locale](glossary.md#base-locale).
