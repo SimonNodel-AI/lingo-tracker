@@ -187,9 +187,10 @@ export class ExampleComponent implements OnInit {
 ### Adding a Resource (libs/core/src/lib/resource/add-resource.ts)
 
 1. Validate the key (and optional `targetFolder`) and resolve it to a folder path
-2. Normalize values to ICU and seed every target locale (supplied value, else auto-translation, else a `new` copy of the base) before touching the disk
-3. Write through `openResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), the one read-modify-write path for `resource_entries.json` + `tracker_meta.json`: it computes MD5 checksums and applies the staleness rule
-4. `save()` writes both files together (not atomically)
+2. Check whether the resolved key exists; fail by default before locale seeding, or replace only when requested
+3. Normalize values to ICU and seed every target locale (supplied value, else auto-translation, else a `new` copy of the base) before touching the disk
+4. Write through `openResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), the one read-modify-write path for `resource_entries.json` + `tracker_meta.json`: it computes MD5 checksums and applies the staleness rule
+5. `save()` writes both files together (not atomically)
 
 ### CLI Command Pattern (apps/cli/src/runner/command-runner.ts)
 

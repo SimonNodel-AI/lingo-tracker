@@ -128,6 +128,7 @@ describe('ResourcesController', () => {
             translations: undefined,
           },
         ],
+        { onExisting: 'fail' },
       );
       expect(mockIndex.apply).toHaveBeenCalledTimes(1);
     });
@@ -144,23 +145,22 @@ describe('ResourcesController', () => {
       expect(mockIndex.apply).toHaveBeenCalledTimes(1);
     });
 
-    it('should handle idempotent repeat (update existing resource)', async () => {
-      batch().mockResolvedValue(batchResult(0));
-      expect(await resourcesController.createResources('test-collection', dto)).toEqual({
-        entriesCreated: 0,
-        created: false,
-      });
+    it('answers 409 when a resource already exists', async () => {
+      batch().mockRejectedValue(new core.ResourceAlreadyExistsError(dto.key));
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      expect(error.getStatus()).toBe(409);
+      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
-    it('should aggregate results correctly when some resources are created and some are updated', async () => {
-      batch().mockResolvedValue(batchResult(2));
+    it('should aggregate results correctly when multiple resources are created', async () => {
+      batch().mockResolvedValue(batchResult(3));
       const items = [
         dto,
         { key: 'app.button.cancel', baseValue: 'Cancel' },
         { key: 'app.button.save', baseValue: 'Save' },
       ];
       expect(await resourcesController.createResources('test-collection', items)).toEqual({
-        entriesCreated: 2,
+        entriesCreated: 3,
         created: true,
       });
       expect(batch()).toHaveBeenCalledTimes(1);
@@ -173,7 +173,9 @@ describe('ResourcesController', () => {
         collections: { 'My Collection': { translationsFolder: './translations/my-collection' } },
       });
       await resourcesController.createResources('My%20Collection', dto);
-      expect(batch()).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Collection' }), expect.any(Array));
+      expect(batch()).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Collection' }), expect.any(Array), {
+        onExisting: 'fail',
+      });
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
@@ -231,14 +233,16 @@ describe('ResourcesController', () => {
         entriesCreated: 1,
         created: true,
       });
-      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining(full)]);
+      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining(full)], { onExisting: 'fail' });
     });
 
     it('should handle resource with translations', async () => {
       batch().mockResolvedValue(batchResult(1));
       const translations = [{ locale: 'fr-ca', value: "D'accord", status: 'translated' as TranslationStatus }];
       await resourcesController.createResources('test-collection', { ...dto, translations });
-      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining({ translations })]);
+      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining({ translations })], {
+        onExisting: 'fail',
+      });
     });
   });
 

@@ -61,6 +61,7 @@ Options:
   --comment <comment>       Optional context for translators
   --tags <tags>             Optional tags (comma-separated)
   --target-folder <folder>  Optional target folder (dot-delimited)
+  --override                Replace the resource if it already exists
   --translations <json>     Optional translations as JSON array, e.g.,
                             '[{"locale":"es","value":"Aplicar","status":"translated"}]'
   -h, --help                display help for command
@@ -68,6 +69,7 @@ Options:
     "options": {
       "collection": "app",
       "key": "a.b",
+      "override": true,
       "translations": "[{"locale":"fr"}]",
       "value": "Hello",
     },

@@ -4,9 +4,9 @@ import type { TerminologyFindingsDto } from './terminology-findings.dto';
  * DTO for the response when creating a resource entry.
  */
 export interface CreateResourceResponseDto {
-  /** Number of entries that were created (1 if new, 0 if updated) */
+  /** Number of entries created; equals the number of requested resources on success. */
   entriesCreated: number;
-  /** Whether the resource entry was newly created (true) or updated (false) */
+  /** Whether at least one resource was created. */
   created: boolean;
   /**
    * Locales that were skipped during auto-translation because the base value

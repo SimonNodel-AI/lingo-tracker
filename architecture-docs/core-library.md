@@ -380,23 +380,24 @@ moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nes
 
 ### add-resource
 
-**Entry point:** `addResource(collection, params)`
+**Entry point:** `addResource(collection, params, options?)`
 
 Steps:
 
 1. **Resolve paths** — `validateAndResolvePaths()` calls `resolveResourceKey()` and `splitResolvedKey()` from `@simoncodes-ca/domain` to derive `folderPath`, `resourceEntriesPath`, `trackerMetaPath`, and `entryKey`.
-2. **Normalize base value** — `translocoToICU()` converts any Transloco `{{ varName }}` syntax in the incoming base value to ICU `{varName}` before storage.
-3. **Resolve translations** — [locale seeding](#locale-seeding): supplied translations first, then auto-translation or a copy of the base as `new` for every other target locale. All values are resolved before anything is written, so a provider failure writes nothing.
-4. **Ensure directory** — `ensureDirectoryExists()` creates the folder tree with `mkdirSync({ recursive: true })`.
-5. **Load existing files** — `openResourceFolder()` loads both files (missing files are empty).
-6. **Replace the entry** — `setEntry` / `setBase` / `setDetails` / `setTranslation` on the `ResourceFolder`. A translation equal to the base value is stored as `new`.
-7. **Write files** — `folder.save()` writes both `resource_entries.json` and `tracker_meta.json`.
+2. **Check existence** — open the resolved Resource Folder and refuse an existing entry by default. `onExisting: 'replace'` allows replacement. This check happens before locale seeding or any write.
+3. **Normalize base value** — `translocoToICU()` converts any Transloco `{{ varName }}` syntax in the incoming base value to ICU `{varName}` before storage.
+4. **Resolve translations** — [locale seeding](#locale-seeding): supplied translations first, then auto-translation or a copy of the base as `new` for every other target locale. All values are resolved before anything is written, so a provider failure writes nothing.
+5. **Ensure directory** — `ensureDirectoryExists()` creates the folder tree with `mkdirSync({ recursive: true })`.
+6. **Load existing files** — `openResourceFolder()` loads both files (missing files are empty).
+7. **Set the entry** — `setEntry` / `setBase` / `setDetails` / `setTranslation` on the `ResourceFolder`. A translation equal to the base value is stored as `new`.
+8. **Write files** — `folder.save()` writes both `resource_entries.json` and `tracker_meta.json`.
 
 ### Resource Batches
 
 **Entry points:** `addResources(collection, items, options?)` and `moveResources(collection, ops, { config })`.
 
-`addResources` prepares each item through the single-add preparation path before writing any: malformed keys and target-folder addresses, unknown locales, duplicate resolved keys within the batch, unreadable folder JSON and translation failures stop the batch before a write. An existing exact key can be replaced, and parent/child keys are allowed as with `addResource`. Preflight reads folders but does not create them or check whether a later filesystem write can succeed. It then saves each item through the same `ResourceFolder` write path as `addResource`, in request order. The result combines `entriesCreated`, `created`, deduplicated `skippedLocales`, findings in order, deduplicated terminology problems, and mutations in order. A later disk write failure, such as a file in the folder path or insufficient permissions, leaves all earlier completed writes on disk and may leave only `resource_entries.json` written in the failing folder. It returns no result or mutations; there is no rollback, and the Collection Index catches up through disk-fingerprint revalidation.
+`addResources` resolves every item before preparing translations for any item, then writes only after all preparation succeeds: malformed keys and target-folder addresses, unknown locales, duplicate resolved keys within the batch, unreadable folder JSON and translation failures stop the batch before a write. An existing exact key is refused unless `onExisting: 'replace'` is passed; parent/child keys are allowed as with `addResource`. Preflight reads folders but does not create them or check whether a later filesystem write can succeed. It then saves each item through the same `ResourceFolder` write path as `addResource`, in request order. The result combines `entriesCreated`, `created`, deduplicated `skippedLocales`, findings in order, deduplicated terminology problems, and mutations in order. A later disk write failure, such as a file in the folder path or insufficient permissions, leaves all earlier completed writes on disk and may leave only `resource_entries.json` written in the failing folder. It returns no result or mutations; there is no rollback, and the Collection Index catches up through disk-fingerprint revalidation.
 
 `moveResources` runs each operation through `moveResource`, opening a plain destination collection name with `openCollection(config, name, { writable: true })`. The API decodes URI-encoded `toCollection` values before the call. An absent or read-only destination adds that operation's error and does not stop later operations. It combines counts, warnings, errors and mutations in operation order. The API applies the combined mutations once. If operation N throws, earlier completed operations remain on disk, no result or mutations are returned, and the index catches up through disk-fingerprint revalidation.
 

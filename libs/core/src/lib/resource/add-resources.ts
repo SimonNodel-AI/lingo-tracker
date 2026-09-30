@@ -1,16 +1,16 @@
 import type { Collection } from '../config/open-collection';
 import type { TerminologyFinding, TerminologyFindings } from '../config/project-terms';
 import { ResourceAlreadyExistsError } from '../errors/lingo-tracker-error';
-import type { OpenTranslatorOptions } from '../translation/translator';
 import {
+  type AddResourceOptions,
   type AddResourceParams,
   type PreparedResourceAdd,
   prepareResourceAdd,
+  type ResolvedResourceAdd,
+  resolveResourceAdd,
+  assertPreparedResourceCanWrite,
   writePreparedResourceAdd,
 } from './add-resource';
-import { assertCollectionLocales } from './locale-seeding';
-import { validateAndResolvePaths } from './resource-file-paths';
-import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
 export interface AddResourcesResult {
@@ -22,11 +22,11 @@ export interface AddResourcesResult {
 }
 
 /**
- * Prepares every item before writing any entry, then writes in input order. Preflight
- * refuses malformed keys and target-folder addresses, unknown locales, duplicate
- * resolved keys within the batch, unreadable folder JSON, and translation failures.
- * An existing exact key is replaced, as with `addResource`. Preflight reads folders
- * but does not create them or check whether the eventual write is possible.
+ * Resolves every item before translation, prepares every item before writing, then
+ * writes in input order. Preflight refuses malformed keys and target-folder addresses,
+ * unknown locales, duplicate resolved keys within the batch, unreadable folder JSON,
+ * existing exact keys unless `onExisting` is `replace`, and translation failures.
+ * Preflight reads folders but does not create them or check whether a later write can succeed.
  *
  * A filesystem failure during writing (for example, an existing regular file in a
  * folder path or insufficient permissions) can therefore occur after earlier items
@@ -39,28 +39,26 @@ export interface AddResourcesResult {
 export async function addResources(
   collection: Collection,
   items: readonly AddResourceParams[],
-  options: OpenTranslatorOptions = {},
+  options: AddResourceOptions = {},
 ): Promise<AddResourcesResult> {
+  const onExisting = options.onExisting ?? 'fail';
   const batchKeys = new Set<string>();
+  const resolved: ResolvedResourceAdd[] = [];
   const prepared: PreparedResourceAdd[] = [];
 
   for (const item of items) {
-    const paths = validateAndResolvePaths({
-      key: item.key,
-      targetFolder: item.targetFolder,
-      translationsFolder: collection.translationsFolder,
-    });
-    assertCollectionLocales(
-      collection,
-      (item.translations ?? []).map(({ locale }) => locale),
-    );
-    const key = paths.resolvedKey;
+    const candidate = resolveResourceAdd(collection, item, onExisting);
+    const key = candidate.paths.resolvedKey;
     if (batchKeys.has(key)) throw new ResourceAlreadyExistsError(key);
-    // Read existing JSON before writing; folder creation and writability are checked during the write.
-    openResourceFolder(paths.folderPath, { baseLocale: collection.baseLocale });
-    const candidate = await prepareResourceAdd(collection, item, options);
     batchKeys.add(key);
-    prepared.push(candidate);
+    resolved.push(candidate);
+  }
+  for (const candidate of resolved) {
+    prepared.push(await prepareResourceAdd(collection, candidate, options));
+  }
+  // No await separates this check from the write loop, so a late conflict writes nothing.
+  for (const candidate of prepared) {
+    assertPreparedResourceCanWrite(collection, candidate, onExisting);
   }
 
   let entriesCreated = 0;
@@ -69,7 +67,7 @@ export async function addResources(
   const problems = new Set<string>();
   const mutations: ResourceMutation[] = [];
   for (const candidate of prepared) {
-    const result = writePreparedResourceAdd(collection, candidate);
+    const result = writePreparedResourceAdd(collection, candidate, onExisting);
     if (result.created) entriesCreated++;
     for (const locale of result.skippedLocales ?? []) skippedLocales.add(locale);
     findings.push(...result.terminology.findings);

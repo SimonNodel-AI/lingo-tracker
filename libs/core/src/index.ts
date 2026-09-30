@@ -4,6 +4,7 @@
 
 // Operations: resources
 export { addResource, addResources, deleteResource, editResource, moveResource, moveResources } from './lib/resource';
+export type { AddResourceOptions, ExistingResourcePolicy } from './lib/resource';
 
 // Operations: folders
 export { createFolder, deleteFolder, moveFolder } from './lib/folder';
@@ -98,11 +99,9 @@ export {
   type EntryDetails,
   type NormalizeEntryReport,
   openResourceFolder,
-  type ResolvedResourcePaths,
   type ResourceFolder,
   type ResourceFolderEntry,
   type ResourceFolderSaveResult,
-  resolveResourcePaths,
 } from './lib/resource';
 
 // Collection Reader: every entry of a collection, read through ResourceFolder
@@ -238,7 +237,6 @@ export type {
   ComputeTreeFingerprintOptions,
   LoadResourceTreeOptions,
   OpenResourceFolderOptions,
-  ResourcePathResolutionParams,
 } from './lib/resource';
 export type {
   OpenTranslatorOptions,

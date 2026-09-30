@@ -111,6 +111,7 @@ export class ResourcesController {
         targetFolder: resource.targetFolder,
         translations: resource.translations,
       })),
+      { onExisting: 'fail' },
     );
     this.#index.apply(result.mutations);
     const terminology = toTerminologyDto(result.terminology);

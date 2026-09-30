@@ -1,10 +1,11 @@
 import { isUntranslatedCopy, normalizeTags, translocoToICU } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
+import { ResourceAlreadyExistsError } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import type { OpenTranslatorOptions } from '../translation/translator';
 import { type ResolvedResourcePaths, validateAndResolvePaths } from './resource-file-paths';
-import { openResourceFolder } from './resource-folder';
+import { openResourceFolder, type ResourceFolder } from './resource-folder';
 import { type ResourceMutation, upsertMutation } from './resource-mutation';
 import {
   assertCollectionLocales,
@@ -30,6 +31,18 @@ export interface AddResourceParams {
    * (see {@link seedLocales}).
    */
   readonly translations?: readonly ResourceTranslation[];
+}
+
+export type ExistingResourcePolicy = 'replace' | 'fail';
+
+export interface AddResourceOptions extends OpenTranslatorOptions {
+  /** What to do when the resolved key already holds an entry. Default: 'fail'. */
+  readonly onExisting?: ExistingResourcePolicy;
+}
+
+export interface ResolvedResourceAdd {
+  readonly params: AddResourceParams;
+  readonly paths: ResolvedResourcePaths;
 }
 
 export interface AddResourceResult {
@@ -60,8 +73,8 @@ export interface PreparedResourceAdd {
 }
 
 /**
- * Adds a resource entry to a collection, or replaces the entry at that key (its previous
- * translations and metadata are dropped). Creates the folders it needs.
+ * Adds a resource entry to a collection. With `onExisting: 'replace'`, an existing
+ * entry's previous translations and metadata are dropped. Creates the folders it needs.
  *
  * Every target locale of the collection gets a value: the supplied translation, else an
  * auto-translation when the collection has it enabled, else a copy of the base value as
@@ -72,7 +85,8 @@ export interface PreparedResourceAdd {
  * translation provider fails. The stored base value is checked against the preferred
  * terminology (Project Terms) and the findings returned; they never block the add.
  *
- * @param options - `provider` / `protectedTerms`: used instead of the collection's (see `openTranslator`).
+ * @param options - Existence policy and optional `provider` / `protectedTerms` overrides (see `openTranslator`).
+ * @throws {ResourceAlreadyExistsError} The resolved key already exists and the policy is `fail`.
  * @throws {InvalidResourceKeyError} The key or `targetFolder` is malformed.
  * @throws {LocaleNotFoundError} A supplied translation names a locale the collection does not have.
  * @throws {TranslationError} The translation provider failed.
@@ -81,25 +95,39 @@ export interface PreparedResourceAdd {
 export async function addResource(
   collection: Collection,
   params: AddResourceParams,
-  options: OpenTranslatorOptions = {},
+  options: AddResourceOptions = {},
 ): Promise<AddResourceResult> {
-  return writePreparedResourceAdd(collection, await prepareResourceAdd(collection, params, options));
+  const onExisting = options.onExisting ?? 'fail';
+  const resolved = resolveResourceAdd(collection, params, onExisting);
+  return writePreparedResourceAdd(collection, await prepareResourceAdd(collection, resolved, options), onExisting);
 }
 
-/** Resolves all per-entry validation and translation work before a batch writes. */
-export async function prepareResourceAdd(
+/** Validates an entry and checks its resolved key before translation or writes. */
+export function resolveResourceAdd(
   collection: Collection,
   params: AddResourceParams,
-  options: OpenTranslatorOptions = {},
-): Promise<PreparedResourceAdd> {
+  onExisting: ExistingResourcePolicy,
+): ResolvedResourceAdd {
   const { baseLocale, translationsFolder } = collection;
   const paths = validateAndResolvePaths({ key: params.key, translationsFolder, targetFolder: params.targetFolder });
-
-  const supplied = (params.translations ?? []).filter(({ locale }) => locale !== baseLocale);
   assertCollectionLocales(
     collection,
-    supplied.map(({ locale }) => locale),
+    (params.translations ?? []).map(({ locale }) => locale),
   );
+  const existed = openResourceFolder(paths.folderPath, { baseLocale }).has(paths.entryKey);
+  if (existed && onExisting === 'fail') throw new ResourceAlreadyExistsError(paths.resolvedKey);
+  return { params, paths };
+}
+
+/** Resolves translation work for an already checked entry before a batch writes. */
+export async function prepareResourceAdd(
+  collection: Collection,
+  resolved: ResolvedResourceAdd,
+  options: OpenTranslatorOptions = {},
+): Promise<PreparedResourceAdd> {
+  const { baseLocale } = collection;
+  const { params, paths } = resolved;
+  const supplied = (params.translations ?? []).filter(({ locale }) => locale !== baseLocale);
 
   const baseValue = translocoToICU(params.baseValue);
   // Resolve every value before touching the disk, so a provider failure writes nothing.
@@ -127,13 +155,37 @@ export async function prepareResourceAdd(
   };
 }
 
+function checkWriteConflict(
+  folder: ResourceFolder,
+  paths: ResolvedResourcePaths,
+  onExisting: ExistingResourcePolicy,
+): boolean {
+  const created = !folder.has(paths.entryKey);
+  if (!created && onExisting === 'fail') throw new ResourceAlreadyExistsError(paths.resolvedKey);
+  return created;
+}
+
+/** Checks a prepared entry again after translation, without writing. */
+export function assertPreparedResourceCanWrite(
+  collection: Collection,
+  prepared: PreparedResourceAdd,
+  onExisting: ExistingResourcePolicy,
+): void {
+  const folder = openResourceFolder(prepared.paths.folderPath, { baseLocale: collection.baseLocale });
+  checkWriteConflict(folder, prepared.paths, onExisting);
+}
+
 /** Stores an already prepared entry through the same Resource Folder path as a single add. */
-export function writePreparedResourceAdd(collection: Collection, prepared: PreparedResourceAdd): AddResourceResult {
+export function writePreparedResourceAdd(
+  collection: Collection,
+  prepared: PreparedResourceAdd,
+  onExisting: ExistingResourcePolicy,
+): AddResourceResult {
   const { paths, params, baseValue, translations } = prepared;
   const { translationsFolder, baseLocale } = collection;
-  ensureDirectoryExists({ directoryPath: paths.folderPath, errorContext: 'Creating resource folder' });
   const folder = openResourceFolder(paths.folderPath, { baseLocale });
-  const created = !folder.has(paths.entryKey);
+  const created = checkWriteConflict(folder, paths, onExisting);
+  ensureDirectoryExists({ directoryPath: paths.folderPath, errorContext: 'Creating resource folder' });
 
   // setEntry clears the entry in place, so an existing key keeps its position in the file.
   folder.setEntry(paths.entryKey, { source: baseValue }, {});

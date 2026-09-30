@@ -184,6 +184,7 @@ const cases: Case[] = [
       'a',
       '--translations',
       '[{"locale":"fr"}]',
+      '--override',
     ],
     fullCall: [
       {
@@ -194,6 +195,7 @@ const cases: Case[] = [
         tags: 'ui,common',
         targetFolder: 'a',
         translations: '[{"locale":"fr"}]',
+        override: true,
       },
     ],
     defaultCall: [{}],
