@@ -131,6 +131,8 @@ export {
   BundleNotFoundError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
+  CollectionRenameBundleConflictError,
+  CollectionRequiredByBundleError,
   ConfigNotFoundError,
   ConfigParseError,
   type ErrorKind,

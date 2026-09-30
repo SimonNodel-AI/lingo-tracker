@@ -190,6 +190,8 @@ lingo-tracker add-collection \
 
 Edit an existing collection's configuration. Currently supports managing collection-level tags that are inherited by all resources in the collection.
 
+This command does not rename collections. When a collection is renamed through the API, explicit bundle references are updated to the new name automatically.
+
 **Usage:**
 
 ```bash
@@ -376,6 +378,7 @@ lingo-tracker delete-collection --collection-name Mobile
 
 **Notes:**
 - Removes the collection entry from `.lingo-tracker.json`
+- Removes its entries from explicit bundle collection lists in the same config write. If any bundle would have no collections, deletion is refused, its name is printed, and the command exits 1.
 - Does NOT delete translation files from disk (data is preserved)
 - In interactive mode, asks for confirmation (naming the collection and its translations folder) unless `--yes` is given, also when the only collection was selected for you. Declining cancels with exit code 0
 - In non-interactive mode, it does not ask: the flags are the consent

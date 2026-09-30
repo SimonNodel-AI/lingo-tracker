@@ -10,6 +10,8 @@ export {
   BundleNotFoundError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
+  CollectionRenameBundleConflictError,
+  CollectionRequiredByBundleError,
   ConfigNotFoundError,
   ConfigParseError,
   FolderMoveIntoDescendantError,

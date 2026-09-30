@@ -237,6 +237,19 @@ describe('deleteCollectionCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('prints the typed bundle conflict and exits 1', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
+    const error = new core.CollectionRequiredByBundleError('Collection1', ['main']);
+    vi.mocked(core.deleteCollectionByName).mockImplementation(() => {
+      throw error;
+    });
+
+    await deleteCollectionCommand({ collectionName: 'Collection1' });
+
+    expect(console.error).toHaveBeenCalledWith(`❌ ${error.message}`);
+    expect(process.exitCode).toBe(1);
+  });
+
   it('exits 1 naming --collection-name when several collections exist and none is given', async () => {
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
 

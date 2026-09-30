@@ -14,6 +14,8 @@ describe('core public surface', () => {
       'CannotTranslateBaseLocaleError',
       'CollectionAlreadyExistsError',
       'CollectionNotFoundError',
+      'CollectionRenameBundleConflictError',
+      'CollectionRequiredByBundleError',
       'ConfigNotFoundError',
       'ConfigParseError',
       'DEFAULT_CONFIG',

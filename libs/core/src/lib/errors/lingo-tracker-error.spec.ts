@@ -10,6 +10,8 @@ import {
   BundleNotFoundError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
+  CollectionRenameBundleConflictError,
+  CollectionRequiredByBundleError,
   ConfigNotFoundError,
   ConfigParseError,
   CoreOperationError,
@@ -74,6 +76,18 @@ describe('LingoTrackerError subclasses', () => {
       name: 'CollectionAlreadyExistsError',
       code: 'COLLECTION_ALREADY_EXISTS',
       message: ErrorMessages.collectionAlreadyExists('app'),
+    },
+    {
+      error: new CollectionRequiredByBundleError('app', ['main', 'other']),
+      name: 'CollectionRequiredByBundleError',
+      code: 'COLLECTION_REQUIRED_BY_BUNDLE',
+      message: ErrorMessages.collectionRequiredByBundles('app', ['main', 'other']),
+    },
+    {
+      error: new CollectionRenameBundleConflictError('app', 'legacy', ['main', 'other']),
+      name: 'CollectionRenameBundleConflictError',
+      code: 'COLLECTION_RENAME_BUNDLE_CONFLICT',
+      message: ErrorMessages.collectionRenameBundleConflict('app', 'legacy', ['main', 'other']),
     },
     {
       error: new ReadOnlyCollectionError('vendor'),
