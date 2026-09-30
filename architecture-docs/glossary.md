@@ -563,9 +563,9 @@ Explained in context: [`libs-domain.md`](libs-domain.md)
 
 ### Route Collection
 
-The API parameter seam for resource, folder, and locale routes. `@RouteCollection()` supplies the `Collection` opened by `RouteCollectionPipe` from the already-decoded `:collectionName` param. The pipe reads config once, requires writable access for methods other than `GET` by default, and maps missing or read-only collections to 404 or 403. Collection registration routes do not use it.
+The API parameter seam for resource, folder, and locale routes. `@RouteCollection()` supplies the `Collection` opened by `RouteCollectionPipe` from the already-decoded `:collectionName` param. The pipe reads config once, requires writable access for methods other than `GET` by default, and maps missing or read-only collections to 404 or 403. Collection registration routes do not use it. The Tracker encodes names once in API URL path segments; its router also encodes navigation segments, and `TranslationBrowser` uses the decoded route name directly.
 
-Explained in context: [`api.md`](api.md#component-diagram)
+Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](frontend.md#route-structure)
 
 ### Run Summary Writer
 

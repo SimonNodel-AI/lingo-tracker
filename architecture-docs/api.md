@@ -25,7 +25,7 @@ Return to [architecture README](README.md).
 
 ## Endpoint Reference
 
-All paths are relative to the `/api` global prefix. Express decodes URL path parameters once before handlers run. Controllers use the resulting values verbatim, including names with percent signs. A malformed percent escape is rejected with 400 before a handler runs.
+All paths are relative to the `/api` global prefix. Express decodes URL path parameters once before handlers run. Controllers use the resulting values verbatim, including names with percent signs. A malformed percent escape is rejected with 400 before a handler runs. Express also parses query values once; clients send plain values to their query encoder, including the resource tree's folder `path`.
 
 ### Health
 

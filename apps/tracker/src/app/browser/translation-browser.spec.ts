@@ -154,6 +154,7 @@ describe('TranslationBrowser - Integration', () => {
 
 describe('TranslationBrowser - opening the routed collection', () => {
   const config = signal<LingoTrackerConfigDto | null>(null);
+  const route = { snapshot: { paramMap: convertToParamMap({ collectionName: 'app' }) } };
 
   const configWith = (app: LingoTrackerCollectionDto): LingoTrackerConfigDto => ({
     exportFolder: 'export',
@@ -169,14 +170,38 @@ describe('TranslationBrowser - opening the routed collection', () => {
     providers: [
       provideHttpClient(),
       provideHttpClientTesting(),
-      { provide: ActivatedRoute, useValue: { snapshot: { paramMap: convertToParamMap({ collectionName: 'app' }) } } },
+      { provide: ActivatedRoute, useValue: route },
       { provide: CollectionsStore, useValue: { config } },
     ],
     detectChanges: false,
   });
 
   beforeEach(() => {
+    route.snapshot.paramMap = convertToParamMap({ collectionName: 'app' });
     config.set(configWith({ translationsFolder: 'src/i18n', locales: ['en', 'es'] }));
+  });
+
+  it('opens distinct collections whose decoded names contain percent escapes', () => {
+    config.set({
+      ...configWith({ translationsFolder: 'src/i18n' }),
+      collections: {
+        'a%b': { translationsFolder: 'first/i18n' },
+        'a%25b': { translationsFolder: 'second/i18n' },
+      },
+    });
+
+    route.snapshot.paramMap = convertToParamMap({ collectionName: 'a%b' });
+    const first = createComponent();
+    first.detectChanges();
+    expect(first.component.store.selectedCollection()).toBe('a%b');
+    expect(first.component.translationsFolder()).toBe('first/i18n');
+    first.fixture.destroy();
+
+    route.snapshot.paramMap = convertToParamMap({ collectionName: 'a%25b' });
+    const second = createComponent();
+    second.detectChanges();
+    expect(second.component.store.selectedCollection()).toBe('a%25b');
+    expect(second.component.translationsFolder()).toBe('second/i18n');
   });
 
   it("should patch readOnly/translationEnabled in place on a config change, keeping the user's place", () => {
