@@ -68,9 +68,9 @@ describe('Settings', () => {
     return renderStore(buildStore(config, error));
   };
 
-  const termValues = () => component.entries().map((entry) => entry.value);
+  const termValues = () => component.draft.terms.entries().map((entry) => entry.value);
   const entryFor = (value: string) => {
-    const entry = component.entries().find((candidate) => candidate.value === value);
+    const entry = component.draft.terms.entries().find((candidate) => candidate.value === value);
     expect(entry).toBeDefined();
     return entry;
   };
@@ -105,7 +105,7 @@ describe('Settings', () => {
   it('shows the empty state when there are no terms', () => {
     render({ ...baseConfig, protectedTerms: [] });
 
-    expect(component.isEmpty()).toBe(true);
+    expect(component.draft.terms.isEmpty()).toBe(true);
     expect(fixture.nativeElement.querySelector('.terms-empty')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.terms-list')).toBeNull();
   });
@@ -116,30 +116,30 @@ describe('Settings', () => {
     it('offers no filter on a list short enough to scan', () => {
       render(baseConfig);
 
-      expect(component.showFilter()).toBe(false);
+      expect(component.draft.terms.showFilter()).toBe(false);
       expect(fixture.nativeElement.querySelector('.terms-filter')).toBeNull();
     });
 
     it('offers a filter once the list is long enough to need one', () => {
       render(manyTerms);
 
-      expect(component.showFilter()).toBe(true);
+      expect(component.draft.terms.showFilter()).toBe(true);
       expect(fixture.nativeElement.querySelector('.terms-filter')).not.toBeNull();
     });
 
     it('renders and reveals an added row after its filter is cleared', () => {
       render(manyTerms);
-      component.filter.set('a1');
+      component.draft.terms.filter.set('a1');
       spectator.detectChanges();
-      component.onAddDraftChange('Zod');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('Zod');
+      component.draft.terms.addTerm();
       spectator.detectChanges();
       spectator.flushEffects();
 
-      expect(component.filter()).toBe('');
+      expect(component.draft.terms.filter()).toBe('');
       expect(fixture.nativeElement.querySelectorAll('.term')).toHaveLength(10);
       expect(fixture.nativeElement.textContent).toContain('Zod');
-      expect(component.terms.revealId()).toBeNull();
+      expect(component.draft.terms.revealId()).toBeNull();
     });
   });
 
@@ -148,9 +148,9 @@ describe('Settings', () => {
       render(baseConfig);
       const entry = entryFor('iPhone');
       if (!entry) return;
-      component.removeTerm(entry);
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.removeTerm(entry);
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
 
       component.save();
 
@@ -169,14 +169,14 @@ describe('Settings', () => {
       render(baseConfig);
       const entry = entryFor('iPhone');
       if (!entry) return;
-      component.removeTerm(entry);
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.removeTerm(entry);
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
 
       component.revertAll();
 
-      expect(component.termsToSave()).toEqual(['iPhone', 'Node.js']);
-      expect(component.hasChanges()).toBe(false);
+      expect(component.draft.terms.termsToSave()).toEqual(['iPhone', 'Node.js']);
+      expect(component.draft.terms.hasChanges()).toBe(false);
     });
 
     it('surfaces a failed config load to the user', () => {
@@ -194,25 +194,25 @@ describe('Settings', () => {
         updateGlobalConfig: updateGlobalConfigMock,
       });
 
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
       config.set({ ...baseConfig, protectedTerms: ['iPhone', 'Node.js'] });
       fixture.detectChanges();
 
-      expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(component.draft.terms.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
     });
 
     it('adopts the saved config as the new baseline and toasts once when the save is accepted', () => {
       render(baseConfig);
       updateGlobalConfigMock.mockReturnValueOnce(of({ ...baseConfig, protectedTerms: ['C++', 'iPhone', 'Node.js'] }));
 
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
       component.save();
       fixture.detectChanges();
 
-      expect(component.hasChanges()).toBe(false);
-      expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(component.draft.terms.hasChanges()).toBe(false);
+      expect(component.draft.terms.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
       expect(notifications.success).toHaveBeenCalledTimes(1);
       expect(notifications.success).toHaveBeenCalledWith('Global settings saved');
       expect(component.saveError()).toBeNull();
@@ -222,20 +222,20 @@ describe('Settings', () => {
       render(baseConfig);
       updateGlobalConfigMock.mockReturnValueOnce(of(null));
 
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
       component.addRule();
-      const [rule] = component.terminology.rowViews();
+      const [rule] = component.draft.terminology.rowViews();
       expect(rule).toBeDefined();
       component.onRuleInput(rule?.row.id ?? -1, 'discouraged', 'utilize');
       component.onRuleInput(rule?.row.id ?? -1, 'preferred', 'use');
       component.save();
       fixture.detectChanges();
 
-      expect(component.saving()).toBe(false);
-      expect(component.hasAnyChanges()).toBe(false);
-      expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
-      expect(component.terminology.rulesToSave()).toEqual([{ discouraged: 'utilize', preferred: 'use' }]);
+      expect(component.draft.saving()).toBe(false);
+      expect(component.draft.hasChanges()).toBe(false);
+      expect(component.draft.terms.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(component.draft.terminology.rulesToSave()).toEqual([{ discouraged: 'utilize', preferred: 'use' }]);
       expect(notifications.success).toHaveBeenCalledTimes(1);
       expect(notifications.success).toHaveBeenCalledWith('Global settings saved');
       expect(component.saveError()).toBeNull();
@@ -247,14 +247,14 @@ describe('Settings', () => {
         rejection(400, { message: 'protectedTerms must be an array of strings' }),
       );
 
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
       component.save();
       fixture.detectChanges();
 
       expect(fixture.nativeElement.textContent).toContain('protectedTerms must be an array of strings');
-      expect(component.hasChanges()).toBe(true);
-      expect(component.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
+      expect(component.draft.terms.hasChanges()).toBe(true);
+      expect(component.draft.terms.termsToSave()).toEqual(['C++', 'iPhone', 'Node.js']);
       expect(notifications.success).not.toHaveBeenCalled();
     });
 
@@ -262,8 +262,8 @@ describe('Settings', () => {
       render(baseConfig);
       updateGlobalConfigMock.mockReturnValueOnce(rejection(500, { error: 'Internal Server Error' }));
 
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
       component.save();
       fixture.detectChanges();
 
@@ -351,7 +351,7 @@ describe('Settings', () => {
 
       expect(ruleRows()).toHaveLength(3);
       expect(document.activeElement).toBe(ruleInput(2, 'discouraged'));
-      expect(component.terminology.changeCount()).toBe(1);
+      expect(component.draft.terminology.changeCount()).toBe(1);
     });
 
     it('does not show "required" on a blank new row until a field is touched', () => {
@@ -373,12 +373,12 @@ describe('Settings', () => {
 
       type(1, 'preferred', 'Capital');
 
-      expect(component.terminology.rulesToSave()[1]).toEqual({
+      expect(component.draft.terminology.rulesToSave()[1]).toEqual({
         discouraged: 'Expenditure',
         preferred: 'Capital',
         reason: 'Current planning term.',
       });
-      expect(component.terminology.changeCount()).toBe(1);
+      expect(component.draft.terminology.changeCount()).toBe(1);
       expect(ruleRows()[1]?.getAttribute('data-status')).toBe('edited');
     });
 
@@ -389,10 +389,10 @@ describe('Settings', () => {
       spectator.detectChanges();
 
       expect(ruleRows()).toHaveLength(1);
-      expect(component.terminology.rulesToSave()).toEqual([
+      expect(component.draft.terminology.rulesToSave()).toEqual([
         { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Current planning term.' },
       ]);
-      expect(component.terminology.changeCount()).toBe(1);
+      expect(component.draft.terminology.changeCount()).toBe(1);
     });
 
     it('flags a duplicate discouraged term inline', () => {
@@ -440,7 +440,7 @@ describe('Settings', () => {
       type(2, 'discouraged', 'Spend');
       type(2, 'preferred', 'Expenditure');
 
-      expect(component.terminology.rowViews()[2]?.errors.preferred).toEqual({
+      expect(component.draft.terminology.rowViews()[2]?.errors.preferred).toEqual({
         code: 'chain',
         params: { term: 'Expenditure', preferred: 'Investment' },
       });
@@ -500,8 +500,8 @@ describe('Settings', () => {
 
     it('sends both lists in one request when both changed', () => {
       render(terminologyConfig);
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
       type(0, 'preferred', 'Email');
 
       component.save();
@@ -540,7 +540,7 @@ describe('Settings', () => {
         'E-mail',
         'Expenditure',
       ]);
-      expect(component.terminology.hasChanges()).toBe(false);
+      expect(component.draft.terminology.hasChanges()).toBe(false);
     });
 
     it('maps the rule errors of a rejected save onto the submitted rows and clears one when its field is edited', () => {
@@ -560,7 +560,7 @@ describe('Settings', () => {
       expect(errorFor(0, 'preferred')).toBeNull();
       expect(fixture.nativeElement.textContent).toContain('Invalid preferred terminology rules');
       expect(notifications.success).not.toHaveBeenCalled();
-      expect(component.terminology.changeCount()).toBe(1);
+      expect(component.draft.terminology.changeCount()).toBe(1);
 
       type(1, 'preferred', 'Capital');
 
@@ -592,8 +592,8 @@ describe('Settings', () => {
 
     it('does not rewrite a broken terminology file when only protected terms are saved', () => {
       render({ ...baseConfig, preferredTerminologyError: 'broken' });
-      component.onAddDraftChange('C++');
-      component.addTerm();
+      component.draft.terms.onAddDraftChange('C++');
+      component.draft.terms.addTerm();
 
       component.save();
 
@@ -617,7 +617,7 @@ describe('Settings', () => {
 
       expect(ruleRows()).toHaveLength(2);
       expect(ruleInput(0, 'preferred').value).toBe('email');
-      expect(component.hasAnyChanges()).toBe(false);
+      expect(component.draft.hasChanges()).toBe(false);
     });
 
     describe('editing lock', () => {
@@ -680,13 +680,13 @@ describe('Settings', () => {
         clickAdd();
 
         expect(ruleRows()).toHaveLength(0);
-        expect(component.terminology.isEmpty()).toBe(true);
+        expect(component.draft.terminology.isEmpty()).toBe(true);
 
         store.config.set(terminologyConfig);
         settle();
 
         expect(ruleRows()).toHaveLength(2);
-        expect(component.terminology.hasChanges()).toBe(false);
+        expect(component.draft.terminology.hasChanges()).toBe(false);
       });
 
       it('locks every edit control while a save is in flight and unlocks once its answer arrives', () => {
@@ -731,7 +731,7 @@ describe('Settings', () => {
 
         expect(editControls().every((control) => !control.disabled)).toBe(true);
         expect(ruleInput(0, 'preferred').value).toBe('Email');
-        expect(component.terminology.changeCount()).toBe(1);
+        expect(component.draft.terminology.changeCount()).toBe(1);
         expect(host().textContent).toContain('update failed');
         expect(notifications.success).not.toHaveBeenCalled();
       });
@@ -751,7 +751,7 @@ describe('Settings', () => {
         settle();
 
         expect(ruleRows()).toHaveLength(3);
-        expect(component.terminology.rulesToSave()[2]).toEqual({ discouraged: 'Cost', preferred: 'Price' });
+        expect(component.draft.terminology.rulesToSave()[2]).toEqual({ discouraged: 'Cost', preferred: 'Price' });
       });
     });
 
