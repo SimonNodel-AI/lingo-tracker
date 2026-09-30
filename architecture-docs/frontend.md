@@ -353,7 +353,7 @@ The listed collection, folder, and editor confirmations use [Confirmation](gloss
 
 `TranslationEditorDialog` opens the `FolderPicker` (a nested dialog via `MatDialog`) if the user wants to move the resource to a different folder. `FolderPicker` in turn calls `BrowserStore.createFolder(name, parentPath)` to create folders inline without leaving the dialog.
 
-The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autocomplete`) in the Base Info tab. Autocomplete suggestions are derived client-side as a `computed()` over `BrowserStore.translations()`, scoped to the current collection. Tags are normalized on chip commit (`normalizeTag` from `@simoncodes-ca/domain`) and sent as `tags: string[]` on the existing `PATCH /collections/:name/resources` endpoint.
+The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autocomplete`) in the Base Info tab. `editor-entry-sources.ts` derives autocomplete suggestions from the browser's translations, scoped to the current collection. Tags are normalized on chip commit (`normalizeTag` from `@simoncodes-ca/domain`) and sent as `tags: string[]` on the existing `PATCH /collections/:name/resources` endpoint.
 
 ### Translation Editor and the Resource Entry Draft
 
@@ -363,6 +363,8 @@ The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autoc
 - **`SimilarValues`** owns the [Similar Values](glossary.md#similar-values) lookup: the shared three-character minimum, 300 ms pause, distinct values, and an empty result on failure.
 - **`FolderPeek`** opens a [Folder Peek](glossary.md#folder-peek) scope for each editor. That scope caches entries and shares in-flight reads until the dialog closes. The launcher opens a fresh scope for each `openByFullKey` call. The service shares only concurrent reads across scopes; responses from an earlier Browser Session are dropped.
 - **`resource-entry-draft.ts`** owns the rules. It is a pure module with no Angular imports. The dialog turns its form, target folder and tags into a plain `ResourceEntryDraft` and asks the module for every decision.
+- **`editor-entry-sources.ts`** gathers the browser's folder tree, current folder and entries with the dialog's Folder Peek results for collision and context rules. It also derives tag suggestions. The dialog uses these computed sources rather than reading each store field.
+- **`editor-submit.ts`** owns [Editor Submit](glossary.md#editor-submit): `submitGate` checks the first reason to stop a save; `submitEditor` builds the request and maps the response to an Editor Outcome or classifies a refusal. Store writes are passed in, and the dialog keeps confirmation, error text, conflict dialogs and closing. One `toSignal` bridge from the reactive form keeps the dialog's computeds current without revision counters.
 
 | Function | Rule |
 |---|---|

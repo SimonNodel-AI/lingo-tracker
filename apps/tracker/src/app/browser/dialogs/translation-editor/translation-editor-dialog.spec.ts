@@ -218,6 +218,22 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Dotted Keys - Location Absorption', () => {
+    it('should publish the absorbed leaf and folder to collision and key preview', () => {
+      const store = spectator.inject(BrowserStore);
+      patchState(unprotected(store), {
+        currentFolderPath: 'a.b',
+        translations: [summary('a.b.c', 'Existing value')],
+      });
+
+      component.form.controls.key.setValue('a.b.c');
+      spectator.detectChanges();
+
+      expect(component.form.controls.key.value).toBe('c');
+      expect(component.selectedFolderPath()).toBe('a.b');
+      expect(component.fullKeyPreview()).toBe('a.b.c');
+      expect(component.keyCollision()).toBe(true);
+    });
+
     it('should split a pasted full key into folder path and leaf', () => {
       component.form.controls.key.setValue('apps.common.buttons.ok');
 
@@ -734,82 +750,6 @@ describe('TranslationEditorDialog', () => {
     });
   });
 
-  describe('skippedLocales propagation', () => {
-    it('should include skippedLocales in create result when API returns them', async () => {
-      apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true, skippedLocales: ['fr', 'de'] }));
-
-      component.form.controls.key.setValue('test_key');
-      component.form.controls.baseValue.setValue('Test Value');
-      component.form.controls.comment.setValue('Test comment');
-
-      await component.onSubmit();
-
-      expect(closedWith()).toMatchObject({ kind: 'created', skippedLocales: ['fr', 'de'] });
-    });
-
-    it('should omit skippedLocales from create result when API returns empty array', async () => {
-      apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true, skippedLocales: [] }));
-
-      component.form.controls.key.setValue('test_key');
-      component.form.controls.baseValue.setValue('Test Value');
-      component.form.controls.comment.setValue('Test comment');
-
-      await component.onSubmit();
-
-      expect(closedWith()).toMatchObject({ skippedLocales: [] });
-    });
-
-    it('should omit skippedLocales from create result when API omits the field', async () => {
-      apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true }));
-
-      component.form.controls.key.setValue('test_key');
-      component.form.controls.baseValue.setValue('Test Value');
-      component.form.controls.comment.setValue('Test comment');
-
-      await component.onSubmit();
-
-      expect(closedWith()).toMatchObject({ skippedLocales: [] });
-    });
-
-    it('should include skippedLocales in update result when API returns them', async () => {
-      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
-
-      const editData = createMockData('edit', mockResource);
-      apiSpies.updateResource.mockReturnValue(
-        of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: ['es'] }),
-      );
-      renderDialog(editData);
-
-      component.form.controls.baseValue.setValue('Updated Value');
-      component.form.controls.comment.setValue('Updated comment');
-
-      await component.onSubmit();
-
-      expect(closedWith()).toEqual({
-        kind: 'saved',
-        fullKey: 'common.buttons.existing_key',
-        skippedLocales: ['es'],
-      });
-    });
-
-    it('should omit skippedLocales from update result when API returns empty array', async () => {
-      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {}, { comment: 'A comment' });
-
-      const editData = createMockData('edit', mockResource);
-      apiSpies.updateResource.mockReturnValue(
-        of({ resolvedKey: 'common.buttons.existing_key', updated: true, skippedLocales: [] }),
-      );
-      renderDialog(editData);
-
-      component.form.controls.baseValue.setValue('Updated Value');
-      component.form.controls.comment.setValue('Updated comment');
-
-      await component.onSubmit();
-
-      expect(closedWith()).toMatchObject({ skippedLocales: [] });
-    });
-  });
-
   describe('Location popover', () => {
     it('should stay closed until the location pill is used', () => {
       expect(component.isFolderPopoverOpen()).toBe(false);
@@ -1158,6 +1098,18 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Create errors from the server', () => {
+    it('should show the unexpected-error token for a non-API failure', async () => {
+      apiSpies.createResource.mockReturnValue(throwError(() => new Error('Unexpected')));
+      component.form.controls.key.setValue('ok');
+      component.form.controls.baseValue.setValue('OK');
+      component.form.controls.comment.setValue('A comment');
+
+      await component.onSubmit();
+
+      expect(component.errorMessage()).toBe('An unexpected error occurred');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
     it('should open the conflict dialog and set shouldOpenEdit/existingResourceKey on a server-side 409', async () => {
       apiSpies.createResource.mockReturnValue(
         throwError(() =>
@@ -1459,6 +1411,39 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Edit Mode API Integration', () => {
+    it('should show the missing-resource token when an edit has no original entry', async () => {
+      renderDialog(createMockData('edit'));
+      component.form.controls.key.setValue('ok');
+      component.form.controls.baseValue.setValue('OK');
+      component.form.controls.comment.setValue('A comment');
+
+      await component.onSubmit();
+
+      expect(component.errorMessage()).toBe('Cannot update: resource data is missing');
+      expect(apiSpies.updateResource).not.toHaveBeenCalled();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('should show the update-failed token for an update API error without a server message', async () => {
+      apiSpies.updateResource.mockReturnValue(throwError(() => toApiError(new HttpErrorResponse({ status: 503 }))));
+      renderDialog(createMockData('edit', summary('common.buttons.ok', 'OK', {}, { comment: 'A comment' })));
+
+      await component.onSubmit();
+
+      expect(component.errorMessage()).toBe('Failed to update translation');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('should show the invalid-request token for an update API error without a server message', async () => {
+      apiSpies.updateResource.mockReturnValue(throwError(() => toApiError(new HttpErrorResponse({ status: 400 }))));
+      renderDialog(createMockData('edit', summary('common.buttons.ok', 'OK', {}, { comment: 'A comment' })));
+
+      await component.onSubmit();
+
+      expect(component.errorMessage()).toBe('Invalid request');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
     it('should call updateResource API when submitting in edit mode', async () => {
       const mockResource = summary(
         'common.buttons.existing_key',
@@ -1801,7 +1786,6 @@ describe('TranslationEditorDialog', () => {
       type('Expenditure');
       component.submitAttempted.set(true);
       component.form.controls.baseValue.setErrors({ required: true });
-      component.formRevision.update((revision) => revision + 1);
       spectator.detectChanges();
 
       expect(baseTextarea()?.getAttribute('aria-describedby')).toBe(
