@@ -15,6 +15,8 @@ export {
   type CollectionBundleDefinition,
   type EntrySelectionRule,
   findBundleDefinition,
+  hasBundleCollections,
+  hasBundleRules,
   hasLocalePlaceholder,
   hasTypeDistConfigured,
   isTypeScriptFile,
