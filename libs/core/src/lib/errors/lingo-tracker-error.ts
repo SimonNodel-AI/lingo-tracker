@@ -166,6 +166,37 @@ export class CollectionAlreadyExistsError extends LingoTrackerError {
   }
 }
 
+/** Removing this collection would leave one or more bundles empty. */
+export class CollectionRequiredByBundleError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
+  readonly collectionName: string;
+  readonly bundleNames: readonly string[];
+
+  constructor(collectionName: string, bundleNames: readonly string[]) {
+    super(ErrorMessages.collectionRequiredByBundles(collectionName, bundleNames), 'COLLECTION_REQUIRED_BY_BUNDLE');
+    this.collectionName = collectionName;
+    this.bundleNames = bundleNames;
+  }
+}
+
+/** A rename target already appears in explicit bundle references. */
+export class CollectionRenameBundleConflictError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
+  readonly collectionName: string;
+  readonly newCollectionName: string;
+  readonly bundleNames: readonly string[];
+
+  constructor(collectionName: string, newCollectionName: string, bundleNames: readonly string[]) {
+    super(
+      ErrorMessages.collectionRenameBundleConflict(collectionName, newCollectionName, bundleNames),
+      'COLLECTION_RENAME_BUNDLE_CONFLICT',
+    );
+    this.collectionName = collectionName;
+    this.newCollectionName = newCollectionName;
+    this.bundleNames = bundleNames;
+  }
+}
+
 /** A mutating operation was asked of a collection flagged `readOnly`. */
 export class ReadOnlyCollectionError extends LingoTrackerError {
   readonly kind = 'forbidden' as const;
