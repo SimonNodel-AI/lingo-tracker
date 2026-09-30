@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import * as fs from 'node:fs';
 import type { Collection } from '../config/open-collection';
 import { type CollectionReadProblem, readCollection } from '../resource/read-collection';
@@ -28,10 +29,12 @@ const RESERVED_RICH_KEYS = ['value', 'comment', 'status', 'tags'] as const;
 
 export function validateBasePropertyName(name: string): void {
   if (name.length === 0) {
-    throw new Error('basePropertyName cannot be empty');
+    throw new CoreOperationError('basePropertyName cannot be empty');
   }
   if ((RESERVED_RICH_KEYS as readonly string[]).includes(name)) {
-    throw new Error(`basePropertyName "${name}" is a reserved key. Reserved: ${RESERVED_RICH_KEYS.join(', ')}`);
+    throw new CoreOperationError(
+      `basePropertyName "${name}" is a reserved key. Reserved: ${RESERVED_RICH_KEYS.join(', ')}`,
+    );
   }
 }
 
@@ -40,14 +43,14 @@ export function validateOutputDirectory(directory: string): void {
     try {
       fs.mkdirSync(directory, { recursive: true });
     } catch (error) {
-      throw new Error(`Could not create output directory '${directory}': ${(error as Error).message}`);
+      throw new CoreOperationError(`Could not create output directory '${directory}': ${(error as Error).message}`);
     }
   }
 
   try {
     fs.accessSync(directory, fs.constants.W_OK);
   } catch {
-    throw new Error(`Output directory '${directory}' is not writable.`);
+    throw new CoreOperationError(`Output directory '${directory}' is not writable.`);
   }
 }
 

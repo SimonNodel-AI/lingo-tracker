@@ -291,7 +291,7 @@ The write side is the [Collection Entry](glossary.md#collection-entry) (`lib/con
 
 ## Error Model
 
-Core raises a [typed error](glossary.md#typed-errors) for every failure that an adapter must tell apart. Each class extends `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`), has a stable `code`, and keeps its payload in typed fields. Most message text comes from `ErrorMessages` (`lib/errors/error-messages.ts`); import source errors retain the format adapter's message, and the base-locale import error retains its existing text. The CLI reports an import failure with its existing `Import failed:` prefix, except for an unknown format; the API maps classes to HTTP statuses (see [api.md — Error Mapping](api.md#error-mapping)). Neither adapter reads the message to decide what happened.
+Core raises a [typed error](glossary.md#typed-errors) for operational failures that reach an adapter. Each subclass of the abstract `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`) must declare an `ErrorKind` and has a stable `code`; payload fields remain typed. The API maps kinds to HTTP statuses (see [api.md — Error Mapping](api.md#error-mapping)). `CoreOperationError` carries former plain-error messages to the CLI while telling the API to retain the generic 500 body without a message. Its `name` is `Error`, so `String(error)` keeps its earlier text. Most other message text comes from `ErrorMessages` (`lib/errors/error-messages.ts`). Neither adapter matches message text to decide what happened.
 
 | Class | `code` | Payload | Thrown by |
 |---|---|---|---|
@@ -300,7 +300,7 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 | `InvalidConfigError` | `INVALID_CONFIG` | `cause` for an I/O failure (the message is fixed text that names only `.lingo-tracker.json` and the field or pointer, never a path or an fs message) | `createConfigFileOperations` (so every config write: a required field missing or of the wrong shape, or `Could not read .lingo-tracker.json` / `Could not write .lingo-tracker.json`; `loadConfig`'s own typed errors pass through) and `resolvePreferredTerminologyFilePath` for a `preferredTerminologyFile` pointer that is not a string. The API answers 500 with the message. |
 | `ProtectedTermsFileError` | `INVALID_PROTECTED_TERMS_FILE` | `filePath` | `requireProtectedTerms` on the [Project Terms](#project-terms): `openTranslator` (so `addResource` / `editResource` with auto-translation on, `translateExistingResource` and `translateLocale`, when there is work) and `importResources` before it writes; and the stored-list readers `readGlobalProtectedTerms` / `readCollectionProtectedTerms` (the protected-terms command, the setters, `resolveProtectedTermsForConfig`). The API answers 500 with the message. |
 | `ImportSourceError` | `IMPORT_SOURCE_ERROR` | `stage` (`format` or `source`), `cause` | `runImport` when format detection, source reading, or parsing fails, before any resource write |
-| `InvalidImportLocaleError` | `INVALID_IMPORT_LOCALE` | — | `openImportSession` when a non-migration import targets the base locale |
+| `InvalidImportLocaleError` | `INVALID_IMPORT_LOCALE` | — | `openImportSession` when a non-migration import targets the base locale; keeps the former 500-with-message API answer |
 | `CollectionNotFoundError` | `COLLECTION_NOT_FOUND` | `collectionName` | `openCollection`, `deleteCollectionByName`, `updateCollection`, `setCollectionProtectedTerms`, `setCollectionProtectedTermsFile` |
 | `CollectionAlreadyExistsError` | `COLLECTION_ALREADY_EXISTS` | `collectionName` | `addCollection`, `updateCollection` (rename), through the Collection Entry |
 | `InvalidCollectionError` | `INVALID_COLLECTION` | — | the Collection Entry (so `addCollection`, `updateCollection`, `setCollectionProtectedTermsFile`) for a missing or blank `translationsFolder`, or a field set to `null` |
@@ -312,10 +312,10 @@ Core raises a [typed error](glossary.md#typed-errors) for every failure that an 
 | `LocaleAlreadyExistsError` | `LOCALE_ALREADY_EXISTS` | `locale`, `collectionName` | `addLocaleToCollection` |
 | `BaseLocaleImmutableError` | `BASE_LOCALE_IMMUTABLE` | `locale` | `addLocaleToCollection`, `removeLocaleFromCollection` |
 | `InvalidResourceKeyError` | `INVALID_RESOURCE_KEY` | `key` | `validateAndResolvePaths` (so `addResource`, `editResource` including its `moveTo`, `translateExistingResource`) |
-| `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | `key` | `editResource`, `translateExistingResource` |
+| `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | `key` | `editResource`, `translateExistingResource`; `deleteResource` returns its message in `errors[]` for a missing entry or resource file |
 | `ResourceAlreadyExistsError` | `RESOURCE_ALREADY_EXISTS` | `key` | `editResource` with a `moveTo` whose folder already has the entry key |
 | `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder`, `deleteFolder`, `moveFolder` |
-| `FolderNotFoundError` | `FOLDER_NOT_FOUND` | `folderPath` | `deleteFolder`, `moveFolder` (source missing or not a directory) |
+| `FolderNotFoundError` | `FOLDER_NOT_FOUND` | `folderPath` | `deleteFolder`, `moveFolder` (source missing or not a directory); `deleteResource` returns its Folder Address-based message in `errors[]` |
 | `FolderMoveIntoDescendantError` | `FOLDER_MOVE_INTO_DESCENDANT` | `sourceFolderPath`, `destinationFolderPath` | `moveFolder` (same collection) |
 | `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `assertAutoTranslationEnabled`, the precondition of `openTranslator`, `translateExistingResource` and `assertCanTranslateLocale` (checked first, even when there is no work) |
 | `CannotTranslateBaseLocaleError` | `CANNOT_TRANSLATE_BASE_LOCALE` | `locale` | `assertCanTranslateLocale` when the target is the collection's base locale |
@@ -330,7 +330,7 @@ Rules:
 
 - **Domain validators stay untyped.** `@simoncodes-ca/domain` has no error classes. `validateKey`, `validateTargetFolder`, and `validateLocale` throw a plain `Error`. Core wraps each call in one place and throws the typed error with the same message: `validateAndResolvePaths` for keys and target folders, and `assertValidLocale` (`collections-manager/assert-valid-locale.ts`) for locales.
 - **Batch operations report per-item failures, not throw.** `deleteResource`, `moveResource`, and `moveFolder` put per-key failures into their result (`errors`) as strings. Bad input to the whole operation (a malformed folder path, a missing folder, a move into the folder's own descendant) is a typed error.
-- **Unexpected failures stay `Error`.** File I/O errors on resource files, invariant breaks (for example `ResourceFolder`'s "Resource entry not found"), and parser errors for import files are not typed. An adapter treats them as "something went wrong": the CLI shows the message, the API answers a generic 500 with no message. A problem with `.lingo-tracker.json` itself is typed (`InvalidConfigError`), because its message tells the user what to fix.
+- **Programmer-error assertions stay `Error`.** `ResourceFolder` asserts that callers do not set a translation for the base locale, do not set a status without locale metadata, and do not require a missing entry. Operational file I/O and parser failures use `CoreOperationError`: the CLI keeps their message, and the API answers a generic 500 without one. `deleteResource` turns lower-level file failures into a key-based per-item message and keeps the underlying error in `cause`.
 - **Adapters do not duplicate core's checks.** The CLI `add-collection` no longer tests for a taken name itself, and `translate-locale` no longer tests `translationConfig.enabled`: the core errors (`CollectionAlreadyExistsError`, `AutoTranslationDisabledError`) reach the runner, which prints their message. The API controllers have no catch-all; every core error reaches the exception filter.
 
 ---
@@ -425,7 +425,7 @@ Steps:
 2. **Resolve paths** — `resolveResourcePaths()`.
 3. **Remove** — `folder.remove(entryKey)` removes the entry and its metadata.
 4. **Save** — `folder.save()` rewrites both files, or deletes both when the folder has no entries left.
-5. **Batch errors** — errors per key are collected and returned; the operation does not stop on first failure.
+5. **Batch errors** — errors per key are collected and returned; the operation does not stop on first failure. Missing folders use `FolderNotFoundError` with a Folder Address; missing files or entries use `ResourceNotFoundError` with the key. Read and parse failures say `folder <address> has unreadable resource files`; save failures say `could not write folder <address>`. Both start with `Failed to delete resource <key>:` and keep the original error in `cause`, so `errors[]` contains no server path.
 
 ### move-resource
 

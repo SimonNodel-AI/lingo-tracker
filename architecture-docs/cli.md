@@ -260,7 +260,7 @@ So a command whose stdout is piped keeps it clean. `glossary --stdout` writes on
 
 **Breaking change for scripts:** failure and warning text that a script captured from stdout is now on stderr (`2>&1` restores the old combined output).
 
-Core raises [typed errors](glossary.md#typed-errors) whose message is already the user-facing text. A command does not catch them: it lets them reach the runner, which prints them. The runner branches on the class only for the config errors (stderr, with a hint) and a cancel; every other error takes one path:
+Core raises [typed errors](glossary.md#typed-errors) whose message is already the user-facing text. A command does not catch them: it lets them reach the runner, which prints them. The runner branches on the class only for the config errors (stderr, with a hint) and a cancel; it does not need the error's HTTP `kind`. `CoreOperationError` keeps the CLI text of former plain failures. Every other error takes one path:
 
 | Thrown | Printed | Exit code |
 |---|---|---|

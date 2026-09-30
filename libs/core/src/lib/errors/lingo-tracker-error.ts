@@ -1,14 +1,17 @@
 import { ErrorMessages, type FolderPathPart } from './error-messages';
 
+export type ErrorKind = 'not-found' | 'conflict' | 'invalid' | 'forbidden' | 'unavailable' | 'upstream' | 'internal';
+
 /**
- * Base class for errors LingoTracker raises on purpose. Adapters (CLI, API) test
- * `instanceof` on a subclass, or read `code`, to choose an exit code or HTTP status,
- * instead of matching message text.
+ * Base class for errors LingoTracker raises on purpose. Each subclass declares a
+ * kind for adapter mapping; `code` identifies the specific failure.
  *
  * `code` is stable and machine-readable (for example `RESOURCE_NOT_FOUND`); the message
  * is for people and may change.
  */
-export class LingoTrackerError extends Error {
+export abstract class LingoTrackerError extends Error {
+  abstract readonly kind: ErrorKind;
+  readonly exposeMessage: boolean = true;
   readonly code: string;
   /** The underlying error, when this one wraps it. Not part of the message, so it never reaches a client. */
   readonly cause?: unknown;
@@ -25,6 +28,7 @@ export class LingoTrackerError extends Error {
 
 /** A source file could not be detected, read, or parsed before an import writes resources. */
 export class ImportSourceError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   /** `format` keeps the CLI's format-detection message free of the `Import failed:` prefix. */
   readonly stage: 'format' | 'source';
   constructor(message: string, options?: { readonly cause?: unknown; readonly stage?: 'format' | 'source' }) {
@@ -35,6 +39,8 @@ export class ImportSourceError extends LingoTrackerError {
 
 /** An import strategy cannot write to the collection's base locale. */
 export class InvalidImportLocaleError extends LingoTrackerError {
+  // Before kind mapping this class used the typed fallback: 500 with its message.
+  readonly kind = 'internal' as const;
   constructor(baseLocale: string, strategy: string) {
     super(
       `Cannot import into base locale "${baseLocale}" with strategy "${strategy}". ` +
@@ -46,6 +52,7 @@ export class InvalidImportLocaleError extends LingoTrackerError {
 
 /** A glossary cannot combine source text from different base locales. */
 export class GlossaryBaseLocaleMismatchError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   readonly collections: readonly { name: string; baseLocale: string }[];
 
   constructor(collections: readonly { name: string; baseLocale: string }[]) {
@@ -56,6 +63,7 @@ export class GlossaryBaseLocaleMismatchError extends LingoTrackerError {
 
 /** A glossary needs at least one opened collection. */
 export class GlossaryNoCollectionsError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   constructor() {
     super(ErrorMessages.glossaryNoCollections(), 'GLOSSARY_NO_COLLECTIONS');
   }
@@ -63,6 +71,7 @@ export class GlossaryNoCollectionsError extends LingoTrackerError {
 
 /** The requested glossary extraction mode is unavailable. */
 export class GlossaryExtractorError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   readonly mode: string;
 
   constructor(mode: string) {
@@ -75,6 +84,7 @@ export class GlossaryExtractorError extends LingoTrackerError {
 
 /** `.lingo-tracker.json` does not exist in the directory that was searched. */
 export class ConfigNotFoundError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   readonly configPath: string;
 
   constructor(configPath: string) {
@@ -85,6 +95,7 @@ export class ConfigNotFoundError extends LingoTrackerError {
 
 /** `.lingo-tracker.json` exists but is not a JSON object. `reason` is the parser's message. */
 export class ConfigParseError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   readonly configPath: string;
   readonly reason: string;
 
@@ -102,6 +113,7 @@ export class ConfigParseError extends LingoTrackerError {
  * holds a path or an I/O detail, so an adapter can show it as is. An I/O failure is in `cause`.
  */
 export class InvalidConfigError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   constructor(message: string, options?: { readonly cause?: unknown }) {
     super(message, 'INVALID_CONFIG', options);
   }
@@ -112,6 +124,7 @@ export class InvalidConfigError extends LingoTrackerError {
  * strings. A corrupt list is an error, not an empty list, so it never protects nothing silently.
  */
 export class ProtectedTermsFileError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   readonly filePath: string;
 
   constructor(filePath: string, message: string) {
@@ -124,6 +137,7 @@ export class ProtectedTermsFileError extends LingoTrackerError {
 
 /** The config has no collection with this name. */
 export class CollectionNotFoundError extends LingoTrackerError {
+  readonly kind = 'not-found' as const;
   readonly collectionName: string;
 
   constructor(collectionName: string) {
@@ -134,6 +148,7 @@ export class CollectionNotFoundError extends LingoTrackerError {
 
 /** A collection with this name is already registered (add, or rename onto it). */
 export class CollectionAlreadyExistsError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
   readonly collectionName: string;
 
   constructor(collectionName: string) {
@@ -144,6 +159,7 @@ export class CollectionAlreadyExistsError extends LingoTrackerError {
 
 /** A mutating operation was asked of a collection flagged `readOnly`. */
 export class ReadOnlyCollectionError extends LingoTrackerError {
+  readonly kind = 'forbidden' as const;
   readonly collectionName: string;
 
   constructor(collectionName: string) {
@@ -154,6 +170,7 @@ export class ReadOnlyCollectionError extends LingoTrackerError {
 
 /** A collection record cannot be stored as given (for example a blank `translationsFolder`). */
 export class InvalidCollectionError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   constructor(message: string) {
     super(message, 'INVALID_COLLECTION');
   }
@@ -161,6 +178,7 @@ export class InvalidCollectionError extends LingoTrackerError {
 
 /** Terms were given for a collection that has no `protectedTermsFile` pointer to write them to. */
 export class ProtectedTermsFileNotSetError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly collectionName: string;
 
   constructor(collectionName: string) {
@@ -171,6 +189,7 @@ export class ProtectedTermsFileNotSetError extends LingoTrackerError {
 
 /** A terminology file cannot be written because its parent directory does not exist. */
 export class ParentDirectoryMissingError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly filePath: string;
   readonly directory: string;
 
@@ -185,6 +204,7 @@ export class ParentDirectoryMissingError extends LingoTrackerError {
 
 /** The locale string is malformed. The message is the domain validator's text. */
 export class InvalidLocaleError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly locale: string;
 
   constructor(locale: string, message: string) {
@@ -195,6 +215,7 @@ export class InvalidLocaleError extends LingoTrackerError {
 
 /** The collection does not list this locale. */
 export class LocaleNotFoundError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly locale: string;
   readonly collectionName: string;
 
@@ -207,6 +228,7 @@ export class LocaleNotFoundError extends LingoTrackerError {
 
 /** The collection already lists this locale. */
 export class LocaleAlreadyExistsError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly locale: string;
   readonly collectionName: string;
 
@@ -219,6 +241,7 @@ export class LocaleAlreadyExistsError extends LingoTrackerError {
 
 /** The base locale cannot be added to or removed from a collection. */
 export class BaseLocaleImmutableError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly locale: string;
 
   constructor(locale: string) {
@@ -231,6 +254,7 @@ export class BaseLocaleImmutableError extends LingoTrackerError {
 
 /** The resource key (or its target folder) is malformed. The message is the domain validator's text. */
 export class InvalidResourceKeyError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly key: string;
 
   constructor(key: string, message: string) {
@@ -241,6 +265,7 @@ export class InvalidResourceKeyError extends LingoTrackerError {
 
 /** No resource exists at this (resolved) key. */
 export class ResourceNotFoundError extends LingoTrackerError {
+  readonly kind = 'not-found' as const;
   readonly key: string;
 
   constructor(key: string) {
@@ -251,6 +276,7 @@ export class ResourceNotFoundError extends LingoTrackerError {
 
 /** A resource already exists at this (resolved) key, and the operation does not overwrite it. */
 export class ResourceAlreadyExistsError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
   readonly key: string;
 
   constructor(key: string) {
@@ -261,6 +287,7 @@ export class ResourceAlreadyExistsError extends LingoTrackerError {
 
 /** No folder exists at this dot-delimited path (or the path is not a directory). */
 export class FolderNotFoundError extends LingoTrackerError {
+  readonly kind = 'not-found' as const;
   readonly folderPath: string;
 
   constructor(folderPath: string) {
@@ -271,6 +298,7 @@ export class FolderNotFoundError extends LingoTrackerError {
 
 /** A folder move names a destination inside the folder being moved. */
 export class FolderMoveIntoDescendantError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly sourceFolderPath: string;
   readonly destinationFolderPath: string;
 
@@ -286,6 +314,7 @@ export class FolderMoveIntoDescendantError extends LingoTrackerError {
 
 /** A segment of a dot-delimited folder path is malformed. */
 export class InvalidFolderPathError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly segment: string;
   readonly part: FolderPathPart;
 
@@ -300,6 +329,7 @@ export class InvalidFolderPathError extends LingoTrackerError {
 
 /** An auto-translate operation was asked of a collection whose translation config is missing or disabled. */
 export class AutoTranslationDisabledError extends LingoTrackerError {
+  readonly kind = 'unavailable' as const;
   readonly collectionName: string;
 
   constructor(collectionName: string) {
@@ -310,6 +340,7 @@ export class AutoTranslationDisabledError extends LingoTrackerError {
 
 /** A collection's base locale is not a translation target. */
 export class CannotTranslateBaseLocaleError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly locale: string;
 
   constructor(locale: string) {
@@ -320,6 +351,7 @@ export class CannotTranslateBaseLocaleError extends LingoTrackerError {
 
 /** The requested translation target is not configured for this collection. */
 export class TranslationLocaleNotConfiguredError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly locale: string;
   readonly availableLocales: readonly string[];
 
@@ -334,6 +366,7 @@ export class TranslationLocaleNotConfiguredError extends LingoTrackerError {
 
 /** A constant-name override was supplied for more than one bundle. */
 export class MultipleBundleConstantNameError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
   constructor() {
     super(
       'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
@@ -344,6 +377,7 @@ export class MultipleBundleConstantNameError extends LingoTrackerError {
 
 /** The config has no bundle with this name. */
 export class BundleNotFoundError extends LingoTrackerError {
+  readonly kind = 'not-found' as const;
   readonly bundleName: string;
 
   constructor(bundleName: string) {
@@ -354,6 +388,7 @@ export class BundleNotFoundError extends LingoTrackerError {
 
 /** A bundle generation locale filter is malformed or names unconfigured project locales. */
 export class InvalidBundleLocalesError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   constructor(message: string) {
     super(message, 'INVALID_BUNDLE_LOCALES');
   }
@@ -361,6 +396,7 @@ export class InvalidBundleLocalesError extends LingoTrackerError {
 
 /** A bundle with this name already exists (add, or rename onto it). */
 export class BundleAlreadyExistsError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
   readonly bundleName: string;
 
   constructor(bundleName: string) {
@@ -371,10 +407,23 @@ export class BundleAlreadyExistsError extends LingoTrackerError {
 
 /** A bundle key or definition failed validation. `errors` holds every problem found. */
 export class InvalidBundleDefinitionError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly errors: readonly string[];
 
   constructor(errors: readonly string[]) {
     super(ErrorMessages.invalidBundleDefinition(errors), 'INVALID_BUNDLE_DEFINITION');
     this.errors = errors;
+  }
+}
+
+/** A core operation failed with a CLI-visible message that the API has historically hidden. */
+export class CoreOperationError extends LingoTrackerError {
+  readonly kind = 'internal' as const;
+  override readonly exposeMessage = false;
+
+  constructor(message: string, options?: { readonly cause?: unknown }) {
+    super(message, 'CORE_OPERATION_ERROR', options);
+    // Some import summaries stringify a caught error; retain the old `Error: ...` text.
+    this.name = 'Error';
   }
 }

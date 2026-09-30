@@ -297,7 +297,7 @@ describe('ResourcesController', () => {
         errors: [
           {
             key: 'app.button.invalid',
-            error: 'Resource entry not found: app.button.invalid',
+            error: 'Resource not found: app.button.invalid',
           },
         ],
       });
@@ -313,7 +313,7 @@ describe('ResourcesController', () => {
         errors: [
           {
             key: 'app.button.invalid',
-            error: 'Resource entry not found: app.button.invalid',
+            error: 'Resource not found: app.button.invalid',
           },
         ],
       });

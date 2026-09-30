@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ResourceEntries } from '../resource/resource-entry';
@@ -57,7 +58,7 @@ export function readJsonFile<T>(options: JsonFileReadOptions<T>): T {
       return defaultValue;
     }
     const context = errorContext ? `${errorContext}: ` : '';
-    throw new Error(`${context}${ErrorMessages.fileNotFound(filePath)}`);
+    throw new CoreOperationError(`${context}${ErrorMessages.fileNotFound(filePath)}`);
   }
 
   try {
@@ -66,7 +67,7 @@ export function readJsonFile<T>(options: JsonFileReadOptions<T>): T {
   } catch (error) {
     const context = errorContext ? `${errorContext}: ` : '';
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new Error(`${context}${ErrorMessages.jsonParseFailed(filePath, errorMessage)}`);
+    throw new CoreOperationError(`${context}${ErrorMessages.jsonParseFailed(filePath, errorMessage)}`);
   }
 }
 
@@ -104,7 +105,7 @@ export function writeJsonFile(options: JsonFileWriteOptions): void {
       throw error;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new Error(ErrorMessages.fileWriteFailed(filePath, errorMessage));
+    throw new CoreOperationError(ErrorMessages.fileWriteFailed(filePath, errorMessage));
   }
 }
 

@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import type { ImportFormat, ImportStrategy } from './types';
 
 /**
@@ -18,7 +19,9 @@ export function detectImportFormat(filePath: string): ImportFormat {
     case 'json':
       return 'json';
     default:
-      throw new Error(`Cannot auto-detect format from extension ".${extension}". Please specify --format explicitly.`);
+      throw new CoreOperationError(
+        `Cannot auto-detect format from extension ".${extension}". Please specify --format explicitly.`,
+      );
   }
 }
 

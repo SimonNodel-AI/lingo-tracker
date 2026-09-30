@@ -39,6 +39,7 @@ export interface TranslationProvider {
  * would be pointless (e.g. invalid API key, malformed request).
  */
 export class TranslationError extends LingoTrackerError {
+  readonly kind = 'upstream' as const;
   readonly retryable: boolean;
   readonly providerErrorCode: string | undefined;
 

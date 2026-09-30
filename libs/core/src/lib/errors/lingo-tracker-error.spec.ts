@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PreferredTerminologyValidationError } from '../config/preferred-terminology-file';
 import { TranslationError } from '../translation/translation-provider';
+import * as errorClasses from './lingo-tracker-error';
 import { ErrorMessages } from './error-messages';
 import {
   AutoTranslationDisabledError,
@@ -11,24 +12,43 @@ import {
   CollectionNotFoundError,
   ConfigNotFoundError,
   ConfigParseError,
+  CoreOperationError,
+  GlossaryBaseLocaleMismatchError,
+  GlossaryNoCollectionsError,
+  GlossaryExtractorError,
+  ImportSourceError,
+  InvalidImportLocaleError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  MultipleBundleConstantNameError,
   ParentDirectoryMissingError,
+  ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
+  CannotTranslateBaseLocaleError,
+  TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
 
 describe('LingoTrackerError subclasses', () => {
+  it('keeps the string form of a former plain error for CLI summaries', () => {
+    const error = new CoreOperationError('Failed to read file');
+    expect(error.kind).toBe('internal');
+    expect(error.exposeMessage).toBe(false);
+    expect(String(error)).toBe('Error: Failed to read file');
+  });
+
   const cases: ReadonlyArray<{ error: LingoTrackerError; name: string; code: string; message: string }> = [
     {
       error: new ConfigNotFoundError('/w/.lingo-tracker.json'),
@@ -175,6 +195,36 @@ describe('LingoTrackerError subclasses', () => {
       message: 'Invalid preferred terminology rules: ',
     },
   ];
+
+  it('requires a kind on every error class in the core errors module and the two external subclasses', () => {
+    const additional = [
+      new ImportSourceError('source failed'),
+      new InvalidImportLocaleError('en', 'translation-service'),
+      new GlossaryBaseLocaleMismatchError([
+        { name: 'a', baseLocale: 'en' },
+        { name: 'b', baseLocale: 'fr' },
+      ]),
+      new GlossaryNoCollectionsError(),
+      new GlossaryExtractorError('unknown'),
+      new ProtectedTermsFileError('/p/terms.json', 'bad terms'),
+      new InvalidConfigError('bad config'),
+      new CannotTranslateBaseLocaleError('en'),
+      new TranslationLocaleNotConfiguredError('ja', ['en']),
+      new MultipleBundleConstantNameError(),
+      new InvalidBundleLocalesError('bad locale'),
+      new CoreOperationError('operation failed'),
+    ];
+    const instances = [...cases.map(({ error }) => error), ...additional];
+    const defined = Object.entries(errorClasses)
+      .filter(([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError)
+      .map(([name]) => name)
+      .concat('TranslationError', 'PreferredTerminologyValidationError')
+      .sort();
+    expect(instances.map((error) => error.constructor.name).sort()).toEqual(defined);
+    for (const error of instances) {
+      expect(error.kind).toMatch(/^(not-found|conflict|invalid|forbidden|unavailable|upstream|internal)$/);
+    }
+  });
 
   it.each(cases)('$name has its name, code and message, and is a LingoTrackerError', ({
     error,

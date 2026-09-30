@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync, readFileSync } from 'node:fs';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type { ImportedResource, ImportParseOptions } from './types';
@@ -231,7 +232,7 @@ export function extractFromHierarchical(data: Record<string, unknown>, prefix = 
 export function parseJsonImport(filePath: string, options: ImportParseOptions = {}): ImportedResource[] {
   const { onProgress } = options;
   if (!existsSync(filePath)) {
-    throw new Error(`Source file not found: ${filePath}`);
+    throw new CoreOperationError(`Source file not found: ${filePath}`);
   }
 
   onProgress?.(`Reading JSON file: ${filePath}`);
@@ -240,7 +241,7 @@ export function parseJsonImport(filePath: string, options: ImportParseOptions = 
   try {
     jsonData = JSON.parse(readFileSync(filePath, 'utf8'));
   } catch (error) {
-    throw new Error(`Failed to parse JSON file: ${error}`);
+    throw new CoreOperationError(`Failed to parse JSON file: ${error}`);
   }
 
   const structure = detectJsonStructure(jsonData);

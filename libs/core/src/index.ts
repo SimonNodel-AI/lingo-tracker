@@ -149,6 +149,7 @@ export {
   CollectionNotFoundError,
   ConfigNotFoundError,
   ConfigParseError,
+  type ErrorKind,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   type FolderPathPart,
