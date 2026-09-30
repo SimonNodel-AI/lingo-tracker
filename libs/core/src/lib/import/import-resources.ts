@@ -25,7 +25,7 @@ import type { ImportedResource, ImportResult, ImportRunOptions } from './types';
  *
  * Nothing is written in a dry run; the result says what would change.
  *
- * @throws {Error} The locale is the collection's base locale and the strategy is not `migration`.
+ * @throws {InvalidImportLocaleError} The locale is the collection's base locale and the strategy is not `migration`.
  * @throws {ProtectedTermsFileError} A protected-terms file exists but is not a JSON array of strings.
  */
 export function importResources(

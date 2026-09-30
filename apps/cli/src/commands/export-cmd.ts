@@ -8,16 +8,15 @@ import {
   validateOutputDirectory,
 } from '@simoncodes-ca/core';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
-import * as fs from 'fs';
 import * as path from 'path';
 import type prompts from 'prompts';
 import { type Answers, defineCommand } from '../runner/command-runner';
 import {
-  buildSummaryPath,
   ConsoleFormatter,
   multiselectResultToString,
   parseCommaSeparatedList,
   processMultiselectWithAll,
+  writeRunSummary,
 } from '../utils';
 
 export interface ExportCommandOptions {
@@ -105,9 +104,8 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
 
     displayResults(result);
 
-    const summaryPath = buildSummaryPath('export');
     if (!options.dryRun) {
-      fs.writeFileSync(summaryPath, result.summary);
+      const summaryPath = writeRunSummary('export', result.summary);
       console.log(`\n📄 Summary written to: ${summaryPath}`);
     } else {
       console.log('\n📄 Summary (Dry Run):');

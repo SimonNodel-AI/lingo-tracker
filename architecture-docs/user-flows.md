@@ -135,7 +135,7 @@ sequenceDiagram
 
 ### Import
 
-Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). A format adapter parses the file; `importResources` does the rest. Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
+Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). `runImport` detects and parses the file, then applies the resources. Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
 
 <!-- Import: parse file → resolve / normalize / auto-fix → validate → merge per strategy per folder → report -->
 
@@ -149,15 +149,13 @@ sequenceDiagram
 
     Translator->>CLI: import --locale fr --source ./exports/fr.json --strategy translation-service
     CLI->>FS: read .lingo-tracker.json → openCollection() → Collection (baseLocale "en")
-    CLI->>Core: detectImportFormat("./exports/fr.json") → json
-
-    Note over Core: Format adapter
-    CLI->>Core: parseJsonImport(path)
+    CLI->>Core: runImport(collection, { source, locale, strategy, … })
+    Core->>Core: detectImportFormat("./exports/fr.json") → json
+    Core-->>CLI: onWarning(large file), then onStart(json) if applicable
+    Note over Core: Format adapter inside runImport
     Core->>FS: read fr.json
     Core->>Core: detectJsonStructure() — flat vs hierarchical, flatten
-    Core-->>CLI: ImportedResource[]
-
-    CLI->>Core: importResources(collection, resources, options)
+    Core->>Core: apply parsed resources to the collection
     Note over Core: openImportSession() — strategy defaults,<br/>base-locale guard, reads no config
     Core->>Domain: resolveAllReferences() [migration only]
     Core->>Core: normalizeTranslocoSyntaxInResources()<br/>{{ x }} → {x} in imported values
@@ -175,9 +173,12 @@ sequenceDiagram
     end
 
     Core->>Core: sessionResult() — counts, transitions, warnings, errors
-    Core-->>CLI: ImportResult
+    Core-->>CLI: { format, result, summary() }
     CLI-->>Translator: Import summary (created / updated / skipped / failed, ICU fixes applied)
-    CLI->>FS: write generateImportSummary(result, { format, source, … })
+    opt Not a dry run
+        CLI->>Core: summary() → Markdown
+        CLI->>FS: writeRunSummary("import", Markdown)
+    end
 ```
 
 ---

@@ -233,7 +233,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Import Run
 
-One import of a set of resources into one locale of one [collection](#collection). A format adapter (`parseJsonImport`, `parseXliffImport`) turns a file into resources; `importResources(collection, resources, options)` in `libs/core/src/lib/import/import-resources.ts` does the rest: strategy defaults, the collection's [Project Terms](#project-terms) (read once; a broken protected-terms file stops the run, a rule-file problem opens its warnings), Transloco reference resolution (migration only), placeholder normalization and auto-fix, validation, and the per-[folder](#resource-folder) merge. The state of one run (settings, terms, changes, warnings, errors, written files) lives in an `ImportSession`.
+One file import into one locale of one [collection](#collection). `runImport(collection, { source, format?, locale, ...options })` in `libs/core/src/lib/import/run-import.ts` detects the format, reads JSON or XLIFF through its adapter, emits a large-source warning before the run header, applies the resources, and returns the result with a lazy `summary()` renderer. Source failures raise `ImportSourceError` before any resource write. `importResources(collection, resources, options)` remains the entry point for callers with parsed resources. It applies strategy defaults, reads the collection's [Project Terms](#project-terms), resolves Transloco references (migration only), normalizes and repairs placeholders, validates, and merges per [folder](#resource-folder). An `ImportSession` holds its settings, terms, changes, warnings, errors, and written files. A base-locale import without the migration strategy raises `InvalidImportLocaleError`.
 
 Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 
@@ -438,6 +438,14 @@ Example: key `ok` with target folder `apps.common.buttons` resolves to `apps.com
 The resolved key determines the filesystem path: `apps/common/buttons/` folder, entry key `ok` in `resource_entries.json`.
 
 Explained in context: [`libs-domain.md`](libs-domain.md)
+
+---
+
+### Run Summary Writer
+
+The CLI utility `writeRunSummary(kind, text)` in `apps/cli/src/utils/write-run-summary.ts` chooses a temporary Markdown summary path and writes the import or export run's text there. Core supplies the text through import's `summary()` or export's `summary`; the CLI owns the file path and the announcement printed after the write.
+
+Explained in context: [`cli.md`](cli.md#shared-utilities), [`core-library.md`](core-library.md#import-pipeline)
 
 ---
 

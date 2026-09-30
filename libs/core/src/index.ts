@@ -32,10 +32,7 @@ export {
 // Operations: import
 export {
   detectImportFormat,
-  generateImportSummary,
-  importResources,
-  parseJsonImport,
-  parseXliffImport,
+  runImport,
 } from './lib/import';
 
 // Operations: export
@@ -156,6 +153,7 @@ export {
   InvalidCollectionError,
   InvalidConfigError,
   InvalidFolderPathError,
+  ImportSourceError,
   InvalidLocaleError,
   InvalidResourceKeyError,
   LingoTrackerError,
@@ -212,18 +210,11 @@ export type {
   MoveFolderResult,
 } from './lib/folder';
 export type {
-  ICUAutoFix,
-  ICUAutoFixError,
-  ImportChange,
-  ImportChangeType,
-  ImportedResource,
   ImportFormat,
-  ImportParseOptions,
   ImportResult,
   ImportRunOptions,
-  ImportSummaryOptions,
-  StatusTransition,
 } from './lib/import';
+export type { ImportRunWarning, RunImportOptions, RunImportResult } from './lib/import';
 export type { NormalizeOptions, NormalizeResult } from './lib/normalize';
 export type {
   ComputeTreeFingerprintOptions,
