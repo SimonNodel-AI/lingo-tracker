@@ -309,6 +309,14 @@ Explained in context: [`docs/features/preferred-terminology.md`](../docs/feature
 
 ---
 
+### Preferred Terminology Draft
+
+`PreferredTerminologyDraft` in `apps/tracker/src/app/settings/preferred-terminology-draft.ts` stages settings-page rule edits. It owns rows, normalization, client validation, error visibility, change counts, and mapping server rule-error indexes back to submitted rows. It has no API dependency; Settings owns the Config Write.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
+
 ### Project Terms
 
 The terms and rules in force for an opened [collection](#collection): its [protected terms](#protected-term) (the global list united with the collection's own) and the project's [preferred terminology](#preferred-terminology). In code, `readProjectTerms(collection)` in `libs/core/src/lib/config/project-terms.ts` reads the files `openCollection` resolved into `Collection.termFiles` and returns `ProjectTerms`: `protectedTerms`, `preferredTerminology`, `problems` (every term file that is named but missing, a warning, or exists but cannot be used, an error) and `checkBaseValue(key, value)`, the advisory terminology check of a stored base value (its findings, and the rule-file problems that limited it). Opening a collection reads nothing; each operation reads the Project Terms once, and nothing is cached, so a long-running API sees a hand edit or `git pull` on its next request. Reading never throws. A consumer that guards values with the protected terms and has no advisory channel asks for `requireProtectedTerms(terms)`, which throws `ProtectedTermsFileError` for a broken protected-terms file: the [Translator](#translator) when it opens, and the [import run](#import-run) before it writes. The Translator reports a missing named protected-terms file in its `problems`. Every other consumer reports the problems: `addResource` and `editResource` in their `terminology` result, import in its `warnings`, export in its `warnings` and, for a broken protected-terms file, its `errors` (the command exits 1), `validate` as printed warnings and, for a broken rule file, a failure. The two file kinds share one term-file module (`term-file.ts`: pointer resolution, the missing-file rule, the read that reports instead of throwing, the write with typed errors); each kind adds only its item check and its serialization.
@@ -338,6 +346,30 @@ Example file:
 A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. `readProtectedTermsTarget()` reads the stored scope through `readGlobalProtectedTerms` / `readCollectionProtectedTerms`, which return `terms` (and a warning for a missing named file) and throw `ProtectedTermsFileError` for a malformed file. The config endpoint checks an untyped list with core `assertProtectedTerms()` before writing.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms), [`core-library.md`](core-library.md#project-terms)
+
+---
+
+### Protected Term Add
+
+`prepareProtectedTermAdd(existing, input)` in `apps/tracker/src/app/shared/protected-terms/protected-term-add.ts` normalizes a newly entered term with the domain rule and checks exact, case-sensitive duplicates. It returns `blank`, `duplicate`, or `added` with the normalized term. The settings draft and collection chips use this one add rule.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
+
+### Protected Terms Chips
+
+`ProtectedTermsChips` in `apps/tracker/src/app/shared/protected-terms/protected-terms-chips.ts` holds the collection dialog's list. `seedRaw(values)` preserves stored values, order, and duplicates exactly. `add(value)` uses the [Protected Term Add](#protected-term-add) rule; `remove(value)` drops matching chips. It has no staged row or error state.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
+
+### Protected Terms Draft
+
+`ProtectedTermsDraft` in `apps/tracker/src/app/shared/protected-terms/protected-terms-draft.ts` stages protected-term edits for Settings. It uses the shared add rule and domain normalization, and owns removed and restored rows, rename status, filtering and reveal requests, change counts, and the sorted save list. It has no API or DOM dependency; Settings owns scrolling and the Config Write.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ---
 
@@ -458,6 +490,14 @@ Explained in context: [`cli.md`](cli.md#shared-utilities), [`core-library.md`](c
 ---
 
 ## S
+
+### Settings Save
+
+`settings-save.ts` in the Tracker settings directory assembles the changed lists for one [Config Write](#config-write) and extracts valid preferred-terminology row errors from an invalid [API Error](#api-error)'s `details`. The Settings page owns the subscription, banner, and toast.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
 
 ### Similar Values
 

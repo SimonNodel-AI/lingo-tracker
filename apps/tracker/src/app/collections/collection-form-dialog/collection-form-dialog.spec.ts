@@ -628,6 +628,34 @@ describe('CollectionFormDialog — edit mode', () => {
   });
 });
 
+describe('CollectionFormDialog — edit mode with stored protected terms', () => {
+  it('should show and save stored protected terms verbatim, including untrimmed values', async () => {
+    const dirtyTerms = ['a', ' a', 'b'];
+    const { fixture, mockDialogRef } = buildHarness({
+      mode: 'edit',
+      name: 'my-app',
+      config: {
+        translationsFolder: './i18n',
+        baseLocale: 'en',
+        locales: ['en'],
+        protectedTerms: dirtyTerms,
+        protectedTermsFile: 'i18n/terms.json',
+      },
+    });
+    const dialog = fixture.componentInstance;
+
+    expect(dialog.protectedTermsList()).toEqual(dirtyTerms);
+    expect(fixture.nativeElement.querySelectorAll('[aria-labelledby="protected-terms-label"] .text-chip')).toHaveLength(
+      3,
+    );
+    dialog.addProtectedTermValue(' a ');
+    expect(dialog.protectedTermsList()).toEqual(dirtyTerms);
+    await dialog.onSubmit();
+
+    expect(mockDialogRef.close.mock.calls[0]?.[0].config.protectedTerms).toEqual(dirtyTerms);
+  });
+});
+
 describe('CollectionFormDialog — edit mode with inherited base locale', () => {
   let component: CollectionFormDialog;
   let mockDialogRef: DialogRefMock;
