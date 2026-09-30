@@ -47,7 +47,8 @@ export {
   type SearchOptions,
   type SearchResult,
   searchResources,
-  clampSearchLimit,
+  searchPage,
+  type SearchPage,
   treeResources,
 } from './search';
 export {

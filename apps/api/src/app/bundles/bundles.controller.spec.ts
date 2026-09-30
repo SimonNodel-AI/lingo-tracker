@@ -170,11 +170,10 @@ describe('BundlesController', () => {
   });
 
   describe('PUT /bundles/:name', () => {
-    it('returns 400 for malformed name encoding', () => {
-      expect(statusOf(() => controller.updateBundle('%ZZ', { bundle: requestDefinition }))).toBe(
-        HttpStatus.BAD_REQUEST,
-      );
-      expect(core.updateBundleDefinition).not.toHaveBeenCalled();
+    it('passes the route name through verbatim', () => {
+      (core.updateBundleDefinition as jest.Mock).mockReturnValue({ message: 'updated' });
+      controller.updateBundle('tracker%v1', { bundle: requestDefinition });
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker%v1', requestDefinition, { cwd: process.cwd() });
     });
 
     it('returns 404 when core reports the bundle missing', () => {
@@ -215,10 +214,10 @@ describe('BundlesController', () => {
       });
     });
 
-    it('URI-decodes the name and renames via body.name', () => {
+    it('passes the route name through when renaming via body.name', () => {
       (core.updateBundleDefinition as jest.Mock).mockReturnValue({ message: 'renamed' });
 
-      controller.updateBundle('tracker%2Dv1', { name: 'tracker-v2', bundle: requestDefinition });
+      controller.updateBundle('tracker-v1', { name: 'tracker-v2', bundle: requestDefinition });
 
       expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker-v1', requestDefinition, {
         cwd: process.cwd(),

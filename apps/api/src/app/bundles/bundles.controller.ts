@@ -1,16 +1,4 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpStatus,
-  NotFoundException,
-  Param,
-  Post,
-  Put,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpStatus, NotFoundException, Param, Post, Put, Res } from '@nestjs/common';
 import {
   addBundleDefinition,
   deleteBundleDefinition,
@@ -82,7 +70,7 @@ export class BundlesController {
   updateBundle(@Param('name') name: string, @Body() body: UpdateBundleDto): { message: string } {
     const newName = typeof body?.name === 'string' && body.name.trim().length > 0 ? body.name : undefined;
 
-    return updateBundleDefinition(decodeName(name), requireDefinition(body?.bundle), {
+    return updateBundleDefinition(name, requireDefinition(body?.bundle), {
       cwd: process.cwd(),
       ...(newName !== undefined && { newKey: newName }),
     });
@@ -90,17 +78,16 @@ export class BundlesController {
 
   @Delete(':name')
   deleteBundle(@Param('name') name: string): { message: string } {
-    return deleteBundleDefinition(decodeName(name), { cwd: process.cwd() });
+    return deleteBundleDefinition(name, { cwd: process.cwd() });
   }
 
   /** Starts a generation job for a saved bundle and answers 202 with the job snapshot. */
   @Post(':name/generate')
   generateBundle(@Param('name') name: string, @Body() body: GenerateBundleRequestDto, @Res() response: Response): void {
-    const decodedName = decodeName(name);
     const config = this.#configService.getConfig();
 
     const jobId = this.#jobService.startJob({
-      bundleName: decodedName,
+      bundleName: name,
       config,
       ...(body?.locales && { locales: body.locales }),
     });
@@ -120,13 +107,4 @@ function requireDefinition(dto: BundleDefinitionDto | undefined): BundleDefiniti
     throw new InvalidBundleDefinitionError(['bundle definition is required.']);
   }
   return dto;
-}
-
-function decodeName(name: string): string {
-  try {
-    return decodeURIComponent(name);
-  } catch (error) {
-    if (error instanceof URIError) throw new BadRequestException('Invalid bundle name encoding');
-    throw error;
-  }
 }

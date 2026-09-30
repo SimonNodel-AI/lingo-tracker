@@ -11,7 +11,6 @@ import {
   HttpStatus,
   NotFoundException,
   Res,
-  UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
@@ -19,11 +18,12 @@ import {
   assertCanTranslateLocale,
   deleteResource,
   moveResources,
-  clampSearchLimit,
+  searchPage,
   editResource,
   translateExistingResource,
   extractResourcesRecursively,
   type MoveResourcesOperation,
+  type Collection,
   type TerminologyFindings,
 } from '@simoncodes-ca/core';
 import { buildResourceSummary } from '@simoncodes-ca/domain';
@@ -53,10 +53,8 @@ import { mapResourceTreeToDto, mapResourceEntryToSummary } from '../../mappers/r
 import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
-import { WritableCollectionGuard } from '../guards/writable-collection.guard';
-import { openRouteCollection } from '../open-route-collection';
+import { RouteCollection } from '../route-collection';
 
-@UseGuards(WritableCollectionGuard)
 @Controller('collections/:collectionName/resources')
 export class ResourcesController {
   readonly #configService: ConfigService;
@@ -71,10 +69,9 @@ export class ResourcesController {
 
   @Post('translate')
   async translateResource(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() dto: TranslateResourceDto,
   ): Promise<TranslateResourceResponseDto> {
-    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
     const result = await translateExistingResource(collection, dto.key);
 
     this.#index.apply(result.mutations);
@@ -89,11 +86,9 @@ export class ResourcesController {
 
   @Post()
   async createResources(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() body: CreateResourceDto | CreateResourceDto[],
   ): Promise<CreateResourceResponseDto> {
-    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-
     // Normalize to array
     const resources = Array.isArray(body) ? body : [body];
 
@@ -126,11 +121,9 @@ export class ResourcesController {
 
   @Delete()
   async delete(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() dto: DeleteResourceDto,
   ): Promise<DeleteResourceResponseDto> {
-    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-
     if (!dto.keys || !Array.isArray(dto.keys) || dto.keys.length === 0) {
       throw new HttpException('Invalid request: keys array is required and must not be empty', HttpStatus.BAD_REQUEST);
     }
@@ -146,11 +139,11 @@ export class ResourcesController {
 
   @Post('move')
   async move(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() dto: MoveResourceDto,
   ): Promise<MoveResourceResponseDto> {
+    // Cross-collection moves need the config to resolve destination collections.
     const config = this.#configService.getConfig();
-    const collection = openRouteCollection(config, collectionName);
 
     if (!dto.moves || !Array.isArray(dto.moves) || dto.moves.length === 0) {
       throw new HttpException('Invalid request: moves array is required and must not be empty', HttpStatus.BAD_REQUEST);
@@ -160,7 +153,7 @@ export class ResourcesController {
       source: op.source,
       destination: op.destination,
       override: op.override,
-      ...(op.toCollection && { toCollection: decodeURIComponent(op.toCollection) }),
+      ...(op.toCollection && { toCollection: op.toCollection }),
     }));
     const result = await moveResources(collection, moves, { config });
     this.#index.apply(result.mutations);
@@ -169,11 +162,9 @@ export class ResourcesController {
 
   @Patch()
   async update(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() dto: UpdateResourceDto,
   ): Promise<UpdateResourceResponseDto> {
-    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-
     const result = await editResource(collection, dto.key, {
       baseValue: dto.baseValue,
       comment: dto.comment,
@@ -199,12 +190,11 @@ export class ResourcesController {
 
   @Get('tree')
   async getTree(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Query('path') path: string | undefined,
     @Query('includeNested') includeNested: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ): Promise<ResourceTreeDto | TreeStatusResponseDto> {
-    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
     const read = this.#index.tree(collection, path ?? '');
 
     if (read.status !== 'ready') {
@@ -240,17 +230,15 @@ export class ResourcesController {
   }
 
   @Get('cache/status')
-  async getCacheStatus(@Param('collectionName') collectionName: string): Promise<CacheStatusDto> {
-    return this.#index.status(openRouteCollection(this.#configService.getConfig(), collectionName));
+  async getCacheStatus(@RouteCollection() collection: Collection): Promise<CacheStatusDto> {
+    return this.#index.status(collection);
   }
 
   @Get('search')
   async search(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Query() dto: SearchTranslationsDto,
   ): Promise<SearchResultsDto> {
-    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
-
     // Validate query
     if (!dto.query || dto.query.trim().length === 0) {
       return {
@@ -261,36 +249,21 @@ export class ResourcesController {
       };
     }
 
-    // Query parameters arrive as strings. A value that is not a positive integer is 100; the cap is 500.
-    const requested = Number(dto.maxResults);
-    const maxResults = clampSearchLimit(requested);
-
-    // Anything but `similar` is a text search, as a bad maxResults falls back to the default.
-    const mode = dto.mode === 'similar' ? 'similar-value' : 'text';
-
-    // Request one extra result to detect whether the results were limited.
-    const searchResults = this.#index.search(collection, dto.query, { mode, limit: maxResults + 1 });
-
-    // Check if results were limited
-    const limited = searchResults.length > maxResults;
-    const coreResults = limited ? searchResults.slice(0, maxResults) : searchResults;
-    const results = mapSearchResultsToDto(coreResults, collection);
-
+    const page = searchPage((options) => this.#index.search(collection, dto.query, options), dto);
     return {
       query: dto.query,
-      results,
-      totalFound: limited ? maxResults : results.length,
-      limited,
+      results: mapSearchResultsToDto(page.results, collection),
+      totalFound: page.limited ? page.limit : page.results.length,
+      limited: page.limited,
     };
   }
 
   @Post('translate-locale')
   async translateLocale(
-    @Param('collectionName') collectionName: string,
+    @RouteCollection() collection: Collection,
     @Body() dto: TranslateLocaleRequestDto,
     @Res() response: Response,
   ): Promise<void> {
-    const collection = openRouteCollection(this.#configService.getConfig(), collectionName);
     assertCanTranslateLocale(collection, dto.locale);
 
     const jobId = this.#translationJobService.startJob(collection, dto.locale);
@@ -304,14 +277,13 @@ export class ResourcesController {
     @Param('collectionName') collectionName: string,
     @Param('jobId') jobId: string,
   ): Promise<TranslateLocaleJobDto> {
-    const decodedCollectionName = decodeURIComponent(collectionName);
     const job = this.#translationJobService.getJob(jobId);
 
     if (job === undefined) {
       throw new NotFoundException(`Translation job "${jobId}" not found`);
     }
 
-    if (job.collectionName !== decodedCollectionName) {
+    if (job.collectionName !== collectionName) {
       throw new NotFoundException(`Translation job "${jobId}" not found`);
     }
 

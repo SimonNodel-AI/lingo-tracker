@@ -107,7 +107,8 @@ export {
 // Read models: the resource tree, Resource Search and fingerprints behind the API's CollectionIndex and CLI find-similar
 export {
   computeTreeFingerprint,
-  clampSearchLimit,
+  searchPage,
+  type SearchPage,
   extractResourcesRecursively,
   extractSubtree,
   type FolderChild,

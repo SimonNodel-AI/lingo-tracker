@@ -70,19 +70,19 @@ describe('CollectionsController', () => {
       expect(deleteCollectionByName).toHaveBeenCalledWith('test-collection');
     });
 
-    it('should URI decode collection names with special characters', async () => {
+    it('passes the route param through verbatim', async () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockReturnValue({
         message: 'Collection "My Collection" deleted successfully',
         mutations: [],
       });
 
-      const result = await collectionsController.deleteCollection('My%20Collection');
+      const result = await collectionsController.deleteCollection('My%Collection');
 
       expect(result).toEqual({
         message: 'Collection "My Collection" deleted successfully',
       });
-      expect(deleteCollectionByName).toHaveBeenCalledWith('My Collection');
+      expect(deleteCollectionByName).toHaveBeenCalledWith('My%Collection');
     });
 
     it('lets CollectionNotFoundError through, which the filter answers with 404', async () => {
@@ -222,7 +222,7 @@ describe('CollectionsController', () => {
       });
     });
 
-    it('should URI decode collection names with special characters', async () => {
+    it('passes the route param through verbatim', async () => {
       const updateCollection = core.updateCollection as jest.Mock;
       updateCollection.mockReturnValue({
         message: 'Collection "My Collection" updated successfully',
@@ -236,9 +236,9 @@ describe('CollectionsController', () => {
         },
       };
 
-      await collectionsController.updateCollectionByName('My%20Collection', dto as unknown as UpdateCollectionDto);
+      await collectionsController.updateCollectionByName('My%Collection', dto as unknown as UpdateCollectionDto);
 
-      expect(updateCollection).toHaveBeenCalledWith('My Collection', 'My Collection', dto.collection, {
+      expect(updateCollection).toHaveBeenCalledWith('My%Collection', 'My Collection', dto.collection, {
         protectedTerms: undefined,
       });
     });
