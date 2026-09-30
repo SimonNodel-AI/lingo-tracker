@@ -1,4 +1,4 @@
-import { effectiveProtectedTerms, normalizeProtectedTerms } from '@simoncodes-ca/domain';
+import { effectiveProtectedTerms, mergeListEdit, normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { patchCollectionEntry } from './collection-entry';
 import { createConfigFileOperations, updateConfig } from './config-file-operations';
@@ -79,17 +79,7 @@ export function editProtectedTerms(
   edit: ProtectedTermsEdit,
   options: SetProtectedTermsOptions = {},
 ): ProtectedTermsEditResult {
-  let terms: string[];
-  if (edit.set !== undefined) {
-    terms = normalizeProtectedTerms(edit.set.split(','));
-  } else {
-    terms = [...view.storedTerms];
-    for (const term of normalizeProtectedTerms([...(edit.add ?? [])])) {
-      if (!terms.includes(term)) terms.push(term);
-    }
-    const toRemove = normalizeProtectedTerms([...(edit.remove ?? [])]);
-    terms = terms.filter((term) => !toRemove.includes(term));
-  }
+  const terms = mergeListEdit(view.storedTerms, edit, normalizeProtectedTerms);
   const result = target.collection
     ? setCollectionProtectedTerms(target.collection, terms, options)
     : setGlobalProtectedTerms(terms, options);

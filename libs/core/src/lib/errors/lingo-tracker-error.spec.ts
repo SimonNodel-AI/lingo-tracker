@@ -23,6 +23,7 @@ import {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -85,6 +86,12 @@ describe('LingoTrackerError subclasses', () => {
       name: 'InvalidCollectionError',
       code: 'INVALID_COLLECTION',
       message: 'translationsFolder is required',
+    },
+    {
+      error: new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately'),
+      name: 'InvalidProjectTermsEditError',
+      code: 'INVALID_PROJECT_TERMS_EDIT',
+      message: '--add and --remove cannot be combined; run them separately',
     },
     {
       error: new ProtectedTermsFileNotSetError('app'),

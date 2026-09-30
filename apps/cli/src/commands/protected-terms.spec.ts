@@ -183,14 +183,27 @@ describe('protectedTermsCommand (real core)', () => {
     expect(ConsoleFormatter.keyValue).toHaveBeenCalledWith('Collection file', '(none)');
     expect(process.exitCode).toBe(1);
   });
-  it('prints the pointer change before a later read failure', async () => {
+  it('does not print a pointer success line when the new view cannot be read', async () => {
     writeFileSync(globalPath(), '{broken');
     await protectedTermsCommand({ collection: 'main', file: 'i18n/terms.json', add: ['Pixel'] });
-    const successOrder = vi.mocked(ConsoleFormatter.success).mock.invocationCallOrder[0] ?? 0;
-    const errorOrder = vi.mocked(ConsoleFormatter.error).mock.invocationCallOrder[0] ?? 0;
-    expect(successOrder).toBeLessThan(errorOrder);
+    expect(ConsoleFormatter.success).not.toHaveBeenCalled();
+    expect(ConsoleFormatter.warning).not.toHaveBeenCalledWith('Protected terms file change was reverted.');
     expect(ConsoleFormatter.error).toHaveBeenCalledWith(expect.stringContaining('not valid JSON'));
+    expect(readConfig().collections['main'].protectedTermsFile).toBeUndefined();
+  });
+
+  it('warns when a printed pointer change is reverted after a later failure', async () => {
+    withCollectionFile();
+    await protectedTermsCommand({ collection: 'main', file: '', add: ['Pixel'] });
+    expect(ConsoleFormatter.success).toHaveBeenCalledWith('Collection "main" protected terms file cleared');
+    expect(ConsoleFormatter.warning).toHaveBeenCalledWith('Protected terms file change was reverted.');
+    const successOrder = vi.mocked(ConsoleFormatter.success).mock.invocationCallOrder[0] ?? 0;
+    const warningOrder = vi.mocked(ConsoleFormatter.warning).mock.invocationCallOrder[0] ?? 0;
+    const errorOrder = vi.mocked(ConsoleFormatter.error).mock.invocationCallOrder[0] ?? 0;
+    expect(successOrder).toBeLessThan(warningOrder);
+    expect(warningOrder).toBeLessThan(errorOrder);
     expect(readConfig().collections['main'].protectedTermsFile).toBe('i18n/terms.json');
+    expect(process.exitCode).toBe(1);
   });
 
   it('reports a malformed list before any list output or write', async () => {

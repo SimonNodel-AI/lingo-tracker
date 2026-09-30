@@ -5,6 +5,7 @@
 export type { LocaleMetadata } from './lib/locale-metadata';
 export type { TokenCasing } from './lib/token-casing';
 export type { TranslationStatus } from './lib/translation-status';
+export { listEditProblem, mergeListEdit, type ListEdit, type ListEditProblem } from './lib/list-edit';
 
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {

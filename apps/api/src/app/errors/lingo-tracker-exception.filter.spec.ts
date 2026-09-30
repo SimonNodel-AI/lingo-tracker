@@ -19,6 +19,7 @@ import {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -172,6 +173,15 @@ describe('toHttpException', () => {
       new InvalidCollectionError('translationsFolder is required'),
       400,
       { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
+      new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately'),
+      400,
+      {
+        message: '--add and --remove cannot be combined; run them separately',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
     ],
     [
       new ProtectedTermsFileNotSetError('app'),

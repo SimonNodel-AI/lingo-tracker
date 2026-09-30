@@ -1,8 +1,8 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Test } from '@nestjs/testing';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { ConfigNotFoundError, ConfigParseError, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { ConfigController } from './config.controller';
 import { ConfigService } from './config.service';
@@ -86,5 +86,49 @@ describe('ConfigController preferred terminology (real core)', () => {
     expect(JSON.parse(readFileSync(filePath(), 'utf8'))).toEqual([
       { discouraged: 'Expenditure', preferred: 'Investment' },
     ]);
+  });
+
+  it('leaves the first file untouched when the second file write fails', () => {
+    config.protectedTermsFile = 'protected.json';
+    writeFileSync(join(projectDir, '.lingo-tracker.json'), `${JSON.stringify(config)}\n`);
+    const original = '[{"discouraged":"Login","preferred":"Sign in"}]\n';
+    writeFileSync(filePath(), original);
+    mkdirSync(join(projectDir, 'protected.json'));
+    expect(() =>
+      controller.updateConfig({
+        protectedTerms: ['Changed'],
+        preferredTerminology: [{ discouraged: 'Spend', preferred: 'Invest' }],
+      }),
+    ).toThrow();
+    expect(readFileSync(filePath(), 'utf8')).toBe(original);
+  });
+
+  it('keeps the protected-terms-only missing-config error and status from core', () => {
+    let thrown: unknown;
+    try {
+      new ConfigController(new ConfigService()).updateConfig({ protectedTerms: ['Changed'] });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ConfigNotFoundError);
+    expect(toHttpException(thrown).getStatus()).toBe(500);
+  });
+
+  it('keeps the protected-terms-only malformed-config error and body from core', () => {
+    writeFileSync(join(projectDir, '.lingo-tracker.json'), '{bad');
+    let thrown: unknown;
+    try {
+      new ConfigController(new ConfigService()).updateConfig({ protectedTerms: ['Changed'] });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(ConfigParseError);
+    const http = toHttpException(thrown);
+    expect(http.getStatus()).toBe(500);
+    expect(http.getResponse()).toEqual(
+      expect.objectContaining({
+        message: expect.stringContaining('Failed to parse JSON file'),
+      }),
+    );
   });
 });

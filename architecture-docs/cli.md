@@ -53,17 +53,17 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | Command Runner opens every collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
 | `find-similar` | `--collection`, `--value`, `--max-results` | `readCollection()` → `searchResources(…, { mode: 'similar-value', limit })` ([Resource Search](glossary.md#resource-search)) |
 | `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `buildGlossary()` ([Term Glossary](glossary.md#term-glossary)) |
-| `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `setGlobal/CollectionProtectedTermsFile()`, `readProtectedTermsTarget()`, `editProtectedTerms()` |
-| `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | `loadPreferredTerminology()` for display, then `editPreferredTerminology()` for case-insensitive upsert/remove, validation and write |
+| `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `updateProjectTerms()` for the pointer change, read view and edit |
+| `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | `updateProjectTerms()` for display, case-insensitive upsert/remove, validation and write |
 | `install-skill` | `--collection <spec>` (repeatable), `--dir`, `--token-casing` | No core call — generates a `.claude/` skill file by template |
 
 `add-resource` and `edit-resource` print the `terminology` core returned (one `⚠️  Preferred terminology: consider "X" instead of "Y"` per finding, the rule's reason on the next line, and one warning per rule-file problem) through `printTerminologyFindings` in `utils/terminology-findings.ts`; `edit-resource` only when the edit supplied a base value. They also print, as warnings, a named protected-terms file that does not exist when auto-translation ran (core adds it to `terminology.problems`); `translate-locale` prints it with the run's other `warnings`. `import` and `export` pass no terms: the run reads the collection's [Project Terms](glossary.md#project-terms) and reports a term-file problem in its `warnings` (deduped), which the summary prints; `export` with protect notes on (the default) reports a broken protected-terms file in `errors` instead and exits 1, while `--no-protect-notes` reads no terms file and cannot fail on one. The [Validate Run](glossary.md#validate-run) reads the Project Terms of every collection and returns each problem once in `warnings`; the command prints them to stderr: a missing named file or a broken protected-terms file is only a warning (validate checks translations, not protected terms), and a broken rule file becomes a terminology validation failure. Core also resolves target and skipped locales and returns the summary or a failure with the no-target-locales hint. The command opens collections, prints the result, and sets the exit code. `protected-terms` prints a named terms file that does not exist as a warning (on `--list` and on every write).
 
 ### `protected-terms` scoping
 
-The command calls core’s pointer setter for `--file` before it writes any term. `--file x.json --add Foo` therefore names the new file first, then writes into it.
+The command passes `--file` to core's `updateProjectTerms()` before it writes any term. `--file x.json --add Foo` therefore names the new file first, then writes into it. Core restores the pointer and the files it changed if the update fails. The command prints the pointer line only after core reads the new view. If a later step fails, it warns that the printed pointer change was reverted.
 
-Both scopes read through `readProtectedTermsTarget()`. The command prints its warnings and lists before it calls `editProtectedTerms()` to write. The merge and normalization rules remain in core.
+Both scopes read through `updateProjectTerms()`. Its `beforeWrite` callback lets the command print warnings and lists before the file write. Core validates flag combinations and uses the shared list merge with protected-term normalization.
 
 - **Global** — `readGlobalProtectedTerms(config, cwd)`. When `protectedTermsFile` is absent, this falls back to `.lingo-tracker-protected-terms.json` beside the config.
 - **Collection** — `readCollectionProtectedTerms(collection, cwd)`. This returns an empty list when the collection names no file. A collection has no default path.
@@ -337,7 +337,7 @@ The runner loads the config before anything else, unless the command sets `confi
 - **Parse or read error** — `❌ Failed to parse configuration file: <reason>` (the JSON parser's message, or the I/O error), exit 1.
 - **Context** — `ctx.config` and `ctx.configPath` (absolute path of `.lingo-tracker.json`).
 
-The command uses the config loaded by the runner. After `--file` changes a pointer, it calls `loadConfig()` once to read the changed pointer before listing or editing terms.
+The command uses the config loaded by the runner. Core reloads it after `--file` changes a pointer, before listing or editing terms.
 
 ### Collection Resolution
 

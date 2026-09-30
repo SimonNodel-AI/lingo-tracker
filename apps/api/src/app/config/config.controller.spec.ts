@@ -7,9 +7,8 @@ import {
   loadPreferredTerminology,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
-  editPreferredTerminology,
+  updateProjectTerms,
   resolveProtectedTermsForConfig,
-  setGlobalProtectedTerms,
 } from '@simoncodes-ca/core';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import * as mapper from '../mappers/config.mapper';
@@ -19,10 +18,9 @@ import { ConfigService } from './config.service';
 // Mock the file readers and writers; keep the real error classes so the filter mapping applies.
 jest.mock('@simoncodes-ca/core', () => ({
   ...jest.requireActual('@simoncodes-ca/core'),
-  setGlobalProtectedTerms: jest.fn(),
   resolveProtectedTermsForConfig: jest.fn(),
   loadPreferredTerminology: jest.fn(),
-  editPreferredTerminology: jest.fn(),
+  updateProjectTerms: jest.fn(),
 }));
 
 const TERMINOLOGY_PATH = '/project/.lingo-tracker-preferred-terminology.json';
@@ -75,7 +73,12 @@ describe('ConfigController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (editPreferredTerminology as jest.Mock).mockReset();
+    (updateProjectTerms as jest.Mock).mockReset();
+    (updateProjectTerms as jest.Mock).mockImplementation((_config, update) => {
+      if (update.protectedTerms && !Array.isArray(update.protectedTerms.replace)) {
+        throw new InvalidCollectionError('protectedTerms must be an array of strings');
+      }
+    });
     configService.getConfig.mockReturnValue(baseConfig);
     (resolveProtectedTermsForConfig as jest.Mock).mockReturnValue({
       globalTerms: [],
@@ -156,20 +159,29 @@ describe('ConfigController', () => {
     it('updates the global protected-terms list and returns a message', () => {
       const result = controller.updateConfig({ protectedTerms: ['iPhone'] });
 
-      expect(setGlobalProtectedTerms).toHaveBeenCalledWith(['iPhone']);
+      expect(updateProjectTerms).toHaveBeenCalledWith(
+        undefined,
+        { protectedTerms: { replace: ['iPhone'] } },
+        { cwd: process.cwd() },
+      );
+      expect(configService.getConfig).not.toHaveBeenCalled();
       expect(result).toEqual({ message: 'Configuration updated successfully' });
     });
 
     it('is a no-op when the body carries no writable fields', () => {
       const result = controller.updateConfig({});
 
-      expect(setGlobalProtectedTerms).not.toHaveBeenCalled();
+      expect(updateProjectTerms).not.toHaveBeenCalled();
       expect(result).toEqual({ message: 'Configuration updated successfully' });
     });
 
     it('throws 400 when protectedTerms is not a string array', () => {
       const error = catchHttpException(() => controller.updateConfig({ protectedTerms: 'iPhone' } as never));
-      expect(setGlobalProtectedTerms).not.toHaveBeenCalled();
+      expect(updateProjectTerms).toHaveBeenCalledWith(
+        undefined,
+        { protectedTerms: { replace: 'iPhone' } },
+        { cwd: process.cwd() },
+      );
       expect(error.getStatus()).toBe(400);
       expect(messageOf(error)).toBe('protectedTerms must be an array of strings');
     });
@@ -183,32 +195,46 @@ describe('ConfigController', () => {
       it('writes the rule list to the resolved file and returns the standard message', () => {
         const result = controller.updateConfig({ preferredTerminology: rules });
 
-        expect(editPreferredTerminology).toHaveBeenCalledWith(baseConfig, { set: rules }, process.cwd());
-        expect(setGlobalProtectedTerms).not.toHaveBeenCalled();
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { preferredTerminology: { set: rules } },
+          { cwd: process.cwd() },
+        );
         expect(result).toEqual({ message: 'Configuration updated successfully' });
       });
 
       it('writes an empty list, clearing the file', () => {
         controller.updateConfig({ preferredTerminology: [] });
 
-        expect(editPreferredTerminology).toHaveBeenCalledWith(baseConfig, { set: [] }, process.cwd());
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { preferredTerminology: { set: [] } },
+          { cwd: process.cwd() },
+        );
       });
 
       it('leaves the terminology file alone when the field is absent', () => {
         controller.updateConfig({ protectedTerms: ['iPhone'] });
 
-        expect(editPreferredTerminology).not.toHaveBeenCalled();
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          undefined,
+          { protectedTerms: { replace: ['iPhone'] } },
+          { cwd: process.cwd() },
+        );
       });
 
       it('writes both lists when both are sent', () => {
         controller.updateConfig({ protectedTerms: ['iPhone'], preferredTerminology: rules });
 
-        expect(editPreferredTerminology).toHaveBeenCalledWith(baseConfig, { set: rules }, process.cwd());
-        expect(setGlobalProtectedTerms).toHaveBeenCalledWith(['iPhone']);
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { protectedTerms: { replace: ['iPhone'] }, preferredTerminology: { set: rules } },
+          { cwd: process.cwd() },
+        );
       });
 
       it('rejects a non-array payload with 400', () => {
-        (editPreferredTerminology as jest.Mock).mockImplementationOnce(() => {
+        (updateProjectTerms as jest.Mock).mockImplementationOnce(() => {
           throw new InvalidCollectionError('preferredTerminology must be an array of rules');
         });
         const invalid = { discouraged: 'a', preferred: 'b' };
@@ -216,11 +242,15 @@ describe('ConfigController', () => {
 
         expect(error.getStatus()).toBe(400);
         expect(messageOf(error)).toBe('preferredTerminology must be an array of rules');
-        expect(editPreferredTerminology).toHaveBeenCalledWith(baseConfig, { set: invalid }, process.cwd());
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { preferredTerminology: { set: invalid } },
+          { cwd: process.cwd() },
+        );
       });
 
       it('answers invalid rules with 400 and per-row errors indexed by submitted row', () => {
-        (editPreferredTerminology as jest.Mock).mockImplementationOnce(() => {
+        (updateProjectTerms as jest.Mock).mockImplementationOnce(() => {
           throw new PreferredTerminologyValidationError([
             { index: 1, field: 'discouraged', code: 'duplicate', message: 'Duplicate.' },
             { index: 2, field: 'preferred', code: 'empty', message: 'Required.' },
@@ -240,11 +270,15 @@ describe('ConfigController', () => {
           { index: 1, code: 'duplicate' },
           { index: 2, code: 'empty' },
         ]);
-        expect(editPreferredTerminology).toHaveBeenCalledWith(baseConfig, { set: invalid }, process.cwd());
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { preferredTerminology: { set: invalid } },
+          { cwd: process.cwd() },
+        );
       });
 
       it('writes neither list when the rules are invalid, even with valid protected terms', () => {
-        (editPreferredTerminology as jest.Mock).mockImplementationOnce(() => {
+        (updateProjectTerms as jest.Mock).mockImplementationOnce(() => {
           throw new PreferredTerminologyValidationError([
             { index: 0, field: 'preferred', code: 'self-mapping', message: 'Self mapping.' },
           ]);
@@ -257,8 +291,11 @@ describe('ConfigController', () => {
           }),
         );
 
-        expect(setGlobalProtectedTerms).not.toHaveBeenCalled();
-        expect(editPreferredTerminology).toHaveBeenCalledWith(baseConfig, { set: invalid }, process.cwd());
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { protectedTerms: { replace: ['iPhone'] }, preferredTerminology: { set: invalid } },
+          { cwd: process.cwd() },
+        );
       });
 
       it('writes neither list when protected terms are malformed', () => {
@@ -266,11 +303,15 @@ describe('ConfigController', () => {
           controller.updateConfig({ protectedTerms: 'iPhone', preferredTerminology: rules } as never),
         );
 
-        expect(editPreferredTerminology).not.toHaveBeenCalled();
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { protectedTerms: { replace: 'iPhone' }, preferredTerminology: { set: rules } },
+          { cwd: process.cwd() },
+        );
       });
 
       it('rejects rows of the wrong type as invalid-type', () => {
-        (editPreferredTerminology as jest.Mock).mockImplementationOnce(() => {
+        (updateProjectTerms as jest.Mock).mockImplementationOnce(() => {
           throw new PreferredTerminologyValidationError([
             { index: 0, field: 'rule', code: 'invalid-type', message: 'Rule must be an object.' },
           ]);
@@ -285,7 +326,7 @@ describe('ConfigController', () => {
 
       it('maps a validation error thrown by the writer to the same 400 body', () => {
         const errors = [{ index: 0, field: 'preferred', code: 'chain', message: 'chain' }];
-        (editPreferredTerminology as jest.Mock).mockImplementationOnce(() => {
+        (updateProjectTerms as jest.Mock).mockImplementationOnce(() => {
           throw new PreferredTerminologyValidationError(errors as never);
         });
 
@@ -301,7 +342,7 @@ describe('ConfigController', () => {
       });
 
       it('answers a missing directory (ParentDirectoryMissingError) with 400 and the message', () => {
-        (editPreferredTerminology as jest.Mock).mockImplementationOnce(() => {
+        (updateProjectTerms as jest.Mock).mockImplementationOnce(() => {
           throw new ParentDirectoryMissingError('preferred terminology file', '/nope/terms.json', '/nope');
         });
 
@@ -313,7 +354,7 @@ describe('ConfigController', () => {
 
       it('answers a malformed file pointer in the config (InvalidConfigError) with 500, its message, and writes nothing', () => {
         const message = '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)';
-        (editPreferredTerminology as jest.Mock).mockImplementationOnce(() => {
+        (updateProjectTerms as jest.Mock).mockImplementationOnce(() => {
           throw new InvalidConfigError(message);
         });
 
@@ -328,12 +369,16 @@ describe('ConfigController', () => {
         const error = toHttpException(thrown);
         expect(error.getStatus()).toBe(500);
         expect(messageOf(error)).toBe(message);
-        expect(editPreferredTerminology).toHaveBeenCalledWith(baseConfig, { set: rules }, process.cwd());
+        expect(updateProjectTerms).toHaveBeenCalledWith(
+          baseConfig,
+          { preferredTerminology: { set: rules } },
+          { cwd: process.cwd() },
+        );
       });
     });
 
     it('lets an unexpected error propagate (the filter answers 500)', () => {
-      const setter = setGlobalProtectedTerms as jest.Mock;
+      const setter = updateProjectTerms as jest.Mock;
       setter.mockImplementationOnce(() => {
         throw new Error('update failed');
       });
