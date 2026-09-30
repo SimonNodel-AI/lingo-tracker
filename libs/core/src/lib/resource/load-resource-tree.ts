@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
@@ -68,10 +69,10 @@ export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTree
       // Root translations folder doesn't exist yet (e.g. fresh project) — treat as empty
       return { folderPathSegments: [], resources: [], children: [] };
     }
-    throw new Error(`Folder not found: ${absoluteFolderPath}`);
+    throw new CoreOperationError(`Folder not found: ${absoluteFolderPath}`);
   }
   if (!fs.statSync(absoluteFolderPath).isDirectory()) {
-    throw new Error(`Not a folder: ${absoluteFolderPath}`);
+    throw new CoreOperationError(`Not a folder: ${absoluteFolderPath}`);
   }
 
   const nodes = new Map<string, ResourceTreeNode>();

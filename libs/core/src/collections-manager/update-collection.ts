@@ -2,13 +2,16 @@ import type { LingoTrackerCollection } from '../config/lingo-tracker-collection'
 import { patchCollectionEntry } from '../lib/config/collection-entry';
 import { createConfigFileOperations } from '../lib/config/config-file-operations';
 import { type Collection, openCollection } from '../lib/config/open-collection';
+import { assertProtectedTerms } from '../lib/config/set-protected-terms';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
 import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';
 import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
+import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 
 export interface UpdateCollectionOptions {
   cwd?: string;
+  protectedTerms?: string[];
 }
 
 /**
@@ -31,6 +34,9 @@ export interface UpdateCollectionOptions {
  * format), read every folder of the collection (an unreadable one throws, with nothing written),
  * seed the added locales, purge the removed ones, then write the config once. A
  * seeding failure therefore never costs a removed locale its data.
+ * All collection and terms preconditions are checked before writing. After any locale
+ * file changes, the write order is config, then terms. If the terms write itself fails,
+ * the config entry remains written.
  *
  * A changed collection record reindexes both its old and new translations folders.
  *
@@ -39,6 +45,9 @@ export interface UpdateCollectionOptions {
  * @throws {InvalidCollectionError} The resulting `translationsFolder` is missing or blank, or a field is `null`.
  * @throws {ReadOnlyCollectionError} The locales change and the collection is read-only.
  * @throws {InvalidLocaleError} An added locale is malformed.
+ * @throws {InvalidCollectionError} Protected terms are not an array of strings.
+ * @throws {ProtectedTermsFileNotSetError} Terms were supplied without a resulting file pointer.
+ * @throws {ParentDirectoryMissingError} The terms file's parent directory is missing.
  */
 export async function updateCollection(
   collectionName: string,
@@ -46,6 +55,7 @@ export async function updateCollection(
   patch: Partial<LingoTrackerCollection>,
   options: UpdateCollectionOptions = {},
 ): Promise<{ message: string; mutations: ResourceMutation[] }> {
+  if (options.protectedTerms !== undefined) assertProtectedTerms(options.protectedTerms);
   const result = await changeCollection(collectionName, newCollectionName, patch, options);
   return { message: result.message, mutations: result.mutations };
 }
@@ -78,6 +88,12 @@ export async function changeCollection(
   const current = sugarCurrent ?? openCollection(config, collectionName, { cwd });
   const next = openCollection(nextConfig, targetName, { cwd });
   const { added, removed } = diffLocales(current, next);
+  const writeTerms = prepareCollectionProtectedTerms(
+    nextConfig,
+    targetName,
+    options.protectedTerms,
+    cwd ?? process.cwd(),
+  );
 
   let entriesAdded = 0;
   let entriesRemoved = 0;
@@ -105,6 +121,7 @@ export async function changeCollection(
   }
 
   configFile.write(nextConfig);
+  writeTerms?.();
   const recordChanged =
     targetName !== collectionName ||
     JSON.stringify(config.collections[collectionName]) !== JSON.stringify(nextConfig.collections[targetName]);

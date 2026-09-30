@@ -1,7 +1,7 @@
 import { normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import { ProtectedTermsFileError, ProtectedTermsFileNotSetError } from '../errors/lingo-tracker-error';
 import {
   assertWritableTermFilePath,
   readTermFile,
@@ -101,6 +101,18 @@ export function requireProtectedTermsFile(file: TermFile): StoredProtectedTerms 
  */
 export function assertWritableProtectedTermsPath(filePath: string): void {
   assertWritableTermFilePath('protected terms file', filePath);
+}
+
+/** Resolves a collection's required terms destination and checks its parent before a write. */
+export function resolveWritableCollectionProtectedTermsPath(
+  collectionName: string,
+  collection: Pick<LingoTrackerCollection, 'protectedTermsFile'>,
+  cwd: string = process.cwd(),
+): string {
+  const filePath = resolveCollectionProtectedTermsFilePath(collection, cwd);
+  if (!filePath) throw new ProtectedTermsFileNotSetError(collectionName);
+  assertWritableProtectedTermsPath(filePath);
+  return filePath;
 }
 
 /**

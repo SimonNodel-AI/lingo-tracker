@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GoogleTranslateV2Provider } from './google-translate-v2.provider';
 import type { TranslateRequest } from './translation-provider';
 
@@ -50,6 +50,18 @@ describe('GoogleTranslateV2Provider', () => {
       expect(capabilities.maxBatchSize).toBe(128);
       expect(capabilities.supportsFormality).toBe(false);
     });
+  });
+
+  it.each([
+    0,
+    -1,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    Number.NaN,
+  ])('rejects an invalid request timeout of %s at construction', (requestTimeoutMs) => {
+    expect(() => new GoogleTranslateV2Provider({ apiKey: 'test-api-key', requestTimeoutMs })).toThrowError(
+      expect.objectContaining({ code: 'INVALID_REQUEST_TIMEOUT', retryable: false }),
+    );
   });
 
   describe('translate', () => {
@@ -212,6 +224,27 @@ describe('GoogleTranslateV2Provider', () => {
     });
 
     describe('error handling', () => {
+      it('times out a fetch that never returns and reports a retryable TranslationError', async () => {
+        vi.useFakeTimers();
+        try {
+          const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+          const timedProvider = new GoogleTranslateV2Provider({ apiKey: 'test-api-key', requestTimeoutMs: 25 });
+          const pending = timedProvider.translate([makeRequest()]);
+          const failure = expect(pending).rejects.toMatchObject({
+            name: 'TranslationError',
+            code: 'TIMEOUT',
+            retryable: true,
+            message: 'Google Translate request timed out after 25 ms',
+          });
+
+          await vi.advanceTimersByTimeAsync(25);
+          await failure;
+          expect((fetchSpy.mock.calls[0]?.[1] as RequestInit).signal?.aborted).toBe(true);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
       it('throws TranslationError with INVALID_REQUEST code on HTTP 400', async () => {
         vi.spyOn(globalThis, 'fetch').mockResolvedValue(
           makeErrorResponse(400, {

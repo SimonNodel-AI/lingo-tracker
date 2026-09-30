@@ -9,21 +9,21 @@ import {
   Body,
   HttpException,
   HttpStatus,
-  ForbiddenException,
   NotFoundException,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import {
-  addResource,
+  addResources,
   assertCanTranslateLocale,
   deleteResource,
-  moveResource,
+  moveResources,
+  clampSearchLimit,
   editResource,
   translateExistingResource,
   extractResourcesRecursively,
-  type Collection,
+  type MoveResourcesOperation,
   type TerminologyFindings,
 } from '@simoncodes-ca/core';
 import { buildResourceSummary } from '@simoncodes-ca/domain';
@@ -47,7 +47,6 @@ import type {
   TranslateLocaleRequestDto,
   TranslateLocaleJobDto,
   TerminologyFindingsDto,
-  TerminologyFindingDto,
 } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
 import { mapResourceTreeToDto, mapResourceEntryToSummary } from '../../mappers/resource-tree.mapper';
@@ -55,7 +54,7 @@ import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import { WritableCollectionGuard } from '../guards/writable-collection.guard';
-import { openDestinationCollection, openRouteCollection } from '../open-route-collection';
+import { openRouteCollection } from '../open-route-collection';
 
 @UseGuards(WritableCollectionGuard)
 @Controller('collections/:collectionName/resources')
@@ -102,41 +101,24 @@ export class ResourcesController {
       throw new HttpException('At least one resource is required', HttpStatus.BAD_REQUEST);
     }
 
-    let entriesCreated = 0;
-    const allSkippedLocales: string[] = [];
-    const findings: TerminologyFindingDto[] = [];
-    const problems = new Set<string>();
-
-    for (const resource of resources) {
-      const result = await addResource(collection, {
+    const result = await addResources(
+      collection,
+      resources.map((resource) => ({
         key: resource.key,
         baseValue: resource.baseValue,
         comment: resource.comment,
         tags: resource.tags,
         targetFolder: resource.targetFolder,
         translations: resource.translations,
-      });
-
-      if (result.created) {
-        entriesCreated++;
-      }
-
-      if (result.skippedLocales?.length) {
-        allSkippedLocales.push(...result.skippedLocales);
-      }
-      findings.push(...result.terminology.findings);
-      for (const problem of result.terminology.problems) problems.add(problem);
-
-      this.#index.apply(result.mutations);
-    }
-
-    const uniqueSkippedLocales = [...new Set(allSkippedLocales)];
-    const terminology = toTerminologyDto({ findings, problems: [...problems] });
+      })),
+    );
+    this.#index.apply(result.mutations);
+    const terminology = toTerminologyDto(result.terminology);
 
     return {
-      entriesCreated,
-      created: entriesCreated > 0,
-      ...(uniqueSkippedLocales.length > 0 && { skippedLocales: uniqueSkippedLocales }),
+      entriesCreated: result.entriesCreated,
+      created: result.created,
+      ...(result.skippedLocales.length > 0 && { skippedLocales: result.skippedLocales }),
       ...(terminology && { terminology }),
     };
   }
@@ -169,50 +151,19 @@ export class ResourcesController {
     const config = this.#configService.getConfig();
     const collection = openRouteCollection(config, collectionName);
 
-    const result: MoveResourceResponseDto = {
-      movedCount: 0,
-      warnings: [],
-      errors: [],
-    };
-
     if (!dto.moves || !Array.isArray(dto.moves) || dto.moves.length === 0) {
       throw new HttpException('Invalid request: moves array is required and must not be empty', HttpStatus.BAD_REQUEST);
     }
 
-    for (const moveOp of dto.moves) {
-      let destinationCollection: Collection | undefined;
-
-      if (moveOp.toCollection) {
-        try {
-          destinationCollection = openDestinationCollection(config, moveOp.toCollection);
-        } catch (error: unknown) {
-          if (!(error instanceof NotFoundException || error instanceof ForbiddenException)) throw error;
-          // Missing or read-only destination: for consistency with other bulk ops, report it
-          // for this move op and continue.
-          result.errors = result.errors || [];
-          result.errors.push(error.message);
-          continue;
-        }
-      }
-
-      const moveResult = await moveResource(collection, {
-        source: moveOp.source,
-        destination: moveOp.destination,
-        override: moveOp.override,
-        destinationCollection,
-      });
-      this.#index.apply(moveResult.mutations);
-
-      result.movedCount += moveResult.movedCount;
-      if (moveResult.warnings && result.warnings) {
-        result.warnings.push(...moveResult.warnings);
-      }
-      if (moveResult.errors && result.errors) {
-        result.errors.push(...moveResult.errors);
-      }
-    }
-
-    return result;
+    const moves: MoveResourcesOperation[] = dto.moves.map((op) => ({
+      source: op.source,
+      destination: op.destination,
+      override: op.override,
+      ...(op.toCollection && { toCollection: decodeURIComponent(op.toCollection) }),
+    }));
+    const result = await moveResources(collection, moves, { config });
+    this.#index.apply(result.mutations);
+    return { movedCount: result.movedCount, warnings: result.warnings, errors: result.errors };
   }
 
   @Patch()
@@ -311,7 +262,7 @@ export class ResourcesController {
 
     // Query parameters arrive as strings. A value that is not a positive integer is 100; the cap is 500.
     const requested = Number(dto.maxResults);
-    const maxResults = Number.isInteger(requested) && requested > 0 ? Math.min(requested, 500) : 100;
+    const maxResults = clampSearchLimit(requested);
 
     // Anything but `similar` is a text search, as a bad maxResults falls back to the default.
     const mode = dto.mode === 'similar' ? 'similar-value' : 'text';

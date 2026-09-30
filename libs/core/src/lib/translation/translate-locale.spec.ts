@@ -5,12 +5,12 @@ import type { TranslationConfig } from '../../config/translation-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
-import { openResourceFolder } from '../resource/resource-folder';
 import {
   AutoTranslationDisabledError,
   CannotTranslateBaseLocaleError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
+import { openResourceFolder } from '../resource/resource-folder';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
 import { assertCanTranslateLocale, type TranslateLocaleProgress, translateLocale } from './translate-locale';
 import { TranslationError } from './translation-provider';
@@ -186,9 +186,84 @@ describe('translateLocale', () => {
       expect(read(RESOURCE_ENTRIES_FILENAME).c.fr).toBe('C-fr');
       expect(read(RESOURCE_ENTRIES_FILENAME).a.fr).toBeUndefined();
     });
+
+    it('records a timed-out batch as failed and continues with the next batch', async () => {
+      seedResources(collection(), { a: { source: 'A' }, b: { source: 'B' } });
+      let calls = 0;
+      const provider = new InMemoryTranslationProvider(({ text }) => {
+        if (calls++ === 0) {
+          throw new TranslationError('Google Translate request timed out', 'TIMEOUT', true);
+        }
+        return `${text}-fr`;
+      });
+
+      const result = await translateLocale(withBatchSize(1), { targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({
+        totalResources: 2,
+        translatedCount: 1,
+        failedCount: 1,
+        failures: [{ key: 'a', error: 'Google Translate request timed out' }],
+      });
+      expect(read(RESOURCE_ENTRIES_FILENAME).b.fr).toBe('B-fr');
+    });
   });
 
   describe('skips', () => {
+    it('preserves a manual target value saved during the provider call', async () => {
+      const target = collection();
+      seedResources(target, { ok: { source: 'OK' } });
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        folder.setTranslation('ok', 'fr', 'Humain', 'translated');
+        folder.save();
+        return 'Machine';
+      });
+
+      const result = await translateLocale(target, { targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({ translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
+      expect(read(RESOURCE_ENTRIES_FILENAME).ok.fr).toBe('Humain');
+      expect(read(TRACKER_META_FILENAME).ok.fr.status).toBe('translated');
+    });
+
+    it('preserves a target marked verified during the provider call', async () => {
+      const target = collection();
+      seedResources(target, { ok: { source: 'OK', translations: { fr: { value: 'OK', status: 'new' } } } });
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        folder.setStatus('ok', 'fr', 'verified');
+        folder.save();
+        return 'Machine';
+      });
+
+      const result = await translateLocale(target, { targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({ translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
+      expect(read(RESOURCE_ENTRIES_FILENAME).ok.fr).toBe('OK');
+      expect(read(TRACKER_META_FILENAME).ok.fr.status).toBe('verified');
+    });
+
+    it('skips an old translation when the base value changes during the provider call', async () => {
+      const target = collection();
+      seedResources(target, { ok: { source: 'Old', translations: { fr: 'Old' } } });
+      const initialFolder = openResourceFolder(dir(), { baseLocale: 'en' });
+      initialFolder.setBase('ok', 'Older');
+      initialFolder.save();
+      const provider = new InMemoryTranslationProvider(({ text }) => {
+        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        folder.setBase('ok', 'New');
+        folder.save();
+        return `[fr] ${text}`;
+      });
+
+      const result = await translateLocale(target, { targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({ totalResources: 1, translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
+      expect(read(RESOURCE_ENTRIES_FILENAME).ok).toMatchObject({ source: 'New', fr: 'Old' });
+      expect(read(TRACKER_META_FILENAME).ok.fr.status).toBe('stale');
+    });
+
     it('reports complex ICU resources in skippedKeys and leaves them untouched', async () => {
       const plural = '{count, plural, one {# item} other {# items}}';
       seedResources(collection(), { items: { source: plural }, ok: { source: 'OK' } });

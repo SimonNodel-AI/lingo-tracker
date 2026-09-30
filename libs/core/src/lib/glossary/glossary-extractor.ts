@@ -1,5 +1,5 @@
 /**
- * Candidate-term extraction for the `glossary` command.
+ * Candidate-term extraction for the Term Glossary.
  *
  * This module is the **extraction seam** of the glossary pipeline. Given a block
  * of base-locale text, an extractor produces the candidate terms/phrases that are
@@ -13,6 +13,8 @@
  * touching the matching/ranking/output stages. The `--extractor` flag selects the
  * implementation via {@link resolveExtractor}; only `ngram` is implemented today.
  */
+
+import { GlossaryExtractorError } from '../errors/lingo-tracker-error';
 
 /** A single candidate term extracted from the input block. */
 export interface Candidate {
@@ -225,8 +227,8 @@ export function resolveExtractor(mode: ExtractorMode): CandidateExtractor {
     case 'ngram':
       return ngramExtractor;
     case 'ai':
-      throw new Error('The "ai" extractor is not yet implemented. Use --extractor ngram (the default).');
+      throw new GlossaryExtractorError(mode);
     default:
-      throw new Error(`Unknown extractor "${mode}". Supported: ngram.`);
+      throw new GlossaryExtractorError(mode);
   }
 }

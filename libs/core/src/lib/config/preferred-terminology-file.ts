@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { relative, resolve } from 'node:path';
 import {
   normalizePreferredTermRules,
@@ -39,6 +40,7 @@ export interface LoadPreferredTerminologyResult {
 
 /** Thrown by `writePreferredTerminology` when the rule list fails validation. The file is left untouched. */
 export class PreferredTerminologyValidationError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly errors: PreferredTermRuleError[];
   readonly submittedRules?: readonly PreferredTermRule[];
 
@@ -166,14 +168,14 @@ export function editPreferredTerminology(
     loaded = previous ?? loadPreferredTerminology(config, cwd);
     if (edit.add === undefined && edit.remove === undefined) return loaded;
     if (loaded.error !== undefined) {
-      throw new Error(loaded.error);
+      throw new CoreOperationError(loaded.error);
     }
 
     next = [...loaded.rules];
     if (edit.remove !== undefined) {
       const index = next.findIndex((rule) => sameTerm(rule.discouraged, edit.remove ?? ''));
       if (index === -1) {
-        throw new Error(
+        throw new CoreOperationError(
           `No preferred terminology rule for "${edit.remove.trim()}" (${displayTermPath(loaded.filePath, cwd)})`,
         );
       }

@@ -1,6 +1,7 @@
 // Config and collections: load .lingo-tracker.json, open a collection, and read or write its terminology files.
 
 export { addCollectionEntry, patchCollectionEntry, toCollectionEntry } from './collection-entry';
+export { initConfig } from './init-config';
 export { type LoadConfigOptions, loadConfig } from './load-config';
 export { type Collection, type OpenCollectionOptions, openCollection, type TermFiles } from './open-collection';
 export {

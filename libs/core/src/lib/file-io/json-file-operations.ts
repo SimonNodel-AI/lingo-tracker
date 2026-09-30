@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { ResourceEntries } from '../resource/resource-entry';
@@ -22,6 +23,8 @@ export interface JsonFileWriteOptions {
   readonly pretty?: boolean;
   /** Create parent directories if they don't exist (default: false) */
   readonly ensureDirectory?: boolean;
+  /** Create the file exclusively; an existing file raises EEXIST. */
+  readonly createOnly?: boolean;
 }
 
 /**
@@ -55,7 +58,7 @@ export function readJsonFile<T>(options: JsonFileReadOptions<T>): T {
       return defaultValue;
     }
     const context = errorContext ? `${errorContext}: ` : '';
-    throw new Error(`${context}${ErrorMessages.fileNotFound(filePath)}`);
+    throw new CoreOperationError(`${context}${ErrorMessages.fileNotFound(filePath)}`);
   }
 
   try {
@@ -64,7 +67,7 @@ export function readJsonFile<T>(options: JsonFileReadOptions<T>): T {
   } catch (error) {
     const context = errorContext ? `${errorContext}: ` : '';
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new Error(`${context}${ErrorMessages.jsonParseFailed(filePath, errorMessage)}`);
+    throw new CoreOperationError(`${context}${ErrorMessages.jsonParseFailed(filePath, errorMessage)}`);
   }
 }
 
@@ -85,7 +88,7 @@ export function readJsonFile<T>(options: JsonFileReadOptions<T>): T {
  * ```
  */
 export function writeJsonFile(options: JsonFileWriteOptions): void {
-  const { filePath, data, pretty = true, ensureDirectory = false } = options;
+  const { filePath, data, pretty = true, ensureDirectory = false, createOnly = false } = options;
 
   if (ensureDirectory) {
     const directory = dirname(filePath);
@@ -96,10 +99,13 @@ export function writeJsonFile(options: JsonFileWriteOptions): void {
 
   try {
     const content = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
-    writeFileSync(filePath, content, 'utf8');
+    writeFileSync(filePath, content, createOnly ? { encoding: 'utf8', flag: 'wx' } : 'utf8');
   } catch (error) {
+    if (createOnly && error instanceof Error && (error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw error;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    throw new Error(ErrorMessages.fileWriteFailed(filePath, errorMessage));
+    throw new CoreOperationError(ErrorMessages.fileWriteFailed(filePath, errorMessage));
   }
 }
 

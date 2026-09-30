@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
-import { TranslationJobService } from './translation-job.service';
-import type { CollectionIndex } from '../cache/collection-index.service';
+import type { Collection, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
 import { TranslationError } from '@simoncodes-ca/core';
-import type { Collection, TranslateLocaleResult, TranslateLocaleProgress } from '@simoncodes-ca/core';
+import type { CollectionIndex } from '../cache/collection-index.service';
+import { TranslationJobService } from './translation-job.service';
 
 const mockTranslateLocale = jest.fn();
 
@@ -42,6 +42,7 @@ const collection: Collection = {
 };
 
 const startJob = (service: TranslationJobService): string => service.startJob(collection, 'fr');
+const flush = async (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
 
 describe('TranslationJobService', () => {
   let service: TranslationJobService;
@@ -54,10 +55,11 @@ describe('TranslationJobService', () => {
     service = new TranslationJobService(mockLogger as unknown as Logger, mockIndex as unknown as CollectionIndex);
   });
 
-  it('runs translateLocale on the opened collection for the target locale', () => {
+  it('runs translateLocale on the opened collection for the target locale', async () => {
     mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
 
     startJob(service);
+    await flush();
 
     expect(mockTranslateLocale).toHaveBeenCalledWith(
       collection,
@@ -100,8 +102,7 @@ describe('TranslationJobService', () => {
     const jobId = startJob(service);
 
     // Wait for the microtask queue to flush the resolved promise
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     const job = service.getJob(jobId);
     expect(job).toBeDefined();
@@ -119,8 +120,7 @@ describe('TranslationJobService', () => {
 
     const jobId = startJob(service);
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     const job = service.getJob(jobId);
     expect(job).toBeDefined();
@@ -134,8 +134,7 @@ describe('TranslationJobService', () => {
 
     const jobId = startJob(service);
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     const job = service.getJob(jobId);
     expect(job).toBeDefined();
@@ -148,10 +147,29 @@ describe('TranslationJobService', () => {
 
     const jobId = startJob(service);
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     expect(service.getJob(jobId)?.error).toBe('An unexpected error occurred');
+  });
+
+  it('keeps the failed job DTO JSON key order', async () => {
+    mockTranslateLocale.mockRejectedValue(new Error('failed'));
+    const jobId = startJob(service);
+    await flush();
+
+    expect(Object.keys(service.getJob(jobId) ?? {})).toEqual([
+      'jobId',
+      'collectionName',
+      'targetLocale',
+      'status',
+      'totalResources',
+      'translatedCount',
+      'failedCount',
+      'skippedCount',
+      'startedAt',
+      'completedAt',
+      'error',
+    ]);
   });
 
   it.each([
@@ -163,8 +181,7 @@ describe('TranslationJobService', () => {
     startJob(service);
     expect(mockIndex.apply).not.toHaveBeenCalled();
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     expect(mockIndex.apply).toHaveBeenCalledWith([{ kind: 'reindex', translationsFolder: '/path/to/translations' }]);
   });
@@ -174,8 +191,7 @@ describe('TranslationJobService', () => {
 
     const jobId = startJob(service);
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     expect(mockLogger.warn).toHaveBeenCalledWith(`Translation job ${jobId}: Folder 'broken' was not translated: bad`);
   });
@@ -185,8 +201,7 @@ describe('TranslationJobService', () => {
 
     const jobId = startJob(service);
 
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     const job = service.getJob(jobId);
     expect(job).toBeDefined();
@@ -226,7 +241,55 @@ describe('TranslationJobService', () => {
 
     // Clean up by resolving the translation so no unhandled promise dangles
     resolveTranslation(makeSuccessResult({ totalResources: 10, translatedCount: 10, failedCount: 0, skippedCount: 0 }));
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
+  });
+
+  it('runs two jobs for the same collection and locale one after the other', async () => {
+    let resolveFirst: ((result: TranslateLocaleResult) => void) | undefined;
+    mockTranslateLocale
+      .mockImplementationOnce(
+        () =>
+          new Promise<TranslateLocaleResult>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(makeSuccessResult());
+
+    const firstId = startJob(service);
+    const secondId = startJob(service);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(mockTranslateLocale).toHaveBeenCalledTimes(1);
+    expect(service.getJob(firstId)?.status).toBe('running');
+    expect(service.getJob(secondId)?.status).toBe('pending');
+
+    resolveFirst?.(makeSuccessResult());
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(mockTranslateLocale).toHaveBeenCalledTimes(2);
+    expect(mockTranslateLocale).toHaveBeenNthCalledWith(2, collection, expect.objectContaining({ targetLocale: 'fr' }));
+    expect(service.getJob(firstId)?.status).toBe('completed');
+    expect(service.getJob(secondId)?.status).toBe('completed');
+  });
+
+  it('runs the next translation after the first reports a timed-out batch', async () => {
+    mockTranslateLocale
+      .mockResolvedValueOnce(
+        makeSuccessResult({
+          translatedCount: 0,
+          failedCount: 1,
+          failures: [{ key: 'ok', error: 'Google Translate request timed out' }],
+        }),
+      )
+      .mockResolvedValueOnce(makeSuccessResult());
+
+    const firstId = startJob(service);
+    const secondId = startJob(service);
+    await flush();
+
+    expect(service.getJob(firstId)?.status).toBe('completed');
+    expect(service.getJob(firstId)?.failedCount).toBe(1);
+    expect(service.getJob(firstId)?.failures).toEqual([{ key: 'ok', error: 'Google Translate request timed out' }]);
+    expect(service.getJob(secondId)?.status).toBe('completed');
   });
 });

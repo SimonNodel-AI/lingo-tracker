@@ -592,6 +592,7 @@ describe('exportCommand', () => {
       expect(fs.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining('lingo-tracker-export-summary'),
         '# Export Summary',
+        'utf8',
       );
     });
 

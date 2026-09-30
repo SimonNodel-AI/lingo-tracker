@@ -1,3 +1,4 @@
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync, readFileSync } from 'node:fs';
 import * as xliff from 'xliff';
 import { PROTECTED_TERMS_NOTE_PREFIX } from '../export/export-to-xliff';
@@ -99,7 +100,7 @@ export async function extractFromXliff(xliffContent: string): Promise<ImportedRe
       }
     }
   } catch (error) {
-    throw new Error(`Failed to parse XLIFF content: ${error}`);
+    throw new CoreOperationError(`Failed to parse XLIFF content: ${error}`);
   }
 
   return resources;
@@ -119,7 +120,7 @@ export async function parseXliffImport(
 ): Promise<ImportedResource[]> {
   const { onProgress } = options;
   if (!existsSync(filePath)) {
-    throw new Error(`Source file not found: ${filePath}`);
+    throw new CoreOperationError(`Source file not found: ${filePath}`);
   }
 
   onProgress?.(`Reading XLIFF file: ${filePath}`);
@@ -128,7 +129,7 @@ export async function parseXliffImport(
   try {
     xliffContent = readFileSync(filePath, 'utf8');
   } catch (error) {
-    throw new Error(`Failed to read XLIFF file: ${error}`);
+    throw new CoreOperationError(`Failed to read XLIFF file: ${error}`);
   }
 
   onProgress?.('Parsing XLIFF and extracting trans-units');

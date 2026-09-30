@@ -35,6 +35,12 @@ export const ErrorMessages = {
 
   collectionAlreadyExists: (name: string) => `Collection "${name}" already exists`,
 
+  collectionTagEditConflict: () => '--set-tags cannot be combined with --add-tag or --remove-tag',
+
+  collectionTagEditMissing: () => 'Provide at least one of --add-tag, --remove-tag, or --set-tags',
+
+  configAlreadyExists: () => '.lingo-tracker.json already exists',
+
   protectedTermsFileNotSet: (name: string) =>
     `Collection "${name}" has no protected terms file. Set one first with --file <path>.`,
 
@@ -63,6 +69,18 @@ export const ErrorMessages = {
 
   invalidFolderSegment: (part: FolderPathPart, segment: string) =>
     `Invalid ${part} segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`,
+
+  glossaryBaseLocaleMismatch: (collections: readonly { name: string; baseLocale: string }[]) => {
+    const listed = collections.map((collection) => `${collection.name}: ${collection.baseLocale}`).join(', ');
+    return `Cannot build a glossary from collections with different base locales together (${listed}). Build them separately.`;
+  },
+
+  glossaryNoCollections: () => 'Cannot build a glossary without collections.',
+
+  glossaryExtractorUnavailable: (mode: string) =>
+    mode === 'ai'
+      ? 'The "ai" extractor is not yet implemented. Use --extractor ngram (the default).'
+      : `Unknown extractor "${mode}". Supported: ngram.`,
 } as const;
 
 /** Which part of a folder operation's input a malformed segment came from. */

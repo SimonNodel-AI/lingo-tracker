@@ -1,6 +1,7 @@
+import { CoreOperationError, FolderNotFoundError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { existsSync } from 'node:fs';
 import { resolveResourcePaths } from './resource-file-paths';
-import { openResourceFolder } from './resource-folder';
+import { openResourceFolder, type ResourceFolder } from './resource-folder';
 import { removeMutation, type ResourceMutation } from './resource-mutation';
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
@@ -34,9 +35,10 @@ export function deleteResource(collection: Collection, params: DeleteResourcePar
         mutations.push(removeMutation(translationsFolder, key));
       }
     } catch (caughtError) {
+      const message = (caughtError as { message?: string })?.message || 'Unknown error occurred';
       errors.push({
         key,
-        error: (caughtError as { message?: string })?.message || 'Unknown error occurred',
+        error: message,
       });
     }
   }
@@ -56,22 +58,50 @@ function deleteSingleResource(translationsFolder: string, baseLocale: string, ke
     translationsFolder,
   });
 
+  const folderAddress = paths.folderPathSegments.join('.') || '.';
   if (!existsSync(paths.folderPath)) {
-    throw new Error(`Folder not found: ${paths.folderPath}`);
+    throw new FolderNotFoundError(folderAddress);
   }
-
   if (!existsSync(paths.resourceEntriesPath)) {
-    throw new Error(`Resource file not found: ${paths.resourceEntriesPath}`);
+    throw new ResourceNotFoundError(paths.resolvedKey);
   }
 
-  const folder = openResourceFolder(paths.folderPath, { baseLocale });
-
-  if (!folder.remove(paths.entryKey)) {
-    throw new Error(`Resource entry not found: ${key}`);
+  let folder: ResourceFolder;
+  try {
+    folder = openResourceFolder(paths.folderPath, { baseLocale });
+  } catch (caughtError) {
+    throw new CoreOperationError(
+      `Failed to delete resource ${paths.resolvedKey}: folder ${folderAddress} has unreadable resource files`,
+      { cause: caughtError },
+    );
   }
 
-  // Removes both files when this was the folder's last entry.
-  folder.save();
+  let removed: boolean;
+  try {
+    removed = folder.remove(paths.entryKey);
+  } catch (caughtError) {
+    throw new CoreOperationError(
+      `Failed to delete resource ${paths.resolvedKey}: could not update folder ${folderAddress}`,
+      {
+        cause: caughtError,
+      },
+    );
+  }
+  if (!removed) {
+    throw new ResourceNotFoundError(paths.resolvedKey);
+  }
+
+  try {
+    // Removes both files when this was the folder's last entry.
+    folder.save();
+  } catch (caughtError) {
+    throw new CoreOperationError(
+      `Failed to delete resource ${paths.resolvedKey}: could not write folder ${folderAddress}`,
+      {
+        cause: caughtError,
+      },
+    );
+  }
 
   return true;
 }

@@ -9,10 +9,10 @@ import { type CacheStatusState, initialCacheStatusState } from './with-cache-sta
 import { type FilterState, initialFilterState } from './with-filter.feature';
 import { type FolderTreeState, initialFolderTreeState } from './with-folder-tree.feature';
 import { initialListScopeState, type ListScopeState } from './with-list-scope.feature';
-import { initialMovesState, type MovesState } from './with-moves.feature';
+import { initialFolderWritesState, type FolderWritesState } from './with-folder-writes.feature';
 
 /** Everything the session resets: the root state plus every feature's own slice. */
-type SessionState = RootState & ListScopeState & FilterState & FolderTreeState & MovesState & CacheStatusState;
+type SessionState = RootState & ListScopeState & FilterState & FolderTreeState & FolderWritesState & CacheStatusState;
 
 /** The root fields a collection's settings set: the settings themselves and their projections. */
 function settingsState(settings: CollectionSettings): Partial<RootState> {
@@ -64,7 +64,7 @@ export function withBrowserSessionFeature<_>() {
           initialListScopeState,
           initialFilterState,
           initialFolderTreeState,
-          initialMovesState,
+          initialFolderWritesState,
           initialCacheStatusState,
           { sessionId, ...settingsState(settings) },
         );

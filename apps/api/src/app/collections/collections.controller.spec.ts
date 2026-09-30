@@ -17,7 +17,6 @@ jest.mock('@simoncodes-ca/core', () => {
     deleteCollectionByName: jest.fn(),
     addCollection: jest.fn(),
     updateCollection: jest.fn(),
-    setCollectionProtectedTerms: jest.fn(),
   };
 });
 
@@ -144,7 +143,7 @@ describe('CollectionsController', () => {
       expect(result).toEqual({
         message: 'Collection "new-collection" created successfully',
       });
-      expect(addCollection).toHaveBeenCalledWith('new-collection', dto.collection);
+      expect(addCollection).toHaveBeenCalledWith('new-collection', dto.collection, { protectedTerms: undefined });
     });
 
     it.each([
@@ -218,7 +217,9 @@ describe('CollectionsController', () => {
       expect(result).toEqual({
         message: 'Collection "old-name" updated to "new-name" successfully',
       });
-      expect(updateCollection).toHaveBeenCalledWith('old-name', 'new-name', dto.collection);
+      expect(updateCollection).toHaveBeenCalledWith('old-name', 'new-name', dto.collection, {
+        protectedTerms: undefined,
+      });
     });
 
     it('should URI decode collection names with special characters', async () => {
@@ -237,7 +238,9 @@ describe('CollectionsController', () => {
 
       await collectionsController.updateCollectionByName('My%20Collection', dto as unknown as UpdateCollectionDto);
 
-      expect(updateCollection).toHaveBeenCalledWith('My Collection', 'My Collection', dto.collection);
+      expect(updateCollection).toHaveBeenCalledWith('My Collection', 'My Collection', dto.collection, {
+        protectedTerms: undefined,
+      });
     });
 
     it.each([
@@ -272,8 +275,9 @@ describe('CollectionsController', () => {
         collection: { translationsFolder: './translations/test', protectedTerms: ['iPhone'] },
       });
 
-      expect(core.updateCollection).toHaveBeenCalledWith('test-collection', undefined, expect.anything());
-      expect(core.setCollectionProtectedTerms).toHaveBeenCalledWith('test-collection', ['iPhone']);
+      expect(core.updateCollection).toHaveBeenCalledWith('test-collection', undefined, expect.anything(), {
+        protectedTerms: ['iPhone'],
+      });
     });
 
     it('lets CollectionNotFoundError through (404) and leaves the index alone', async () => {

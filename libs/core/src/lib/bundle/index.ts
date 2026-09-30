@@ -17,6 +17,12 @@ export {
   validateGenerateBundleRequest,
 } from './generate-bundle';
 export {
+  generateBundles,
+  type BundleRunOutcome,
+  type GenerateBundlesOptions,
+  type GenerateBundlesResult,
+} from './generate-bundles';
+export {
   type BundlePlan,
   type BundlePlanExampleKey,
   type BundlePlanFile,

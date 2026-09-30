@@ -11,6 +11,8 @@ export interface CreateFolderParams {
 }
 
 export interface CreateFolderResult {
+  /** Dot-delimited Folder Address, with an empty or whitespace-only parent resolved to the root. */
+  readonly folderAddress: string;
   /** Absolute path to the created folder */
   readonly folderPath: string;
   /** Whether the folder was newly created (true) or already existed (false) */
@@ -27,11 +29,11 @@ export interface CreateFolderResult {
  * 2. Combines parentPath with folderName if provided
  * 3. Converts dot-delimited path to filesystem path
  * 4. Creates the directory (and any parent directories) if needed
- * 5. Returns whether the folder was newly created
+ * 5. Returns the resolved Folder Address and whether the folder was newly created
  *
  * @param collection - The collection to create the folder in
  * @param params - Folder creation parameters
- * @returns Object containing the folder path and creation status
+ * @returns Object containing the folder path, Folder Address, and creation status
  * @throws {InvalidFolderPathError} The folder name or parent path has a malformed segment.
  *
  * @example
@@ -40,20 +42,20 @@ export interface CreateFolderResult {
  * const result = createFolder(collection, {
  *   folderName: 'apps'
  * });
- * // Result: { folderPath: '<translationsFolder>/apps', created: true }
+ * // Result: { folderPath: '<translationsFolder>/apps', folderAddress: 'apps', created: true }
  *
  * // Create a nested folder
  * const result = createFolder(collection, {
  *   folderName: 'buttons',
  *   parentPath: 'apps.common'
  * });
- * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', created: true }
+ * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', folderAddress: 'apps.common.buttons', created: true }
  *
  * // Create a multi-segment folder
  * const result = createFolder(collection, {
  *   folderName: 'apps.common.buttons'
  * });
- * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', created: true }
+ * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', folderAddress: 'apps.common.buttons', created: true }
  * ```
  */
 export function createFolder(collection: Collection, params: CreateFolderParams): CreateFolderResult {
@@ -64,12 +66,13 @@ export function createFolder(collection: Collection, params: CreateFolderParams)
   validateFolderAddress(folderName, 'folder name', false);
 
   // Validate parentPath segments if provided
-  if (parentPath && parentPath.trim() !== '') {
-    validateFolderAddress(parentPath, 'parent path');
+  const resolvedParent = parentPath && parentPath.trim() !== '' ? parentPath : undefined;
+  if (resolvedParent) {
+    validateFolderAddress(resolvedParent, 'parent path');
   }
 
   // Combine parent path and folder name
-  const fullDotPath = parentPath && parentPath.trim() !== '' ? `${parentPath}.${folderName}` : folderName;
+  const fullDotPath = resolvedParent ? `${resolvedParent}.${folderName}` : folderName;
 
   // Resolve the dot-delimited address to an absolute filesystem path.
   const absoluteFolderPath = resolveFolderAddress(translationsFolder, fullDotPath);
@@ -85,6 +88,7 @@ export function createFolder(collection: Collection, params: CreateFolderParams)
   });
 
   return {
+    folderAddress: fullDotPath,
     folderPath: absoluteFolderPath,
     created: !alreadyExists,
     mutations: alreadyExists ? [] : [folderMutation('add-folder', translationsFolder, fullDotPath)],

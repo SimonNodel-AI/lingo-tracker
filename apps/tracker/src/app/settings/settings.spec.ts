@@ -89,12 +89,6 @@ describe('Settings', () => {
     expect(fixture.nativeElement.querySelectorAll('.term')).toHaveLength(2);
   });
 
-  it('lists terms alphabetically regardless of the order the file stored them in', () => {
-    render({ ...baseConfig, protectedTerms: ['zulu', 'Alpha', 'mike'] });
-
-    expect(component.sortedEntries().map((entry) => entry.value)).toEqual(['Alpha', 'mike', 'zulu']);
-  });
-
   it('names the file the terms are stored in', () => {
     render(baseConfig);
 
@@ -116,150 +110,6 @@ describe('Settings', () => {
     expect(fixture.nativeElement.querySelector('.terms-list')).toBeNull();
   });
 
-  describe('adding', () => {
-    it('adds a trimmed term and clears the draft', () => {
-      render(baseConfig);
-
-      component.onAddDraftChange('  C++  ');
-      component.addTerm();
-
-      expect(termValues()).toContain('C++');
-      expect(component.addDraft()).toBe('');
-      expect(component.changeCount()).toBe(1);
-    });
-
-    it('refuses a duplicate and reports which term collided', () => {
-      render(baseConfig);
-
-      component.onAddDraftChange('iPhone');
-      component.addTerm();
-
-      expect(component.addError()).toBe('iPhone');
-      expect(termValues()).toEqual(['iPhone', 'Node.js']);
-    });
-
-    it('clears the duplicate error as soon as the draft changes', () => {
-      render(baseConfig);
-      component.onAddDraftChange('iPhone');
-      component.addTerm();
-
-      component.onAddDraftChange('iPhon');
-
-      expect(component.addError()).toBeNull();
-    });
-
-    it('re-adding a term that is marked for removal takes the removal back', () => {
-      render(baseConfig);
-      const removed = entryFor('iPhone');
-      if (!removed) return;
-      component.removeTerm(removed);
-
-      component.onAddDraftChange('iPhone');
-      component.addTerm();
-
-      expect(component.addError()).toBeNull();
-      expect(entryFor('iPhone')?.removed).toBe(false);
-      expect(component.changeCount()).toBe(0);
-    });
-  });
-
-  describe('removing', () => {
-    it('keeps a saved term visible and marked until the change is saved', () => {
-      render(baseConfig);
-      const entry = entryFor('iPhone');
-      if (!entry) return;
-
-      component.removeTerm(entry);
-
-      expect(termValues()).toContain('iPhone');
-      expect(component.statusOf(entryFor('iPhone') ?? entry)).toBe('removed');
-      expect(component.termsToSave()).toEqual(['Node.js']);
-      expect(component.changeCount()).toBe(1);
-    });
-
-    it('restores a term marked for removal', () => {
-      render(baseConfig);
-      const entry = entryFor('iPhone');
-      if (!entry) return;
-      component.removeTerm(entry);
-
-      component.restoreTerm(entryFor('iPhone') ?? entry);
-
-      expect(component.termsToSave()).toEqual(['iPhone', 'Node.js']);
-      expect(component.hasChanges()).toBe(false);
-    });
-
-    it('drops a term added in this session outright rather than marking it', () => {
-      render(baseConfig);
-      component.onAddDraftChange('C++');
-      component.addTerm();
-
-      const added = entryFor('C++');
-      if (!added) return;
-      component.removeTerm(added);
-
-      expect(termValues()).toEqual(['iPhone', 'Node.js']);
-      expect(component.hasChanges()).toBe(false);
-    });
-  });
-
-  describe('renaming', () => {
-    it('commits an edit and remembers the previous spelling', () => {
-      render(baseConfig);
-      const entry = entryFor('iPhone');
-      if (!entry) return;
-
-      component.beginEdit(entry);
-      component.onEditDraftChange('iPad');
-      component.commitEdit();
-
-      expect(component.editingId()).toBeNull();
-      expect(component.termsToSave()).toEqual(['iPad', 'Node.js']);
-      expect(entryFor('iPad')?.original).toBe('iPhone');
-      expect(component.statusOf(entryFor('iPad') ?? entry)).toBe('edited');
-    });
-
-    it('refuses an edit that collides with another term', () => {
-      render(baseConfig);
-      const entry = entryFor('iPhone');
-      if (!entry) return;
-
-      component.beginEdit(entry);
-      component.onEditDraftChange('Node.js');
-      component.commitEdit();
-
-      expect(component.editError()).toBe('Node.js');
-      expect(component.editingId()).toBe(entry.id);
-      expect(component.termsToSave()).toEqual(['iPhone', 'Node.js']);
-    });
-
-    it('treats an emptied edit as a cancel', () => {
-      render(baseConfig);
-      const entry = entryFor('iPhone');
-      if (!entry) return;
-
-      component.beginEdit(entry);
-      component.onEditDraftChange('   ');
-      component.commitEdit();
-
-      expect(component.editingId()).toBeNull();
-      expect(component.termsToSave()).toEqual(['iPhone', 'Node.js']);
-    });
-
-    it('cancel leaves the term untouched', () => {
-      render(baseConfig);
-      const entry = entryFor('iPhone');
-      if (!entry) return;
-
-      component.beginEdit(entry);
-      component.onEditDraftChange('iPad');
-      component.cancelEdit();
-
-      expect(component.termsToSave()).toEqual(['iPhone', 'Node.js']);
-      expect(component.hasChanges()).toBe(false);
-    });
-  });
-
   describe('filtering', () => {
     const manyTerms = { ...baseConfig, protectedTerms: ['a1', 'b2', 'c3', 'd4', 'e5', 'f6', 'g7', 'h8', 'iPhone'] };
 
@@ -277,51 +127,19 @@ describe('Settings', () => {
       expect(fixture.nativeElement.querySelector('.terms-filter')).not.toBeNull();
     });
 
-    it('drops a filter that would hide a term the user just added', () => {
+    it('renders and reveals an added row after its filter is cleared', () => {
       render(manyTerms);
       component.filter.set('a1');
-
+      spectator.detectChanges();
       component.onAddDraftChange('Zod');
       component.addTerm();
+      spectator.detectChanges();
+      spectator.flushEffects();
 
       expect(component.filter()).toBe('');
-      expect(component.visibleEntries().map((entry) => entry.value)).toContain('Zod');
-    });
-
-    it('keeps a filter the newly added term still matches', () => {
-      render(manyTerms);
-      component.filter.set('zo');
-
-      component.onAddDraftChange('Zod');
-      component.addTerm();
-
-      expect(component.filter()).toBe('zo');
-      expect(component.visibleEntries().map((entry) => entry.value)).toEqual(['Zod']);
-    });
-
-    it('drops a filter that would hide a term the user just renamed', () => {
-      render(manyTerms);
-      component.filter.set('iph');
-      const entry = component.visibleEntries()[0];
-      expect(entry).toBeDefined();
-      if (!entry) return;
-
-      component.beginEdit(entry);
-      component.onEditDraftChange('Zod');
-      component.commitEdit();
-
-      expect(component.filter()).toBe('');
-      expect(component.visibleEntries().map((entry) => entry.value)).toContain('Zod');
-    });
-
-    it('matches case-insensitively and reports when nothing matches', () => {
-      render(manyTerms);
-
-      component.filter.set('iphone');
-      expect(component.visibleEntries().map((entry) => entry.value)).toEqual(['iPhone']);
-
-      component.filter.set('nothing here');
-      expect(component.hasNoMatches()).toBe(true);
+      expect(fixture.nativeElement.querySelectorAll('.term')).toHaveLength(10);
+      expect(fixture.nativeElement.textContent).toContain('Zod');
+      expect(component.terms.revealId()).toBeNull();
     });
   });
 

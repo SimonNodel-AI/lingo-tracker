@@ -21,6 +21,7 @@ import {
   selectionValues,
 } from './bundle-selection';
 import { buildHierarchy } from './hierarchy-builder';
+import { resolveBundleSettings } from './resolve-bundle-settings';
 import { type BundleLocale, COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
 import {
   type GenerateBundleTypesParams,
@@ -88,10 +89,10 @@ export interface GenerateBundleResult {
 }
 
 export type BundleTypeOutcome =
-  | { readonly status: 'written'; readonly path: string; readonly keysCount: number }
-  | { readonly status: 'skipped'; readonly reason: string }
-  | { readonly status: 'failed'; readonly reason: string }
-  | { readonly status: 'not-configured' };
+  | { readonly status: 'written'; readonly path: string; readonly keysCount: number; readonly warning?: string }
+  | { readonly status: 'skipped'; readonly reason: string; readonly warning?: string }
+  | { readonly status: 'failed'; readonly reason: string; readonly warning?: string }
+  | { readonly status: 'not-configured'; readonly warning?: string };
 
 /** Checks a saved bundle request before a job is queued or any output is written. */
 export function validateGenerateBundleRequest(
@@ -126,18 +127,19 @@ export function validateBundleLocales(locales: readonly string[] | undefined, co
  * not carry to Transloco are reported in `warnings`; type generation has its own outcome.
  */
 export async function generateBundle(params: GenerateBundleParams): Promise<GenerateBundleResult> {
-  const { bundleKey, config, debugKeysLocale, onProgress } = params;
   const bundleDefinition = validateGenerateBundleRequest(params);
+  return generateValidatedBundle(params, bundleDefinition);
+}
+
+/** The run coordinator uses an already validated definition. */
+export async function generateValidatedBundle(
+  params: GenerateBundleParams,
+  bundleDefinition: BundleDefinition,
+): Promise<GenerateBundleResult> {
+  const { bundleKey, config, debugKeysLocale, onProgress } = params;
   const cwd = params.cwd ?? process.cwd();
 
-  // CLI override → bundle config → global config → default
-  const tokenCasing: TokenCasing =
-    params.tokenCasing ?? bundleDefinition.tokenCasing ?? config.tokenCasing ?? 'upperCase';
-  const transformICUToTransloco: boolean =
-    params.transformICUToTransloco ??
-    bundleDefinition.transformICUToTransloco ??
-    config.transformICUToTransloco ??
-    true;
+  const { tokenCasing, transformICUToTransloco } = resolveBundleSettings(config, bundleDefinition, params);
 
   const { collections, warnings: missing } = resolveBundleCollections(bundleDefinition, config, { cwd });
   const warnings = [...missing];
@@ -228,11 +230,17 @@ function generateTypes(
 
 function typeOutcomeFromResult(result: GenerateTypesResult, cwd: string): BundleTypeOutcome {
   if (result.fileGenerated && result.typeDistFile) {
-    return { status: 'written', path: toProjectRelative(result.typeDistFile, cwd), keysCount: result.keysCount };
+    return {
+      status: 'written',
+      path: toProjectRelative(result.typeDistFile, cwd),
+      keysCount: result.keysCount,
+      warning: result.warning,
+    };
   }
-  if (result.errorReason) return { status: 'failed', reason: result.errorReason };
-  if (result.skippedReason === 'empty-bundle') return { status: 'skipped', reason: 'bundle has no keys' };
-  return { status: 'not-configured' };
+  if (result.errorReason) return { status: 'failed', reason: result.errorReason, warning: result.warning };
+  if (result.skippedReason === 'empty-bundle')
+    return { status: 'skipped', reason: 'bundle has no keys', warning: result.warning };
+  return { status: 'not-configured', warning: result.warning };
 }
 
 function toProjectRelative(filePath: string, cwd: string): string {

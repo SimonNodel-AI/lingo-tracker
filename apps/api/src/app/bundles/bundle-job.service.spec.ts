@@ -113,6 +113,20 @@ describe('BundleJobService', () => {
     expect('locales' in params).toBe(false);
   });
 
+  it('logs the legacy type setting warning returned by core', async () => {
+    const warning = "Warning: Bundle 'main': 'typeDist' is deprecated";
+    mockGenerateBundle.mockResolvedValue(
+      makeResult({
+        typeOutcome: { status: 'failed', reason: 'disk full', warning },
+      }),
+    );
+
+    service.startJob(makeParams());
+    await flush();
+
+    expect(logger.warn).toHaveBeenCalledWith(warning);
+  });
+
   it('reflects onProgress events in the job snapshot while running', async () => {
     let capturedProgress: ((event: BundleProgressEvent) => void) | undefined;
     mockGenerateBundle.mockImplementation((params: GenerateBundleParams) => {
@@ -176,6 +190,22 @@ describe('BundleJobService', () => {
     await flush();
 
     expect(service.getJob(jobId)?.error).toBe('An unexpected error occurred');
+  });
+
+  it('keeps the failed job DTO JSON key order', async () => {
+    mockGenerateBundle.mockRejectedValue(new Error('disk full'));
+    const jobId = service.startJob(makeParams());
+    await flush();
+
+    expect(Object.keys(service.getJob(jobId) ?? {})).toEqual([
+      'jobId',
+      'bundleName',
+      'status',
+      'progress',
+      'error',
+      'startedAt',
+      'completedAt',
+    ]);
   });
 
   it('runs jobs one at a time, in order', async () => {

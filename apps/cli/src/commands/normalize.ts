@@ -1,39 +1,17 @@
-import { type NormalizeResult, normalize, ReadOnlyCollectionError } from '@simoncodes-ca/core';
+import {
+  emptyNormalizeCollectionsResult,
+  type NormalizeCollectionsResult,
+  normalizeCollections,
+  ReadOnlyCollectionError,
+} from '@simoncodes-ca/core';
 import { CommandCancelledError, defineCommand } from '../runner/command-runner';
-import { ALL_ITEMS_SENTINEL, aggregateNumericFields, ConsoleFormatter } from '../utils';
+import { ALL_ITEMS_SENTINEL, ConsoleFormatter } from '../utils';
 
 export interface NormalizeOptions {
   collection?: string;
   all?: boolean;
   dryRun?: boolean;
   json?: boolean;
-}
-
-interface CollectionNormalizeResult {
-  collectionName: string;
-  entriesProcessed: number;
-  localesAdded: number;
-  valuesConverted: number;
-  tagsNormalized: number;
-  filesCreated: number;
-  filesUpdated: number;
-  foldersRemoved: number;
-  /** Folders normalize could not read and left as they are. */
-  problems: NormalizeResult['problems'];
-}
-
-interface NormalizeCommandResult {
-  collections: CollectionNormalizeResult[];
-  totals: {
-    collectionsProcessed: number;
-    entriesProcessed: number;
-    localesAdded: number;
-    valuesConverted: number;
-    tagsNormalized: number;
-    filesCreated: number;
-    filesUpdated: number;
-    foldersRemoved: number;
-  };
 }
 
 export const normalizeCommand = defineCommand<NormalizeOptions>()({
@@ -74,102 +52,68 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
     ];
   },
   run: async ({ config, collections, answers }) => {
-    let failed = false;
-    const collectionResults: CollectionNormalizeResult[] = [];
     const all = answers.all === true || answers.collectionOrAll === ALL_ITEMS_SENTINEL;
-
-    if (!all && collections[0]?.readOnly) {
-      ConsoleFormatter.error(new ReadOnlyCollectionError(collections[0].name).message);
-      printSummary(collectionResults, 0, answers);
+    let result: NormalizeCollectionsResult;
+    try {
+      result = await normalizeCollections(collections, {
+        all,
+        dryRun: answers.dryRun ?? false,
+        onEvent: (event) => {
+          switch (event.kind) {
+            case 'skip':
+              ConsoleFormatter.warning(`Skipping read-only collection: ${event.name}`);
+              break;
+            case 'start':
+              if (!answers.json) {
+                console.log('');
+                ConsoleFormatter.progress(`Normalizing collection: ${event.name}`);
+                if (answers.dryRun) ConsoleFormatter.indent('(Dry run - no changes will be made)');
+              }
+              break;
+            case 'result': {
+              const item = event.result;
+              for (const problem of item.problems) {
+                ConsoleFormatter.warning(`Skipped unreadable folder: ${problem.message}`);
+              }
+              if (!answers.json) {
+                ConsoleFormatter.indent(`✅ Entries processed: ${item.entriesProcessed}`);
+                ConsoleFormatter.indent(`✅ Locales added: ${item.localesAdded}`);
+                ConsoleFormatter.indent(`✅ Values converted to ICU: ${item.valuesConverted}`);
+                if (item.tagsNormalized > 0) ConsoleFormatter.indent(`✅ Tags normalized: ${item.tagsNormalized}`);
+                ConsoleFormatter.indent(`✅ Files created: ${item.filesCreated}`);
+                ConsoleFormatter.indent(`✅ Files updated: ${item.filesUpdated}`);
+                ConsoleFormatter.indent(`✅ Folders removed: ${item.foldersRemoved}`);
+              }
+              break;
+            }
+            case 'error':
+              ConsoleFormatter.error(
+                `Failed to normalize collection "${event.name}": ${event.error instanceof Error ? event.error.message : String(event.error)}`,
+              );
+              break;
+          }
+        },
+      });
+    } catch (error) {
+      if (!(error instanceof ReadOnlyCollectionError)) throw error;
+      ConsoleFormatter.error(error.message);
+      result = emptyNormalizeCollectionsResult();
+      printSummary(result, 0, answers);
       return { exitCode: 1 };
     }
-
-    for (const collection of collections) {
-      const { name } = collection;
-
-      if (collection.readOnly) {
-        ConsoleFormatter.warning(`Skipping read-only collection: ${name}`);
-        continue;
-      }
-
-      if (!answers.json) {
-        console.log('');
-        ConsoleFormatter.progress(`Normalizing collection: ${name}`);
-        if (answers.dryRun) {
-          ConsoleFormatter.indent('(Dry run - no changes will be made)');
-        }
-      }
-
-      try {
-        const result = await normalize(collection, { dryRun: answers.dryRun ?? false });
-        // stderr, so it is reported with --json too.
-        for (const problem of result.problems) {
-          ConsoleFormatter.warning(`Skipped unreadable folder: ${problem.message}`);
-        }
-
-        collectionResults.push({
-          collectionName: name,
-          entriesProcessed: result.entriesProcessed,
-          localesAdded: result.localesAdded,
-          valuesConverted: result.valuesConverted,
-          tagsNormalized: result.tagsNormalized,
-          filesCreated: result.filesCreated,
-          filesUpdated: result.filesUpdated,
-          foldersRemoved: result.foldersRemoved,
-          problems: result.problems,
-        });
-
-        if (!answers.json) {
-          ConsoleFormatter.indent(`✅ Entries processed: ${result.entriesProcessed}`);
-          ConsoleFormatter.indent(`✅ Locales added: ${result.localesAdded}`);
-          ConsoleFormatter.indent(`✅ Values converted to ICU: ${result.valuesConverted}`);
-          if (result.tagsNormalized > 0) {
-            ConsoleFormatter.indent(`✅ Tags normalized: ${result.tagsNormalized}`);
-          }
-          ConsoleFormatter.indent(`✅ Files created: ${result.filesCreated}`);
-          ConsoleFormatter.indent(`✅ Files updated: ${result.filesUpdated}`);
-          ConsoleFormatter.indent(`✅ Folders removed: ${result.foldersRemoved}`);
-        }
-      } catch (e: unknown) {
-        failed = true;
-        // stderr, so it is reported with --json too.
-        ConsoleFormatter.error(
-          `Failed to normalize collection "${name}": ${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
-    }
-
-    printSummary(collectionResults, all ? Object.keys(config.collections ?? {}).length : collections.length, answers);
-    return failed ? { exitCode: 1 } : undefined;
+    printSummary(result, all ? Object.keys(config.collections ?? {}).length : collections.length, answers);
+    return result.errors.length > 0 ? { exitCode: 1 } : undefined;
   },
 });
 
-function printSummary(
-  collectionResults: CollectionNormalizeResult[],
-  collectionCount: number,
-  options: NormalizeOptions,
-): void {
-  const totals = () => ({
-    ...aggregateNumericFields(collectionResults, [
-      'entriesProcessed',
-      'localesAdded',
-      'valuesConverted',
-      'tagsNormalized',
-      'filesCreated',
-      'filesUpdated',
-      'foldersRemoved',
-    ]),
-    collectionsProcessed: collectionResults.length,
-  });
-
+function printSummary(result: NormalizeCollectionsResult, collectionCount: number, options: NormalizeOptions): void {
   if (options.json) {
-    const output: NormalizeCommandResult = { collections: collectionResults, totals: totals() };
-    console.log(JSON.stringify(output, null, 2));
+    console.log(JSON.stringify({ collections: result.collections, totals: result.totals }, null, 2));
     return;
   }
 
   if (collectionCount > 1) {
-    const summary = totals();
+    const summary = result.totals;
     ConsoleFormatter.section(`Summary (${summary.collectionsProcessed} collections)`);
     ConsoleFormatter.keyValue('Total entries processed', summary.entriesProcessed);
     ConsoleFormatter.keyValue('Total locales added', summary.localesAdded);

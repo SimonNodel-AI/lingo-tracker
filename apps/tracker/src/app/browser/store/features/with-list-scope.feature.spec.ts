@@ -195,7 +195,7 @@ describe('BrowserStore List Scope', () => {
     store.showFolder('a');
     listRead('app', 'a').flush(folder('a', 'a.one', 'a.two'));
 
-    store.moveResource({ sourceKey: 'a.one', destinationFolderPath: 'b' });
+    store.moveResource({ sourceKey: 'a.one', destinationFolderPath: 'b' }).subscribe();
     expect(store.isDisabled()).toBe(true);
     expect(keys(store.sortedTranslations())).toEqual(['a.two']);
     http.expectOne(url('app', 'move')).flush({ movedCount: 1 });
@@ -216,7 +216,7 @@ describe('BrowserStore List Scope', () => {
     store.showFolder('a');
     listRead('app', 'a').flush(folder('a', 'a.one', 'a.two'));
 
-    store.moveResource({ sourceKey: 'a.one', destinationFolderPath: 'b' });
+    store.moveResource({ sourceKey: 'a.one', destinationFolderPath: 'b' }).subscribe();
     // A reload landed while the move was in flight: it is newer than anything taken before the move.
     store.reloadList();
     listRead('app', 'a').flush(folder('a', 'a.two', 'a.three'));
@@ -233,7 +233,7 @@ describe('BrowserStore List Scope', () => {
     open('a');
     store.showFolder('x');
     listRead('a', 'x').flush(folder('x', 'x.one'));
-    store.moveResource({ sourceKey: 'x.one', destinationFolderPath: 'y' });
+    store.moveResource({ sourceKey: 'x.one', destinationFolderPath: 'y' }).subscribe();
     const move = http.expectOne(url('a', 'move'));
 
     open('b', 'b.welcome');

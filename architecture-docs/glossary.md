@@ -42,7 +42,7 @@ A generated JSON file (one per locale) that aggregates translation values from o
 
 During bundle generation, ICU simple placeholder syntax (`{varName}`) is converted to Transloco double-brace syntax (`{{ varName }}`); complex ICU constructs (`plural`, `select`) pass through unchanged.
 
-Core generates a saved bundle by its name, validates any requested locale subset, and reports the paths it wrote, including debug-keys and type files. Type generation has one outcome: written, skipped, failed, or not configured.
+Core generates a saved bundle by its name for the API. For a CLI run, `generateBundles(config, { names?, locales?, overrides, cwd })` selects all or named bundles, validates each request once, continues after an individual failure, and returns one outcome per bundle plus totals. `resolveBundleSettings(config, definition, overrides)` supplies the shared setting precedence for generation and planning. Type generation has one outcome: written, skipped, failed, or not configured; a deprecated-setting warning travels with that outcome even when type writing fails, for the CLI to print or the API job to log.
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md), [`core-library.md`](core-library.md)
 
@@ -79,6 +79,22 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### CLI Help Text
+
+The long examples appended to `import`, `validate`, and `preferred-terminology` help. `apps/cli/src/runner/help-text.ts` holds these strings so the [Command Registration](#command-registration) list stays short. Registration passes each string to Commander's `addHelpText('after', ...)` unchanged.
+
+Explained in context: [`cli.md`](cli.md#command-runner)
+
+---
+
+### CLI Option Definitions
+
+Reusable Commander flag declarations in `apps/cli/src/runner/options.ts`. A definition registers one option when the [Command Registration](#command-registration) is applied. `option({ flags, description?, defaultValue?, parse? })` states which strings are help descriptions and which values Commander parses by default. The module owns the collection flag, token casing choices, repeatable list parser, shared `init` and `add-collection` flags, `--yes`, resource field groups, and the value conversions for `--setup-bundle`, `validate --skip-locales`, and `find-similar --max-results`.
+
+Explained in context: [`cli.md`](cli.md#command-runner)
+
+---
+
 ### Collection
 
 A named group of translation [resources](#resource-entry) that share a common `translationsFolder` on disk and optional configuration overrides (base locale, locales, import/export folders, auto-translation settings, collection-level tags). Collections are defined under the `collections` key in `.lingo-tracker.json`.
@@ -95,7 +111,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Collection Entry
 
-The write side of a [collection's](#collection) record in `.lingo-tracker.json`: the one place that decides what the stored entry contains. In code, `libs/core/src/lib/config/collection-entry.ts` holds three pure functions over the in-memory config: `toCollectionEntry(config, collection)` builds the record (`translationsFolder`, trimmed, plus only the settings that differ from the global config, so a collection inherits by omission; `translation` is kept verbatim; `readOnly` only when true; tags normalized), `addCollectionEntry` registers it (a folder under `node_modules` is read-only unless the caller decides) and `patchCollectionEntry` changes it, with an optional rename in place. Patch semantics: a field the patch sets replaces the stored value (a setting is cleared, so the collection inherits, with its empty value: `tags: []`, `readOnly: false`, `locales: []`, and `''` for `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`; `translation` has no empty value and cannot be cleared by a patch, only replaced), a field set to `null` is `InvalidCollectionError`, and a field left out or `undefined` keeps its stored value, so a client that never sends `translation`, `exportFolder` or `importFolder` cannot lose them; the merged record is then re-minimized. An empty `locales` list means inherit, never "no locales". The rule for every field is listed once, keyed by the `LingoTrackerCollection` type, so a new field does not compile until its rule is written. `addCollection` and `setCollectionProtectedTermsFile` write through it. `updateCollection`, `addLocaleToCollection` and `removeLocaleFromCollection` share one locale-change path: validate, read every folder, seed added locales, purge removed locales, then write the minimized record once through `patchCollectionEntry`. A changed record returns reindex mutations for the old and new translations folders. The errors are typed: `CollectionNotFoundError`, `CollectionAlreadyExistsError`, `InvalidCollectionError`.
+The write side of a [collection's](#collection) record in `.lingo-tracker.json`: the one place that decides what the stored entry contains. In code, `libs/core/src/lib/config/collection-entry.ts` holds three pure functions over the in-memory config: `toCollectionEntry(config, collection)` builds the record (`translationsFolder`, trimmed, plus only the settings that differ from the global config, so a collection inherits by omission; `translation` is kept verbatim; `readOnly` only when true; tags normalized), `addCollectionEntry` registers it (a folder under `node_modules` is read-only unless the caller decides) and `patchCollectionEntry` changes it, with an optional rename in place. Patch semantics: a field the patch sets replaces the stored value (a setting is cleared, so the collection inherits, with its empty value: `tags: []`, `readOnly: false`, `locales: []`, and `''` for `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`; `translation` has no empty value and cannot be cleared by a patch, only replaced), a field set to `null` is `InvalidCollectionError`, and a field left out or `undefined` keeps its stored value, so a client that never sends `translation`, `exportFolder` or `importFolder` cannot lose them; the merged record is then re-minimized. An empty `locales` list means inherit, never "no locales". The rule for every field is listed once, keyed by the `LingoTrackerCollection` type, so a new field does not compile until its rule is written. `addCollection`, `editCollectionTags` and `setCollectionProtectedTermsFile` write through it. `updateCollection`, `addLocaleToCollection` and `removeLocaleFromCollection` share one locale-change path: validate, read every folder, seed added locales, purge removed locales, then write the minimized record once through `patchCollectionEntry`. A changed record returns reindex mutations for the old and new translations folders. The errors are typed: `CollectionNotFoundError`, `CollectionAlreadyExistsError`, `InvalidCollectionError`.
 
 Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
 
@@ -106,6 +122,14 @@ Explained in context: [`core-library.md`](core-library.md#config-and-collection-
 The API's in-memory copy of each open [collection's](#collection) [resource tree](#resource-tree). In code, `CollectionIndex` in `apps/api/src/app/cache/collection-index.service.ts` has four methods: `tree(collection, path)` and `search(collection, query, { mode, limit })` read (search runs [Resource Search](#resource-search) over the index tree, or over the disk before the collection is indexed), `status(collection)` answers the `cache/status` endpoint, and `apply(mutations)` takes the [resource mutations](#resource-mutation) of a write. Indexing on first read, revalidation against a disk fingerprint, patching, and the memory cap (least recently used eviction) are internal. When a patch does not match the tree, the index drops that collection and indexes it again on the next read. The HTTP endpoints and the Tracker UI still call it the "cache".
 
 Explained in context: [`api.md`](api.md#collection-index)
+
+---
+
+### Collection Lifecycle
+
+The core operation that registers or changes a [Collection Entry](#collection-entry) together with its optional protected terms. `addCollection(name, collection, { cwd?, protectedTerms? })` and `updateCollection(name, newName, patch, { cwd?, protectedTerms? })` check the term list and the resulting entry before their first write. The resulting entry supplies the file pointer, including one supplied in the same request or retained through a rename. A missing pointer raises `ProtectedTermsFileNotSetError` and changes no file. After any locale file changes required by an update, core writes `.lingo-tracker.json` and then the protected-terms file. The two files are not atomic: if the terms write itself fails, the config entry remains written. `editCollectionTags(name, { add?, remove?, set? }, { cwd? })` edits inherited tags in the registration, with core enforcing flag combinations and normalization. `initConfig(config, { cwd? })` validates and creates a config through the same config write path with an exclusive file create, refusing an existing file even when it appears during the write.
+
+Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution), [`api.md`](api.md#collections), [`cli.md`](cli.md)
 
 ---
 
@@ -125,9 +149,17 @@ Explained in context: [`core-library.md`](core-library.md#collection-sweep)
 
 ---
 
+### Command Registration
+
+The CLI declaration that connects a name, description, ordered option definitions, optional positional argument and help text to a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander, then loads and invokes the handler when the action runs. Its optional `mapOptions(raw, args)` converts raw flags and positional arguments before invocation. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated flags and parsers.
+
+Explained in context: [`cli.md`](cli.md#command-runner)
+
+---
+
 ### Command Runner
 
-The one place that runs a CLI command. In code, `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function `main.ts` calls. A command is a spec: a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its `prompts` for missing values, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalize` applies its own read-only rule after receiving the opened collections. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
+The CLI execution path. `registerCommand(program, registration)` applies the command's flags to Commander; `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function its lazy action calls. A command spec has a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its `prompts` for missing values, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalizeCollections` in core applies the named versus all read-only rule after receiving the opened collections. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
@@ -153,7 +185,7 @@ Explained in context: [`frontend.md`](frontend.md#lazy-loaded-dialogs)
 
 ### Dialog Config Submit
 
-Dialog Config Submit is how the collection and bundle form dialogs submit a [Config Write](#config-write). `submitDialogConfigWrite()` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` sets `saving`, locks closing during the write, closes with the caller's saved result on success, and restores the previous close setting and `saving` on refusal. `classifyConfigRefusal()` gives the caller a `conflict`, `invalid`, or `other` refusal and preserves API details for every kind. Each form renders that refusal on its own fields; the settings page uses the same classification for preferred-terminology rule errors but owns its save subscription because it is a page and must keep saving after navigation.
+Dialog Config Submit is how the collection and bundle form dialogs submit a [Config Write](#config-write). `submitDialogConfigWrite()` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` sets `saving`, locks closing during the write, closes with the caller's saved result on success, and restores the previous close setting and `saving` on refusal. `NamedEntrySubmit` in the same module owns the server-taken-name validator, the create/update choice and rename patch, the editable-name conflict, and the localized refusal fallback for both forms. It returns a name conflict or a message with API details; each form renders that outcome in its own fields. `classifyConfigRefusal()` still gives other callers a `conflict`, `invalid`, or `other` refusal and preserves API details for every kind. The settings page uses that classification for preferred-terminology rule errors but owns its save subscription because it is a page and must keep saving after navigation.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -163,9 +195,17 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ### Editor Outcome
 
-How the Tracker's translation editor closed: the one result its launcher reads. In code, the `EditorOutcome` union in `apps/tracker/src/app/browser/dialogs/translation-editor/translation-editor-dialog.ts`, with five kinds: `saved` (an edit stayed in its folder), `moved` (an edit with a `moveTo`, with the new key and folder), `created`, `open-existing` (the key is taken and the user asked for the entry that holds it) and `cancelled` (no write, a dialog closed without a result, or an edit the server found nothing to change in). `saved`, `moved` and `created` carry the locales auto-translation skipped. `TranslationEditorLauncher` opens every create and edit (`openCreate`, `openEdit`, `openByFullKey`) and gives the feedback for each outcome: the toasts, and for `open-existing` the move of the list to the entry's folder and an edit of it, whose outcome the hand-off resolves with. The reload after a write is the store's, not the launcher's.
+How the Tracker's translation editor closed: the one result its launcher reads. In code, the `EditorOutcome` union in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`, with five kinds: `saved` (an edit stayed in its folder), `moved` (an edit with a `moveTo`, with the new key and folder), `created`, `open-existing` (the key is taken and the user asked for the entry that holds it) and `cancelled` (no write, a dialog closed without a result, or an edit the server found nothing to change in). `saved`, `moved` and `created` carry the locales auto-translation skipped. `TranslationEditorLauncher` opens every create and edit (`openCreate`, `openEdit`, `openByFullKey`) and gives the feedback for each outcome: the toasts, and for `open-existing` the move of the list to the entry's folder and an edit of it, whose outcome the hand-off resolves with. The reload after a write is the store's, not the launcher's.
 
 Explained in context: [`frontend.md`](frontend.md#the-editor-outcome)
+
+---
+
+### Editor Submit
+
+The translation editor's save protocol in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `submitGate(state)` returns the first blocking reason in this order: read-only, submitting, invalid form, key collision, comment confirmation. `submitEditor({ mode, draft, original, writes })` uses the [Resource Entry Draft](#resource-entry-draft) to build a create or update request, calls the supplied store write, and returns an Observable of an [Editor Outcome](#editor-outcome) or a classified refusal. One classifier handles both create and update API errors. The dialog chooses the existing localized message, conflict dialog and focus behavior for each refusal. `editor-entry-sources.ts` gathers the browser's known entries and tag suggestions for the dialog.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
 ---
 
@@ -189,7 +229,7 @@ Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 
 ### Folder Address
 
-A dot-delimited path to a folder in a [collection](#collection), such as `apps.common.buttons`. The empty address names the translations root. `lib/resource/folder-address.ts` validates each segment with the domain `isValidSegment` rule, resolves the address beneath the collection's `translationsFolder`, and checks whether that path exists. Folder create, delete and move decide whether the root is allowed and retain their own error labels; wildcard resource moves use key-style diagnostics for their prefix.
+A dot-delimited path to a folder in a [collection](#collection), such as `apps.common.buttons`. The empty address names the translations root. `lib/resource/folder-address.ts` validates each segment with the domain `isValidSegment` rule, resolves the address beneath the collection's `translationsFolder`, and checks whether that path exists. Folder create, delete and move decide whether the root is allowed and retain their own error labels; `createFolder` returns the resolved Folder Address as `folderAddress`, with a whitespace-only parent treated as the root; wildcard resource moves use key-style diagnostics for their prefix.
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
@@ -200,6 +240,14 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 A read of one folder's entries without changing the [List Scope](#list-scope). `FolderPeek.openFolderPeek()` gives each translation editor dialog a scope with its own successful-read cache. A later dialog gets a fresh scope and fresh data. `openByFullKey` also opens a fresh scope for each hand-off. Concurrent scopes share an in-flight API request, but no completed result. A response from an earlier [Browser Session](#browser-session) is dropped; a failed read can be retried.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
+### Folder Writes
+
+The Tracker UI's one store feature for creating, deleting and moving folders, and for dropping a resource into a folder. `withFolderWritesFeature` in `apps/tracker/src/app/browser/store/features/with-folder-writes.feature.ts` returns a cold `Observable` of a typed outcome from each write. The feature refuses every write in a read-only collection before HTTP, owns move no-op checks, and updates cached tree and rows only in the [Browser Session](#browser-session) where the write began. A failed optimistic move restores only the moved item against current state when its parent is loaded; an unloaded parent gets its children on its next load, so a newer tree load survives. Deletion shows the parent only if the current folder is the deleted folder or one of its descendants. Callers turn outcomes into their existing toasts or inline feedback; folder writes do not set the shared load `error`. The sidebar draft lives in this feature. The picker keeps an independent draft because it can be open alongside the sidebar; both drafts use `folder-draft.ts` for their transitions.
+
+Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollback)
 
 ---
 
@@ -217,9 +265,19 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Import Run
 
-One import of a set of resources into one locale of one [collection](#collection). A format adapter (`parseJsonImport`, `parseXliffImport`) turns a file into resources; `importResources(collection, resources, options)` in `libs/core/src/lib/import/import-resources.ts` does the rest: strategy defaults, the collection's [Project Terms](#project-terms) (read once; a broken protected-terms file stops the run, a rule-file problem opens its warnings), Transloco reference resolution (migration only), placeholder normalization and auto-fix, validation, and the per-[folder](#resource-folder) merge. The state of one run (settings, terms, changes, warnings, errors, written files) lives in an `ImportSession`.
+One file import into one locale of one [collection](#collection). `runImport(collection, { source, format?, locale, ...options })` in `libs/core/src/lib/import/run-import.ts` detects the format, reads JSON or XLIFF through its adapter, emits a large-source warning before the run header, applies the resources, and returns the result with a lazy `summary()` renderer. Source failures raise `ImportSourceError` before any resource write. `importResources(collection, resources, options)` remains the entry point for callers with parsed resources. It applies strategy defaults, reads the collection's [Project Terms](#project-terms), resolves Transloco references (migration only), normalizes and repairs placeholders, validates, and merges per [folder](#resource-folder). An `ImportSession` holds its settings, terms, changes, warnings, errors, and written files. A base-locale import without the migration strategy raises `InvalidImportLocaleError`.
 
 Explained in context: [`core-library.md`](core-library.md#import-pipeline)
+
+---
+
+## J
+
+### Job Registry
+
+The API's in-memory runner for background jobs. Each `JobRegistry` instance owns a serial queue, UUID-keyed jobs, lifecycle timestamps, DTO snapshots, and eviction of finished jobs after 30 minutes or when a new job would exceed 100 retained jobs. Queued and running jobs remain until they finish, even above the cap. `BundleJobService` and `TranslationJobService` each have their own instance. Preconditions run synchronously before registration, and a failed run does not stop later jobs in that instance.
+
+Explained in context: [`api.md`](api.md#translation-job-system)
 
 ---
 
@@ -275,6 +333,14 @@ Explained in context: [`docs/features/preferred-terminology.md`](../docs/feature
 
 ---
 
+### Preferred Terminology Draft
+
+`PreferredTerminologyDraft` in `apps/tracker/src/app/settings/preferred-terminology-draft.ts` stages settings-page rule edits. It owns rows, normalization, client validation, error visibility, change counts, and mapping server rule-error indexes back to submitted rows. It has no API dependency; Settings owns the Config Write.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
+
 ### Project Terms
 
 The terms and rules in force for an opened [collection](#collection): its [protected terms](#protected-term) (the global list united with the collection's own) and the project's [preferred terminology](#preferred-terminology). In code, `readProjectTerms(collection)` in `libs/core/src/lib/config/project-terms.ts` reads the files `openCollection` resolved into `Collection.termFiles` and returns `ProjectTerms`: `protectedTerms`, `preferredTerminology`, `problems` (every term file that is named but missing, a warning, or exists but cannot be used, an error) and `checkBaseValue(key, value)`, the advisory terminology check of a stored base value (its findings, and the rule-file problems that limited it). Opening a collection reads nothing; each operation reads the Project Terms once, and nothing is cached, so a long-running API sees a hand edit or `git pull` on its next request. Reading never throws. A consumer that guards values with the protected terms and has no advisory channel asks for `requireProtectedTerms(terms)`, which throws `ProtectedTermsFileError` for a broken protected-terms file: the [Translator](#translator) when it opens, and the [import run](#import-run) before it writes. The Translator reports a missing named protected-terms file in its `problems`. Every other consumer reports the problems: `addResource` and `editResource` in their `terminology` result, import in its `warnings`, export in its `warnings` and, for a broken protected-terms file, its `errors` (the command exits 1), `validate` as printed warnings and, for a broken rule file, a failure. The two file kinds share one term-file module (`term-file.ts`: pointer resolution, the missing-file rule, the read that reports instead of throwing, the write with typed errors); each kind adds only its item check and its serialization.
@@ -307,6 +373,30 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#prot
 
 ---
 
+### Protected Term Add
+
+`prepareProtectedTermAdd(existing, input)` in `apps/tracker/src/app/shared/protected-terms/protected-term-add.ts` normalizes a newly entered term with the domain rule and checks exact, case-sensitive duplicates. It returns `blank`, `duplicate`, or `added` with the normalized term. The settings draft and collection chips use this one add rule.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
+
+### Protected Terms Chips
+
+`ProtectedTermsChips` in `apps/tracker/src/app/shared/protected-terms/protected-terms-chips.ts` holds the collection dialog's list. `seedRaw(values)` preserves stored values, order, and duplicates exactly. `add(value)` uses the [Protected Term Add](#protected-term-add) rule; `remove(value)` drops matching chips. It has no staged row or error state.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
+
+### Protected Terms Draft
+
+`ProtectedTermsDraft` in `apps/tracker/src/app/shared/protected-terms/protected-terms-draft.ts` stages protected-term edits for Settings. It uses the shared add rule and domain normalization, and owns removed and restored rows, rename status, filtering and reveal requests, change counts, and the sorted save list. It has no API or DOM dependency; Settings owns scrolling and the Config Write.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
+
 ### Public Surface
 
 The names a library's `index.ts` barrel exports — everything a caller must know to use it. The `domain` and `core` barrels list their exports by name, never with `export *`. They list only names that something outside the library uses, plus the types those names' signatures need. A helper that only its own library uses stays exported from its file but not from the barrel. `libs/domain/src/index.spec.ts` pins domain's runtime exports, so adding one is a deliberate change.
@@ -316,6 +406,14 @@ Explained in context: [`monorepo-structure.md`](monorepo-structure.md#public-sur
 ---
 
 ## R
+
+### Resource Batches
+
+Core owns writes of many resource entries. `addResources(collection, items)` prepares every item before any write: malformed keys and folder addresses, unknown locales, duplicate resolved keys, unreadable folder JSON and translation failures are refused during preflight. Preflight reads folders but does not create them or check whether a later filesystem write can succeed. It rejects duplicate resolved keys within the batch with `ResourceAlreadyExistsError`; an existing exact key is replaced as in `addResource`. Parent/child keys remain allowed at add time and may later appear as bundle-plan hierarchical conflicts. It then writes in input order and returns created count, deduplicated skipped locales and terminology problems, all findings, and all [mutations](#resource-mutation). A filesystem write failure after preparation (for example, an existing file in the folder path or a permissions failure) can leave earlier entries, or one of the failing folder's two JSON files, on disk; there is no rollback or returned mutations, and the Collection Index catches up through disk-fingerprint revalidation. `moveResources(collection, ops, { config })` runs each move in order, resolves writable destination collections, reports a missing or read-only destination for its operation, and continues. The API passes each batch's mutations to the [Collection Index](#collection-index) once.
+
+Explained in context: [`core-library.md`](core-library.md#resource-batches), [`api.md`](api.md#resources)
+
+---
 
 ### Resource Entry
 
@@ -361,7 +459,7 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ### Resource Mutation
 
-One change that a core write made to a translations folder: `upsert` (key and the stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (the change is too broad to describe, for example a locale was added). Each carries the absolute `translationsFolder` it applies to. `addResource`, `editResource`, `translateExistingResource`, `deleteResource`, `moveResource`, `createFolder`, `deleteFolder`, `moveFolder`, `addLocaleToCollection` and `removeLocaleFromCollection` return them as `mutations`. The type is in `libs/core/src/lib/resource/resource-mutation.ts`. The [Collection Index](#collection-index) uses them to update itself without reading the disk again.
+One change that a core write made to a translations folder: `upsert` (key and the stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (the change is too broad to describe, for example a locale was added). Each carries the absolute `translationsFolder` it applies to. `addResource`, `addResources`, `editResource`, `translateExistingResource`, `deleteResource`, `moveResource`, `moveResources`, `createFolder`, `deleteFolder`, `moveFolder`, `addLocaleToCollection` and `removeLocaleFromCollection` return them as `mutations`. The type is in `libs/core/src/lib/resource/resource-mutation.ts`. The [Collection Index](#collection-index) uses them to update itself without reading the disk again.
 
 Explained in context: [`api.md`](api.md#writes-resource-mutations)
 
@@ -381,7 +479,7 @@ Explained in context: [`libs-domain.md`](libs-domain.md)
 
 ### Resource Search
 
-The one matcher over a [collection's](#collection) resources. In code, `searchResources(resources, collection, query, { mode, limit })` in `libs/core/src/lib/resource/search.ts`. It reads any iterable of `{ fullKey, entry }`: the [Collection Reader](#collection-reader)'s `resources` for the disk, or `treeResources(tree)` for the [Collection Index](#collection-index) tree. It is pure, so the reader's problems are the caller's to report. It ranks every match first and then applies `limit` (default 100, also for a limit that is not a positive integer), so a better match is never lost because it was found late. A blank query returns nothing; the query is trimmed and case-insensitive. Text mode (the default) looks in the full key, the base value (always, under the collection's [base locale](#base-locale)) and every translation. Each hit gets one match type, the key first: `exact-key`, `partial-key`, `exact-value`, `partial-value`. They rank in the order exact-key, exact-value, partial-key, partial-value, then key. Similar-value mode compares the query with the base value only. A value matches when its `normalizedLevenshtein` score is at least 0.8 (`save` / `saved`), or when one text contains the other as whole words (`Save` / `Save draft`) with a score (`shorter / longer` length) of at least 0.4 (`CONTAINMENT_MIN_SCORE`), so a short label inside a long sentence does not count. A fragment inside a word does not count either (`connect` in `connection`, `don` in `don't`: apostrophes are word characters). Hits rank by `similarity`, then a key that contains the query, then key, with `matchType: 'similar-value'`. The API's `CollectionIndex.search` (`GET …/resources/search`, `mode=text | similar`) and the CLI `find-similar` use it. The Tracker's "Similar values" block asks the API for similar mode.
+The one matcher over a [collection's](#collection) resources. In code, `searchResources(resources, collection, query, { mode, limit })` in `libs/core/src/lib/resource/search.ts`. It reads any iterable of `{ fullKey, entry }`: the [Collection Reader](#collection-reader)'s `resources` for the disk, or `treeResources(tree)` for the [Collection Index](#collection-index) tree. It is pure, so the reader's problems are the caller's to report. It ranks every match before applying `limit`, so a better match is never lost because it was found late. The matcher defaults to 100 for an invalid limit. Core `clampSearchLimit(requested)` applies the API page-size rule (default 100, maximum 500). A blank query returns nothing; the query is trimmed and case-insensitive. Text mode (the default) looks in the full key, the base value (always, under the collection's [base locale](#base-locale)) and every translation. Each hit gets one match type, the key first: `exact-key`, `partial-key`, `exact-value`, `partial-value`. They rank in the order exact-key, exact-value, partial-key, partial-value, then key. Similar-value mode compares the query with the base value only. A value matches when its `normalizedLevenshtein` score is at least 0.8 (`save` / `saved`), or when one text contains the other as whole words (`Save` / `Save draft`) with a score (`shorter / longer` length) of at least 0.4 (`CONTAINMENT_MIN_SCORE`), so a short label inside a long sentence does not count. A fragment inside a word does not count either (`connect` in `connection`, `don` in `don't`: apostrophes are word characters). Hits rank by `similarity`, then a key that contains the query, then key, with `matchType: 'similar-value'`. The API's `CollectionIndex.search` (`GET …/resources/search`, `mode=text | similar`) and the CLI `find-similar` use it. The Tracker's "Similar values" block asks the API for similar mode.
 
 Explained in context: [`core-library.md`](core-library.md#resource-search), [`api.md`](api.md#collection-index)
 
@@ -407,7 +505,23 @@ Explained in context: [`libs-domain.md`](libs-domain.md)
 
 ---
 
+### Run Summary Writer
+
+The CLI utility `writeRunSummary(kind, text)` in `apps/cli/src/utils/write-run-summary.ts` chooses a temporary Markdown summary path and writes the import or export run's text there. Core supplies the text through import's `summary()` or export's `summary`; the CLI owns the file path and the announcement printed after the write.
+
+Explained in context: [`cli.md`](cli.md#shared-utilities), [`core-library.md`](core-library.md#import-pipeline)
+
+---
+
 ## S
+
+### Settings Save
+
+`settings-save.ts` in the Tracker settings directory assembles the changed lists for one [Config Write](#config-write) and extracts valid preferred-terminology row errors from an invalid [API Error](#api-error)'s `details`. The Settings page owns the subscription, banner, and toast.
+
+Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
+
+---
 
 ### Similar Values
 
@@ -439,6 +553,14 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ## T
 
+### Tag List Edit
+
+The pure Tracker helper in `apps/tracker/src/app/shared/tag-list-edit.ts` adds a normalized, deduplicated tag or removes all matching tags. An empty or duplicate add returns the original list. Resource-entry removal passes inherited tags so those stay in place; collection and bundle editors remove their own tags without that option.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft), [`frontend.md`](frontend.md#bundle-form-dialog)
+
+---
+
 ### Target Folder
 
 An optional dot-delimited path prefix that scopes an input [resource key](#resource-key) to a specific folder within the collection's translation hierarchy. Used when a resource is created (`addResource`, `add-resource --target-folder`, `CreateResourceDto.targetFolder`) to place a short key (e.g. `ok`) at a specific location (e.g. `apps.common.buttons`) without repeating the full path in the key itself.
@@ -451,9 +573,17 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### Term Glossary
+
+A ranked list of existing translations that match candidate terms in a block of base-locale text. In core, `buildGlossary(collections, text, { extractor?, locales?, includeAll? })` reads each opened [collection](#collection) through the [Collection Reader](#collection-reader), extracts unique unigrams and bigrams by default, and matches them against base values. It returns the JSON payload (`baseLocale`, target `locales`, source counts, `matchCount`, `terms`) and separate unreadable-folder `readProblems`. By default, each entry contributes only its own collection's target locales. An explicit locale list can select stored translations outside those targets; only the base locale is removed. New and stale translations are omitted unless `includeAll` is set. An empty collection set raises `GlossaryNoCollectionsError`; different base locales raise `GlossaryBaseLocaleMismatchError`, because one glossary has one source language. The CLI selects input and prints or saves the payload, reporting reader problems on stderr.
+
+Explained in context: [`core-library.md`](core-library.md#term-glossary), [`cli.md`](cli.md#glossary-pipeline)
+
+---
+
 ### Term List Edit
 
-The write side of [Project Terms](#project-terms), owned by core config. Core’s pointer setters change `protectedTermsFile` and carry over the old list. `readProtectedTermsTarget(config, target, cwd)` returns stored terms, paths, warnings and the effective union before a write. `editProtectedTerms(target, view, edit)` applies add, remove or set and returns the resulting list and path. The CLI prints the read result before it writes. `loadPreferredTerminology(config, cwd)` reads the project-wide rules; `editPreferredTerminology(config, edit, cwd)` replaces, upserts or removes them. Upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched. The CLI prints these results, and the API uses core’s rule validation.
+The direct file-edit side of [Project Terms](#project-terms), owned by core config. Collection create and update can also provide a whole protected-terms list through the [Collection Lifecycle](#collection-lifecycle). Core’s pointer setters change `protectedTermsFile` and carry over the old list. `readProtectedTermsTarget(config, target, cwd)` returns stored terms, paths, warnings and the effective union before a write. `editProtectedTerms(target, view, edit)` applies add, remove or set and returns the resulting list and path. The CLI prints the read result before it writes. `loadPreferredTerminology(config, cwd)` reads the project-wide rules; `editPreferredTerminology(config, edit, cwd)` replaces, upserts or removes them. Upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched. The CLI prints these results, and the API uses core’s rule validation.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`cli.md`](cli.md#protected-terms-scoping), [`api.md`](api.md#error-mapping)
 
@@ -514,7 +644,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Typed Errors
 
-The errors core raises on purpose. Each is a subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) with a stable `code` (for example `RESOURCE_NOT_FOUND`) and typed payload fields (for example `key`). The message text comes from `ErrorMessages`. Adapters decide with `instanceof`, never by matching the message: the API maps each class to one HTTP status in `LingoTrackerExceptionFilter`, and the CLI prints the message. Domain validators throw plain `Error`; core converts them to typed errors in one place. A `.lingo-tracker.json` the server cannot use is typed too (`InvalidConfigError`, whose message names the field or pointer to fix), so its message survives the API's 500; an untyped failure answers a 500 with no message at all. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
+The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`). The API maps `kind` to HTTP status and retains special bodies for bundle, terminology, folder validation, and translation errors. The CLI prints the message and keeps its config and cancellation handling. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
 
 Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
 
@@ -547,7 +677,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
 
 ### Translator
 
-The one way core machine-translates text for a [collection](#collection). In code, `openTranslator(collection, { provider?, protectedTerms? })` in `libs/core/src/lib/translation/translator.ts` returns a `Translator`: `translate(entries, locales) → { values, skipped }`, and `problems` (a named protected-terms file that does not exist). Opening it checks that the collection's translation config is enabled (`AutoTranslationDisabledError`) and, unless a provider is injected, reads the API key (`TranslationError` `MISSING_API_KEY`) and builds the configured provider. For a whole-locale translation, core first runs `assertCanTranslateLocale`: auto-translation must be enabled and the target must be a configured, non-base locale. It reads the collection's [Project Terms](#project-terms) once for the protected terms, unless they are passed (`ProtectedTermsFileError` for a malformed file; a named file that does not exist is in `Translator.problems`, which its callers pass on as warnings). `translate` makes one provider call per locale and ignores the base locale. It never sends complex [ICU](#icu-format). It protects simple placeholders and skips a translation that lost a marker. It skips a translation that dropped a [protected term](#protected-term) present in the source. It returns every value normalized to ICU. Each skip carries a reason: `complex-icu`, `placeholder-mismatch` or `protected-term`. [Locale seeding](#locale-seeding), `translateExistingResource` and `translateLocale` all translate through it; they only choose what needs work (the [staleness rule](#staleness-rule)) and store the values. The provider is the seam: `GoogleTranslateV2Provider` in production, `InMemoryTranslationProvider` (a deterministic transform that records its calls, internal to core) in core's specs.
+The one way core machine-translates text for a [collection](#collection). In code, `openTranslator(collection, { provider?, protectedTerms? })` in `libs/core/src/lib/translation/translator.ts` returns a `Translator`: `translate(entries, locales) → { values, skipped }`, and `problems` (a named protected-terms file that does not exist). Opening it checks that the collection's translation config is enabled (`AutoTranslationDisabledError`) and, unless a provider is injected, reads the API key (`TranslationError` `MISSING_API_KEY`) and builds the configured provider. For a whole-locale translation, core first runs `assertCanTranslateLocale`: auto-translation must be enabled and the target must be a configured, non-base locale. It reads the collection's [Project Terms](#project-terms) once for the protected terms, unless they are passed (`ProtectedTermsFileError` for a malformed file; a named file that does not exist is in `Translator.problems`, which its callers pass on as warnings). `translate` makes one provider call per locale and ignores the base locale. It never sends complex [ICU](#icu-format). It protects simple placeholders and skips a translation that lost a marker. It skips a translation that dropped a [protected term](#protected-term) present in the source. It returns every value normalized to ICU. Each skip carries a reason: `complex-icu`, `placeholder-mismatch` or `protected-term`. [Locale seeding](#locale-seeding), `translateExistingResource` and `translateLocale` all translate through it; they only choose what needs work (the [staleness rule](#staleness-rule)) and store the values. The provider is the seam: `GoogleTranslateV2Provider` in production, `InMemoryTranslationProvider` (a deterministic transform that records its calls, internal to core) in core's specs. Google requests time out after 30 seconds and fail with a retryable `TranslationError` (`TIMEOUT`); a whole-locale run records that batch in `failures` and continues. An invalid timeout option raises `INVALID_REQUEST_TIMEOUT` when the provider is constructed. Before `translateLocale` stores a provider result, it reopens the resource folder and compares the current base checksum and target locale checksum and status with those read before translation. A changed or removed entry, or a target that no longer needs translation, goes into `skippedKeys` and is not overwritten.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline)
 

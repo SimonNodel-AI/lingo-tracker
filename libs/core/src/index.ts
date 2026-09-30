@@ -3,7 +3,7 @@
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
-export { addResource, deleteResource, editResource, moveResource } from './lib/resource';
+export { addResource, addResources, deleteResource, editResource, moveResource, moveResources } from './lib/resource';
 
 // Operations: folders
 export { createFolder, deleteFolder, moveFolder } from './lib/folder';
@@ -13,6 +13,7 @@ export {
   addCollection,
   addLocaleToCollection,
   deleteCollectionByName,
+  editCollectionTags,
   removeLocaleFromCollection,
   updateCollection,
 } from './collections-manager';
@@ -22,6 +23,7 @@ export {
   addBundleDefinition,
   deleteBundleDefinition,
   generateBundle,
+  generateBundles,
   validateBundleLocales,
   validateGenerateBundleRequest,
   planBundle,
@@ -31,10 +33,7 @@ export {
 // Operations: import
 export {
   detectImportFormat,
-  generateImportSummary,
-  importResources,
-  parseJsonImport,
-  parseXliffImport,
+  runImport,
 } from './lib/import';
 
 // Operations: export
@@ -44,8 +43,11 @@ export {
 } from './lib/export/export-common';
 export { exportTargetLocales, runExport } from './lib/export/run-export';
 
+// Operations: glossary
+export { buildGlossary, type BuildGlossaryOptions, type BuildGlossaryResult } from './lib/glossary/build-glossary';
+
 // Operations: normalize, translate, validate
-export { normalize } from './lib/normalize';
+export { emptyNormalizeCollectionsResult, normalize, normalizeCollections } from './lib/normalize';
 export {
   assertAutoTranslationEnabled,
   assertCanTranslateLocale,
@@ -66,6 +68,7 @@ export {
   displayTermPath,
   editPreferredTerminology,
   editProtectedTerms,
+  initConfig,
   readProtectedTermsTarget,
   type LoadPreferredTerminologyResult,
   loadConfig,
@@ -78,7 +81,6 @@ export {
   resolveGlobalProtectedTermsFilePath,
   resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
-  setCollectionProtectedTerms,
   setCollectionProtectedTermsFile,
   setGlobalProtectedTerms,
   setGlobalProtectedTermsFile,
@@ -115,6 +117,7 @@ export {
 // Read models: the resource tree, Resource Search and fingerprints behind the API's CollectionIndex and CLI find-similar
 export {
   computeTreeFingerprint,
+  clampSearchLimit,
   extractResourcesRecursively,
   extractSubtree,
   type FolderChild,
@@ -146,9 +149,11 @@ export {
   CollectionNotFoundError,
   ConfigNotFoundError,
   ConfigParseError,
+  type ErrorKind,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   type FolderPathPart,
+  ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
@@ -159,6 +164,7 @@ export {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  MultipleBundleConstantNameError,
   TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   ProtectedTermsFileError,
@@ -172,6 +178,7 @@ export { TranslationError } from './lib/translation';
 // Types: operation parameters and results
 export type {
   AddCollectionOptions,
+  CollectionTagEdit,
   AddLocaleToCollectionOptions,
   AddLocaleToCollectionResult,
   DeleteCollectionOptions,
@@ -179,14 +186,19 @@ export type {
   RemoveLocaleFromCollectionResult,
   UpdateCollectionOptions,
 } from './collections-manager';
+export type { AddResourcesResult, MoveResourcesOperation } from './lib/resource';
 export type {
   BundleDefinitionOperationOptions,
   BundlePlan,
   BundlePlanExampleKey,
   BundlePlanFile,
   BundleProgressEvent,
+  BundleRunOutcome,
+  BundleTypeOutcome,
   GenerateBundleParams,
   GenerateBundleResult,
+  GenerateBundlesOptions,
+  GenerateBundlesResult,
   PlanBundleParams,
   UpdateBundleDefinitionOptions,
 } from './lib/bundle';
@@ -208,19 +220,20 @@ export type {
   MoveFolderResult,
 } from './lib/folder';
 export type {
-  ICUAutoFix,
-  ICUAutoFixError,
-  ImportChange,
-  ImportChangeType,
-  ImportedResource,
   ImportFormat,
-  ImportParseOptions,
   ImportResult,
   ImportRunOptions,
-  ImportSummaryOptions,
-  StatusTransition,
+  ImportRunWarning,
+  RunImportOptions,
+  RunImportResult,
 } from './lib/import';
-export type { NormalizeOptions, NormalizeResult } from './lib/normalize';
+export type {
+  CollectionNormalizeResult,
+  NormalizeCollectionsOptions,
+  NormalizeCollectionsResult,
+  NormalizeOptions,
+  NormalizeResult,
+} from './lib/normalize';
 export type {
   ComputeTreeFingerprintOptions,
   LoadResourceTreeOptions,

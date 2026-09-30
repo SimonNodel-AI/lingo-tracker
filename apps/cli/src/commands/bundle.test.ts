@@ -8,15 +8,93 @@ vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false)
 
 vi.mock('@simoncodes-ca/core', async () => {
   const actual = await vi.importActual<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core');
-  return {
-    ...actual,
-    loadConfig: vi.fn(),
-    generateBundle: vi.fn(),
-  };
+  return { ...actual, loadConfig: vi.fn(), generateBundles: vi.fn() };
 });
 
 import * as core from '@simoncodes-ca/core';
-const mockGenerateBundle = core.generateBundle as ReturnType<typeof vi.fn>;
+const mockGenerateBundles = vi.mocked(core.generateBundles);
+type BundleEvent = Parameters<NonNullable<core.GenerateBundlesOptions['onEvent']>>[0];
+type BundleResult = core.GenerateBundleResult;
+type BundleRun = core.GenerateBundlesResult;
+
+function makeBundleResult(overrides: Partial<BundleResult> = {}): BundleResult {
+  return {
+    bundleKey: 'core',
+    filesGenerated: 3,
+    writtenFiles: [],
+    warnings: [],
+    localesProcessed: ['en', 'fr', 'es'],
+    keysPerLocale: {},
+    typeOutcome: { status: 'not-configured' },
+    ...overrides,
+  };
+}
+
+function setRun(events: readonly BundleEvent[], result: BundleRun): void {
+  mockGenerateBundles.mockImplementationOnce(async (_config, options) => {
+    for (const event of events) options.onEvent?.(event);
+    return result;
+  });
+}
+
+function setSingle(overrides: Partial<BundleResult> = {}, name = 'core'): void {
+  const result = makeBundleResult(overrides);
+  const outcome = { name, result };
+  const events: BundleEvent[] = [{ kind: 'start', name }];
+  if (result.typeOutcome.warning) events.push({ kind: 'type-warning', warning: result.typeOutcome.warning });
+  events.push({ kind: 'result', outcome });
+  setRun(events, {
+    outcomes: [outcome],
+    totals: { bundlesProcessed: 1, filesGenerated: result.filesGenerated, warningsCount: result.warnings.length },
+  });
+}
+
+function setFailure(error: Error, name = 'core'): void {
+  const outcome = { name, error };
+  setRun([{ kind: 'result', outcome }], {
+    outcomes: [outcome],
+    totals: { bundlesProcessed: 0, filesGenerated: 0, warningsCount: 0 },
+  });
+}
+
+function setTwo(first: Partial<BundleResult>, second: Partial<BundleResult>): void {
+  const firstResult = makeBundleResult(first);
+  const secondResult = makeBundleResult(second);
+  const firstOutcome = { name: 'core', result: firstResult };
+  const secondOutcome = { name: 'admin', result: secondResult };
+  setRun(
+    [
+      { kind: 'start', name: 'core' },
+      { kind: 'result', outcome: firstOutcome },
+      { kind: 'start', name: 'admin' },
+      { kind: 'result', outcome: secondOutcome },
+    ],
+    {
+      outcomes: [firstOutcome, secondOutcome],
+      totals: { bundlesProcessed: 2, filesGenerated: 5, warningsCount: 1 },
+    },
+  );
+}
+
+function setPartialFailure(message: string): void {
+  const failed = { name: 'core', error: new Error(message) };
+  const succeeded = {
+    name: 'admin',
+    result: makeBundleResult({ bundleKey: 'admin', filesGenerated: 2, localesProcessed: ['en', 'fr'] }),
+  };
+  setRun(
+    [
+      { kind: 'start', name: 'core' },
+      { kind: 'result', outcome: failed },
+      { kind: 'start', name: 'admin' },
+      { kind: 'result', outcome: succeeded },
+    ],
+    {
+      outcomes: [failed, succeeded],
+      totals: { bundlesProcessed: 1, filesGenerated: 2, warningsCount: 0 },
+    },
+  );
+}
 
 describe('bundleCommand', () => {
   const mockConfig = {
@@ -53,12 +131,10 @@ describe('bundleCommand', () => {
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
 
-    mockGenerateBundle.mockReturnValue({
-      bundleKey: 'core',
-      filesGenerated: 3,
-      warnings: [],
-      localesProcessed: ['en', 'fr', 'es'],
-      typeOutcome: { status: 'not-configured' },
+    mockGenerateBundles.mockReset();
+    mockGenerateBundles.mockResolvedValue({
+      outcomes: [],
+      totals: { bundlesProcessed: 0, filesGenerated: 0, warningsCount: 0 },
     });
   });
 
@@ -76,7 +152,7 @@ describe('bundleCommand', () => {
       await bundleCommand({});
 
       expect(core.loadConfig).toHaveBeenCalledWith({ cwd: '/test' });
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(mockGenerateBundles).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
 
@@ -107,67 +183,44 @@ describe('bundleCommand', () => {
       await bundleCommand({});
 
       expect(process.exitCode).toBe(0);
-      expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleKey: 'core',
-        }),
-      );
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleKey: 'admin',
-        }),
-      );
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: undefined }));
     });
 
     it('should process single bundle when --name is provided', async () => {
       await bundleCommand({ name: 'core' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledTimes(1);
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleKey: 'core',
-        }),
-      );
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: ['core'] }));
     });
 
     it('should process multiple bundles when comma-separated names are provided', async () => {
       await bundleCommand({ name: 'core,admin' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleKey: 'core',
-        }),
-      );
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleKey: 'admin',
-        }),
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
+        expect.objectContaining({ names: ['core', 'admin'] }),
       );
     });
 
     it('should handle bundle names with spaces after comma', async () => {
       await bundleCommand({ name: 'core, admin' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
+        expect.objectContaining({ names: ['core', 'admin'] }),
+      );
     });
 
     it('should show error for non-existent bundle', async () => {
-      mockGenerateBundle.mockImplementation(() => {
-        throw new core.BundleNotFoundError('nonexistent');
-      });
+      setFailure(new core.BundleNotFoundError('nonexistent'), 'nonexistent');
       await bundleCommand({ name: 'nonexistent' });
 
       expect(console.error).toHaveBeenCalledWith('❌ Bundle "nonexistent" not found.');
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: ['nonexistent'] }));
       expect(process.exitCode).toBe(1);
     });
 
     it('reports a prototype-member name as not found', async () => {
-      mockGenerateBundle.mockImplementation(() => {
-        throw new core.BundleNotFoundError('constructor');
-      });
+      setFailure(new core.BundleNotFoundError('constructor'), 'constructor');
 
       await bundleCommand({ name: 'constructor' });
 
@@ -176,13 +229,11 @@ describe('bundleCommand', () => {
     });
 
     it('reports an unconfigured locale from core and exits 1', async () => {
-      mockGenerateBundle.mockImplementation(() => {
-        throw new core.InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales');
-      });
+      setFailure(new core.InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales'));
 
       await bundleCommand({ name: 'core', locale: 'xx' });
 
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ locales: ['xx'] }));
       expect(console.error).toHaveBeenCalledWith('❌ Unknown locale "xx": must be defined in the project locales');
       expect(process.exitCode).toBe(1);
     });
@@ -192,7 +243,7 @@ describe('bundleCommand', () => {
     it('passes the directory the config was loaded from to generateBundle', async () => {
       await bundleCommand({ name: 'core' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(expect.objectContaining({ cwd: '/test' }));
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ cwd: '/test' }));
     });
   });
 
@@ -200,7 +251,8 @@ describe('bundleCommand', () => {
     it('should pass single locale filter to generateBundle', async () => {
       await bundleCommand({ name: 'core', locale: 'en' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
           locales: ['en'],
         }),
@@ -210,7 +262,8 @@ describe('bundleCommand', () => {
     it('should pass multiple locales filter to generateBundle', async () => {
       await bundleCommand({ name: 'core', locale: 'en,fr' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
           locales: ['en', 'fr'],
         }),
@@ -220,7 +273,8 @@ describe('bundleCommand', () => {
     it('should handle locale filter with spaces', async () => {
       await bundleCommand({ name: 'core', locale: 'en, fr, es' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
           locales: ['en', 'fr', 'es'],
         }),
@@ -230,7 +284,8 @@ describe('bundleCommand', () => {
     it('should not pass locales when no filter is provided', async () => {
       await bundleCommand({ name: 'core' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
           locales: undefined,
         }),
@@ -239,8 +294,46 @@ describe('bundleCommand', () => {
   });
 
   describe('output modes', () => {
+    it('prints a returned legacy type warning on the existing console stream', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      setSingle({
+        bundleKey: 'core',
+        filesGenerated: 1,
+        warnings: [],
+        localesProcessed: ['en'],
+        typeOutcome: {
+          status: 'written',
+          path: 'types.ts',
+          keysCount: 1,
+          warning: "Warning: Bundle 'core': 'typeDist' is deprecated",
+        },
+      });
+
+      await bundleCommand({ name: 'core' });
+
+      expect(warn).toHaveBeenCalledWith("Warning: Bundle 'core': 'typeDist' is deprecated");
+      warn.mockRestore();
+    });
+
+    it('prints the legacy warning before a failed type outcome', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      setSingle({
+        typeOutcome: {
+          status: 'failed',
+          reason: 'disk full',
+          warning: "Warning: Bundle 'core': 'typeDist' is deprecated",
+        },
+      });
+
+      await bundleCommand({ name: 'core' });
+
+      expect(warn).toHaveBeenCalledWith("Warning: Bundle 'core': 'typeDist' is deprecated");
+      expect(console.error).toHaveBeenCalledWith('❌ Type generation failed: disk full');
+      warn.mockRestore();
+    });
+
     it('should display normal output for single bundle', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: [],
@@ -256,13 +349,14 @@ describe('bundleCommand', () => {
     });
 
     it('should suppress progress and success output in quiet mode', async () => {
+      setSingle();
       await bundleCommand({ name: 'core', quiet: true });
 
       expect(console.log).not.toHaveBeenCalled();
     });
 
     it('should display warnings in quiet mode', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: ['Warning 1'],
@@ -278,9 +372,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display errors in quiet mode', async () => {
-      mockGenerateBundle.mockImplementation(() => {
-        throw new Error('Bundle generation failed');
-      });
+      setFailure(new Error('Bundle generation failed'));
 
       await bundleCommand({ name: 'core', quiet: true });
 
@@ -290,7 +382,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display type generation errors in quiet mode', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: [],
@@ -306,7 +398,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display warnings count when warnings exist', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: ['Warning 1', 'Warning 2'],
@@ -321,7 +413,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display warning details in verbose mode', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: ['Warning 1', 'Warning 2'],
@@ -335,27 +427,29 @@ describe('bundleCommand', () => {
     });
 
     it('should display locale filter in verbose mode', async () => {
+      setSingle();
       await bundleCommand({ name: 'core', locale: 'en,fr', verbose: true });
 
       expect(console.log).toHaveBeenCalledWith('  Locales: en, fr');
     });
 
     it('should display summary for multiple bundles', async () => {
-      mockGenerateBundle
-        .mockReturnValueOnce({
+      setTwo(
+        {
           bundleKey: 'core',
           filesGenerated: 3,
           warnings: [],
           localesProcessed: ['en', 'fr', 'es'],
           typeOutcome: { status: 'not-configured' },
-        })
-        .mockReturnValueOnce({
+        },
+        {
           bundleKey: 'admin',
           filesGenerated: 2,
           warnings: ['Warning 1'],
           localesProcessed: ['en', 'fr'],
           typeOutcome: { status: 'not-configured' },
-        });
+        },
+      );
 
       await bundleCommand({ name: 'core,admin' });
 
@@ -366,21 +460,22 @@ describe('bundleCommand', () => {
     });
 
     it('should display warning totals in quiet mode for multiple bundles', async () => {
-      mockGenerateBundle
-        .mockReturnValueOnce({
+      setTwo(
+        {
           bundleKey: 'core',
           filesGenerated: 3,
           warnings: [],
           localesProcessed: ['en', 'fr', 'es'],
           typeOutcome: { status: 'not-configured' },
-        })
-        .mockReturnValueOnce({
+        },
+        {
           bundleKey: 'admin',
           filesGenerated: 2,
           warnings: ['Warning 1'],
           localesProcessed: ['en', 'fr'],
           typeOutcome: { status: 'not-configured' },
-        });
+        },
+      );
 
       await bundleCommand({ name: 'core,admin', quiet: true });
 
@@ -393,7 +488,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display type generation success', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: [],
@@ -407,7 +502,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display type generation skipped (empty)', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: [],
@@ -421,7 +516,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display type generation skipped (not-configured reason from result)', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: [],
@@ -435,7 +530,7 @@ describe('bundleCommand', () => {
     });
 
     it('should display type generation skipped (no config)', async () => {
-      mockGenerateBundle.mockReturnValue({
+      setSingle({
         bundleKey: 'core',
         filesGenerated: 3,
         warnings: [],
@@ -453,42 +548,49 @@ describe('bundleCommand', () => {
     it('should pass tokenConstantName to generateBundle when --token-constant-name is provided', async () => {
       await bundleCommand({ name: 'core', tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
-          bundleKey: 'core',
-          tokenConstantName: 'MY_CUSTOM_TOKENS',
+          names: ['core'],
+          overrides: expect.objectContaining({ tokenConstantName: 'MY_CUSTOM_TOKENS' }),
         }),
       );
     });
 
     it('should error when --token-constant-name is used with multiple bundles via --name', async () => {
+      mockGenerateBundles.mockRejectedValueOnce(new core.MultipleBundleConstantNameError());
       await bundleCommand({ name: 'core,admin', tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
       expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
+        expect.objectContaining({ names: ['core', 'admin'] }),
+      );
       expect(process.exitCode).toBe(1);
     });
 
     it('should error when --token-constant-name is used in non-TTY mode (all bundles)', async () => {
       // In non-TTY mode with no --name, all bundles are processed
+      mockGenerateBundles.mockRejectedValueOnce(new core.MultipleBundleConstantNameError());
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
       expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: undefined }));
     });
 
     it('should not pass tokenConstantName when not provided', async () => {
       await bundleCommand({ name: 'core' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
-          tokenConstantName: undefined,
+          overrides: expect.objectContaining({ tokenConstantName: undefined }),
         }),
       );
     });
@@ -498,9 +600,10 @@ describe('bundleCommand', () => {
     it('passes debugKeysLocale as "99" when --debug-keys flag is set (boolean true)', async () => {
       await bundleCommand({ name: 'core', debugKeys: true });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
-          debugKeysLocale: '99',
+          overrides: expect.objectContaining({ debugKeysLocale: '99' }),
         }),
       );
     });
@@ -508,9 +611,10 @@ describe('bundleCommand', () => {
     it('passes debugKeysLocale with custom locale when --debug-keys <locale> is provided', async () => {
       await bundleCommand({ name: 'core', debugKeys: 'keys' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
-          debugKeysLocale: 'keys',
+          overrides: expect.objectContaining({ debugKeysLocale: 'keys' }),
         }),
       );
     });
@@ -518,9 +622,10 @@ describe('bundleCommand', () => {
     it('passes undefined debugKeysLocale when --debug-keys is not set', async () => {
       await bundleCommand({ name: 'core' });
 
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
+      expect(mockGenerateBundles).toHaveBeenCalledWith(
+        mockConfig,
         expect.objectContaining({
-          debugKeysLocale: undefined,
+          overrides: expect.objectContaining({ debugKeysLocale: undefined }),
         }),
       );
     });
@@ -528,38 +633,18 @@ describe('bundleCommand', () => {
 
   describe('error handling', () => {
     it('should handle generateBundle errors and continue', async () => {
-      mockGenerateBundle
-        .mockImplementationOnce(() => {
-          throw new Error('Bundle generation failed');
-        })
-        .mockReturnValueOnce({
-          bundleKey: 'admin',
-          filesGenerated: 2,
-          warnings: [],
-          localesProcessed: ['en', 'fr'],
-          typeOutcome: { status: 'not-configured' },
-        });
+      setPartialFailure('Bundle generation failed');
 
       await bundleCommand({ name: 'core,admin' });
 
       expect(console.error).toHaveBeenCalledWith('❌ Bundle generation failed');
       expect(console.log).toHaveBeenCalledWith('🔄 Generating bundle: admin');
-      expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
+      expect(mockGenerateBundles).toHaveBeenCalledTimes(1);
       expect(process.exitCode).toBe(1);
     });
 
     it('should show error count in summary', async () => {
-      mockGenerateBundle
-        .mockImplementationOnce(() => {
-          throw new Error('Failed');
-        })
-        .mockReturnValueOnce({
-          bundleKey: 'admin',
-          filesGenerated: 2,
-          warnings: [],
-          localesProcessed: ['en', 'fr'],
-          typeOutcome: { status: 'not-configured' },
-        });
+      setPartialFailure('Failed');
 
       await bundleCommand({ name: 'core,admin' });
 
@@ -597,7 +682,7 @@ describe('bundleCommand', () => {
 
       await bundleCommand({});
 
-      expect(mockGenerateBundle).toHaveBeenCalledTimes(2);
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: undefined }));
     });
 
     it('should process single bundle when specific bundle is selected', async () => {
@@ -607,25 +692,21 @@ describe('bundleCommand', () => {
 
       await bundleCommand({});
 
-      expect(mockGenerateBundle).toHaveBeenCalledTimes(1);
-      expect(mockGenerateBundle).toHaveBeenCalledWith(
-        expect.objectContaining({
-          bundleKey: 'core',
-        }),
-      );
+      expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: ['core'] }));
     });
 
     it('should error when "All bundles" is selected and --token-constant-name is set', async () => {
       vi.mocked(prompts).mockResolvedValue({
         bundleOrAll: '__ALL__',
       });
+      mockGenerateBundles.mockRejectedValueOnce(new core.MultipleBundleConstantNameError());
 
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
       expect(console.error).toHaveBeenCalledWith(
         expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
       );
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(mockGenerateBundles).toHaveBeenCalledTimes(1);
     });
 
     it('should report prompt cancellation and return without exiting or generating', async () => {
@@ -640,7 +721,7 @@ describe('bundleCommand', () => {
       await expect(bundleCommand({})).resolves.toBeUndefined();
 
       expect(console.error).toHaveBeenCalledWith('❌ Bundle generation cancelled.');
-      expect(mockGenerateBundle).not.toHaveBeenCalled();
+      expect(mockGenerateBundles).not.toHaveBeenCalled();
       expect(exit).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
       exit.mockRestore();

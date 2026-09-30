@@ -71,7 +71,10 @@ describe('initCommand', () => {
       },
     };
 
-    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, JSON.stringify(expectedConfig, null, 2));
+    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, JSON.stringify(expectedConfig, null, 2), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
   });
 
   it('should use default values when parameters are not provided', async () => {
@@ -104,7 +107,10 @@ describe('initCommand', () => {
       },
     };
 
-    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, JSON.stringify(expectedConfig, null, 2));
+    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, JSON.stringify(expectedConfig, null, 2), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
   });
 
   it('should not write file if config already exists', async () => {
@@ -118,6 +124,25 @@ describe('initCommand', () => {
     await initCommand(options);
 
     expect(mockWriteFileSync).not.toHaveBeenCalled();
+  });
+
+  it('reports an existing config if another writer creates it after the prompt check', async () => {
+    mockExistsSync.mockReturnValue(false);
+    mockWriteFileSync.mockImplementationOnce(() => {
+      const error = new Error('file exists') as NodeJS.ErrnoException;
+      error.code = 'EEXIST';
+      throw error;
+    });
+
+    await initCommand({ collectionName: 'Main', translationsFolder: 'src/i18n' });
+
+    expect(mockWriteFileSync).toHaveBeenCalledWith(
+      resolve('/test/project', '.lingo-tracker.json'),
+      expect.any(String),
+      { encoding: 'utf8', flag: 'wx' },
+    );
+    expect(console.error).toHaveBeenCalledWith('❌ .lingo-tracker.json already exists');
+    expect(process.exitCode).toBe(1);
   });
 
   it('should create config with custom bundle settings when setup bundle is accepted', async () => {
@@ -137,7 +162,10 @@ describe('initCommand', () => {
     await initCommand(options);
 
     const expectedConfigPath = resolve('/test/project', '.lingo-tracker.json');
-    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, expect.any(String));
+    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, expect.any(String), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
 
     const writtenConfig = JSON.parse(mockWriteFileSync.mock.calls[0][1] as string);
     expect(writtenConfig.bundles.main).toEqual({
@@ -191,7 +219,10 @@ describe('initCommand', () => {
     await initCommand(options);
 
     const expectedConfigPath = resolve('/test/project', '.lingo-tracker.json');
-    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, expect.any(String));
+    expect(mockWriteFileSync).toHaveBeenCalledWith(expectedConfigPath, expect.any(String), {
+      encoding: 'utf8',
+      flag: 'wx',
+    });
 
     const writtenConfig = JSON.parse(mockWriteFileSync.mock.calls[0][1] as string);
     expect(writtenConfig.bundles.main).toMatchObject({

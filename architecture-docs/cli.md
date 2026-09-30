@@ -1,6 +1,6 @@
 # CLI (`apps/cli`)
 
-The LingoTracker CLI is a Node.js command-line binary built with [Commander](https://github.com/tj/commander.js). It provides every day-to-day translation management operation — from project initialization and resource CRUD through bundle generation, import/export, and CI/CD validation — as a single `lingo-tracker` executable. Each command is a prompt schema plus a call to `@simoncodes-ca/core`, run by one [Command Runner](glossary.md#command-runner). The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes. The command owns its questions, its core call and its output formatting. Resource files are read and written only through core. The CLI itself writes a few files of its own: `init` writes `.lingo-tracker.json`, `export` and `import` write their summary files, `glossary` writes its JSON output, and `install-skill` writes the skill templates.
+The LingoTracker CLI is a Node.js command-line binary built with [Commander](https://github.com/tj/commander.js). It provides every day-to-day translation management operation — from project initialization and resource CRUD through bundle generation, import/export, and CI/CD validation — as a single `lingo-tracker` executable. Each command is a prompt schema plus a call to `@simoncodes-ca/core`, run by one [Command Runner](glossary.md#command-runner). The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes. The command owns its questions, its core call and its output formatting. Resource files are read and written only through core. The CLI itself writes a few files of its own: `init` calls core `initConfig` for `.lingo-tracker.json`, `export` and `import` write their summary files, `glossary` writes its JSON output, and `install-skill` writes the skill templates.
 
 Return to [architecture README](README.md).
 
@@ -35,10 +35,10 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 
 | Command | Key Options / Flags | Core Function Called |
 |---|---|---|
-| `init` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales`, `--setup-bundle`, `--bundle-dist`, `--bundle-name`, `--token-casing`, `--type-dist-file`, `--enable-auto-translation`, `--translation-provider`, `--translation-api-key-env` | Writes `.lingo-tracker.json` directly (no `@simoncodes-ca/core` function — uses `CONFIG_FILENAME`, `DEFAULT_CONFIG` constants) |
+| `init` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales`, `--setup-bundle`, `--bundle-dist`, `--bundle-name`, `--token-casing`, `--type-dist-file`, `--enable-auto-translation`, `--translation-provider`, `--translation-api-key-env` | Calls core `initConfig()` to validate and write `.lingo-tracker.json`; keeps the same default JSON bytes |
 | `add-collection` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales` | `addCollection()` |
 | `delete-collection` | `--collection-name`, `--yes` | `deleteCollectionByName()`. Interactive, it first asks `Delete collection "x" (translations folder: …)?` unless `--yes`; a decline prints `❌ Delete collection cancelled.` and exits 0. Non-interactive, it does not ask. Only the registration is removed; the files stay |
-| `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | `updateCollection()` with the stored collection and the new `tags` |
+| `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | `editCollectionTags()`; core checks flag combinations and normalizes tags |
 | `add-locale` | `--collection`, `--locale` | `addLocaleToCollection()` |
 | `remove-locale` | `--collection`, `--locale` | `removeLocaleFromCollection()` |
 | `add-resource` | `--collection`, `--key`, `--value`, `--comment`, `--tags`, `--target-folder`, `--translations <json>` | `addResource()` (locales without a `--translations` value are seeded by core: [locale seeding](glossary.md#locale-seeding)). `--translations` is parsed inside the command; malformed JSON, or anything but an array of `{ locale, value, status }`, exits 1 with `❌ Invalid --translations …` |
@@ -49,10 +49,10 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `translate-locale` | `--collection`, `--locale`, `--verbose` | `translateLocale(collection, { targetLocale, onProgress })` (through the [Translator](glossary.md#translator)); the summary prints `Skipped (needs human translation)` for complex ICU, lost placeholders and dropped protected terms |
 | `bundle` | `--name`, `--locale`, `--quiet`, `--verbose`, `--token-casing`, `--token-constant-name`, `--no-transform-icu-to-transloco`, `--debug-keys` | `generateBundle()` (with the project `cwd`) |
 | `export` | `-f/--format`, `-c/--collection`, `-l/--locale`, `-s/--status`, `-t/--tags`, `-o/--output`, `--structure`, `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name`, `--filename`, `--no-protect-notes`, `--dry-run`, `--verbose` | `runExport()` |
-| `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `parseJsonImport()` / `parseXliffImport()` → `importResources()` |
+| `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `runImport()` |
 | `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | Command Runner opens every collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
 | `find-similar` | `--collection`, `--value`, `--max-results` | `readCollection()` → `searchResources(…, { mode: 'similar-value', limit })` ([Resource Search](glossary.md#resource-search)) |
-| `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `readCollection()` (matching/extraction done in the command, not core) |
+| `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `buildGlossary()` ([Term Glossary](glossary.md#term-glossary)) |
 | `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `setGlobal/CollectionProtectedTermsFile()`, `readProtectedTermsTarget()`, `editProtectedTerms()` |
 | `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | `loadPreferredTerminology()` for display, then `editPreferredTerminology()` for case-insensitive upsert/remove, validation and write |
 | `install-skill` | `--collection <spec>` (repeatable), `--dir`, `--token-casing` | No core call — generates a `.claude/` skill file by template |
@@ -84,15 +84,13 @@ A folder whose files cannot be read fails validation. The summary lists it under
 
 The Command Runner resolves the configured collections before `normalize` checks its own options. With an empty config, it reports `No collections found. Run \`lingo-tracker add-collection\` first.` before checking `--collection` or `--all`. The command keeps its interactive collection select, the `All collections` choice, and the `Are you sure?` confirmation for all.
 
-`normalize` decides what to do with the opened read-only collections. An explicitly named read-only collection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
+`normalizeCollections` in core decides what to do with the opened read-only collections. The command maps flags, prints core events, and prints the returned totals and JSON payload. Any read-only collection in a named selection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
+
+The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and leaves single-bundle API jobs on `generateBundle`. A legacy `typeDist` warning comes from the type outcome and is printed on the same console stream.
 
 ### `glossary` pipeline
 
-The `glossary` command is intentionally CLI-only (no new core API surface) but reads resources through the core [Collection Reader](glossary.md#collection-reader), `readCollection()` (the same reader that `export`, `validate` and `bundle` use). Its logic lives in three sibling modules under `apps/cli/src/commands/`:
-
-- `glossary-extractor.ts` — the **extraction seam**. `CandidateExtractor = (block) => Candidate[]`, with a deterministic stopword + unigram/bigram default (`ngramExtractor`). `resolveExtractor(mode)` selects the implementation; `ai` is reserved and throws a clear not-implemented error today. This boundary lets an AI-based extractor replace the n-gram one without touching matching/output.
-- `glossary-matcher.ts` — matches candidates (over `FlatEntry[]`) against base-locale values only, scores (exact > whole-word containment), keeps top-1 per candidate, dedupes across candidates, and applies the per-locale status filter.
-- `glossary.ts` — orchestration: resolve input (`--text` → `--input` → stdin), read each collection with `readCollection()` (stripping each collection's base locale from `translations`; an unreadable folder is a warning on stderr, so `--stdout` output stays valid JSON), run extractor → matcher, serialize the header + term-array schema, write to a file or stdout.
+The command resolves input (`--text` → `--input` → stdin), selects one or all opened collections through the runner, maps flags to `buildGlossary(collections, text, options)`, and writes the returned JSON payload to a file or stdout. Core owns extraction, matching, the [Collection Reader](glossary.md#collection-reader) call, and each collection's effective base and target locales. Without `--locales`, it uses each opened collection's targets; an explicit `--locales` list can include stored translations outside those targets and removes only the base locale. Reader problems return separately from the payload; the command prints them as warnings on stderr, so `--stdout` stays valid JSON. With different base locales, core raises a typed error and the runner exits 1. See [Term Glossary](glossary.md#term-glossary) for the matching and locale rules.
 
 For the full description of what each core function does internally, see [core-library.md](core-library.md).
 
@@ -102,7 +100,7 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 
 ## Command Runner
 
-`apps/cli/src/runner/command-runner.ts` is the one place that runs a command. `main.ts` keeps the Commander option declarations and calls the function that `defineCommand` returns. That function does the same steps for every command, in this order:
+`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. That function does the same steps for every command, in this order:
 
 1. Finds the project root: `INIT_CWD` (set by pnpm to the directory where the command was typed), else `process.cwd()`.
 2. Reads the [interactive rule](#the-interactive-rule) once.
@@ -132,6 +130,8 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 ```
 
 `defineCommand<Options>()` is curried: the options type is given, and the rest is inferred from the spec. The spec fields:
+
+Command modules retain their explicit `Options` interfaces. Those interfaces also describe prompt answers and conditional values that Commander flag definitions cannot infer; keeping them makes the runner context and `required` checks precise. `CommandRegistration<Options>` takes `{ name, description, options, argument?, helpText?, load, mapOptions? }`. The type of the loaded handler fixes `Options`; `mapOptions` handles raw Commander values only where conversion is needed. An option definition takes a Commander `Command`, registers a fresh option, and returns nothing. `option({ flags, description?, defaultValue?, parse? })` distinguishes help descriptions from parsed defaults. Choice and custom parser failures still come from Commander or the existing parser, before the lazy command import.
 
 | Field | Meaning |
 |---|---|
@@ -260,7 +260,7 @@ So a command whose stdout is piped keeps it clean. `glossary --stdout` writes on
 
 **Breaking change for scripts:** failure and warning text that a script captured from stdout is now on stderr (`2>&1` restores the old combined output).
 
-Core raises [typed errors](glossary.md#typed-errors) whose message is already the user-facing text. A command does not catch them: it lets them reach the runner, which prints them. The runner branches on the class only for the config errors (stderr, with a hint) and a cancel; every other error takes one path:
+Core raises [typed errors](glossary.md#typed-errors) whose message is already the user-facing text. A command does not catch them: it lets them reach the runner, which prints them. The runner branches on the class only for the config errors (stderr, with a hint) and a cancel; it does not need the error's HTTP `kind`. `CoreOperationError` keeps the CLI text of former plain failures. Every other error takes one path:
 
 | Thrown | Printed | Exit code |
 |---|---|---|
@@ -350,7 +350,7 @@ It then opens the name with core `openCollection(config, name, { cwd, writable }
 
 **Many-collection resolution.** The runner first opens every configured collection for prompt choices and fails immediately when the config is empty. After prompts, `many.select` chooses `'all'` or an explicit name list. The runner deduplicates names in order and opens the selected set. `validate` reads all; `export` parses its comma-separated `--collection` choice; `glossary` reads all or one; `normalize` selects one or all and confirms all interactively. An unknown name raises core's `CollectionNotFoundError` and exits 1.
 
-**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for one read-only collection: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. The many-collection mode opens for reading; [normalize applies its own read-only rule](#normalize-collection-selection). `move` still opens its destination with core's `writable: true`.
+**Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for one read-only collection: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. The many-collection mode opens for reading; [core normalizeCollections applies the read-only rule](#normalize-collection-selection). `move` still opens its destination with core's `writable: true`.
 
 ### Resolution Flowchart
 
@@ -385,6 +385,8 @@ A command spec gives flags in and checks the core call and the exit code:
 ## Shared Utilities
 
 All shared utilities live in `apps/cli/src/utils/` and are re-exported from `apps/cli/src/utils/index.ts` as a flat namespace. Commands import from `'../utils'`.
+
+`writeRunSummary(kind, text)` builds a temporary summary path and writes the Markdown from an import or export run. The commands print the path after a successful write. Import calls the run's `summary()` after displaying results; it catches generation or write failures and prints its existing warning. A dry run does not call `summary()`. Export lets a write failure reach the runner.
 
 The Command Runner and the interactive rule live in `apps/cli/src/runner/` ([Command Runner](#command-runner)); commands import them from `'../runner/command-runner'`.
 
@@ -421,7 +423,7 @@ Prompting itself is done by the runner (`prompts` in the spec, `ctx.ask` in `run
 
 ### Result Aggregator (`result-aggregator.ts`)
 
-`aggregateNumericFields<T>(results, numericFields)` — sums a specified list of numeric fields across an array of result objects. Used by `normalize` (which processes multiple collections) to compute combined totals before printing the summary. Eliminates boilerplate `reduce` patterns and ensures new metric fields are not silently missed in the aggregate.
+`aggregateNumericFields<T>(results, numericFields)` — sums a specified list of numeric fields across an array of result objects. Normalization totals are now computed by core `normalizeCollections`; this utility remains available to other CLI callers.
 
 ---
 

@@ -107,7 +107,7 @@ describe('CollectionFormDialog — create mode', () => {
       expect(mockDialogRef.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'my-collection' }));
     });
 
-    it('should stay open on a taken name and show the conflict on the name field until it is edited', async () => {
+    it('should render a taken-name refusal on the name field and keep the dialog open', async () => {
       store.createCollection.mockReturnValue(
         rejection(409, { message: 'Collection "my-collection" already exists', error: 'Conflict' }),
       );
@@ -123,7 +123,6 @@ describe('CollectionFormDialog — create mode', () => {
       expect(submitError()).toBeNull();
 
       component.form.controls.name.setValue('other');
-
       expect(component.showNameConflict).toBe(false);
       expect(component.form.controls.name.valid).toBe(true);
     });
@@ -625,6 +624,34 @@ describe('CollectionFormDialog — edit mode', () => {
 
   it('should open the disclosure when protected terms already exist', () => {
     expect(component.advancedOpen()).toBe(true);
+  });
+});
+
+describe('CollectionFormDialog — edit mode with stored protected terms', () => {
+  it('should show and save stored protected terms verbatim, including untrimmed values', async () => {
+    const dirtyTerms = ['a', ' a', 'b'];
+    const { fixture, mockDialogRef } = buildHarness({
+      mode: 'edit',
+      name: 'my-app',
+      config: {
+        translationsFolder: './i18n',
+        baseLocale: 'en',
+        locales: ['en'],
+        protectedTerms: dirtyTerms,
+        protectedTermsFile: 'i18n/terms.json',
+      },
+    });
+    const dialog = fixture.componentInstance;
+
+    expect(dialog.protectedTermsList()).toEqual(dirtyTerms);
+    expect(fixture.nativeElement.querySelectorAll('[aria-labelledby="protected-terms-label"] .text-chip')).toHaveLength(
+      3,
+    );
+    dialog.addProtectedTermValue(' a ');
+    expect(dialog.protectedTermsList()).toEqual(dirtyTerms);
+    await dialog.onSubmit();
+
+    expect(mockDialogRef.close.mock.calls[0]?.[0].config.protectedTerms).toEqual(dirtyTerms);
   });
 });
 

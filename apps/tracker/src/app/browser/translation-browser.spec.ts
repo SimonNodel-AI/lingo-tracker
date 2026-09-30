@@ -3,7 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import type { ComponentFixture } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectionSettings } from '../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
 import { HeaderContextService } from '../shared/services/header-context.service';
@@ -88,6 +88,32 @@ describe('TranslationBrowser - Integration', () => {
     // Should now be in adding folder state
     expect(component.store.isAddingFolder()).toBe(true);
     expect(component.store.addFolderParentPath()).toBe(null);
+  });
+
+  it('does not start a folder draft from the shortcut in a read-only collection', () => {
+    component.store.openCollection(
+      collectionSettings({
+        name: 'test-collection',
+        locales: ['en'],
+        readOnly: true,
+      }),
+    );
+    const start = vi.spyOn(component.store, 'startAddingFolder');
+    component.onCreateFolderShortcut(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, shiftKey: true }));
+    expect(start).not.toHaveBeenCalled();
+    expect(component.store.isAddingFolder()).toBe(false);
+  });
+
+  it('does not start a folder draft from the shortcut while folder navigation is disabled', () => {
+    component.store.openCollection(collectionSettings({ name: 'test-collection', locales: ['en'] }));
+    component.store.showQuery('save');
+    expect(component.store.isReadOnly()).toBe(false);
+    expect(component.store.effectiveDisabled()).toBe(true);
+    const start = vi.spyOn(component.store, 'startAddingFolder');
+
+    component.onCreateFolderShortcut(new KeyboardEvent('keydown', { key: 'n', ctrlKey: true, shiftKey: true }));
+
+    expect(start).not.toHaveBeenCalled();
   });
 
   it('should not trigger add folder when keyboard shortcut is pressed while focused on input', () => {

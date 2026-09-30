@@ -74,6 +74,12 @@ describe('matchGlossary', () => {
     expect(result[0].translations).toEqual({ fr: 'Enregistrer' });
   });
 
+  it('limits an entry to its own locales when the matcher receives a wider locale list', () => {
+    const result = matchGlossary([ENTRY({ locales: ['fr'] })], [{ term: 'save' }], { locales: ['fr', 'es'] });
+    expect(result[0]?.translations).toEqual({ fr: 'Enregistrer' });
+    expect(result[0]?.status).toEqual({ fr: 'verified' });
+  });
+
   it('drops an entry with no usable locales after filtering', () => {
     const result = matchGlossary([ENTRY({})], [{ term: 'save' }], { locales: ['de'] });
     expect(result).toHaveLength(0);

@@ -285,7 +285,7 @@ describe('generateBundle (real fs)', () => {
       expect(result.typeOutcome.status).toBe('not-configured');
     });
 
-    it('supports deprecated typeDist and emits its deprecation warning', async () => {
+    it('supports deprecated typeDist and returns its deprecation warning', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const common = seed('common', { welcome: { source: 'Welcome' } });
       const legacy = { ...definition(), typeDist: 'types/legacy.ts' } as unknown as BundleDefinition;
@@ -299,7 +299,8 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome.status).toBe('written');
       expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining("'typeDist' is deprecated"));
+      expect(result.typeOutcome.warning).toContain("'typeDist' is deprecated");
+      expect(warn).not.toHaveBeenCalled();
     });
 
     it('uses typeDistFile without warning when current and deprecated keys are both present', async () => {

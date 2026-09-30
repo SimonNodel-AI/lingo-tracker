@@ -28,10 +28,9 @@ jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
   return {
     ...actual,
-    addResource: jest.fn(),
+    addResources: jest.fn(),
     deleteResource: jest.fn(),
-    moveResource: jest.fn(),
-    moveResourcesByPattern: jest.fn(),
+    moveResources: jest.fn(),
     editResource: jest.fn(),
     translateExistingResource: jest.fn(),
     extractResourcesRecursively: jest.fn(),
@@ -40,6 +39,14 @@ jest.mock('@simoncodes-ca/core', () => {
 
 /** What core returns when a stored value breaks no rule and the rule file is fine. */
 const noTerminology = { findings: [], problems: [] };
+const batchResult = (entriesCreated: number, extra: Record<string, unknown> = {}) => ({
+  entriesCreated,
+  created: entriesCreated > 0,
+  skippedLocales: [],
+  terminology: noTerminology,
+  mutations: [],
+  ...extra,
+});
 
 describe('ResourcesController', () => {
   let resourcesModule: TestingModule;
@@ -100,284 +107,138 @@ describe('ResourcesController', () => {
   });
 
   describe('createResources', () => {
+    const dto = { key: 'app.button.ok', baseValue: 'OK' };
+    const batch = () => core.addResources as jest.Mock;
+
     it('should successfully create a single resource', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true });
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      const result = await resourcesController.createResources('test-collection', dto);
-
-      expect(result).toEqual({
+      batch().mockResolvedValue(batchResult(1));
+      expect(await resourcesController.createResources('test-collection', dto)).toEqual({
         entriesCreated: 1,
         created: true,
       });
-      expect(addResource).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'test-collection',
-          translationsFolder: resolve('./translations/test'),
-          baseLocale: 'en',
-        }),
-        {
-          key: 'app.button.ok',
-          baseValue: 'OK',
-          comment: undefined,
-          tags: undefined,
-          targetFolder: undefined,
-          translations: undefined,
-        },
+      expect(batch()).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        [
+          {
+            key: dto.key,
+            baseValue: dto.baseValue,
+            comment: undefined,
+            tags: undefined,
+            targetFolder: undefined,
+            translations: undefined,
+          },
+        ],
       );
+      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
     });
 
     it('should successfully create multiple resources (bulk operation)', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource
-        .mockReturnValueOnce({ resolvedKey: 'app.button.ok', created: true, terminology: noTerminology })
-        .mockReturnValueOnce({ resolvedKey: 'app.button.cancel', created: true, terminology: noTerminology });
-
-      const dtos = [
-        { key: 'app.button.ok', baseValue: 'OK' },
-        { key: 'app.button.cancel', baseValue: 'Cancel' },
-      ];
-
-      const result = await resourcesController.createResources('test-collection', dtos);
-
-      expect(result).toEqual({
+      batch().mockResolvedValue(batchResult(2));
+      const items = [dto, { key: 'app.button.cancel', baseValue: 'Cancel' }];
+      expect(await resourcesController.createResources('test-collection', items)).toEqual({
         entriesCreated: 2,
         created: true,
       });
-      expect(addResource).toHaveBeenCalledTimes(2);
+      expect(batch()).toHaveBeenCalledTimes(1);
+      expect(batch().mock.calls[0][1]).toHaveLength(2);
+      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
     });
 
     it('should handle idempotent repeat (update existing resource)', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: false });
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
-      const result = await resourcesController.createResources('test-collection', dto);
-
-      expect(result).toEqual({
+      batch().mockResolvedValue(batchResult(0));
+      expect(await resourcesController.createResources('test-collection', dto)).toEqual({
         entriesCreated: 0,
         created: false,
       });
     });
 
     it('should aggregate results correctly when some resources are created and some are updated', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource
-        .mockReturnValueOnce({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true })
-        .mockReturnValueOnce({ terminology: noTerminology, resolvedKey: 'app.button.cancel', created: false })
-        .mockReturnValueOnce({ terminology: noTerminology, resolvedKey: 'app.button.save', created: true });
-
-      const dtos = [
-        { key: 'app.button.ok', baseValue: 'OK' },
+      batch().mockResolvedValue(batchResult(2));
+      const items = [
+        dto,
         { key: 'app.button.cancel', baseValue: 'Cancel' },
         { key: 'app.button.save', baseValue: 'Save' },
       ];
-
-      const result = await resourcesController.createResources('test-collection', dtos);
-
-      expect(result).toEqual({
+      expect(await resourcesController.createResources('test-collection', items)).toEqual({
         entriesCreated: 2,
         created: true,
       });
-      expect(addResource).toHaveBeenCalledTimes(3);
+      expect(batch()).toHaveBeenCalledTimes(1);
     });
 
     it('should URI decode collection names with special characters', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true });
-
-      const configWithEncodedName = {
+      batch().mockResolvedValue(batchResult(1));
+      jest.spyOn(configService, 'getConfig').mockReturnValue({
         ...mockConfig,
-        collections: {
-          'My Collection': {
-            translationsFolder: './translations/my-collection',
-          },
-        },
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithEncodedName);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
+        collections: { 'My Collection': { translationsFolder: './translations/my-collection' } },
+      });
       await resourcesController.createResources('My%20Collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'My Collection',
-          translationsFolder: resolve('./translations/my-collection'),
-        }),
-        expect.any(Object),
-      );
+      expect(batch()).toHaveBeenCalledWith(expect.objectContaining({ name: 'My Collection' }), expect.any(Array));
     });
 
     it('should throw NotFoundException when collection does not exist', async () => {
-      const configWithoutCollection = {
-        ...mockConfig,
-        collections: {},
-      };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithoutCollection);
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
+      jest.spyOn(configService, 'getConfig').mockReturnValue({ ...mockConfig, collections: {} });
       await expect(resourcesController.createResources('non-existent', dto)).rejects.toThrow(NotFoundException);
     });
 
     it('should throw HttpException when empty array is provided', async () => {
       await expect(resourcesController.createResources('test-collection', [])).rejects.toThrow(HttpException);
+      expect(batch()).not.toHaveBeenCalled();
     });
 
     it('should answer 400 for invalid key validation', async () => {
       const message = 'Key validation: Invalid key segment "invalid@key". Segments must match pattern [A-Za-z0-9_-]+';
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockImplementation(() => {
-        throw new core.InvalidResourceKeyError('invalid@key', message);
-      });
-
-      const dto = {
-        key: 'invalid@key',
-        baseValue: 'OK',
-      };
-
-      await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(
+      batch().mockRejectedValue(new core.InvalidResourceKeyError('invalid@key', message));
+      const invalid = { key: 'invalid@key', baseValue: 'OK' };
+      await expect(resourcesController.createResources('test-collection', invalid)).rejects.toThrow(
         core.InvalidResourceKeyError,
       );
-
-      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
+      const error = await httpErrorOf(resourcesController.createResources('test-collection', invalid));
       expect(error.getStatus()).toBe(400);
       expect(error.message).toBe(message);
     });
 
     it('should answer 400 for empty key', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockImplementation(() => {
-        throw new core.InvalidResourceKeyError('', 'Key validation: Key cannot be empty');
-      });
-
-      const dto = {
-        key: '',
-        baseValue: 'OK',
-      };
-
-      const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
-      expect(error.getStatus()).toBe(400);
+      batch().mockRejectedValue(new core.InvalidResourceKeyError('', 'Key validation: Key cannot be empty'));
+      expect(
+        (
+          await httpErrorOf(resourcesController.createResources('test-collection', { key: '', baseValue: 'OK' }))
+        ).getStatus(),
+      ).toBe(400);
     });
 
     it('should answer 502 when the translation provider fails during auto-translation', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockImplementation(() => {
-        throw new TranslationError('Google Translate server error: backend down', 'SERVER_ERROR', true);
-      });
-
-      const error = await httpErrorOf(
-        resourcesController.createResources('test-collection', { key: 'app.button.ok', baseValue: 'OK' }),
+      batch().mockRejectedValue(
+        new TranslationError('Google Translate server error: backend down', 'SERVER_ERROR', true),
       );
-      expect(error.getStatus()).toBe(502);
+      expect((await httpErrorOf(resourcesController.createResources('test-collection', dto))).getStatus()).toBe(502);
     });
 
     it('should answer a generic 500 that hides the message for unexpected errors', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockImplementation(() => {
-        throw new Error('Unexpected file system error');
-      });
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-      };
-
+      batch().mockRejectedValue(new Error('Unexpected file system error'));
       await expect(resourcesController.createResources('test-collection', dto)).rejects.toThrow(
         'Unexpected file system error',
       );
-
       const error = await httpErrorOf(resourcesController.createResources('test-collection', dto));
       expect(error.getStatus()).toBe(500);
       expect(error.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
     });
 
     it('should handle resource with all optional fields', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({
-        terminology: noTerminology,
-        resolvedKey: 'apps.common.buttons.cancel',
-        created: true,
-      });
-
-      const dto = {
-        key: 'cancel',
-        baseValue: 'Cancel',
-        comment: 'Cancel button is used to abort any operation',
-        tags: ['ui', 'buttons'],
-        targetFolder: 'apps.common.buttons',
-      };
-
-      const result = await resourcesController.createResources('test-collection', dto);
-
-      expect(result).toEqual({
+      batch().mockResolvedValue(batchResult(1));
+      const full = { ...dto, comment: 'Cancel button', tags: ['ui', 'buttons'], targetFolder: 'apps.common.buttons' };
+      expect(await resourcesController.createResources('test-collection', full)).toEqual({
         entriesCreated: 1,
         created: true,
       });
-      expect(addResource).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'test-collection',
-          translationsFolder: resolve('./translations/test'),
-          baseLocale: 'en',
-        }),
-        expect.objectContaining({
-          key: 'cancel',
-          baseValue: 'Cancel',
-          comment: 'Cancel button is used to abort any operation',
-          tags: ['ui', 'buttons'],
-          targetFolder: 'apps.common.buttons',
-        }),
-      );
+      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining(full)]);
     });
 
     it('should handle resource with translations', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource.mockReturnValue({ terminology: noTerminology, resolvedKey: 'app.button.ok', created: true });
-
-      const dto = {
-        key: 'app.button.ok',
-        baseValue: 'OK',
-        translations: [
-          {
-            locale: 'fr-ca',
-            value: "D'accord",
-            status: 'translated' as TranslationStatus,
-          },
-          {
-            locale: 'es',
-            value: 'De acuerdo',
-            status: 'translated' as TranslationStatus,
-          },
-        ],
-      };
-
-      await resourcesController.createResources('test-collection', dto);
-
-      expect(addResource).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
-        expect.objectContaining({
-          translations: [
-            { locale: 'fr-ca', value: "D'accord", status: 'translated' },
-            { locale: 'es', value: 'De acuerdo', status: 'translated' },
-          ],
-        }),
-      );
+      batch().mockResolvedValue(batchResult(1));
+      const translations = [{ locale: 'fr-ca', value: "D'accord", status: 'translated' as TranslationStatus }];
+      await resourcesController.createResources('test-collection', { ...dto, translations });
+      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining({ translations })]);
     });
   });
 
@@ -436,7 +297,7 @@ describe('ResourcesController', () => {
         errors: [
           {
             key: 'app.button.invalid',
-            error: 'Resource entry not found: app.button.invalid',
+            error: 'Resource not found: app.button.invalid',
           },
         ],
       });
@@ -452,7 +313,7 @@ describe('ResourcesController', () => {
         errors: [
           {
             key: 'app.button.invalid',
-            error: 'Resource entry not found: app.button.invalid',
+            error: 'Resource not found: app.button.invalid',
           },
         ],
       });
@@ -564,179 +425,110 @@ describe('ResourcesController', () => {
   });
 
   describe('move', () => {
+    const op = { source: 'app.button.ok', destination: 'app.actions.ok' };
+    const moves = () => core.moveResources as jest.Mock;
+    const result = (movedCount = 1, warnings: string[] = [], errors: string[] = []) => ({
+      movedCount,
+      warnings,
+      errors,
+      mutations: [],
+    });
+
     it('should successfully move resources', async () => {
-      const moveResource = core.moveResource as jest.Mock;
-      moveResource.mockReturnValue({
+      const mutation = { kind: 'remove', translationsFolder: resolve('./translations/test'), key: op.source };
+      moves().mockResolvedValue({ ...result(), mutations: [mutation] });
+      expect(await resourcesController.move('test-collection', { moves: [op] })).toEqual({
         movedCount: 1,
         warnings: [],
         errors: [],
       });
-
-      const dto = {
-        moves: [{ source: 'app.button.ok', destination: 'app.actions.ok' }],
-      };
-
-      const result = await resourcesController.move('test-collection', dto);
-
-      expect(result).toEqual({
-        movedCount: 1,
-        warnings: [],
-        errors: [],
-      });
-      expect(moveResource).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
-        expect.objectContaining({
-          source: 'app.button.ok',
-          destination: 'app.actions.ok',
-        }),
+      expect(moves()).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection' }),
+        [{ ...op, override: undefined }],
+        { config: mockConfig },
       );
+      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
+      expect(mockIndex.apply).toHaveBeenCalledWith([mutation]);
     });
 
     it('should pass override flag', async () => {
-      const moveResource = core.moveResource as jest.Mock;
-      moveResource.mockReturnValue({
-        movedCount: 1,
-        warnings: [],
-        errors: [],
-      });
-
-      const dto = {
-        moves: [
-          {
-            source: 'app.button.ok',
-            destination: 'app.actions.ok',
-            override: true,
-          },
-        ],
-      };
-
-      await resourcesController.move('test-collection', dto);
-
-      expect(moveResource).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
-        expect.objectContaining({
-          source: 'app.button.ok',
-          destination: 'app.actions.ok',
-          override: true,
-        }),
-      );
+      moves().mockResolvedValue(result());
+      const override = { ...op, override: true };
+      await resourcesController.move('test-collection', { moves: [override] });
+      expect(moves()).toHaveBeenCalledWith(expect.any(Object), [override], expect.any(Object));
     });
 
     it('should aggregate results from multiple moves', async () => {
-      const moveResource = core.moveResource as jest.Mock;
-      moveResource.mockReturnValueOnce({ movedCount: 1, warnings: [], errors: [] }).mockReturnValueOnce({
-        movedCount: 0,
-        warnings: ['Exists'],
-        errors: [],
-      });
-
-      const dto = {
-        moves: [
-          { source: 'a', destination: 'b' },
-          { source: 'c', destination: 'd' },
-        ],
-      };
-
-      const result = await resourcesController.move('test-collection', dto);
-
-      expect(result.movedCount).toBe(1);
-      expect(result.warnings).toContain('Exists');
-      expect(moveResource).toHaveBeenCalledTimes(2);
+      moves().mockResolvedValue(result(1, ['Exists']));
+      const operations = [op, { source: 'c', destination: 'd' }];
+      const response = await resourcesController.move('test-collection', { moves: operations });
+      expect(response.movedCount).toBe(1);
+      expect(response.warnings).toContain('Exists');
+      expect(moves()).toHaveBeenCalledTimes(1);
+      expect(moves().mock.calls[0][1]).toEqual(operations.map((operation) => ({ ...operation, override: undefined })));
     });
 
     it('should throw BadRequest if moves array is empty', async () => {
-      const dto = { moves: [] };
-      await expect(resourcesController.move('test-collection', dto)).rejects.toThrow(HttpException);
+      await expect(resourcesController.move('test-collection', { moves: [] })).rejects.toThrow(HttpException);
+      expect(moves()).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequest if moves is missing', async () => {
-      const dto = {} as any;
-      await expect(resourcesController.move('test-collection', dto)).rejects.toThrow(HttpException);
+      const missing = {} as Parameters<ResourcesController['move']>[1];
+      await expect(resourcesController.move('test-collection', missing)).rejects.toThrow(HttpException);
+      expect(moves()).not.toHaveBeenCalled();
     });
 
     it('should handle cross-collection move', async () => {
-      const moveResource = core.moveResource as jest.Mock;
-      moveResource.mockReturnValue({
-        movedCount: 1,
-        warnings: [],
-        errors: [],
-      });
-
-      const dto = {
-        moves: [
-          {
-            source: 'app.button.ok',
-            destination: 'app.actions.ok',
-            toCollection: 'other-collection',
-          },
-        ],
-      };
-
-      // Mock config with other collection
-      const configWithOtherCollection = {
+      moves().mockResolvedValue(result());
+      const config = {
         ...mockConfig,
-        collections: {
-          ...mockConfig.collections,
-          'other-collection': {
-            translationsFolder: './translations/other',
-          },
-        },
+        collections: { ...mockConfig.collections, 'My Collection': { translationsFolder: './translations/other' } },
       };
-      jest.spyOn(configService, 'getConfig').mockReturnValue(configWithOtherCollection);
-
-      const result = await resourcesController.move('test-collection', dto);
-
-      expect(result.movedCount).toBe(1);
-      expect(moveResource).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
-        expect.objectContaining({
-          source: 'app.button.ok',
-          destination: 'app.actions.ok',
-          destinationCollection: expect.objectContaining({
-            name: 'other-collection',
-            translationsFolder: resolve('./translations/other'),
-          }),
-        }),
+      jest.spyOn(configService, 'getConfig').mockReturnValue(config);
+      const operation = { ...op, toCollection: 'My%20Collection' };
+      expect((await resourcesController.move('test-collection', { moves: [operation] })).movedCount).toBe(1);
+      expect(moves()).toHaveBeenCalledWith(
+        expect.any(Object),
+        [{ ...op, override: undefined, toCollection: 'My Collection' }],
+        { config },
       );
     });
 
-    it('should report error if destination collection not found', async () => {
-      const moveResource = core.moveResource as jest.Mock;
-
-      const dto = {
-        moves: [
-          {
-            source: 'app.button.ok',
-            destination: 'app.actions.ok',
-            toCollection: 'non-existent',
-          },
-        ],
-      };
-      const result = await resourcesController.move('test-collection', dto);
-
-      expect(result.movedCount).toBe(0);
-      expect(result.errors).toContain('Destination collection "non-existent" not found');
-      expect(moveResource).not.toHaveBeenCalled();
+    it('maps a core move error into the response and applies the returned mutations once', async () => {
+      moves().mockResolvedValue(result(0, [], ['destination unavailable']));
+      const response = await resourcesController.move('test-collection', {
+        moves: [{ ...op, toCollection: 'non-existent' }],
+      });
+      expect(response).toEqual({ movedCount: 0, warnings: [], errors: ['destination unavailable'] });
+      expect(moves()).toHaveBeenCalledWith(
+        expect.any(Object),
+        [{ ...op, override: undefined, toCollection: 'non-existent' }],
+        { config: mockConfig },
+      );
+      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
+      expect(mockIndex.apply).toHaveBeenCalledWith([]);
     });
 
-    it('should report error if destination collection is read-only', async () => {
-      const moveResource = core.moveResource as jest.Mock;
-      jest.spyOn(configService, 'getConfig').mockReturnValue({
-        ...mockConfig,
-        collections: {
-          ...mockConfig.collections,
-          vendor: { translationsFolder: './translations/vendor', readOnly: true },
-        },
-      });
-
-      const dto = {
-        moves: [{ source: 'app.button.ok', destination: 'app.actions.ok', toCollection: 'vendor' }],
-      };
-      const result = await resourcesController.move('test-collection', dto);
-
-      expect(result.movedCount).toBe(0);
-      expect(result.errors).toContain('Collection "vendor" is read-only. Its resources cannot be modified.');
-      expect(moveResource).not.toHaveBeenCalled();
+    it('maps a mixed core move result and applies its merged mutations once', async () => {
+      const mutation = { kind: 'upsert', translationsFolder: resolve('./translations/test'), key: 'shared.ok' };
+      moves().mockResolvedValue({ ...result(1, ['collision'], ['destination read-only']), mutations: [mutation] });
+      const operations = [
+        { ...op, toCollection: 'vendor' },
+        { source: 'common.ok', destination: 'shared.ok' },
+      ];
+      const response = await resourcesController.move('test-collection', { moves: operations });
+      expect(response).toEqual({ movedCount: 1, warnings: ['collision'], errors: ['destination read-only'] });
+      expect(moves()).toHaveBeenCalledWith(
+        expect.any(Object),
+        [
+          { ...op, override: undefined, toCollection: 'vendor' },
+          { source: 'common.ok', destination: 'shared.ok', override: undefined },
+        ],
+        { config: mockConfig },
+      );
+      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
+      expect(mockIndex.apply).toHaveBeenCalledWith([mutation]);
     });
   });
 
@@ -749,24 +541,15 @@ describe('ResourcesController', () => {
     };
 
     it('carries the findings and problems of every created resource, problems deduped', async () => {
-      const addResource = core.addResource as jest.Mock;
-      addResource
-        .mockReturnValueOnce({
-          resolvedKey: 'app.button.ok',
-          created: true,
+      (core.addResources as jest.Mock).mockResolvedValue(
+        batchResult(2, {
           terminology: { findings: [finding], problems: ['Preferred terminology checks skipped: broken'] },
-        })
-        .mockReturnValueOnce({
-          resolvedKey: 'app.button.cancel',
-          created: true,
-          terminology: { findings: [], problems: ['Preferred terminology checks skipped: broken'] },
-        });
-
+        }),
+      );
       const result = await resourcesController.createResources('test-collection', [
         { key: 'app.button.ok', baseValue: 'Expenditure' },
         { key: 'app.button.cancel', baseValue: 'Cancel' },
       ]);
-
       expect(result.terminology).toEqual({
         findings: [finding],
         problems: ['Preferred terminology checks skipped: broken'],

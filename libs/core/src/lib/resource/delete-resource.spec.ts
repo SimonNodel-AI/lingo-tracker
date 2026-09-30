@@ -70,7 +70,7 @@ describe('deleteResource', () => {
     expect(result.errors).toBeDefined();
     expect(result.errors?.length).toBe(1);
     expect(result.errors?.[0].key).toBe('app.button.ok');
-    expect(result.errors?.[0].error).toContain('Resource entry not found');
+    expect(result.errors?.[0].error).toBe('Resource not found: app.button.ok');
   });
 
   it('should collect error when folder does not exist', () => {
@@ -82,7 +82,67 @@ describe('deleteResource', () => {
     expect(result.errors).toBeDefined();
     expect(result.errors?.length).toBe(1);
     expect(result.errors?.[0].key).toBe('app.button.ok');
-    expect(result.errors?.[0].error).toContain('Folder not found');
+    expect(result.errors?.[0].error).toBe('Folder not found: app.button');
+  });
+
+  it('reports a missing resource file by key without exposing its absolute path', () => {
+    vi.mocked(fs.existsSync).mockReturnValueOnce(true).mockReturnValueOnce(false);
+
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
+
+    expect(result.errors).toEqual([{ key: 'app.button.ok', error: 'Resource not found: app.button.ok' }]);
+  });
+
+  it('explains a read failure without exposing its filesystem path', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw new Error('Failed to read file /private/elsewhere/resource_entries.json');
+    });
+
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
+
+    expect(result.errors).toEqual([
+      {
+        key: 'app.button.ok',
+        error: 'Failed to delete resource app.button.ok: folder app.button has unreadable resource files',
+      },
+    ]);
+  });
+
+  it('explains malformed resource JSON without exposing its filename', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue('{ bad json');
+
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
+
+    expect(result.errors).toEqual([
+      {
+        key: 'app.button.ok',
+        error: 'Failed to delete resource app.button.ok: folder app.button has unreadable resource files',
+      },
+    ]);
+  });
+
+  it('explains a write failure without exposing its filesystem path', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
+      if (filePath.toString().includes('resource_entries.json')) {
+        return JSON.stringify({ ok: { source: 'OK' }, cancel: { source: 'Cancel' } });
+      }
+      return JSON.stringify({ ok: { en: { checksum: 'abc123' } }, cancel: { en: { checksum: 'def456' } } });
+    });
+    vi.mocked(fs.writeFileSync).mockImplementation(() => {
+      throw new Error('EACCES /private/elsewhere/resource_entries.json');
+    });
+
+    const result = deleteResource(collection, { keys: ['app.button.ok'] });
+
+    expect(result.errors).toEqual([
+      {
+        key: 'app.button.ok',
+        error: 'Failed to delete resource app.button.ok: could not write folder app.button',
+      },
+    ]);
   });
 
   it('should collect error for invalid key format', () => {
@@ -292,7 +352,7 @@ describe('deleteResource', () => {
       expect(result.errors).toBeDefined();
       expect(result.errors?.length).toBe(2);
       expect(result.errors?.[0].key).toBe('app.button.notfound');
-      expect(result.errors?.[0].error).toContain('Resource entry not found');
+      expect(result.errors?.[0].error).toBe('Resource not found: app.button.notfound');
       expect(result.errors?.[1].key).toBe('app.button.missing');
     });
 
