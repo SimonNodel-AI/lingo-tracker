@@ -350,7 +350,7 @@ describe('BundleFormDialog — create mode', () => {
       expect(harness.dialogRef.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'admin' }));
     });
 
-    it('should stay open on a taken name and show the conflict on the name field', () => {
+    it('should show a taken-name refusal in the Output section and keep the dialog open', () => {
       harness.store.createBundle.mockReturnValue(
         rejection(409, { message: 'Bundle "admin" already exists', error: 'Conflict' }),
       );
@@ -366,6 +366,10 @@ describe('BundleFormDialog — create mode', () => {
       expect(component.activeSection()).toBe('output');
       expect(harness.fixture.nativeElement.textContent).toContain('A bundle named admin already exists.');
       expect(submitErrorsText(harness)).toBeNull();
+
+      component.form.controls.name.setValue('other');
+      expect(component.form.controls.name.hasError('nameExists')).toBe(false);
+      expect(component.form.controls.name.valid).toBe(true);
     });
 
     it('should stay open and list every rule message of a definition the server rejects', () => {

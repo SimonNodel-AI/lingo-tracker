@@ -9,14 +9,14 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import type { MatChipInputEvent } from '@angular/material/chips';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { isUnderNodeModules, normalizeTag, validateLocale } from '@simoncodes-ca/domain';
+import { isUnderNodeModules, validateLocale } from '@simoncodes-ca/domain';
 import type { CollectionFormDialogData } from './collection-form-dialog-data';
 import type { LingoTrackerCollectionDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsStore } from '../store/collections.store';
 import { injectConfirm } from '../../shared/confirm';
-import { submitDialogConfigWrite, type ConfigRefusal } from '../store/dialog-config-submit';
+import { NamedEntrySubmit } from '../store/dialog-config-submit';
+import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { ProtectedTermsChips } from '../../shared/protected-terms/protected-terms-chips';
 
 /** What the dialog closes with: the collection as the server has now accepted it. */
@@ -57,15 +57,22 @@ export class CollectionFormDialog implements OnInit {
   /** Why the server refused the last submit, unless the refusal belongs to the name field. */
   readonly submitError = signal<string | null>(null);
 
-  /** A name the server refused as taken; the name validator reports it until the name changes. */
-  #serverTakenName: string | undefined;
+  /** Owns the server-taken-name validator and the create/update submit. */
+  readonly #namedEntrySubmit: NamedEntrySubmit<CollectionFormResult> = new NamedEntrySubmit({
+    nameControl: (): FormControl<string> => this.form.controls.name,
+    fallbackTokens: {
+      create: TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED,
+      update: TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED,
+    },
+    translate: (token) => this.#translocoService.translate(token),
+    dialogRef: this.#dialogRef,
+    saving: this.saving,
+    destroyRef: this.#destroyRef,
+  });
 
   readonly form = new FormGroup({
     name: new FormControl<string>('', {
-      validators: [
-        Validators.required,
-        (control) => (control.value === this.#serverTakenName ? { nameExists: { name: control.value } } : null),
-      ],
+      validators: [Validators.required, this.#namedEntrySubmit.nameValidator],
       nonNullable: true,
     }),
     translationsFolder: new FormControl<string>('', {
@@ -270,10 +277,9 @@ export class CollectionFormDialog implements OnInit {
   }
 
   addTagValue(value: string): void {
-    const normalized = normalizeTag(value);
-    if (normalized && !this.tagsList().includes(normalized)) {
-      this.tagsList.update((tags) => [...tags, normalized]);
-    }
+    const tags = this.tagsList();
+    const next = addTagToList(tags, value);
+    if (next !== tags) this.tagsList.set([...next]);
   }
 
   addCollectionTag(event: MatChipInputEvent): void {
@@ -282,7 +288,7 @@ export class CollectionFormDialog implements OnInit {
   }
 
   removeCollectionTag(tag: string): void {
-    this.tagsList.update((tags) => tags.filter((t) => t !== tag));
+    this.tagsList.update((tags) => [...removeTagFromList(tags, tag)]);
   }
 
   /**
@@ -351,37 +357,17 @@ export class CollectionFormDialog implements OnInit {
   #save(): void {
     const result = this.#buildResult();
     const existingName = this.isEditMode ? this.#data.name : undefined;
-    const write =
-      existingName === undefined
-        ? this.#store.createCollection({ name: result.name, collection: result.config })
-        : this.#store.updateCollection(existingName, {
-            name: result.name !== existingName ? result.name : undefined,
-            collection: result.config,
-          });
-
     this.submitError.set(null);
-    submitDialogConfigWrite({
-      dialogRef: this.#dialogRef,
-      write,
-      saving: this.saving,
+    this.#namedEntrySubmit.submit({
+      existingName,
+      name: result.name,
+      create: () => this.#store.createCollection({ name: result.name, collection: result.config }),
+      update: (name, patch) => this.#store.updateCollection(name, { ...patch, collection: result.config }),
       result,
-      destroyRef: this.#destroyRef,
-      onRefusal: (refusal) => this.#showRejection(refusal, result.name),
+      onRefusal: (refusal) => {
+        if (refusal.kind === 'message') this.submitError.set(refusal.message);
+      },
     });
-  }
-
-  #showRejection(refusal: ConfigRefusal, name: string): void {
-    const nameControl = this.form.controls.name;
-    if (refusal.kind === 'conflict' && nameControl.enabled) {
-      this.#serverTakenName = name;
-      nameControl.updateValueAndValidity();
-      nameControl.markAsTouched();
-      return;
-    }
-    const fallback = this.isEditMode
-      ? TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED
-      : TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED;
-    this.submitError.set(apiErrorMessage(refusal.error, this.#translocoService.translate(fallback)));
   }
 
   #buildResult(): CollectionFormResult {

@@ -26,7 +26,6 @@ import {
   isTypeScriptFile,
   isValidJavaScriptIdentifier,
   normalizeBundleDefinition,
-  normalizeTag,
 } from '@simoncodes-ca/domain';
 import type {
   BundleDefinitionDto,
@@ -37,10 +36,10 @@ import type {
   TokenCasingDto,
 } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../shared/api-error/api-error';
+import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
 import { CollectionsStore } from '../store/collections.store';
-import { submitDialogConfigWrite, type ConfigRefusal } from '../store/dialog-config-submit';
+import { NamedEntrySubmit } from '../store/dialog-config-submit';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { SegmentedControl, type SegmentOption } from './segmented-control';
 
@@ -157,6 +156,21 @@ export class BundleFormDialog {
     { value: 'camelCase', text: 'camelCase' },
   ];
 
+  /** True from submit until the server has answered. */
+  readonly saving = signal(false);
+  readonly #namedEntrySubmit: NamedEntrySubmit<BundleFormResult> = new NamedEntrySubmit({
+    nameControl: (): FormControl<string> => this.form.controls.name,
+    normalizeName: (value) => String(value ?? '').trim(),
+    fallbackTokens: {
+      create: TRACKER_TOKENS.BUNDLES.TOAST.CREATEFAILED,
+      update: TRACKER_TOKENS.BUNDLES.TOAST.UPDATEFAILED,
+    },
+    translate: (token) => this.#transloco.translate(token),
+    dialogRef: this.#dialogRef,
+    saving: this.saving,
+    destroyRef: this.#destroyRef,
+  });
+
   readonly form = new FormGroup({
     name: new FormControl<string>('', {
       nonNullable: true,
@@ -190,10 +204,6 @@ export class BundleFormDialog {
    * one message). Cleared on the next edit.
    */
   readonly submitErrors = signal<readonly string[]>([]);
-  /** True from submit until the server has answered. */
-  readonly saving = signal(false);
-  /** A name the server refused as taken; the unique-name validator reports it until the name changes. */
-  #serverTakenName: string | undefined;
   readonly previewOpen = signal(false);
 
   readonly dryRun = signal<BundleDryRunResultDto | undefined>(undefined);
@@ -464,18 +474,18 @@ export class BundleFormDialog {
   }
 
   commitTagInput(rule: RuleGroup, input: HTMLInputElement): void {
-    const normalized = normalizeTag(input.value);
+    const raw = input.value;
     input.value = '';
-    if (!normalized) return;
     const control = rule.controls.matchingTags;
-    if (control.value.includes(normalized)) return;
-    control.setValue([...control.value, normalized]);
+    const tags = addTagToList(control.value, raw);
+    if (tags === control.value) return;
+    control.setValue([...tags]);
     control.markAsDirty();
   }
 
   removeRuleTag(rule: RuleGroup, tag: string): void {
     const control = rule.controls.matchingTags;
-    control.setValue(control.value.filter((existing) => existing !== tag));
+    control.setValue([...removeTagFromList(control.value, tag)]);
     control.markAsDirty();
   }
 
@@ -515,43 +525,22 @@ export class BundleFormDialog {
 
   #save(result: BundleFormResult): void {
     const existingName = this.isEditMode ? this.#data.name : undefined;
-    const write =
-      existingName === undefined
-        ? this.store.createBundle({ name: result.name, bundle: result.bundle })
-        : this.store.updateBundle(existingName, {
-            name: result.name !== existingName ? result.name : undefined,
-            bundle: result.bundle,
-          });
-
-    submitDialogConfigWrite({
-      dialogRef: this.#dialogRef,
-      write,
-      saving: this.saving,
+    this.#namedEntrySubmit.submit({
+      existingName,
+      name: result.name,
+      create: () => this.store.createBundle({ name: result.name, bundle: result.bundle }),
+      update: (name, patch) => this.store.updateBundle(name, { ...patch, bundle: result.bundle }),
       result,
-      destroyRef: this.#destroyRef,
-      onRefusal: (refusal) => this.#showRejection(refusal, result.name),
+      onRefusal: (refusal) => {
+        if (refusal.kind === 'name-conflict') {
+          this.activate('output');
+          return;
+        }
+        // Server rule messages take precedence over the general refusal message.
+        const details = refusal.details.filter((item): item is string => typeof item === 'string');
+        this.submitErrors.set(details.length > 0 ? details : [refusal.message]);
+      },
     });
-  }
-
-  #showRejection(refusal: ConfigRefusal, name: string): void {
-    const nameControl = this.form.controls.name;
-    if (refusal.kind === 'conflict' && nameControl.enabled) {
-      // Validation state, not `setErrors`: showing the Output section re-attaches the
-      // control, which re-validates it and would wipe an error set by hand.
-      this.#serverTakenName = name;
-      nameControl.updateValueAndValidity();
-      nameControl.markAsTouched();
-      this.activate('output');
-      return;
-    }
-    // Keep server rule messages even when the API classifies the refusal as conflict or other.
-    const details = refusal.details.filter((item): item is string => typeof item === 'string');
-    const fallback = this.isEditMode
-      ? TRACKER_TOKENS.BUNDLES.TOAST.UPDATEFAILED
-      : TRACKER_TOKENS.BUNDLES.TOAST.CREATEFAILED;
-    this.submitErrors.set(
-      details.length > 0 ? details : [apiErrorMessage(refusal.error, this.#transloco.translate(fallback))],
-    );
   }
 
   // ───────────────────────────── private ─────────────────────────────
@@ -645,8 +634,10 @@ export class BundleFormDialog {
       if (this.#data.mode === 'edit') return null;
       const value = String(control.value ?? '').trim();
       if (!value) return null;
-      const taken = value === this.#serverTakenName || this.store.bundleEntries().some((entry) => entry.name === value);
-      return taken ? { nameExists: { name: value } } : null;
+      return (
+        this.#namedEntrySubmit.nameValidator(control) ??
+        (this.store.bundleEntries().some((entry) => entry.name === value) ? { nameExists: { name: value } } : null)
+      );
     };
   }
 
