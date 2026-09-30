@@ -8,7 +8,7 @@ import { withViewPreferencesFeature } from './features/with-view-preferences.fea
 import { withTranslationsFeature } from './features/with-translations.feature';
 import { withFolderTreeFeature } from './features/with-folder-tree.feature';
 import { withEntryWritesFeature } from './features/with-entry-writes.feature';
-import { withMovesFeature } from './features/with-moves.feature';
+import { withFolderWritesFeature } from './features/with-folder-writes.feature';
 import { withBrowserSessionFeature } from './features/with-browser-session.feature';
 
 export const BrowserStore = signalStore(
@@ -19,7 +19,7 @@ export const BrowserStore = signalStore(
   withTranslationsFeature(),
   withEntryWritesFeature(),
   withFolderTreeFeature(),
-  withMovesFeature(),
+  withFolderWritesFeature(),
   withCacheStatusFeature(),
   withViewPreferencesFeature(),
   withBrowserSessionFeature(),

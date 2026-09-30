@@ -25,6 +25,7 @@ import {
   parentFolderPath,
   toggleExpandedPath,
 } from '../../../store/folder-tree.utils';
+import { startFolderDraft, cancelFolderDraft, type FolderDraft } from '../../../store/folder-draft';
 
 /**
  * Folder picker component for the Translation Editor Dialog.
@@ -133,14 +134,17 @@ export class FolderPicker implements OnInit {
     this.focusedPath.set(null);
   }
 
+  private setDraft(draft: FolderDraft): void {
+    this.isAddingFolder.set(draft.isAddingFolder);
+    this.addFolderParentPath.set(draft.addFolderParentPath);
+  }
+
   onCreateFirstFolder(): void {
-    this.isAddingFolder.set(true);
-    this.addFolderParentPath.set('');
+    this.setDraft(startFolderDraft(''));
   }
 
   onAddFolder(parentPath: string): void {
-    this.isAddingFolder.set(true);
-    this.addFolderParentPath.set(parentPath);
+    this.setDraft(startFolderDraft(parentPath));
     // Auto-expand the parent folder to show the inline input
     this.expandedPaths.update((expanded) => new Set(expanded).add(parentPath));
   }
@@ -153,45 +157,31 @@ export class FolderPicker implements OnInit {
 
     this.isCreatingFolder.set(true);
 
-    this.#store.createFolder(folderName, parentPath || null).subscribe({
-      next: (response) => {
-        this.isCreatingFolder.set(false);
-        this.isAddingFolder.set(false);
-        this.addFolderParentPath.set(null);
-
-        if (response) {
-          this.folderCreated.emit(response.folder);
-          this.selectedPath.set(response.folder.fullPath);
-
-          // Auto-expand parent to show the new folder
-          if (parentPath) {
-            this.expandedPaths.update((expanded) => new Set(expanded).add(parentPath));
-          }
-
-          if (response.created) {
-            this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.FOLDERCREATED));
-          } else {
-            this.#notifications.info(
-              this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.FOLDERALREADYEXISTS),
-            );
-          }
+    this.#store.createFolder(folderName, parentPath || null).subscribe((outcome) => {
+      this.isCreatingFolder.set(false);
+      this.setDraft(cancelFolderDraft());
+      if (outcome.kind === 'created') {
+        this.folderCreated.emit(outcome.folder);
+        this.selectedPath.set(outcome.folder.fullPath);
+        if (parentPath) this.expandedPaths.update((expanded) => new Set(expanded).add(parentPath));
+        if (outcome.created) {
+          this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.FOLDERCREATED));
+        } else {
+          this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.FOLDERALREADYEXISTS));
         }
-      },
-      error: (error: unknown) => {
-        this.isCreatingFolder.set(false);
-        this.isAddingFolder.set(false);
-        this.addFolderParentPath.set(null);
-
+      } else if (outcome.kind === 'refused') {
         this.#notifications.error(
-          apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.CREATEFOLDERFAILED)),
+          apiErrorMessage(
+            outcome.error,
+            this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.CREATEFOLDERFAILED),
+          ),
         );
-      },
+      }
     });
   }
 
   onFolderNameCancelled(): void {
-    this.isAddingFolder.set(false);
-    this.addFolderParentPath.set(null);
+    this.setDraft(cancelFolderDraft());
   }
 
   onExpandToggle(folderPath: string): void {

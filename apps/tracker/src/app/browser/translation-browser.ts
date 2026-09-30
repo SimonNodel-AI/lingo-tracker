@@ -131,6 +131,7 @@ export class TranslationBrowser {
    * Prevents action when an input element is focused.
    */
   onCreateFolderShortcut(event: Event): void {
+    if (this.store.effectiveDisabled()) return;
     // Don't trigger if user is typing in an input field
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLInputElement || activeElement instanceof HTMLTextAreaElement) {

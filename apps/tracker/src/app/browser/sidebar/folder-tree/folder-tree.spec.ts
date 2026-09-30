@@ -9,7 +9,6 @@ import { FolderTree } from './folder-tree';
 import { BrowserStore } from '../../store/browser.store';
 import { Subject } from 'rxjs';
 import { of } from 'rxjs';
-import { throwError } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toApiError } from '../../../shared/api-error/api-error';
 import { BrowserApiService } from '../../services/browser-api.service';
@@ -53,6 +52,13 @@ describe('FolderTree', () => {
     vi.spyOn(api, 'getCacheStatus').mockReturnValue(of({ status: 'ready', stats: { totalKeys: 0, localeCount: 0 } }));
     vi.spyOn(api, 'getResourceTree').mockReturnValue(of({ path: '', resources: [], children: [] }));
     component.store.openCollection(collectionSettings({ name, locales: [] }));
+  }
+
+  function showCreateFailure(): void {
+    const failure = toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Already exists' } }));
+    vi.spyOn(component.store, 'createFolder').mockReturnValue(of({ kind: 'refused', error: failure }));
+    component.onFolderConfirm('new', 'common');
+    expect(component.folderWriteError()).toBe('Already exists');
   }
 
   it('should create', () => {
@@ -151,7 +157,7 @@ describe('FolderTree', () => {
     createComponent();
     const closed = new Subject<boolean>();
     dialog.open.mockReturnValue({ afterClosed: () => closed.asObservable() });
-    const move = vi.spyOn(component.store, 'moveFolder');
+    const move = vi.spyOn(component.store, 'moveFolder').mockReturnValue(of({ kind: 'no-collection' }));
 
     component.confirmMoveFolder('common.buttons', 'errors');
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
@@ -185,7 +191,7 @@ describe('FolderTree', () => {
     createComponent();
     const closed = new Subject<boolean>();
     dialog.open.mockReturnValue({ afterClosed: () => closed.asObservable() });
-    const remove = vi.spyOn(component.store, 'deleteFolder');
+    const remove = vi.spyOn(component.store, 'deleteFolder').mockReturnValue(of({ kind: 'no-collection' }));
 
     component.onDeleteFolder('common');
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
@@ -212,53 +218,140 @@ describe('FolderTree', () => {
     await vi.waitFor(() => expect(remove).toHaveBeenCalledWith('common'));
   });
 
-  it('silently skips a same-folder move and toasts an already-at-location move once', () => {
+  it('handles a no-op folder move without confirmation and toasts once', () => {
     createComponent();
+    openCollection('my-collection');
     const info = vi.spyOn(spectator.inject(NotificationService), 'info').mockImplementation(() => undefined);
+    const move = vi.spyOn(spectator.inject(BrowserApiService), 'moveFolder');
 
     component.confirmMoveFolder('common.buttons', 'common.buttons');
     component.confirmMoveFolder('common.buttons', 'common');
-
     expect(dialog.open).not.toHaveBeenCalled();
     expect(info).toHaveBeenCalledOnce();
+    expect(move).not.toHaveBeenCalled();
   });
 
-  it('clears a stale folder error before move confirmation, even when cancelled', async () => {
+  it('does not write a folder move when confirmation is cancelled', async () => {
     createComponent();
-    const failure = toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Stale error' } }));
-    component.store.reportCreateFolderError(failure);
     const closed = new Subject<boolean>();
     dialog.open.mockReturnValue({ afterClosed: () => closed.asObservable() });
-    const move = vi.spyOn(component.store, 'moveFolder');
+    const move = vi.spyOn(component.store, 'moveFolder').mockReturnValue(of({ kind: 'no-collection' }));
 
     component.confirmMoveFolder('common.buttons', 'errors');
 
-    expect(component.store.error()).toBeNull();
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledOnce());
     closed.next(false);
     closed.complete();
     expect(move).not.toHaveBeenCalled();
-    expect(component.store.error()).toBeNull();
   });
 
-  it('passes the inline parent to the store and shows a create failure in the tree', () => {
+  it('passes the inline parent to the store and shows a create failure inline', () => {
     createComponent();
-    const failure = toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Already exists' } }));
-    const create = vi.spyOn(component.store, 'createFolder').mockReturnValue(throwError(() => failure));
+    const failure = toApiError(
+      new HttpErrorResponse({
+        status: 409,
+        error: { message: 'Already exists' },
+      }),
+    );
+    const create = vi.spyOn(component.store, 'createFolder').mockReturnValue(of({ kind: 'refused', error: failure }));
     component.store.startAddingFolder('common');
 
     component.onFolderConfirm('new', 'common');
 
     expect(create).toHaveBeenCalledWith('new', 'common');
-    expect(component.store.error()).toBe('Already exists');
+    expect(component.folderWriteError()).toBe('Already exists');
     expect(component.store.isAddingFolder()).toBe(false);
+    expect(component.store.error()).toBeNull();
+  });
+
+  it('cancels its own draft after a successful sidebar create', () => {
+    createComponent();
+    openCollection('my-collection');
+    vi.spyOn(spectator.inject(BrowserApiService), 'createFolder').mockReturnValue(
+      of({
+        folderPath: 'common.new',
+        created: true,
+        folder: { name: 'new', fullPath: 'common.new', loaded: false },
+      }),
+    );
+    component.store.startAddingFolder('common');
+
+    component.onFolderConfirm('new', 'common');
+
+    expect(component.store.isAddingFolder()).toBe(false);
+    expect(component.store.addFolderParentPath()).toBeNull();
+  });
+
+  it('keeps the inline error and tree visible through an unrelated folder expand and load', async () => {
+    createComponent();
+    openCollection('my-collection');
+    await vi.waitFor(() => expect(component.store.folderTreeLoaded()).toBe(true));
+    showCreateFailure();
+    fixture.detectChanges();
+    expect(spectator.query('.folder-list')).toBeTruthy();
+    expect(spectator.query('.error-container')).toBeTruthy();
+
+    const previousTree = component.store.rootFolders();
+    component.store.expandFolder('common');
+    component.store.loadFolderChildren('common');
+    await vi.waitFor(() => expect(component.store.rootFolders()).not.toBe(previousTree));
+    fixture.detectChanges();
+
+    expect(spectator.query('.folder-list')).toBeTruthy();
+    expect(spectator.query('.error-container')).toBeTruthy();
+    expect(component.folderWriteError()).toBe('Already exists');
+  });
+
+  it('clears an inline create error when a new draft starts through the store', () => {
+    createComponent();
+    openCollection('my-collection');
+    showCreateFailure();
+
+    component.store.startAddingFolder('common');
+
+    expect(component.folderWriteError()).toBeNull();
+    expect(component.store.isAddingFolder()).toBe(true);
+  });
+
+  it('clears an inline create error when the add-folder button starts a draft', () => {
+    createComponent();
+    openCollection('my-collection');
+    showCreateFailure();
+
+    component.onAddFolderButtonClick();
+
+    expect(component.folderWriteError()).toBeNull();
+    expect(component.store.isAddingFolder()).toBe(true);
+  });
+
+  it('clears an inline create error when a folder create succeeds elsewhere', () => {
+    createComponent();
+    openCollection('my-collection');
+    showCreateFailure();
+    vi.spyOn(component.store, 'createFolder').mockRestore();
+    vi.spyOn(spectator.inject(BrowserApiService), 'createFolder').mockReturnValue(
+      of({ folderPath: 'new', created: true, folder: { name: 'new', fullPath: 'new', loaded: false } }),
+    );
+
+    component.store.createFolder('new', null).subscribe();
+
+    expect(component.folderWriteError()).toBeNull();
+  });
+
+  it('clears an inline create error on a collection switch and reopen', () => {
+    createComponent();
+    openCollection('my-collection');
+    showCreateFailure();
+
+    component.store.openCollection(collectionSettings({ name: 'other', locales: [] }));
+    expect(component.folderWriteError()).toBeNull();
+    component.store.openCollection(collectionSettings({ name: 'my-collection', locales: [] }));
+    expect(component.folderWriteError()).toBeNull();
   });
 
   it('leaves adding mode when create returns null because no collection is open', () => {
     createComponent();
     const create = vi.spyOn(spectator.inject(BrowserApiService), 'createFolder');
-    component.store.startAddingFolder('common');
-
     component.onFolderConfirm('new', 'common');
 
     expect(create).not.toHaveBeenCalled();
@@ -297,7 +390,14 @@ describe('FolderTree', () => {
     component.onFolderConfirm('new', 'common');
 
     component.store.openCollection(collectionSettings({ name: 'new', locales: [] }));
-    pending.error(toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Old failure' } })));
+    pending.error(
+      toApiError(
+        new HttpErrorResponse({
+          status: 409,
+          error: { message: 'Old failure' },
+        }),
+      ),
+    );
 
     expect(component.store.selectedCollection()).toBe('new');
     expect(component.store.error()).toBeNull();

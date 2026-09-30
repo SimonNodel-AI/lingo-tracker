@@ -203,6 +203,14 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ---
 
+### Folder Writes
+
+The Tracker UI's one store feature for creating, deleting and moving folders, and for dropping a resource into a folder. `withFolderWritesFeature` in `apps/tracker/src/app/browser/store/features/with-folder-writes.feature.ts` returns a cold `Observable` of a typed outcome from each write. The feature refuses every write in a read-only collection before HTTP, owns move no-op checks, and updates cached tree and rows only in the [Browser Session](#browser-session) where the write began. A failed optimistic move restores only the moved item against current state when its parent is loaded; an unloaded parent gets its children on its next load, so a newer tree load survives. Deletion shows the parent only if the current folder is the deleted folder or one of its descendants. Callers turn outcomes into their existing toasts or inline feedback; folder writes do not set the shared load `error`. The sidebar draft lives in this feature. The picker keeps an independent draft because it can be open alongside the sidebar; both drafts use `folder-draft.ts` for their transitions.
+
+Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollback)
+
+---
+
 ## I
 
 ### ICU Format

@@ -1,25 +1,20 @@
 import { computed, inject, type Signal } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, tap, switchMap, catchError, of, defer } from 'rxjs';
+import { pipe, tap, switchMap, catchError, of } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/browser-api.service';
 import {
-  insertFolderIntoTree,
-  removeFolderFromTree,
   filterFolderTree,
   collectExpandablePaths,
   collectAncestorPaths,
-  prunePathsUnder,
   toggleExpandedPath,
-  parentFolderPath,
 } from '../folder-tree.utils';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { captureSession, withinSession } from '../session-guard';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import type { FolderNodeDto, CreateFolderResponseDto } from '@simoncodes-ca/data-transfer';
-import type { Observable } from 'rxjs';
+import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 
 export interface FolderTreeState {
   rootFolders: FolderNodeDto[];
@@ -35,11 +30,6 @@ export interface FolderTreeState {
   isRootExpanded: boolean;
   folderTreeFilter: string;
   isFolderTreeLoading: boolean;
-  isAddingFolder: boolean;
-  addFolderParentPath: string | null;
-  newlyCreatedFolderPath: string | null;
-  isDeletingFolder: boolean;
-  deletingFolderPath: string | null;
 }
 
 export const initialFolderTreeState: FolderTreeState = {
@@ -50,11 +40,6 @@ export const initialFolderTreeState: FolderTreeState = {
   isRootExpanded: true,
   folderTreeFilter: '',
   isFolderTreeLoading: false,
-  isAddingFolder: false,
-  addFolderParentPath: null,
-  newlyCreatedFolderPath: null,
-  isDeletingFolder: false,
-  deletingFolderPath: null,
 };
 
 export function withFolderTreeFeature<_>() {
@@ -129,14 +114,6 @@ export function withFolderTreeFeature<_>() {
         return true;
       }
 
-      function scheduleNewFolderClear(folderFullPath: string, inSession: () => boolean): void {
-        setTimeout(() => {
-          if (inSession() && store.newlyCreatedFolderPath() === folderFullPath) {
-            patchState(store, { newlyCreatedFolderPath: null });
-          }
-        }, 3000);
-      }
-
       return {
         /**
          * Applies the folder filter and takes expansion with it: a filter that hid its own
@@ -191,24 +168,6 @@ export function withFolderTreeFeature<_>() {
         /** Closes every folder but leaves the root open, so the top level stays reachable. */
         collapseAllFolders(): void {
           patchState(store, { expandedFolders: new Set<string>(), isRootExpanded: true });
-        },
-
-        startAddingFolder(parentPath: string | null): void {
-          patchState(store, { isAddingFolder: true, addFolderParentPath: parentPath });
-        },
-
-        cancelAddingFolder(): void {
-          patchState(store, { isAddingFolder: false, addFolderParentPath: null });
-        },
-
-        reportCreateFolderError(error: unknown): void {
-          patchState(store, {
-            error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED)),
-          });
-        },
-
-        clearFolderError(): void {
-          patchState(store, { error: null });
         },
 
         loadRootFolders: rxMethod<void>(
@@ -289,83 +248,6 @@ export function withFolderTreeFeature<_>() {
                   if (!keepTreeOnNotReady(error, message)) {
                     patchState(store, { isFolderTreeLoading: false, error: message });
                   }
-                  return of(null);
-                }),
-              );
-            }),
-          ),
-        ),
-
-        createFolder(folderName: string, parentPath: string | null): Observable<CreateFolderResponseDto | null> {
-          return defer(() => {
-            const inSession = captureSession(store);
-            const collection = store.selectedCollection();
-            if (!collection) return of(null);
-
-            // The caller owns feedback; only the tree write belongs to the store.
-            return api.createFolder(collection, folderName, parentPath || undefined).pipe(
-              tap((response) => {
-                if (!inSession()) return;
-                patchState(store, {
-                  rootFolders: insertFolderIntoTree(store.rootFolders(), response.folder, parentPath),
-                  newlyCreatedFolderPath: response.folder.fullPath,
-                  error: null,
-                });
-                scheduleNewFolderClear(response.folder.fullPath, inSession);
-              }),
-            );
-          });
-        },
-      };
-    }),
-
-    // Second methods block: folder deletion, which then shows the parent folder through the List Scope.
-    withMethods((store) => {
-      const api = inject(BrowserApiService);
-      const transloco = inject(TranslocoService);
-
-      return {
-        deleteFolder: rxMethod<string>(
-          pipe(
-            tap((folderPath) =>
-              patchState(store, {
-                isDeletingFolder: true,
-                deletingFolderPath: folderPath,
-                error: null,
-              }),
-            ),
-            switchMap((folderPath) => {
-              const inSession = captureSession(store);
-              const collection = store.selectedCollection();
-              if (!collection) {
-                patchState(store, { isDeletingFolder: false, deletingFolderPath: null });
-                return of(null);
-              }
-
-              return api.deleteFolder(collection, folderPath).pipe(
-                withinSession(inSession),
-                tap((response) => {
-                  if (response.deleted) {
-                    const updatedFolders = removeFolderFromTree(store.rootFolders(), folderPath);
-                    const parentPath = parentFolderPath(folderPath) ?? '';
-
-                    patchState(store, {
-                      isDeletingFolder: false,
-                      deletingFolderPath: null,
-                      rootFolders: updatedFolders,
-                      expandedFolders: prunePathsUnder(store.expandedFolders(), folderPath),
-                      error: null,
-                    });
-
-                    store.showFolder(parentPath);
-                  }
-                }),
-                catchError((error: unknown) => {
-                  patchState(store, {
-                    isDeletingFolder: false,
-                    deletingFolderPath: null,
-                    error: apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFOLDERFAILED)),
-                  });
                   return of(null);
                 }),
               );
