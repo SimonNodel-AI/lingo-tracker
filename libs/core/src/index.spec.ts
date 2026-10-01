@@ -30,6 +30,7 @@ describe('core public surface', () => {
       'InvalidLocaleError',
       'InvalidProjectTermsEditError',
       'InvalidResourceKeyError',
+      'InvalidTranslationStatusError',
       'LingoTrackerError',
       'LocaleAlreadyExistsError',
       'LocaleNotFoundError',

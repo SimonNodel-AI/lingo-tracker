@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   applyBaseChange,
+  type EntryLocaleMetadata,
   isUntranslatedCopy,
   needsTranslation,
+  type ResolveImportStatusParams,
   recordTranslation,
   resolveImportStatus,
-  type EntryLocaleMetadata,
-  type ResolveImportStatusParams,
 } from './staleness';
 
 describe('isUntranslatedCopy', () => {
@@ -60,6 +60,22 @@ describe('applyBaseChange', () => {
 });
 
 describe('recordTranslation', () => {
+  it.each([
+    ['same', undefined, 'new'],
+    ['different', undefined, 'translated'],
+    ['same', 'new', 'new'],
+    ['same', 'translated', 'translated'],
+    ['same', 'stale', 'stale'],
+    ['same', 'verified', 'verified'],
+    ['different', 'new', 'new'],
+    ['different', 'translated', 'translated'],
+    ['different', 'stale', 'stale'],
+    ['different', 'verified', 'verified'],
+  ] as const)('stores %s value requested as %s with status %s', (value, requested, stored) => {
+    const result = recordTranslation({}, 'fr', value === 'same' ? 'base' : 'other', 'base', requested);
+    expect(result['fr']?.status).toBe(stored);
+  });
+
   it('sets the locale metadata and leaves other locales alone', () => {
     const entryMeta: EntryLocaleMetadata = {
       en: { checksum: 'base' },

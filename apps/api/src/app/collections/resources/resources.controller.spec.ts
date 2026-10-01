@@ -1,9 +1,7 @@
 import { resolve } from 'node:path';
 import { HttpException, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
-import type { Response } from 'express';
 import * as core from '@simoncodes-ca/core';
-import { RouteCollectionPipe } from '../route-collection';
 import {
   AutoTranslationDisabledError,
   CannotTranslateBaseLocaleError,
@@ -12,10 +10,12 @@ import {
 } from '@simoncodes-ca/core';
 import type { ResourceTreeDto, SearchTranslationsDto } from '@simoncodes-ca/data-transfer';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
+import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { ConfigService } from '../../config/config.service';
 import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
+import { RouteCollectionPipe } from '../route-collection';
 import { ResourcesController } from './resources.controller';
 
 /** What the handler rejects with, as the HTTP exception the global exception filter answers with. */
@@ -215,6 +215,18 @@ describe('ResourcesController', () => {
           )
         ).getStatus(),
       ).toBe(400);
+    });
+
+    it('answers 400 for an unknown translation status', async () => {
+      batch().mockRejectedValue(new core.InvalidTranslationStatusError('verifed'));
+      const error = await httpErrorOf(
+        resourcesController.createResources(collectionFor('test-collection'), {
+          ...dto,
+          translations: [{ locale: 'fr-ca', value: 'Oui', status: 'verifed' as never }],
+        }),
+      );
+      expect(error.getStatus()).toBe(400);
+      expect(error.message).toContain('verifed');
     });
 
     it('should answer 502 when the translation provider fails during auto-translation', async () => {
@@ -605,6 +617,20 @@ describe('ResourcesController', () => {
   });
 
   describe('update', () => {
+    it('answers 400 for an unknown locale status', async () => {
+      const edit = core.editResource as jest.Mock;
+      edit.mockRejectedValue(new core.InvalidTranslationStatusError('verifed'));
+
+      const error = await httpErrorOf(
+        resourcesController.update(collectionFor('test-collection'), {
+          key: 'app.button.ok',
+          locales: { 'fr-ca': { value: 'Oui', status: 'verifed' as never } },
+        }),
+      );
+      expect(error.getStatus()).toBe(400);
+      expect(error.message).toContain('verifed');
+    });
+
     it('should successfully update a resource', async () => {
       const editResource = core.editResource as jest.Mock;
       editResource.mockReturnValue({

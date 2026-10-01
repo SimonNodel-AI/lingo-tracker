@@ -120,6 +120,27 @@ describe('parse JSON import', () => {
   });
 
   describe('parseJsonImport', () => {
+    it('treats null and empty rich statuses as absent', () => {
+      const path = join(dir, 'empty-status.json');
+      writeFileSync(
+        path,
+        JSON.stringify({
+          'common.null': { value: 'Oui', status: null },
+          'common.empty': { value: 'Oui', status: '' },
+        }),
+      );
+      expect(parseJsonImport(path)).toEqual([
+        { key: 'common.null', value: 'Oui' },
+        { key: 'common.empty', value: 'Oui' },
+      ]);
+    });
+
+    it('rejects an unknown status in a rich object', () => {
+      const path = join(dir, 'bad-status.json');
+      writeFileSync(path, JSON.stringify({ 'common.ok': { value: 'OK', status: 'verifed' } }));
+      expect(() => parseJsonImport(path)).toThrow('Invalid translation status "verifed"');
+    });
+
     it('throws when the source file is missing', () => {
       expect(() => parseJsonImport(join(dir, 'missing.json'))).toThrow(
         `Source file not found: ${join(dir, 'missing.json')}`,

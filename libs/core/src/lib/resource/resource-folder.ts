@@ -2,12 +2,13 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyBaseChange, isUntranslatedCopy, recordTranslation, type TranslationStatus } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from './checksum';
+import type { ResourceTreeEntry } from './load-resource-tree';
 import type { ResourceEntries, ResourceEntry } from './resource-entry';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
 import type { TrackerMetadata } from './tracker-metadata';
-import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
-import type { ResourceTreeEntry } from './load-resource-tree';
+import { assertTranslationStatus } from './translation-status-input';
 
 /**
  * Resource Folder — the owner of one folder's `resource_entries.json` + `tracker_meta.json` pair.
@@ -51,7 +52,7 @@ export interface ResourceFolder {
   setDetails(key: string, details: EntryDetails): boolean;
   /**
    * Writes a translation value and records `{ checksum, baseChecksum, status }` for it.
-   * `baseChecksum` is the current base checksum.
+   * `baseChecksum` is the current base checksum. An omitted status is inferred from the value.
    */
   setTranslation(key: string, locale: string, value: string, status?: TranslationStatus): void;
   /**
@@ -275,7 +276,8 @@ class FileResourceFolder implements ResourceFolder {
     return changed;
   }
 
-  setTranslation(key: string, locale: string, value: string, status: TranslationStatus = 'translated'): void {
+  setTranslation(key: string, locale: string, value: string, status?: TranslationStatus): void {
+    if (status !== undefined) assertTranslationStatus(status);
     if (locale === this.baseLocale) {
       throw new Error(`Cannot set a translation for the base locale "${locale}"; use setBase`);
     }
@@ -293,6 +295,7 @@ class FileResourceFolder implements ResourceFolder {
     status: TranslationStatus,
     options: { readonly refreshBaseChecksum?: boolean } = {},
   ): void {
+    assertTranslationStatus(status);
     const entryMeta = this.metaOf(key);
     const localeMeta = entryMeta[locale];
     if (!localeMeta) {

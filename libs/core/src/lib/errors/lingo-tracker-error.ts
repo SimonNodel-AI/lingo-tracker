@@ -1,3 +1,4 @@
+import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import { ErrorMessages, type FolderPathPart } from './error-messages';
 
 export type ErrorKind = 'not-found' | 'conflict' | 'invalid' | 'forbidden' | 'unavailable' | 'upstream' | 'internal';
@@ -241,6 +242,18 @@ export class ParentDirectoryMissingError extends LingoTrackerError {
 }
 
 // --- Locales -----------------------------------------------------------------
+
+/** A caller supplied a translation status outside the domain status list. */
+export class InvalidTranslationStatusError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+
+  constructor(status: unknown) {
+    super(
+      `Invalid translation status "${String(status)}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
+      'INVALID_TRANSLATION_STATUS',
+    );
+  }
+}
 
 /** The locale string is malformed. The message is the domain validator's text. */
 export class InvalidLocaleError extends LingoTrackerError {

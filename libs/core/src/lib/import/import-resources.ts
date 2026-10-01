@@ -1,5 +1,6 @@
 import { resolveAllReferences } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
+import { assertTranslationStatus } from '../resource/translation-status-input';
 import { applyICUAutoFixToResources } from './apply-icu-auto-fix';
 import { openImportSession, sessionResult } from './import-session';
 import { validateImportResources } from './import-validation';
@@ -33,6 +34,9 @@ export function importResources(
   resources: readonly ImportedResource[],
   options: ImportRunOptions,
 ): ImportResult {
+  for (const resource of resources) {
+    if (resource.status !== undefined) assertTranslationStatus(resource.status);
+  }
   const session = openImportSession(collection, options);
   const { strategy, dryRun, verbose, onProgress } = session.options;
   const { translationsFolder } = collection;

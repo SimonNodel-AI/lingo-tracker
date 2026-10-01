@@ -176,6 +176,26 @@ describe('exportCommand', () => {
   });
 
   describe('non-interactive mode', () => {
+    it.each(['', ' , '])('rejects an empty --status value (%j)', async (status) => {
+      await exportCommand({ format: 'json', status });
+
+      expect(console.error).toHaveBeenCalledWith(
+        `❌ Invalid --status "${status}". Valid statuses: new, translated, stale, verified`,
+      );
+      expect(process.exitCode).toBe(1);
+      expect(mockRunExport).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown export status as a usage error', async () => {
+      await exportCommand({ format: 'json', status: 'new,verifed' });
+
+      expect(console.error).toHaveBeenCalledWith(
+        '❌ Invalid --status "verifed". Valid statuses: new, translated, stale, verified',
+      );
+      expect(process.exitCode).toBe(1);
+      expect(mockRunExport).not.toHaveBeenCalled();
+    });
+
     it('should export the chosen collection and locale to JSON', async () => {
       await exportCommand({
         format: 'json',

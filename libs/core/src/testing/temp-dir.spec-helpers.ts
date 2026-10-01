@@ -89,7 +89,7 @@ export function seedResources(collection: Collection, resources: Readonly<Record
     }
     for (const [locale, translation] of Object.entries(resource.translations ?? {})) {
       const { value, status } =
-        typeof translation === 'string' ? { value: translation, status: undefined } : translation;
+        typeof translation === 'string' ? { value: translation, status: 'translated' as const } : translation;
       folder.setTranslation(entryKey, locale, value, status);
     }
     folder.save();

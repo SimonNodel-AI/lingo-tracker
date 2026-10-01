@@ -21,6 +21,6 @@ export interface CreateResourceDto {
   translations?: Array<{
     locale: string;
     value: string;
-    status: TranslationStatus;
+    status?: TranslationStatus;
   }>;
 }
