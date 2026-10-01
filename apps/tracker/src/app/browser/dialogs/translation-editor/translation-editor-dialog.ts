@@ -14,8 +14,7 @@ import {
   signal,
   ViewChild,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { type FormControl, type FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatAutocompleteModule, type MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
@@ -30,17 +29,9 @@ import type {
   SearchResultDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
-import {
-  applyPreferredTerm,
-  DEFAULT_MISSING_METADATA_STATUS,
-  findPreferredTermFindings,
-  isNeedsWorkStatus,
-  type PreferredTermRule,
-  summaryTarget,
-  TRANSLATION_STATUSES,
-} from '@simoncodes-ca/domain';
-import { merge, Subject } from 'rxjs';
-import { debounceTime, map, takeUntil } from 'rxjs/operators';
+import { type PreferredTermRule, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { CollectionsStore } from '../../../collections/store/collections.store';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
@@ -49,24 +40,18 @@ import { injectConfirm } from '../../../shared/confirm';
 import { NotificationService } from '../../../shared/notification';
 import { hasSearchLength } from '../../../shared/search/search-minimum';
 import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
-import { segmentValidator } from '../../../shared/validators/segment.validator';
 import { FolderPeek } from '../../services/folder-peek';
 import { SimilarValues } from '../../services/similar-values';
 import { BrowserStore } from '../../store/browser.store';
 import { filterFolderTree } from '../../store/folder-tree.utils';
 import { editorTagSuggestions } from './editor-entry-sources';
+import { EditorAdvisories, filteredEditorTagSuggestions } from './editor-advisories';
+import { EditorEntryForm } from './editor-entry-form';
 import { EditorLocation } from './editor-location';
 import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
-import {
-  addTag,
-  hasUnsavedChanges,
-  type LocaleDraft,
-  type ResourceEntryDraft,
-  removeTag,
-  resolveDraftKey,
-} from './resource-entry-draft';
+import { resolveDraftKey } from './resource-entry-draft';
 import { SimilarTranslations } from './similar-translations';
 
 /**
@@ -79,8 +64,7 @@ export const TRANSLATION_EDITOR_TITLE_ID = 'translation-editor-title';
 /** Id of the preferred-terminology advisories, joined to the base value's `aria-describedby`. */
 export const PREFERRED_TERM_ADVISORIES_ID = 'translation-editor-preferred-terms';
 
-/** Typing pause before preferred-terminology findings refresh; matches the similar search. */
-export const PREFERRED_TERM_DEBOUNCE_MS = 300;
+export { PREFERRED_TERM_DEBOUNCE_MS } from './editor-advisories';
 
 /** The collection and entry to edit, or the folder in which to create one. */
 export interface TranslationEditorDialogData {
@@ -152,17 +136,16 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   @ViewChild('folderFilterInput') folderFilterInput?: ElementRef<HTMLInputElement>;
   @ViewChild('drawerFirstControl') drawerFirstControl?: ElementRef<HTMLElement>;
 
-  /** The draft as the dialog opened, for the unsaved-work check and the similar search. */
-  #initialDraft: ResourceEntryDraft | undefined;
   #locationFlashTimer: ReturnType<typeof setTimeout> | undefined;
   #keyCopiedTimer: ReturnType<typeof setTimeout> | undefined;
 
   readonly errorMessage = signal<string | null>(null);
-  readonly similarResources = signal<SearchResultDto[]>([]);
-  readonly isSearchingSimilar = signal(false);
-  readonly baseValueLength = signal(0);
-  /** The English value as typed, for the exact-match test against the pinned hits. */
-  readonly baseValueText = signal('');
+  readonly #entryForm = new EditorEntryForm();
+  readonly #advisories = new EditorAdvisories(this.#collectionsStore.config);
+  readonly similarResources = this.#advisories.similarResources;
+  readonly isSearchingSimilar = this.#advisories.isSearchingSimilar;
+  readonly baseValueLength = this.#advisories.baseValueLength;
+  readonly baseValueText = this.#advisories.baseValueText;
   /** True while the location pill is highlighting a folder it just absorbed from the key field. */
   readonly locationAbsorbedFlash = signal(false);
   /** Live-region text announcing the same move to a screen reader, which cannot see the flash. */
@@ -183,30 +166,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   /** The context disclosure shown in place of the column below 1100px. */
   readonly isContextOpen = signal(false);
 
-  /**
-   * The base value preferred terminology is checked against. Lags the field by a
-   * typing pause, except on open and after "Use …", where it is set at once.
-   */
-  readonly #terminologyCheckedValue = signal('');
-
-  /**
-   * Rules from `GET /config`. A rule file that failed to load yields none (D1):
-   * the Settings page reports the error, the editor stays quiet.
-   */
-  readonly #preferredTermRules = computed<readonly PreferredTermRule[]>(() => {
-    const config = this.#collectionsStore.config();
-    if (!config || config.preferredTerminologyError) {
-      return [];
-    }
-    return config.preferredTerminology ?? [];
-  });
-
-  /** One finding per rule the base value breaks. Advice only: never feeds validity. */
-  readonly preferredTermFindings = computed(() => {
-    const rules = this.#preferredTermRules();
-    const value = this.#terminologyCheckedValue();
-    return rules.length > 0 && value ? findPreferredTermFindings(value, rules) : [];
-  });
+  /** Preferred-term findings follow the checked value held by Editor Advisories. */
+  readonly preferredTermFindings = this.#advisories.preferredTermFindings;
 
   readonly preferredTermAdvisoriesId = PREFERRED_TERM_ADVISORIES_ID;
 
@@ -223,29 +184,10 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   });
 
   readonly tagInputText = signal('');
-  readonly tagsList = signal<readonly string[]>([]);
+  readonly tagsList = this.#entryForm.tags;
   readonly inheritedTagsList = computed(() => this.data.resource?.inheritedTags ?? []);
 
-  readonly form = new FormGroup({
-    key: new FormControl<string>('', {
-      validators: [Validators.required, segmentValidator],
-      nonNullable: true,
-    }),
-    baseValue: new FormControl<string>('', {
-      validators: [Validators.required],
-      nonNullable: true,
-    }),
-    comment: new FormControl<string>('', {
-      nonNullable: true,
-    }),
-    translations: new FormArray<
-      FormGroup<{
-        locale: FormControl<string>;
-        value: FormControl<string>;
-        status: FormControl<TranslationStatus>;
-      }>
-    >([]),
-  });
+  readonly form = this.#entryForm.form;
 
   readonly #location = new EditorLocation({
     collectionName: this.data.collectionName,
@@ -297,17 +239,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   );
   readonly hasSearchQuery = computed(() => hasSearchLength(this.baseValueText().trim()));
 
-  /**
-   * Publish a fresh raw snapshot for either event. Repeated status strings can
-   * otherwise hide a changed key from computeds before the next render.
-   */
-  readonly #silentFormChanges = new Subject<void>();
-  readonly #formState = toSignal(
-    merge(this.form.valueChanges, this.form.statusChanges, this.#silentFormChanges).pipe(
-      map(() => this.form.getRawValue()),
-    ),
-    { initialValue: this.form.getRawValue() },
-  );
+  /** Form validity and errors react to the entry form's raw snapshot. */
+  readonly #formState = this.#entryForm.formState;
 
   /** Live "this key is already taken in the target folder" state. */
   readonly keyCollision = this.#location.keyCollision;
@@ -355,21 +288,16 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly folderSegments = this.#location.folderSegments;
 
   /** Every non-base locale with the value and status the form currently holds. */
-  readonly localeSummaries = computed<LocaleDraft[]>(() => {
-    this.#formState();
-    return this.form.controls.translations.controls.map((group) => group.getRawValue());
-  });
+  readonly localeSummaries = this.#entryForm.localeSummaries;
 
   /**
    * The locales a reviewer still owes work on. The context column lists these
    * alone: a locale that is already translated or verified is not news.
    */
-  readonly localesNeedingWork = computed<LocaleDraft[]>(() =>
-    this.localeSummaries().filter((locale) => isNeedsWorkStatus(locale.status)),
-  );
+  readonly localesNeedingWork = this.#entryForm.localesNeedingWork;
 
   /** Locales that are new or stale: the ones a reviewer still owes work on. */
-  readonly needWorkCount = computed(() => this.localesNeedingWork().length);
+  readonly needWorkCount = this.#entryForm.needWorkCount;
 
   /** The right-hand summary on the "Other locales" row, already localized. */
   readonly otherLocalesSummary = computed(() =>
@@ -395,13 +323,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * is not merely similar — it is the same string under a key that already
    * exists, which is the one case worth saying out loud.
    */
-  readonly exactMatch = computed(() => {
-    const typed = this.baseValueText().trim().toLowerCase();
-    if (!typed) {
-      return undefined;
-    }
-    return this.similarResources().find((result) => result.base.value.trim().toLowerCase() === typed);
-  });
+  readonly exactMatch = this.#advisories.exactMatch;
 
   /** The key carrying the exact same text, or '' when no hit matches verbatim. */
   readonly exactMatchKey = computed(() => this.exactMatch()?.fullKey ?? '');
@@ -441,36 +363,36 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   readonly allTagSuggestions = editorTagSuggestions(this.browserStore);
 
-  readonly filteredTagSuggestions = computed(() => {
-    const input = this.tagInputText().toLowerCase();
-    const existing = new Set([...this.tagsList(), ...this.inheritedTagsList()]);
-    return this.allTagSuggestions().filter((t) => !existing.has(t) && (input === '' || t.includes(input)));
-  });
+  readonly filteredTagSuggestions = computed(() =>
+    filteredEditorTagSuggestions(
+      this.tagInputText(),
+      this.tagsList(),
+      this.inheritedTagsList(),
+      this.allTagSuggestions(),
+    ),
+  );
 
   ngOnInit(): void {
     // Initialize folder path from dialog data
     this.#location.pick(this.data.folderPath || '');
-    this.#initializeOtherLocaleFormControls();
+    this.#entryForm.seed(
+      this.data.availableLocales,
+      this.data.baseLocale,
+      this.isEditMode() ? this.data.resource : undefined,
+      this.selectedFolderPath(),
+    );
 
-    if (this.isEditMode() && this.data.resource) {
-      const baseValue = this.data.resource.base.value;
-      const comment = this.data.resource.comment || '';
-
-      this.form.patchValue({
-        key: this.data.resource.entryKey,
-        baseValue,
-        comment,
-      });
-
-      this.tagsList.set([...this.data.resource.tags]);
-
-      this.#populateOtherLocaleTranslations();
-    }
-
-    this.#initialDraft = this.#draft();
-
-    this.#setupSimilarResourcesSearch();
-    this.#setupPreferredTermCheck();
+    const baseValue = this.form.controls.baseValue;
+    this.#advisories.observe(
+      baseValue.value,
+      baseValue.valueChanges,
+      this.similarValues.suggestions(
+        baseValue.valueChanges,
+        this.data.collectionName,
+        this.isEditMode() ? this.#entryForm.initialBaseValue() : undefined,
+        this.#originalEntry()?.fullKey,
+      ),
+    );
 
     this.#setupDottedKeyAbsorption();
 
@@ -509,16 +431,10 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   /** True when closing now would throw away work the user has done. */
   hasUnsavedChanges(): boolean {
-    if (this.isReadOnly() || this.isSubmitting() || !this.#initialDraft) {
+    if (this.isReadOnly() || this.isSubmitting()) {
       return false;
     }
-    return hasUnsavedChanges(this.#draft(), this.#initialDraft, this.form.dirty);
-  }
-
-  /** The form, the target folder and the tags as one plain draft. */
-  #draft(): ResourceEntryDraft {
-    const { key, baseValue, comment, translations } = this.form.getRawValue();
-    return { key, baseValue, comment, translations, folderPath: this.selectedFolderPath(), tags: this.tagsList() };
+    return this.#entryForm.hasUnsavedChanges(this.selectedFolderPath());
   }
 
   /** The entry an edit started from, or undefined in create mode. */
@@ -531,7 +447,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     clearTimeout(this.#keyCopiedTimer);
     this.destroy$.next();
     this.destroy$.complete();
-    this.#silentFormChanges.complete();
+    this.#advisories.destroy();
+    this.#entryForm.destroy();
     this.#location.destroy();
   }
 
@@ -545,79 +462,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     });
   }
 
-  #initializeOtherLocaleFormControls(): void {
-    const translationsArray = this.form.controls.translations;
-    translationsArray.clear();
-
-    this.otherLocales().forEach((locale) => {
-      const localeGroup = new FormGroup({
-        locale: new FormControl<string>(locale, { nonNullable: true }),
-        value: new FormControl<string>('', { nonNullable: true }),
-        status: new FormControl<TranslationStatus>(DEFAULT_MISSING_METADATA_STATUS, {
-          nonNullable: true,
-        }),
-      });
-
-      translationsArray.push(localeGroup);
-    });
-  }
-
-  #populateOtherLocaleTranslations(): void {
-    if (!this.data.resource) {
-      return;
-    }
-
-    const translationsArray = this.form.controls.translations;
-
-    translationsArray.controls.forEach((control) => {
-      const locale = control.value.locale;
-      if (!locale) {
-        return;
-      }
-      const target = this.data.resource ? summaryTarget(this.data.resource, locale) : undefined;
-      const value = target?.value ?? '';
-      const status = target?.status ?? DEFAULT_MISSING_METADATA_STATUS;
-
-      control.patchValue({ value, status });
-    });
-  }
-
-  #setupSimilarResourcesSearch(): void {
-    this.form.controls.baseValue.valueChanges.pipe(takeUntil(this.destroy$)).subscribe((value) => {
-      this.baseValueLength.set(value.trim().length);
-      this.baseValueText.set(value);
-    });
-
-    this.similarValues
-      .suggestions(
-        this.form.controls.baseValue.valueChanges,
-        this.data.collectionName,
-        this.isEditMode() ? this.#initialDraft?.baseValue : undefined,
-        this.#originalEntry()?.fullKey,
-      )
-      .pipe(takeUntil(this.destroy$))
-      .subscribe((suggestion) => {
-        if (suggestion.kind === 'clear') this.similarResources.set([]);
-        if (suggestion.kind === 'ready') this.similarResources.set(suggestion.results);
-        if (suggestion.kind === 'clear' && !suggestion.searching) this.isSearchingSimilar.set(false);
-        if (suggestion.kind === 'loading') this.isSearchingSimilar.set(true);
-        if (suggestion.kind === 'ready') this.isSearchingSimilar.set(false);
-      });
-  }
-
-  /**
-   * Findings follow the base value after a typing pause, so the notes do not
-   * flicker per keystroke. An existing value is checked at once, so an entry
-   * that already uses a discouraged term says so as soon as it opens.
-   */
-  #setupPreferredTermCheck(): void {
-    const control = this.form.controls.baseValue;
-    this.#terminologyCheckedValue.set(control.value);
-    control.valueChanges
-      .pipe(debounceTime(PREFERRED_TERM_DEBOUNCE_MS), takeUntil(this.destroy$))
-      .subscribe((value) => this.#terminologyCheckedValue.set(value));
-  }
-
   /**
    * "Use …": rewrites the rule's discouraged term to the preferred spelling
    * through the ordinary value-change path, as if typed, and never saves. The
@@ -628,13 +472,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     if (this.isReadOnly()) {
       return;
     }
-    const control = this.form.controls.baseValue;
-    const next = applyPreferredTerm(control.value, rule);
-    if (next !== control.value) {
-      control.markAsDirty();
-      control.setValue(next);
-    }
-    this.#terminologyCheckedValue.set(next);
+    this.#advisories.applyTerm(this.form.controls.baseValue, rule);
     this.#focusOnceRendered(() => this.baseValueInput?.nativeElement);
   }
 
@@ -668,12 +506,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     control.setValue(leaf, { emitEvent: false });
     control.markAsDirty();
     control.updateValueAndValidity({ emitEvent: false });
-    this.#publishFormSnapshot();
-  }
-
-  /** Publishes the one silent form write to the same signal bridge as regular form events. */
-  #publishFormSnapshot(): void {
-    this.#silentFormChanges.next();
+    this.#entryForm.publishSnapshot();
   }
 
   /**
@@ -872,7 +705,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   addTagValue(rawValue: string): void {
-    this.tagsList.update((tags) => addTag(tags, rawValue));
+    this.#entryForm.addTag(rawValue);
     this.tagInputText.set('');
   }
 
@@ -882,7 +715,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   removeTag(tag: string): void {
-    this.tagsList.update((tags) => removeTag(tags, tag, this.inheritedTagsList()));
+    this.#entryForm.removeTag(tag, this.inheritedTagsList());
   }
 
   onTagInputChange(event: Event): void {
@@ -895,7 +728,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * other way out of the dialog.
    */
   async openExistingResource(): Promise<void> {
-    const existingKey = resolveDraftKey(this.#draft());
+    const existingKey = resolveDraftKey(this.#entryForm.draft(this.selectedFolderPath()));
 
     if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
       return;
@@ -949,7 +782,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   async onSubmit(): Promise<void> {
     const decision = await this.#submit.trigger({
       mode: this.data.mode,
-      draft: this.#draft(),
+      draft: this.#entryForm.draft(this.selectedFolderPath()),
       original: this.#originalEntry(),
       readOnly: this.isReadOnly(),
       invalid: this.form.invalid,
