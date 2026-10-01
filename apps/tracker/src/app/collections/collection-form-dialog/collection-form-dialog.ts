@@ -1,29 +1,39 @@
-import { Component, ChangeDetectionStrategy, computed, inject, DestroyRef, type OnInit, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
-import { ReactiveFormsModule, FormGroup, FormControl, FormArray, Validators } from '@angular/forms';
-import { MatDialogModule, MatDialogRef, MAT_DIALOG_DATA } from '@angular/material/dialog';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, type OnInit, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormArray, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import type { MatChipInputEvent } from '@angular/material/chips';
+import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import type { MatChipInputEvent } from '@angular/material/chips';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { isUnderNodeModules, validateLocale } from '@simoncodes-ca/domain';
-import type { CollectionFormDialogData } from './collection-form-dialog-data';
-import type { LingoTrackerCollectionDto } from '@simoncodes-ca/data-transfer';
+import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { CollectionsStore } from '../store/collections.store';
 import { injectConfirm } from '../../shared/confirm';
-import { NamedEntrySubmit } from '../store/dialog-config-submit';
-import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { ProtectedTermsChips } from '../../shared/protected-terms/protected-terms-chips';
+import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
+import { CollectionsStore } from '../store/collections.store';
+import { NamedEntrySubmit } from '../store/dialog-config-submit';
+import {
+  type CollectionDraft,
+  type CollectionDraftResult,
+  canRemoveLocale,
+  chooseBaseLocale,
+  displayedBaseLocale,
+  removedLocales,
+  toCollectionDraft,
+  toCollectionResult,
+  withAddedLocale,
+  withFolder,
+  withoutLocale,
+  withUserReadOnly,
+} from './collection-draft';
+import type { CollectionFormDialogData } from './collection-form-dialog-data';
 
 /** What the dialog closes with: the collection as the server has now accepted it. */
-export interface CollectionFormResult {
-  name: string;
-  config: LingoTrackerCollectionDto;
-}
+export type CollectionFormResult = CollectionDraftResult;
 
 @Component({
   selector: 'app-collection-form-dialog',
@@ -49,6 +59,7 @@ export class CollectionFormDialog implements OnInit {
   readonly #translocoService = inject(TranslocoService);
   readonly #destroyRef = inject(DestroyRef);
   readonly #store = inject(CollectionsStore);
+  #draft = toCollectionDraft(this.#data);
 
   readonly TOKENS = TRACKER_TOKENS;
 
@@ -102,9 +113,17 @@ export class CollectionFormDialog implements OnInit {
    */
   readonly advancedOpen = signal(false);
 
-  #originalLocales: string[] = [];
-  /** Tracks whether the user manually toggled read-only, so auto-detection stops overriding it. */
-  #readOnlyTouchedByUser = false;
+  /** The controls render the draft; this snapshot supplies their current values to its rules. */
+  #currentDraft(): CollectionDraft {
+    return {
+      ...this.#draft,
+      ...this.form.getRawValue(),
+      tags: this.tagsList(),
+      protectedTerms: this.protectedTermsList(),
+      protectedTermsFile: this.protectedTermsFile(),
+      protectedTermsFilePath: this.protectedTermsFilePath(),
+    };
+  }
 
   get isEditMode(): boolean {
     return this.#data.mode === 'edit';
@@ -146,25 +165,20 @@ export class CollectionFormDialog implements OnInit {
 
   ngOnInit(): void {
     if (this.isEditMode && this.#data.config) {
-      const configLocales = this.#data.config.locales ?? [];
-      this.#originalLocales = [...configLocales];
-
       this.form.patchValue({
-        name: this.#data.name ?? '',
-        translationsFolder: this.#data.config.translationsFolder ?? '',
-        baseLocale: this.#data.config.baseLocale ?? '',
-        readOnly: this.#data.config.readOnly ?? false,
+        name: this.#draft.name,
+        translationsFolder: this.#draft.translationsFolder,
+        baseLocale: this.#draft.baseLocale,
+        readOnly: this.#draft.readOnly,
       });
 
-      this.tagsList.set(this.#data.config.tags ?? []);
-      this.protectedTerms.seedRaw(this.#data.config.protectedTerms ?? []);
-      this.protectedTermsFile.set(this.#data.config.protectedTermsFile);
-      this.protectedTermsFilePath.set(this.#data.config.protectedTermsFilePath);
+      this.tagsList.set(this.#draft.tags);
+      this.protectedTerms.seedRaw(this.#draft.protectedTerms);
+      this.protectedTermsFile.set(this.#draft.protectedTermsFile);
+      this.protectedTermsFilePath.set(this.#draft.protectedTermsFilePath);
       this.advancedOpen.set(this.tagsList().length > 0 || this.protectedTermsList().length > 0);
-      // An existing read-only flag is the user's prior choice — don't let auto-detection override it.
-      this.#readOnlyTouchedByUser = this.#data.config.readOnly !== undefined;
 
-      for (const locale of configLocales) {
+      for (const locale of this.#draft.locales) {
         this.form.controls.locales.push(new FormControl<string>(locale, { nonNullable: true }));
       }
 
@@ -180,13 +194,13 @@ export class CollectionFormDialog implements OnInit {
     this.form.controls.translationsFolder.valueChanges
       .pipe(takeUntilDestroyed(this.#destroyRef))
       .subscribe((folder) => {
-        if (this.#readOnlyTouchedByUser) return;
-        this.form.controls.readOnly.setValue(isUnderNodeModules(folder), { emitEvent: false });
+        this.#draft = withFolder(this.#currentDraft(), folder);
+        this.form.controls.readOnly.setValue(this.#draft.readOnly, { emitEvent: false });
       });
   }
 
-  onReadOnlyToggle(): void {
-    this.#readOnlyTouchedByUser = true;
+  onReadOnlyToggle(readOnly: boolean): void {
+    this.#draft = withUserReadOnly(this.#currentDraft(), readOnly);
   }
 
   toggleAdvanced(): void {
@@ -199,9 +213,7 @@ export class CollectionFormDialog implements OnInit {
    * is ever written back.
    */
   get displayedBaseLocale(): string {
-    const own = this.form.controls.baseLocale.value;
-    if (own) return own;
-    return this.isEditMode ? (this.#data.effectiveBaseLocale ?? '') : '';
+    return displayedBaseLocale(this.#draft.mode, this.form.controls.baseLocale.value, this.#draft.effectiveBaseLocale);
   }
 
   isBaseLocale(locale: string): boolean {
@@ -210,40 +222,30 @@ export class CollectionFormDialog implements OnInit {
 
   /** The base locale is a create-time decision; after that it anchors every checksum and is locked. */
   setBaseLocale(locale: string): void {
-    if (this.isEditMode) return;
-    if (!this.form.controls.locales.getRawValue().includes(locale)) return;
-    this.form.controls.baseLocale.setValue(locale);
+    const control = this.form.controls.baseLocale;
+    const next = chooseBaseLocale(this.#draft.mode, control.value, this.form.controls.locales.getRawValue(), locale);
+    if (next !== control.value) {
+      control.setValue(next);
+    }
   }
 
   canRemoveLocale(index: number): boolean {
-    const locale = this.form.controls.locales.at(index)?.value;
-    return !(this.isEditMode && locale === this.displayedBaseLocale);
+    return canRemoveLocale(this.#draft.mode, this.form.controls.locales.at(index)?.value, this.displayedBaseLocale);
   }
 
   addLocale(): void {
-    const input = this.addLocaleInput.value.trim().toLowerCase();
-    if (!input) return;
-
-    try {
-      validateLocale(input);
-    } catch {
-      this.addLocaleInput.setErrors({ invalidLocale: true });
-      this.addLocaleInput.markAsTouched();
-      return;
-    }
-
-    const currentLocales = this.form.controls.locales.getRawValue();
-    if (currentLocales.includes(input)) {
-      this.addLocaleInput.setErrors({ duplicateLocale: true });
+    const result = withAddedLocale(this.#currentDraft(), this.addLocaleInput.value);
+    if (result.kind === 'blank') return;
+    if (result.kind !== 'added') {
+      this.addLocaleInput.setErrors({ [result.kind]: true });
       this.addLocaleInput.markAsTouched();
       return;
     }
 
     this.addLocaleInput.setErrors(null);
-    this.form.controls.locales.push(new FormControl<string>(input, { nonNullable: true }));
-
-    if (!this.isEditMode && this.form.controls.locales.length === 1) {
-      this.form.controls.baseLocale.setValue(input);
+    this.form.controls.locales.push(new FormControl<string>(result.locale, { nonNullable: true }));
+    if (result.draft.baseLocale !== this.form.controls.baseLocale.value) {
+      this.form.controls.baseLocale.setValue(result.draft.baseLocale);
     }
 
     this.addLocaleInput.setValue('');
@@ -251,9 +253,7 @@ export class CollectionFormDialog implements OnInit {
 
   /** Leaving the input with a locale typed but not confirmed should not silently drop it. */
   addLocaleIfPending(): void {
-    if (this.addLocaleInput.value.trim()) {
-      this.addLocale();
-    }
+    this.addLocale();
   }
 
   /** Enter or comma commits the typed tag or term, like the Material chip input it replaces. */
@@ -309,16 +309,12 @@ export class CollectionFormDialog implements OnInit {
   }
 
   removeLocale(index: number): void {
-    if (!this.canRemoveLocale(index)) {
-      return;
-    }
-
-    const removedLocale = this.form.controls.locales.at(index).value;
+    const current = this.#currentDraft();
+    const next = withoutLocale(current, index);
+    if (next === current) return;
     this.form.controls.locales.removeAt(index);
-
-    if (!this.isEditMode && this.form.controls.baseLocale.value === removedLocale) {
-      const first = this.form.controls.locales.at(0);
-      this.form.controls.baseLocale.setValue(first ? first.value : '');
+    if (next.baseLocale !== this.form.controls.baseLocale.value) {
+      this.form.controls.baseLocale.setValue(next.baseLocale);
     }
   }
 
@@ -334,14 +330,13 @@ export class CollectionFormDialog implements OnInit {
     }
 
     if (this.isEditMode) {
-      const localesArray = this.form.controls.locales.getRawValue();
-      const removedLocales = this.#originalLocales.filter((l) => !localesArray.includes(l));
+      const removed = removedLocales(this.#currentDraft());
 
-      if (removedLocales.length > 0) {
+      if (removed.length > 0) {
         const confirmed = await this.#confirm({
           title: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE),
           message: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY, {
-            locales: removedLocales.join(', '),
+            locales: removed.join(', '),
           }),
           confirmButtonText: this.#translocoService.translate(TRACKER_TOKENS.COMMON.ACTIONS.SAVE),
           actionType: 'destructive',
@@ -355,7 +350,7 @@ export class CollectionFormDialog implements OnInit {
   }
 
   #save(): void {
-    const result = this.#buildResult();
+    const result = toCollectionResult(this.#currentDraft());
     const existingName = this.isEditMode ? this.#data.name : undefined;
     this.submitError.set(null);
     this.#namedEntrySubmit.submit({
@@ -368,33 +363,5 @@ export class CollectionFormDialog implements OnInit {
         if (refusal.kind === 'message') this.submitError.set(refusal.message);
       },
     });
-  }
-
-  #buildResult(): CollectionFormResult {
-    const raw = this.form.getRawValue();
-    const localesArray = raw.locales;
-    const tags = this.tagsList();
-    const protectedTermsFile = this.protectedTermsFile();
-    const protectedTerms = this.protectedTermsList();
-    return {
-      name: raw.name,
-      config: {
-        translationsFolder: raw.translationsFolder,
-        // Always sent: an empty list is how "remove every own locale, inherit global" reaches the API.
-        locales: localesArray,
-        // The base locale is create-time-only and locked once a collection exists (see
-        // `setBaseLocale`/`displayedBaseLocale`), so there is no form path that clears an existing
-        // override — omitting it here when unset is therefore always correct, never a lost edit.
-        ...(raw.baseLocale ? { baseLocale: raw.baseLocale } : {}),
-        readOnly: raw.readOnly,
-        // Always sent: an empty list is how "remove every tag" reaches the API.
-        tags,
-        // Always sent: '' is how "no file for this collection" reaches the API. The pointer
-        // itself isn't user-editable here, so this mirrors whatever was loaded; the terms are
-        // only sent when there is a file to write them to.
-        protectedTermsFile: protectedTermsFile ?? '',
-        ...(protectedTermsFile ? { protectedTerms } : {}),
-      },
-    };
   }
 }
