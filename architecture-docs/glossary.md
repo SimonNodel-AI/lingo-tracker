@@ -349,7 +349,7 @@ Explained in context: [`api.md`](api.md#translation-job-system)
 
 ### List Edit Merge
 
-`listEditProblem()` and `mergeListEdit()` in `libs/domain/src/lib/list-edit.ts` provide the shared add, remove and set rules for collection tags and protected terms. Core maps a missing or conflicting edit to each command's typed error and message. Each caller supplies its own normalization: tags use `normalizeTags()`, while protected terms keep case and punctuation with `normalizeProtectedTerms()`.
+`listEditProblem()` and `mergeListEdit()` in `libs/domain/src/lib/list-edit.ts` provide the shared add, remove and set rules for collection tags and protected terms. Every list is an array of strings. Core maps a missing or conflicting edit to a typed, flag-free error; the CLI checks its own flag combinations before calling core. Each caller supplies its own normalization: tags use `normalizeTags()`, while protected terms keep case and punctuation with `normalizeProtectedTerms()`.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms)
 
@@ -423,7 +423,7 @@ Explained in context: [`core-library.md`](core-library.md#project-terms)
 
 ### Project Terms Update
 
-`updateProjectTerms(config, update, { cwd, beforeWrite? })` in core validates edits to global or collection protected terms and project-wide preferred terminology, then reads and writes the requested files. Its protected-terms `file` option changes a pointer inside the same update. `beforeWrite` receives the read view and any pointer-change message after the new location is readable; it may throw to abort. Core saves the exact previous bytes of term files it changes. On failure, it restores those files and reverts only its pointer key if that key still holds the new value, preserving unrelated config edits. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API still returns its usual config update message.
+`planProjectTermsUpdate(config, update, { cwd })` in `libs/core/src/lib/config/update-project-terms.ts` validates structured protected-term and preferred-terminology edits once and returns a read-only `view` and `apply()`. The CLI shows the view, then applies the plan. `updateProjectTerms` plans and applies in one call for the API. A protected-terms `file` option changes the pointer during apply, before the term edit. Core uses the supplied config for the read and write paths. It saves the exact previous bytes of changed term files. On failure, it restores those files and reverts only its pointer key if that key still holds the new value, preserving unrelated config edits. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API keeps its config update success message.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`api.md`](api.md#endpoint-reference), [`cli.md`](cli.md#protected-terms-scoping)
 
@@ -641,7 +641,7 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ### Tag List Edit
 
-The pure Tracker helper in `apps/tracker/src/app/shared/tag-list-edit.ts` adds a normalized, deduplicated tag or removes all matching tags. An empty or duplicate add returns the original list. Resource-entry removal passes inherited tags so those stay in place; collection and bundle editors remove their own tags without that option.
+The pure Tracker helper in `apps/tracker/src/app/shared/tag-list-edit.ts` adds a normalized, deduplicated tag or removes all matching tags. An empty or duplicate add returns the original list. Resource-entry removal passes inherited tags so those stay in place; collection and bundle editors remove their own tags without that option. For collection registrations, `editCollectionTags` in `libs/core/src/collections-manager/edit-collection-tags.ts` takes a domain `ListEdit`: `set` is an array of tags, or `add` and `remove` are arrays. The CLI splits the comma-separated `--set-tags` value and owns flag-combination wording. Core normalizes tags and raises typed, flag-free errors for an invalid edit.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft), [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -669,7 +669,7 @@ Explained in context: [`core-library.md`](core-library.md#term-glossary), [`cli.
 
 ### Term List Edit
 
-The direct file-edit side of [Project Terms](#project-terms), owned by core config. Collection create and update can also provide a whole protected-terms list through the [Collection Lifecycle](#collection-lifecycle). Core’s pointer setters change `protectedTermsFile` and carry over the old list. [Project Terms Update](#project-terms-update) reads stored terms, paths, warnings and the effective union before a write, and lets the CLI print that view before it writes. It applies add, remove or set through the shared [List Edit Merge](#list-edit-merge). Preferred-terminology upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched.
+The direct file-edit side of [Project Terms](#project-terms), owned by core config. Collection create and update can also provide a whole protected-terms list through the [Collection Lifecycle](#collection-lifecycle). Core’s pointer setters change `protectedTermsFile` and carry over the old list. [Project Terms Update](#project-terms-update) previews stored terms, paths, warnings and the effective union before a write, so the CLI can print that view. Protected terms use the domain `ListEdit`: `set`, `add` and `remove` hold arrays; the CLI splits its comma-separated `--set` value. Preferred terminology uses a replacement rule array, one `upsert` rule, or one discouraged term to remove. Core applies protected-term lists through the shared [List Edit Merge](#list-edit-merge). Preferred-terminology upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`cli.md`](cli.md#protected-terms-scoping), [`api.md`](api.md#error-mapping)
 
@@ -730,7 +730,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Typed Errors
 
-The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`). The API maps `kind` to HTTP status and retains special bodies for bundle, terminology, folder validation, and translation errors. The CLI prints the message and keeps its config and cancellation handling. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
+The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`). The API maps `kind` to HTTP status and retains special bodies for bundle, terminology, folder validation, and translation errors. Project-term and collection-tag edit errors name data, not CLI flags; the commands in `apps/cli/src/commands/` own flag usage errors and their exact wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
 
 Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
 

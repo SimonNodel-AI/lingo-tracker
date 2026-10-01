@@ -14,9 +14,19 @@ const run = defineCommand<EditCollectionOptions & { name: string }>()({
   collection: 'read',
   collectionOption: 'name',
   run: async ({ collection, cwd, answers }) => {
+    if (answers.setTags !== undefined && ((answers.addTag ?? []).length > 0 || (answers.removeTag ?? []).length > 0)) {
+      throw new Error('--set-tags cannot be combined with --add-tag or --remove-tag');
+    }
+    if (
+      answers.setTags === undefined &&
+      (answers.addTag ?? []).length === 0 &&
+      (answers.removeTag ?? []).length === 0
+    ) {
+      throw new Error('Provide at least one of --add-tag, --remove-tag, or --set-tags');
+    }
     const currentTags = editCollectionTags(
       collection.name,
-      { add: answers.addTag, remove: answers.removeTag, set: answers.setTags },
+      { add: answers.addTag, remove: answers.removeTag, set: answers.setTags?.split(',') },
       { cwd },
     );
 

@@ -2,7 +2,7 @@
 export interface ListEdit {
   readonly add?: readonly string[];
   readonly remove?: readonly string[];
-  readonly set?: string;
+  readonly set?: readonly string[];
 }
 
 export type ListEditProblem = 'conflict' | 'missing';
@@ -21,7 +21,7 @@ export function mergeListEdit(
   edit: ListEdit,
   normalize: (values: string[]) => string[],
 ): string[] {
-  if (edit.set !== undefined) return normalize(edit.set.split(','));
+  if (edit.set !== undefined) return normalize([...edit.set]);
   const result = [...current];
   for (const value of normalize([...(edit.add ?? [])])) {
     if (!result.includes(value)) result.push(value);

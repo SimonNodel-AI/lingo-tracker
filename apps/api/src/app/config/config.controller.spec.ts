@@ -2,13 +2,13 @@ import { basename } from 'node:path';
 import { HttpException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
-  InvalidConfigError,
   InvalidCollectionError,
+  InvalidConfigError,
   loadPreferredTerminology,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
-  updateProjectTerms,
   resolveProtectedTermsForConfig,
+  updateProjectTerms,
 } from '@simoncodes-ca/core';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import * as mapper from '../mappers/config.mapper';

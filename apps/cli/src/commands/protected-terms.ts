@@ -1,4 +1,9 @@
-import { displayTermPath, updateProjectTerms } from '@simoncodes-ca/core';
+import {
+  displayTermPath,
+  type ProjectTermsUpdateResult,
+  ProtectedTermsFileNotSetError,
+  planProjectTermsUpdate,
+} from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -22,49 +27,67 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
     const hasSet = options.set !== undefined;
     const hasList = options.list === true;
     const hasFile = options.file !== undefined;
+    if (hasSet && (hasAdd || hasRemove)) throw new Error('--set cannot be combined with --add or --remove');
+    if (!hasSet && !hasAdd && !hasRemove && !hasList && !hasFile) {
+      throw new Error('Provide at least one of --add, --remove, --set, --list, or --file');
+    }
 
     const collectionName = options.collection;
     const target = { collection: collectionName };
     let pointerLinePrinted = false;
-    let result: ReturnType<typeof updateProjectTerms>;
+    let result: ProjectTermsUpdateResult;
     try {
-      result = updateProjectTerms(
+      const plan = planProjectTermsUpdate(
         config,
         {
-          protectedTerms: { target, edit: options, list: hasList, ...(hasFile && { file: options.file }) },
-        },
-        {
-          cwd,
-          beforeWrite: ({ protectedTerms: view, protectedTermsFileChange }) => {
-            if (protectedTermsFileChange !== undefined) {
-              ConsoleFormatter.success(protectedTermsFileChange.message);
-              pointerLinePrinted = true;
-            }
-            if (view === undefined) return;
-            // A named file that does not exist reads as empty; print its warning before a later write can fail.
-            for (const warning of view.warnings) ConsoleFormatter.warning(warning);
-            if (!hasList) return;
-            ConsoleFormatter.section('Protected Terms');
-            if (collectionName) {
-              ConsoleFormatter.keyValue('Scope', `Collection "${collectionName}" (global + collection)`);
-              ConsoleFormatter.keyValue('Global file', displayTermPath(view.globalFilePath, cwd));
-              ConsoleFormatter.keyValue('Global', view.globalTerms.join(', ') || '(none)');
-              ConsoleFormatter.keyValue(
-                'Collection file',
-                view.collectionFilePath ? displayTermPath(view.collectionFilePath, cwd) : '(none)',
-              );
-              ConsoleFormatter.keyValue('Collection-specific', view.collectionTerms.join(', ') || '(none)');
-              ConsoleFormatter.keyValue('Effective', view.effectiveTerms.join(', ') || '(none)');
-            } else {
-              ConsoleFormatter.keyValue('Scope', 'Global');
-              ConsoleFormatter.keyValue('File', displayTermPath(view.globalFilePath, cwd));
-              ConsoleFormatter.keyValue('Terms', view.globalTerms.join(', ') || '(none)');
-            }
+          protectedTerms: {
+            target,
+            edit: {
+              add: options.add,
+              remove: options.remove,
+              ...(hasSet && { set: options.set?.split(',') ?? [] }),
+            },
+            list: hasList,
+            ...(hasFile && { file: options.file }),
           },
         },
+        { cwd },
       );
+      const { protectedTerms: view, protectedTermsFileChange } = plan.view;
+      if (protectedTermsFileChange !== undefined) {
+        ConsoleFormatter.success(protectedTermsFileChange.message);
+        pointerLinePrinted = true;
+      }
+      if (view !== undefined) {
+        // A named file that does not exist reads as empty; print its warning before a later write can fail.
+        for (const warning of view.warnings) ConsoleFormatter.warning(warning);
+      }
+      if (view !== undefined && hasList) {
+        ConsoleFormatter.section('Protected Terms');
+        if (collectionName) {
+          ConsoleFormatter.keyValue('Scope', `Collection "${collectionName}" (global + collection)`);
+          ConsoleFormatter.keyValue('Global file', displayTermPath(view.globalFilePath, cwd));
+          ConsoleFormatter.keyValue('Global', view.globalTerms.join(', ') || '(none)');
+          ConsoleFormatter.keyValue(
+            'Collection file',
+            view.collectionFilePath ? displayTermPath(view.collectionFilePath, cwd) : '(none)',
+          );
+          ConsoleFormatter.keyValue('Collection-specific', view.collectionTerms.join(', ') || '(none)');
+          ConsoleFormatter.keyValue('Effective', view.effectiveTerms.join(', ') || '(none)');
+        } else {
+          ConsoleFormatter.keyValue('Scope', 'Global');
+          ConsoleFormatter.keyValue('File', displayTermPath(view.globalFilePath, cwd));
+          ConsoleFormatter.keyValue('Terms', view.globalTerms.join(', ') || '(none)');
+        }
+      }
+      result = plan.apply();
     } catch (error) {
       if (pointerLinePrinted) ConsoleFormatter.warning('Protected terms file change was reverted.');
+      if (error instanceof ProtectedTermsFileNotSetError) {
+        throw new Error(
+          `Collection "${error.collectionName}" has no protected terms file. Set one first with --file <path>.`,
+        );
+      }
       throw error;
     }
 

@@ -103,10 +103,10 @@ describe('LingoTrackerError subclasses', () => {
       message: 'translationsFolder is required',
     },
     {
-      error: new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately'),
+      error: new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
       name: 'InvalidProjectTermsEditError',
       code: 'INVALID_PROJECT_TERMS_EDIT',
-      message: '--add and --remove cannot be combined; run them separately',
+      message: 'Only one preferred terminology edit can be applied at a time',
     },
     {
       error: new ProtectedTermsFileNotSetError('app'),
