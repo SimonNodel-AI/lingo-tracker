@@ -1,11 +1,11 @@
-import { Test, type TestingModule } from '@nestjs/testing';
 import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
-import { LocalesController } from './locales.controller';
-import { ConfigService } from '../../config/config.service';
-import { CollectionIndex } from '../../cache/collection-index.service';
-import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
+import { Test, type TestingModule } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
+import { CollectionIndex } from '../../cache/collection-index.service';
+import { ConfigService } from '../../config/config.service';
+import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import { RouteCollectionPipe } from '../route-collection';
+import { LocalesController } from './locales.controller';
 
 jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
@@ -34,7 +34,7 @@ describe('LocalesController', () => {
     },
   };
 
-  const collectionFor = (name: string): core.Collection =>
+  const collectionFor = (name: string): core.OpenedCollection =>
     new RouteCollectionPipe(localesModule.get<ConfigService>(ConfigService)).transform({ name, writable: true });
 
   const mockIndex = { apply: jest.fn() };
@@ -85,7 +85,11 @@ describe('LocalesController', () => {
 
       const result = await localesController.addLocale(collectionFor('test-collection'), { locale: 'de' });
 
-      expect(core.addLocaleToCollection).toHaveBeenCalledWith('test-collection', 'de');
+      expect(core.addLocaleToCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection' }),
+        expect.objectContaining({ write: expect.any(Function) }),
+        'de',
+      );
       expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
       // The mutations are for the index; the response is unchanged.
       expect(result).toEqual(mockResult);
@@ -172,7 +176,11 @@ describe('LocalesController', () => {
 
       const result = await localesController.removeLocale(collectionFor('test-collection'), 'fr');
 
-      expect(core.removeLocaleFromCollection).toHaveBeenCalledWith('test-collection', 'fr');
+      expect(core.removeLocaleFromCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection' }),
+        expect.objectContaining({ write: expect.any(Function) }),
+        'fr',
+      );
       expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
       // The mutations are for the index; the response is unchanged.
       expect(result).toEqual(mockResult);
@@ -236,7 +244,7 @@ describe('LocalesController', () => {
       expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
-    it('passes collection name and locale directly to core function', async () => {
+    it('passes the opened collection and locale to core function', async () => {
       const mockResult = {
         message: 'Locale "fr" removed from collection "test-collection" successfully',
         entriesPurged: 1,
@@ -246,7 +254,11 @@ describe('LocalesController', () => {
 
       await localesController.removeLocale(collectionFor('test-collection'), 'fr');
 
-      expect(core.removeLocaleFromCollection).toHaveBeenCalledWith('test-collection', 'fr');
+      expect(core.removeLocaleFromCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection' }),
+        expect.objectContaining({ write: expect.any(Function) }),
+        'fr',
+      );
     });
   });
 });

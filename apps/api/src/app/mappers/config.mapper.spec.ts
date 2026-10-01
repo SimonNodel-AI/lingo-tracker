@@ -200,6 +200,19 @@ describe('collection.mapper', () => {
     expect(mapDtoToCollection(dto)).not.toHaveProperty('protectedTerms');
   });
 
+  it('keeps the required body folder rule in core before mapping', () => {
+    expect(() => mapDtoToCollection({} as Parameters<typeof mapDtoToCollection>[0])).toThrow(
+      'translationsFolder must be a string',
+    );
+  });
+
+  it('rejects null DTO-only fields before dropping them', () => {
+    const body = { translationsFolder: './i18n', protectedTerms: null } as unknown as Parameters<
+      typeof mapDtoToCollection
+    >[0];
+    expect(() => mapDtoToCollection(body)).toThrow('protectedTerms must not be null');
+  });
+
   it('omits protected-terms fields when the collection has no file', () => {
     const collection = { translationsFolder: './i18n' };
 

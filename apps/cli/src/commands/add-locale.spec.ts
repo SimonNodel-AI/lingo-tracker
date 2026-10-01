@@ -1,9 +1,15 @@
 import { resolve } from 'node:path';
-import { ConfigNotFoundError, type LingoTrackerConfig, loadConfig, addLocaleToCollection } from '@simoncodes-ca/core';
+import {
+  addLocaleToCollection,
+  ConfigChangedError,
+  ConfigNotFoundError,
+  type LingoTrackerConfig,
+  loadConfig,
+} from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
-import { addLocaleCommand, type AddLocaleOptions } from './add-locale';
+import { type AddLocaleOptions, addLocaleCommand } from './add-locale';
 
 vi.mock('prompts');
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
@@ -79,7 +85,11 @@ describe('addLocaleCommand', () => {
       const options: AddLocaleOptions = { collection: 'main', locale: 'de' };
       await addLocaleCommand(options);
 
-      expect(mockCore).toHaveBeenCalledWith('main', 'de', { cwd: '/project' });
+      expect(mockCore).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
+        expect.objectContaining({ write: expect.any(Function) }),
+        'de',
+      );
       expect(console.log).toHaveBeenCalledWith('✅ Locale "de" added to collection "main" successfully');
       expect(console.log).toHaveBeenCalledWith('  Entries backfilled: 3');
       expect(console.log).toHaveBeenCalledWith('  Files updated: 2');
@@ -100,6 +110,17 @@ describe('addLocaleCommand', () => {
       await addLocaleCommand({ collection: 'main', locale: 'de' });
 
       expect(console.error).toHaveBeenCalledWith('❌ Locale "de" already exists in collection "main"');
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('prints a changed config conflict and exits 1', async () => {
+      mockCore.mockRejectedValue(new ConfigChangedError());
+
+      await addLocaleCommand({ collection: 'main', locale: 'de' });
+
+      expect(console.error).toHaveBeenCalledWith(
+        '❌ The configuration file changed after it was read; run the command again',
+      );
       expect(process.exitCode).toBe(1);
     });
 
@@ -133,7 +154,11 @@ describe('addLocaleCommand', () => {
         [expect.objectContaining({ name: 'locale', type: 'text' })],
         expect.anything(),
       );
-      expect(mockCore).toHaveBeenCalledWith('main', 'de', { cwd: '/project' });
+      expect(mockCore).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
+        expect.objectContaining({ write: expect.any(Function) }),
+        'de',
+      );
     });
 
     it('cancelling the prompt prints one cancel line and exits 0', async () => {

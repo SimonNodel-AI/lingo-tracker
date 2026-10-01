@@ -1,7 +1,14 @@
 import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from '@nestjs/common';
-import { addCollection, deleteCollectionByName, updateCollection } from '@simoncodes-ca/core';
+import {
+  addCollection,
+  createConfigFileOperations,
+  deleteCollectionByName,
+  openCollection,
+  updateCollection,
+} from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
+import { ConfigService } from '../config/config.service';
 import { mapDtoToCollection } from '../mappers/collection.mapper';
 
 /** True for a plain object (not `null`, not an array). */
@@ -14,15 +21,13 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 /**
- * The request-shape checks for a collection body, before anything reaches core: `collection`
- * must be an object with a string `translationsFolder` and no `null` field, and `name` a
- * non-empty string (required on create, optional on update; a blank one is refused rather than
- * read as "no rename").
+ * The HTTP envelope checks: the body and `collection` must be objects, and `name` must be
+ * non-empty (required on create, optional on update). Core validates collection fields.
  */
 function assertCollectionBody(
   body: unknown,
   nameIs: 'required' | 'optional',
-): asserts body is { name?: string; collection: { translationsFolder: string } } {
+): asserts body is { name?: string; collection: Record<string, unknown> } {
   if (!isRecord(body)) {
     throw new BadRequestException('request body must be an object');
   }
@@ -33,22 +38,16 @@ function assertCollectionBody(
   if (!isRecord(collection)) {
     throw new BadRequestException('collection must be an object');
   }
-  // `null` is no value for any field: leave a field out to keep it, send its empty value to clear it.
-  const nullField = Object.keys(collection).find((key) => collection[key] === null);
-  if (nullField !== undefined) {
-    throw new BadRequestException(`collection.${nullField} must not be null`);
-  }
-  if (typeof collection.translationsFolder !== 'string') {
-    throw new BadRequestException('collection.translationsFolder must be a string');
-  }
 }
 
 @Controller('collections')
 export class CollectionsController {
   readonly #index: CollectionIndex;
+  readonly #configService: ConfigService;
 
-  constructor(index: CollectionIndex) {
+  constructor(index: CollectionIndex, configService: ConfigService) {
     this.#index = index;
+    this.#configService = configService;
   }
 
   /** Core's typed errors (for example `CollectionNotFoundError`, 404) reach the global exception filter. */
@@ -62,6 +61,7 @@ export class CollectionsController {
   /**
    * Core defaults a collection under `node_modules` to read-only unless `readOnly` is sent.
    * A body without a non-empty `name`, an object `collection` or a string `translationsFolder` is 400.
+   * `mapDtoToCollection` calls core field validation before addCollection reads config.
    */
   @Post()
   async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
@@ -85,9 +85,17 @@ export class CollectionsController {
   ): Promise<{ message: string }> {
     assertCollectionBody(body, 'optional');
     const { name, collection } = body;
-    const result = await updateCollection(collectionName, name, mapDtoToCollection(collection), {
-      protectedTerms: collection.protectedTerms,
-    });
+    const patch = mapDtoToCollection(collection);
+    const current = openCollection(this.#configService.getConfig(), collectionName);
+    const result = await updateCollection(
+      current,
+      createConfigFileOperations({ cwd: current.projectRoot, snapshot: current.sourceConfig }),
+      name,
+      patch,
+      {
+        protectedTerms: collection.protectedTerms,
+      },
+    );
     this.#index.apply(result.mutations);
     return { message: result.message };
   }

@@ -1,4 +1,4 @@
-import { editCollectionTags } from '@simoncodes-ca/core';
+import { createConfigFileOperations, editCollectionTags } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -15,9 +15,13 @@ const run = defineCommand<EditCollectionOptions & { name: string }>()({
   collectionOption: 'name',
   run: async ({ collection, cwd, answers }) => {
     const currentTags = editCollectionTags(
-      collection.name,
-      { add: answers.addTag, remove: answers.removeTag, set: answers.setTags },
-      { cwd },
+      collection,
+      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
+      {
+        add: answers.addTag,
+        remove: answers.removeTag,
+        set: answers.setTags,
+      },
     );
 
     if (currentTags.length === 0) {

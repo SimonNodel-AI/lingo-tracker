@@ -1,8 +1,20 @@
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { ConfigNotFoundError, ConfigParseError } from '../errors/lingo-tracker-error';
+
+const readVersions = new WeakMap<LingoTrackerConfig, string>();
+
+/** The hash of the exact file content from which this config was parsed. */
+export function configReadVersion(config: LingoTrackerConfig): string | undefined {
+  return readVersions.get(config);
+}
+
+export function configContentHash(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
 
 export interface LoadConfigOptions {
   /** Directory that holds `.lingo-tracker.json`. Default: `process.cwd()`. */
@@ -49,5 +61,7 @@ export function loadConfig(options: LoadConfigOptions = {}): LingoTrackerConfig 
     throw new ConfigParseError(configPath, 'the configuration must be a JSON object');
   }
 
-  return parsed as LingoTrackerConfig;
+  const config = parsed as LingoTrackerConfig;
+  readVersions.set(config, configContentHash(content));
+  return config;
 }

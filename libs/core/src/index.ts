@@ -5,11 +5,9 @@
 // Types: operation parameters and results
 export type {
   AddCollectionOptions,
-  AddLocaleToCollectionOptions,
   AddLocaleToCollectionResult,
   CollectionTagEdit,
   DeleteCollectionOptions,
-  RemoveLocaleFromCollectionOptions,
   RemoveLocaleFromCollectionResult,
   UpdateCollectionOptions,
 } from './collections-manager';
@@ -58,6 +56,7 @@ export {
 export type {
   LoadConfigOptions,
   OpenCollectionOptions,
+  OpenedCollection,
   PreferredTerminologyEditResult,
   TerminologyFindings,
 } from './lib/config';
@@ -78,6 +77,9 @@ export {
   type TermFiles,
   updateProjectTerms,
 } from './lib/config';
+export { assertCollectionFields } from './lib/config/collection-entry';
+export { type ConfigFileOperations, createConfigFileOperations } from './lib/config/config-file-operations';
+export { assertProtectedTerms } from './lib/config/set-protected-terms';
 export type {
   ProjectTermsUpdate,
   ProjectTermsUpdateResult,
@@ -93,6 +95,7 @@ export {
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
+  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
   type ErrorKind,

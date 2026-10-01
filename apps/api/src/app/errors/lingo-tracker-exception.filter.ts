@@ -14,14 +14,18 @@ import {
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import {
+  ConfigNotFoundError,
+  ConfigParseError,
   type ErrorKind,
   FolderMoveIntoDescendantError,
   InvalidBundleDefinitionError,
+  InvalidCollectionError,
   InvalidFolderPathError,
   LingoTrackerError,
   PreferredTerminologyValidationError,
   TranslationError,
 } from '@simoncodes-ca/core';
+import { ConfigReadNotFoundError, ConfigReadParseError } from './config-read.errors';
 
 /**
  * The HTTP answer for a typed core error. This is the only place the API maps a core
@@ -47,8 +51,21 @@ const HTTP_BY_KIND: Record<ErrorKind, (message: string) => HttpException> = {
 };
 
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
+  if (error instanceof ConfigNotFoundError) {
+    return error instanceof ConfigReadNotFoundError
+      ? new NotFoundException('Configuration file not found')
+      : new InternalServerErrorException(error.message);
+  }
+  if (error instanceof ConfigParseError) {
+    return new InternalServerErrorException(
+      error instanceof ConfigReadParseError ? 'Invalid configuration file format' : error.message,
+    );
+  }
   if (!error.exposeMessage) {
     return new InternalServerErrorException({ statusCode: 500, error: 'Internal Server Error' });
+  }
+  if (error instanceof InvalidCollectionError && error.field !== undefined) {
+    return new BadRequestException(`collection.${error.message}`);
   }
   if (error instanceof InvalidBundleDefinitionError) {
     return invalidBundleDefinitionToHttp(error);

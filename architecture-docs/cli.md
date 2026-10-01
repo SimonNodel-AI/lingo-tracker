@@ -102,7 +102,7 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 
 ## Command Runner
 
-`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. That function does the same steps for every command, in this order:
+`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. For locale and tag edits, it passes the opened collection, including its config snapshot, and a config write handle to core. That function does the same steps for every command, in this order:
 
 1. Finds the project root: `INIT_CWD` (set by pnpm to the directory where the command was typed), else `process.cwd()`.
 2. Reads the [interactive rule](#the-interactive-rule) once.
@@ -113,6 +113,8 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 7. For `many`, selects the final ordered collection list and applies its read or writable policy. Calls `run`, and turns the result or the thrown error into output and an exit code ([Errors and Exit Codes](#errors-and-exit-codes)).
 
 The runner sets `process.exitCode` and returns. No CLI code calls `process.exit()`, so Commander finishes normally.
+
+`loadConfig()` records the bytes read from `.lingo-tracker.json`. The locale and tag commands pass the opened collection's `sourceConfig` to `createConfigFileOperations()` after prompting. If another process changes the file while a prompt is open, the handle throws `ConfigChangedError` before the lifecycle edits locale files. The runner prints `❌ The configuration file changed after it was read; run the command again` and exits 1.
 
 ### Defining a Command
 
@@ -125,7 +127,11 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
     options.locale ? [] : [{ type: 'text', name: 'locale', message: 'Enter locale to add (e.g. fr-ca, de, es)' }],
   required: ['locale'],               // checked after the questions; `run` sees it as a string
   run: async ({ collection, cwd, answers }) => {
-    const result = await addLocaleToCollection(collection.name, answers.locale, { cwd });
+    const result = await addLocaleToCollection(
+      collection,
+      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
+      answers.locale,
+    );
     ConsoleFormatter.success(result.message);
   },
 });

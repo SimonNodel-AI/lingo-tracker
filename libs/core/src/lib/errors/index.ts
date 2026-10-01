@@ -12,6 +12,7 @@ export {
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
+  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
   FolderMoveIntoDescendantError,
