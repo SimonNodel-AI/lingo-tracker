@@ -78,6 +78,7 @@ describe('core public surface', () => {
       'moveResources',
       'normalize',
       'normalizeCollections',
+      'normalizeSearchRequest',
       'openCollection',
       'openResourceFolder',
       'planBundle',

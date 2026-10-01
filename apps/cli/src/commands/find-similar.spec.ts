@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { findSimilarCommand } from './find-similar';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
@@ -20,8 +20,8 @@ vi.mock('path', async (importOriginal) => {
   };
 });
 
-import { ConfigNotFoundError, loadConfig, readCollection } from '@simoncodes-ca/core';
 import type { CollectionReadProblem, LingoTrackerConfig, StoredResource } from '@simoncodes-ca/core';
+import { ConfigNotFoundError, loadConfig, readCollection } from '@simoncodes-ca/core';
 
 /** A fully typed stored resource, so shape drift in the Collection Reader fails to compile. */
 function stored(fullKey: string, baseValue: string): StoredResource {
@@ -314,6 +314,14 @@ describe('find-similar', () => {
       await findSimilarCommand({ collection: 'tracker', value: 'a', maxResults: 3 });
 
       expect(loggedLines().filter((line) => line.startsWith('  key.'))).toHaveLength(3);
+    });
+
+    it('caps maxResults at 500', async () => {
+      collectionHolds(...Array.from({ length: 501 }, (_, i) => stored(`key.${i}`, 'a')));
+
+      await findSimilarCommand({ collection: 'tracker', value: 'a', maxResults: 1000 });
+
+      expect(loggedLines().filter((line) => line.startsWith('  key.'))).toHaveLength(500);
     });
 
     it('compares every stored value, however many precede the best match', async () => {

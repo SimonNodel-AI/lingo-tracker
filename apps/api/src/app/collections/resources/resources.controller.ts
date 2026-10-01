@@ -1,57 +1,57 @@
 import {
-  Controller,
-  Post,
-  Delete,
-  Patch,
-  Get,
-  Query,
-  Param,
   Body,
+  Controller,
+  Delete,
+  Get,
   HttpException,
   HttpStatus,
   NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
   Res,
 } from '@nestjs/common';
-import type { Response } from 'express';
 import {
   addResources,
   assertCanTranslateLocale,
+  type Collection,
   deleteResource,
-  moveResources,
-  searchPage,
   editResource,
-  translateExistingResource,
   extractResourcesRecursively,
   type MoveResourcesOperation,
-  type Collection,
+  moveResources,
+  normalizeSearchRequest,
   type TerminologyFindings,
+  translateExistingResource,
 } from '@simoncodes-ca/core';
-import { buildResourceSummary } from '@simoncodes-ca/domain';
 import type {
+  CacheStatusDto,
   CreateResourceDto,
   CreateResourceResponseDto,
   DeleteResourceDto,
   DeleteResourceResponseDto,
   MoveResourceDto,
   MoveResourceResponseDto,
-  UpdateResourceDto,
-  UpdateResourceResponseDto,
-  ResourceTreeDto,
   ResourceSummaryDto,
-  SearchTranslationsDto,
+  ResourceTreeDto,
   SearchResultsDto,
-  CacheStatusDto,
-  TreeStatusResponseDto,
+  SearchTranslationsDto,
+  TerminologyFindingsDto,
+  TranslateLocaleJobDto,
+  TranslateLocaleRequestDto,
   TranslateResourceDto,
   TranslateResourceResponseDto,
-  TranslateLocaleRequestDto,
-  TranslateLocaleJobDto,
-  TerminologyFindingsDto,
+  TreeStatusResponseDto,
+  UpdateResourceDto,
+  UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
-import { ConfigService } from '../../config/config.service';
-import { mapResourceTreeToDto, mapResourceEntryToSummary } from '../../mappers/resource-tree.mapper';
-import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
+import { buildResourceSummary } from '@simoncodes-ca/domain';
+import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
+import { ConfigService } from '../../config/config.service';
+import { mapResourceEntryToSummary, mapResourceTreeToDto } from '../../mappers/resource-tree.mapper';
+import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import { RouteCollection } from '../route-collection';
 
@@ -239,8 +239,15 @@ export class ResourcesController {
     @RouteCollection() collection: Collection,
     @Query() dto: SearchTranslationsDto,
   ): Promise<SearchResultsDto> {
-    // Validate query
-    if (!dto.query || dto.query.trim().length === 0) {
+    const request = normalizeSearchRequest(
+      {
+        query: dto.query ?? '',
+        mode: dto.mode === 'similar' ? 'similar-value' : 'text',
+        limit: dto.maxResults === undefined ? undefined : Number(dto.maxResults),
+      },
+      100,
+    );
+    if (request.kind === 'blank') {
       return {
         query: dto.query || '',
         results: [],
@@ -249,11 +256,11 @@ export class ResourcesController {
       };
     }
 
-    const page = searchPage((options) => this.#index.search(collection, dto.query, options), dto);
+    const page = this.#index.searchPage(collection, request);
     return {
       query: dto.query,
       results: mapSearchResultsToDto(page.results, collection),
-      totalFound: page.limited ? page.limit : page.results.length,
+      totalFound: page.totalFound,
       limited: page.limited,
     };
   }

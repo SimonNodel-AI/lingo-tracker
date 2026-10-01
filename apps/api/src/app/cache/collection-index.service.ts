@@ -5,13 +5,13 @@ import {
   computeTreeFingerprint,
   extractSubtree,
   loadResourceTree,
-  readCollection,
   type ResourceMutation,
   type ResourceTreeNode,
+  readCollection,
   type SearchableResource,
-  type SearchOptions,
-  type SearchResult,
-  searchResources,
+  type SearchPage,
+  type SearchRequest,
+  searchPage,
   type TreeFingerprint,
   treeFingerprintsMatch,
   treeResources,
@@ -71,7 +71,7 @@ interface IndexEntry {
 /**
  * Collection Index — the API's in-memory copy of each open collection's resource tree.
  *
- * Callers read with `tree()`, `search()` and `status()`, and report their writes with
+ * Callers read with `tree()`, `searchPage()` and `status()`, and report their writes with
  * `apply()`. Everything else is internal: indexing on first read, dropping the copy when
  * the disk changed outside this process, patching the tree after a write (or dropping it
  * when a patch cannot be applied), and the memory cap.
@@ -107,13 +107,10 @@ export class CollectionIndex {
     return { status: 'ready', tree: extractSubtree(entry.tree, path) };
   }
 
-  /**
-   * Runs Resource Search over the indexed tree, or over the disk (the Collection Reader) when the
-   * collection is not indexed. Never starts indexing. Folders the reader could not read are logged.
-   */
-  search(collection: Collection, query: string, options: SearchOptions = {}): SearchResult[] {
+  /** Searches the index or disk without starting indexing. Logs unreadable disk folders. */
+  searchPage(collection: Collection, request: SearchRequest): SearchPage {
     const entry = this.#read(collection);
-    return searchResources(this.#searchSource(collection, entry), collection, query, options);
+    return searchPage(this.#searchSource(collection, entry), collection, request);
   }
 
   #searchSource(collection: Collection, entry: IndexEntry | undefined): Iterable<SearchableResource> {
