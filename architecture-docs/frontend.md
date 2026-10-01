@@ -19,6 +19,7 @@ Return to [architecture README](README.md).
   - [List Scope — What the List Shows](#list-scope--what-the-list-shows)
   - [TranslationListStore](#translationliststore)
   - [CollectionsStore](#collectionsstore)
+  - [Collection Form Dialog](#collection-form-dialog)
   - [API Errors — One Adapter at the HTTP Seam](#api-errors--one-adapter-at-the-http-seam)
 - [Key UI Patterns](#key-ui-patterns)
   - [Virtual Scrolling](#virtual-scrolling)
@@ -256,6 +257,10 @@ Because `TranslationListStore` is component-provided, each `TranslationList` ins
 The two form dialogs use `NamedEntrySubmit` in [Dialog Config Submit](glossary.md#dialog-config-submit) to choose the create or update write, build the rename patch, validate a server-taken name, and select the localized refusal fallback. It passes the cold Observable and saved result to `submitDialogConfigWrite`, which owns `saving`, the temporary `disableClose` lock, the success close, and restoration on refusal. The forms render its name-conflict or message outcome themselves, including any API details. `classifyConfigRefusal` remains available to Settings for row rule errors. Its page-owned subscription and `saving` signal survive navigation so the outcome toast still appears after the page is gone.
 
 `updateCollection` sends `PUT /collections/:name`; locale diffing and file-system changes happen on the core side. `updateGlobalConfig` sends the writable top-level fields to `PUT /config`: the global protected-terms list and the preferred-terminology rules; rejected rules come back as an `invalid` error whose `details` are the per-row `PreferredTermRuleErrorDto`s.
+
+### Collection Form Dialog
+
+`collections/collection-form-dialog/collection-draft.ts` is the Angular-free [Collection Draft](glossary.md#collection-draft). It seeds plain values from an existing collection or a blank create, validates and normalizes added locales, picks and protects the base locale, and compares current locales with the original list before a destructive save. The draft also owns the read-only folder default and the user-choice latch. Its result builder sends empty locale and tag lists to clear overrides, omits an unset base locale, sends `protectedTermsFile: ''` when no file is configured, and includes terms only with a file. `collection-form-dialog.ts` keeps the typed FormGroup and FormArray, renders chips and Transloco text, opens the removal confirmation, and submits the draft result through `NamedEntrySubmit`. The dialog passes the current controls to the draft for mutations and save; display helpers read only the controls they need.
 
 ### Protected Terms in the UI
 

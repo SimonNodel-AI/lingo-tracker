@@ -76,6 +76,14 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ---
 
+### Collection Draft
+
+The Tracker collection form's plain values and rules in `apps/tracker/src/app/collections/collection-form-dialog/collection-draft.ts`. It seeds create or edit values, normalizes and changes locale choices, keeps the base locale fixed in edit mode (including an inherited base), reports removed original locales for confirmation, defaults read-only from a `node_modules` folder until the user chooses it, and builds the collection write payload. It has no Angular dependency. `collection-form-dialog.ts` owns the FormGroup, chip controls, confirmation, and store write.
+
+Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
+
+---
+
 ### Bundle Run Preparation
 
 The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ definition, settings, locales, collections, typeWarning, tokenConstantNameOverride }`. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `selectPreparedBundleLocale` selects one locale and adds the empty-bundle warning in one place.
