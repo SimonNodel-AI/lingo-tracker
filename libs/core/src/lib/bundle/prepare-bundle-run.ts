@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { type BundleDefinition, checkBundleDefinition, findBundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { BundleNotFoundError, InvalidBundleDefinitionError, InvalidBundleLocalesError } from '../errors';
@@ -7,8 +8,8 @@ import {
   resolveBundleCollections,
   selectBundleEntries,
 } from './bundle-selection';
-import type { CollectionReadCache } from './resource-loader';
 import { type BundleSettings, type BundleSettingsOverrides, resolveBundleSettings } from './resolve-bundle-settings';
+import type { CollectionReadCache } from './resource-loader';
 import { legacyTypeDistWarning } from './type-generation/generate-types';
 
 interface BundleRunOptions extends BundleSettingsOverrides {
@@ -26,6 +27,8 @@ export type PrepareBundleRunParams =
     });
 
 export interface PreparedBundleRun {
+  readonly bundleKey: string;
+  readonly cwd: string;
   readonly definition: BundleDefinition;
   readonly settings: BundleSettings;
   readonly locales: readonly string[];
@@ -36,6 +39,7 @@ export interface PreparedBundleRun {
 
 /** Resolves a saved run or fully validates a supplied dry-run definition. */
 export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundleRun {
+  const cwd = path.resolve(params.cwd ?? process.cwd());
   let definition: BundleDefinition;
   if (params.source === 'saved') {
     const saved = findBundleDefinition(params.config.bundles, params.bundleKey);
@@ -54,11 +58,13 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
   validateBundleLocales(params.locales, params.config);
   let collections: ResolvedBundleCollections | undefined;
   return {
+    bundleKey: params.bundleKey,
+    cwd,
     definition,
     settings: resolveBundleSettings(params.bundleKey, params.config, definition, params),
     locales: [...(params.locales ?? params.config.locales)],
     get collections() {
-      collections ??= resolveBundleCollections(definition, params.config, { cwd: params.cwd });
+      collections ??= resolveBundleCollections(definition, params.config, { cwd });
       return collections;
     },
     typeWarning: legacyTypeDistWarning(params.bundleKey, definition),
@@ -84,7 +90,6 @@ export function validateBundleLocales(locales: readonly string[] | undefined, co
 /** Selects one output locale and appends the shared empty-bundle warning. */
 export function selectPreparedBundleLocale(
   prepared: PreparedBundleRun,
-  bundleKey: string,
   locale: string,
   cache: CollectionReadCache,
 ): BundleSelection {
@@ -95,6 +100,6 @@ export function selectPreparedBundleLocale(
   if (selection.entries.size > 0) return selection;
   return {
     ...selection,
-    warnings: [...selection.warnings, `Bundle '${bundleKey}' for locale '${locale}' is empty`],
+    warnings: [...selection.warnings, `Bundle '${prepared.bundleKey}' for locale '${locale}' is empty`],
   };
 }
