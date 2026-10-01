@@ -76,9 +76,9 @@ export const ErrorMessages = {
   invalidFolderSegment: (part: FolderPathPart, segment: string) =>
     `Invalid ${part} segment "${segment}". Segments must match pattern [A-Za-z0-9_-]+`,
 
-  glossaryBaseLocaleMismatch: (collections: readonly { name: string; baseLocale: string }[]) => {
+  collectionBaseLocaleMismatch: (collections: readonly { name: string; baseLocale: string }[]) => {
     const listed = collections.map((collection) => `${collection.name}: ${collection.baseLocale}`).join(', ');
-    return `Cannot build a glossary from collections with different base locales together (${listed}). Build them separately.`;
+    return `Cannot combine collections with different base locales (${listed}). Run them separately.`;
   },
 
   glossaryNoCollections: () => 'Cannot build a glossary without collections.',

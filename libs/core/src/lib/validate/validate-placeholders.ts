@@ -1,5 +1,5 @@
 import { compareIcuArguments } from '@simoncodes-ca/domain';
-import type { LoadedResource } from '../export/export-common';
+import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { PlaceholderValidationDetail, PlaceholderValidationResult } from './types';
 
 /**
@@ -28,7 +28,7 @@ import type { PlaceholderValidationDetail, PlaceholderValidationResult } from '.
  * @returns One failure per translation whose arguments disagree with the base value.
  */
 export function validatePlaceholders(
-  resources: readonly LoadedResource[],
+  resources: readonly CollectionSetResource[],
   targetLocales: readonly string[],
   baseLocale: string,
 ): PlaceholderValidationResult {

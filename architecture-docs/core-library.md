@@ -23,6 +23,7 @@ Return to [architecture README](README.md).
   - [Entry Relocation](#entry-relocation)
 - [Collection Reader](#collection-reader)
   - [Resource Search](#resource-search)
+- [Collection Set](#collection-set)
 - [Collection Sweep](#collection-sweep)
 - [Normalization Pipeline](#normalization-pipeline)
 - [Auto-Translation Pipeline](#auto-translation-pipeline)
@@ -69,6 +70,7 @@ libs/core/src/
     │   ├── tag-filter.ts         # matchesTags(): AND/OR tag filter logic
     │   └── type-generation/      # generateBundleTypes(): the TypeScript type file from the selected keys
     │
+    ├── collection-set/           # whole-collection read model for export, validate, glossary
     ├── config/                   # Config file I/O and collection resolution
     │   ├── load-config.ts        # loadConfig(): the only reader of .lingo-tracker.json
     │   ├── open-collection.ts    # openCollection(): a collection's effective settings (Collection)
@@ -81,13 +83,13 @@ libs/core/src/
     │
     ├── export/                   # The Export run
     │   ├── run-export.ts         # runExport(): the Export run; exportTargetLocales()
-    │   ├── export-common.ts      # loadResources(): one collection via readCollection(), flattened; filterResources(); validateBasePropertyName()
+    │   ├── export-common.ts      # filterResources(); validateBasePropertyName()
     │   ├── export-to-json.ts     # JSON exporter (internal to runExport)
     │   ├── export-to-xliff.ts    # XLIFF 1.2 exporter (internal to runExport)
     │   ├── export-summary.ts     # Markdown export summary (internal to runExport)
     │   └── types.ts              # ExportOptions, ExportResult, FilteredResource, etc.
     │
-    ├── glossary/                 # Term Glossary: Collection Reader → candidates → ranked terms
+    ├── glossary/                 # Term Glossary: Collection Set → candidates → ranked terms
     │   ├── build-glossary.ts     # buildGlossary(): opened-collection orchestration and locale selection
     │   ├── glossary-extractor.ts # CandidateExtractor and deterministic n-gram implementation
     │   └── glossary-matcher.ts   # value matching, ranking, and per-locale status filtering
@@ -534,6 +536,16 @@ Callers: `CollectionIndex.searchPage` in the API (the index tree when the collec
 
 ---
 
+## Collection Set
+
+**Entry point:** `readCollectionSet(collections, { locales?, includeUnconfiguredLocales?, allowDifferentBaseLocales? })` in `lib/collection-set/collection-set.ts`.
+
+The [Collection Set](glossary.md#collection-set) reads opened collections through the [Collection Reader](#collection-reader) once per run. It returns the first base locale (requiring agreement by default), the ordered target-locale union, flattened `CollectionSetResource` rows (`source`, stored `translations`, metadata-derived `status`, tags, comment, collection, and that collection's target locales), and `readProblems` with collection, folder path and message. `collectionResourceStatus` treats missing metadata as `new`. Export and Glossary require one base locale and raise the typed `CollectionBaseLocaleMismatchError` (`invalid`) before reading when they disagree. Validate passes `allowDifferentBaseLocales` because it validates each collection independently under its own base locale. Export maps problems to `malformedFiles`, Validate to `unreadableFolders`, and Glossary to `readProblems`; their public result shapes remain the same. Explicit Glossary locales may include stored but unconfigured translations.
+
+The Bundle Selection remains on `loadCollectionResources`: it selects one locale at a time, uses each collection's own base locale for debug keys and types, and caches reads across locale selections while applying bundle-specific entry rules, prefixes, and merge order.
+
+---
+
 ## Collection Sweep
 
 **Entry point:** `sweepCollection(collection, { startPath? })` in `lib/resource/collection-sweep.ts` (internal)
@@ -699,7 +711,7 @@ For the full sequence diagram of an import operation, see [user-flows.md — Imp
 Export writes the resources of one or more collections to one file per target locale. `runExport` owns the output-directory and `--base-property-name` checks, the JSON and XLIFF exporters, the resource filter, and the summary. It resolves an explicit output directory, then the configured export folder, then `DEFAULT_CONFIG.exportFolder`, relative to `cwd`. The CLI keeps the prompts, console rendering, and the write of the summary file (or, in a dry run, printing it).
 
 1. **Check options and choose locales** — `runExport` validates the base property name and resolved output directory, then `exportTargetLocales(collections, options.locales)` lists every collection's target locales (a `Collection`'s `targetLocales`: its locales without its base locale) in order of first appearance, narrowed to the requested ones. The CLI uses `exportTargetLocales` only for prompt choices. The run returns an empty `locales` list when none remain and calls `onStart` with the resolved directory and locales before reading resources when there is work. When there is work, the collections must share one base locale, because an export file has one source language; otherwise `runExport` throws.
-2. **Load resources** — `loadResources(collection, protectedTerms)` in `export-common.ts` reads each collection through the [Collection Reader](#collection-reader). It flattens each `StoredResource` into a `LoadedResource` with `source`, `translations`, `status`, `tags`, `effectiveTags`, `protectedTerms` (the collection's [Project Terms](#project-terms), read by the run; a broken protected-terms file is an error, so the run fails, and a named file that does not exist is a warning), and `comment`. An entry without metadata is exported as `new`. A folder that cannot be read goes into `malformedFiles`.
+2. **Load resources** — `readCollectionSet` reads and flattens the opened collections through the [Collection Set](#collection-set). The run attaches each collection's [Project Terms](#project-terms) for protected-term notes; a broken protected-terms file is an error, and a named file that does not exist is a warning. An entry without metadata is exported as `new`. A folder that cannot be read goes into `malformedFiles`.
 3. **Filter per locale** — for each locale, only the collections that have that locale as a target contribute. `filterResources()` keeps the resources whose status (missing counts as `new`) matches `options.status` and whose effective tags (`effectiveTags(collectionTags, resourceTags)` from `libs/domain/src/lib/effective-tags.ts`) match `options.tags`. A locale with no match is skipped, and `onProgress` reports it.
 4. **Annotate protected terms** — `filterResources()` calls `findProtectedTerms(source, protectedTerms)` on each row and stores the matches on `FilteredResource.protectedTermsFound`. `augmentProtectedTerms: false` (the `--no-protect-notes` flag) leaves the field `undefined` and reads no terms file.
 5. **Serialize** — the JSON exporter writes a flat or hierarchical file (hierarchical key conflicts are reported separately); the XLIFF exporter writes an XLIFF 1.2 document with `<trans-unit>` elements and `<note>` elements for comments. `protectedTermsFound` becomes a `doNotTranslate` array in rich JSON and a `Do not translate: …` note in XLIFF (the prefix is `PROTECTED_TERMS_NOTE_PREFIX` in `export-to-xliff.ts`), written after the comment note. An exporter that throws fails only its locale; the run continues.
@@ -713,7 +725,7 @@ For the full sequence diagram, see [user-flows.md — Import / Export Flow](user
 
 **Entry point:** `buildGlossary(collections, text, { extractor?, locales?, includeAll? })` in `lib/glossary/build-glossary.ts` (the [Term Glossary](glossary.md#term-glossary)). It returns the existing JSON fields (`baseLocale`, `locales`, `source`, `matchCount`, `terms`) plus `readProblems` for adapters to report separately. The CLI removes `readProblems` before serialization, so the file and `--stdout` payload keep their shape.
 
-Every input is an opened `Collection`. An empty set raises `GlossaryNoCollectionsError`; collections with different base locales raise `GlossaryBaseLocaleMismatchError` before a read, as in the Export run. With no `locales` request, the output locale list is the union of `collection.targetLocales` in first-appearance order, and each entry contributes only its own collection's targets. An explicit locale list passes through in request order after removing the shared base locale. It can include a stored translation outside the collection's configured targets, matching the CLI's original `--locales` behavior. Core reads through the [Collection Reader](#collection-reader), removes a stray base-locale translation, and returns unreadable-folder problems while retaining readable entries.
+Every input is an opened `Collection`. An empty set raises `GlossaryNoCollectionsError`; collections with different base locales raise `CollectionBaseLocaleMismatchError` before a read, as in the Export run. With no `locales` request, the output locale list is the union of `collection.targetLocales` in first-appearance order, and each entry contributes only its own collection's targets. An explicit locale list passes through in request order after removing the shared base locale. It can include a stored translation outside the collection's configured targets, matching the CLI's original `--locales` behavior. Core reads through the [Collection Set](#collection-set), removes a stray base-locale translation, and returns unreadable-folder problems while retaining readable entries.
 
 The default n-gram extractor lowercases and removes stopwords, then emits unique unigrams and bigrams. A custom `CandidateExtractor` can be injected; `ai` remains unavailable and raises `GlossaryExtractorError`. The matcher scores candidate text against base values, keeps the best entry per candidate, deduplicates and ranks terms, and includes only `translated` or `verified` locales unless `includeAll` is set. The CLI owns input selection, output path and printing.
 
@@ -811,7 +823,7 @@ For a deep-dive into `BundleDefinition` configuration and the type generation su
 
 **Validation engine:** `validateResources(collections, options)` in `lib/validate/validate-resources.ts`
 
-The validation pipeline is designed for headless CI/CD use. It takes the opened collections (`openCollection`) and validates them one by one. It reads each collection through the [Collection Reader](#collection-reader). Then it checks every resource in each of that collection's target locales (its `targetLocales` minus `options.skippedLocales`) against its stored [translation status](glossary.md#translation-status). Nothing is deduplicated across collections: a key in two collections is validated in both. The ICU pass compiles each collection's base values under that collection's base locale. The placeholder pass compares translations with that collection's base value. Terminology findings are reported under the collection's base locale.
+The validation pipeline is designed for headless CI/CD use. It takes the opened collections (`openCollection`) and validates them one by one. It reads the collections through the [Collection Set](#collection-set), allowing different base locales. Then it checks every resource in each of that collection's target locales (its `targetLocales` minus `options.skippedLocales`) against its stored [translation status](glossary.md#translation-status). Nothing is deduplicated across collections: a key in two collections is validated in both. The ICU pass compiles each collection's base values under that collection's base locale. The placeholder pass compares translations with that collection's base value. Terminology findings are reported under the collection's base locale.
 
 Categorization rules:
 

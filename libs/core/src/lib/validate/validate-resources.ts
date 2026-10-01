@@ -1,6 +1,9 @@
-import type { TranslationStatus } from '@simoncodes-ca/domain';
+import {
+  collectionResourceStatus,
+  readCollectionSet,
+  type CollectionSetResource,
+} from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
-import { type LoadedResource, loadResources } from '../export/export-common';
 import type {
   IcuValidationResult,
   PlaceholderValidationResult,
@@ -76,7 +79,8 @@ export function validateResources(
   const unreadableFolders: UnreadableFolderDetail[] = [];
   const icuResults: IcuValidationResult[] = [];
   const placeholderResults: PlaceholderValidationResult[] = [];
-  const allResources: LoadedResource[] = [];
+  const set = readCollectionSet(collections, { allowDifferentBaseLocales: true });
+  const allResources = set.resources;
   const validatedLocales = new Set<string>();
 
   const statusCounts: StatusCounts = {
@@ -89,13 +93,10 @@ export function validateResources(
   let totalResourcesValidated = 0;
 
   for (const collection of collections) {
-    const { resources, problems } = loadResources(collection);
+    const resources = set.resources.filter((resource) => resource.collection === collection.name);
     const targetLocales = collection.targetLocales.filter((locale) => !skipped.has(locale));
-    allResources.push(...resources);
     for (const locale of targetLocales) validatedLocales.add(locale);
-    unreadableFolders.push(
-      ...problems.map(({ folderPath, message }) => ({ collection: collection.name, folderPath, message })),
-    );
+    unreadableFolders.push(...set.readProblems.filter((problem) => problem.collection === collection.name));
 
     // Validate each resource for each of the collection's target locales
     for (const resource of resources) {
@@ -185,9 +186,9 @@ function mergePlaceholderResults(results: readonly PlaceholderValidationResult[]
  * @param locale - The target locale to check
  * @returns Validation detail with key, locale, collection, and status
  */
-function validateSingleResourceInLocale(resource: LoadedResource, locale: string): ResourceValidationDetail {
+function validateSingleResourceInLocale(resource: CollectionSetResource, locale: string): ResourceValidationDetail {
   // Get status for this locale, defaulting to 'new' if not found
-  const status: TranslationStatus = resource.status[locale] ?? 'new';
+  const status = collectionResourceStatus(resource, locale);
 
   return {
     key: resource.fullKey,

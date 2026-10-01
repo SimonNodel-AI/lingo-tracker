@@ -9,6 +9,7 @@ export {
   BundleNotFoundError,
   CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
+  CollectionBaseLocaleMismatchError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
