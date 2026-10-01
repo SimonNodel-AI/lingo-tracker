@@ -84,6 +84,7 @@ export {
 // Resource Summary: one entry with an explicit address and per-target verdicts
 export {
   buildResourceSummary,
+  displayStatus,
   type ResourceSummary,
   type ResourceSummaryCollection,
   type ResourceSummaryEntry,
@@ -101,7 +102,15 @@ export {
   resolveImportStatus,
 } from './lib/staleness';
 export type { TokenCasing } from './lib/token-casing';
-export { isTranslationStatus, TRANSLATION_STATUSES, type TranslationStatus } from './lib/translation-status';
+export {
+  DEFAULT_MISSING_METADATA_STATUS,
+  isNeedsWorkStatus,
+  isNeedsWorkStatusSelection,
+  isTranslationStatus,
+  NEEDS_WORK_STATUSES,
+  TRANSLATION_STATUSES,
+  type TranslationStatus,
+} from './lib/translation-status';
 // Status summary: roll-ups over many statuses
 export { countByStatus, STATUS_PRECEDENCE, type StatusCounts, worstStatus } from './lib/translation-status-summary';
 export { hasUnbundlableBranchBody } from './lib/transloco-brace-scan';

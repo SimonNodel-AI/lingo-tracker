@@ -1,5 +1,5 @@
 import type { LocaleMetadata } from './locale-metadata';
-import type { TranslationStatus } from './translation-status';
+import { isNeedsWorkStatus, type TranslationStatus } from './translation-status';
 
 /**
  * Staleness — the single home of the rules that decide a translation's
@@ -96,7 +96,7 @@ function translationWriteStatus(checksum: string, baseChecksum: string, status?:
  */
 export function needsTranslation(localeMeta: LocaleMetadata | undefined): boolean {
   if (!localeMeta) return true;
-  return localeMeta.status === 'new' || localeMeta.status === 'stale';
+  return localeMeta.status !== undefined && isNeedsWorkStatus(localeMeta.status);
 }
 
 export interface ResolveImportStatusParams {

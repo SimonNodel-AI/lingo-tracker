@@ -32,9 +32,12 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import {
   applyPreferredTerm,
+  DEFAULT_MISSING_METADATA_STATUS,
   findPreferredTermFindings,
+  isNeedsWorkStatus,
   type PreferredTermRule,
   summaryTarget,
+  TRANSLATION_STATUSES,
 } from '@simoncodes-ca/domain';
 import { merge, Subject } from 'rxjs';
 import { debounceTime, map, takeUntil } from 'rxjs/operators';
@@ -272,7 +275,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.data.availableLocales.filter((locale) => locale !== this.data.baseLocale),
   );
 
-  readonly translationStatusOptions: TranslationStatus[] = ['new', 'translated', 'stale', 'verified'];
+  readonly translationStatusOptions: TranslationStatus[] = [...TRANSLATION_STATUSES];
 
   readonly isEditMode = computed(() => this.data.mode === 'edit');
   /** Whether the dialog is view-only because the collection is read-only. */
@@ -362,7 +365,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * alone: a locale that is already translated or verified is not news.
    */
   readonly localesNeedingWork = computed<LocaleDraft[]>(() =>
-    this.localeSummaries().filter((locale) => locale.status === 'new' || locale.status === 'stale'),
+    this.localeSummaries().filter((locale) => isNeedsWorkStatus(locale.status)),
   );
 
   /** Locales that are new or stale: the ones a reviewer still owes work on. */
@@ -550,7 +553,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       const localeGroup = new FormGroup({
         locale: new FormControl<string>(locale, { nonNullable: true }),
         value: new FormControl<string>('', { nonNullable: true }),
-        status: new FormControl<TranslationStatus>('new', {
+        status: new FormControl<TranslationStatus>(DEFAULT_MISSING_METADATA_STATUS, {
           nonNullable: true,
         }),
       });
@@ -573,7 +576,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       }
       const target = this.data.resource ? summaryTarget(this.data.resource, locale) : undefined;
       const value = target?.value ?? '';
-      const status = target?.status ?? 'new';
+      const status = target?.status ?? DEFAULT_MISSING_METADATA_STATUS;
 
       control.patchValue({ value, status });
     });

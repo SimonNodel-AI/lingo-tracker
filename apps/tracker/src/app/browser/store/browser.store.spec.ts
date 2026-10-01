@@ -10,6 +10,7 @@ import type {
   SearchResultsDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
+import { isNeedsWorkStatus } from '@simoncodes-ca/domain';
 import { NEVER, type Observable, of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
@@ -48,7 +49,7 @@ const summary = (
       locale,
       value,
       status,
-      needsWork: status === undefined || status === 'new' || status === 'stale',
+      needsWork: status === undefined || isNeedsWorkStatus(status),
       sameAsBase: (value?.trim() ?? '').length > 0 && value?.trim() === baseValue.trim(),
     })),
     tags: [],

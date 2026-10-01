@@ -1,6 +1,7 @@
 import { computed } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { NEEDS_WORK_STATUSES } from '@simoncodes-ca/domain';
 
 export interface FilterState {
   selectedLocales: string[];
@@ -159,7 +160,7 @@ export function withFilterFeature<_>() {
       },
 
       selectNeedsWorkStatuses(): void {
-        patchState(store, { selectedStatuses: ['new', 'stale'] });
+        patchState(store, { selectedStatuses: [...NEEDS_WORK_STATUSES] });
       },
 
       clearAllStatuses(): void {

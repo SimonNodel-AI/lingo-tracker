@@ -5,7 +5,12 @@ import type {
   TranslationStatus,
   UpdateResourceDto,
 } from '@simoncodes-ca/data-transfer';
-import { isValidSegment, resolveResourceKey, summaryTarget } from '@simoncodes-ca/domain';
+import {
+  DEFAULT_MISSING_METADATA_STATUS,
+  isValidSegment,
+  resolveResourceKey,
+  summaryTarget,
+} from '@simoncodes-ca/domain';
 import { addTagToList, removeTagFromList } from '../../../shared/tag-list-edit';
 import { findFolderInTree } from '../../store/folder-tree.utils';
 
@@ -298,7 +303,11 @@ export function removeTag(tags: readonly string[], tag: string, inherited: reado
 export function toCreateDto(draft: ResourceEntryDraft): CreateResourceDto {
   const translations = draft.translations
     .filter((translation) => translation.value.trim().length > 0)
-    .map((translation) => ({ locale: translation.locale, value: translation.value, status: 'new' as const }));
+    .map((translation) => ({
+      locale: translation.locale,
+      value: translation.value,
+      status: DEFAULT_MISSING_METADATA_STATUS,
+    }));
 
   return {
     key: resolveDraftKey(draft),
@@ -316,7 +325,8 @@ export function toCreateDto(draft: ResourceEntryDraft): CreateResourceDto {
 export function editedLocales(draft: ResourceEntryDraft, original: ResourceSummaryDto): LocaleDraft[] {
   return draft.translations.filter((translation) => {
     const hasValue = translation.value.trim().length > 0;
-    const statusChanged = translation.status !== (summaryTarget(original, translation.locale)?.status ?? 'new');
+    const statusChanged =
+      translation.status !== (summaryTarget(original, translation.locale)?.status ?? DEFAULT_MISSING_METADATA_STATUS);
     return hasValue || statusChanged;
   });
 }

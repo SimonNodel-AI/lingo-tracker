@@ -49,8 +49,8 @@ export const STATUS_PRESENTATION: Readonly<Record<TranslationStatus, StatusPrese
  * The order statuses are listed in: the status filter rail, the rollup tooltip
  * rows, and sort by status. The rollup ring draws its arcs in the reverse order.
  *
- * This is not the worst-first `STATUS_PRECEDENCE` (stale first), which orders
- * the status breakdown text and a card's locale rows.
+ * UI order starts with `new`; roll-up `STATUS_PRECEDENCE` starts with `stale`
+ * because it ranks changed published work as worse.
  */
 export const STATUS_DISPLAY_ORDER: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
 

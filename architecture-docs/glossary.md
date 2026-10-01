@@ -543,7 +543,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 ### Resource Entry Draft
 
-The translation editor's view of the [resource entry](#resource-entry) it is writing, as plain data: entry key, target folder, base value, comment, tags, and one value and status for each non-base locale. The pure module `apps/tracker/src/app/browser/dialogs/translation-editor/resource-entry-draft.ts` holds the editor's rules for a draft: dotted-key absorption, key collision, the "Where it lands" tree, tag edits, the create and update DTOs, and the unsaved-work check. The module has no Angular dependency.
+The translation editor's view of the [resource entry](#resource-entry) it is writing, as plain data: entry key, target folder, base value, comment, tags, and one value and status for each non-base locale. The pure module `apps/tracker/src/app/browser/dialogs/translation-editor/resource-entry-draft.ts` holds the editor's rules for a draft: dotted-key absorption, key collision, the "Where it lands" tree, tag edits, the create and update DTOs, and the unsaved-work check. It uses the domain's missing-metadata status default. The module has no Angular dependency.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -587,7 +587,7 @@ Explained in context: [`core-library.md`](core-library.md#resource-search), [`ap
 
 ### Resource Summary
 
-One [resource entry](#resource-entry) as the API and the Tracker see it: an explicit address — `fullKey` (`apps.common.buttons.ok`), `folderPath` (`apps.common.buttons`, `''` at the root) and `entryKey` (`ok`) — the base locale and value, and one row per target locale of the [collection](#collection), in collection order, with `value`, `status`, `needsWork` (the [staleness rule](#staleness-rule)'s `needsTranslation`) and `sameAsBase` (`isUntranslatedCopy`, compared trimmed). The base locale and target locales come from the opened `Collection`, never from the metadata. In code, `buildResourceSummary(fullKey, entry, collection)` and `summaryTarget(summary, locale)` in `libs/domain/src/lib/resource-summary.ts`; `ResourceSummaryDto` in `data-transfer` is the same type. The Tracker's pure `row-view.ts` turns a summary into what one list row shows.
+One [resource entry](#resource-entry) as the API and the Tracker see it: an explicit address — `fullKey` (`apps.common.buttons.ok`), `folderPath` (`apps.common.buttons`, `''` at the root) and `entryKey` (`ok`) — the base locale and value, and one row per target locale of the [collection](#collection), in collection order, with `value`, `status`, `needsWork` (the [staleness rule](#staleness-rule)'s `needsTranslation`) and `sameAsBase` (`isUntranslatedCopy`, compared trimmed). The base locale and target locales come from the opened `Collection`, never from the metadata. In code, `buildResourceSummary(fullKey, entry, collection)`, `summaryTarget(summary, locale)` and `displayStatus(target)` in `libs/domain/src/lib/resource-summary.ts`; `ResourceSummaryDto` in `data-transfer` is the same type. The Tracker's pure `row-view.ts` turns a summary into what one list row shows.
 
 Explained in context: [`api.md`](api.md#mapper-layer), [`frontend.md`](frontend.md#translation-rows-and-the-row-view)
 
@@ -651,7 +651,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Staleness Rule
 
-The domain module `libs/domain/src/lib/staleness.ts` holds both parts of this rule. `applyBaseChange` sets a translation to `stale` when the base value changes. It sets an identical copy to `new`. When a writer omits the status, `recordTranslation` stores `new` for a copy of the base or `translated` for a different value. It keeps every explicit status, including `translated`. [Resource Folder](#resource-folder) applies these rules through `setBase` and `setTranslation`. The module also holds `needsTranslation` and `resolveImportStatus`.
+The domain module `libs/domain/src/lib/staleness.ts` holds both parts of this rule. `applyBaseChange` sets a translation to `stale` when the base value changes. It sets an identical copy to `new`. When a writer omits the status, `recordTranslation` stores `new` for a copy of the base or `translated` for a different value. It keeps every explicit status, including `translated`. [Resource Folder](#resource-folder) applies these rules through `setBase` and `setTranslation`. The module also holds `needsTranslation` and `resolveImportStatus`. `needsTranslation` uses the [translation status](#translation-status) module's `isNeedsWorkStatus` predicate for stored statuses and treats missing metadata as work.
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
@@ -758,7 +758,7 @@ Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md
 
 ### Translation Status
 
-A status (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review lifecycle of a non-base locale translation. `TRANSLATION_STATUSES` defines the four values, and `isTranslationStatus` checks input at runtime:
+A status (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review lifecycle of a non-base locale translation. `TRANSLATION_STATUSES` defines the four values, and `isTranslationStatus` checks input at runtime. `NEEDS_WORK_STATUSES` defines `new` and `stale`; `isNeedsWorkStatus` and `isNeedsWorkStatusSelection` test one status or an exact shortcut selection. `DEFAULT_MISSING_METADATA_STATUS` is `new` for a locale with no stored metadata:
 
 | Status | Meaning | CI validation result |
 |---|---|---|
@@ -775,7 +775,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Translation Status Summary
 
-The roll-up of a set of locale [translation statuses](#translation-status): the number of locales in each status (`StatusCounts`) and the worst status. The pure module `libs/domain/src/lib/translation-status-summary.ts` holds the rules. `countByStatus(statuses)` counts the statuses and ignores a locale with no status. `worstStatus(counts)` applies `STATUS_PRECEDENCE`, which is worst first: `stale` > `new` > `translated` > `verified`. Every roll-up in the Tracker UI uses this module: the rollup ring, the screen-reader breakdown, the locale column, the status filter counts, and sort by status. The Tracker counts each locale's display status (`displayStatus`): the stored status, or `new` for a locale that needs work and has no metadata. The glyphs, label tokens and display order are presentation. They are in one Tracker table, `shared/translation-status/translation-status-presentation.ts`, which the rows and the translation editor's status labels both use.
+The roll-up of a set of locale [translation statuses](#translation-status): the number of locales in each status (`StatusCounts`) and the worst status. The pure module `libs/domain/src/lib/translation-status-summary.ts` holds the rules. `countByStatus(statuses)` counts the statuses and ignores a locale with no status. `worstStatus(counts)` applies `STATUS_PRECEDENCE`, which is worst first: `stale` > `new` > `translated` > `verified`. Every roll-up in the Tracker UI uses this module: the rollup ring, the screen-reader breakdown, the locale column, the status filter counts, and sort by status. The Tracker counts each locale's domain `displayStatus(target)`: the stored status, or `new` for a locale that needs work and has no metadata. The glyphs, label tokens and UI display order are presentation. They are in one Tracker table, `shared/translation-status/translation-status-presentation.ts`, which the rows and the translation editor's status labels both use. UI display order starts with `new`; worst-status precedence starts with `stale`.
 
 Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
 
