@@ -1805,11 +1805,11 @@ lingo-tracker import --source <file> --locale <locale> [options]
 - `-l, --locale <locale>` - Target locale for the import, e.g., `es`, `fr-ca` (required)
 - `-c, --collection <name>` - Target collection to import into. If not specified, prompts or auto-selects
 - `--strategy <strategy>` - Import strategy (see below). Default: `translation-service`
-- `--update-comments` - Update resource comments from import data. Default: `false`
-- `--update-tags` - Update resource tags from rich JSON. Default: `false`
+- `--update-comments` - Update resource comments from import data. Default: on for migration, off for other strategies
+- `--update-tags` - Update resource tags from rich JSON. Default: on for migration, off for other strategies
 - `--preserve-status` - Allow rich JSON to specify status (advanced). Default: `false`
-- `--create-missing` - Create new resources if they don't exist
-- `--validate-base` - Warn if the source base value differs from existing. Default: `true`
+- `--create-missing` - Create new resources if they don't exist. Default: on for migration, off for other strategies
+- `--validate-base` / `--no-validate-base` - Warn if the source base value differs from existing, or turn off that warning. Default: on
 - `--dry-run` - Preview what would be imported without modifying files. Default: `false`
 - `--verbose` - Show detailed import progress. Default: `false`
 

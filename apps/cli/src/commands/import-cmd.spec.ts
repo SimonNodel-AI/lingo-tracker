@@ -31,6 +31,7 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CONFIG_FILENAME: '.lingo-tracker.json',
     runImport: vi.fn(),
     detectImportFormat: actual.detectImportFormat,
+    getStrategyDefaults: actual.getStrategyDefaults,
     ImportSourceError: actual.ImportSourceError,
   };
 });
@@ -41,12 +42,12 @@ vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false)
 import {
   ConfigNotFoundError,
   detectImportFormat,
-  ImportSourceError,
   type ImportResult,
-  runImport,
+  ImportSourceError,
   type LingoTrackerCollection,
   type LingoTrackerConfig,
   loadConfig,
+  runImport,
 } from '@simoncodes-ca/core';
 import { isInteractiveTerminal } from '../runner/terminal';
 
@@ -505,6 +506,12 @@ describe('import-cmd', () => {
   });
 
   describe('Interactive locale prompt', () => {
+    const registered = (options: ImportCommandOptions): ImportCommandOptions => ({
+      dryRun: false,
+      verbose: false,
+      ...options,
+    });
+
     beforeEach(() => {
       vi.mocked(isInteractiveTerminal).mockReturnValue(true);
       vi.mocked(prompts).mockResolvedValue({ locale: 'de' });
@@ -521,23 +528,46 @@ describe('import-cmd', () => {
     };
 
     it('asks every missing value in one prompts call', async () => {
-      await importCommand({ source: '/test/import.json', format: 'json', strategy: 'translation-service' });
+      await importCommand(
+        registered({
+          source: '/test/import.json',
+          format: 'json',
+        }),
+      );
 
       expect(prompts).toHaveBeenCalledTimes(1);
+      const [asked] = vi.mocked(prompts).mock.calls[0] ?? [];
+      expect((Array.isArray(asked) ? asked : [asked]).map((question) => question?.name)).toContain('strategy');
       expect(process.exitCode).toBe(0);
     });
 
     it("offers the collection's own locales, minus its base locale", async () => {
-      onlyCollection('docs', { translationsFolder: 'src/docs-translations', baseLocale: 'fr', locales: ['fr', 'de'] });
+      onlyCollection('docs', {
+        translationsFolder: 'src/docs-translations',
+        baseLocale: 'fr',
+        locales: ['fr', 'de'],
+      });
 
-      await importCommand({ source: '/test/import.json', format: 'json', strategy: 'translation-service' });
+      await importCommand(
+        registered({
+          source: '/test/import.json',
+          format: 'json',
+          strategy: 'translation-service',
+        }),
+      );
 
       expect(offeredLocales()).toEqual([{ title: 'de', value: 'de' }]);
       expect(runImport).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({ locale: 'de' }));
     });
 
     it('offers the project locales for a collection without its own', async () => {
-      await importCommand({ source: '/test/import.json', format: 'json', strategy: 'translation-service' });
+      await importCommand(
+        registered({
+          source: '/test/import.json',
+          format: 'json',
+          strategy: 'translation-service',
+        }),
+      );
 
       expect(offeredLocales()).toEqual([
         { title: 'es', value: 'es' },
@@ -546,7 +576,7 @@ describe('import-cmd', () => {
     });
 
     it('offers the base locale too when the chosen strategy is migration', async () => {
-      await importCommand({ source: '/test/import.json', format: 'json' });
+      await importCommand(registered({ source: '/test/import.json', format: 'json' }));
 
       expect(offeredLocales({ strategy: 'migration' })).toEqual([
         { title: 'en (base locale)', value: 'en' },
@@ -555,13 +585,35 @@ describe('import-cmd', () => {
       ]);
     });
 
+    it('asks migration switches left unset by registration', async () => {
+      await importCommand(
+        registered({
+          source: '/test/import.json',
+          format: 'json',
+          strategy: 'migration',
+        }),
+      );
+
+      const [asked] = vi.mocked(prompts).mock.calls[0] ?? [];
+      const questions = Array.isArray(asked) ? asked : [asked];
+      expect(
+        questions
+          .filter(
+            (question) =>
+              typeof question?.name === 'string' &&
+              ['updateComments', 'updateTags', 'createMissing'].includes(question.name),
+          )
+          .map((question) => question?.initial),
+      ).toEqual([true, true, true]);
+    });
+
     it('a cancelled prompt prints one cancel line and exits 0', async () => {
       vi.mocked(prompts).mockImplementationOnce(async (_questions, options) => {
         options?.onCancel?.({ type: 'text', name: 'source', message: 'Source' }, {});
         return {};
       });
 
-      await importCommand({});
+      await importCommand(registered({}));
 
       expect(console.error).toHaveBeenCalledWith('❌ Import cancelled.');
       expect(runImport).not.toHaveBeenCalled();

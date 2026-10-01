@@ -10,9 +10,9 @@ vi.mock('./commands/find-similar', () => ({ findSimilarCommand: vi.fn() }));
 vi.mock('./commands/import-cmd', () => ({ importCommand: vi.fn() }));
 
 import { addResourceCommand } from './add-resource/add-resource';
-import { moveResourceCommand } from './commands/move';
 import { findSimilarCommand } from './commands/find-similar';
 import { importCommand } from './commands/import-cmd';
+import { moveResourceCommand } from './commands/move';
 import { validateCommand } from './commands/validate';
 import { deleteCollectionCommand } from './delete-collection/delete-collection';
 
@@ -91,9 +91,20 @@ describe('main.ts flag wiring', () => {
     expect(findSimilarCommand).toHaveBeenCalledWith({ collection: 'main', value: 'Hello', maxResults: 8 });
   });
 
-  it('passes the default strategy to import', async () => {
+  it('leaves the import strategy and migration flags unset for command resolution', async () => {
     await runCli('import', '--source', 'file.json', '--locale', 'fr');
 
-    expect(importCommand).toHaveBeenCalledWith(expect.objectContaining({ strategy: 'translation-service' }));
+    expect(importCommand).toHaveBeenCalledWith({
+      source: 'file.json',
+      locale: 'fr',
+      dryRun: false,
+      verbose: false,
+    });
+  });
+
+  it('passes --no-validate-base as false', async () => {
+    await runCli('import', '--source', 'file.json', '--locale', 'fr', '--no-validate-base');
+
+    expect(importCommand).toHaveBeenCalledWith(expect.objectContaining({ validateBase: false }));
   });
 });

@@ -349,13 +349,6 @@ const cases: Case[] = [
     ],
     defaultCall: [
       {
-        status: 'new,stale',
-        structure: 'hierarchical',
-        rich: false,
-        includeBase: false,
-        includeStatus: false,
-        includeComment: false,
-        includeTags: false,
         protectNotes: true,
         dryRun: false,
         verbose: false,
@@ -402,11 +395,6 @@ const cases: Case[] = [
     ],
     defaultCall: [
       {
-        strategy: 'translation-service',
-        updateComments: false,
-        updateTags: false,
-        preserveStatus: false,
-        validateBase: true,
         dryRun: false,
         verbose: false,
       },

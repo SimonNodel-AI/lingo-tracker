@@ -1,7 +1,7 @@
 import {
+  DEFAULT_CONFIG,
   type ExportFormat,
   type ExportRunResult,
-  DEFAULT_CONFIG,
   exportTargetLocales,
   type LingoTrackerConfig,
   runExport,
@@ -16,6 +16,7 @@ import {
   processMultiselectWithAll,
   writeRunSummary,
 } from '../utils';
+import { EXPORT_DEFAULTS } from './run-option-defaults';
 
 export interface ExportCommandOptions {
   format?: ExportFormat;
@@ -140,6 +141,7 @@ function buildQuestions(
   targetLocales: string[],
 ): prompts.PromptObject[] {
   const collectionNames = Object.keys(config.collections || {});
+  const selectedStatuses = EXPORT_DEFAULTS.status.split(',');
 
   const questions: prompts.PromptObject[] = [];
 
@@ -167,6 +169,7 @@ function buildQuestions(
         { title: 'All Collections', value: '__ALL__', selected: true },
         ...collectionNames.map((name) => ({ title: name, value: name })),
       ],
+      min: 1,
       hint: 'Space to select. Return to submit',
       instructions: false,
     });
@@ -182,6 +185,7 @@ function buildQuestions(
         { title: 'All Target Locales', value: '__ALL__', selected: true },
         ...targetLocales.map((l: string) => ({ title: l, value: l })),
       ],
+      min: 1,
       hint: 'Space to select. Return to submit',
       instructions: false,
     });
@@ -194,15 +198,28 @@ function buildQuestions(
       name: 'statusFilter',
       message: 'Filter by translation status',
       choices: [
-        { title: 'New (not yet translated)', value: 'new', selected: true },
-        { title: 'Stale (source changed)', value: 'stale', selected: true },
+        {
+          title: 'New (not yet translated)',
+          value: 'new',
+          selected: selectedStatuses.includes('new'),
+        },
+        {
+          title: 'Stale (source changed)',
+          value: 'stale',
+          selected: selectedStatuses.includes('stale'),
+        },
         {
           title: 'Translated (has translation)',
           value: 'translated',
-          selected: false,
+          selected: selectedStatuses.includes('translated'),
         },
-        { title: 'Verified (reviewed)', value: 'verified', selected: false },
+        {
+          title: 'Verified (reviewed)',
+          value: 'verified',
+          selected: selectedStatuses.includes('verified'),
+        },
       ],
+      min: 1,
       hint: 'Space to select. Return to submit',
       instructions: false,
     });
@@ -244,7 +261,7 @@ function buildQuestions(
           { title: 'Hierarchical (nested objects)', value: 'hierarchical' },
           { title: 'Flat (dot-delimited keys)', value: 'flat' },
         ],
-        initial: 0,
+        initial: EXPORT_DEFAULTS.structure === 'hierarchical' ? 0 : 1,
       });
     }
 
@@ -257,7 +274,7 @@ function buildQuestions(
         },
         name: 'rich',
         message: 'Use rich JSON objects (include metadata)?',
-        initial: false,
+        initial: EXPORT_DEFAULTS.rich,
         active: 'Yes',
         inactive: 'No',
       });
@@ -273,7 +290,7 @@ function buildQuestions(
         },
         name: 'includeBase',
         message: 'Include base locale value in rich objects?',
-        initial: false,
+        initial: EXPORT_DEFAULTS.includeBase,
         active: 'Yes',
         inactive: 'No',
       });
@@ -289,7 +306,7 @@ function buildQuestions(
         },
         name: 'includeStatus',
         message: 'Include translation status in rich objects?',
-        initial: false,
+        initial: EXPORT_DEFAULTS.includeStatus,
         active: 'Yes',
         inactive: 'No',
       });
@@ -305,7 +322,7 @@ function buildQuestions(
         },
         name: 'includeComment',
         message: 'Include comments?',
-        initial: true,
+        initial: EXPORT_DEFAULTS.includeComment,
         active: 'Yes',
         inactive: 'No',
       });
@@ -321,7 +338,7 @@ function buildQuestions(
         },
         name: 'includeTags',
         message: 'Include tags array in rich objects?',
-        initial: false,
+        initial: EXPORT_DEFAULTS.includeTags,
         active: 'Yes',
         inactive: 'No',
       });
@@ -352,30 +369,6 @@ function buildQuestions(
     });
   }
 
-  // Dry run
-  if (options.dryRun === undefined) {
-    questions.push({
-      type: 'toggle',
-      name: 'dryRun',
-      message: 'Dry run (preview without writing files)?',
-      initial: false,
-      active: 'Yes',
-      inactive: 'No',
-    });
-  }
-
-  // Verbose
-  if (options.verbose === undefined) {
-    questions.push({
-      type: 'toggle',
-      name: 'verbose',
-      message: 'Verbose output (show detailed progress)?',
-      initial: false,
-      active: 'Yes',
-      inactive: 'No',
-    });
-  }
-
   return questions;
 }
 
@@ -387,24 +380,25 @@ function resolveAnswers(answers: Answers<ExportCommandOptions>): ExportCommandOp
   const collections = stringList(answers.collections);
   const locales = stringList(answers.locales);
   const statusFilter = stringList(answers.statusFilter);
+  if (collections?.length === 0) throw new Error('Select at least one collection.');
+  if (locales?.length === 0) throw new Error('Select at least one target locale.');
+  if (statusFilter?.length === 0) throw new Error('Select at least one translation status.');
   return {
     ...answers,
     collection:
       answers.collection ?? (collections && multiselectResultToString(processMultiselectWithAll(collections))),
     locale: answers.locale ?? (locales && multiselectResultToString(processMultiselectWithAll(locales))),
-    status: answers.status ?? statusFilter?.join(','),
+    status: answers.status ?? statusFilter?.join(',') ?? EXPORT_DEFAULTS.status,
     tags: answers.tags || undefined,
     output: answers.output || undefined,
-    structure: answers.structure ?? 'hierarchical',
-    rich: answers.rich ?? false,
-    includeBase: answers.includeBase ?? false,
-    includeStatus: answers.includeStatus ?? false,
-    includeComment: answers.includeComment ?? false,
-    includeTags: answers.includeTags ?? false,
+    structure: answers.structure ?? EXPORT_DEFAULTS.structure,
+    rich: answers.rich ?? EXPORT_DEFAULTS.rich,
+    includeBase: answers.includeBase ?? EXPORT_DEFAULTS.includeBase,
+    includeStatus: answers.includeStatus ?? EXPORT_DEFAULTS.includeStatus,
+    includeComment: answers.includeComment ?? EXPORT_DEFAULTS.includeComment,
+    includeTags: answers.includeTags ?? EXPORT_DEFAULTS.includeTags,
     basePropertyName: answers.basePropertyName || undefined,
     filename: answers.filename || undefined,
-    dryRun: answers.dryRun ?? false,
-    verbose: answers.verbose ?? false,
   };
 }
 
