@@ -1,20 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { describe, expect, it } from 'vitest';
+import { folderDrop } from './folder-drop';
 import {
-  insertFolderIntoTree,
-  removeFolderFromTree,
-  findFolderInTree,
-  filterFolderTree,
-  rebaseFolderPaths,
-  collectExpandablePaths,
   collectAncestorPaths,
+  collectExpandablePaths,
+  collectVisibleFolderPaths,
+  filterFolderTree,
+  findFolderInTree,
+  insertFolderIntoTree,
+  parentFolderPath,
   prunePathsUnder,
   rebaseExpandedPaths,
+  rebaseFolderPaths,
+  removeFolderFromTree,
   toggleExpandedPath,
-  collectVisibleFolderPaths,
-  parentFolderPath,
-  folderMoveNoOp,
 } from './folder-tree.utils';
-import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 
 const leaf = (name: string, fullPath: string): FolderNodeDto => ({
   name,
@@ -59,10 +59,10 @@ describe('shared folder navigation', () => {
   });
 
   it('identifies folder moves that cannot change the tree', () => {
-    expect(folderMoveNoOp('common.buttons', 'common.buttons')).toBe('same-folder');
-    expect(folderMoveNoOp('common.buttons', 'common')).toBe('already-at-location');
-    expect(folderMoveNoOp('common', '')).toBe('already-at-location');
-    expect(folderMoveNoOp('common.buttons', 'errors')).toBeNull();
+    expect(folderDrop({ type: 'folder', path: 'common.buttons' }, 'common.buttons', false).noOp).toBe('same-folder');
+    expect(folderDrop({ type: 'folder', path: 'common.buttons' }, 'common', false).noOp).toBe('already-at-location');
+    expect(folderDrop({ type: 'folder', path: 'common' }, '', false).noOp).toBe('already-at-location');
+    expect(folderDrop({ type: 'folder', path: 'common.buttons' }, 'errors', false).noOp).toBeNull();
   });
 });
 

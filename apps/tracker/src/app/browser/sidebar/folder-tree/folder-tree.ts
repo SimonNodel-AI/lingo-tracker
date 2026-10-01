@@ -1,38 +1,39 @@
+import { type CdkDrag, type CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
+import { CommonModule } from '@angular/common';
 import {
-  Component,
   ChangeDetectionStrategy,
+  Component,
+  computed,
   DestroyRef,
+  type ElementRef,
   inject,
   input,
   output,
   signal,
   viewChild,
-  type ElementRef,
-  computed,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FolderNode } from './folder-node/folder-node';
-import { InlineFolderInput } from './inline-folder-input/inline-folder-input';
-import { BrowserStore } from '../../store/browser.store';
-import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { SearchInput } from '../../../shared/components/search-input';
-import { MatIconModule } from '@angular/material/icon';
-import { CdkDropList, type CdkDrag, type CdkDragDrop } from '@angular/cdk/drag-drop';
+import { injectConfirm } from '../../../shared/confirm';
+import { NotificationService } from '../../../shared/notification';
+import { resourceMovedToast } from '../../services/resource-moved-toast';
+import { BrowserStore } from '../../store/browser.store';
+import type { MoveResourceOutcome, RequestedFolderMoveOutcome } from '../../store/features/with-folder-writes.feature';
+import { folderDrop } from '../../store/folder-drop';
 import type { DragData } from '../../types/drag-data';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
-import { NotificationService } from '../../../shared/notification';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
-import { resourceMovedToast } from '../../services/resource-moved-toast';
-import type { MoveFolderOutcome, MoveResourceOutcome } from '../../store/features/with-folder-writes.feature';
-import { injectConfirm } from '../../../shared/confirm';
+import { FolderNode } from './folder-node/folder-node';
+import { InlineFolderInput } from './inline-folder-input/inline-folder-input';
 
 const NESTED_ANIMATION_DURATION_MS = 250;
 const SCROLL_EDGE_THRESHOLD_PX = 50;
@@ -115,10 +116,7 @@ export class FolderTree {
 
   /** Root accepts folders only: a resource is moved between folders, never onto the collection. */
   readonly isValidRootDropTarget = computed(() => {
-    const dragData = this.activeDragData();
-    if (!dragData || dragData.type !== 'folder' || !dragData.path) return false;
-    // A folder already sitting at root has nowhere to go.
-    return dragData.path.includes('.');
+    return folderDrop(this.activeDragData(), '', this.store.isReadOnly()).canLand;
   });
 
   /** Drives the icon flip animation — true for one animation frame when toggled */
@@ -231,12 +229,7 @@ export class FolderTree {
 
   /** Predicate for the root drop list: folders only, and only ones not already at root. */
   canDropOnRoot = (drag: CdkDrag<DragData>): boolean => {
-    if (this.store.isReadOnly()) return false;
-
-    const dragData = drag.data;
-    if (!dragData || dragData.type !== 'folder' || !dragData.path) return false;
-
-    return dragData.path.includes('.');
+    return folderDrop(drag.data, '', this.store.isReadOnly()).canLand;
   };
 
   /** Moves a folder dropped on the root row out to the top level. */
@@ -244,6 +237,7 @@ export class FolderTree {
     this.isRootHoveredDuringDrag.set(false);
 
     const dragData = event.item.data as DragData;
+    if (!folderDrop(dragData, '', this.store.isReadOnly()).canLand) return;
     if (dragData.type !== 'folder' || !dragData.path) return;
 
     this.confirmMoveFolder(dragData.path, '');
@@ -350,33 +344,22 @@ export class FolderTree {
 
   /** Confirms a folder move before handing the write to the store. */
   confirmMoveFolder(sourceFolderPath: string, destinationFolderPath: string): void {
-    const noOp = this.store.folderMoveNoOp(sourceFolderPath, destinationFolderPath);
-    if (noOp) {
-      this.store
-        .moveFolder({ sourceFolderPath, destinationFolderPath })
-        .subscribe((outcome) => this.#showFolderMoveOutcome(outcome));
-      return;
-    }
-    const inSession = this.store.captureFolderWriteSession();
-    const folderName = extractFolderNameFromPath(sourceFolderPath);
-    this.#confirm(
-      {
-        title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
-        message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
-          name: folderName,
-          dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-        }),
-        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
-        actionType: 'standard',
-      },
-      { width: '400px', canOpen: inSession },
-    ).then((confirmed) => {
-      if (confirmed && inSession()) {
-        this.store
-          .moveFolder({ sourceFolderPath, destinationFolderPath })
-          .subscribe((outcome) => this.#showFolderMoveOutcome(outcome));
-      }
-    });
+    this.store
+      .requestFolderMove({ sourceFolderPath, destinationFolderPath }, (inSession) =>
+        this.#confirm(
+          {
+            title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
+            message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
+              name: extractFolderNameFromPath(sourceFolderPath),
+              dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
+            }),
+            confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
+            actionType: 'standard',
+          },
+          { width: '400px', canOpen: inSession },
+        ),
+      )
+      .subscribe((outcome) => this.#showFolderMoveOutcome(outcome));
   }
 
   /**
@@ -399,7 +382,7 @@ export class FolderTree {
       .subscribe((outcome) => this.#showResourceMoveOutcome(outcome));
   }
 
-  #showFolderMoveOutcome(outcome: MoveFolderOutcome): void {
+  #showFolderMoveOutcome(outcome: RequestedFolderMoveOutcome): void {
     if (outcome.kind === 'moved') {
       this.#notifications.success(
         this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERMOVEDX, {
@@ -415,6 +398,7 @@ export class FolderTree {
         apiErrorMessage(outcome.error, this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVEFOLDERFAILED)),
       );
     }
+    // CDK drop predicates reject invalid-drop before a UI event reaches this handler.
   }
 
   #showResourceMoveOutcome(outcome: MoveResourceOutcome): void {

@@ -2,21 +2,21 @@ import { computed, inject } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
 import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { splitResolvedKey } from '@simoncodes-ca/domain';
-import { catchError, defer, finalize, map, of, type Observable } from 'rxjs';
+import { catchError, defer, finalize, from, map, type Observable, of, switchMap } from 'rxjs';
 import { ApiError } from '../../../shared/api-error/api-error';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
+import { cancelFolderDraft, startFolderDraft } from '../folder-draft';
+import { folderDrop } from '../folder-drop';
+import { planFolderMove, planFolderMoveRollback } from '../folder-move-plan';
 import {
   findFolderInTree,
-  folderMoveNoOp,
   insertFolderIntoTree,
   parentFolderPath,
   prunePathsUnder,
   removeFolderFromTree,
 } from '../folder-tree.utils';
-import { planFolderMove, planFolderMoveRollback } from '../folder-move-plan';
 import { captureSession } from '../session-guard';
-import { startFolderDraft, cancelFolderDraft } from '../folder-draft';
 
 export interface FolderWritesState {
   isAddingFolder: boolean;
@@ -48,6 +48,7 @@ export type CreateFolderOutcome = Refusal | { kind: 'created'; folder: FolderNod
 export type DeleteFolderOutcome = Refusal | { kind: 'deleted'; deleted: boolean };
 export type MoveFolderOutcome =
   | Refusal
+  | { kind: 'invalid-drop' }
   | { kind: 'moved'; folderName: string; destinationFolderPath: string }
   | {
       kind: 'noop';
@@ -57,6 +58,7 @@ export type MoveResourceOutcome =
   | Refusal
   | { kind: 'moved'; entryKey: string; destinationFolderPath: string }
   | { kind: 'noop'; reason: 'already-in-folder' };
+export type RequestedFolderMoveOutcome = MoveFolderOutcome | { kind: 'cancelled' };
 
 function refused(error: unknown): Refusal {
   return {
@@ -111,8 +113,58 @@ export function withFolderWritesFeature<_>() {
         });
       }
 
+      function moveFolder({
+        sourceFolderPath,
+        destinationFolderPath,
+      }: {
+        sourceFolderPath: string;
+        destinationFolderPath: string;
+      }): Observable<MoveFolderOutcome> {
+        return defer(() => {
+          if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
+          const collection = store.selectedCollection();
+          if (!collection) return of({ kind: 'no-collection' } as const);
+          const decision = folderDrop({ type: 'folder', path: sourceFolderPath }, destinationFolderPath, false);
+          if (decision.noOp === 'same-folder' || decision.noOp === 'already-at-location')
+            return of({ kind: 'noop', reason: decision.noOp } as const);
+          if (!decision.canLand) return of({ kind: 'invalid-drop' } as const);
+          const inSession = captureSession(store);
+          const sourceNode = findFolderInTree(store.rootFolders(), sourceFolderPath);
+          const folderName = extractFolderNameFromPath(sourceFolderPath);
+          // A concurrent tree load can replace the optimistic tree while the request is pending.
+          const optimisticTree = removeFolderFromTree(store.rootFolders(), sourceFolderPath);
+          patchState(store, { rootFolders: optimisticTree });
+          return moving(
+            api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
+              map((): MoveFolderOutcome => {
+                if (!inSession()) return { kind: 'stale-session' };
+                const plan = planFolderMove(
+                  { tree: store.rootFolders(), expanded: store.expandedFolders(), sourceNode },
+                  sourceFolderPath,
+                  destinationFolderPath,
+                );
+                if (plan.kind === 'patch-tree') {
+                  patchState(store, { rootFolders: plan.tree });
+                  if (plan.loadChildrenFor) store.loadFolderChildren(plan.loadChildrenFor);
+                } else store.loadRootFolders();
+                patchState(store, { expandedFolders: plan.expanded });
+                store.showFolder(plan.showPath);
+                return { kind: 'moved', folderName, destinationFolderPath };
+              }),
+              catchError((error: unknown) => {
+                if (inSession()) {
+                  const tree = planFolderMoveRollback(store.rootFolders(), sourceFolderPath, sourceNode);
+                  if (tree) patchState(store, { rootFolders: tree });
+                }
+                return of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const));
+              }),
+            ),
+            inSession,
+          );
+        });
+      }
+
       return {
-        folderMoveNoOp,
         captureFolderWriteSession(): () => boolean {
           return captureSession(store);
         },
@@ -195,51 +247,27 @@ export function withFolderWritesFeature<_>() {
             );
           });
         },
-        moveFolder({
-          sourceFolderPath,
-          destinationFolderPath,
-        }: {
-          sourceFolderPath: string;
-          destinationFolderPath: string;
-        }): Observable<MoveFolderOutcome> {
+        moveFolder,
+        requestFolderMove(
+          move: { sourceFolderPath: string; destinationFolderPath: string },
+          confirm: (inSession: () => boolean) => Promise<boolean>,
+        ): Observable<RequestedFolderMoveOutcome> {
           return defer(() => {
             if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
-            const collection = store.selectedCollection();
-            if (!collection) return of({ kind: 'no-collection' } as const);
-            const noOp = folderMoveNoOp(sourceFolderPath, destinationFolderPath);
-            if (noOp) return of({ kind: 'noop', reason: noOp } as const);
+            if (!store.selectedCollection()) return of({ kind: 'no-collection' } as const);
+            const decision = folderDrop(
+              { type: 'folder', path: move.sourceFolderPath },
+              move.destinationFolderPath,
+              false,
+            );
+            if (decision.noOp || !decision.canLand) return moveFolder(move);
             const inSession = captureSession(store);
-            const sourceNode = findFolderInTree(store.rootFolders(), sourceFolderPath);
-            const folderName = extractFolderNameFromPath(sourceFolderPath);
-            // A concurrent tree load can replace the optimistic tree while the request is pending.
-            const optimisticTree = removeFolderFromTree(store.rootFolders(), sourceFolderPath);
-            patchState(store, { rootFolders: optimisticTree });
-            return moving(
-              api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
-                map((): MoveFolderOutcome => {
-                  if (!inSession()) return { kind: 'stale-session' };
-                  const plan = planFolderMove(
-                    { tree: store.rootFolders(), expanded: store.expandedFolders(), sourceNode },
-                    sourceFolderPath,
-                    destinationFolderPath,
-                  );
-                  if (plan.kind === 'patch-tree') {
-                    patchState(store, { rootFolders: plan.tree });
-                    if (plan.loadChildrenFor) store.loadFolderChildren(plan.loadChildrenFor);
-                  } else store.loadRootFolders();
-                  patchState(store, { expandedFolders: plan.expanded });
-                  store.showFolder(plan.showPath);
-                  return { kind: 'moved', folderName, destinationFolderPath };
-                }),
-                catchError((error: unknown) => {
-                  if (inSession()) {
-                    const tree = planFolderMoveRollback(store.rootFolders(), sourceFolderPath, sourceNode);
-                    if (tree) patchState(store, { rootFolders: tree });
-                  }
-                  return of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const));
-                }),
-              ),
-              inSession,
+            return from(confirm(inSession)).pipe(
+              switchMap((confirmed) => {
+                if (!inSession()) return of({ kind: 'stale-session' } as const);
+                if (!confirmed) return of({ kind: 'cancelled' } as const);
+                return moveFolder(move);
+              }),
             );
           });
         },
@@ -255,7 +283,13 @@ export function withFolderWritesFeature<_>() {
             const collection = store.selectedCollection();
             if (!collection) return of({ kind: 'no-collection' } as const);
             const { folderPath, entryKey } = splitResolvedKey(sourceKey);
-            if (folderPath.join('.') === destinationFolderPath)
+            if (
+              folderDrop(
+                { type: 'resource', key: sourceKey, folderPath: folderPath.join('.') },
+                destinationFolderPath,
+                false,
+              ).noOp === 'already-in-folder'
+            )
               return of({ kind: 'noop', reason: 'already-in-folder' } as const);
             const inSession = captureSession(store);
             const movedRow = store.translations().find((row) => row.fullKey === sourceKey);

@@ -188,16 +188,6 @@ export function parentFolderPath(path: string): string | null {
   return lastDot < 0 ? null : path.slice(0, lastDot);
 }
 
-/** A folder move that cannot change the tree, before asking for confirmation. */
-export function folderMoveNoOp(
-  sourceFolderPath: string,
-  destinationFolderPath: string,
-): 'same-folder' | 'already-at-location' | null {
-  if (sourceFolderPath === destinationFolderPath) return 'same-folder';
-  if ((parentFolderPath(sourceFolderPath) ?? '') === destinationFolderPath) return 'already-at-location';
-  return null;
-}
-
 /**
  * Removes a path and everything beneath it from a set of expanded paths.
  * Used after a folder is deleted so the set cannot accumulate paths that no longer exist.
