@@ -67,6 +67,7 @@ describe('core public surface', () => {
       'extractSubtree',
       'generateBundles',
       'generatePreparedBundle',
+      'getStrategyDefaults',
       'initConfig',
       'loadConfig',
       'loadPreferredTerminology',

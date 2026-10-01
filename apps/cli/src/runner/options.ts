@@ -8,6 +8,8 @@ export interface OptionSpec<Value = string> {
   readonly flags: string;
   readonly description?: string;
   readonly defaultValue?: string | boolean;
+  /** Printed in help without assigning a Commander value. */
+  readonly helpDefault?: string | boolean;
   readonly parse?: (value: string) => Value;
 }
 
@@ -15,10 +17,17 @@ export function option<Value = string>(spec: OptionSpec<Value>): OptionDefinitio
   if (spec.parse && spec.defaultValue !== undefined) {
     throw new Error('A CLI option cannot define both parse and defaultValue.');
   }
+  if (spec.helpDefault !== undefined && spec.defaultValue !== undefined) {
+    throw new Error('A CLI option cannot define both helpDefault and defaultValue.');
+  }
+  const description =
+    spec.helpDefault === undefined
+      ? spec.description
+      : `${spec.description ?? ''} (default: ${JSON.stringify(spec.helpDefault)})`;
   return (command) => {
-    if (spec.parse) command.option(spec.flags, spec.description, spec.parse);
-    else if (spec.defaultValue !== undefined) command.option(spec.flags, spec.description, spec.defaultValue);
-    else command.option(spec.flags, spec.description);
+    if (spec.parse) command.option(spec.flags, description, spec.parse);
+    else if (spec.defaultValue !== undefined) command.option(spec.flags, description, spec.defaultValue);
+    else command.option(spec.flags, description);
   };
 }
 
