@@ -586,427 +586,70 @@ describe('Move Folder', () => {
       ).rejects.toThrow(InvalidFolderPathError);
     });
   });
+  describe('Existing destination folder', () => {
+    it('should merge contents when destination already has subfolder with same name', async () => {
+      // Setup source folder: testdata with resource (testdata.bar)
+      const sourceTestdataFolder = join(testDir, 'testdata');
+      mockDirectories.add(sourceTestdataFolder);
 
-  describe('nestUnderDestination Flag', () => {
-    describe('nestUnderDestination: true (default)', () => {
-      it('should nest source folder under destination when moving same-depth folders', async () => {
-        // Setup source folder: testdata with one resource (testdata.foo)
-        const testdataFolder = join(testDir, 'testdata');
-        mockDirectories.add(testdataFolder);
+      const sourceFile = join(sourceTestdataFolder, RESOURCE_ENTRIES_FILENAME);
+      mockFileSystem.set(
+        sourceFile,
+        JSON.stringify({
+          bar: { source: 'Bar Value' },
+        }),
+      );
 
-        const testdataFile = join(testdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          testdataFile,
-          JSON.stringify({
-            foo: { source: 'Foo Value' },
-          }),
-        );
+      const sourceMetaFile = join(sourceTestdataFolder, TRACKER_META_FILENAME);
+      mockFileSystem.set(
+        sourceMetaFile,
+        JSON.stringify({
+          bar: { en: { baseChecksum: 'def456' } },
+        }),
+      );
 
-        const testdataMetaFile = join(testdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          testdataMetaFile,
-          JSON.stringify({
-            foo: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
+      // Setup destination: common.testdata already exists with resource (common.testdata.foo)
+      const commonFolder = join(testDir, 'common');
+      const destTestdataFolder = join(commonFolder, 'testdata');
+      mockDirectories.add(commonFolder);
+      mockDirectories.add(destTestdataFolder);
 
-        // Move testdata into common (both are depth 1)
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'testdata',
-          destinationFolderPath: 'common',
-          nestUnderDestination: true,
-        });
+      const destFile = join(destTestdataFolder, RESOURCE_ENTRIES_FILENAME);
+      mockFileSystem.set(
+        destFile,
+        JSON.stringify({
+          foo: { source: 'Foo Value' },
+        }),
+      );
 
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
+      const destMetaFile = join(destTestdataFolder, TRACKER_META_FILENAME);
+      mockFileSystem.set(
+        destMetaFile,
+        JSON.stringify({
+          foo: { en: { baseChecksum: 'abc123' } },
+        }),
+      );
 
-        // Verify destination exists: common.testdata.foo (NOT common.foo)
-        const commonTestdataFolder = join(testDir, 'common', 'testdata');
-        const commonTestdataFile = join(commonTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(commonTestdataFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(commonTestdataFile) as string);
-        expect(destContent.foo).toBeDefined();
-        expect(destContent.foo.source).toBe('Foo Value');
+      // Move testdata into common (should merge with existing common.testdata)
+      const result = await moveFolder(collection(testDir), {
+        sourceFolderPath: 'testdata',
+        destinationFolderPath: 'common',
+        nestUnderDestination: true,
       });
 
-      it('should nest source folder under destination when moving different-depth folders', async () => {
-        // Setup source folder: data.testdata with resource (data.testdata.foo)
-        const dataFolder = join(testDir, 'data');
-        const testdataFolder = join(dataFolder, 'testdata');
-        mockDirectories.add(dataFolder);
-        mockDirectories.add(testdataFolder);
+      expect(result.movedCount).toBe(1);
+      expect(result.foldersDeleted).toBe(1);
+      expect(result.errors).toHaveLength(0);
 
-        const testdataFile = join(testdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          testdataFile,
-          JSON.stringify({
-            foo: { source: 'Foo Value' },
-          }),
-        );
+      // Verify both resources exist in common.testdata
+      const mergedFile = join(destTestdataFolder, RESOURCE_ENTRIES_FILENAME);
+      expect(mockFileSystem.has(mergedFile)).toBe(true);
 
-        const testdataMetaFile = join(testdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          testdataMetaFile,
-          JSON.stringify({
-            foo: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
-
-        // Move data.testdata into common (depth 2 -> depth 1)
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'data.testdata',
-          destinationFolderPath: 'common',
-          nestUnderDestination: true,
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-
-        // Verify destination exists: common.testdata.foo
-        const commonTestdataFolder = join(testDir, 'common', 'testdata');
-        const commonTestdataFile = join(commonTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(commonTestdataFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(commonTestdataFile) as string);
-        expect(destContent.foo).toBeDefined();
-        expect(destContent.foo.source).toBe('Foo Value');
-      });
-
-      it('should handle root-level move (empty destination)', async () => {
-        // Setup source folder: common.testdata with resource (common.testdata.foo)
-        const commonFolder = join(testDir, 'common');
-        const testdataFolder = join(commonFolder, 'testdata');
-        mockDirectories.add(commonFolder);
-        mockDirectories.add(testdataFolder);
-
-        const testdataFile = join(testdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          testdataFile,
-          JSON.stringify({
-            foo: { source: 'Foo Value' },
-          }),
-        );
-
-        const testdataMetaFile = join(testdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          testdataMetaFile,
-          JSON.stringify({
-            foo: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
-
-        // Move common.testdata to root (empty destination)
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'common.testdata',
-          destinationFolderPath: '',
-          nestUnderDestination: true,
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-
-        // Verify destination exists: testdata.foo (at root level)
-        const rootTestdataFolder = join(testDir, 'testdata');
-        const rootTestdataFile = join(rootTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(rootTestdataFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(rootTestdataFile) as string);
-        expect(destContent.foo).toBeDefined();
-        expect(destContent.foo.source).toBe('Foo Value');
-      });
-
-      it('should merge contents when destination already has subfolder with same name', async () => {
-        // Setup source folder: testdata with resource (testdata.bar)
-        const sourceTestdataFolder = join(testDir, 'testdata');
-        mockDirectories.add(sourceTestdataFolder);
-
-        const sourceFile = join(sourceTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          sourceFile,
-          JSON.stringify({
-            bar: { source: 'Bar Value' },
-          }),
-        );
-
-        const sourceMetaFile = join(sourceTestdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          sourceMetaFile,
-          JSON.stringify({
-            bar: { en: { baseChecksum: 'def456' } },
-          }),
-        );
-
-        // Setup destination: common.testdata already exists with resource (common.testdata.foo)
-        const commonFolder = join(testDir, 'common');
-        const destTestdataFolder = join(commonFolder, 'testdata');
-        mockDirectories.add(commonFolder);
-        mockDirectories.add(destTestdataFolder);
-
-        const destFile = join(destTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          destFile,
-          JSON.stringify({
-            foo: { source: 'Foo Value' },
-          }),
-        );
-
-        const destMetaFile = join(destTestdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          destMetaFile,
-          JSON.stringify({
-            foo: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
-
-        // Move testdata into common (should merge with existing common.testdata)
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'testdata',
-          destinationFolderPath: 'common',
-          nestUnderDestination: true,
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-
-        // Verify both resources exist in common.testdata
-        const mergedFile = join(destTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(mergedFile)).toBe(true);
-
-        const mergedContent = JSON.parse(mockFileSystem.get(mergedFile) as string);
-        expect(mergedContent.foo).toBeDefined();
-        expect(mergedContent.foo.source).toBe('Foo Value');
-        expect(mergedContent.bar).toBeDefined();
-        expect(mergedContent.bar.source).toBe('Bar Value');
-      });
-
-      it('should handle nested resources with nestUnderDestination: true', async () => {
-        // Setup source folder: testdata with nested resource (testdata.foo.bar)
-        const testdataFolder = join(testDir, 'testdata');
-        const fooFolder = join(testdataFolder, 'foo');
-        mockDirectories.add(testdataFolder);
-        mockDirectories.add(fooFolder);
-
-        const fooFile = join(fooFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          fooFile,
-          JSON.stringify({
-            bar: { source: 'Bar Value' },
-          }),
-        );
-
-        const fooMetaFile = join(fooFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          fooMetaFile,
-          JSON.stringify({
-            bar: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
-
-        // Move testdata into common
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'testdata',
-          destinationFolderPath: 'common',
-          nestUnderDestination: true,
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-
-        // Verify destination exists: common.testdata.foo.bar
-        const commonTestdataFooFolder = join(testDir, 'common', 'testdata', 'foo');
-        const commonTestdataFooFile = join(commonTestdataFooFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(commonTestdataFooFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(commonTestdataFooFile) as string);
-        expect(destContent.bar).toBeDefined();
-        expect(destContent.bar.source).toBe('Bar Value');
-      });
-    });
-
-    describe('nestUnderDestination: false (legacy behavior)', () => {
-      it('should use RENAME behavior for same-depth folders', async () => {
-        // Setup source folder: testdata with one resource (testdata.foo)
-        const testdataFolder = join(testDir, 'testdata');
-        mockDirectories.add(testdataFolder);
-
-        const testdataFile = join(testdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          testdataFile,
-          JSON.stringify({
-            foo: { source: 'Foo Value' },
-          }),
-        );
-
-        const testdataMetaFile = join(testdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          testdataMetaFile,
-          JSON.stringify({
-            foo: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
-
-        // Move testdata into common with legacy behavior (both are depth 1, should RENAME)
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'testdata',
-          destinationFolderPath: 'common',
-          nestUnderDestination: false,
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-
-        // Verify destination exists: common.foo (NOT common.testdata.foo)
-        const commonFolder = join(testDir, 'common');
-        const commonFile = join(commonFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(commonFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(commonFile) as string);
-        expect(destContent.foo).toBeDefined();
-        expect(destContent.foo.source).toBe('Foo Value');
-      });
-
-      it('should use NEST behavior for different-depth folders', async () => {
-        // Setup source folder: data.testdata with resource (data.testdata.foo)
-        const dataFolder = join(testDir, 'data');
-        const testdataFolder = join(dataFolder, 'testdata');
-        mockDirectories.add(dataFolder);
-        mockDirectories.add(testdataFolder);
-
-        const testdataFile = join(testdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          testdataFile,
-          JSON.stringify({
-            foo: { source: 'Foo Value' },
-          }),
-        );
-
-        const testdataMetaFile = join(testdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          testdataMetaFile,
-          JSON.stringify({
-            foo: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
-
-        // Move data.testdata into common (depth 2 -> depth 1, should NEST)
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'data.testdata',
-          destinationFolderPath: 'common',
-          nestUnderDestination: false,
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-
-        // Verify destination exists: common.testdata.foo (legacy NEST behavior)
-        const commonTestdataFolder = join(testDir, 'common', 'testdata');
-        const commonTestdataFile = join(commonTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(commonTestdataFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(commonTestdataFile) as string);
-        expect(destContent.foo).toBeDefined();
-        expect(destContent.foo.source).toBe('Foo Value');
-      });
-
-      it('should preserve existing tests behavior with explicit nestUnderDestination: false', async () => {
-        // This test verifies that the existing test "should move a folder with a single resource"
-        // still works with explicit nestUnderDestination: false flag
-        const buttonsFolder = join(testDir, 'apps', 'common', 'buttons');
-        mockDirectories.add(join(testDir, 'apps'));
-        mockDirectories.add(join(testDir, 'apps', 'common'));
-        mockDirectories.add(buttonsFolder);
-
-        const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          buttonsFile,
-          JSON.stringify({
-            ok: { source: 'OK', en: 'OK', fr: 'Bien' },
-          }),
-        );
-
-        const buttonsMetaFile = join(buttonsFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          buttonsMetaFile,
-          JSON.stringify({
-            ok: {
-              en: { baseChecksum: 'abc123' },
-              fr: { checksum: 'def456', status: 'translated', baseChecksum: 'abc123' },
-            },
-          }),
-        );
-
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'apps.common.buttons',
-          destinationFolderPath: 'apps.shared',
-          nestUnderDestination: false,
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-        expect(result.warnings).toHaveLength(0);
-
-        // Verify destination exists: apps.shared.buttons.ok (legacy NEST behavior)
-        const sharedButtonsFolder = join(testDir, 'apps', 'shared', 'buttons');
-        const sharedButtonsFile = join(sharedButtonsFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(sharedButtonsFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(sharedButtonsFile) as string);
-        expect(destContent.ok).toBeDefined();
-        expect(destContent.ok.source).toBe('OK');
-      });
-    });
-
-    describe('Default behavior', () => {
-      it('should default to nestUnderDestination: true when flag not specified', async () => {
-        // Setup source folder: testdata with one resource (testdata.foo)
-        const testdataFolder = join(testDir, 'testdata');
-        mockDirectories.add(testdataFolder);
-
-        const testdataFile = join(testdataFolder, RESOURCE_ENTRIES_FILENAME);
-        mockFileSystem.set(
-          testdataFile,
-          JSON.stringify({
-            foo: { source: 'Foo Value' },
-          }),
-        );
-
-        const testdataMetaFile = join(testdataFolder, TRACKER_META_FILENAME);
-        mockFileSystem.set(
-          testdataMetaFile,
-          JSON.stringify({
-            foo: { en: { baseChecksum: 'abc123' } },
-          }),
-        );
-
-        // Move testdata into common WITHOUT specifying nestUnderDestination
-        const result = await moveFolder(collection(testDir), {
-          sourceFolderPath: 'testdata',
-          destinationFolderPath: 'common',
-          // nestUnderDestination not specified, should default to true
-        });
-
-        expect(result.movedCount).toBe(1);
-        expect(result.foldersDeleted).toBe(1);
-        expect(result.errors).toHaveLength(0);
-
-        // Verify destination exists: common.testdata.foo (default behavior)
-        const commonTestdataFolder = join(testDir, 'common', 'testdata');
-        const commonTestdataFile = join(commonTestdataFolder, RESOURCE_ENTRIES_FILENAME);
-        expect(mockFileSystem.has(commonTestdataFile)).toBe(true);
-
-        const destContent = JSON.parse(mockFileSystem.get(commonTestdataFile) as string);
-        expect(destContent.foo).toBeDefined();
-        expect(destContent.foo.source).toBe('Foo Value');
-      });
+      const mergedContent = JSON.parse(mockFileSystem.get(mergedFile) as string);
+      expect(mergedContent.foo).toBeDefined();
+      expect(mergedContent.foo.source).toBe('Foo Value');
+      expect(mergedContent.bar).toBeDefined();
+      expect(mergedContent.bar.source).toBe('Bar Value');
     });
   });
 });

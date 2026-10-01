@@ -1,9 +1,10 @@
-import type { Collection } from '../config/open-collection';
 import { validateKey } from '@simoncodes-ca/domain';
+import type { Collection } from '../config/open-collection';
 import { sweepKeys } from './collection-sweep';
 import { folderAddressExists } from './folder-address';
-import type { ResourceMutation } from './resource-mutation';
+import { planMove } from './move-plan';
 import { type Relocation, type RelocationResult, relocateEntries } from './relocate-entries';
+import type { ResourceMutation } from './resource-mutation';
 
 export interface MoveResourceParams {
   /** Full source key, or a prefix pattern ending with `*` (`common.buttons.*`). */
@@ -40,7 +41,7 @@ export async function moveResource(collection: Collection, params: MoveResourceP
     if (!expanded) return result;
     relocations = expanded;
   } else {
-    relocations = [{ from: source, to: destination }];
+    relocations = [...planMove({ kind: 'key', key: source }, destination).relocations];
   }
 
   const relocation = relocateEntries(collection, destinationCollection, relocations, { override });
@@ -90,9 +91,5 @@ function expandPattern(
   const { keys, problems } = sweepKeys(collection, { startPath: cleanPrefix });
   result.errors.push(...problems.map((problem) => problem.message));
 
-  return keys.map((from) => {
-    const suffix = cleanPrefix ? from.slice(cleanPrefix.length + 1) : from; // +1 for the dot
-    // An empty destination is the collection root, as for moveFolder and editResource's moveTo.
-    return { from, to: destinationKey ? `${destinationKey}.${suffix}` : suffix };
-  });
+  return [...planMove({ kind: 'pattern', prefix: cleanPrefix, keys }, destinationKey).relocations];
 }

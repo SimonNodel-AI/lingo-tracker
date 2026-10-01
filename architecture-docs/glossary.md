@@ -259,7 +259,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Entry Relocation
 
-The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. In code, `relocateEntries(source, destination, relocations, { override? })` in `libs/core/src/lib/resource/relocate-entries.ts` takes a list of `{ from, to }` full keys and returns `{ moved, collisions, errors, mutations }`. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `moveResource` and `moveFolder` move through it.
+The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. The [Move Plan](#move-plan) supplies its key pairs. In code, `relocateEntries(source, destination, relocations, { override? })` in `libs/core/src/lib/resource/relocate-entries.ts` takes a list of `{ from, to }` full keys and returns `{ moved, collisions, errors, mutations }`. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `moveResource` and `moveFolder` move through it.
 
 Explained in context: [`core-library.md`](core-library.md#entry-relocation)
 
@@ -384,6 +384,16 @@ interface LocaleMetadata {
 ```
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
+
+---
+
+## M
+
+### Move Plan
+
+The pure key calculation before [Entry Relocation](#entry-relocation). `planMove(selection, destination)` in `libs/core/src/lib/resource/move-plan.ts` accepts one resource key, a pattern prefix with its selected keys, a folder path with its selected keys and nest mode, or an edited entry key with a destination folder. It returns `{ relocations, warnings }` without reading or writing files. Folder moves nest by default and always nest at the collection root. With `nestUnderDestination: false`, a destination at the same depth renames the folder; a different depth nests it. A same-folder move or nesting under the current parent returns the existing warning. An edited entry with an empty or whitespace-only destination moves to the collection root. `moveFolder`, `moveResource`, and `editResource` supply its key pairs to Entry Relocation.
+
+Explained in context: [`core-library.md`](core-library.md#move-plan)
 
 ---
 

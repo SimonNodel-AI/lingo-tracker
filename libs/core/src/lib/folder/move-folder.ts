@@ -2,10 +2,11 @@ import { readdirSync, rmdirSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import type { Collection } from '../config/open-collection';
 import { FolderMoveIntoDescendantError, FolderNotFoundError } from '../errors/lingo-tracker-error';
+import { sweepKeys } from '../resource/collection-sweep';
+import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
+import { planMove } from '../resource/move-plan';
 import { mergeRelocation } from '../resource/move-resource';
 import { relocateEntries } from '../resource/relocate-entries';
-import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
-import { sweepKeys } from '../resource/collection-sweep';
 import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
@@ -83,33 +84,22 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     mutations: [],
   };
 
-  // Validate folder path segments and split for later use
-  const sourceFolderSegments = validateFolderAddress(sourceFolderPath, 'source folder path', false);
+  // Validate folder path segments before planning or touching disk.
+  validateFolderAddress(sourceFolderPath, 'source folder path', false);
 
   // The root is a valid destination.
-  const destinationFolderSegments = validateFolderAddress(destinationFolderPath, 'destination folder path');
-
-  // Check for same-folder move (no-op)
-  if (sourceFolderPath === destinationFolderPath && sameCollection) {
-    result.warnings.push('Source and destination are the same. No move performed.');
-    return result;
-  }
+  validateFolderAddress(destinationFolderPath, 'destination folder path');
 
   // Prevent moving a folder into its own descendant
   if (destinationFolderPath.startsWith(`${sourceFolderPath}.`) && sameCollection) {
     throw new FolderMoveIntoDescendantError(sourceFolderPath, destinationFolderPath);
   }
 
-  // The root has no name to rename to, so a move there always nests.
-  const nest = nestUnderDestination || destinationFolderPath === '';
-
-  // When nesting, check if destination is the source's parent (would be a no-op)
-  if (nest && sameCollection) {
-    const sourceParentPath = sourceFolderSegments.slice(0, -1).join('.');
-    if (sourceParentPath === destinationFolderPath) {
-      result.warnings.push('Folder is already at this location. No move performed.');
-      return result;
-    }
+  const selection = { kind: 'folder' as const, path: sourceFolderPath, nestUnderDestination, sameCollection };
+  const noOp = planMove({ ...selection, keys: [] }, destinationFolderPath);
+  if (noOp.warnings.length > 0) {
+    result.warnings.push(...noOp.warnings);
+    return result;
   }
 
   const { absolutePath: absoluteSourcePath, isDirectory } = inspectFolderAddress(
@@ -143,50 +133,7 @@ export async function moveFolder(collection: Collection, params: MoveFolderParam
     return result;
   }
 
-  // Calculate depth once for all resources
-  const sourceDepth = sourceFolderSegments.length;
-  const destDepth = destinationFolderSegments.length;
-  const lastSourceSegment = sourceFolderSegments[sourceFolderSegments.length - 1];
-
-  const relocations = resourceKeys.map((sourceKey) => {
-    // Calculate destination key by replacing source folder prefix with destination folder prefix
-    //
-    // When nestUnderDestination is true (default):
-    // - ALWAYS append source folder name to destination
-    // - testdata.foo.bar + common => common.testdata.foo.bar
-    // - data.testdata.foo + common => common.testdata.foo
-    // - testdata.foo + "" (root) => testdata.foo
-
-    // Extract the relative suffix after the source folder
-    const suffix = sourceKey.slice(sourceFolderPath.length);
-    // If sourceKey === sourceFolderPath exactly, suffix will be empty
-    // Otherwise suffix will start with '.'
-
-    let destinationKey: string;
-    if (nest) {
-      // always nest the source folder under destination
-      const sourceFolderName = lastSourceSegment;
-      if (destinationFolderPath) {
-        destinationKey = suffix
-          ? `${destinationFolderPath}.${sourceFolderName}${suffix}`
-          : `${destinationFolderPath}.${sourceFolderName}`;
-      } else {
-        // Root-level move: just use source folder name + suffix
-        destinationKey = suffix ? `${sourceFolderName}${suffix}` : sourceFolderName;
-      }
-    } else if (destDepth === sourceDepth) {
-      // Same depth: RENAME - replace entire source path with destination
-      // apps.buttons.ok -> apps.actions becomes apps.actions.ok
-      destinationKey = suffix ? `${destinationFolderPath}${suffix}` : destinationFolderPath;
-    } else {
-      // Different depth: NEST - append last segment of source to destination
-      // apps.common.buttons.ok -> apps.shared becomes apps.shared.buttons.ok
-      destinationKey = suffix
-        ? `${destinationFolderPath}.${lastSourceSegment}${suffix}`
-        : `${destinationFolderPath}.${lastSourceSegment}`;
-    }
-    return { from: sourceKey, to: destinationKey };
-  });
+  const { relocations } = planMove({ ...selection, keys: resourceKeys }, destinationFolderPath);
 
   // One Entry Relocation for the whole tree: each folder is read and written once.
   const relocation = relocateEntries(collection, destinationCollection, relocations, { override });
