@@ -1,3 +1,4 @@
+import { collectionSetTargetLocales } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
 import { generateValidationSummary } from './generate-validation-summary';
@@ -46,7 +47,7 @@ export function runValidate(collections: readonly Collection[], options: Validat
   }
 
   // Each collection is validated against its own target locales: its locales without its base locale.
-  const targetLocales = [...new Set(collections.flatMap((collection) => collection.targetLocales))];
+  const targetLocales = collectionSetTargetLocales(collections);
   if (targetLocales.length === 0) {
     return {
       status: 'failed',

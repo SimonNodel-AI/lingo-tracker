@@ -1,6 +1,6 @@
+import { readCollectionSet } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
-import { GlossaryBaseLocaleMismatchError, GlossaryNoCollectionsError } from '../errors/lingo-tracker-error';
-import { readCollection } from '../resource/read-collection';
+import { GlossaryNoCollectionsError } from '../errors/lingo-tracker-error';
 import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
 import { matchGlossary, type FlatEntry, type GlossaryTerm } from './glossary-matcher';
 
@@ -39,7 +39,7 @@ export interface BuildGlossaryResult extends Glossary {
  * is limited to its own collection's target locales before matching.
  *
  * @throws {GlossaryNoCollectionsError} No collections were provided.
- * @throws {GlossaryBaseLocaleMismatchError} The collections have different base locales.
+ * @throws {CollectionBaseLocaleMismatchError} The collections have different base locales.
  * @throws {GlossaryExtractorError} The requested extractor mode is unavailable.
  */
 export function buildGlossary(
@@ -47,41 +47,27 @@ export function buildGlossary(
   text: string,
   options: BuildGlossaryOptions = {},
 ): BuildGlossaryResult {
-  const baseLocale = collections[0]?.baseLocale;
-  if (baseLocale === undefined) {
-    throw new GlossaryNoCollectionsError();
-  }
-  if (collections.some((collection) => collection.baseLocale !== baseLocale)) {
-    throw new GlossaryBaseLocaleMismatchError(
-      collections.map(({ name, baseLocale: locale }) => ({ name, baseLocale: locale })),
-    );
-  }
-
-  const configured = [...new Set(collections.flatMap((collection) => collection.targetLocales))];
-  const locales = options.locales ? options.locales.filter((locale) => locale !== baseLocale) : configured;
-  const entries: FlatEntry[] = [];
-  const readProblems: GlossaryReadProblem[] = [];
-
-  for (const collection of collections) {
-    const { resources, problems } = readCollection(collection);
-    readProblems.push(...problems.map((problem) => ({ collectionName: collection.name, message: problem.message })));
-    for (const { fullKey, entry } of resources) {
-      const translations = { ...entry.translations };
-      delete translations[collection.baseLocale];
-      const status: FlatEntry['status'] = {};
-      for (const [locale, meta] of Object.entries(entry.metadata)) {
-        if (meta?.status) status[locale] = meta.status;
-      }
-      entries.push({
-        key: fullKey,
-        collection: collection.name,
-        source: entry.source,
-        translations,
-        status,
-        locales: options.locales ? locales : collection.targetLocales,
-      });
-    }
-  }
+  if (collections.length === 0) throw new GlossaryNoCollectionsError();
+  const set = readCollectionSet(collections, { locales: options.locales, includeUnconfiguredLocales: true });
+  const baseLocale = set.baseLocale;
+  if (baseLocale === undefined) throw new GlossaryNoCollectionsError();
+  const locales = set.targetLocales;
+  const entries: FlatEntry[] = set.resources.map((resource) => {
+    const translations = { ...resource.translations };
+    delete translations[baseLocale];
+    return {
+      key: resource.fullKey,
+      collection: resource.collection,
+      source: resource.source,
+      translations,
+      status: resource.status,
+      locales: options.locales ? locales : resource.targetLocales,
+    };
+  });
+  const readProblems = set.readProblems.map((problem) => ({
+    collectionName: problem.collection,
+    message: problem.message,
+  }));
 
   const extractor =
     typeof options.extractor === 'function' ? options.extractor : resolveExtractor(options.extractor ?? 'ngram');

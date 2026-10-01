@@ -76,14 +76,6 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ---
 
-### Collection Draft
-
-The Tracker collection form's plain values and rules in `apps/tracker/src/app/collections/collection-form-dialog/collection-draft.ts`. It seeds create or edit values, normalizes and changes locale choices, keeps the base locale fixed in edit mode (including an inherited base), reports removed original locales for confirmation, defaults read-only from a `node_modules` folder until the user chooses it, and builds the collection write payload. It has no Angular dependency. `collection-form-dialog.ts` owns the FormGroup, chip controls, confirmation, and store write.
-
-Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
-
----
-
 ### Bundle Run Preparation
 
 The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, typeWarning, tokenConstantNameOverride }`. The key is the caller's key for a supplied definition and the saved name for a saved definition. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `selectPreparedBundleLocale` selects one locale and adds the empty-bundle warning in one place. A prepared `typeWarning` still reaches the CLI event or API log if generation throws.
@@ -145,6 +137,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### Collection Draft
+
+The Tracker collection form's plain values and rules in `apps/tracker/src/app/collections/collection-form-dialog/collection-draft.ts`. It seeds create or edit values, normalizes and changes locale choices, keeps the base locale fixed in edit mode (including an inherited base), reports removed original locales for confirmation, defaults read-only from a `node_modules` folder until the user chooses it, and builds the collection write payload. It has no Angular dependency. `collection-form-dialog.ts` owns the FormGroup, chip controls, confirmation, and store write.
+
+Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
+
+---
+
 ### Collection Entry
 
 The write side of a [collection's](#collection) record in `.lingo-tracker.json`: the one place that decides what the stored entry contains. In code, `libs/core/src/lib/config/collection-entry.ts` holds three pure functions over the in-memory config: `toCollectionEntry(config, collection)` builds the record (`translationsFolder`, trimmed, plus only the settings that differ from the global config, so a collection inherits by omission; `translation` is kept verbatim; `readOnly` only when true; tags normalized), `addCollectionEntry` registers it (a folder under `node_modules` is read-only unless the caller decides) and `patchCollectionEntry` changes it, with an optional rename in place. Patch semantics: a field the patch sets replaces the stored value (a setting is cleared, so the collection inherits, with its empty value: `tags: []`, `readOnly: false`, `locales: []`, and `''` for `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`; `translation` has no empty value and cannot be cleared by a patch, only replaced), a field set to `null` is `InvalidCollectionError`, and a field left out or `undefined` keeps its stored value, so a client that never sends `translation`, `exportFolder` or `importFolder` cannot lose them; the merged record is then re-minimized. An empty `locales` list means inherit, never "no locales". The rule for every field is listed once, keyed by the `LingoTrackerCollection` type, so a new field does not compile until its rule is written. `addCollection`, `editCollectionTags` and `setCollectionProtectedTermsFile` write through it. `assertCollectionFields` rejects null fields and a non-string `translationsFolder` before DTO-only fields are removed by the API mapper. The mapper also requires a string `translationsFolder` on collection request bodies, including updates. `updateCollection`, `addLocaleToCollection` and `removeLocaleFromCollection` share one locale-change path: validate, read every folder, seed added locales, purge removed locales, then write the minimized record once through `patchCollectionEntry`. A changed record returns reindex mutations for the old and new translations folders. The errors are typed: `CollectionNotFoundError`, `CollectionAlreadyExistsError`, `InvalidCollectionError`.
@@ -177,9 +177,17 @@ Explained in context: [`core-library.md`](core-library.md#config-and-collection-
 
 ### Collection Reader
 
-The read side of the [Resource Folder](#resource-folder): the one walk over a [collection's](#collection) `translationsFolder`. In code, `readCollection(collection)` in `libs/core/src/lib/resource/read-collection.ts` opens every folder with the collection's [base locale](#base-locale) and returns `{ resources, problems }`. Each `StoredResource` has an address (`fullKey`, `folderPath`, `entryKey`), the `entry` as `ResourceFolder.treeEntry()` reads it, and `effectiveTags` ([Tags](#tags)). The rules are the same for every caller. Hidden folders are skipped, with everything below them; this rule, and the rules for a missing or unlistable folder, are the collection-folder policy that the [Collection Sweep](#collection-sweep) shares. An entry without metadata is read with `metadata: {}`, so it counts as `new`. A folder whose file is not valid JSON, or that cannot be listed, is left out and returned as a problem, and the caller reports it. Export, validate, the [Bundle Selection](#bundle-selection) (bundle, dry-run plan and type file), the resource tree, [Resource Search](#resource-search) on the disk (the API before indexing, the CLI `find-similar`) and the CLI `glossary` all read through it.
+The read side of the [Resource Folder](#resource-folder): the one walk over a [collection's](#collection) `translationsFolder`. In code, `readCollection(collection)` in `libs/core/src/lib/resource/read-collection.ts` opens every folder with the collection's [base locale](#base-locale) and returns `{ resources, problems }`. Each `StoredResource` has an address (`fullKey`, `folderPath`, `entryKey`), the `entry` as `ResourceFolder.treeEntry()` reads it, and `effectiveTags` ([Tags](#tags)). The rules are the same for every caller. Hidden folders are skipped, with everything below them; this rule, and the rules for a missing or unlistable folder, are the collection-folder policy that the [Collection Sweep](#collection-sweep) shares. An entry without metadata is read with `metadata: {}`, so it counts as `new`. A folder whose file is not valid JSON, or that cannot be listed, is left out and returned as a problem, and the caller reports it. The [Collection Set](#collection-set) (for export, validate, and glossary), the [Bundle Selection](#bundle-selection) (bundle, dry-run plan and type file), the resource tree, [Resource Search](#resource-search) on the disk (the API before indexing, the CLI `find-similar`) and the CLI `glossary` all read through it.
 
 Explained in context: [`core-library.md`](core-library.md#collection-reader)
+
+---
+
+### Collection Set
+
+The read model for a whole-collection run. In code, `readCollectionSet(collections, options)` in `libs/core/src/lib/collection-set/collection-set.ts` reads each opened collection through the [Collection Reader](#collection-reader) and returns one agreed base locale, the ordered target-locale union (optionally scoped), flattened resources with values and metadata-derived status, and `readProblems` with collection, folder path, and message. A missing status counts as `new` for status checks. [Export Run](#export-run) and [Term Glossary](#term-glossary) require base-locale agreement and raise `CollectionBaseLocaleMismatchError` (`invalid`) before reading when it fails. [Validate Run](#validate-run) uses the same resource model but checks collections independently under their own base locales, so it allows different base locales. Export, Validate, and Glossary map the common read problems into their existing result fields. [Bundle Selection](#bundle-selection) keeps its locale-at-a-time reader because it needs per-definition filtering, prefixes, merge order, and its run cache.
+
+Explained in context: [`core-library.md`](core-library.md#collection-set)
 
 ---
 
@@ -285,7 +293,7 @@ Explained in context: [`core-library.md`](core-library.md#add-resource)
 
 ### Export Run
 
-One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, chooses the locales (every collection's target locales, narrowed to the requested ones), filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale). The CLI defaults are in `apps/cli/src/commands/run-option-defaults.ts` and prompt preselection is in `apps/cli/src/commands/export-cmd.ts`; a prompt answer with no selected collection, locale, or status is refused.
+One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI defaults are in `apps/cli/src/commands/run-option-defaults.ts` and prompt preselection is in `apps/cli/src/commands/export-cmd.ts`; a prompt answer with no selected collection, locale, or status is refused.
 
 Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 
@@ -373,14 +381,6 @@ Explained in context: [`frontend.md`](frontend.md#list-scope--what-the-list-show
 
 ---
 
-### Locale Seeding
-
-What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/lib/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
-
-Explained in context: [`core-library.md`](core-library.md#locale-seeding)
-
----
-
 ### Locale Metadata
 
 The per-locale record stored within [`tracker_meta.json`](#tracker-metadata) for each [resource entry](#resource-entry). Defined by the `LocaleMetadata` interface in `@simoncodes-ca/domain`:
@@ -394,6 +394,14 @@ interface LocaleMetadata {
 ```
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
+
+---
+
+### Locale Seeding
+
+What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/lib/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
+
+Explained in context: [`core-library.md`](core-library.md#locale-seeding)
 
 ---
 
@@ -507,6 +515,18 @@ Explained in context: [`monorepo-structure.md`](monorepo-structure.md#public-sur
 
 ## R
 
+### Resolved Key
+
+The fully qualified dot-delimited key after combining an input key with an optional [target folder](#target-folder). Resolution is additive: `resolvedKey = targetFolder + "." + key` (or just `key` if no target folder is specified).
+
+Example: key `ok` with target folder `apps.common.buttons` resolves to `apps.common.buttons.ok`.
+
+The resolved key determines the filesystem path: `apps/common/buttons/` folder, entry key `ok` in `resource_entries.json`.
+
+Explained in context: [`libs-domain.md`](libs-domain.md)
+
+---
+
 ### Resource Batches
 
 Core owns writes of many resource entries. `addResources(collection, items)` checks every item for malformed keys and folder addresses, unknown locales, duplicate or existing resolved keys, and unreadable folder JSON before it translates any item. Translation failures also stop the batch before any write. Preflight reads folders but does not create them or check whether a later filesystem write can succeed. It rejects duplicate resolved keys within the batch with `ResourceAlreadyExistsError`; an existing exact key is refused unless `onExisting: 'replace'` is passed. Parent/child keys remain allowed at add time and may later appear as bundle-plan hierarchical conflicts. It then writes in input order and returns created count, deduplicated skipped locales and terminology problems, all findings, and all [mutations](#resource-mutation). A filesystem write failure after preparation (for example, an existing file in the folder path or a permissions failure) can leave earlier entries, or one of the failing folder's two JSON files, on disk; there is no rollback or returned mutations, and the Collection Index catches up through disk-fingerprint revalidation. `moveResources(collection, ops, { config })` runs each move in order, resolves writable destination collections, reports a missing or read-only destination for its operation, and continues. The API passes each batch's mutations to the [Collection Index](#collection-index) once.
@@ -557,14 +577,6 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ---
 
-### Resource Mutation
-
-One change that a core write made to a translations folder: `upsert` (key and the stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (the change is too broad to describe, for example a locale was added). Each carries the absolute `translationsFolder` it applies to. `addResource`, `addResources`, `editResource`, `translateExistingResource`, `translateLocale`, `deleteResource`, `moveResource`, `moveResources`, `createFolder`, `deleteFolder`, `moveFolder`, `addLocaleToCollection` and `removeLocaleFromCollection` return them as `mutations`. `translateLocale` returns one `reindex` after its first folder save attempt and reports it through `onWrite`, including a partial save failure. A folder save error is counted in the batch's `failures`, and later batches continue. It returns no mutation if no folder save was attempted. The type is in `libs/core/src/lib/resource/resource-mutation.ts`. The [Collection Index](#collection-index) uses them to update itself without reading the disk again.
-
-Explained in context: [`api.md`](api.md#writes-resource-mutations)
-
----
-
 ### Resource Key
 
 A dot-delimited string that uniquely identifies a [resource entry](#resource-entry) within a [collection](#collection). Segments may contain only alphanumeric characters, underscores, and hyphens (`[A-Za-z0-9_-]`).
@@ -574,6 +586,14 @@ Example: `apps.common.buttons.ok`
 All segments except the last define the folder hierarchy on disk; the last segment is the entry key within `resource_entries.json`. See also [resolved key](#resolved-key).
 
 Explained in context: [`libs-domain.md`](libs-domain.md)
+
+---
+
+### Resource Mutation
+
+One change that a core write made to a translations folder: `upsert` (key and the stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (the change is too broad to describe, for example a locale was added). Each carries the absolute `translationsFolder` it applies to. `addResource`, `addResources`, `editResource`, `translateExistingResource`, `translateLocale`, `deleteResource`, `moveResource`, `moveResources`, `createFolder`, `deleteFolder`, `moveFolder`, `addLocaleToCollection` and `removeLocaleFromCollection` return them as `mutations`. `translateLocale` returns one `reindex` after its first folder save attempt and reports it through `onWrite`, including a partial save failure. A folder save error is counted in the batch's `failures`, and later batches continue. It returns no mutation if no folder save was attempted. The type is in `libs/core/src/lib/resource/resource-mutation.ts`. The [Collection Index](#collection-index) uses them to update itself without reading the disk again.
+
+Explained in context: [`api.md`](api.md#writes-resource-mutations)
 
 ---
 
@@ -593,23 +613,13 @@ Explained in context: [`api.md`](api.md#mapper-layer), [`frontend.md`](frontend.
 
 ---
 
-### Resolved Key
-
-The fully qualified dot-delimited key after combining an input key with an optional [target folder](#target-folder). Resolution is additive: `resolvedKey = targetFolder + "." + key` (or just `key` if no target folder is specified).
-
-Example: key `ok` with target folder `apps.common.buttons` resolves to `apps.common.buttons.ok`.
-
-The resolved key determines the filesystem path: `apps/common/buttons/` folder, entry key `ok` in `resource_entries.json`.
-
-Explained in context: [`libs-domain.md`](libs-domain.md)
-
----
-
 ### Route Collection
 
 The API parameter seam for resource, folder, and locale routes. `@RouteCollection()` supplies the `Collection` opened by `RouteCollectionPipe` from the already-decoded `:collectionName` param. The pipe reads config once and retains that snapshot on the opened collection for locale writes, requires writable access for methods other than `GET` by default, and maps missing or read-only collections to 404 or 403. Collection registration routes do not use it. The Tracker encodes names once in API URL path segments; its router also encodes navigation segments, and `TranslationBrowser` uses the decoded route name directly.
 
 Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](frontend.md#route-structure)
+
+---
 
 ### Run Summary Writer
 
@@ -667,6 +677,25 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ---
 
+### Tags
+
+String labels that can be attached to [resource entries](#resource-entry) (stored in `resource_entries.json`) or to an entire [collection](#collection) (stored in `.lingo-tracker.json`). Tags are used to filter resources during bundle generation and export/import.
+
+**Per-resource tags** — stored as `tags?: string[]` on each resource entry. Set via `add-resource --tags`, `edit-resource --tags`, or the Tracker UI chip input.
+
+**Collection-level (inherited) tags** — declared as `tags?: string[]` on the collection config. Every resource in the collection inherits these tags at read time without them being written to `resource_entries.json`. The merge rule is: `effectiveTags = union(collectionTags, resourceTags)` (deduped, normalized). This is implemented in `libs/domain/src/lib/effective-tags.ts`.
+
+Inheritance is:
+- **Additive only** — no negative/override syntax. To exempt a resource from a tag, move it to a different collection.
+- **Not stored in bundle files** — the destination collection's own config re-applies its tags on import.
+- **Visible in the Tracker UI** — inherited tags are shown as dashed-border chips with a tooltip; they cannot be removed per-resource.
+
+Tag normalization: lowercase, hyphens replace spaces, non-`[a-z0-9-]` stripped, max 50 chars.
+
+Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`cli.md`](cli.md), [`api.md`](api.md)
+
+---
+
 ### Target Folder
 
 An optional dot-delimited path prefix that scopes an input [resource key](#resource-key) to a specific folder within the collection's translation hierarchy. Used when a resource is created (`addResource`, `add-resource --target-folder`, `CreateResourceDto.targetFolder`) to place a short key (e.g. `ok`) at a specific location (e.g. `apps.common.buttons`) without repeating the full path in the key itself.
@@ -681,7 +710,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Term Glossary
 
-A ranked list of existing translations that match candidate terms in a block of base-locale text. In core, `buildGlossary(collections, text, { extractor?, locales?, includeAll? })` reads each opened [collection](#collection) through the [Collection Reader](#collection-reader), extracts unique unigrams and bigrams by default, and matches them against base values. It returns the JSON payload (`baseLocale`, target `locales`, source counts, `matchCount`, `terms`) and separate unreadable-folder `readProblems`. By default, each entry contributes only its own collection's target locales. An explicit locale list can select stored translations outside those targets; only the base locale is removed. New and stale translations are omitted unless `includeAll` is set. An empty collection set raises `GlossaryNoCollectionsError`; different base locales raise `GlossaryBaseLocaleMismatchError`, because one glossary has one source language. The CLI selects input and prints or saves the payload, reporting reader problems on stderr.
+A ranked list of existing translations that match candidate terms in a block of base-locale text. In core, `buildGlossary(collections, text, { extractor?, locales?, includeAll? })` reads opened [collections](#collection) through the [Collection Set](#collection-set), extracts unique unigrams and bigrams by default, and matches them against base values. It returns the JSON payload (`baseLocale`, target `locales`, source counts, `matchCount`, `terms`) and separate unreadable-folder `readProblems`. By default, each entry contributes only its own collection's target locales. An explicit locale list can select stored translations outside those targets; only the base locale is removed. New and stale translations are omitted unless `includeAll` is set. An empty collection set raises `GlossaryNoCollectionsError`; different base locales raise `CollectionBaseLocaleMismatchError`, because one glossary has one source language. The CLI selects input and prints or saves the payload, reporting reader problems on stderr.
 
 Explained in context: [`core-library.md`](core-library.md#term-glossary), [`cli.md`](cli.md#glossary-pipeline)
 
@@ -721,41 +750,6 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 ---
 
-### Transloco
-
-The Angular internationalization library ([jsverse/transloco](https://jsverse.github.io/transloco/)) that LingoTracker is designed to integrate with. Transloco consumes locale JSON [bundle](#bundle) files at runtime. LingoTracker converts ICU simple placeholder syntax to Transloco's `{{ varName }}` interpolation syntax during bundle generation.
-
-Explained in context: [`frontend.md`](frontend.md), [`bundle-generation.md`](bundle-generation.md)
-
----
-
-### Tags
-
-String labels that can be attached to [resource entries](#resource-entry) (stored in `resource_entries.json`) or to an entire [collection](#collection) (stored in `.lingo-tracker.json`). Tags are used to filter resources during bundle generation and export/import.
-
-**Per-resource tags** — stored as `tags?: string[]` on each resource entry. Set via `add-resource --tags`, `edit-resource --tags`, or the Tracker UI chip input.
-
-**Collection-level (inherited) tags** — declared as `tags?: string[]` on the collection config. Every resource in the collection inherits these tags at read time without them being written to `resource_entries.json`. The merge rule is: `effectiveTags = union(collectionTags, resourceTags)` (deduped, normalized). This is implemented in `libs/domain/src/lib/effective-tags.ts`.
-
-Inheritance is:
-- **Additive only** — no negative/override syntax. To exempt a resource from a tag, move it to a different collection.
-- **Not stored in bundle files** — the destination collection's own config re-applies its tags on import.
-- **Visible in the Tracker UI** — inherited tags are shown as dashed-border chips with a tooltip; they cannot be removed per-resource.
-
-Tag normalization: lowercase, hyphens replace spaces, non-`[a-z0-9-]` stripped, max 50 chars.
-
-Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`cli.md`](cli.md), [`api.md`](api.md)
-
----
-
-### Typed Errors
-
-The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`). The API maps `kind` to HTTP status and retains special bodies for bundle, terminology, folder validation, and translation errors. Project-term and collection-tag edit errors name data, not CLI flags; their `problem` fields identify invalid edit combinations so the commands in `apps/cli/src/commands/` can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
-
-Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
-
----
-
 ### Translation Status
 
 A status (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review lifecycle of a non-base locale translation. `TRANSLATION_STATUSES` defines the four values, and `isTranslationStatus` checks input at runtime. `NEEDS_WORK_STATUSES` defines `new` and `stale`; `isNeedsWorkStatus` and `isNeedsWorkStatusSelection` test one status or an exact shortcut selection. `DEFAULT_MISSING_METADATA_STATUS` is `new` for a locale with no stored metadata:
@@ -789,10 +783,26 @@ Explained in context: [`core-library.md`](core-library.md#auto-translation-pipel
 
 ---
 
+### Transloco
+
+The Angular internationalization library ([jsverse/transloco](https://jsverse.github.io/transloco/)) that LingoTracker is designed to integrate with. Transloco consumes locale JSON [bundle](#bundle) files at runtime. LingoTracker converts ICU simple placeholder syntax to Transloco's `{{ varName }}` interpolation syntax during bundle generation.
+
+Explained in context: [`frontend.md`](frontend.md), [`bundle-generation.md`](bundle-generation.md)
+
+---
+
+### Typed Errors
+
+The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`). The API maps `kind` to HTTP status and retains special bodies for bundle, terminology, folder validation, and translation errors. `CollectionBaseLocaleMismatchError` has kind `invalid` and maps a whole-collection source-locale disagreement to HTTP 400. Project-term and collection-tag edit errors name data, not CLI flags; their `problem` fields identify invalid edit combinations so the commands in `apps/cli/src/commands/` can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
+
+Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
+
+---
+
 ## V
 
 ### Validate Run
 
-One validation of the opened [collections](#collection) for CI. In code, `runValidate(collections, options)` in `libs/core/src/lib/validate/run-validate.ts` resolves target and skipped locales, reads each collection's [Project Terms](#project-terms), runs status, ICU, placeholder, and preferred-terminology checks through `validateResources`, and returns the validation result, its summary, and printable warnings. A missing collection set, no target locale, or every target locale skipped returns an in-band failure; a broken preferred-terminology file fails validation. The rule file belongs to the project, so the run uses the first collection whose read has rules.
+One validation of the opened [collections](#collection) for CI. In code, `runValidate(collections, options)` in `libs/core/src/lib/validate/run-validate.ts` uses the [Collection Set](#collection-set) for target locales and flattened resources, resolves skipped locales, reads each collection's [Project Terms](#project-terms), runs status, ICU, placeholder, and preferred-terminology checks through `validateResources`, and returns the validation result, its summary, and printable warnings. A missing collection set, no target locale, or every target locale skipped returns an in-band failure; a broken preferred-terminology file fails validation. The rule file belongs to the project, so the run uses the first collection whose read has rules. Validation checks collections independently under each base locale and accepts different base locales.
 
 Explained in context: [`core-library.md`](core-library.md#validation-for-cicd), [`cli.md`](cli.md)

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { validateIcuValues } from './validate-icu';
-import type { LoadedResource } from '../export/export-common';
+import type { CollectionSetResource } from '../collection-set/collection-set';
 
-function resource(overrides: Partial<LoadedResource> = {}): LoadedResource {
+function resource(overrides: Partial<CollectionSetResource> = {}): CollectionSetResource {
   return {
     key: 'count',
     fullKey: 'common.count',
@@ -11,6 +11,7 @@ function resource(overrides: Partial<LoadedResource> = {}): LoadedResource {
     status: {},
     collection: 'main',
     effectiveTags: [],
+    targetLocales: [],
     ...overrides,
   };
 }

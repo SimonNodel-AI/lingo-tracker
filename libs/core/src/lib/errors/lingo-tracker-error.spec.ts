@@ -19,7 +19,7 @@ import {
   CoreOperationError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
-  GlossaryBaseLocaleMismatchError,
+  CollectionBaseLocaleMismatchError,
   GlossaryExtractorError,
   GlossaryNoCollectionsError,
   ImportSourceError,
@@ -232,7 +232,7 @@ describe('LingoTrackerError subclasses', () => {
     const additional = [
       new ImportSourceError('source failed'),
       new InvalidImportLocaleError('en', 'translation-service'),
-      new GlossaryBaseLocaleMismatchError([
+      new CollectionBaseLocaleMismatchError([
         { name: 'a', baseLocale: 'en' },
         { name: 'b', baseLocale: 'fr' },
       ]),

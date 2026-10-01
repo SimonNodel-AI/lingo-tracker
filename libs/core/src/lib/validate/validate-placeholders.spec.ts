@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { validatePlaceholders } from './validate-placeholders';
-import type { LoadedResource } from '../export/export-common';
+import type { CollectionSetResource } from '../collection-set/collection-set';
 
-const resource = (overrides: Partial<LoadedResource> = {}): LoadedResource => ({
+const resource = (overrides: Partial<CollectionSetResource> = {}): CollectionSetResource => ({
   key: 'folderAriaLabelX',
   fullKey: 'browser.folderNode.folderAriaLabelX',
   source: 'Folder {name}',
@@ -10,6 +10,7 @@ const resource = (overrides: Partial<LoadedResource> = {}): LoadedResource => ({
   status: {},
   collection: 'trackerResources',
   effectiveTags: [],
+  targetLocales: [],
   ...overrides,
 });
 

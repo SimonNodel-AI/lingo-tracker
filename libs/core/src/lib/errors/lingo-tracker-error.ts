@@ -51,13 +51,13 @@ export class InvalidImportLocaleError extends LingoTrackerError {
   }
 }
 
-/** A glossary cannot combine source text from different base locales. */
-export class GlossaryBaseLocaleMismatchError extends LingoTrackerError {
-  readonly kind = 'internal' as const;
+/** A whole-collection run requiring one source language found different base locales. */
+export class CollectionBaseLocaleMismatchError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly collections: readonly { name: string; baseLocale: string }[];
 
   constructor(collections: readonly { name: string; baseLocale: string }[]) {
-    super(ErrorMessages.glossaryBaseLocaleMismatch(collections), 'GLOSSARY_BASE_LOCALE_MISMATCH');
+    super(ErrorMessages.collectionBaseLocaleMismatch(collections), 'COLLECTION_BASE_LOCALE_MISMATCH');
     this.collections = collections;
   }
 }

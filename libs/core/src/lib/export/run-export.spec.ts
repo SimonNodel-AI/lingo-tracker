@@ -467,7 +467,7 @@ describe('runExport', () => {
 
   it('refuses collections with different base locales', async () => {
     await expect(runExport([open('common'), open('french')], { format: 'json', outputDirectory })).rejects.toThrow(
-      'Cannot export collections with different base locales together (common: en, french: fr)',
+      'Cannot combine collections with different base locales (common: en, french: fr)',
     );
   });
 

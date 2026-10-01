@@ -1,6 +1,6 @@
 import { findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
 import { describePreferredTermRule } from '../config/project-terms';
-import type { LoadedResource } from '../export/export-common';
+import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { TerminologyValidationDetail, TerminologyValidationOptions, TerminologyValidationResult } from './types';
 
 /** {@link TerminologyValidationOptions} plus where to report each collection's findings. */
@@ -33,7 +33,7 @@ export interface TerminologyPassOptions extends TerminologyValidationOptions {
  * @returns Findings, the load error when there was one, and how many values were scanned.
  */
 export function validateTerminology(
-  resources: readonly LoadedResource[],
+  resources: readonly CollectionSetResource[],
   options: TerminologyPassOptions,
 ): TerminologyValidationResult {
   if (options.loadError !== undefined) {
@@ -61,7 +61,11 @@ export function validateTerminology(
 }
 
 /** @internal */
-function toDetail(resource: LoadedResource, locale: string, rule: PreferredTermRule): TerminologyValidationDetail {
+function toDetail(
+  resource: CollectionSetResource,
+  locale: string,
+  rule: PreferredTermRule,
+): TerminologyValidationDetail {
   return {
     key: resource.fullKey,
     collection: resource.collection,

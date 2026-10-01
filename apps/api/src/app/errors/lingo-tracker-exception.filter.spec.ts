@@ -308,16 +308,15 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new internalErrors.GlossaryBaseLocaleMismatchError([
+      new internalErrors.CollectionBaseLocaleMismatchError([
         { name: 'a', baseLocale: 'en' },
         { name: 'b', baseLocale: 'fr' },
       ]),
-      500,
+      400,
       {
-        message:
-          'Cannot build a glossary from collections with different base locales together (a: en, b: fr). Build them separately.',
-        error: 'Internal Server Error',
-        statusCode: 500,
+        message: 'Cannot combine collections with different base locales (a: en, b: fr). Run them separately.',
+        error: 'Bad Request',
+        statusCode: 400,
       },
     ],
     [
