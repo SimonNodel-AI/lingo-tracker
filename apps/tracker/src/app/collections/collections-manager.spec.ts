@@ -245,6 +245,37 @@ describe('CollectionsManager', () => {
     expect(component.bundlePort()).toBeNull();
   });
 
+  it('measures only the hovered bundle and its linked collection cards on scroll', () => {
+    const host = fixture.nativeElement as HTMLElement;
+    const split = host.querySelector('.split');
+    const alpha = host.querySelector('[data-collection="alpha"]');
+    const bravo = host.querySelector('[data-collection="Bravo"]');
+    const zulu = host.querySelector('[data-collection="zulu"]');
+    const tracker = host.querySelector('[data-bundle="tracker"]');
+    const main = host.querySelector('[data-bundle="main"]');
+    if (!split || !alpha || !bravo || !zulu || !tracker || !main)
+      throw new Error('Expected collection and bundle cards');
+
+    const query = vi.spyOn(split, 'querySelector');
+    const queryAll = vi.spyOn(split, 'querySelectorAll');
+    const alphaRect = vi.spyOn(alpha, 'getBoundingClientRect');
+    const bravoRect = vi.spyOn(bravo, 'getBoundingClientRect');
+    const zuluRect = vi.spyOn(zulu, 'getBoundingClientRect');
+    const trackerRect = vi.spyOn(tracker, 'getBoundingClientRect');
+    const mainRect = vi.spyOn(main, 'getBoundingClientRect');
+
+    component.onBundleHover('tracker', true);
+    window.dispatchEvent(new Event('scroll'));
+
+    expect(query.mock.calls.map(([selector]) => selector)).toEqual(['.bundles-col']);
+    expect(queryAll.mock.calls.map(([selector]) => selector)).toEqual(['[data-bundle]', '[data-collection]']);
+    expect(alphaRect).toHaveBeenCalledTimes(1);
+    expect(trackerRect).toHaveBeenCalledTimes(1);
+    expect(bravoRect).not.toHaveBeenCalled();
+    expect(zuluRect).not.toHaveBeenCalled();
+    expect(mainRect).not.toHaveBeenCalled();
+  });
+
   it('disables Generate all while a single bundle generates from its own card', () => {
     const running: BundleGenerateJobDto = {
       jobId: 'job-1',
