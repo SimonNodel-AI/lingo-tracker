@@ -1,6 +1,6 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync, readFileSync } from 'node:fs';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
+import { assertTranslationStatus } from '../resource/translation-status-input';
 import type { ImportedResource, ImportParseOptions } from './types';
 
 /**
@@ -70,8 +70,10 @@ function extractRichResource(key: string, obj: Record<string, unknown>): Importe
     resource.baseValue = obj['baseValue'];
   }
 
-  if (obj['status'] && typeof obj['status'] === 'string') {
-    resource.status = obj['status'] as TranslationStatus;
+  const status = obj['status'];
+  if (status !== undefined && status !== null && status !== '') {
+    assertTranslationStatus(status);
+    resource.status = status;
   }
 
   if (Array.isArray(obj['tags'])) {

@@ -153,6 +153,21 @@ describe('translateLocale', () => {
     expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
     expect(read(RESOURCE_ENTRIES_FILENAME, 'dialogs').greet.fr).toBe('Bonjour {name}');
     expect(read(RESOURCE_ENTRIES_FILENAME, 'buttons').ok.fr).toBe('OK');
+    expect(read(TRACKER_META_FILENAME, 'buttons').ok.fr.status).toBe('translated');
+  });
+
+  it('keeps translated for a provider result identical to the base', async () => {
+    const target = collection();
+    seedResources(target, { ok: { source: 'OK', translations: { fr: { value: 'OK', status: 'new' } } } });
+
+    const result = await translateLocale(target, {
+      targetLocale: 'fr',
+      provider: new InMemoryTranslationProvider(() => 'OK'),
+    });
+
+    expect(result.translatedCount).toBe(1);
+    expect(read(TRACKER_META_FILENAME).ok.fr.status).toBe('translated');
+    expect((await translateLocale(target, { targetLocale: 'fr' })).totalResources).toBe(0);
   });
 
   describe('batches', () => {

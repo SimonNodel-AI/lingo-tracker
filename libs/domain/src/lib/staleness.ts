@@ -21,10 +21,8 @@ export type ImportStrategy = 'translation-service' | 'verification' | 'migration
 /**
  * Returns true when a translation is an untranslated copy of the base value.
  *
- * Pass either both values or both checksums. A translation that is identical to
- * the base is treated as "not translated yet", so its status is `new`:
- * - when an entry is created with translations (`add-resource`), and
- * - when the base value changes (see {@link applyBaseChange}).
+ * Pass either both values or both checksums. A copy of the base value is
+ * `new` when a writer omits the status, or when the base changes.
  */
 export function isUntranslatedCopy(translation: string, base: string): boolean {
   return translation === base;
@@ -39,9 +37,9 @@ export function isUntranslatedCopy(translation: string, base: string): boolean {
  *     (its `checksum` equals `newBaseChecksum`), because there is nothing to re-review;
  *   - `stale` otherwise, whatever the previous status was (including `verified`).
  *
- * Decision: the "copy of the base stays `new`" clause comes from normalize, and it is the same
- * rule that `add-resource` uses at creation time. It relies on each locale's `checksum` being
- * current, which every writer guarantees because it recomputes the checksum when it writes a value.
+ * Decision: the "copy of the base stays `new`" clause comes from normalize.
+ * It relies on each locale's `checksum` being current. Writers recompute that checksum
+ * when they write a value.
  *
  * Callers apply this only when the base value actually changed.
  *
@@ -72,15 +70,24 @@ export function applyBaseChange(
  *
  * @param checksum - Checksum of the translated value
  * @param baseChecksum - Checksum of the base value that the translation was made from
+ * @param status - Explicit status to keep; omitted status is inferred from the checksums
  */
 export function recordTranslation(
   entryMeta: EntryLocaleMetadata,
   locale: string,
   checksum: string,
   baseChecksum: string,
-  status: TranslationStatus,
+  status?: TranslationStatus,
 ): Record<string, LocaleMetadata> {
-  return { ...entryMeta, [locale]: { checksum, baseChecksum, status } };
+  return {
+    ...entryMeta,
+    [locale]: { checksum, baseChecksum, status: translationWriteStatus(checksum, baseChecksum, status) },
+  };
+}
+
+/** Infer a status only when the writer did not request one. */
+function translationWriteStatus(checksum: string, baseChecksum: string, status?: TranslationStatus): TranslationStatus {
+  return status ?? (isUntranslatedCopy(checksum, baseChecksum) ? 'new' : 'translated');
 }
 
 /**

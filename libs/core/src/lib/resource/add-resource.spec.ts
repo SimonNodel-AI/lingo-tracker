@@ -9,6 +9,7 @@ import { type Collection, openCollection } from '../config/open-collection';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../config/protected-terms-file';
 import {
   InvalidResourceKeyError,
+  InvalidTranslationStatusError,
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
 } from '../errors/lingo-tracker-error';
@@ -220,14 +221,49 @@ describe('addResource (real fs)', () => {
       expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
     });
 
-    it('stores an untranslated copy of the base value as `new`, whatever status was requested', async () => {
+    it('keeps an explicitly verified untranslated copy', async () => {
       await addResource(collection(), {
         key: 'ok',
         baseValue: 'OK',
         translations: [{ locale: 'fr', value: 'OK', status: 'verified' }],
       });
 
-      expect(read('tracker_meta.json').ok.fr.status).toBe('new');
+      expect(read('tracker_meta.json').ok.fr.status).toBe('verified');
+    });
+
+    it.each([
+      ['OK', 'new'],
+      ['Oui', 'translated'],
+    ] as const)('infers %s as %s when a supplied translation has no status', async (value, status) => {
+      const result = await addResource(collection(), {
+        key: 'ok',
+        baseValue: 'OK',
+        translations: [{ locale: 'fr', value }],
+      });
+
+      expect(read('tracker_meta.json').ok.fr.status).toBe(status);
+      expect(result.translations[0]?.status).toBe(status);
+    });
+
+    it('keeps an explicit translated status on an identical copy', async () => {
+      await addResource(collection(), {
+        key: 'ok',
+        baseValue: 'OK',
+        translations: [{ locale: 'fr', value: 'OK', status: 'translated' }],
+      });
+
+      expect(read('tracker_meta.json').ok.fr.status).toBe('translated');
+    });
+
+    it('rejects an unknown translation status before writing', async () => {
+      await expect(
+        addResource(collection(), {
+          key: 'ok',
+          baseValue: 'OK',
+          translations: [{ locale: 'fr', value: 'Oui', status: 'verifed' as never }],
+        }),
+      ).rejects.toThrow(InvalidTranslationStatusError);
+      expect(existsSync(join(root, 'translations', 'resource_entries.json'))).toBe(false);
     });
 
     it('takes base and target locales from the collection only', async () => {

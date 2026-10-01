@@ -6,7 +6,7 @@ import {
   type LingoTrackerConfig,
   runExport,
 } from '@simoncodes-ca/core';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
+import { isTranslationStatus, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { type Answers, defineCommand } from '../runner/command-runner';
 import {
@@ -50,6 +50,18 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
   run: async ({ config, cwd, collections, answers }) => {
     const options = resolveAnswers(answers);
     const { format } = options;
+    const statuses = parseCommaSeparatedList(options.status);
+    if (options.status !== undefined && (!statuses || statuses.length === 0)) {
+      ConsoleFormatter.error(
+        `Invalid --status "${options.status}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
+      );
+      return { exitCode: 1 };
+    }
+    const invalidStatus = statuses?.find((status) => !isTranslationStatus(status));
+    if (invalidStatus !== undefined) {
+      ConsoleFormatter.error(`Invalid --status "${invalidStatus}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`);
+      return { exitCode: 1 };
+    }
 
     // Warn if --base-property-name was set without --include-base
     if (options.basePropertyName && !options.includeBase) {
@@ -62,7 +74,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       exportFolder: config.exportFolder,
       cwd,
       locales: parseCommaSeparatedList(options.locale),
-      status: parseCommaSeparatedList(options.status)?.map((s) => s as TranslationStatus),
+      status: statuses?.filter(isTranslationStatus),
       tags: parseCommaSeparatedList(options.tags),
       filenamePattern: options.filename,
       dryRun: options.dryRun,

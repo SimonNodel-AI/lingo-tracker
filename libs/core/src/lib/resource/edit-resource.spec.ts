@@ -8,15 +8,16 @@ import type { TranslationConfig } from '../../config/translation-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import {
   InvalidResourceKeyError,
+  InvalidTranslationStatusError,
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
-import { openResourceFolder } from './resource-folder';
 import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
 import { TranslationError } from '../translation/translation-provider';
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
+import { openResourceFolder } from './resource-folder';
 
 // Wrapped, not replaced: the specs below check which value the terminology check is given.
 vi.mock('@simoncodes-ca/domain', async (importOriginal) => {
@@ -168,6 +169,63 @@ describe('editResource (real fs)', () => {
   });
 
   describe('details and translations', () => {
+    it('does nothing when the value is unchanged and no status is requested', async () => {
+      expect(
+        (
+          await editResource(collection(), 'common.save', {
+            translations: { de: { value: 'Save' }, fr: { value: 'Enregistrer' } },
+          })
+        ).updated,
+      ).toBe(false);
+      expect(read('tracker_meta.json', 'common').save.de.status).toBe('new');
+      expect(read('tracker_meta.json', 'common').save.fr.status).toBe('verified');
+    });
+
+    it('changes an identical copy to explicit translated without changing its value', async () => {
+      await editResource(collection(), 'common.save', {
+        translations: { de: { value: 'Save', status: 'translated' } },
+      });
+      expect(read('tracker_meta.json', 'common').save.de.status).toBe('translated');
+    });
+
+    it('infers new for a changed value that copies the base', async () => {
+      await editResource(collection(), 'common.save', { translations: { fr: { value: 'Save' } } });
+      expect(read('tracker_meta.json', 'common').save.fr.status).toBe('new');
+    });
+
+    it('keeps explicit translated for a changed value that copies the base', async () => {
+      await editResource(collection(), 'common.save', {
+        translations: { fr: { value: 'Save', status: 'translated' } },
+      });
+      expect(read('tracker_meta.json', 'common').save.fr.status).toBe('translated');
+    });
+
+    it('changes only an explicitly requested status for an unchanged value', async () => {
+      const metaPath = join(root, 'translations', 'common', 'tracker_meta.json');
+      const metadata = read('tracker_meta.json', 'common');
+      metadata.save.fr.baseChecksum = 'old-base';
+      writeFileSync(metaPath, JSON.stringify(metadata));
+
+      await editResource(collection(), 'common.save', {
+        translations: { fr: { value: 'Enregistrer', status: 'stale' } },
+      });
+
+      expect(read('tracker_meta.json', 'common').save.fr).toEqual({
+        checksum: md5('Enregistrer'),
+        baseChecksum: 'old-base',
+        status: 'stale',
+      });
+    });
+
+    it('rejects an unknown status before changing the resource', async () => {
+      await expect(
+        editResource(collection(), 'common.save', {
+          translations: { fr: { value: 'Autre', status: 'verifed' as never } },
+        }),
+      ).rejects.toThrow(InvalidTranslationStatusError);
+      expect(read('resource_entries.json', 'common').save.fr).toBe('Enregistrer');
+    });
+
     it('updates comment and normalized tags', async () => {
       await editResource(collection(), 'common.save', { comment: 'Button', tags: ['UI', 'forms'] });
 

@@ -1,6 +1,6 @@
 import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
+import { isTranslationStatus, TRANSLATION_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { type Ask, CommandCancelledError, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, parseCommaSeparatedList, printTerminologyFindings } from '../utils';
@@ -8,7 +8,7 @@ import { ConsoleFormatter, parseCommaSeparatedList, printTerminologyFindings } f
 interface TranslationInput {
   locale: string;
   value: string;
-  status: TranslationStatus;
+  status?: TranslationStatus;
 }
 
 export interface AddResourceOptions {
@@ -107,9 +107,7 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
   },
 });
 
-const STATUSES: readonly TranslationStatus[] = ['new', 'translated', 'stale', 'verified'];
-
-/** Parses `--translations`; anything but an array of `{ locale, value, status }` fails with one message. */
+/** Parses `--translations`; each item needs a locale and value, with an optional status. */
 function parseTranslations(raw: string): TranslationInput[] {
   let parsed: unknown;
   try {
@@ -119,8 +117,8 @@ function parseTranslations(raw: string): TranslationInput[] {
   }
   if (!isTranslationList(parsed)) {
     throw new Error(
-      'Invalid --translations: expected a JSON array of { "locale", "value", "status" } ' +
-        `with status one of ${STATUSES.join(', ')}`,
+      'Invalid --translations: expected a JSON array of { "locale", "value" } with optional "status" ' +
+        `one of ${TRANSLATION_STATUSES.join(', ')}`,
     );
   }
   return parsed;
@@ -135,7 +133,9 @@ function isTranslationInput(item: unknown): item is TranslationInput {
     return false;
   }
   const { locale, value, status } = item as Record<string, unknown>;
-  return typeof locale === 'string' && typeof value === 'string' && STATUSES.some((known) => known === status);
+  return (
+    typeof locale === 'string' && typeof value === 'string' && (status === undefined || isTranslationStatus(status))
+  );
 }
 
 /** Interactive only: offers a translation and a status for each target locale. */
@@ -177,12 +177,17 @@ async function promptForTranslations(
       ],
       initial: 1, // Default to 'translated'
     });
+    if (!isTranslationStatus(statusPrompt.value)) {
+      throw new Error(
+        `Invalid translation status "${String(statusPrompt.value)}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
+      );
+    }
 
     translations.push({
       locale,
       value:
         typeof translationPrompt.value === 'string' && translationPrompt.value ? translationPrompt.value : baseValue,
-      status: statusPrompt.value as TranslationStatus,
+      status: statusPrompt.value,
     });
   }
   return translations;

@@ -1,12 +1,12 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { calculateChecksum } from '../resource/checksum';
 import { type Collection, openCollection } from '../config/open-collection';
+import { calculateChecksum } from '../resource/checksum';
 import { openResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type { ImportedResource, ImportRunOptions } from './types';
 
 describe('importResources merge behavior', () => {
@@ -53,6 +53,16 @@ describe('importResources merge behavior', () => {
   const stored = (key: string) => openResourceFolder(folderPath, { baseLocale: 'en' }).get(key);
 
   describe('creating new resources', () => {
+    it('keeps an explicit translated status when an imported value copies the base', () => {
+      const result = run([{ key: 'common.buttons.ok', value: 'OK', baseValue: 'OK', status: 'translated' }], {
+        locale: 'es',
+        createMissing: true,
+        strategy: 'migration',
+      });
+      expect(result.changes[0]?.newStatus).toBe('translated');
+      expect(stored('ok')?.meta?.['es']?.status).toBe('translated');
+    });
+
     it('should create new resource when createMissing is true and baseValue is provided', () => {
       const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', baseValue: 'OK' }], {
         locale: 'es',

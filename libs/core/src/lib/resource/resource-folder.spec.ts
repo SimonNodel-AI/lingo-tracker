@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openResourceFolder, translationLocales } from './resource-folder';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { calculateChecksum } from './checksum';
+import { openResourceFolder, translationLocales } from './resource-folder';
 
 const md5 = calculateChecksum;
 
@@ -246,7 +246,26 @@ describe('ResourceFolder', () => {
     });
   });
 
+  it('infers status only when a translation write omits it', () => {
+    const folder = openResourceFolder(folderPath);
+    folder.setBase('ok', 'OK');
+    folder.setTranslation('ok', 'fr', 'OK');
+    expect(folder.get('ok')?.meta?.['fr']?.status).toBe('new');
+    folder.setTranslation('ok', 'fr', 'OK', 'translated');
+    expect(folder.get('ok')?.meta?.['fr']?.status).toBe('translated');
+  });
+
   describe('normalizeEntry', () => {
+    it('preserves an explicit translated status on an identical copy', () => {
+      const folder = openResourceFolder(folderPath);
+      folder.setBase('ok', 'OK');
+      folder.setTranslation('ok', 'fr', 'OK', 'translated');
+
+      folder.normalizeEntry('ok', { source: 'OK', fr: 'OK' }, ['fr']);
+
+      expect(folder.get('ok')?.meta?.['fr']?.status).toBe('translated');
+    });
+
     it('re-records every target translation, counting one without metadata as new, and seeds missing locales', () => {
       writePair(
         { ok: { source: 'OK', fr: 'Oui', de: 'OK' } },

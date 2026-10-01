@@ -178,6 +178,8 @@ Controllers are the only layer that knows HTTP. `@RouteCollection()` (`collectio
 
 ## Error Mapping
 
+`POST` and `PATCH /collections/:collectionName/resources` pass translation statuses to core. A translation value can omit its status; core infers `new` for a base copy or `translated` for another value. An unchanged PATCH value with no status writes nothing. Core checks each supplied status before it writes. An unknown value raises `InvalidTranslationStatusError`, which the filter maps to HTTP 400 with the bad value and valid statuses in the message.
+
 `LingoTrackerExceptionFilter` (`errors/lingo-tracker-exception.filter.ts`) is registered globally with `APP_FILTER` in `app.module.ts`. It maps a core [typed error](glossary.md#typed-errors) by its required `kind` through one status table: `not-found` → 404, `forbidden` → 403, `conflict` → 409, `invalid` → 400, `unavailable` → 422, `upstream` → 502, and `internal` → 500. The filter retains special response bodies for bundle and preferred-terminology validation, folder validation prefixes, and translation provider codes. `toHttpException(error)` holds the mapping and is exported for controller specs. The filter then hands the result to Nest's `BaseExceptionFilter`. Every mapped answer has the same body shape, `{ statusCode, message, error }`, because the mapping uses Nest's dedicated exception classes (and `HttpException.createBody` for 429, which has no class). `InvalidBundleDefinitionError` adds `errors`, the list of every problem found. An unexpected error or a `CoreOperationError` answers a generic 500 whose body has no `message` (`{ statusCode, error }`). A 500 that does carry a message is deliberate (`InvalidConfigError` says what is wrong with `.lingo-tracker.json`; a translation provider is unconfigured) and is meant to be shown.
 
 | Thrown | Status | Body `message` |
@@ -188,7 +190,7 @@ Controllers are the only layer that knows HTTP. `@RouteCollection()` (`collectio
 | `BundleAlreadyExistsError`, `ResourceAlreadyExistsError`, `CollectionAlreadyExistsError`, `CollectionRequiredByBundleError`, `CollectionRenameBundleConflictError` | 409 (`ConflictException`) | error message |
 | `AutoTranslationDisabledError` | 422 (`UnprocessableEntityException`) | error message |
 | `InvalidFolderPathError`, `FolderMoveIntoDescendantError` | 400 (`BadRequestException`) | `Validation error: <message>` |
-| `InvalidResourceKeyError`, `InvalidLocaleError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError`, `InvalidCollectionError`, `ProtectedTermsFileNotSetError`, `ParentDirectoryMissingError` | 400 (`BadRequestException`) | error message |
+| `InvalidResourceKeyError`, `InvalidLocaleError`, `InvalidTranslationStatusError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError`, `InvalidCollectionError`, `ProtectedTermsFileNotSetError`, `ParentDirectoryMissingError` | 400 (`BadRequestException`) | error message |
 | `InvalidBundleDefinitionError` | 400 (`BadRequestException`) | `Invalid bundle definition`, with `errors: string[]` in the body |
 | `PreferredTerminologyValidationError` | 400 (`BadRequestException`) | `Invalid preferred terminology rules`, with `errors` (one per invalid row, indexed by submitted row) in the body |
 | `TranslationError` with code `INVALID_REQUEST` | 400 (`BadRequestException`) | `Translation provider error: <message>` |

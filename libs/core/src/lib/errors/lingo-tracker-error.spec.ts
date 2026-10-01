@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { PreferredTerminologyValidationError } from '../config/preferred-terminology-file';
 import { TranslationError } from '../translation/translation-provider';
-import * as errorClasses from './lingo-tracker-error';
 import { ErrorMessages } from './error-messages';
+import * as errorClasses from './lingo-tracker-error';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
@@ -15,21 +16,22 @@ import {
   ConfigNotFoundError,
   ConfigParseError,
   CoreOperationError,
-  GlossaryBaseLocaleMismatchError,
-  GlossaryNoCollectionsError,
-  GlossaryExtractorError,
-  ImportSourceError,
-  InvalidImportLocaleError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
+  GlossaryBaseLocaleMismatchError,
+  GlossaryExtractorError,
+  GlossaryNoCollectionsError,
+  ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
-  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
+  InvalidImportLocaleError,
   InvalidLocaleError,
+  InvalidProjectTermsEditError,
   InvalidResourceKeyError,
+  InvalidTranslationStatusError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
@@ -40,7 +42,6 @@ import {
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
-  CannotTranslateBaseLocaleError,
   TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
 
@@ -148,6 +149,12 @@ describe('LingoTrackerError subclasses', () => {
       name: 'InvalidResourceKeyError',
       code: 'INVALID_RESOURCE_KEY',
       message: 'Key validation: Invalid key format "a..b"',
+    },
+    {
+      error: new InvalidTranslationStatusError('verifed'),
+      name: 'InvalidTranslationStatusError',
+      code: 'INVALID_TRANSLATION_STATUS',
+      message: 'Invalid translation status "verifed". Valid statuses: new, translated, stale, verified',
     },
     {
       error: new ResourceNotFoundError('common.ok'),

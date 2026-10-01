@@ -1,4 +1,3 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import {
   isUntranslatedCopy,
   needsTranslation,
@@ -8,14 +7,15 @@ import {
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
-import { ResourceAlreadyExistsError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import { CoreOperationError, ResourceAlreadyExistsError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import type { OpenTranslatorOptions } from '../translation/translator';
 import type { ResourceTreeEntry } from './load-resource-tree';
+import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
+import { relocateEntries } from './relocate-entries';
 import { validateAndResolvePaths } from './resource-file-paths';
 import { openResourceFolder } from './resource-folder';
 import { type ResourceMutation, upsertMutation } from './resource-mutation';
-import type { OpenTranslatorOptions } from '../translation/translator';
-import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
-import { relocateEntries } from './relocate-entries';
+import { assertTranslationStatus } from './translation-status-input';
 
 /** What to change on an entry. `undefined` leaves a field alone. */
 export interface EditResourceChanges {
@@ -24,7 +24,7 @@ export interface EditResourceChanges {
   readonly comment?: string;
   /** Replaces the tags; an empty list removes them. */
   readonly tags?: readonly string[];
-  /** Translations by locale. `status` defaults to `translated`. A value for the base locale is ignored. */
+  /** Translations by locale. An omitted status is inferred when the value changes. A base-locale value is ignored. */
   readonly translations?: Readonly<Record<string, { readonly value: string; readonly status?: TranslationStatus }>>;
   /**
    * Destination folder (dot-delimited; `''` for the collection root). The entry keeps its
@@ -92,7 +92,11 @@ export async function editResource(
     throw new ResourceNotFoundError(paths.resolvedKey);
   }
 
-  const translations = Object.entries(changes.translations ?? {}).filter(([locale]) => locale !== baseLocale);
+  const requestedTranslations = Object.entries(changes.translations ?? {});
+  for (const [, translation] of requestedTranslations) {
+    if (translation.status !== undefined) assertTranslationStatus(translation.status);
+  }
+  const translations = requestedTranslations.filter(([locale]) => locale !== baseLocale);
   assertCollectionLocales(
     collection,
     translations.map(([locale]) => locale),
@@ -121,14 +125,14 @@ export async function editResource(
     hasChanges = true;
   }
 
-  for (const [locale, { value, status = 'translated' }] of translations) {
+  for (const [locale, { value, status }] of translations) {
     const normalized = translocoToICU(value);
     if (normalized !== entry[locale]) {
       folder.setTranslation(entryKey, locale, normalized, status);
       hasChanges = true;
     } else {
       const localeMeta = folder.get(entryKey)?.meta?.[locale];
-      if (localeMeta && localeMeta.status !== status) {
+      if (status !== undefined && localeMeta && localeMeta.status !== status) {
         folder.setStatus(entryKey, locale, status);
         hasChanges = true;
       }

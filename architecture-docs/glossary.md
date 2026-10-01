@@ -631,7 +631,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Staleness Rule
 
-The one rule for what happens to translations when the [base locale](#base-locale) value changes (`applyBaseChange` in `libs/domain/src/lib/staleness.ts`): the base checksum is updated, every other locale's `baseChecksum` is set to the new base checksum, and its status becomes `stale` — or `new` when the translation is identical to the new base value (an untranslated copy). Edit, import, and normalize all use this rule, through the [Resource Folder](#resource-folder)'s `setBase`; normalize re-records the translation checksums first, so the rule compares current values. The same module holds `recordTranslation`, `needsTranslation`, and `resolveImportStatus`.
+The domain module `libs/domain/src/lib/staleness.ts` holds both parts of this rule. `applyBaseChange` sets a translation to `stale` when the base value changes. It sets an identical copy to `new`. When a writer omits the status, `recordTranslation` stores `new` for a copy of the base or `translated` for a different value. It keeps every explicit status, including `translated`. [Resource Folder](#resource-folder) applies these rules through `setBase` and `setTranslation`. The module also holds `needsTranslation` and `resolveImportStatus`.
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
@@ -738,7 +738,7 @@ Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md
 
 ### Translation Status
 
-An enum (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review lifecycle of a non-base locale translation. Four possible values:
+A status (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review lifecycle of a non-base locale translation. `TRANSLATION_STATUSES` defines the four values, and `isTranslationStatus` checks input at runtime:
 
 | Status | Meaning | CI validation result |
 |---|---|---|
@@ -747,7 +747,7 @@ An enum (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review 
 | `stale` | Base locale value changed after translation was written | Failure |
 | `verified` | Translation reviewed and approved by a language expert | Success |
 
-The lifecycle flows: `new` → `translated` → `verified`. If the base value changes after `verified`, the status automatically reverts to `stale`.
+The lifecycle flows: `new` → `translated` → `verified`. If the base value changes after `verified`, the status becomes `stale`. A caller can explicitly mark an identical copy `translated` or `verified`.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`bundle-generation.md`](bundle-generation.md), [`domain-and-data-model.md`](domain-and-data-model.md)
 
