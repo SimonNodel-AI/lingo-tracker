@@ -361,13 +361,13 @@ The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autoc
 
 `TranslationEditorDialog` (`browser/dialogs/translation-editor/`) creates and edits one resource entry. It has two parts:
 
-- **The component** owns the Angular parts: the reactive form, focus choreography, the location popover and the other-locales drawer, clipboard, flash timers, and the confirmation dialogs.
+- **The component** owns the Angular parts: the reactive form, focus choreography, the location popover and the other-locales drawer, clipboard, flash timers, and rendering the confirmation dialogs.
 - **`SimilarValues`** owns the [Similar Values](glossary.md#similar-values) lookup: the shared three-character minimum, 300 ms pause, distinct values, and an empty result on failure.
 - **`FolderPeek`** opens a [Folder Peek](glossary.md#folder-peek) scope for each editor. That scope caches entries and shares in-flight reads until the dialog closes. The launcher opens a fresh scope for each `openByFullKey` call. The service shares only concurrent reads across scopes; responses from an earlier Browser Session are dropped.
 - **`EditorLocation`** owns [Editor Location](glossary.md#editor-location): the selected folder, dotted-key continuation, the browser and peek entry sources, the collision and context views, and the decision to peek an unknown target folder. The dialog owns the popover's staged folder and filter. Edit mode can peek both the original folder and a destination; the edited entry's key is exempt only in its original folder.
-- **`resource-entry-draft.ts`** owns the rules. It is a pure module with no Angular imports. The dialog turns its form, target folder and tags into a plain `ResourceEntryDraft` and asks the module for every decision.
+- **`resource-entry-draft.ts`** owns the entry rules. It is a pure module with no Angular imports. The dialog turns its form, target folder and tags into a plain `ResourceEntryDraft`. `resolveDraftKey` gives the preview, create request and conflict hand-off one trimmed full key.
 - **`editor-entry-sources.ts`** derives tag suggestions from the browser's current entries.
-- **`editor-submit.ts`** owns [Editor Submit](glossary.md#editor-submit): `submitGate` checks the first reason to stop a save; `submitEditor` builds the request and maps the response to an Editor Outcome or classifies a refusal. Store writes are passed in, and the dialog keeps confirmation, error text, conflict dialogs and closing. One `toSignal` bridge from the reactive form keeps the dialog's computeds current without revision counters.
+- **`editor-submit.ts`** owns [Editor Submit](glossary.md#editor-submit): `EditorSubmitSession` holds the phase from the first prompt through the write or conflict choice, ignores another trigger while occupied, and remembers "Save Anyway" for a retry after refusal. Store writes and the two prompts are passed in. `submitEditor` builds the request and maps the response to an Editor Outcome or classified refusal. The session turns refusals into message or hand-off decisions; the dialog renders their localized text, focus and closing. One `toSignal` bridge from the reactive form keeps the dialog's computeds current without revision counters.
 
 | Function | Rule |
 |---|---|
@@ -427,7 +427,7 @@ All UI writes of a resource entry go through `withEntryWritesFeature` on `Browse
 | `deleteResource(collectionName, fullKey)` | `withItemActions.deleteTranslation` | Removes the entry when `entriesDeleted > 0`. |
 | `translateResource(collectionName, fullKey)` | `withItemActions.translateResource` | Patches the entry in place. |
 
-Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling on the [`ApiError`](#api-errors--one-adapter-at-the-http-seam) it receives, for example the dialog's key-conflict dialog on `conflict` and its `invalid` and `not-found` messages. The store changes its caches only on success.
+Each method takes the full dot-delimited key and returns the API `Observable`. `EditorSubmitSession` consumes the create or update result and classifies [`ApiError`](#api-errors--one-adapter-at-the-http-seam) refusals. The dialog shows the chosen key-conflict prompt or localized `invalid` and `not-found` message. The store changes its caches only on success.
 
 `toUpdateDto` includes `moveTo` only when the entry changes folder, and `''` means the collection root. The server edits the entry, then moves it there (core `editResource` with `moveTo`). The store then drops the row, and it does not check whether the destination is still in the list's scope. `doesUpdateMoveEntry` is the one presence test used by the store and the dialog's Editor Outcome. Limitation: with nested resources on (`includeNested`), the list shows a folder and its descendants. An entry that moves from one descendant to another stays in scope, but its row disappears until the next reload of the folder.
 

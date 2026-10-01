@@ -34,7 +34,6 @@ import {
   applyPreferredTerm,
   findPreferredTermFindings,
   type PreferredTermRule,
-  resolveResourceKey,
   summaryTarget,
 } from '@simoncodes-ca/domain';
 import { merge, Subject } from 'rxjs';
@@ -54,7 +53,7 @@ import { BrowserStore } from '../../store/browser.store';
 import { filterFolderTree } from '../../store/folder-tree.utils';
 import { editorTagSuggestions } from './editor-entry-sources';
 import { EditorLocation } from './editor-location';
-import { type EditorOutcome, type EditorRefusal, isEditorRefusal, submitEditor, submitGate } from './editor-submit';
+import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
 import {
@@ -63,6 +62,7 @@ import {
   type LocaleDraft,
   type ResourceEntryDraft,
   removeTag,
+  resolveDraftKey,
 } from './resource-entry-draft';
 import { SimilarTranslations } from './similar-translations';
 
@@ -149,13 +149,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   @ViewChild('folderFilterInput') folderFilterInput?: ElementRef<HTMLInputElement>;
   @ViewChild('drawerFirstControl') drawerFirstControl?: ElementRef<HTMLElement>;
 
-  #commentConfirmationShown = false;
   /** The draft as the dialog opened, for the unsaved-work check and the similar search. */
   #initialDraft: ResourceEntryDraft | undefined;
   #locationFlashTimer: ReturnType<typeof setTimeout> | undefined;
   #keyCopiedTimer: ReturnType<typeof setTimeout> | undefined;
 
-  readonly isSubmitting = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly similarResources = signal<SearchResultDto[]>([]);
   readonly isSearchingSimilar = signal(false);
@@ -257,6 +255,16 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     moreLabel: (count) =>
       this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
   });
+  readonly #submit = new EditorSubmitSession({
+    writes: {
+      create: (dto) => this.browserStore.createResource(this.data.collectionName, dto),
+      update: (dto) => this.browserStore.updateResource(this.data.collectionName, dto),
+    },
+    confirmMissingComment: () => this.#showCommentConfirmation(),
+    chooseConflict: (fullKey) => this.#showKeyConflictDialog(fullKey),
+    onWriteStart: () => this.errorMessage.set(null),
+  });
+  readonly isSubmitting = this.#submit.isSubmitting;
   readonly selectedFolderPath = this.#location.selectedFolderPath;
   readonly rootFolders = this.browserStore.rootFolders;
 
@@ -688,9 +696,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   @HostListener('window:keydown.control.enter', ['$event'])
   @HostListener('window:keydown.meta.enter', ['$event'])
-  onCtrlEnter(event: Event): void {
+  async onCtrlEnter(event: Event): Promise<void> {
     event.preventDefault();
-    void this.onSubmit();
+    await this.onSubmit();
   }
 
   // ── Location popover ──────────────────────────────────────────────────────
@@ -884,7 +892,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * other way out of the dialog.
    */
   async openExistingResource(): Promise<void> {
-    const existingKey = resolveResourceKey(this.form.controls.key.value.trim(), this.selectedFolderPath());
+    const existingKey = resolveDraftKey(this.#draft());
 
     if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
       return;
@@ -936,48 +944,15 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   async onSubmit(): Promise<void> {
-    const gate = submitGate({
-      readOnly: this.isReadOnly(),
-      submitting: this.isSubmitting(),
-      invalid: this.form.invalid,
-      collision: this.keyCollision(),
-      needsCommentConfirmation: !this.form.controls.comment.value.trim() && !this.#commentConfirmationShown,
-    });
-    if (gate === 'read-only' || gate === 'submitting') return;
-
-    if (gate === 'invalid') {
-      this.#revealValidationFailure();
-      return;
-    }
-
-    if (gate === 'collision') {
-      this.#showKeyConflictDialog(resolveResourceKey(this.form.controls.key.value.trim(), this.selectedFolderPath()));
-      return;
-    }
-
-    if (gate === 'needs-comment-confirmation') {
-      const shouldProceed = await this.#showCommentConfirmation();
-      if (!shouldProceed) return;
-    }
-
-    this.isSubmitting.set(true);
-    this.errorMessage.set(null);
-    submitEditor({
+    const decision = await this.#submit.trigger({
       mode: this.data.mode,
       draft: this.#draft(),
       original: this.#originalEntry(),
-      writes: {
-        create: (dto) => this.browserStore.createResource(this.data.collectionName, dto),
-        update: (dto) => this.browserStore.updateResource(this.data.collectionName, dto),
-      },
-    }).subscribe((result) => {
-      if (isEditorRefusal(result)) {
-        this.isSubmitting.set(false);
-        this.#handleSubmitRefusal(result);
-      } else {
-        this.#close(result);
-      }
+      readOnly: this.isReadOnly(),
+      invalid: this.form.invalid,
+      collision: this.keyCollision(),
     });
+    this.#renderSubmitDecision(decision);
   }
 
   /**
@@ -999,34 +974,35 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     });
   }
 
-  #handleSubmitRefusal(refusal: EditorRefusal): void {
-    const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
-    switch (refusal.kind) {
-      case 'missing-original':
-        this.errorMessage.set(this.transloco.translate(tokens.MISSINGRESOURCE));
-        return;
-      case 'conflict':
-        this.#showKeyConflictDialog(refusal.key);
-        return;
-      case 'not-found':
-        this.errorMessage.set(this.transloco.translate(tokens.NOTFOUND));
-        return;
-      case 'invalid':
-        this.errorMessage.set(apiErrorMessage(refusal.error, this.transloco.translate(tokens.INVALIDREQUEST)));
-        return;
-      case 'create-failed':
-        this.errorMessage.set(apiErrorMessage(refusal.error, this.transloco.translate(tokens.CREATEFAILED)));
-        return;
-      case 'update-failed':
-        this.errorMessage.set(apiErrorMessage(refusal.error, this.transloco.translate(tokens.UPDATEFAILED)));
-        return;
-      case 'unexpected':
-        this.errorMessage.set(this.transloco.translate(tokens.UNEXPECTED));
-        return;
+  #renderSubmitDecision(decision: EditorSubmitDecision): void {
+    if (decision.kind === 'ignored') return;
+    if (decision.kind === 'invalid') {
+      this.#revealValidationFailure();
+      return;
     }
+    if (decision.kind === 'focus-comment') {
+      this.#focusCommentField();
+      return;
+    }
+    if (decision.kind === 'outcome') {
+      this.#close(decision.outcome);
+      return;
+    }
+
+    const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
+    const token = {
+      'missing-resource': tokens.MISSINGRESOURCE,
+      'not-found': tokens.NOTFOUND,
+      'invalid-request': tokens.INVALIDREQUEST,
+      'create-failed': tokens.CREATEFAILED,
+      'update-failed': tokens.UPDATEFAILED,
+      unexpected: tokens.UNEXPECTED,
+    }[decision.message];
+    const fallback = this.transloco.translate(token);
+    this.errorMessage.set(decision.error ? apiErrorMessage(decision.error, fallback) : fallback);
   }
 
-  #showKeyConflictDialog(existingKey: string): void {
+  #showKeyConflictDialog(existingKey: string): Promise<boolean> {
     const dialogData: ConfirmationDialogData = {
       title: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.TITLE),
       message: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.MESSAGEX, {
@@ -1036,14 +1012,10 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.CHOOSEDIFFERENTKEY),
     };
 
-    this.confirm(dialogData, { width: '500px' }).then((shouldEditExisting) => {
-      if (shouldEditExisting) this.#close({ kind: 'open-existing', fullKey: existingKey });
-    });
+    return this.confirm(dialogData, { width: '500px' });
   }
 
-  async #showCommentConfirmation(): Promise<boolean> {
-    this.#commentConfirmationShown = true;
-
+  #showCommentConfirmation(): Promise<boolean> {
     const confirmationDialogData: ConfirmationDialogData = {
       title: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.TITLE),
       message: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.MESSAGE),
@@ -1051,14 +1023,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.ADDCOMMENT),
     };
 
-    const confirmed = await this.confirm(confirmationDialogData, { width: '400px', disableClose: true });
-
-    if (!confirmed) {
-      this.#commentConfirmationShown = false;
-      this.#focusCommentField();
-    }
-
-    return confirmed;
+    return this.confirm(confirmationDialogData, { width: '400px', disableClose: true });
   }
 
   /**

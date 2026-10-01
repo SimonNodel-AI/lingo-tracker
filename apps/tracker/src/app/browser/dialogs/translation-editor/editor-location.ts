@@ -1,6 +1,5 @@
 import { computed, type Signal, signal } from '@angular/core';
 import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import { resolveResourceKey } from '@simoncodes-ca/domain';
 import { type Observable, Subscription } from 'rxjs';
 import {
   absorbDottedKey,
@@ -9,6 +8,7 @@ import {
   contextTree,
   folderEntryKeys,
   type KnownEntries,
+  resolveDraftKey,
 } from './resource-entry-draft';
 
 /** The folder reads available to one editor without moving the browser list. */
@@ -50,8 +50,8 @@ export class EditorLocation {
 
   readonly fullKeyPreview = computed(() => {
     const folder = this.selectedFolderPath();
-    const key = this.#key().trim();
-    return key ? resolveResourceKey(key, folder) : folder;
+    const key = this.#key();
+    return key.trim() ? resolveDraftKey({ key, folderPath: folder }) : folder;
   });
 
   readonly contextTree = computed<ContextTreeNode[]>(() =>

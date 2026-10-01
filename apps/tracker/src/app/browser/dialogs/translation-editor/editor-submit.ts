@@ -1,3 +1,4 @@
+import { computed, signal } from '@angular/core';
 import type {
   CreateResourceDto,
   CreateResourceResponseDto,
@@ -6,10 +7,10 @@ import type {
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 import { resolveResourceKey } from '@simoncodes-ca/domain';
-import { catchError, map, type Observable, of } from 'rxjs';
+import { catchError, firstValueFrom, map, type Observable, of } from 'rxjs';
 import { ApiError } from '../../../shared/api-error/api-error';
 import { doesUpdateMoveEntry } from '../../store/does-update-move-entry';
-import { type ResourceEntryDraft, toCreateDto, toUpdateDto } from './resource-entry-draft';
+import { type ResourceEntryDraft, resolveDraftKey, toCreateDto, toUpdateDto } from './resource-entry-draft';
 
 /** The result consumed by the launcher, including the conflict hand-off owned by the dialog. */
 export type EditorOutcome =
@@ -122,4 +123,102 @@ export function submitGate(state: EditorGateState): EditorGateReason | null {
   if (state.collision) return 'collision';
   if (state.needsCommentConfirmation) return 'needs-comment-confirmation';
   return null;
+}
+
+export type EditorSubmitPhase = 'idle' | 'confirming-comment' | 'choosing-conflict' | 'writing' | 'done';
+
+export type EditorSubmitDecision =
+  | { kind: 'ignored' }
+  | { kind: 'invalid' }
+  | { kind: 'focus-comment' }
+  | {
+      kind: 'message';
+      message: 'missing-resource' | 'not-found' | 'invalid-request' | 'create-failed' | 'update-failed' | 'unexpected';
+      error?: ApiError;
+    }
+  | { kind: 'outcome'; outcome: EditorOutcome };
+
+export interface EditorSubmitSessionOptions {
+  writes: EditorWrites;
+  confirmMissingComment: () => Promise<boolean>;
+  chooseConflict: (fullKey: string) => Promise<boolean>;
+  onWriteStart: () => void;
+}
+
+export interface EditorSubmitTrigger extends Omit<EditorSubmitInput, 'writes'> {
+  readOnly: boolean;
+  invalid: boolean;
+  collision: boolean;
+}
+
+/** Owns one save attempt from its first prompt through the final write or hand-off. */
+export class EditorSubmitSession {
+  readonly phase = signal<EditorSubmitPhase>('idle');
+  readonly isSubmitting = computed(() => this.phase() === 'writing' || this.phase() === 'done');
+  #saveAnyway = false;
+
+  constructor(readonly options: EditorSubmitSessionOptions) {}
+
+  async trigger(input: EditorSubmitTrigger): Promise<EditorSubmitDecision> {
+    if (this.phase() !== 'idle') return { kind: 'ignored' };
+
+    const gate = submitGate({
+      readOnly: input.readOnly,
+      submitting: false,
+      invalid: input.invalid,
+      collision: input.collision,
+      needsCommentConfirmation: !input.draft.comment.trim() && !this.#saveAnyway,
+    });
+    if (gate === 'read-only' || gate === 'submitting') return { kind: 'ignored' };
+    if (gate === 'invalid') return { kind: 'invalid' };
+
+    try {
+      if (gate === 'collision') return await this.#chooseConflict(resolveDraftKey(input.draft));
+      if (gate === 'needs-comment-confirmation') {
+        this.phase.set('confirming-comment');
+        if (!(await this.options.confirmMissingComment())) return { kind: 'focus-comment' };
+        this.#saveAnyway = true;
+      }
+
+      this.phase.set('writing');
+      this.options.onWriteStart();
+      const result = await firstValueFrom(submitEditor({ ...input, writes: this.options.writes }));
+      if (isEditorRefusal(result)) {
+        if (result.kind === 'conflict') return await this.#chooseConflict(result.key);
+        return refusalDecision(result);
+      }
+
+      this.phase.set('done');
+      return { kind: 'outcome', outcome: result };
+    } catch {
+      return { kind: 'message', message: 'unexpected' };
+    } finally {
+      if (this.phase() !== 'done') this.phase.set('idle');
+    }
+  }
+
+  async #chooseConflict(fullKey: string): Promise<EditorSubmitDecision> {
+    this.phase.set('choosing-conflict');
+    if (!(await this.options.chooseConflict(fullKey))) return { kind: 'ignored' };
+    this.phase.set('done');
+    return { kind: 'outcome', outcome: { kind: 'open-existing', fullKey } };
+  }
+}
+
+/** Refusals become presentation instructions; the dialog supplies localized text. */
+export function refusalDecision(refusal: Exclude<EditorRefusal, { kind: 'conflict' }>): EditorSubmitDecision {
+  switch (refusal.kind) {
+    case 'missing-original':
+      return { kind: 'message', message: 'missing-resource' };
+    case 'not-found':
+      return { kind: 'message', message: 'not-found' };
+    case 'invalid':
+      return { kind: 'message', message: 'invalid-request', error: refusal.error };
+    case 'create-failed':
+      return { kind: 'message', message: 'create-failed', error: refusal.error };
+    case 'update-failed':
+      return { kind: 'message', message: 'update-failed', error: refusal.error };
+    case 'unexpected':
+      return { kind: 'message', message: 'unexpected' };
+  }
 }

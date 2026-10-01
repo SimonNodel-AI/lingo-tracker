@@ -227,7 +227,7 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ### Editor Location
 
-The translation editor's folder-selection state in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-location.ts`. It owns the selected folder, dotted-key continuation, known entries from the browser and [Folder Peek](#folder-peek), the live key collision and "Where it lands" tree, and the decision to peek an unknown target folder. An edit can peek its original folder or a destination; its own key is exempt from collision only in the original folder. The dialog keeps the form, popover staging and filter, focus and save protocol.
+The translation editor's folder-selection state in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-location.ts`. It owns the selected folder, dotted-key continuation, known entries from the browser and [Folder Peek](#folder-peek), the live key collision and "Where it lands" tree, and the decision to peek an unknown target folder. An edit can peek its original folder or a destination; its own key is exempt from collision only in the original folder. The dialog keeps the form, popover staging and filter, and focus. [Editor Submit](#editor-submit) owns the save protocol.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -243,7 +243,7 @@ Explained in context: [`frontend.md`](frontend.md#the-editor-outcome)
 
 ### Editor Submit
 
-The translation editor's save protocol in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `submitGate(state)` returns the first blocking reason in this order: read-only, submitting, invalid form, key collision, comment confirmation. `submitEditor({ mode, draft, original, writes })` uses the [Resource Entry Draft](#resource-entry-draft) to build a create or update request, calls the supplied store write, and returns an Observable of an [Editor Outcome](#editor-outcome) or a classified refusal. One classifier handles both create and update API errors. The dialog chooses the existing localized message, conflict dialog and focus behavior for each refusal. [Editor Location](#editor-location) gathers known entries; `editor-entry-sources.ts` derives tag suggestions.
+The translation editor's save session in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `EditorSubmitSession` owns idle, missing-comment confirmation, key-conflict choice, writing and done phases. It ignores a trigger outside idle and remembers "Save Anyway" after a refused write. Writing and done both keep the dialog's busy indicator on until it closes. Injected functions provide the store writes and both prompts. The session returns an [Editor Outcome](#editor-outcome), a message decision or a focus decision; the dialog renders these with the existing Transloco text and focus behavior. An empty write or rejected prompt gives the unexpected message and restores idle. `submitEditor` builds the create or update request from the [Resource Entry Draft](#resource-entry-draft) and classifies API refusals. `submitGate` keeps the read-only, submitting, invalid-form, collision and comment order. `resolveDraftKey` in `resource-entry-draft.ts` trims the leaf for the preview, create request and conflict hand-off. [Editor Location](#editor-location) gathers known entries; `editor-entry-sources.ts` derives tag suggestions.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
