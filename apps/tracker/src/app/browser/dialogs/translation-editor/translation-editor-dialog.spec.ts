@@ -602,6 +602,26 @@ describe('TranslationEditorDialog', () => {
       expect(mockDialog.open).toHaveBeenCalled();
     });
 
+    it('should ignore Ctrl+Enter while the comment confirmation is open', async () => {
+      const answer = new Subject<boolean>();
+      mockDialog.open.mockReturnValue({ afterClosed: () => answer.asObservable() });
+      component.form.controls.key.setValue('test_key');
+      component.form.controls.baseValue.setValue('Test Value');
+      component.form.controls.comment.setValue('');
+
+      const first = component.onSubmit();
+      await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalledTimes(1));
+      const event = new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true });
+      await component.onCtrlEnter(event);
+
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
+      expect(mockDialog.open).toHaveBeenCalledTimes(1);
+      answer.next(true);
+      answer.complete();
+      await first;
+      expect(apiSpies.createResource).toHaveBeenCalledTimes(1);
+    });
+
     it('should complete save when user clicks "Save Anyway"', async () => {
       const mockConfirmationDialogRef = {
         afterClosed: vi.fn().mockReturnValue(of(true)),
@@ -699,7 +719,7 @@ describe('TranslationEditorDialog', () => {
       expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
-    it('should not show confirmation again if already shown and user proceeded', async () => {
+    it('should ignore another save after Save Anyway has completed', async () => {
       const mockConfirmationDialogRef = {
         afterClosed: vi.fn().mockReturnValue(of(true)),
       };
@@ -715,13 +735,30 @@ describe('TranslationEditorDialog', () => {
 
       dialogRef.close.mockClear();
       mockDialog.open.mockClear();
-      // Reset isSubmitting since the mock dialogRef.close doesn't actually close the dialog
-      component.isSubmitting.set(false);
-
       await component.onSubmit();
 
       expect(mockDialog.open).not.toHaveBeenCalled();
-      expect(dialogRef.close).toHaveBeenCalled();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(apiSpies.createResource).toHaveBeenCalledTimes(1);
+    });
+
+    it('should remember Save Anyway when a refused write is retried', async () => {
+      mockDialog.open.mockReturnValue({ afterClosed: () => of(true) });
+      apiSpies.createResource
+        .mockReturnValueOnce(throwError(() => toApiError(new HttpErrorResponse({ status: 503 }))))
+        .mockReturnValueOnce(of({ entriesCreated: 1, created: true }));
+      component.form.controls.key.setValue('test_key');
+      component.form.controls.baseValue.setValue('Test Value');
+      component.form.controls.comment.setValue('');
+
+      await component.onSubmit();
+      expect(component.errorMessage()).toBe('Failed to create translation');
+      expect(dialogRef.close).not.toHaveBeenCalled();
+
+      await component.onSubmit();
+      expect(mockDialog.open).toHaveBeenCalledTimes(1);
+      expect(apiSpies.createResource).toHaveBeenCalledTimes(2);
+      expect(closedWith()).toEqual({ kind: 'created', fullKey: 'common.buttons.test_key', skippedLocales: [] });
     });
 
     it('should allow showing confirmation again if user cancelled previously', async () => {
@@ -1769,7 +1806,7 @@ describe('TranslationEditorDialog', () => {
       expect(advisories()).toHaveLength(0);
     });
 
-    it('should not block saving or make the field invalid', () => {
+    it('should not block saving or make the field invalid', async () => {
       component.form.controls.key.setValue('label');
       component.form.controls.comment.setValue('A comment');
       type('Expenditure');
@@ -1777,7 +1814,7 @@ describe('TranslationEditorDialog', () => {
       expect(component.form.controls.baseValue.valid).toBe(true);
       expect(component.isFormValid()).toBe(true);
 
-      void component.onSubmit();
+      await component.onSubmit();
 
       expect(apiSpies.createResource).toHaveBeenCalled();
       expect(mockDialog.open).not.toHaveBeenCalled();
