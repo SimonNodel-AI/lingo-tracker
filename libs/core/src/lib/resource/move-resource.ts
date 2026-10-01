@@ -4,7 +4,7 @@ import { sweepKeys } from './collection-sweep';
 import { folderAddressExists } from './folder-address';
 import { planMove } from './move-plan';
 import { type Relocation, type RelocationResult, relocateEntries } from './relocate-entries';
-import type { ResourceMutation } from './resource-mutation';
+import type { MutationSinkOptions } from './resource-mutation';
 
 export interface MoveResourceParams {
   /** Full source key, or a prefix pattern ending with `*` (`common.buttons.*`). */
@@ -21,8 +21,6 @@ export interface MoveResourceResult {
   movedCount: number;
   warnings: string[];
   errors: string[];
-  /** A `remove` per moved key at the source, then an `upsert` per moved key at the destination. */
-  mutations: ResourceMutation[];
 }
 
 /**
@@ -31,9 +29,13 @@ export interface MoveResourceResult {
  * destination collection). Supports single key move and wildcard pattern move (ending with *).
  * Per-key failures are reported in the result, not thrown.
  */
-export async function moveResource(collection: Collection, params: MoveResourceParams): Promise<MoveResourceResult> {
+export async function moveResource(
+  collection: Collection,
+  params: MoveResourceParams,
+  options: MutationSinkOptions = {},
+): Promise<MoveResourceResult> {
   const { source, destination, override = false, destinationCollection = collection } = params;
-  const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [], mutations: [] };
+  const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [] };
 
   let relocations: Relocation[];
   if (source.endsWith('*')) {
@@ -44,7 +46,10 @@ export async function moveResource(collection: Collection, params: MoveResourceP
     relocations = [...planMove({ kind: 'key', key: source }, destination).relocations];
   }
 
-  const relocation = relocateEntries(collection, destinationCollection, relocations, { override });
+  const relocation = relocateEntries(collection, destinationCollection, relocations, {
+    override,
+    onMutation: options.onMutation,
+  });
   return mergeRelocation(result, relocation);
 }
 
@@ -53,7 +58,6 @@ export function mergeRelocation<T extends MoveResourceResult>(result: T, relocat
   result.movedCount += relocation.moved.length;
   result.warnings.push(...relocation.collisions.map(({ to }) => collisionWarning(to)));
   result.errors.push(...relocation.errors);
-  result.mutations.push(...relocation.mutations);
   return result;
 }
 

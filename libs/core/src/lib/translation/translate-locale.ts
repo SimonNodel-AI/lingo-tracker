@@ -19,7 +19,7 @@ import { calculateChecksum } from '../resource/checksum';
 import { readCollection } from '../resource/read-collection';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
-import { reindexMutation, type ResourceMutation } from '../resource/resource-mutation';
+import { reindexMutation, type MutationSinkOptions } from '../resource/resource-mutation';
 import type { RunOutcome } from '../run-outcome';
 import {
   assertAutoTranslationEnabled,
@@ -32,12 +32,10 @@ import {
 // Public interfaces
 // ---------------------------------------------------------------------------
 
-export interface TranslateLocaleParams extends OpenTranslatorOptions {
+export interface TranslateLocaleParams extends OpenTranslatorOptions, MutationSinkOptions {
   /** One of the collection's target locales. */
   readonly targetLocale: string;
   readonly onProgress?: (progress: TranslateLocaleProgress) => void;
-  /** Called once after the first save attempt, including a partial save failure. */
-  readonly onWrite?: (mutation: ResourceMutation) => void;
 }
 
 interface TranslateLocaleCounts {
@@ -63,7 +61,6 @@ export interface TranslateLocaleResult extends TranslateLocaleCounts {
   readonly skippedKeys: string[];
   /** One line per folder the Collection Reader could not read (its resources were not translated). */
   readonly warnings: string[];
-  readonly mutations: ResourceMutation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +170,7 @@ export async function translateLocale(
   collection: Collection,
   params: TranslateLocaleParams,
 ): Promise<TranslateLocaleResult> {
-  const { targetLocale, onProgress, onWrite } = params;
+  const { targetLocale, onProgress, onMutation } = params;
   const { baseLocale, translationsFolder } = collection;
   assertCanTranslateLocale(collection, targetLocale);
 
@@ -193,7 +190,6 @@ export async function translateLocale(
       failures: [],
       skippedKeys: [],
       warnings,
-      mutations: [],
     };
   }
 
@@ -211,11 +207,8 @@ export async function translateLocale(
   let skippedCount = 0;
   const failures: Array<{ key: string; error: string }> = [];
   const skippedKeys: string[] = [];
-  let mutation: ResourceMutation | undefined;
   const reportWrite = (): void => {
-    if (mutation) return;
-    mutation = reindexMutation(translationsFolder);
-    onWrite?.(mutation);
+    onMutation?.(reindexMutation(translationsFolder));
   };
 
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
@@ -293,6 +286,5 @@ export async function translateLocale(
     failures,
     skippedKeys,
     warnings,
-    mutations: mutation ? [mutation] : [],
   };
 }

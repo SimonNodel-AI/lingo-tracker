@@ -3,7 +3,7 @@ import type { Collection } from '../config/open-collection';
 import { FolderNotFoundError } from '../errors/lingo-tracker-error';
 import { sweepCollection } from '../resource/collection-sweep';
 import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
-import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
+import { folderMutation, reindexMutation, type MutationSinkOptions } from '../resource/resource-mutation';
 
 export interface DeleteFolderParams {
   /** The folder path to delete (dot-delimited path like "apps.common.buttons") */
@@ -15,8 +15,6 @@ export interface DeleteFolderResult {
   readonly folderPath: string;
   /** Number of resource entries that were deleted */
   readonly resourcesDeleted: number;
-  /** The `remove-folder` for the deleted folder. */
-  readonly mutations: ResourceMutation[];
 }
 
 /**
@@ -38,10 +36,14 @@ export interface DeleteFolderResult {
  * @example
  * ```typescript
  * const result = deleteFolder(collection, { folderPath: 'apps.common.buttons' });
- * // Result: { folderPath: 'apps.common.buttons', resourcesDeleted: 5, mutations: [...] }
+ * // Result: { folderPath: 'apps.common.buttons', resourcesDeleted: 5 }
  * ```
  */
-export function deleteFolder(collection: Collection, params: DeleteFolderParams): DeleteFolderResult {
+export function deleteFolder(
+  collection: Collection,
+  params: DeleteFolderParams,
+  options: MutationSinkOptions = {},
+): DeleteFolderResult {
   const { folderPath } = params;
   const { translationsFolder } = collection;
 
@@ -53,12 +55,17 @@ export function deleteFolder(collection: Collection, params: DeleteFolderParams)
   }
 
   const resourcesDeleted = countResources(collection, folderPath);
-  rmSync(absoluteFolderPath, { recursive: true, force: true });
+  try {
+    rmSync(absoluteFolderPath, { recursive: true, force: true });
+  } catch (error) {
+    options.onMutation?.(reindexMutation(translationsFolder));
+    throw error;
+  }
+  options.onMutation?.(folderMutation('remove-folder', translationsFolder, folderPath));
 
   return {
     folderPath,
     resourcesDeleted,
-    mutations: [folderMutation('remove-folder', translationsFolder, folderPath)],
   };
 }
 

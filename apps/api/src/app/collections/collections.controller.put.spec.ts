@@ -41,7 +41,7 @@ describe('CollectionsController PUT (real core)', () => {
 
     const module = await Test.createTestingModule({
       controllers: [CollectionsController],
-      providers: [ConfigService, { provide: CollectionIndex, useValue: { apply: jest.fn() } }],
+      providers: [ConfigService, { provide: CollectionIndex, useValue: { sink: jest.fn() } }],
     }).compile();
     controller = module.get(CollectionsController);
   });

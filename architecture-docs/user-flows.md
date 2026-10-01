@@ -366,6 +366,7 @@ sequenceDiagram
     participant FN as FolderNode (drop target)
     participant BS as BrowserStore
     participant API as ResourcesController / FoldersController
+    participant Core as Core write
     participant Index as CollectionIndex
 
     Note over Dev,Index: A. Drag a resource
@@ -386,7 +387,9 @@ sequenceDiagram
     BS->>BS: movesInFlight + 1 — isMoving, so isDisabled is true
 
     BS->>API: POST /api/collections/{name}/resources/move<br/>{ source: "apps.common.ok", destination: "apps.navigation.ok" }
-    API->>Index: apply(moveResult.mutations)<br/>— upsert at destination, remove at source
+    API->>Core: moveResource(..., { onMutation: index.sink })
+    Core->>Index: onMutation(remove at source)
+    Core->>Index: onMutation(upsert at destination)
     API-->>BS: MoveResourceResponseDto { success: true }
 
     Note over BS: Success path

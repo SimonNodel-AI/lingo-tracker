@@ -26,12 +26,12 @@ export class LocalesController {
     @RouteCollection() collection: OpenedCollection,
     @Body() body: AddLocaleDto,
   ): Promise<AddLocaleResponseDto> {
-    const { mutations, ...response } = await addLocaleToCollection(
+    const response = await addLocaleToCollection(
       collection,
       createConfigFileOperations({ cwd: collection.projectRoot, snapshot: collection.sourceConfig }),
       body.locale,
+      { onMutation: this.#index.sink },
     );
-    this.#index.apply(mutations);
 
     return response;
   }
@@ -41,12 +41,12 @@ export class LocalesController {
     @RouteCollection() collection: OpenedCollection,
     @Param('locale') locale: string,
   ): Promise<RemoveLocaleResponseDto> {
-    const { mutations, ...response } = await removeLocaleFromCollection(
+    const response = await removeLocaleFromCollection(
       collection,
       createConfigFileOperations({ cwd: collection.projectRoot, snapshot: collection.sourceConfig }),
       locale,
+      { onMutation: this.#index.sink },
     );
-    this.#index.apply(mutations);
 
     return response;
   }

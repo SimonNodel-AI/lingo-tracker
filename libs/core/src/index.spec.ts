@@ -94,6 +94,7 @@ describe('core public surface', () => {
       'runExport',
       'runImport',
       'runValidate',
+      'saveReporting',
       'searchPage',
       'searchResources',
       'translateExistingResource',

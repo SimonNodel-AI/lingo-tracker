@@ -48,7 +48,6 @@ describe('deleteCollectionCommand', () => {
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
     vi.mocked(core.deleteCollectionByName).mockReturnValue({
       message: 'Collection "Collection1" deleted successfully',
-      mutations: [],
     });
 
     const options = {
@@ -76,7 +75,6 @@ describe('deleteCollectionCommand', () => {
     vi.mocked(core.loadConfig).mockReturnValue(singleCollectionConfig);
     vi.mocked(core.deleteCollectionByName).mockReturnValue({
       message: 'Collection "OnlyCollection" deleted successfully',
-      mutations: [],
     });
 
     const options = {
@@ -187,7 +185,6 @@ describe('deleteCollectionCommand', () => {
     vi.mocked(core.loadConfig).mockReturnValue(singleCollectionConfig);
     vi.mocked(core.deleteCollectionByName).mockReturnValue({
       message: 'Collection "OnlyCollection" deleted successfully',
-      mutations: [],
     });
 
     const options = {};
@@ -210,7 +207,6 @@ describe('deleteCollectionCommand', () => {
     vi.mocked(core.loadConfig).mockReturnValue(configWithExtraProps);
     vi.mocked(core.deleteCollectionByName).mockReturnValue({
       message: 'Collection "Collection1" deleted successfully',
-      mutations: [],
     });
 
     const options = {
@@ -264,7 +260,7 @@ describe('deleteCollectionCommand', () => {
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
     vi.mocked(prompts).mockResolvedValueOnce({ collection: 'Collection2' }).mockResolvedValueOnce({ confirmed: true });
-    vi.mocked(core.deleteCollectionByName).mockReturnValue({ message: 'deleted', mutations: [] });
+    vi.mocked(core.deleteCollectionByName).mockReturnValue({ message: 'deleted' });
 
     await deleteCollectionCommand({});
 
@@ -281,7 +277,6 @@ describe('deleteCollectionCommand', () => {
       vi.mocked(core.loadConfig).mockReturnValue(singleCollectionConfig);
       vi.mocked(core.deleteCollectionByName).mockReturnValue({
         message: 'Collection "OnlyCollection" deleted successfully',
-        mutations: [],
       });
     });
 

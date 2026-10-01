@@ -1,3 +1,4 @@
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -21,6 +22,14 @@ import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { deleteCollectionByName } from './delete-collection-by-name';
 import { type UpdateCollectionOptions, updateCollection } from './update-collection';
+
+const collected: ResourceMutation[] = [];
+const onMutation = (mutation: ResourceMutation): void => {
+  collected.push(mutation);
+};
+beforeEach(() => {
+  collected.length = 0;
+});
 
 const TRANSLATION: TranslationConfig = { enabled: false, provider: 'none', apiKeyEnv: 'NONE' };
 
@@ -61,13 +70,10 @@ describe('updateCollection', () => {
     options: UpdateCollectionOptions = {},
   ) => {
     const configFile = createConfigFileOperations({ cwd: cwd() });
-    return updateCollection(
-      openCollection(configFile.read(), name, { cwd: cwd() }),
-      configFile,
-      newName,
-      patch,
-      options,
-    );
+    return updateCollection(openCollection(configFile.read(), name, { cwd: cwd() }), configFile, newName, patch, {
+      ...options,
+      onMutation,
+    });
   };
 
   beforeEach(() => {
@@ -84,9 +90,9 @@ describe('updateCollection', () => {
     const folderBytes = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME));
     writeConfig(externalConfig);
 
-    await expect(updateCollection(current, configFile, undefined, { locales: ['en', 'es', 'de'] })).rejects.toThrow(
-      ConfigChangedError,
-    );
+    await expect(
+      updateCollection(current, configFile, undefined, { locales: ['en', 'es', 'de'] }, { onMutation }),
+    ).rejects.toThrow(ConfigChangedError);
 
     expect(readConfig()).toEqual(externalConfig);
     expect(readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME))).toEqual(folderBytes);
@@ -98,8 +104,8 @@ describe('updateCollection', () => {
     const result = await update('myApp', undefined, { ...stored, tags: ['Team X'] }, {});
     expect(result).toEqual({
       message: 'Collection "myApp" updated successfully',
-      mutations: [{ kind: 'reindex', translationsFolder: i18n() }],
     });
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-x'] });
 
     await update('myApp', undefined, { tags: ['Team Y'] }, {});
@@ -130,9 +136,9 @@ describe('updateCollection', () => {
   });
 
   it('seeds the files for an added locale and purges a removed one, then writes the config once', async () => {
-    const result = await update('myApp', undefined, { translationsFolder: './i18n', locales: ['en', 'es', 'de'] }, {});
+    await update('myApp', undefined, { translationsFolder: './i18n', locales: ['en', 'es', 'de'] }, {});
 
-    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     const { entries, meta } = readFolder('apps');
     expect(entries['ok']).toEqual({ source: 'OK', es: 'Vale', de: 'OK' });
     expect(meta['ok']?.['de']?.status).toBe('new');
@@ -145,9 +151,10 @@ describe('updateCollection', () => {
 
   it('never removes the base locale, and touches no files when the locales are unchanged or left out', async () => {
     for (const locales of [['es', 'fr-ca'], ['en', 'es', 'fr-ca'], undefined]) {
-      const result = await update('myApp', undefined, { translationsFolder: './i18n', locales }, {});
+      collected.length = 0;
+      await update('myApp', undefined, { translationsFolder: './i18n', locales }, {});
 
-      expect(result.mutations).toEqual(locales ? [{ kind: 'reindex', translationsFolder: i18n() }] : []);
+      expect(collected).toEqual(locales ? [{ kind: 'reindex', translationsFolder: i18n() }] : []);
       expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
     }
   });
@@ -178,11 +185,11 @@ describe('updateCollection', () => {
       'apps.ok': { source: 'OK', translations: { es: 'Vale', 'fr-ca': 'OK' } },
     });
 
-    const result = await update('myApp', 'renamed', { translationsFolder: './moved', locales: ['en', 'es', 'de'] }, {});
+    await update('myApp', 'renamed', { translationsFolder: './moved', locales: ['en', 'es', 'de'] }, {});
 
-    expect(result.mutations).toEqual([
-      { kind: 'reindex', translationsFolder: i18n() },
+    expect(collected).toEqual([
       { kind: 'reindex', translationsFolder: moved },
+      { kind: 'reindex', translationsFolder: i18n() },
     ]);
     const movedEntries: ResourceEntries = JSON.parse(
       readFileSync(join(moved, 'apps', RESOURCE_ENTRIES_FILENAME), 'utf8'),
@@ -220,7 +227,7 @@ describe('updateCollection', () => {
     const result = await update('myApp', 'renamed', { translationsFolder: './i18n' }, {});
 
     expect(result.message).toBe('Collection "myApp" renamed to "renamed" and updated successfully');
-    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     expect(Object.keys(readConfig().collections)).toEqual(['renamed', 'other']);
   });
 
@@ -317,7 +324,7 @@ describe('updateCollection', () => {
     });
 
     writeConfig({ ...config(), bundles: malformed as unknown as LingoTrackerConfig['bundles'] });
-    deleteCollectionByName('myApp', { cwd: cwd() });
+    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
 
     expect(readConfig().bundles).toEqual({
       ...malformed,
@@ -344,7 +351,7 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    deleteCollectionByName('myApp', { cwd: cwd() });
+    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
 
     expect(readConfig().bundles?.['main']?.collections).toEqual([{ name: 'other', entriesSelectionRules: 'All' }]);
     expect(readConfig().bundles?.['all']).toEqual(original.bundles['all']);
@@ -380,8 +387,8 @@ describe('updateCollection', () => {
     const entriesBytes = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME));
     const metaBytes = readFileSync(join(i18n(), 'apps', TRACKER_META_FILENAME));
 
-    expect(() => deleteCollectionByName('myApp', { cwd: cwd() })).toThrow(CollectionRequiredByBundleError);
-    expect(() => deleteCollectionByName('myApp', { cwd: cwd() })).toThrow(
+    expect(() => deleteCollectionByName('myApp', { onMutation, cwd: cwd() })).toThrow(CollectionRequiredByBundleError);
+    expect(() => deleteCollectionByName('myApp', { onMutation, cwd: cwd() })).toThrow(
       'Collection "myApp" is the only collection of bundle(s) "first", "second". Remove it from those bundles or delete them first.',
     );
     expect(readFileSync(join(cwd(), CONFIG_FILENAME))).toEqual(configBytes);
@@ -400,15 +407,15 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    deleteCollectionByName('myApp', { cwd: cwd() });
+    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
 
     expect(readConfig().bundles).toEqual(original.bundles);
   });
 
-  it('returns the deleted collection folder for reindexing', () => {
-    const result = deleteCollectionByName('myApp', { cwd: cwd() });
+  it('delivers the deleted collection folder for reindexing', () => {
+    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
 
-    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     expect(readConfig().collections).not.toHaveProperty('myApp');
   });
 
