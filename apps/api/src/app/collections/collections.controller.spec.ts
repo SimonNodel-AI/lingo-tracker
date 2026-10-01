@@ -1,4 +1,3 @@
-import { resolve } from 'node:path';
 import { BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
@@ -40,7 +39,7 @@ describe('CollectionsController', () => {
       'My%Collection': { translationsFolder: './translations/my' },
     },
   };
-  const mockIndex = { apply: jest.fn() };
+  const mockIndex = { sink: jest.fn() };
 
   beforeAll(async () => {
     collectionsModule = await Test.createTestingModule({
@@ -63,7 +62,6 @@ describe('CollectionsController', () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockReturnValue({
         message: 'Collection "test-collection" deleted successfully',
-        mutations: [],
       });
 
       const result = await collectionsController.deleteCollection('test-collection');
@@ -71,14 +69,16 @@ describe('CollectionsController', () => {
       expect(result).toEqual({
         message: 'Collection "test-collection" deleted successfully',
       });
-      expect(deleteCollectionByName).toHaveBeenCalledWith('test-collection');
+      expect(deleteCollectionByName).toHaveBeenCalledWith(
+        'test-collection',
+        expect.objectContaining({ onMutation: mockIndex.sink }),
+      );
     });
 
     it('passes the route param through verbatim', async () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockReturnValue({
         message: 'Collection "My Collection" deleted successfully',
-        mutations: [],
       });
 
       const result = await collectionsController.deleteCollection('My%Collection');
@@ -86,7 +86,10 @@ describe('CollectionsController', () => {
       expect(result).toEqual({
         message: 'Collection "My Collection" deleted successfully',
       });
-      expect(deleteCollectionByName).toHaveBeenCalledWith('My%Collection');
+      expect(deleteCollectionByName).toHaveBeenCalledWith(
+        'My%Collection',
+        expect.objectContaining({ onMutation: mockIndex.sink }),
+      );
     });
 
     it('lets CollectionNotFoundError through, which the filter answers with 404', async () => {
@@ -99,7 +102,6 @@ describe('CollectionsController', () => {
 
       expect(error).toBeInstanceOf(CollectionNotFoundError);
       expect(toHttpException(error).getStatus()).toBe(404);
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
     it('answers a refused deletion with 409 and leaves the index alone', async () => {
@@ -117,7 +119,6 @@ describe('CollectionsController', () => {
         error: 'Conflict',
         statusCode: 409,
       });
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
     it('propagates an unexpected error and leaves the index alone', async () => {
@@ -129,20 +130,14 @@ describe('CollectionsController', () => {
       await expect(collectionsController.deleteCollection('test-collection')).rejects.toThrow(
         'Failed to delete collection',
       );
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
     it('drops the index entry for the deleted collection folder', async () => {
       (core.deleteCollectionByName as jest.Mock).mockReturnValue({
         message: 'Collection "test-collection" deleted successfully',
-        mutations: [{ kind: 'reindex', translationsFolder: resolve('./translations/test') }],
       });
 
       await collectionsController.deleteCollection('test-collection');
-
-      expect(mockIndex.apply).toHaveBeenCalledWith([
-        { kind: 'reindex', translationsFolder: resolve('./translations/test') },
-      ]);
     });
   });
 
@@ -273,14 +268,12 @@ describe('CollectionsController', () => {
         error: 'Conflict',
         statusCode: 409,
       });
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
     it('should successfully update a collection', async () => {
       const updateCollection = core.updateCollection as jest.Mock;
       updateCollection.mockReturnValue({
         message: 'Collection "old-name" updated to "new-name" successfully',
-        mutations: [],
       });
 
       const dto = {
@@ -303,7 +296,7 @@ describe('CollectionsController', () => {
         expect.objectContaining({ write: expect.any(Function) }),
         'new-name',
         dto.collection,
-        { protectedTerms: undefined },
+        { onMutation: mockIndex.sink, protectedTerms: undefined },
       );
     });
 
@@ -311,7 +304,6 @@ describe('CollectionsController', () => {
       const updateCollection = core.updateCollection as jest.Mock;
       updateCollection.mockReturnValue({
         message: 'Collection "My Collection" updated successfully',
-        mutations: [],
       });
 
       const dto = {
@@ -328,7 +320,7 @@ describe('CollectionsController', () => {
         expect.objectContaining({ write: expect.any(Function) }),
         'My Collection',
         dto.collection,
-        { protectedTerms: undefined },
+        { onMutation: mockIndex.sink, protectedTerms: undefined },
       );
     });
 
@@ -397,7 +389,7 @@ describe('CollectionsController', () => {
     });
 
     it('writes the protected terms under the current name when the body does not rename', async () => {
-      (core.updateCollection as jest.Mock).mockResolvedValue({ message: 'ok', mutations: [] });
+      (core.updateCollection as jest.Mock).mockResolvedValue({ message: 'ok' });
 
       await collectionsController.updateCollectionByName('test-collection', {
         collection: { translationsFolder: './translations/test', protectedTerms: ['iPhone'] },
@@ -408,7 +400,7 @@ describe('CollectionsController', () => {
         expect.objectContaining({ write: expect.any(Function) }),
         undefined,
         expect.anything(),
-        { protectedTerms: ['iPhone'] },
+        { onMutation: mockIndex.sink, protectedTerms: ['iPhone'] },
       );
     });
 
@@ -431,20 +423,22 @@ describe('CollectionsController', () => {
 
       expect(error).toBeInstanceOf(CollectionNotFoundError);
       expect(toHttpException(error).getStatus()).toBe(404);
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
-    it('applies the collection mutations returned by core', async () => {
-      const localeMutation = { kind: 'reindex', translationsFolder: resolve('./translations/test') };
+    it('passes the sink to the collection update', async () => {
       (core.updateCollection as jest.Mock).mockResolvedValue({
         message: 'Collection "test-collection" updated successfully',
-        mutations: [localeMutation],
       });
 
       const dto: UpdateCollectionDto = { collection: { translationsFolder: './translations/test' } };
       await collectionsController.updateCollectionByName('test-collection', dto);
-
-      expect(mockIndex.apply).toHaveBeenCalledWith([localeMutation]);
+      expect(core.updateCollection).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.any(Object),
+        undefined,
+        expect.any(Object),
+        expect.objectContaining({ onMutation: mockIndex.sink }),
+      );
     });
   });
 });

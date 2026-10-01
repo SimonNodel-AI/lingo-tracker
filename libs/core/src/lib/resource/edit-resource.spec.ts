@@ -1,3 +1,4 @@
+import type { ResourceMutation } from './resource-mutation';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,17 +8,32 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { TranslationConfig } from '../../config/translation-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import {
+  CoreOperationError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
 import { TranslationError } from '../translation/translation-provider';
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
 import { openResourceFolder } from './resource-folder';
+
+const collected: ResourceMutation[] = [];
+const onMutation = (mutation: ResourceMutation): void => {
+  collected.push(mutation);
+};
+beforeEach(() => {
+  collected.length = 0;
+});
+
+vi.mock('../file-io/json-file-operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
+  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
+});
 
 // Wrapped, not replaced: the specs below check which value the terminology check is given.
 vi.mock('@simoncodes-ca/domain', async (importOriginal) => {
@@ -68,26 +84,40 @@ describe('editResource (real fs)', () => {
   });
 
   it('throws ResourceNotFoundError for a missing entry', async () => {
-    await expect(editResource(collection(), 'common.missing', { comment: 'x' })).rejects.toThrow(ResourceNotFoundError);
-    await expect(editResource(collection(), 'nowhere.save', { comment: 'x' })).rejects.toThrow(ResourceNotFoundError);
+    await expect(editResource(collection(), 'common.missing', { comment: 'x' }, { onMutation })).rejects.toThrow(
+      ResourceNotFoundError,
+    );
+    await expect(editResource(collection(), 'nowhere.save', { comment: 'x' }, { onMutation })).rejects.toThrow(
+      ResourceNotFoundError,
+    );
   });
 
   it('reports no changes and writes nothing when nothing differs', async () => {
-    const result = await editResource(collection(), 'common.save', { baseValue: 'Save', translations: {} });
+    const result = await editResource(
+      collection(),
+      'common.save',
+      { baseValue: 'Save', translations: {} },
+      { onMutation },
+    );
 
     expect(result).toEqual({
       resolvedKey: 'common.save',
       updated: false,
       message: 'No changes detected',
-      mutations: [],
     });
+    expect(collected).toEqual([]);
   });
 
   describe('base value change', () => {
     it('keeps real translations as `stale` and re-seeds copies and missing locales as `new`', async () => {
       const provider = new InMemoryTranslationProvider();
 
-      const result = await editResource(collection(), 'common.save', { baseValue: 'Save all' }, { provider });
+      const result = await editResource(
+        collection(),
+        'common.save',
+        { baseValue: 'Save all' },
+        { onMutation, provider },
+      );
 
       expect(read('resource_entries.json', 'common').save).toEqual({
         source: 'Save all',
@@ -118,7 +148,7 @@ describe('editResource (real fs)', () => {
           baseValue: 'Save all {count}',
           translations: { fr: { value: 'Tout enregistrer {count}', status: 'translated' } },
         },
-        { provider },
+        { onMutation, provider },
       );
 
       expect(provider.calls.map((call) => call.map(({ targetLocale }) => targetLocale))).toEqual([['de'], ['es']]);
@@ -145,24 +175,25 @@ describe('editResource (real fs)', () => {
       });
 
       await expect(
-        editResource(collection(AUTO), 'common.save', { baseValue: 'Save all' }, { provider }),
+        editResource(collection(AUTO), 'common.save', { baseValue: 'Save all' }, { onMutation, provider }),
       ).rejects.toThrow(TranslationError);
 
       expect(read('resource_entries.json', 'common').save.source).toBe('Save all');
       expect(read('tracker_meta.json', 'common').save.fr.status).toBe('stale');
+      expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.save' })]);
     });
 
     it('does not seed anything when only the comment changes', async () => {
       const provider = new InMemoryTranslationProvider();
 
-      await editResource(collection(AUTO), 'common.save', { comment: 'Toolbar button' }, { provider });
+      await editResource(collection(AUTO), 'common.save', { comment: 'Toolbar button' }, { onMutation, provider });
 
       expect(provider.calls).toEqual([]);
       expect(read('resource_entries.json', 'common').save.es).toBeUndefined();
     });
 
     it('normalizes a Transloco base value to ICU', async () => {
-      await editResource(collection(), 'common.save', { baseValue: 'Save {{ count }}' });
+      await editResource(collection(), 'common.save', { baseValue: 'Save {{ count }}' }, { onMutation });
 
       expect(read('resource_entries.json', 'common').save.source).toBe('Save {count}');
     });
@@ -172,9 +203,14 @@ describe('editResource (real fs)', () => {
     it('does nothing when the value is unchanged and no status is requested', async () => {
       expect(
         (
-          await editResource(collection(), 'common.save', {
-            translations: { de: { value: 'Save' }, fr: { value: 'Enregistrer' } },
-          })
+          await editResource(
+            collection(),
+            'common.save',
+            {
+              translations: { de: { value: 'Save' }, fr: { value: 'Enregistrer' } },
+            },
+            { onMutation },
+          )
         ).updated,
       ).toBe(false);
       expect(read('tracker_meta.json', 'common').save.de.status).toBe('new');
@@ -182,21 +218,31 @@ describe('editResource (real fs)', () => {
     });
 
     it('changes an identical copy to explicit translated without changing its value', async () => {
-      await editResource(collection(), 'common.save', {
-        translations: { de: { value: 'Save', status: 'translated' } },
-      });
+      await editResource(
+        collection(),
+        'common.save',
+        {
+          translations: { de: { value: 'Save', status: 'translated' } },
+        },
+        { onMutation },
+      );
       expect(read('tracker_meta.json', 'common').save.de.status).toBe('translated');
     });
 
     it('infers new for a changed value that copies the base', async () => {
-      await editResource(collection(), 'common.save', { translations: { fr: { value: 'Save' } } });
+      await editResource(collection(), 'common.save', { translations: { fr: { value: 'Save' } } }, { onMutation });
       expect(read('tracker_meta.json', 'common').save.fr.status).toBe('new');
     });
 
     it('keeps explicit translated for a changed value that copies the base', async () => {
-      await editResource(collection(), 'common.save', {
-        translations: { fr: { value: 'Save', status: 'translated' } },
-      });
+      await editResource(
+        collection(),
+        'common.save',
+        {
+          translations: { fr: { value: 'Save', status: 'translated' } },
+        },
+        { onMutation },
+      );
       expect(read('tracker_meta.json', 'common').save.fr.status).toBe('translated');
     });
 
@@ -206,9 +252,14 @@ describe('editResource (real fs)', () => {
       metadata.save.fr.baseChecksum = 'old-base';
       writeFileSync(metaPath, JSON.stringify(metadata));
 
-      await editResource(collection(), 'common.save', {
-        translations: { fr: { value: 'Enregistrer', status: 'stale' } },
-      });
+      await editResource(
+        collection(),
+        'common.save',
+        {
+          translations: { fr: { value: 'Enregistrer', status: 'stale' } },
+        },
+        { onMutation },
+      );
 
       expect(read('tracker_meta.json', 'common').save.fr).toEqual({
         checksum: md5('Enregistrer'),
@@ -219,15 +270,20 @@ describe('editResource (real fs)', () => {
 
     it('rejects an unknown status before changing the resource', async () => {
       await expect(
-        editResource(collection(), 'common.save', {
-          translations: { fr: { value: 'Autre', status: 'verifed' as never } },
-        }),
+        editResource(
+          collection(),
+          'common.save',
+          {
+            translations: { fr: { value: 'Autre', status: 'verifed' as never } },
+          },
+          { onMutation },
+        ),
       ).rejects.toThrow(InvalidTranslationStatusError);
       expect(read('resource_entries.json', 'common').save.fr).toBe('Enregistrer');
     });
 
     it('updates comment and normalized tags', async () => {
-      await editResource(collection(), 'common.save', { comment: 'Button', tags: ['UI', 'forms'] });
+      await editResource(collection(), 'common.save', { comment: 'Button', tags: ['UI', 'forms'] }, { onMutation });
 
       const entry = read('resource_entries.json', 'common').save;
       expect(entry.comment).toBe('Button');
@@ -235,9 +291,14 @@ describe('editResource (real fs)', () => {
     });
 
     it('writes a translation with status `translated` by default, or the supplied status', async () => {
-      await editResource(collection(), 'common.save', {
-        translations: { de: { value: 'Speichern' }, es: { value: 'Guardar', status: 'verified' } },
-      });
+      await editResource(
+        collection(),
+        'common.save',
+        {
+          translations: { de: { value: 'Speichern' }, es: { value: 'Guardar', status: 'verified' } },
+        },
+        { onMutation },
+      );
 
       const meta = read('tracker_meta.json', 'common').save;
       expect(meta.de.status).toBe('translated');
@@ -246,16 +307,26 @@ describe('editResource (real fs)', () => {
     });
 
     it('changes only the status when the value is unchanged', async () => {
-      await editResource(collection(), 'common.save', {
-        translations: { fr: { value: 'Enregistrer', status: 'stale' } },
-      });
+      await editResource(
+        collection(),
+        'common.save',
+        {
+          translations: { fr: { value: 'Enregistrer', status: 'stale' } },
+        },
+        { onMutation },
+      );
 
       const meta = read('tracker_meta.json', 'common').save;
       expect(meta.fr).toEqual({ checksum: md5('Enregistrer'), baseChecksum: md5('Save'), status: 'stale' });
     });
 
     it('ignores a value for the base locale', async () => {
-      const result = await editResource(collection(), 'common.save', { translations: { en: { value: 'Nope' } } });
+      const result = await editResource(
+        collection(),
+        'common.save',
+        { translations: { en: { value: 'Nope' } } },
+        { onMutation },
+      );
 
       expect(result.updated).toBe(false);
       expect(read('resource_entries.json', 'common').save.source).toBe('Save');
@@ -263,15 +334,44 @@ describe('editResource (real fs)', () => {
 
     it('rejects a locale the collection does not have', async () => {
       await expect(
-        editResource(collection(), 'common.save', { translations: { ja: { value: '保存' } } }),
+        editResource(collection(), 'common.save', { translations: { ja: { value: '保存' } } }, { onMutation }),
       ).rejects.toThrow(LocaleNotFoundError);
     });
   });
 
   describe('moveTo', () => {
+    it('delivers the saved edit and a reindex when the move write fails', async () => {
+      const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+        '../file-io/json-file-operations',
+      );
+      const writer = vi.mocked(writeJsonFile);
+      writer.mockImplementation((options) => {
+        if (options.filePath.endsWith(join('dialogs', 'resource_entries.json'))) {
+          throw new Error('destination write failed');
+        }
+        return actual.writeJsonFile(options);
+      });
+      try {
+        await expect(
+          editResource(collection(), 'common.save', { comment: 'Edited', moveTo: 'dialogs' }, { onMutation }),
+        ).rejects.toThrow(CoreOperationError);
+      } finally {
+        writer.mockImplementation(actual.writeJsonFile);
+      }
+      expect(collected).toEqual([
+        expect.objectContaining({ kind: 'upsert', key: 'common.save' }),
+        { kind: 'reindex', translationsFolder: collection().translationsFolder },
+      ]);
+    });
+
     it('moves the edited entry into another folder, keeping its entry key', async () => {
       const target = collection();
-      const result = await editResource(target, 'common.save', { comment: 'Moved', moveTo: 'dialogs.actions' });
+      const result = await editResource(
+        target,
+        'common.save',
+        { comment: 'Moved', moveTo: 'dialogs.actions' },
+        { onMutation },
+      );
 
       expect(result.resolvedKey).toBe('dialogs.actions.save');
       expect(result.entry?.comment).toBe('Moved');
@@ -283,14 +383,15 @@ describe('editResource (real fs)', () => {
       });
       expect(read('tracker_meta.json', 'dialogs', 'actions').save.fr.status).toBe('verified');
       expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
-      expect(result.mutations).toEqual([
+      expect(collected).toEqual([
+        expect.objectContaining({ kind: 'upsert', key: 'common.save', translationsFolder: target.translationsFolder }),
         expect.objectContaining({ kind: 'remove', key: 'common.save', translationsFolder: target.translationsFolder }),
         expect.objectContaining({ kind: 'upsert', key: 'dialogs.actions.save' }),
       ]);
     });
 
     it('moves the entry to the collection root with an empty moveTo, even with no other change', async () => {
-      const result = await editResource(collection(), 'common.save', { moveTo: '' });
+      const result = await editResource(collection(), 'common.save', { moveTo: '' }, { onMutation });
 
       expect(result.updated).toBe(true);
       expect(result.resolvedKey).toBe('save');
@@ -298,7 +399,7 @@ describe('editResource (real fs)', () => {
     });
 
     it('moves the entry to the collection root with a whitespace-only moveTo', async () => {
-      const result = await editResource(collection(), 'common.save', { moveTo: '   ' });
+      const result = await editResource(collection(), 'common.save', { moveTo: '   ' }, { onMutation });
 
       expect(result.updated).toBe(true);
       expect(result.resolvedKey).toBe('save');
@@ -307,10 +408,15 @@ describe('editResource (real fs)', () => {
     });
 
     it('edits in place when moveTo is the current folder', async () => {
-      const result = await editResource(collection(), 'common.save', { comment: 'Same', moveTo: 'common' });
+      const result = await editResource(
+        collection(),
+        'common.save',
+        { comment: 'Same', moveTo: 'common' },
+        { onMutation },
+      );
 
       expect(result.resolvedKey).toBe('common.save');
-      expect(result.mutations).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.save' })]);
+      expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.save' })]);
       expect(read('resource_entries.json', 'common').save.comment).toBe('Same');
     });
 
@@ -319,15 +425,15 @@ describe('editResource (real fs)', () => {
       other.setBase('save', 'Other');
       other.save();
 
-      await expect(editResource(collection(), 'common.save', { comment: 'Lost?', moveTo: 'dialogs' })).rejects.toThrow(
-        ResourceAlreadyExistsError,
-      );
+      await expect(
+        editResource(collection(), 'common.save', { comment: 'Lost?', moveTo: 'dialogs' }, { onMutation }),
+      ).rejects.toThrow(ResourceAlreadyExistsError);
       expect(read('resource_entries.json', 'common').save.comment).toBeUndefined();
       expect(read('resource_entries.json', 'dialogs').save.source).toBe('Other');
     });
 
     it('rejects a malformed destination folder', async () => {
-      await expect(editResource(collection(), 'common.save', { moveTo: '../evil' })).rejects.toThrow(
+      await expect(editResource(collection(), 'common.save', { moveTo: '../evil' }, { onMutation })).rejects.toThrow(
         InvalidResourceKeyError,
       );
     });
@@ -366,7 +472,7 @@ describe('editResource (real fs)', () => {
           collection(AUTO),
           'common.save',
           { baseValue: 'Save all', moveTo: 'dialogs' },
-          { provider: provider.provider },
+          { onMutation, provider: provider.provider },
         );
         await provider.called;
         writeDestinationEntry('cancel', 'Cancel');
@@ -386,7 +492,7 @@ describe('editResource (real fs)', () => {
           collection(AUTO),
           'common.save',
           { baseValue: 'Save all', moveTo: 'dialogs' },
-          { provider: provider.provider },
+          { onMutation, provider: provider.provider },
         );
         await provider.called;
         writeDestinationEntry('save', 'Other');
@@ -408,7 +514,12 @@ describe('editResource (real fs)', () => {
     });
 
     it('checks a supplied base value and returns the findings under the key', async () => {
-      const result = await editResource(collection(), 'common.save', { baseValue: 'Save the expenditure' });
+      const result = await editResource(
+        collection(),
+        'common.save',
+        { baseValue: 'Save the expenditure' },
+        { onMutation },
+      );
 
       expect(result.terminology).toEqual({
         findings: [
@@ -424,10 +535,15 @@ describe('editResource (real fs)', () => {
     });
 
     it('reports the findings under the destination key when the edit also moves the entry', async () => {
-      const result = await editResource(collection(), 'common.save', {
-        baseValue: 'Save the expenditure',
-        moveTo: 'dialogs',
-      });
+      const result = await editResource(
+        collection(),
+        'common.save',
+        {
+          baseValue: 'Save the expenditure',
+          moveTo: 'dialogs',
+        },
+        { onMutation },
+      );
 
       expect(result.terminology?.findings.map(({ key }) => key)).toEqual(['dialogs.save']);
     });
@@ -435,7 +551,12 @@ describe('editResource (real fs)', () => {
     it('checks the stored ICU value, not the Transloco input', async () => {
       vi.mocked(findPreferredTermFindings).mockClear();
 
-      const result = await editResource(collection(), 'common.save', { baseValue: 'Save {{ expenditure }}' });
+      const result = await editResource(
+        collection(),
+        'common.save',
+        { baseValue: 'Save {{ expenditure }}' },
+        { onMutation },
+      );
 
       expect(read('resource_entries.json', 'common').save.source).toBe('Save {expenditure}');
       expect(findPreferredTermFindings).toHaveBeenCalledWith('Save {expenditure}', rules);
@@ -459,7 +580,7 @@ describe('editResource (real fs)', () => {
         named,
         'common.save',
         { baseValue: 'Save now' },
-        { provider: new InMemoryTranslationProvider() },
+        { onMutation, provider: new InMemoryTranslationProvider() },
       );
 
       expect(result.terminology?.problems).toEqual([
@@ -468,8 +589,8 @@ describe('editResource (real fs)', () => {
     });
 
     it('leaves terminology out when the edit supplied no base value, or changed nothing', async () => {
-      const comment = await editResource(collection(), 'common.save', { comment: 'Expenditure' });
-      const unchanged = await editResource(collection(), 'common.save', { baseValue: 'Save' });
+      const comment = await editResource(collection(), 'common.save', { comment: 'Expenditure' }, { onMutation });
+      const unchanged = await editResource(collection(), 'common.save', { baseValue: 'Save' }, { onMutation });
 
       expect(comment.updated).toBe(true);
       expect(comment.terminology).toBeUndefined();

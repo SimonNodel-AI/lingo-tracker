@@ -37,7 +37,7 @@ describe('deleteResourceCommand', () => {
     process.exitCode = undefined;
     vi.mocked(loadConfig).mockReturnValue(mockConfig);
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
-    mockDeleteResource.mockReturnValue({ entriesDeleted: 1, mutations: [] });
+    mockDeleteResource.mockReturnValue({ entriesDeleted: 1 });
   });
 
   afterEach(() => {
@@ -67,7 +67,6 @@ describe('deleteResourceCommand', () => {
     mockDeleteResource.mockReturnValue({
       entriesDeleted: 1,
       errors: [{ key: 'apps.common.invalid', error: 'Resource not found' }],
-      mutations: [],
     });
 
     await deleteResourceCommand({ collection: 'default', key: 'apps.common.ok,apps.common.invalid', yes: true });
@@ -84,7 +83,6 @@ describe('deleteResourceCommand', () => {
     mockDeleteResource.mockReturnValue({
       entriesDeleted: 0,
       errors: [{ key: 'apps.common.notfound', error: 'Resource not found' }],
-      mutations: [],
     });
 
     await deleteResourceCommand({ collection: 'default', key: 'apps.common.notfound', yes: true });

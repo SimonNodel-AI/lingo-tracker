@@ -4,7 +4,7 @@ import type { Collection } from '../config/open-collection';
 import type { ResourceTreeEntry } from './load-resource-tree';
 import { resolveResourcePaths } from './resource-file-paths';
 import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
-import { reindexMutation, removeMutation, type ResourceMutation, upsertMutation } from './resource-mutation';
+import { reindexMutation, removeMutation, type MutationSinkOptions, upsertMutation } from './resource-mutation';
 
 /**
  * Entry Relocation — the one way entries move between keys, within a collection or into another.
@@ -35,7 +35,7 @@ export interface Relocation {
   readonly to: string;
 }
 
-export interface RelocateEntriesOptions {
+export interface RelocateEntriesOptions extends MutationSinkOptions {
   /** Replace an entry that holds a destination key. Default: false (the relocation is a collision). */
   readonly override?: boolean;
 }
@@ -54,8 +54,6 @@ export interface RelocationResult {
   readonly collisions: Relocation[];
   /** One message per relocation that failed (bad key, missing entry, unreadable folder), or for a failed write. */
   readonly errors: string[];
-  /** A `remove` per moved key at the source, then an `upsert` per moved key at the destination. */
-  readonly mutations: ResourceMutation[];
 }
 
 interface Slot {
@@ -90,7 +88,7 @@ export function relocateEntries(
     errors.push(
       `Cannot move resources from collection "${source.name}" (base locale "${source.baseLocale}") to "${destination.name}" (base locale "${destination.baseLocale}")`,
     );
-    return { moved: [], collisions: [], errors, mutations: [] };
+    return { moved: [], collisions: [], errors };
   }
 
   const folders = new Map<string, ResourceFolder>();
@@ -162,9 +160,9 @@ export function relocateEntries(
   } catch (error) {
     errors.push(`Failed to write the move: ${error instanceof Error ? error.message : String(error)}`);
     // Some folders may be written: the index reads both collections again.
-    const mutations = [reindexMutation(destination.translationsFolder)];
-    if (crossCollection) mutations.push(reindexMutation(source.translationsFolder));
-    return { moved: [], collisions, errors, mutations };
+    options.onMutation?.(reindexMutation(destination.translationsFolder));
+    if (crossCollection) options.onMutation?.(reindexMutation(source.translationsFolder));
+    return { moved: [], collisions, errors };
   }
 
   const moved: RelocatedEntry[] = [];
@@ -173,15 +171,9 @@ export function relocateEntries(
     if (entry) moved.push({ from: relocation.from, to: relocation.to, entry });
   }
 
-  return {
-    moved,
-    collisions,
-    errors,
-    mutations: [
-      ...moved.map(({ from }) => removeMutation(source.translationsFolder, from)),
-      ...moved.map(({ to, entry }) => upsertMutation(destination.translationsFolder, to, entry)),
-    ],
-  };
+  for (const { from } of moved) options.onMutation?.(removeMutation(source.translationsFolder, from));
+  for (const { to, entry } of moved) options.onMutation?.(upsertMutation(destination.translationsFolder, to, entry));
+  return { moved, collisions, errors };
 }
 
 /**

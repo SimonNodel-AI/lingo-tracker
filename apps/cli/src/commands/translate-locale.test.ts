@@ -42,7 +42,6 @@ const RESULT: TranslateLocaleResult = {
   warnings: [],
   failures: [],
   skippedKeys: ['a.plural'],
-  mutations: [],
 };
 
 describe('translateLocaleCommand', () => {

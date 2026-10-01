@@ -329,7 +329,6 @@ describe('addResourceCommand', () => {
         resolvedKey: 'budget.title',
         created: true,
         translations: [],
-        mutations: [],
         terminology,
       });
 

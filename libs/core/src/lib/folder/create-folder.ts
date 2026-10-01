@@ -1,7 +1,7 @@
 import type { Collection } from '../config/open-collection';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import { folderAddressExists, resolveFolderAddress, validateFolderAddress } from '../resource/folder-address';
-import { folderMutation, type ResourceMutation } from '../resource/resource-mutation';
+import { folderMutation, type MutationSinkOptions, reindexMutation } from '../resource/resource-mutation';
 
 export interface CreateFolderParams {
   /** The folder name to create (dot-delimited path segments) */
@@ -17,8 +17,6 @@ export interface CreateFolderResult {
   readonly folderPath: string;
   /** Whether the folder was newly created (true) or already existed (false) */
   readonly created: boolean;
-  /** An `add-folder` when the folder was created; empty when it already existed. */
-  readonly mutations: ResourceMutation[];
 }
 
 /**
@@ -58,7 +56,11 @@ export interface CreateFolderResult {
  * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', folderAddress: 'apps.common.buttons', created: true }
  * ```
  */
-export function createFolder(collection: Collection, params: CreateFolderParams): CreateFolderResult {
+export function createFolder(
+  collection: Collection,
+  params: CreateFolderParams,
+  options: MutationSinkOptions = {},
+): CreateFolderResult {
   const { folderName, parentPath } = params;
   const { translationsFolder } = collection;
 
@@ -81,16 +83,23 @@ export function createFolder(collection: Collection, params: CreateFolderParams)
   const alreadyExists = folderAddressExists(translationsFolder, fullDotPath);
 
   // Create the directory (idempotent operation)
-  ensureDirectoryExists({
-    directoryPath: absoluteFolderPath,
-    errorContext: 'Creating folder',
-    checkWritable: true,
-  });
+  try {
+    ensureDirectoryExists({
+      directoryPath: absoluteFolderPath,
+      errorContext: 'Creating folder',
+      checkWritable: true,
+    });
+  } catch (error) {
+    if (!alreadyExists && folderAddressExists(translationsFolder, fullDotPath)) {
+      options.onMutation?.(reindexMutation(translationsFolder));
+    }
+    throw error;
+  }
+  if (!alreadyExists) options.onMutation?.(folderMutation('add-folder', translationsFolder, fullDotPath));
 
   return {
     folderAddress: fullDotPath,
     folderPath: absoluteFolderPath,
     created: !alreadyExists,
-    mutations: alreadyExists ? [] : [folderMutation('add-folder', translationsFolder, fullDotPath)],
   };
 }

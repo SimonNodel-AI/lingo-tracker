@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { deleteCollectionByName } from './delete-collection-by-name';
 import { ConfigParseError, InvalidConfigError } from '../lib/errors/lingo-tracker-error';
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import * as fs from 'node:fs';
+import { resolve } from 'node:path';
 
 vi.mock('node:fs');
 
@@ -24,9 +26,16 @@ describe('deleteCollectionByName', () => {
 
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(config, null, 2));
 
-    const result = deleteCollectionByName('spanish', { cwd: '/test' });
+    const collected: ResourceMutation[] = [];
+    const result = deleteCollectionByName('spanish', {
+      cwd: '/test',
+      onMutation: (mutation) => {
+        collected.push(mutation);
+      },
+    });
 
     expect(result.message).toBe('Collection "spanish" deleted successfully');
+    expect(collected).toEqual([]);
 
     // Check that writeFileSync was called with the updated config
     const writeCall = vi.mocked(fs.writeFileSync).mock.calls[0];
@@ -36,6 +45,24 @@ describe('deleteCollectionByName', () => {
       french: { path: './locales/fr' },
     });
     expect(writtenConfig.collections.spanish).toBeUndefined();
+  });
+
+  it('delivers a reindex after unregistering a collection with a translations folder', () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({
+        baseLocale: 'en',
+        locales: ['en'],
+        collections: { main: { translationsFolder: 'translations/main' } },
+      }),
+    );
+    const collected: ResourceMutation[] = [];
+    deleteCollectionByName('main', {
+      cwd: '/project',
+      onMutation: (mutation) => {
+        collected.push(mutation);
+      },
+    });
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: resolve('/project/translations/main') }]);
   });
 
   it('should throw a typed error with a fixed message if the config file cannot be read', () => {

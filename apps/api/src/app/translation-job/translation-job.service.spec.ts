@@ -22,7 +22,6 @@ const makeSuccessResult = (overrides: Partial<TranslateLocaleResult> = {}): Tran
   failures: [{ key: 'apps.button.ok', error: 'Rate limit exceeded' }],
   skippedKeys: [],
   warnings: [],
-  mutations: [],
   ...overrides,
 });
 
@@ -48,7 +47,7 @@ const flush = async (): Promise<void> => new Promise<void>((resolve) => setImmed
 describe('TranslationJobService', () => {
   let service: TranslationJobService;
   let mockLogger: jest.Mocked<Pick<Logger, 'error' | 'log' | 'warn'>>;
-  const mockIndex = { apply: jest.fn() };
+  const mockIndex = { sink: jest.fn() };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -173,42 +172,42 @@ describe('TranslationJobService', () => {
     ]);
   });
 
-  it.each(['completes', 'fails'])('applies only reported mutations when the job %s', async (outcome) => {
+  it.each(['completes', 'fails'])('passes the sink through when the job %s', async (outcome) => {
     const mutation: ResourceMutation = { kind: 'reindex', translationsFolder: collection.translationsFolder };
-    const mutations = [mutation];
     if (outcome === 'completes') {
       mockTranslateLocale.mockImplementationOnce(
-        (_collection: Collection, params: { onWrite?: (mutation: ResourceMutation) => void }) => {
-          params.onWrite?.(mutation);
-          return Promise.resolve(makeSuccessResult({ mutations }));
+        (_collection: Collection, params: { onMutation?: (mutation: ResourceMutation) => void }) => {
+          params.onMutation?.(mutation);
+          return Promise.resolve(makeSuccessResult());
         },
       );
     } else {
       mockTranslateLocale.mockImplementationOnce(
-        (_collection: Collection, params: { onWrite?: (mutation: ResourceMutation) => void }) => {
-          params.onWrite?.(mutation);
+        (_collection: Collection, params: { onMutation?: (mutation: ResourceMutation) => void }) => {
+          params.onMutation?.(mutation);
           return Promise.reject(new Error('later failure'));
         },
       );
     }
 
     const jobId = startJob(service);
-    expect(mockIndex.apply).not.toHaveBeenCalled();
-
     await flush();
 
     expect(service.getJob(jobId)?.status).toBe(outcome === 'completes' ? 'completed' : 'failed');
-    expect(mockIndex.apply).toHaveBeenCalledTimes(1);
-    expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
+    expect(mockTranslateLocale).toHaveBeenCalledWith(
+      collection,
+      expect.objectContaining({ onMutation: mockIndex.sink }),
+    );
+    expect(mockIndex.sink).toHaveBeenCalledWith(mutation);
   });
 
-  it('does not apply a mutation when no folder was written', async () => {
+  it('completes when no folder was written', async () => {
     mockTranslateLocale.mockResolvedValue(makeSuccessResult());
 
     startJob(service);
     await flush();
 
-    expect(mockIndex.apply).not.toHaveBeenCalled();
+    expect(mockIndex.sink).not.toHaveBeenCalled();
   });
 
   it('does not apply a mutation when the job fails before a write', async () => {
@@ -218,7 +217,7 @@ describe('TranslationJobService', () => {
     await flush();
 
     expect(service.getJob(jobId)?.status).toBe('failed');
-    expect(mockIndex.apply).not.toHaveBeenCalled();
+    expect(mockIndex.sink).not.toHaveBeenCalled();
   });
 
   it('logs the folders translateLocale could not read', async () => {

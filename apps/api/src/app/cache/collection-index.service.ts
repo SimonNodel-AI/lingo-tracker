@@ -5,6 +5,7 @@ import {
   computeTreeFingerprint,
   extractSubtree,
   loadResourceTree,
+  type MutationSink,
   type ResourceMutation,
   type ResourceTreeNode,
   readCollection,
@@ -71,8 +72,8 @@ interface IndexEntry {
 /**
  * Collection Index — the API's in-memory copy of each open collection's resource tree.
  *
- * Callers read with `tree()`, `searchPage()` and `status()`, and report their writes with
- * `apply()`. Everything else is internal: indexing on first read, dropping the copy when
+ * Callers read with `tree()`, `searchPage()` and `status()`, and pass `sink` to core writes.
+ * Everything else is internal: indexing on first read, dropping the copy when
  * the disk changed outside this process, patching the tree after a write (or dropping it
  * when a patch cannot be applied), and the memory cap.
  */
@@ -81,6 +82,15 @@ export class CollectionIndex {
   readonly #logger = new Logger(CollectionIndex.name);
   readonly #entries = new Map<string, IndexEntry>();
   #accessSequence = 0;
+
+  /** The index as a Mutation Sink. It never throws into a write. */
+  readonly sink: MutationSink = (mutation) => {
+    try {
+      this.apply([mutation]);
+    } catch (error) {
+      this.#logger.error(`Could not apply a mutation: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
 
   readonly #revalidationIntervalMs = Number(
     process.env.LINGO_TRACKER_REVALIDATE_INTERVAL_MS ?? DEFAULT_REVALIDATION_INTERVAL_MS,
@@ -147,12 +157,12 @@ export class CollectionIndex {
   /**
    * Updates every indexed collection that a write changed. A collection whose tree does not
    * match what a mutation expects (or that got a `reindex`) is dropped, and the next read
-   * indexes it again.
+   * indexes it again. Controllers pass `sink` to core and never call this directly.
    */
-  apply(mutations: readonly ResourceMutation[]): void {
+  apply(changes: readonly ResourceMutation[]): void {
     const patched = new Set<IndexEntry>();
 
-    for (const mutation of mutations) {
+    for (const mutation of changes) {
       const folder = resolve(mutation.translationsFolder);
 
       for (const entry of [...this.#entries.values()]) {
@@ -286,8 +296,8 @@ export class CollectionIndex {
 
   /**
    * Queues a fingerprint refresh for the end of the current tick, so own writes do not later
-   * read as outside changes. Bulk endpoints apply mutations once per resource in a loop, so
-   * deferring collapses a whole batch into a single scan.
+   * read as outside changes. Writes deliver one mutation per `apply` call, so deferring
+   * collapses a request into a single scan.
    */
   #scheduleFingerprintRefresh(entry: IndexEntry): void {
     if (entry.pendingFingerprintRefresh !== null) return;

@@ -32,7 +32,7 @@ describe('moveResourceCommand', () => {
     process.exitCode = undefined;
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
     vi.mocked(loadConfig).mockReturnValue(CONFIG);
-    vi.mocked(moveResource).mockResolvedValue({ movedCount: 1, warnings: [], errors: [], mutations: [] });
+    vi.mocked(moveResource).mockResolvedValue({ movedCount: 1, warnings: [], errors: [] });
   });
 
   afterEach(() => {
@@ -92,7 +92,6 @@ describe('moveResourceCommand', () => {
       movedCount: 0,
       warnings: [],
       errors: ['b.ok already exists'],
-      mutations: [],
     });
 
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });

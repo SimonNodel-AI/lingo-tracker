@@ -1,10 +1,10 @@
 import { resolve } from 'node:path';
 import { updateConfig } from '../lib/config/config-file-operations';
 import { CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
-import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
+import { reindexMutation, type MutationSinkOptions } from '../lib/resource/resource-mutation';
 import { removeBundleCollectionReferences } from './bundle-collection-references';
 
-export interface DeleteCollectionOptions {
+export interface DeleteCollectionOptions extends MutationSinkOptions {
   cwd?: string;
 }
 
@@ -18,7 +18,7 @@ export interface DeleteCollectionOptions {
 export function deleteCollectionByName(
   collectionName: string,
   options: DeleteCollectionOptions = {},
-): { message: string; mutations: ResourceMutation[] } {
+): { message: string } {
   let translationsFolder: string | undefined;
   updateConfig((config) => {
     if (!config.collections || !config.collections[collectionName]) {
@@ -34,8 +34,6 @@ export function deleteCollectionByName(
     return config;
   }, options.cwd);
 
-  return {
-    message: `Collection "${collectionName}" deleted successfully`,
-    mutations: translationsFolder === undefined ? [] : [reindexMutation(translationsFolder)],
-  };
+  if (translationsFolder !== undefined) options.onMutation?.(reindexMutation(translationsFolder));
+  return { message: `Collection "${collectionName}" deleted successfully` };
 }

@@ -1,3 +1,4 @@
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -17,6 +18,14 @@ import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { removeLocaleFromCollection } from './remove-locale-from-collection';
 
+const collected: ResourceMutation[] = [];
+const onMutation = (mutation: ResourceMutation): void => {
+  collected.push(mutation);
+};
+beforeEach(() => {
+  collected.length = 0;
+});
+
 describe('removeLocaleFromCollection', () => {
   const tempDir = useTempDir('remove-locale-');
   const folder = (): string => join(tempDir(), 'src/i18n');
@@ -34,7 +43,9 @@ describe('removeLocaleFromCollection', () => {
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
   const remove = async (name = 'main', locale = 'fr') => {
     const configFile = createConfigFileOperations({ cwd: tempDir() });
-    return removeLocaleFromCollection(openCollection(configFile.read(), name, { cwd: tempDir() }), configFile, locale);
+    return removeLocaleFromCollection(openCollection(configFile.read(), name, { cwd: tempDir() }), configFile, locale, {
+      onMutation,
+    });
   };
 
   beforeEach(() => writeConfig());
@@ -46,8 +57,8 @@ describe('removeLocaleFromCollection', () => {
       message: 'Locale "fr" removed from collection "main" successfully',
       entriesPurged: 1,
       filesUpdated: 1,
-      mutations: [{ kind: 'reindex', translationsFolder: folder() }],
     });
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: folder() }]);
     expect(readConfig().collections['main'].locales).toEqual(['en', 'de']);
     expect(entries()['ok']).toEqual({ source: 'OK', de: 'OK DE' });
     expect(meta()['ok']?.['fr']).toBeUndefined();

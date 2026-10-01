@@ -1,11 +1,20 @@
+import type { ResourceMutation } from './resource-mutation';
 import { chmodSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { readCollection } from './read-collection';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { calculateChecksum } from './checksum';
 import { relocateEntries } from './relocate-entries';
+
+const collected: ResourceMutation[] = [];
+const onMutation = (mutation: ResourceMutation): void => {
+  collected.push(mutation);
+};
+beforeEach(() => {
+  collected.length = 0;
+});
 
 vi.mock('../file-io/json-file-operations', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
@@ -29,11 +38,16 @@ describe('relocateEntries (real fs)', () => {
     });
     vi.mocked(writeJsonFile).mockClear();
 
-    const result = relocateEntries(main(), main(), [
-      { from: 'common.a', to: 'shared.a' },
-      { from: 'common.b', to: 'shared.b' },
-      { from: 'common.c', to: 'shared.c' },
-    ]);
+    const result = relocateEntries(
+      main(),
+      main(),
+      [
+        { from: 'common.a', to: 'shared.a' },
+        { from: 'common.b', to: 'shared.b' },
+        { from: 'common.c', to: 'shared.c' },
+      ],
+      { onMutation },
+    );
 
     expect(result.errors).toEqual([]);
     expect(result.moved.map(({ from, to }) => [from, to])).toEqual([
@@ -44,7 +58,7 @@ describe('relocateEntries (real fs)', () => {
     // Two folders, two files each: written once.
     expect(vi.mocked(writeJsonFile)).toHaveBeenCalledTimes(4);
     expect(keysOf(main().translationsFolder).sort()).toEqual(['common.stays', 'shared.a', 'shared.b', 'shared.c']);
-    expect(result.mutations.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
+    expect(collected.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
       ['remove', 'common.a'],
       ['remove', 'common.b'],
       ['remove', 'common.c'],
@@ -64,7 +78,7 @@ describe('relocateEntries (real fs)', () => {
       },
     });
 
-    const [moved] = relocateEntries(main(), main(), [{ from: 'common.ok', to: 'shared.ok' }]).moved;
+    const [moved] = relocateEntries(main(), main(), [{ from: 'common.ok', to: 'shared.ok' }], { onMutation }).moved;
 
     expect(moved?.entry).toMatchObject({ source: 'OK', comment: 'Button', tags: ['ui'], translations: { fr: 'Bien' } });
     expect(moved?.entry.metadata['fr']?.status).toBe('verified');
@@ -76,13 +90,16 @@ describe('relocateEntries (real fs)', () => {
   it('treats a taken destination as a collision, or replaces it with override', () => {
     seedResources(main(), { 'common.ok': { source: 'OK' }, 'shared.ok': { source: 'Taken' } });
 
-    const refused = relocateEntries(main(), main(), [{ from: 'common.ok', to: 'shared.ok' }]);
+    const refused = relocateEntries(main(), main(), [{ from: 'common.ok', to: 'shared.ok' }], { onMutation });
     expect(refused.moved).toEqual([]);
     expect(refused.collisions).toEqual([{ from: 'common.ok', to: 'shared.ok' }]);
-    expect(refused.mutations).toEqual([]);
+    expect(collected).toEqual([]);
     expect(keysOf(main().translationsFolder).sort()).toEqual(['common.ok', 'shared.ok']);
 
-    const replaced = relocateEntries(main(), main(), [{ from: 'common.ok', to: 'shared.ok' }], { override: true });
+    const replaced = relocateEntries(main(), main(), [{ from: 'common.ok', to: 'shared.ok' }], {
+      onMutation,
+      override: true,
+    });
     expect(replaced.collisions).toEqual([]);
     expect(replaced.moved[0]?.entry.source).toBe('OK');
     expect(keysOf(main().translationsFolder)).toEqual(['shared.ok']);
@@ -91,11 +108,16 @@ describe('relocateEntries (real fs)', () => {
   it('counts a key the batch moves away from as free, and never moves two entries to one key', () => {
     seedResources(main(), { 'a.k': { source: 'Outer' }, 'a.b.k': { source: 'Inner' }, 'x.dup': { source: 'Dup' } });
 
-    const result = relocateEntries(main(), main(), [
-      { from: 'a.k', to: 'a.b.k' },
-      { from: 'a.b.k', to: 'a.b.b.k' },
-      { from: 'x.dup', to: 'a.b.b.k' },
-    ]);
+    const result = relocateEntries(
+      main(),
+      main(),
+      [
+        { from: 'a.k', to: 'a.b.k' },
+        { from: 'a.b.k', to: 'a.b.b.k' },
+        { from: 'x.dup', to: 'a.b.b.k' },
+      ],
+      { onMutation },
+    );
 
     expect(result.moved.map(({ from }) => from)).toEqual(['a.k', 'a.b.k']);
     expect(result.collisions).toEqual([{ from: 'x.dup', to: 'a.b.b.k' }]);
@@ -111,10 +133,15 @@ describe('relocateEntries (real fs)', () => {
     seedResources(main(), { 'p.one': { source: 'One' }, 'q.one': { source: 'Two' }, 'r.one': { source: 'Taken' } });
 
     // q.one cannot move to r.one, so p.one cannot take q.one's place.
-    const result = relocateEntries(main(), main(), [
-      { from: 'p.one', to: 'q.one' },
-      { from: 'q.one', to: 'r.one' },
-    ]);
+    const result = relocateEntries(
+      main(),
+      main(),
+      [
+        { from: 'p.one', to: 'q.one' },
+        { from: 'q.one', to: 'r.one' },
+      ],
+      { onMutation },
+    );
 
     expect(result.moved).toEqual([]);
     expect(result.collisions.map(({ from }) => from)).toEqual(['p.one', 'q.one']);
@@ -123,10 +150,15 @@ describe('relocateEntries (real fs)', () => {
   it('swaps the entries of two folders', () => {
     seedResources(main(), { 'p.x': { source: 'P' }, 'q.x': { source: 'Q' } });
 
-    const result = relocateEntries(main(), main(), [
-      { from: 'p.x', to: 'q.x' },
-      { from: 'q.x', to: 'p.x' },
-    ]);
+    const result = relocateEntries(
+      main(),
+      main(),
+      [
+        { from: 'p.x', to: 'q.x' },
+        { from: 'q.x', to: 'p.x' },
+      ],
+      { onMutation },
+    );
 
     expect(result.collisions).toEqual([]);
     expect(result.moved.map(({ from, to }) => [from, to])).toEqual([
@@ -150,14 +182,19 @@ describe('relocateEntries (real fs)', () => {
 
       try {
         // a sends to a/b, and a/b sends to a/b/b, which cannot be written.
-        const result = relocateEntries(main(), main(), [
-          { from: 'a.k', to: 'a.b.k' },
-          { from: 'a.b.k', to: 'a.b.b.k' },
-        ]);
+        const result = relocateEntries(
+          main(),
+          main(),
+          [
+            { from: 'a.k', to: 'a.b.k' },
+            { from: 'a.b.k', to: 'a.b.b.k' },
+          ],
+          { onMutation },
+        );
 
         expect(result.moved).toEqual([]);
         expect(result.errors).toEqual([expect.stringContaining('Failed to write the move')]);
-        expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: main().translationsFolder }]);
+        expect(collected).toEqual([{ kind: 'reindex', translationsFolder: main().translationsFolder }]);
         const entries = readCollection(main()).resources.map((resource) => [resource.fullKey, resource.entry.source]);
         expect(entries.sort()).toEqual([
           ['a.b.k', 'Inner'],
@@ -178,10 +215,10 @@ describe('relocateEntries (real fs)', () => {
       chmodSync(join(target.translationsFolder, 'common'), 0o500);
 
       try {
-        const result = relocateEntries(main(), target, [{ from: 'common.ok', to: 'common.ok' }]);
+        const result = relocateEntries(main(), target, [{ from: 'common.ok', to: 'common.ok' }], { onMutation });
 
         expect(result.moved).toEqual([]);
-        expect(result.mutations).toEqual([
+        expect(collected).toEqual([
           { kind: 'reindex', translationsFolder: target.translationsFolder },
           { kind: 'reindex', translationsFolder: main().translationsFolder },
         ]);
@@ -192,6 +229,32 @@ describe('relocateEntries (real fs)', () => {
     },
   );
 
+  it('delivers destination then source reindexes on a cross-collection write failure', async () => {
+    const target = testCollection(join(root(), 'other'), { name: 'other' });
+    seedResources(main(), { 'common.ok': { source: 'OK' } });
+    const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+      '../file-io/json-file-operations',
+    );
+    const writer = vi.mocked(writeJsonFile);
+    writer.mockImplementation((options) => {
+      if (options.filePath.endsWith(join('other', 'common', 'resource_entries.json'))) {
+        throw new Error('destination write failed');
+      }
+      return actual.writeJsonFile(options);
+    });
+    let result: ReturnType<typeof relocateEntries>;
+    try {
+      result = relocateEntries(main(), target, [{ from: 'common.ok', to: 'common.ok' }], { onMutation });
+    } finally {
+      writer.mockImplementation(actual.writeJsonFile);
+    }
+    expect(result.errors).toEqual([expect.stringContaining('Failed to write the move')]);
+    expect(collected).toEqual([
+      { kind: 'reindex', translationsFolder: target.translationsFolder },
+      { kind: 'reindex', translationsFolder: main().translationsFolder },
+    ]);
+  });
+
   it('fits an entry moved into another collection to its locales', () => {
     const source = testCollection(join(root(), 'main'), { locales: ['en', 'fr', 'es'] });
     const target = testCollection(join(root(), 'other'), { name: 'other', locales: ['en', 'fr', 'de'] });
@@ -199,7 +262,7 @@ describe('relocateEntries (real fs)', () => {
       'common.ok': { source: 'OK', translations: { fr: { value: 'Bien', status: 'verified' }, es: 'Vale' } },
     });
 
-    const result = relocateEntries(source, target, [{ from: 'common.ok', to: 'common.ok' }]);
+    const result = relocateEntries(source, target, [{ from: 'common.ok', to: 'common.ok' }], { onMutation });
 
     const entry = result.moved[0]?.entry;
     expect(entry?.translations).toEqual({ fr: 'Bien', de: 'OK' });
@@ -208,7 +271,7 @@ describe('relocateEntries (real fs)', () => {
       fr: { checksum: md5('Bien'), baseChecksum: md5('OK'), status: 'verified' },
       de: { checksum: md5('OK'), baseChecksum: md5('OK'), status: 'new' },
     });
-    expect(result.mutations).toEqual([
+    expect(collected).toEqual([
       { kind: 'remove', translationsFolder: source.translationsFolder, key: 'common.ok' },
       expect.objectContaining({ kind: 'upsert', translationsFolder: target.translationsFolder, key: 'common.ok' }),
     ]);
@@ -219,7 +282,7 @@ describe('relocateEntries (real fs)', () => {
     seedResources(main(), { 'common.ok': { source: 'OK' } });
     const french = testCollection(join(root(), 'fr'), { name: 'fr', baseLocale: 'fr', locales: ['fr', 'en'] });
 
-    const result = relocateEntries(main(), french, [{ from: 'common.ok', to: 'common.ok' }]);
+    const result = relocateEntries(main(), french, [{ from: 'common.ok', to: 'common.ok' }], { onMutation });
 
     expect(result.moved).toEqual([]);
     expect(result.errors[0]).toContain('base locale');
@@ -230,13 +293,18 @@ describe('relocateEntries (real fs)', () => {
     seedResources(main(), { 'common.ok': { source: 'OK' }, 'common.fine': { source: 'Fine' } });
     writeFolderFiles(main().translationsFolder, 'broken', { entries: '{ not json' });
 
-    const result = relocateEntries(main(), main(), [
-      { from: 'common..bad', to: 'shared.bad' },
-      { from: 'common.missing', to: 'shared.missing' },
-      { from: 'common.ok', to: 'broken.ok' },
-      { from: 'common.fine', to: 'common.fine' },
-      { from: 'common.ok', to: 'shared.ok' },
-    ]);
+    const result = relocateEntries(
+      main(),
+      main(),
+      [
+        { from: 'common..bad', to: 'shared.bad' },
+        { from: 'common.missing', to: 'shared.missing' },
+        { from: 'common.ok', to: 'broken.ok' },
+        { from: 'common.fine', to: 'common.fine' },
+        { from: 'common.ok', to: 'shared.ok' },
+      ],
+      { onMutation },
+    );
 
     expect(result.errors).toHaveLength(4);
     expect(result.errors[1]).toBe('Source key not found: common.missing');

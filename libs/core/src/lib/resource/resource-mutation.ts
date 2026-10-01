@@ -4,8 +4,8 @@ import type { ResourceTreeEntry } from './load-resource-tree';
 /**
  * One change that a core write made to a translations folder.
  *
- * Each write returns the changes it made, so an in-memory view of the folder (the API's
- * Collection Index) can update itself without reading the disk again.
+ * Writes deliver changes through a Mutation Sink as the disk changes, so an in-memory view
+ * of the folder can update itself without reading the disk again.
  * - `translationsFolder` is absolute. It identifies the collection that changed.
  * - `key` is a full dot-delimited resource key (`apps.common.ok`).
  * - `path` is a dot-delimited folder path (`apps.common`).
@@ -22,6 +22,29 @@ export type ResourceMutation =
   | { readonly kind: 'add-folder'; readonly translationsFolder: string; readonly path: string }
   | { readonly kind: 'remove-folder'; readonly translationsFolder: string; readonly path: string }
   | { readonly kind: 'reindex'; readonly translationsFolder: string };
+
+export type MutationSink = (mutation: ResourceMutation) => void;
+
+export interface MutationSinkOptions {
+  /** Called as soon as a change may be on disk, whether or not the write then completes. */
+  readonly onMutation?: MutationSink;
+}
+
+/** Reports a completed folder save, or reindexes after a save that may have written one file. */
+export function saveReporting(
+  folder: { save(): unknown },
+  translationsFolder: string,
+  onMutation: MutationSink | undefined,
+  saved: () => readonly ResourceMutation[],
+): void {
+  try {
+    folder.save();
+  } catch (error) {
+    onMutation?.(reindexMutation(translationsFolder));
+    throw error;
+  }
+  if (onMutation) for (const mutation of saved()) onMutation(mutation);
+}
 
 /**
  * The mutation for a resource that was written. When the stored entry cannot be read back

@@ -11,14 +11,12 @@ import {
   assertPreparedResourceCanWrite,
   writePreparedResourceAdd,
 } from './add-resource';
-import type { ResourceMutation } from './resource-mutation';
 
 export interface AddResourcesResult {
   readonly entriesCreated: number;
   readonly created: boolean;
   readonly skippedLocales: string[];
   readonly terminology: TerminologyFindings;
-  readonly mutations: ResourceMutation[];
 }
 
 /**
@@ -32,9 +30,9 @@ export interface AddResourcesResult {
  * folder path or insufficient permissions) can therefore occur after earlier items
  * were written. Every earlier completed item remains saved in both
  * JSON files. The failing item may have created its folder and may have written
- * `resource_entries.json` without `tracker_meta.json`. There is no rollback and no
- * result or mutations are returned on that failure. The Collection Index receives no
- * mutations for those writes and catches up through disk-fingerprint revalidation.
+ * `resource_entries.json` without `tracker_meta.json`. There is no rollback or result on
+ * failure. Every earlier item's `upsert` was already delivered through `onMutation`;
+ * the failing folder delivers a `reindex` if its save started.
  */
 export async function addResources(
   collection: Collection,
@@ -65,14 +63,12 @@ export async function addResources(
   const skippedLocales = new Set<string>();
   const findings: TerminologyFinding[] = [];
   const problems = new Set<string>();
-  const mutations: ResourceMutation[] = [];
   for (const candidate of prepared) {
-    const result = writePreparedResourceAdd(collection, candidate, onExisting);
+    const result = writePreparedResourceAdd(collection, candidate, onExisting, options.onMutation);
     if (result.created) entriesCreated++;
     for (const locale of result.skippedLocales ?? []) skippedLocales.add(locale);
     findings.push(...result.terminology.findings);
     for (const problem of result.terminology.problems) problems.add(problem);
-    mutations.push(...result.mutations);
   }
 
   return {
@@ -80,6 +76,5 @@ export async function addResources(
     created: entriesCreated > 0,
     skippedLocales: [...skippedLocales],
     terminology: { findings, problems: [...problems] },
-    mutations,
   };
 }

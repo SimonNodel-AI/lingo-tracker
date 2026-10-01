@@ -2,6 +2,7 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { type MoveResourceResult, moveResource } from './move-resource';
+import type { MutationSinkOptions } from './resource-mutation';
 
 export interface MoveResourcesOperation {
   readonly source: string;
@@ -14,15 +15,14 @@ export interface MoveResourcesOperation {
 /**
  * Runs each move in order; an unavailable destination is reported for its operation
  * and later moves continue. If an operation throws, earlier completed moves remain on
- * disk but no result or mutations are returned. The Collection Index then catches up
- * through disk-fingerprint revalidation.
+ * disk and their mutations have already been delivered through `onMutation`.
  */
 export async function moveResources(
   collection: Collection,
   ops: readonly MoveResourcesOperation[],
-  options: { readonly config: LingoTrackerConfig },
+  options: { readonly config: LingoTrackerConfig } & MutationSinkOptions,
 ): Promise<MoveResourceResult> {
-  const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [], mutations: [] };
+  const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [] };
   for (const op of ops) {
     let destinationCollection: Collection | undefined;
     if (op.toCollection) {
@@ -42,16 +42,19 @@ export async function moveResources(
       }
     }
 
-    const moved = await moveResource(collection, {
-      source: op.source,
-      destination: op.destination,
-      override: op.override,
-      destinationCollection,
-    });
+    const moved = await moveResource(
+      collection,
+      {
+        source: op.source,
+        destination: op.destination,
+        override: op.override,
+        destinationCollection,
+      },
+      { onMutation: options.onMutation },
+    );
     result.movedCount += moved.movedCount;
     result.warnings.push(...moved.warnings);
     result.errors.push(...moved.errors);
-    result.mutations.push(...moved.mutations);
   }
   return result;
 }
