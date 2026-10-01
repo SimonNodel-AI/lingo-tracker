@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
+import { assertTranslationStatusList } from '../resource/translation-status-input';
 import { filterResources, loadResources, validateBasePropertyName, validateOutputDirectory } from './export-common';
 import { generateExportSummary } from './export-summary';
 import { exportToJson } from './export-to-json';
@@ -11,7 +12,9 @@ import { exportToXliff } from './export-to-xliff';
 import type { ExportOptions, ExportResult } from './types';
 
 /** Options for {@link runExport}. `locales` narrows the export; unknown and base locales are ignored. */
-export type ExportRunOptions = Omit<ExportOptions, 'collections' | 'outputDirectory'> & {
+export type ExportRunOptions = Omit<ExportOptions, 'collections' | 'outputDirectory' | 'status'> & {
+  /** Status strings are checked at this boundary before the export starts. */
+  status?: readonly string[];
   /** Explicit output path, relative to cwd when needed. */
   outputDirectory?: string;
   /** Configured export folder, used when outputDirectory is absent. */
@@ -75,6 +78,12 @@ export async function runExport(
   options: ExportRunOptions,
 ): Promise<ExportRunResult> {
   if (options.basePropertyName !== undefined) validateBasePropertyName(options.basePropertyName);
+  const status = options.status;
+  let validatedStatus: ExportOptions['status'];
+  if (status !== undefined) {
+    assertTranslationStatusList(status);
+    validatedStatus = [...status];
+  }
   const outputDirectory = resolveExportOutputDirectory(options.outputDirectory, options.exportFolder, options.cwd);
   validateOutputDirectory(outputDirectory);
   const targetLocales = exportTargetLocales(collections, options.locales);
@@ -82,6 +91,7 @@ export async function runExport(
   const augmentProtectedTerms = options.augmentProtectedTerms !== false;
   const runOptions: ExportOptions = {
     ...options,
+    status: validatedStatus,
     outputDirectory,
     collections: collections.map((collection) => collection.name),
     locales: targetLocales,
@@ -129,7 +139,7 @@ export async function runExport(
           .flatMap((collection) => resourcesByCollection.get(collection.name) ?? [])
           .map((resource) => [resource.fullKey, resource]),
       );
-      const filtered = filterResources([...eligible.values()], locale, options.status, options.tags, {
+      const filtered = filterResources([...eligible.values()], locale, validatedStatus, options.tags, {
         augmentProtectedTerms,
         baseLocale,
       });

@@ -1,6 +1,6 @@
-import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
+import type { AddResourceParams, AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
-import { isTranslationStatus, TRANSLATION_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
+import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { type Ask, CommandCancelledError, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, parseCommaSeparatedList, printTerminologyFindings } from '../utils';
@@ -8,7 +8,7 @@ import { ConsoleFormatter, parseCommaSeparatedList, printTerminologyFindings } f
 interface TranslationInput {
   locale: string;
   value: string;
-  status?: TranslationStatus;
+  status?: unknown;
 }
 
 export interface AddResourceOptions {
@@ -76,7 +76,8 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
       comment: answers.comment || undefined,
       tags: tagsArray.length > 0 ? tagsArray : undefined,
       targetFolder,
-      translations,
+      // Core checks statuses after JSON shape validation and before writing.
+      translations: translations as AddResourceParams['translations'],
     };
     let result: AddResourceResult;
     try {
@@ -132,10 +133,8 @@ function isTranslationInput(item: unknown): item is TranslationInput {
   if (typeof item !== 'object' || item === null) {
     return false;
   }
-  const { locale, value, status } = item as Record<string, unknown>;
-  return (
-    typeof locale === 'string' && typeof value === 'string' && (status === undefined || isTranslationStatus(status))
-  );
+  const { locale, value } = item as Record<string, unknown>;
+  return typeof locale === 'string' && typeof value === 'string';
 }
 
 /** Interactive only: offers a translation and a status for each target locale. */
@@ -177,12 +176,6 @@ async function promptForTranslations(
       ],
       initial: 1, // Default to 'translated'
     });
-    if (!isTranslationStatus(statusPrompt.value)) {
-      throw new Error(
-        `Invalid translation status "${String(statusPrompt.value)}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
-      );
-    }
-
     translations.push({
       locale,
       value:

@@ -20,10 +20,10 @@ export function editCollectionTags(
   }
   const problem = listEditProblem(edit);
   if (problem === 'conflict') {
-    throw new InvalidCollectionError(ErrorMessages.collectionTagEditConflict());
+    throw new InvalidCollectionError(ErrorMessages.collectionTagEditConflict(), { problem: 'tag-conflict' });
   }
   if (problem === 'missing') {
-    throw new InvalidCollectionError(ErrorMessages.collectionTagEditMissing());
+    throw new InvalidCollectionError(ErrorMessages.collectionTagEditMissing(), { problem: 'tag-missing' });
   }
 
   const { sourceConfig: config, name } = collection;

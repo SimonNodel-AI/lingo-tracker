@@ -122,22 +122,37 @@ describe('editCollectionCommand', () => {
   });
 
   it('exits 1 when --set-tags is combined with --add-tag', async () => {
+    mockEditCollectionTags.mockImplementationOnce(() => {
+      throw new InvalidCollectionError('A replacement list cannot be combined with additions or removals', {
+        problem: 'tag-conflict',
+      });
+    });
     await editCollectionCommand('myApp', { setTags: 'foo', addTag: ['bar'] });
-    expect(mockEditCollectionTags).not.toHaveBeenCalled();
+    expect(mockEditCollectionTags).toHaveBeenCalledOnce();
     expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when --set-tags is combined with --remove-tag', async () => {
+    mockEditCollectionTags.mockImplementationOnce(() => {
+      throw new InvalidCollectionError('A replacement list cannot be combined with additions or removals', {
+        problem: 'tag-conflict',
+      });
+    });
     await editCollectionCommand('myApp', { setTags: 'foo', removeTag: ['existing-tag'] });
-    expect(mockEditCollectionTags).not.toHaveBeenCalled();
+    expect(mockEditCollectionTags).toHaveBeenCalledOnce();
     expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when no options provided', async () => {
+    mockEditCollectionTags.mockImplementationOnce(() => {
+      throw new InvalidCollectionError('A tag edit needs a replacement, addition, or removal', {
+        problem: 'tag-missing',
+      });
+    });
     await editCollectionCommand('myApp', {});
-    expect(mockEditCollectionTags).not.toHaveBeenCalled();
+    expect(mockEditCollectionTags).toHaveBeenCalledOnce();
     expect(console.error).toHaveBeenCalledWith('❌ Provide at least one of --add-tag, --remove-tag, or --set-tags');
     expect(process.exitCode).toBe(1);
   });

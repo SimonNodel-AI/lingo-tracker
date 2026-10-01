@@ -55,12 +55,20 @@ describe('editCollectionTags', () => {
     }
     expect(thrown).toBeInstanceOf(InvalidCollectionError);
     expect((thrown as InvalidCollectionError).kind).toBe('invalid');
+    expect((thrown as InvalidCollectionError).problem).toBe('tag-conflict');
     expect(read()).toBe(before);
   });
 
   it('refuses an empty edit without writing', () => {
     const before = read();
-    expect(() => edit({})).toThrow(InvalidCollectionError);
+    let thrown: unknown;
+    try {
+      edit({});
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(InvalidCollectionError);
+    expect((thrown as InvalidCollectionError).problem).toBe('tag-missing');
     expect(read()).toBe(before);
   });
 });

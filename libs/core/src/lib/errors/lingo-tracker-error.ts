@@ -142,12 +142,25 @@ export class ProtectedTermsFileError extends LingoTrackerError {
   }
 }
 
+export type ProjectTermsEditProblem =
+  | 'protected-conflict'
+  | 'protected-missing'
+  | 'protected-file-path'
+  | 'preferred-missing'
+  | 'preferred-conflict'
+  | 'preferred-remove-shape'
+  | 'preferred-replacement-shape'
+  | 'preferred-upsert-shape'
+  | 'protected-replacement-conflict';
+
 /** A Project Terms edit has missing or conflicting options. */
 export class InvalidProjectTermsEditError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
+  readonly problem: ProjectTermsEditProblem;
 
-  constructor(message: string) {
+  constructor(message: string, problem: ProjectTermsEditProblem) {
     super(message, 'INVALID_PROJECT_TERMS_EDIT');
+    this.problem = problem;
   }
 }
 
@@ -217,14 +230,18 @@ export class ReadOnlyCollectionError extends LingoTrackerError {
   }
 }
 
+export type CollectionTagEditProblem = 'tag-conflict' | 'tag-missing';
+
 /** A collection record cannot be stored as given (for example a blank `translationsFolder`). */
 export class InvalidCollectionError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
   /** Set for a field-shape error whose API message includes the `collection.` prefix. */
   readonly field?: string;
-  constructor(message: string, options?: { readonly field?: string }) {
+  readonly problem?: CollectionTagEditProblem;
+  constructor(message: string, options?: { readonly field?: string; readonly problem?: CollectionTagEditProblem }) {
     super(message, 'INVALID_COLLECTION');
     this.field = options?.field;
+    this.problem = options?.problem;
   }
 }
 
