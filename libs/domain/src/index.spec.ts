@@ -17,6 +17,7 @@ describe('domain public surface', () => {
       'autoFixICUPlaceholders',
       'autoFixTranslocoPlaceholders',
       'buildResourceSummary',
+      'bundleKeyToConstantName',
       'bundleOutputFile',
       'canImportLocale',
       'checkBundleDefinition',

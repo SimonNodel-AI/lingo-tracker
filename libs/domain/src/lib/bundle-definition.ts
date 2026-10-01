@@ -467,3 +467,13 @@ function validateRule(rule: EntrySelectionRule, ruleIndex: number, label: string
     );
   }
 }
+
+/**
+ * Derives the default token constant name from a bundle key: SCREAMING_SNAKE_CASE plus a `_TOKENS` suffix.
+ *
+ * - "common" -> "COMMON_TOKENS"
+ * - "core-ui" -> "CORE_UI_TOKENS"
+ */
+export function bundleKeyToConstantName(bundleKey: string): string {
+  return `${bundleKey.replace(/-/g, '_').toUpperCase()}_TOKENS`;
+}

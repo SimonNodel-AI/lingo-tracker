@@ -54,7 +54,7 @@ libs/core/src/lib/bundle/
 └── type-generation/
     ├── generate-types.ts       # generateBundleTypes(): writes the type file from the selected keys
     ├── hierarchy-builder.ts    # buildTypeHierarchy(), serializeHierarchy()
-    ├── key-transformer.ts      # segmentToPropertyName(), bundleKeyToConstantName(), constantNameToTypeName()
+    ├── key-transformer.ts      # segmentToPropertyName(), constantNameToTypeName()
     └── file-header.ts          # generateFileHeader(): auto-generated file comment block
 ```
 
@@ -570,7 +570,7 @@ The TypeScript constant name and its companion type alias follow a three-step re
 
 1. **CLI `--token-constant-name` flag** (highest priority) — must be a valid JavaScript identifier; validated by `validateJavaScriptIdentifier()`.
 2. **`tokenConstantName` in `BundleDefinition`** — same validation applies.
-3. **Derived from the bundle key** (fallback) — `bundleKeyToConstantName()`: replaces hyphens with underscores, uppercases, appends `_TOKENS`. Example: `"core-ui"` → `"CORE_UI_TOKENS"`.
+3. **Derived from the bundle key** (fallback) — `bundleKeyToConstantName()` (in `@simoncodes-ca/domain`, shared with the Tracker bundle dialog): replaces hyphens with underscores, uppercases, appends `_TOKENS`. Example: `"core-ui"` → `"CORE_UI_TOKENS"`.
 
 The companion `export type` name is derived from the resolved constant name by `constantNameToTypeName()`:
 

@@ -1,25 +1,6 @@
-import {
-  bundleKeyToConstantName,
-  constantNameToTypeName,
-  segmentToPropertyName,
-  splitKeyIntoSegments,
-} from './key-transformer';
+import { constantNameToTypeName, segmentToPropertyName, splitKeyIntoSegments } from './key-transformer';
 
 describe('Key Transformer', () => {
-  describe('bundleKeyToConstantName', () => {
-    it('should convert simple bundle key to constant name', () => {
-      expect(bundleKeyToConstantName('common')).toBe('COMMON_TOKENS');
-    });
-
-    it('should convert hyphenated bundle key to constant name', () => {
-      expect(bundleKeyToConstantName('core-ui')).toBe('CORE_UI_TOKENS');
-    });
-
-    it('should handle mixed case bundle keys', () => {
-      expect(bundleKeyToConstantName('adminPanel')).toBe('ADMINPANEL_TOKENS');
-    });
-  });
-
   describe('segmentToPropertyName', () => {
     it('should convert lowercase segment to uppercase', () => {
       expect(segmentToPropertyName('buttons')).toBe('BUTTONS');

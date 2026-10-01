@@ -25,7 +25,6 @@ Return to [architecture README](README.md).
   - [Multiselect Helpers (`prompt-utils.ts`)](#multiselect-helpers-prompt-utilsts)
   - [Output Formatting (`console-formatter.ts`)](#output-formatting-console-formatterts)
   - [String Parsers (`string-parsers.ts`)](#string-parsers-string-parsersts)
-  - [Result Aggregator (`result-aggregator.ts`)](#result-aggregator-result-aggregatorts)
 
 ---
 
@@ -427,12 +426,6 @@ Prompting itself is done by the runner (`prompts` in the spec, `ctx.ask` in `run
 ### String Parsers (`string-parsers.ts`)
 
 `parseCommaSeparatedList(input)` — splits a comma-separated string into a trimmed, non-empty `string[]`. Returns `undefined` for empty or missing input. Used by commands that accept multi-value flags like `--locale en,fr,de` and `--key key1,key2`.
-
-`parseCommaSeparatedListRequired(input, fieldName)` — same, but throws if the result is empty. Used when at least one value is mandatory.
-
-### Result Aggregator (`result-aggregator.ts`)
-
-`aggregateNumericFields<T>(results, numericFields)` — sums a specified list of numeric fields across an array of result objects. Normalization totals are now computed by core `normalizeCollections`; this utility remains available to other CLI callers.
 
 ---
 

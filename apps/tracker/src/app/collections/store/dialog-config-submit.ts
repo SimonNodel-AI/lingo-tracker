@@ -2,24 +2,8 @@ import type { DestroyRef, WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Observable } from 'rxjs';
 import type { AbstractControl, FormControl, ValidationErrors } from '@angular/forms';
-import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
-
-/** The part of a refused Config Write a form needs to render. */
-export interface ConfigRefusal {
-  kind: 'conflict' | 'invalid' | 'other';
-  /** API details survive every refusal kind; a caller decides which ones to show. */
-  details: readonly unknown[];
-  error: unknown;
-}
-
-export function classifyConfigRefusal(error: unknown): ConfigRefusal {
-  if (error instanceof ApiError) {
-    if (error.kind === 'conflict') return { kind: 'conflict', details: error.details, error };
-    if (error.kind === 'invalid') return { kind: 'invalid', details: error.details, error };
-    return { kind: 'other', details: error.details, error };
-  }
-  return { kind: 'other', details: [], error };
-}
+import { apiErrorMessage } from '../../shared/api-error/api-error';
+import { type ConfigRefusal, classifyConfigRefusal } from './config-write';
 
 /**
  * Dialog Config Submit: owns the close lock and subscription for one cold Config Write.
