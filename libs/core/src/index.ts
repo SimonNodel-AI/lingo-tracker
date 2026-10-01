@@ -1,9 +1,10 @@
 // The public surface of @simoncodes-ca/core: the Node-side operations the API and CLI call.
-// Only names with a consumer outside this library are listed, plus the types their signatures use.
+// Only names with an outside consumer, plus the types those names' signatures need, are listed.
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Operations: resources
 export { addResource, addResources, deleteResource, editResource, moveResource, moveResources } from './lib/resource';
+export type { AddResourceOptions, ExistingResourcePolicy } from './lib/resource';
 
 // Operations: folders
 export { createFolder, deleteFolder, moveFolder } from './lib/folder';
@@ -22,10 +23,11 @@ export {
 export {
   addBundleDefinition,
   deleteBundleDefinition,
-  generateBundle,
   generateBundles,
-  validateBundleLocales,
-  validateGenerateBundleRequest,
+  generatePreparedBundle,
+  prepareBundleRun,
+  type PreparedBundleRun,
+  type PrepareBundleRunParams,
   planBundle,
   updateBundleDefinition,
 } from './lib/bundle';
@@ -37,10 +39,6 @@ export {
 } from './lib/import';
 
 // Operations: export
-export {
-  validateBasePropertyName,
-  validateOutputDirectory,
-} from './lib/export/export-common';
 export { exportTargetLocales, runExport } from './lib/export/run-export';
 
 // Operations: glossary
@@ -54,7 +52,7 @@ export {
   translateExistingResource,
   translateLocale,
 } from './lib/translation';
-export { generateValidationSummary, runValidate, validateResources } from './lib/validate';
+export { runValidate } from './lib/validate';
 export type { ValidateRunOptions, ValidateRunResult } from './lib/validate';
 
 // Collection & config
@@ -63,46 +61,32 @@ export type { LingoTrackerConfig } from './config/lingo-tracker-config';
 export type { TranslationConfig } from './config/translation-config';
 export { CONFIG_FILENAME, DEFAULT_CONFIG } from './constants';
 export {
-  assertProtectedTerms,
   type Collection,
   displayTermPath,
-  editPreferredTerminology,
-  editProtectedTerms,
   initConfig,
-  readProtectedTermsTarget,
+  updateProjectTerms,
   type LoadPreferredTerminologyResult,
   loadConfig,
   loadPreferredTerminology,
   openCollection,
   type ResolvedProtectedTerms,
-  readCollectionProtectedTerms,
-  readGlobalProtectedTerms,
-  resolveCollectionProtectedTermsFilePath,
-  resolveGlobalProtectedTermsFilePath,
-  resolvePreferredTerminologyFilePath,
   resolveProtectedTermsForConfig,
-  setCollectionProtectedTermsFile,
-  setGlobalProtectedTerms,
-  setGlobalProtectedTermsFile,
   type StoredProtectedTerms,
   type TermFile,
   type TermFiles,
-  writePreferredTerminology,
 } from './lib/config';
 
 // Project Terms: the protected terms and preferred terminology in force for an opened collection
-export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './lib/config';
+export type { TerminologyFindings } from './lib/config';
 
 // ResourceFolder: one folder's entries and metadata, loaded and saved as a unit
 export {
   type EntryDetails,
   type NormalizeEntryReport,
   openResourceFolder,
-  type ResolvedResourcePaths,
   type ResourceFolder,
   type ResourceFolderEntry,
   type ResourceFolderSaveResult,
-  resolveResourcePaths,
 } from './lib/resource';
 
 // Collection Reader: every entry of a collection, read through ResourceFolder
@@ -117,7 +101,8 @@ export {
 // Read models: the resource tree, Resource Search and fingerprints behind the API's CollectionIndex and CLI find-similar
 export {
   computeTreeFingerprint,
-  clampSearchLimit,
+  searchPage,
+  type SearchPage,
   extractResourcesRecursively,
   extractSubtree,
   type FolderChild,
@@ -126,7 +111,6 @@ export {
   type ResourceMutation,
   type ResourceTreeEntry,
   type ResourceTreeNode,
-  reindexMutation,
   type SearchableResource,
   type SearchMode,
   type SearchOptions,
@@ -147,6 +131,8 @@ export {
   BundleNotFoundError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
+  CollectionRenameBundleConflictError,
+  CollectionRequiredByBundleError,
   ConfigNotFoundError,
   ConfigParseError,
   type ErrorKind,
@@ -157,6 +143,7 @@ export {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -203,12 +190,7 @@ export type {
   UpdateBundleDefinitionOptions,
 } from './lib/bundle';
 export type { LoadConfigOptions, OpenCollectionOptions } from './lib/config';
-export type {
-  PreferredTerminologyEdit,
-  PreferredTerminologyEditResult,
-  SetProtectedTermsOptions,
-  SetProtectedTermsResult,
-} from './lib/config';
+export type { PreferredTerminologyEditResult } from './lib/config';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 export type { ExportFormat, ExportResult } from './lib/export/types';
 export type {
@@ -238,7 +220,6 @@ export type {
   ComputeTreeFingerprintOptions,
   LoadResourceTreeOptions,
   OpenResourceFolderOptions,
-  ResourcePathResolutionParams,
 } from './lib/resource';
 export type {
   OpenTranslatorOptions,
@@ -264,3 +245,9 @@ export type {
   ResourceEntryMetadata,
   ResourceTranslation,
 } from './lib/resource';
+
+export type {
+  ProjectTermsUpdate,
+  ProjectTermsUpdateResult,
+  ProjectTermsUpdateView,
+} from './lib/config/update-project-terms';

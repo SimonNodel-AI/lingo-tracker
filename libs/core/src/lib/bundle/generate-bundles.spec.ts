@@ -47,6 +47,32 @@ describe('generateBundles', () => {
     expect(result.totals.bundlesProcessed).toBe(1);
   });
 
+  it('keeps a saved bundle running when one named collection is gone', async () => {
+    const populated = populatedConfig();
+    const result = await generateBundles(
+      {
+        ...populated,
+        bundles: {
+          first: {
+            bundleName: 'first-{locale}',
+            dist: 'out',
+            collections: [
+              { name: 'deleted', entriesSelectionRules: 'All' },
+              { name: 'common', entriesSelectionRules: 'All' },
+            ],
+          },
+        },
+      },
+      { names: ['first'], cwd: cwd() },
+    );
+
+    expect(result.outcomes[0]?.error).toBeUndefined();
+    expect(result.outcomes[0]?.result?.warnings).toEqual(["Collection 'deleted' not found in config"]);
+    expect(result.outcomes[0]?.result?.writtenFiles).toEqual(['out/first-en.json']);
+    expect(result.totals).toEqual({ bundlesProcessed: 1, filesGenerated: 1, warningsCount: 1 });
+    expect(existsSync(join(cwd(), 'out/first-en.json'))).toBe(true);
+  });
+
   it('refuses a constant-name override for more than one bundle before writing', async () => {
     await expect(
       generateBundles(config, { cwd: cwd(), overrides: { tokenConstantName: 'TOKENS' } }),

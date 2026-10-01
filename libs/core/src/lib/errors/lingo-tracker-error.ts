@@ -133,6 +133,15 @@ export class ProtectedTermsFileError extends LingoTrackerError {
   }
 }
 
+/** A Project Terms edit has missing or conflicting options. */
+export class InvalidProjectTermsEditError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+
+  constructor(message: string) {
+    super(message, 'INVALID_PROJECT_TERMS_EDIT');
+  }
+}
+
 // --- Collections -------------------------------------------------------------
 
 /** The config has no collection with this name. */
@@ -154,6 +163,37 @@ export class CollectionAlreadyExistsError extends LingoTrackerError {
   constructor(collectionName: string) {
     super(ErrorMessages.collectionAlreadyExists(collectionName), 'COLLECTION_ALREADY_EXISTS');
     this.collectionName = collectionName;
+  }
+}
+
+/** Removing this collection would leave one or more bundles empty. */
+export class CollectionRequiredByBundleError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
+  readonly collectionName: string;
+  readonly bundleNames: readonly string[];
+
+  constructor(collectionName: string, bundleNames: readonly string[]) {
+    super(ErrorMessages.collectionRequiredByBundles(collectionName, bundleNames), 'COLLECTION_REQUIRED_BY_BUNDLE');
+    this.collectionName = collectionName;
+    this.bundleNames = bundleNames;
+  }
+}
+
+/** A rename target already appears in explicit bundle references. */
+export class CollectionRenameBundleConflictError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
+  readonly collectionName: string;
+  readonly newCollectionName: string;
+  readonly bundleNames: readonly string[];
+
+  constructor(collectionName: string, newCollectionName: string, bundleNames: readonly string[]) {
+    super(
+      ErrorMessages.collectionRenameBundleConflict(collectionName, newCollectionName, bundleNames),
+      'COLLECTION_RENAME_BUNDLE_CONFLICT',
+    );
+    this.collectionName = collectionName;
+    this.newCollectionName = newCollectionName;
+    this.bundleNames = bundleNames;
   }
 }
 

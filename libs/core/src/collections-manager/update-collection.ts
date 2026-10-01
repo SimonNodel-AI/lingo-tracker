@@ -8,6 +8,7 @@ import { reindexMutation, type ResourceMutation } from '../lib/resource/resource
 import { assertValidLocale } from './assert-valid-locale';
 import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
+import { renameBundleCollectionReferences } from './bundle-collection-references';
 
 export interface UpdateCollectionOptions {
   cwd?: string;
@@ -24,6 +25,8 @@ export interface UpdateCollectionOptions {
  * `baseLocale` or `protectedTermsFile` (the collection inherits), and a patch that does not mention `translation`, `exportFolder` or `importFolder`
  * leaves them as they are. The stored record is then re-minimized: a value equal to the
  * global one is stored as inherited.
+ * A rename also rewrites every explicit bundle reference in the same config write. If a bundle
+ * already references the new name, the rename is refused before locale or config files change.
  *
  * The translation files follow the collection's effective locales (its own list, else the
  * global one): every locale the update adds is seeded, every locale it removes is purged,
@@ -42,6 +45,7 @@ export interface UpdateCollectionOptions {
  *
  * @throws {CollectionNotFoundError} No collection named `collectionName`.
  * @throws {CollectionAlreadyExistsError} A collection named `newCollectionName` exists.
+ * @throws {CollectionRenameBundleConflictError} A bundle already references `newCollectionName`.
  * @throws {InvalidCollectionError} The resulting `translationsFolder` is missing or blank, or a field is `null`.
  * @throws {ReadOnlyCollectionError} The locales change and the collection is read-only.
  * @throws {InvalidLocaleError} An added locale is malformed.
@@ -85,6 +89,7 @@ export async function changeCollection(
   const effectivePatch = targetLocales && sugarCurrent ? { ...patch, locales: targetLocales(sugarCurrent) } : patch;
   const nextConfig = patchCollectionEntry(config, collectionName, effectivePatch, newCollectionName);
   const targetName = newCollectionName || collectionName;
+  renameBundleCollectionReferences(nextConfig, collectionName, targetName);
   const current = sugarCurrent ?? openCollection(config, collectionName, { cwd });
   const next = openCollection(nextConfig, targetName, { cwd });
   const { added, removed } = diffLocales(current, next);

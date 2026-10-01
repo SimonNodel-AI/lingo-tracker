@@ -12,6 +12,8 @@ import {
   BundleNotFoundError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
+  CollectionRenameBundleConflictError,
+  CollectionRequiredByBundleError,
   ConfigNotFoundError,
   ConfigParseError,
   FolderMoveIntoDescendantError,
@@ -19,6 +21,7 @@ import {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -90,6 +93,26 @@ describe('toHttpException', () => {
       new CollectionAlreadyExistsError('app'),
       409,
       { message: 'Collection "app" already exists', error: 'Conflict', statusCode: 409 },
+    ],
+    [
+      new CollectionRequiredByBundleError('app', ['main', 'other']),
+      409,
+      {
+        message:
+          'Collection "app" is the only collection of bundle(s) "main", "other". Remove it from those bundles or delete them first.',
+        error: 'Conflict',
+        statusCode: 409,
+      },
+    ],
+    [
+      new CollectionRenameBundleConflictError('app', 'legacy', ['main', 'other']),
+      409,
+      {
+        message:
+          'Cannot rename collection "app" to "legacy": bundle(s) "main", "other" already reference "legacy". Remove those references first.',
+        error: 'Conflict',
+        statusCode: 409,
+      },
     ],
     [
       new AutoTranslationDisabledError('app'),
@@ -172,6 +195,15 @@ describe('toHttpException', () => {
       new InvalidCollectionError('translationsFolder is required'),
       400,
       { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
+      new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately'),
+      400,
+      {
+        message: '--add and --remove cannot be combined; run them separately',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
     ],
     [
       new ProtectedTermsFileNotSetError('app'),

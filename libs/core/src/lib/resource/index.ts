@@ -1,6 +1,12 @@
 // Resource operations, folder files, and the read models built from them.
 
-export { type AddResourceParams, type AddResourceResult, addResource } from './add-resource';
+export {
+  type AddResourceOptions,
+  type AddResourceParams,
+  type AddResourceResult,
+  type ExistingResourcePolicy,
+  addResource,
+} from './add-resource';
 export { type AddResourcesResult, addResources } from './add-resources';
 export { type DeleteResourceParams, type DeleteResourceResult, deleteResource } from './delete-resource';
 export { type EditResourceChanges, type EditResourceResult, editResource } from './edit-resource';
@@ -25,11 +31,6 @@ export {
   type StoredResource,
 } from './read-collection';
 export {
-  type ResolvedResourcePaths,
-  type ResourcePathResolutionParams,
-  resolveResourcePaths,
-} from './resource-file-paths';
-export {
   type EntryDetails,
   type NormalizeEntryReport,
   type OpenResourceFolderOptions,
@@ -46,7 +47,8 @@ export {
   type SearchOptions,
   type SearchResult,
   searchResources,
-  clampSearchLimit,
+  searchPage,
+  type SearchPage,
   treeResources,
 } from './search';
 export {

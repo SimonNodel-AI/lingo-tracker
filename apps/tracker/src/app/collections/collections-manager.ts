@@ -518,6 +518,6 @@ export class CollectionsManager {
    * Navigates to the translation browser for the given collection.
    */
   navigateToBrowser(collectionName: string): void {
-    this.#router.navigate(['/browser', encodeURIComponent(collectionName)]);
+    this.#router.navigate(['/browser', collectionName]);
   }
 }

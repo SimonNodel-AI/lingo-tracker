@@ -394,15 +394,15 @@ describe('planBundle (real fs)', () => {
     });
   });
 
-  it('warns about an unknown collection exactly once across locales', () => {
-    const plan = planBundle({
-      bundleKey: 'main',
-      bundleDefinition: { ...definition, collections: [{ name: 'ghost', entriesSelectionRules: 'All' }] },
-      config: config({}),
-      cwd: root(),
-    });
-
-    expect(plan.warnings.filter((warning) => warning === "Collection 'ghost' not found in config")).toHaveLength(1);
+  it('rejects an unknown collection before planning locales', () => {
+    expect(() =>
+      planBundle({
+        bundleKey: 'main',
+        bundleDefinition: { ...definition, collections: [{ name: 'ghost', entriesSelectionRules: 'All' }] },
+        config: config({}),
+        cwd: root(),
+      }),
+    ).toThrow("Invalid bundle definition: Collection 'ghost' does not exist in the configuration.");
   });
 
   it('defaults cwd to process.cwd() for exists checks', () => {

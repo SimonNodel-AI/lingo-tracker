@@ -4,6 +4,8 @@ import {
   bundleOutputFile,
   checkBundleDefinition,
   findBundleDefinition,
+  hasBundleCollections,
+  hasBundleRules,
   hasLocalePlaceholder,
   hasTypeDistConfigured,
   isTypeScriptFile,
@@ -21,6 +23,22 @@ const validDefinition = (overrides: Partial<BundleDefinition> = {}): BundleDefin
   dist: './dist/i18n',
   collections: 'All',
   ...overrides,
+});
+
+describe('bundle selection requirements', () => {
+  it('accepts All or a non-empty collection list', () => {
+    expect(hasBundleCollections('All')).toBe(true);
+    expect(hasBundleCollections([{ name: 'common', entriesSelectionRules: 'All' }])).toBe(true);
+    expect(hasBundleCollections([])).toBe(false);
+    expect(hasBundleCollections('other')).toBe(false);
+  });
+
+  it('accepts All or a non-empty rule list', () => {
+    expect(hasBundleRules('All')).toBe(true);
+    expect(hasBundleRules([{ matchingPattern: '*' }])).toBe(true);
+    expect(hasBundleRules([])).toBe(false);
+    expect(hasBundleRules('other')).toBe(false);
+  });
 });
 
 describe('validateBundleKey', () => {

@@ -90,6 +90,24 @@ export function clampSearchLimit(requested: number): number {
   return Number.isInteger(requested) && requested > 0 ? Math.min(requested, 500) : DEFAULT_LIMIT;
 }
 
+export interface SearchPage {
+  readonly results: SearchResult[];
+  readonly limited: boolean;
+  readonly limit: number;
+}
+
+/** Fetches one extra hit so the caller can report whether the page was limited. */
+export function searchPage(
+  search: (options: SearchOptions) => SearchResult[],
+  request: { readonly maxResults?: unknown; readonly mode?: unknown },
+): SearchPage {
+  const limit = clampSearchLimit(Number(request.maxResults));
+  const mode = request.mode === 'similar' ? 'similar-value' : 'text';
+  const hits = search({ mode, limit: limit + 1 });
+  const limited = hits.length > limit;
+  return { results: limited ? hits.slice(0, limit) : hits, limited, limit };
+}
+
 const TEXT_RANK: Record<MatchType, number> = {
   'exact-key': 1,
   'exact-value': 2,

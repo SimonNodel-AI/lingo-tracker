@@ -435,6 +435,8 @@ The list for a resource combines the global file with its collection's file, ded
 
 This deliberately avoids `normalizeTags()`, which lowercases and hyphenates. `normalizeTags()` would turn `iPhone` into `iphone` and `Node.js` into `node-js`. That would destroy the exact thing this feature protects.
 
+For list edits, domain `listEditProblem()` checks the shared add/remove/set conflict rule, and `mergeListEdit()` applies the merge. Core gives it `normalizeProtectedTerms()` here and `normalizeTags()` for collection tags, so the two lists keep their own value rules.
+
 ### Matching
 
 `buildProtectedTermRegex(term, { caseInsensitive })` escapes the term for use in a regular expression. `Node.js` and `C++` therefore match literally. It then wraps the term in Unicode lookarounds, `(?<![\p{L}\p{N}])…(?![\p{L}\p{N}])`.

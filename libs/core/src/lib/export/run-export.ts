@@ -1,15 +1,26 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { DEFAULT_CONFIG } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
-import { filterResources, loadResources } from './export-common';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
+import { filterResources, loadResources, validateBasePropertyName, validateOutputDirectory } from './export-common';
 import { generateExportSummary } from './export-summary';
 import { exportToJson } from './export-to-json';
 import { exportToXliff } from './export-to-xliff';
 import type { ExportOptions, ExportResult } from './types';
 
 /** Options for {@link runExport}. `locales` narrows the export; unknown and base locales are ignored. */
-export type ExportRunOptions = Omit<ExportOptions, 'collections'>;
+export type ExportRunOptions = Omit<ExportOptions, 'collections' | 'outputDirectory'> & {
+  /** Explicit output path, relative to cwd when needed. */
+  outputDirectory?: string;
+  /** Configured export folder, used when outputDirectory is absent. */
+  exportFolder?: string;
+  /** Project root for relative output paths. Default: process.cwd(). */
+  cwd?: string;
+  /** Called after preconditions pass, before any resources are read. */
+  onStart?: (plan: { outputDirectory: string; locales: readonly string[] }) => void;
+};
 
 export interface ExportLocaleResult {
   locale: string;
@@ -37,6 +48,15 @@ export function exportTargetLocales(collections: readonly Collection[], requeste
   return [...locales].filter((locale) => !requested || requested.includes(locale));
 }
 
+/** Resolves an explicit path, the configured folder, or the shared default against the project root. */
+function resolveExportOutputDirectory(
+  outputDirectory?: string,
+  exportFolder?: string,
+  cwd: string = process.cwd(),
+): string {
+  return resolve(cwd, outputDirectory || exportFolder || DEFAULT_CONFIG.exportFolder);
+}
+
 /**
  * Exports the collections' resources, one file per target locale (see {@link exportTargetLocales}).
  *
@@ -47,17 +67,22 @@ export function exportTargetLocales(collections: readonly Collection[], requeste
  * exporter. Warnings and errors are deduped (collections share the global terms file). A locale with no matching resource is skipped; a locale whose exporter
  * throws is reported and the run continues with the next locale.
  *
- * @throws {Error} The collections do not share one base locale (an export file has one source language).
+ * @throws {CoreOperationError} The base property name is invalid or the output directory cannot be used.
+ * @throws {CoreOperationError} Target locales exist, but the collections do not share one base locale.
  */
 export async function runExport(
   collections: readonly Collection[],
   options: ExportRunOptions,
 ): Promise<ExportRunResult> {
-  const baseLocale = sharedBaseLocale(collections);
+  if (options.basePropertyName !== undefined) validateBasePropertyName(options.basePropertyName);
+  const outputDirectory = resolveExportOutputDirectory(options.outputDirectory, options.exportFolder, options.cwd);
+  validateOutputDirectory(outputDirectory);
   const targetLocales = exportTargetLocales(collections, options.locales);
+  if (targetLocales.length > 0) options.onStart?.({ outputDirectory, locales: targetLocales });
   const augmentProtectedTerms = options.augmentProtectedTerms !== false;
   const runOptions: ExportOptions = {
     ...options,
+    outputDirectory,
     collections: collections.map((collection) => collection.name),
     locales: targetLocales,
   };
@@ -70,7 +95,7 @@ export async function runExport(
     errors: [],
     collections: runOptions.collections ?? [],
     locales: targetLocales,
-    outputDirectory: options.outputDirectory,
+    outputDirectory,
     omittedResources: [],
     malformedFiles: [],
     hierarchicalConflicts: [],
@@ -78,6 +103,7 @@ export async function runExport(
   const localeResults: ExportLocaleResult[] = [];
 
   if (targetLocales.length > 0) {
+    const baseLocale = sharedBaseLocale(collections);
     // Read per collection so a key shared by two collections survives in each one's own locales.
     const resourcesByCollection = new Map(
       collections.map((collection) => {
@@ -145,7 +171,11 @@ export async function runExport(
   // Collections share the global terms file, so the same problem would otherwise repeat per collection.
   totals.warnings = [...new Set(totals.warnings)];
   totals.errors = [...new Set(totals.errors)];
-  return { ...totals, localeResults, summary: generateExportSummary(totals, runOptions) };
+  return {
+    ...totals,
+    localeResults,
+    summary: generateExportSummary(totals, runOptions),
+  };
 
   /**
    * The collection's protected terms for the do-not-translate notes. A broken terms file is an

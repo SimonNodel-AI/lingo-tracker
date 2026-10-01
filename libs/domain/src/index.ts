@@ -5,6 +5,7 @@
 export type { LocaleMetadata } from './lib/locale-metadata';
 export type { TokenCasing } from './lib/token-casing';
 export type { TranslationStatus } from './lib/translation-status';
+export { listEditProblem, mergeListEdit, type ListEdit, type ListEditProblem } from './lib/list-edit';
 
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {
@@ -15,6 +16,8 @@ export {
   type CollectionBundleDefinition,
   type EntrySelectionRule,
   findBundleDefinition,
+  hasBundleCollections,
+  hasBundleRules,
   hasLocalePlaceholder,
   hasTypeDistConfigured,
   isTypeScriptFile,
@@ -40,6 +43,7 @@ export {
 } from './lib/resource-key';
 
 // Staleness: how edits and imports move a locale's status
+export { canImportLocale, DEFAULT_IMPORT_STRATEGY, importableLocales } from './lib/import-rules';
 export {
   applyBaseChange,
   type EntryLocaleMetadata,

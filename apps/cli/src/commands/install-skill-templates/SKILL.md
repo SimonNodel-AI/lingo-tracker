@@ -54,6 +54,8 @@ npx lingo-tracker find-similar --collection {{PRIMARY_COLLECTION}} --value "<the
 
 When reusing, use the existing key directly in the code — do not call `add-resource`.
 
+If the key already exists the command exits 1; reuse the key, use `edit-resource`, or pass `--override` to replace it.
+
 ## Default Collection & Bundle
 
 {{COLLECTIONS_SECTION}}

@@ -17,14 +17,12 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import { CollectionsStore } from '../collections/store/collections.store';
 import { apiErrorMessage } from '../shared/api-error/api-error';
 import { NotificationService } from '../shared/notification';
-import { PreferredTerminologyDraft, type RuleField, type RuleFieldError } from './preferred-terminology-draft';
-import { ProtectedTermsDraft, type TermEntry } from '../shared/protected-terms/protected-terms-draft';
-import { assembleSettingsPayload, extractRuleErrors } from './settings-save';
+import type { RuleField, RuleFieldError } from './preferred-terminology-draft';
+import { SettingsDraft } from './settings-draft';
 
 /** Translation token for each rule error code. */
 const RULE_ERROR_TOKENS: Record<RuleFieldError['code'], string> = {
@@ -81,61 +79,23 @@ export class Settings {
   private readonly termRows = viewChildren<ElementRef<HTMLElement>>('termRow');
   private readonly ruleInputs = viewChildren<ElementRef<HTMLInputElement>>('ruleInput');
 
-  /** Staged preferred-terminology edits. */
-  readonly terminology = new PreferredTerminologyDraft();
-  readonly terms = new ProtectedTermsDraft();
+  readonly draft = new SettingsDraft();
   readonly RULE_ERROR_TOKENS = RULE_ERROR_TOKENS;
   readonly preferredTerminologyFilePath = computed(() => this.store.config()?.preferredTerminologyFilePath);
   readonly preferredTerminologyError = computed(() => this.store.config()?.preferredTerminologyError);
   readonly preferredTerminologyWarning = computed(() => this.store.config()?.preferredTerminologyWarning);
   /** Rules with a discouraged term; a blank row just added is not a rule yet. */
-  readonly ruleCount = computed(() => this.terminology.rulesToSave().filter((rule) => rule.discouraged).length);
+  readonly ruleCount = computed(() => this.draft.terminology.rulesToSave().filter((rule) => rule.discouraged).length);
   /** Row whose discouraged input takes focus once rendered — a newly added rule, or the first invalid one. */
   readonly #focusRuleInput = signal<string | null>(null);
-
-  readonly entries = this.terms.entries;
-  readonly addDraft = this.terms.addDraft;
-  readonly filter = this.terms.filter;
-  readonly editingId = this.terms.editingId;
-  readonly editDraft = this.terms.editDraft;
-  /** Term that a failed add or rename collided with; cleared as soon as the input changes. */
-  readonly addError = this.terms.addError;
-  readonly editError = this.terms.editError;
 
   /** Path of the file the terms are stored in, surfaced read-only so the source of a diff is obvious. */
   readonly protectedTermsFilePath = computed(() => this.store.config()?.protectedTermsFilePath);
 
-  /** True from Save until the server has answered. */
-  readonly saving = signal(false);
   /** Why the last save was refused; cleared when the next save starts. */
   readonly saveError = signal<string | null>(null);
-  /** The one error banner: a refused save, else a failed config load. */
   readonly bannerError = computed(() => this.saveError() ?? this.store.error());
-  /**
-   * Locks both editors until the config has seeded them, and while a save is in flight: the
-   * save's answer reseeds both lists, so an edit made meanwhile would be lost.
-   */
-  readonly editingLocked = computed(() => this.store.config() === null || this.saving());
-  readonly sortedEntries = this.terms.sortedEntries;
-  readonly visibleEntries = this.terms.visibleEntries;
-  readonly termsToSave = this.terms.termsToSave;
-  readonly termCount = this.terms.termCount;
-  readonly changeCount = this.terms.changeCount;
-  readonly hasChanges = this.terms.hasChanges;
-  readonly isEmpty = this.terms.isEmpty;
-
-  /** Changes across both lists, for the page save bar. */
-  readonly totalChangeCount = computed(() => this.changeCount() + this.terminology.changeCount());
-  readonly hasAnyChanges = computed(() => this.totalChangeCount() > 0);
-  readonly showSaveBar = computed(() => !this.isEmpty() || !this.terminology.isEmpty() || this.hasAnyChanges());
-  /** Save stays enabled while terminology errors are still hidden, so clicking it can reveal them. */
-  readonly canSave = computed(
-    () => this.hasAnyChanges() && !this.editingLocked() && !this.terminology.hasVisibleErrors(),
-  );
-  readonly showFilter = this.terms.showFilter;
-  readonly isFiltering = this.terms.isFiltering;
-  readonly hasNoMatches = this.terms.hasNoMatches;
-  readonly canAdd = this.terms.canAdd;
+  readonly editingLocked = computed(() => this.store.config() === null || this.draft.saving());
 
   constructor() {
     // Seed both lists from the first config to arrive (App loads it on boot), then stop
@@ -144,7 +104,7 @@ export class Settings {
     const seedOnce = effect(() => {
       const config = this.store.config();
       if (!config) return;
-      untracked(() => this.#seed(config));
+      untracked(() => this.draft.seed(config));
       seedOnce.destroy();
     });
 
@@ -158,7 +118,7 @@ export class Settings {
 
     effect(() => {
       const input = this.editInputs()[0];
-      if (this.editingId() === null || !input) return;
+      if (this.draft.terms.editingId() === null || !input) return;
       input.nativeElement.focus();
       input.nativeElement.select();
     });
@@ -167,63 +127,19 @@ export class Settings {
     // held — not cleared — until it is found. Clearing early is what made an
     // added term land silently below the fold of the scrolling list.
     effect(() => {
-      const id = this.terms.revealId();
+      const id = this.draft.terms.revealId();
       const rows = this.termRows();
       if (id === null) return;
       const row = rows.find((ref) => ref.nativeElement.getAttribute('data-term-id') === String(id));
       if (!row) return;
       // Optional call: not every environment implements scrollIntoView (jsdom does not).
       row.nativeElement.scrollIntoView?.({ block: 'nearest' });
-      this.terms.revealId.set(null);
+      this.draft.terms.revealId.set(null);
     });
   }
 
-  /** Makes the server's lists the saved baseline of both drafts. */
-  #seed(config: Pick<LingoTrackerConfigDto, 'protectedTerms' | 'preferredTerminology'>): void {
-    this.terms.seed(config.protectedTerms ?? []);
-    this.terminology.seed(config.preferredTerminology ?? []);
-  }
-
-  statusOf(entry: TermEntry): ReturnType<ProtectedTermsDraft['statusOf']> {
-    return this.terms.statusOf(entry);
-  }
-
-  addTerm(): void {
-    this.terms.addTerm();
-  }
-
-  onAddDraftChange(value: string): void {
-    this.terms.onAddDraftChange(value);
-  }
-
-  removeTerm(entry: TermEntry): void {
-    this.terms.removeTerm(entry);
-  }
-
-  restoreTerm(entry: TermEntry): void {
-    this.terms.restoreTerm(entry);
-  }
-
-  beginEdit(entry: TermEntry): void {
-    this.terms.beginEdit(entry);
-  }
-
-  onEditDraftChange(value: string): void {
-    this.terms.onEditDraftChange(value);
-  }
-
-  commitEdit(): void {
-    this.terms.commitEdit();
-  }
-
-  cancelEdit(): void {
-    this.terms.cancelEdit();
-  }
-
   revertAll(): void {
-    const config = this.store.config();
-    if (config) this.#seed(config);
-    this.terms.filter.set('');
+    this.draft.revert(this.store.config());
   }
 
   /** DOM id of a rule input, shared by its label wiring, its error and focus requests. */
@@ -236,64 +152,37 @@ export class Settings {
   }
 
   addRule(): void {
-    const id = this.terminology.addRow();
+    const id = this.draft.terminology.addRow();
     this.#focusRuleInput.set(this.ruleInputId(id, 'discouraged'));
   }
 
   onRuleInput(rowId: number, field: RuleField, value: string): void {
-    this.terminology.updateField(rowId, field, value);
+    this.draft.terminology.updateField(rowId, field, value);
   }
 
-  clearFilter(): void {
-    this.terms.clearFilter();
-  }
-
-  /**
-   * Sends every changed list in one request. Invalid terminology blocks the whole save —
-   * nothing is half-applied — and reveals errors still hidden on untouched fields. The
-   * answer decides the rest: the saved config reseeds both lists and earns one toast (a
-   * save whose reload failed was still accepted, so the lists it sent become the baseline
-   * and it earns the toast too; the page shows the load error); a refusal keeps every edit, shows
-   * its message, and maps per-row rule errors (the `details` of an `invalid` answer) back
-   * onto the rows that were sent.
-   */
+  /** A save continues after navigation so its outcome toast still appears. */
   save(): void {
-    if (!this.hasAnyChanges()) return;
-    if (this.terminology.hasChanges() && this.terminology.hasErrors()) {
-      this.terminology.revealErrors();
-      this.#focusFirstInvalidRule();
-      return;
-    }
-    this.cancelEdit();
-    this.saving.set(true);
-    this.saveError.set(null);
-    // An unchanged list equals its baseline, so the lists as they stand are the lists as sent.
-    const sent = { protectedTerms: this.termsToSave(), preferredTerminology: this.terminology.rulesToSave() };
-    const payload = assembleSettingsPayload(this.terms, this.terminology);
-    // No `takeUntilDestroyed`: the save is not cancelled by navigating away, so its outcome
-    // toast still shows after the page is gone.
-    this.store.updateGlobalConfig(payload).subscribe({
-      next: (config) => {
-        this.saving.set(false);
-        this.#seed(config ?? sent);
-        this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVESUCCESS));
-      },
-      error: (error: unknown) => {
-        this.saving.set(false);
-        const ruleErrors = extractRuleErrors(error);
-        if (ruleErrors.length > 0) this.terminology.applyServerErrors(ruleErrors);
-        this.saveError.set(apiErrorMessage(error, this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVEFAILED)));
-      },
-    });
-  }
-
-  #focusFirstInvalidRule(): void {
-    for (const view of this.terminology.rowViews()) {
-      const field = (['discouraged', 'preferred', 'reason'] as const).find((candidate) => view.errors[candidate]);
-      if (field) {
-        this.#focusRuleInput.set(this.ruleInputId(view.row.id, field));
-        return;
-      }
-    }
+    this.draft
+      .save((payload) => {
+        this.saveError.set(null);
+        return this.store.updateGlobalConfig(payload);
+      })
+      .subscribe((outcome) => {
+        switch (outcome.kind) {
+          case 'unchanged':
+            return;
+          case 'blocked':
+            if (outcome.focus) this.#focusRuleInput.set(this.ruleInputId(outcome.focus.rowId, outcome.focus.field));
+            return;
+          case 'saved':
+            this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVESUCCESS));
+            return;
+          case 'refused':
+            this.saveError.set(
+              apiErrorMessage(outcome.error, this.#transloco.translate(TRACKER_TOKENS.SETTINGS.SAVEFAILED)),
+            );
+            return;
+        }
+      });
   }
 }

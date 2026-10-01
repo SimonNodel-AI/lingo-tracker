@@ -194,6 +194,16 @@ export function isTypeScriptFile(filePath: string): boolean {
   return filePath.endsWith('.ts');
 }
 
+/** True for 'All' or a non-empty collection list. */
+export function hasBundleCollections(collections: unknown): boolean {
+  return collections === 'All' || (Array.isArray(collections) && collections.length > 0);
+}
+
+/** True for 'All' or a non-empty entry selection rule list. */
+export function hasBundleRules(rules: unknown): boolean {
+  return rules === 'All' || (Array.isArray(rules) && rules.length > 0);
+}
+
 /**
  * The bundle file written for `locale`: `<dist>/<bundleName with {locale} replaced>.json`.
  *
@@ -350,12 +360,10 @@ export function validateBundleDefinition(definition: BundleDefinition, collectio
     errors.push('dist (output folder) is required.');
   }
 
-  if (definition.collections !== 'All') {
-    if (!Array.isArray(definition.collections) || definition.collections.length === 0) {
-      errors.push("collections must be 'All' or a non-empty array of collection definitions.");
-    } else {
-      validateCollections(definition.collections, new Set(collectionNames), errors);
-    }
+  if (!hasBundleCollections(definition.collections)) {
+    errors.push("collections must be 'All' or a non-empty array of collection definitions.");
+  } else if (definition.collections !== 'All') {
+    validateCollections(definition.collections, new Set(collectionNames), errors);
   }
 
   if (definition.tokenCasing !== undefined && !VALID_TOKEN_CASINGS.has(definition.tokenCasing)) {
@@ -420,14 +428,12 @@ function validateCollections(
     }
 
     const rules = collectionDef.entriesSelectionRules;
-    if (rules !== 'All') {
-      if (!Array.isArray(rules) || rules.length === 0) {
-        errors.push(`${label}: entriesSelectionRules must be 'All' or a non-empty array of rules.`);
-      } else {
-        rules.forEach((rule, ruleIndex) => {
-          validateRule(rule, ruleIndex, label, errors);
-        });
-      }
+    if (!hasBundleRules(rules)) {
+      errors.push(`${label}: entriesSelectionRules must be 'All' or a non-empty array of rules.`);
+    } else if (rules !== 'All') {
+      rules.forEach((rule, ruleIndex) => {
+        validateRule(rule, ruleIndex, label, errors);
+      });
     }
 
     if (collectionDef.mergeStrategy !== undefined && !VALID_MERGE_STRATEGIES.has(collectionDef.mergeStrategy)) {

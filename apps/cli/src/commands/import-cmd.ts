@@ -6,7 +6,12 @@ import {
   type ImportRunOptions,
   runImport,
 } from '@simoncodes-ca/core';
-import type { ImportStrategy } from '@simoncodes-ca/domain';
+import {
+  canImportLocale,
+  DEFAULT_IMPORT_STRATEGY,
+  importableLocales,
+  type ImportStrategy,
+} from '@simoncodes-ca/domain';
 import * as fs from 'fs';
 import * as path from 'path';
 import type prompts from 'prompts';
@@ -40,7 +45,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     // terminology); a rule-file problem comes back in the result's warnings.
     const runOptions: ImportRunOptions = {
       locale: answers.locale,
-      strategy: answers.strategy || 'translation-service',
+      strategy: answers.strategy || DEFAULT_IMPORT_STRATEGY,
       updateComments: answers.updateComments,
       updateTags: answers.updateTags,
       preserveStatus: answers.preserveStatus,
@@ -129,10 +134,9 @@ function buildQuestions(
 ): prompts.PromptObject[] {
   const questions: prompts.PromptObject[] = [];
   const strategyOf = (values: Record<string, unknown>): ImportStrategy =>
-    options.strategy ?? (values.strategy as ImportStrategy | undefined) ?? 'translation-service';
+    options.strategy ?? (values.strategy as ImportStrategy | undefined) ?? DEFAULT_IMPORT_STRATEGY;
   const localesFor = (strategy: ImportStrategy): readonly string[] =>
-    // For migration, the base locale is a valid target too.
-    strategy === 'migration' ? configuredLocales : configuredLocales.filter((loc) => loc !== baseLocale);
+    importableLocales(configuredLocales, baseLocale, strategy);
 
   if (!options.source) {
     questions.push({
@@ -180,7 +184,7 @@ function buildQuestions(
       choices: [
         {
           title: 'Translation Service',
-          value: 'translation-service',
+          value: DEFAULT_IMPORT_STRATEGY,
           description: 'Import from professional translation services (default)',
         },
         { title: 'Verification', value: 'verification', description: 'Language expert verification workflow' },
@@ -192,7 +196,7 @@ function buildQuestions(
 
   if (!options.locale) {
     // `validate` is not given the earlier answers, so the `type` callback records the strategy for it.
-    let strategy: ImportStrategy = options.strategy ?? 'translation-service';
+    let strategy: ImportStrategy = options.strategy ?? DEFAULT_IMPORT_STRATEGY;
     questions.push({
       type: (_prev: unknown, values: Record<string, unknown>) => {
         strategy = strategyOf(values);
@@ -212,7 +216,7 @@ function buildQuestions(
         if (!value || value.trim() === '') {
           return 'Locale is required';
         }
-        if (value === baseLocale && strategy !== 'migration') {
+        if (!canImportLocale(value, baseLocale, strategy)) {
           return `Cannot import into base locale "${baseLocale}" with strategy "${strategy}"`;
         }
         return true;

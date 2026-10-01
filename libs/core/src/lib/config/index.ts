@@ -3,29 +3,20 @@
 export { addCollectionEntry, patchCollectionEntry, toCollectionEntry } from './collection-entry';
 export { initConfig } from './init-config';
 export { type LoadConfigOptions, loadConfig } from './load-config';
+export {
+  updateProjectTerms,
+  type ProjectTermsUpdate,
+  type ProjectTermsUpdateResult,
+} from './update-project-terms';
 export { type Collection, type OpenCollectionOptions, openCollection, type TermFiles } from './open-collection';
 export {
   displayTermPath,
-  editPreferredTerminology,
-  type PreferredTerminologyEdit,
   type PreferredTerminologyEditResult,
   type LoadPreferredTerminologyResult,
   loadPreferredTerminology,
   PreferredTerminologyValidationError,
   resolvePreferredTerminologyFilePath,
-  writePreferredTerminology,
 } from './preferred-terminology-file';
-export {
-  assertProtectedTerms,
-  editProtectedTerms,
-  readProtectedTermsTarget,
-  type SetProtectedTermsOptions,
-  type SetProtectedTermsResult,
-  setCollectionProtectedTerms,
-  setCollectionProtectedTermsFile,
-  setGlobalProtectedTerms,
-  setGlobalProtectedTermsFile,
-} from './set-protected-terms';
 export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './project-terms';
 export {
   type ResolvedProtectedTerms,

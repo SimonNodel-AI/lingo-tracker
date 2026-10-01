@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
+import { RouteCollectionPipe } from '../route-collection';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { ConfigService } from '../../config/config.service';
 import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
@@ -47,6 +48,9 @@ describe('FoldersController', () => {
     },
   };
 
+  const collectionFor = (name: string): core.Collection =>
+    new RouteCollectionPipe(_configService).transform({ name, writable: true });
+
   const mockIndex = { apply: jest.fn() };
 
   beforeEach(async () => {
@@ -74,6 +78,17 @@ describe('FoldersController', () => {
   });
 
   describe('POST /folders/move', () => {
+    it('refuses a read-only source collection in the route pipe', () => {
+      jest.spyOn(_configService, 'getConfig').mockReturnValue({
+        ...mockConfig,
+        collections: {
+          ...mockConfig.collections,
+          vendor: { translationsFolder: './translations/vendor', readOnly: true },
+        },
+      });
+      expect(() => collectionFor('vendor')).toThrow(ForbiddenException);
+    });
+
     it('should successfully move a folder within the same collection', async () => {
       const moveFolderDto = {
         sourceFolderPath: 'apps.common.buttons',
@@ -89,7 +104,7 @@ describe('FoldersController', () => {
 
       (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
 
-      const result = await foldersController.move('test-collection', moveFolderDto);
+      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
 
       expect(core.moveFolder).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -129,7 +144,7 @@ describe('FoldersController', () => {
 
       (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
 
-      const result = await foldersController.move('test-collection', moveFolderDto);
+      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
 
       expect(core.moveFolder).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -165,7 +180,7 @@ describe('FoldersController', () => {
 
       (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
 
-      const result = await foldersController.move('test-collection', moveFolderDto);
+      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
 
       expect(core.moveFolder).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -188,12 +203,7 @@ describe('FoldersController', () => {
     });
 
     it('should throw NotFoundException when source collection not found', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.actions',
-      };
-
-      await expect(foldersController.move('nonexistent-collection', moveFolderDto)).rejects.toThrow(NotFoundException);
+      expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
 
       expect(core.moveFolder).not.toHaveBeenCalled();
     });
@@ -205,7 +215,9 @@ describe('FoldersController', () => {
         toCollection: 'nonexistent-collection',
       };
 
-      await expect(foldersController.move('test-collection', moveFolderDto)).rejects.toThrow(NotFoundException);
+      await expect(foldersController.move(collectionFor('test-collection'), moveFolderDto)).rejects.toThrow(
+        NotFoundException,
+      );
 
       expect(core.moveFolder).not.toHaveBeenCalled();
     });
@@ -224,7 +236,7 @@ describe('FoldersController', () => {
         toCollection: 'vendor',
       };
 
-      const move = foldersController.move('test-collection', moveFolderDto);
+      const move = foldersController.move(collectionFor('test-collection'), moveFolderDto);
       await expect(move).rejects.toThrow(ForbiddenException);
       await expect(move).rejects.toThrow('Collection "vendor" is read-only. Its resources cannot be modified.');
 
@@ -237,7 +249,9 @@ describe('FoldersController', () => {
         destinationFolderPath: 'apps.actions',
       };
 
-      await expect(foldersController.move('test-collection', moveFolderDto)).rejects.toThrow(HttpException);
+      await expect(foldersController.move(collectionFor('test-collection'), moveFolderDto)).rejects.toThrow(
+        HttpException,
+      );
 
       expect(core.moveFolder).not.toHaveBeenCalled();
     });
@@ -250,7 +264,7 @@ describe('FoldersController', () => {
       (core.moveFolder as jest.Mock).mockRejectedValue(coreError);
 
       const error = await httpErrorOf(
-        foldersController.move('test-collection', {
+        foldersController.move(collectionFor('test-collection'), {
           sourceFolderPath: 'apps.common',
           destinationFolderPath: 'apps.shared',
         }),
@@ -274,7 +288,7 @@ describe('FoldersController', () => {
 
       (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
 
-      const result = await foldersController.move('test-collection', moveFolderDto);
+      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
 
       expect(result.movedCount).toBe(0);
       expect(result.foldersDeleted).toBe(1);
@@ -296,7 +310,7 @@ describe('FoldersController', () => {
 
       (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
 
-      const result = await foldersController.move('test-collection', moveFolderDto);
+      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
 
       expect(result.movedCount).toBe(3);
       expect(result.foldersDeleted).toBe(0);
@@ -304,7 +318,14 @@ describe('FoldersController', () => {
       expect(result.warnings[0]).toContain('failed to delete source folder');
     });
 
-    it('should handle URL-encoded collection names', async () => {
+    it('passes the route param through verbatim', async () => {
+      jest.spyOn(_configService, 'getConfig').mockReturnValue({
+        ...mockConfig,
+        collections: {
+          ...mockConfig.collections,
+          'a%25b': { translationsFolder: './translations/percent' },
+        },
+      });
       const moveFolderDto = {
         sourceFolderPath: 'apps.buttons',
         destinationFolderPath: 'apps.actions',
@@ -319,10 +340,10 @@ describe('FoldersController', () => {
 
       (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
 
-      await foldersController.move('test%2Dcollection', moveFolderDto);
+      await foldersController.move(collectionFor('a%25b'), moveFolderDto);
 
       expect(core.moveFolder).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
+        expect.objectContaining({ name: 'a%25b', translationsFolder: resolve('./translations/percent') }),
         expect.any(Object),
       );
     });
@@ -343,7 +364,7 @@ describe('FoldersController', () => {
 
       (core.createFolder as jest.Mock).mockReturnValue(mockCreateResult);
 
-      const result = await foldersController.create('test-collection', createFolderDto);
+      const result = await foldersController.create(collectionFor('test-collection'), createFolderDto);
 
       expect(core.createFolder).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
@@ -362,7 +383,10 @@ describe('FoldersController', () => {
         mutations: [],
       });
 
-      const result = await foldersController.create('test-collection', { folderName: 'buttons', parentPath: '  ' });
+      const result = await foldersController.create(collectionFor('test-collection'), {
+        folderName: 'buttons',
+        parentPath: '  ',
+      });
 
       expect(result.folder.fullPath).toBe('buttons');
       expect(result.folder.tree.path).toBe('buttons');
@@ -375,7 +399,7 @@ describe('FoldersController', () => {
       });
 
       const error = await foldersController
-        .create('test-collection', { folderName: 'bad name' })
+        .create(collectionFor('test-collection'), { folderName: 'bad name' })
         .catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(core.InvalidFolderPathError);
@@ -401,7 +425,7 @@ describe('FoldersController', () => {
 
       (core.deleteFolder as jest.Mock).mockReturnValue(mockDeleteResult);
 
-      const result = await foldersController.delete('test-collection', deleteFolderDto);
+      const result = await foldersController.delete(collectionFor('test-collection'), deleteFolderDto);
 
       expect(core.deleteFolder).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
@@ -416,7 +440,9 @@ describe('FoldersController', () => {
         throw new core.FolderNotFoundError('apps.missing');
       });
 
-      const error = await httpErrorOf(foldersController.delete('test-collection', { folderPath: 'apps.missing' }));
+      const error = await httpErrorOf(
+        foldersController.delete(collectionFor('test-collection'), { folderPath: 'apps.missing' }),
+      );
 
       expect(error.getStatus()).toBe(404);
     });

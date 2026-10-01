@@ -199,6 +199,8 @@ Response:
 
 Updates or renames an existing collection.
 
+Renaming updates every explicit bundle reference to the new name in the same config write, preserving prefixes, selection rules and order. If an explicit bundle already references the new name, the API returns 409 Conflict with the affected bundle names and changes no files. Bundles configured with `collections: "All"` are unchanged.
+
 **Endpoint**: `PUT /api/collections/:collectionName`
 
 **Path Parameters**:
@@ -225,7 +227,9 @@ interface UpdateCollectionDto {
 
 **Status Codes**:
 - `200 OK`: Collection updated successfully
-- `400 Bad Request`: Invalid request body or collection not found
+- `409 Conflict`: The new name is already registered or referenced by a bundle
+- `400 Bad Request`: Invalid request body
+- `404 Not Found`: Collection not found
 - `500 Internal Server Error`: Unexpected error during update
 
 **Example**:
@@ -245,7 +249,7 @@ curl -X PUT http://localhost:3030/api/collections/admin-portal \
 
 ### Delete Collection
 
-Deletes a collection by name.
+Deletes a collection by name and removes its entries from explicit bundle collection lists in the same config write. If that would leave any bundle with no collections, the API returns 409 Conflict with a message naming every affected bundle; config and translation files remain unchanged. Bundles configured with `collections: "All"` are unchanged.
 
 **Endpoint**: `DELETE /api/collections/:collectionName`
 
@@ -262,7 +266,8 @@ Deletes a collection by name.
 
 **Status Codes**:
 - `200 OK`: Collection deleted successfully
-- `400 Bad Request`: Collection not found or deletion error
+- `404 Not Found`: Collection not found
+- `409 Conflict`: Deletion would leave a bundle with no collections
 - `500 Internal Server Error`: Unexpected error during deletion
 
 **Example**:
@@ -512,9 +517,12 @@ interface CreateResourceResponseDto {
 }
 ```
 
+`POST /resources` is no longer an upsert. If any requested key already exists, the whole batch is refused and nothing is written.
+
 **Status Codes**:
-- `201 Created`: Resources processed successfully (check `entriesCreated` to see how many were new)
+- `201 Created`: Resources created successfully (`entriesCreated` equals the number requested)
 - `400 Bad Request`: Invalid request body, validation error, or empty resource array
+- `409 Conflict`: A resource key already exists
 - `404 Not Found`: Collection not found
 - `500 Internal Server Error`: Unexpected error during resource creation
 

@@ -55,15 +55,34 @@ describe('BrowserApiService', () => {
       const resultPromise = firstValueFrom(result$);
 
       const req = httpMock.expectOne(
-        `/api/collections/${encodeURIComponent(collectionName)}/resources/tree?path=${encodeURIComponent(
-          folderPath,
-        )}&includeNested=${includeNested}`,
+        '/api/collections/my-collection/resources/tree?path=common.buttons&includeNested=true',
       );
       expect(req.request.method).toBe('GET');
+      expect(req.request.urlWithParams).toBe(
+        '/api/collections/my-collection/resources/tree?path=common.buttons&includeNested=true',
+      );
       req.flush(mockResponse);
 
       const data = await resultPromise;
       expect(data).toEqual(mockResponse);
+    });
+
+    it('encodes a special collection name and folder path once', async () => {
+      const collectionName = 'a% b./&#é';
+      const folderPath = 'f% g./&#é';
+      const tree: ResourceTreeDto = { path: folderPath, resources: [], children: [] };
+      const resultPromise = firstValueFrom(service.getResourceTree(collectionName, folderPath, true));
+
+      const req = httpMock.expectOne(
+        '/api/collections/a%25%20b.%2F%26%23%C3%A9/resources/tree?path=f%25%20g./%26%23%C3%A9&includeNested=true',
+      );
+      expect(req.request.urlWithParams).toBe(
+        '/api/collections/a%25%20b.%2F%26%23%C3%A9/resources/tree?path=f%25%20g./%26%23%C3%A9&includeNested=true',
+      );
+      expect(req.request.params.get('path')).toBe(folderPath);
+      req.flush(tree);
+
+      expect(await resultPromise).toEqual(tree);
     });
 
     it('should use empty path and false includeNested for root', async () => {

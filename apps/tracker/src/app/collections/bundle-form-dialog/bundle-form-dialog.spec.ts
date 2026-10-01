@@ -473,6 +473,17 @@ describe('BundleFormDialog — create mode', () => {
 });
 
 describe('BundleFormDialog — all collections', () => {
+  it('should seed the first collection when a create definition has an empty collection list', () => {
+    const { component } = buildHarness({
+      mode: 'create',
+      bundle: { bundleName: '{locale}', dist: './dist', collections: [] },
+    });
+
+    expect(component.form.controls.collections.length).toBe(1);
+    expect(component.form.controls.collections.at(0).controls.name.value).toBe('trackerResources');
+    expect(component.activeSection()).toBe('coll:0');
+  });
+
   it('should open the Collections pane when the bundle includes every collection', () => {
     const { component } = buildHarness({
       mode: 'create',

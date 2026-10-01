@@ -4,12 +4,12 @@
 
     <!-- On a first run there is nothing to save yet; the bar arrives with the first change.
          It covers both lists: one Save sends whichever of them changed. -->
-    @if (showSaveBar()) {
-      <div class="terms-bar" [class.terms-bar--dirty]="hasAnyChanges()">
+    @if (draft.showSaveBar()) {
+      <div class="terms-bar" [class.terms-bar--dirty]="draft.hasChanges()">
         <p class="terms-bar-status" aria-live="polite">
-          @if (hasAnyChanges()) {
+          @if (draft.hasChanges()) {
             <mat-icon class="terms-bar-icon">edit_note</mat-icon>
-            <span>{{ TOKENS.SETTINGS.PROTECTEDTERMSUNSAVEDCHANGESX | transloco : { count: totalChangeCount() } }}</span>
+            <span>{{ TOKENS.SETTINGS.PROTECTEDTERMSUNSAVEDCHANGESX | transloco : { count: draft.totalChangeCount() } }}</span>
           } @else {
             <mat-icon class="terms-bar-icon">check_circle</mat-icon>
             <span>{{ TOKENS.SETTINGS.PROTECTEDTERMSALLSAVED | transloco }}</span>
@@ -17,7 +17,7 @@
         </p>
 
         <div class="terms-bar-actions">
-          <button mat-button type="button" (click)="revertAll()" [disabled]="!hasAnyChanges() || editingLocked()">
+          <button mat-button type="button" (click)="revertAll()" [disabled]="!draft.hasChanges() || editingLocked()">
             {{ TOKENS.SETTINGS.PROTECTEDTERMSREVERTALL | transloco }}
           </button>
           <button
@@ -26,7 +26,7 @@
             type="button"
             class="settings-save"
             (click)="save()"
-            [disabled]="!canSave()"
+            [disabled]="!draft.canSave() || editingLocked()"
           >
             {{ TOKENS.SETTINGS.SAVE | transloco }}
           </button>
@@ -35,7 +35,7 @@
     }
   </header>
 
-  @if (store.isLoading() || saving()) {
+  @if (store.isLoading() || draft.saving()) {
     <mat-progress-bar mode="indeterminate" class="settings-progress"></mat-progress-bar>
   }
 
@@ -51,7 +51,7 @@
       <h2 id="settings-protected-terms-title" class="terms-title">
         {{ TOKENS.SETTINGS.PROTECTEDTERMSLABEL | transloco }}
       </h2>
-      <span class="terms-count">{{ TOKENS.SETTINGS.PROTECTEDTERMSCOUNTX | transloco : { count: termCount() } }}</span>
+      <span class="terms-count">{{ TOKENS.SETTINGS.PROTECTEDTERMSCOUNTX | transloco : { count: draft.terms.termCount() } }}</span>
     </div>
 
     <div class="terms-note">
@@ -67,7 +67,7 @@
       </p>
     }
 
-    <form class="terms-add" (submit)="$event.preventDefault(); addTerm()">
+    <form class="terms-add" (submit)="$event.preventDefault(); draft.terms.addTerm()">
       <mat-form-field appearance="outline" class="terms-add-field" subscriptSizing="dynamic">
         <mat-icon matPrefix class="terms-add-icon">add</mat-icon>
         <input
@@ -76,28 +76,28 @@
           name="protectedTerm"
           autocomplete="off"
           spellcheck="false"
-          [value]="addDraft()"
+          [value]="draft.terms.addDraft()"
           [disabled]="editingLocked()"
-          (input)="onAddDraftChange($any($event.target).value)"
+          (input)="draft.terms.onAddDraftChange($any($event.target).value)"
           [placeholder]="TOKENS.SETTINGS.PROTECTEDTERMSADDPLACEHOLDER | transloco"
           [attr.aria-label]="TOKENS.SETTINGS.PROTECTEDTERMSADDARIALABEL | transloco"
-          [attr.aria-invalid]="addError() ? 'true' : null"
-          [attr.aria-describedby]="addError() ? 'settings-add-error' : null"
+          [attr.aria-invalid]="draft.terms.addError() ? 'true' : null"
+          [attr.aria-describedby]="draft.terms.addError() ? 'settings-add-error' : null"
         />
       </mat-form-field>
-      <button mat-flat-button color="primary" type="submit" class="terms-add-button" [disabled]="!canAdd() || editingLocked()">
+      <button mat-flat-button color="primary" type="submit" class="terms-add-button" [disabled]="!draft.terms.canAdd() || editingLocked()">
         {{ TOKENS.SETTINGS.PROTECTEDTERMSADDBUTTON | transloco }}
       </button>
     </form>
 
-    @if (addError(); as duplicate) {
+    @if (draft.terms.addError(); as duplicate) {
       <p class="terms-inline-error" id="settings-add-error" role="alert">
         <mat-icon class="terms-inline-error-icon">error_outline</mat-icon>
         <span>{{ TOKENS.SETTINGS.PROTECTEDTERMSDUPLICATEX | transloco : { term: duplicate } }}</span>
       </p>
     }
 
-    @if (isEmpty()) {
+    @if (draft.terms.isEmpty()) {
       <div class="terms-empty">
         <mat-icon class="terms-empty-icon">shield</mat-icon>
         <p class="terms-empty-title">{{ TOKENS.SETTINGS.PROTECTEDTERMSEMPTYTITLE | transloco }}</p>
@@ -105,24 +105,24 @@
       </div>
     } @else {
       <div class="terms-panel">
-        @if (showFilter()) {
+        @if (draft.terms.showFilter()) {
           <div class="terms-filter">
             <mat-icon class="terms-filter-icon">search</mat-icon>
             <input
               class="terms-filter-input"
               type="search"
               autocomplete="off"
-              [value]="filter()"
-              (input)="filter.set($any($event.target).value)"
+              [value]="draft.terms.filter()"
+              (input)="draft.terms.filter.set($any($event.target).value)"
               [placeholder]="TOKENS.SETTINGS.PROTECTEDTERMSFILTERPLACEHOLDER | transloco"
               [attr.aria-label]="TOKENS.SETTINGS.PROTECTEDTERMSFILTERPLACEHOLDER | transloco"
             />
-            @if (isFiltering()) {
+            @if (draft.terms.isFiltering()) {
               <button
                 mat-icon-button
                 type="button"
                 class="terms-filter-clear"
-                (click)="clearFilter()"
+                (click)="draft.terms.clearFilter()"
                 [attr.aria-label]="TOKENS.BROWSER.CLEARSEARCH | transloco"
               >
                 <mat-icon>close</mat-icon>
@@ -132,21 +132,21 @@
         }
 
         <div class="terms-scroll">
-          @if (hasNoMatches()) {
+          @if (draft.terms.hasNoMatches()) {
             <p class="terms-no-matches" role="status">
-              {{ TOKENS.SETTINGS.PROTECTEDTERMSNOMATCHESX | transloco : { query: filter().trim() } }}
+              {{ TOKENS.SETTINGS.PROTECTEDTERMSNOMATCHESX | transloco : { query: draft.terms.filter().trim() } }}
             </p>
           } @else {
             <ul class="terms-list" [attr.aria-label]="TOKENS.SETTINGS.PROTECTEDTERMSLISTARIALABEL | transloco">
-          @for (entry of visibleEntries(); track entry.id) {
+          @for (entry of draft.terms.visibleEntries(); track entry.id) {
             <li
               #termRow
               class="term"
               [attr.data-term-id]="entry.id"
-              [attr.data-status]="statusOf(entry)"
-              [class.term--editing]="editingId() === entry.id"
+              [attr.data-status]="draft.terms.statusOf(entry)"
+              [class.term--editing]="draft.terms.editingId() === entry.id"
             >
-              @if (editingId() === entry.id) {
+              @if (draft.terms.editingId() === entry.id) {
                 <div class="term-edit">
                   <input
                     #editInput
@@ -154,20 +154,20 @@
                     type="text"
                     autocomplete="off"
                     spellcheck="false"
-                    [value]="editDraft()"
-                    (input)="onEditDraftChange($any($event.target).value)"
-                    (keydown.enter)="commitEdit(); $event.preventDefault()"
-                    (keydown.escape)="cancelEdit()"
+                    [value]="draft.terms.editDraft()"
+                    (input)="draft.terms.onEditDraftChange($any($event.target).value)"
+                    (keydown.enter)="draft.terms.commitEdit(); $event.preventDefault()"
+                    (keydown.escape)="draft.terms.cancelEdit()"
                     [attr.aria-label]="TOKENS.SETTINGS.PROTECTEDTERMSRENAMEARIAX | transloco : { term: entry.value }"
-                    [attr.aria-invalid]="editError() ? 'true' : null"
-                    [attr.aria-describedby]="editError() ? 'settings-edit-error' : null"
+                    [attr.aria-invalid]="draft.terms.editError() ? 'true' : null"
+                    [attr.aria-describedby]="draft.terms.editError() ? 'settings-edit-error' : null"
                   />
                   <div class="term-actions">
                     <button
                       mat-icon-button
                       type="button"
                       class="term-action term-action--confirm"
-                      (click)="commitEdit()"
+                      (click)="draft.terms.commitEdit()"
                       [attr.aria-label]="TOKENS.COMMON.ACTIONS.SAVE | transloco"
                       [matTooltip]="TOKENS.COMMON.ACTIONS.SAVE | transloco"
                     >
@@ -177,7 +177,7 @@
                       mat-icon-button
                       type="button"
                       class="term-action"
-                      (click)="cancelEdit()"
+                      (click)="draft.terms.cancelEdit()"
                       [attr.aria-label]="TOKENS.COMMON.ACTIONS.CANCEL | transloco"
                       [matTooltip]="TOKENS.COMMON.ACTIONS.CANCEL | transloco"
                     >
@@ -185,7 +185,7 @@
                     </button>
                   </div>
                 </div>
-                @if (editError(); as duplicate) {
+                @if (draft.terms.editError(); as duplicate) {
                   <p class="terms-inline-error term-edit-error" id="settings-edit-error" role="alert">
                     <mat-icon class="terms-inline-error-icon">error_outline</mat-icon>
                     <span>{{ TOKENS.SETTINGS.PROTECTEDTERMSDUPLICATEX | transloco : { term: duplicate } }}</span>
@@ -195,7 +195,7 @@
                 <div class="term-body">
                   <span class="term-value">{{ entry.value }}</span>
 
-                  @switch (statusOf(entry)) {
+                  @switch (draft.terms.statusOf(entry)) {
                     @case ('removed') {
                       <span class="term-badge term-badge--removed">
                         {{ TOKENS.SETTINGS.PROTECTEDTERMSBADGEREMOVING | transloco }}
@@ -213,7 +213,7 @@
                     }
                   }
 
-                  @if (statusOf(entry) === 'edited' && entry.original) {
+                  @if (draft.terms.statusOf(entry) === 'edited' && entry.original) {
                     <span class="term-was">
                       {{ TOKENS.SETTINGS.PROTECTEDTERMSWASX | transloco : { term: entry.original } }}
                     </span>
@@ -227,7 +227,7 @@
                       type="button"
                       class="term-undo"
                       [disabled]="editingLocked()"
-                      (click)="restoreTerm(entry)"
+                      (click)="draft.terms.restoreTerm(entry)"
                       [attr.aria-label]="TOKENS.SETTINGS.PROTECTEDTERMSRESTOREARIAX | transloco : { term: entry.value }"
                     >
                       <mat-icon>undo</mat-icon>
@@ -239,7 +239,7 @@
                       type="button"
                       class="term-action"
                       [disabled]="editingLocked()"
-                      (click)="beginEdit(entry)"
+                      (click)="draft.terms.beginEdit(entry)"
                       [attr.aria-label]="TOKENS.SETTINGS.PROTECTEDTERMSEDITARIAX | transloco : { term: entry.value }"
                       [matTooltip]="TOKENS.COMMON.ACTIONS.EDIT | transloco"
                     >
@@ -250,7 +250,7 @@
                       type="button"
                       class="term-action term-action--remove"
                       [disabled]="editingLocked()"
-                      (click)="removeTerm(entry)"
+                      (click)="draft.terms.removeTerm(entry)"
                       [attr.aria-label]="TOKENS.SETTINGS.PROTECTEDTERMSREMOVEARIAX | transloco : { term: entry.value }"
                       [matTooltip]="TOKENS.COMMON.ACTIONS.DELETE | transloco"
                     >
@@ -306,7 +306,7 @@
       </p>
     }
 
-    @if (!terminology.isEmpty()) {
+    @if (!draft.terminology.isEmpty()) {
       <div class="terms-panel rules-panel">
         <!-- Visual column headers; each input carries its own row-specific label for assistive tech. -->
         <div class="rule rules-header" aria-hidden="true">
@@ -317,7 +317,7 @@
           <span></span>
         </div>
         <ul class="terms-list rules-list" [attr.aria-label]="TOKENS.SETTINGS.PREFERREDTERMINOLOGY.LISTARIALABEL | transloco">
-          @for (view of terminology.rowViews(); track view.row.id) {
+          @for (view of draft.terminology.rowViews(); track view.row.id) {
             <li class="rule" [attr.data-status]="view.status" [attr.data-rule-id]="view.row.id">
               <div class="rule-cell">
                 <input
@@ -330,7 +330,7 @@
                   [value]="view.row.discouraged"
                   [disabled]="editingLocked()"
                   (input)="onRuleInput(view.row.id, 'discouraged', $any($event.target).value)"
-                  (blur)="terminology.touch(view.row.id, 'discouraged')"
+                  (blur)="draft.terminology.touch(view.row.id, 'discouraged')"
                   [attr.aria-label]="TOKENS.SETTINGS.PREFERREDTERMINOLOGY.DISCOURAGEDARIAX | transloco : { row: view.position }"
                   [attr.aria-invalid]="view.errors.discouraged ? 'true' : null"
                   [attr.aria-describedby]="view.errors.discouraged ? ruleErrorId(view.row.id, 'discouraged') : null"
@@ -355,7 +355,7 @@
                   [value]="view.row.preferred"
                   [disabled]="editingLocked()"
                   (input)="onRuleInput(view.row.id, 'preferred', $any($event.target).value)"
-                  (blur)="terminology.touch(view.row.id, 'preferred')"
+                  (blur)="draft.terminology.touch(view.row.id, 'preferred')"
                   [attr.aria-label]="TOKENS.SETTINGS.PREFERREDTERMINOLOGY.PREFERREDARIAX | transloco : { row: view.position }"
                   [attr.aria-invalid]="view.errors.preferred ? 'true' : null"
                   [attr.aria-describedby]="view.errors.preferred ? ruleErrorId(view.row.id, 'preferred') : null"
@@ -377,7 +377,7 @@
                   [value]="view.row.reason"
                   [disabled]="editingLocked()"
                   (input)="onRuleInput(view.row.id, 'reason', $any($event.target).value)"
-                  (blur)="terminology.touch(view.row.id, 'reason')"
+                  (blur)="draft.terminology.touch(view.row.id, 'reason')"
                   [placeholder]="TOKENS.SETTINGS.PREFERREDTERMINOLOGY.REASONPLACEHOLDER | transloco"
                   [attr.aria-label]="TOKENS.SETTINGS.PREFERREDTERMINOLOGY.REASONARIAX | transloco : { row: view.position }"
                   [attr.aria-invalid]="view.errors.reason ? 'true' : null"
@@ -395,7 +395,7 @@
                 type="button"
                 class="term-action term-action--remove rule-remove"
                 [disabled]="editingLocked()"
-                (click)="terminology.removeRow(view.row.id)"
+                (click)="draft.terminology.removeRow(view.row.id)"
                 [attr.aria-label]="
                   view.row.discouraged.trim()
                     ? (TOKENS.SETTINGS.PREFERREDTERMINOLOGY.REMOVEARIAX | transloco : { term: view.row.discouraged.trim() })

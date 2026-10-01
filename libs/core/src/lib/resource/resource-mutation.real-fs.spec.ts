@@ -67,7 +67,7 @@ describe('mutations returned by core writes (real fs)', () => {
   });
 
   it('addResource on an existing key returns one upsert with the replaced entry', async () => {
-    const result = await addResource(collection(), { key: 'common.ok', baseValue: 'Okay' });
+    const result = await addResource(collection(), { key: 'common.ok', baseValue: 'Okay' }, { onExisting: 'replace' });
 
     expect(result.created).toBe(false);
     expect(result.mutations).toEqual([

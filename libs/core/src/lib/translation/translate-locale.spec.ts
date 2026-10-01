@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { TranslationConfig } from '../../config/translation-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
@@ -10,10 +10,17 @@ import {
   CannotTranslateBaseLocaleError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import { openResourceFolder } from '../resource/resource-folder';
+import type { ResourceMutation } from '../resource/resource-mutation';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
 import { assertCanTranslateLocale, type TranslateLocaleProgress, translateLocale } from './translate-locale';
 import { TranslationError } from './translation-provider';
+
+vi.mock('../file-io/json-file-operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
+  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
+});
 
 const AUTO: TranslationConfig = {
   enabled: true,
@@ -78,6 +85,7 @@ describe('translateLocale', () => {
         failures: [],
         skippedKeys: [],
         warnings: [],
+        mutations: [],
       });
     });
 
@@ -142,11 +150,111 @@ describe('translateLocale', () => {
     const result = await translateLocale(target, { targetLocale: 'fr', provider });
 
     expect(result.translatedCount).toBe(2);
+    expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
     expect(read(RESOURCE_ENTRIES_FILENAME, 'dialogs').greet.fr).toBe('Bonjour {name}');
     expect(read(RESOURCE_ENTRIES_FILENAME, 'buttons').ok.fr).toBe('OK');
   });
 
   describe('batches', () => {
+    it('reports one mutation when separate batches write the collection', async () => {
+      seedResources(collection(), { a: { source: 'A' }, b: { source: 'B' } });
+      const writes: ResourceMutation[] = [];
+
+      const result = await translateLocale(withBatchSize(1), {
+        targetLocale: 'fr',
+        provider: new InMemoryTranslationProvider(),
+        onWrite: (mutation) => writes.push(mutation),
+      });
+
+      expect(result.translatedCount).toBe(2);
+      expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
+      expect(writes).toEqual(result.mutations);
+    });
+
+    it('reports saved folders through onWrite before a later failure', async () => {
+      seedResources(collection(), { 'first.ok': { source: 'OK' }, 'second.cancel': { source: 'Cancel' } });
+      const mutations: ResourceMutation[] = [];
+
+      await expect(
+        translateLocale(withBatchSize(1), {
+          targetLocale: 'fr',
+          provider: new InMemoryTranslationProvider(),
+          onWrite: (mutation) => mutations.push(mutation),
+          onProgress: () => {
+            throw new Error('stopped after first batch');
+          },
+        }),
+      ).rejects.toThrow('stopped after first batch');
+
+      expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'first').ok.fr).toBe('[fr] OK');
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBeUndefined();
+    });
+
+    it('reports the mutation when a folder saves only resource entries', async () => {
+      seedResources(collection(), { 'second.cancel': { source: 'Cancel' } });
+      const originalMeta = read(TRACKER_META_FILENAME, 'second');
+      const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+        '../file-io/json-file-operations',
+      );
+      const writer = vi.mocked(writeJsonFile);
+      writer.mockImplementation((options) => {
+        if (options.filePath.endsWith(join('second', TRACKER_META_FILENAME))) {
+          throw new Error('second metadata write failed');
+        }
+        actual.writeJsonFile(options);
+      });
+      const writes: ResourceMutation[] = [];
+
+      let result: Awaited<ReturnType<typeof translateLocale>>;
+      try {
+        result = await translateLocale(withBatchSize(5), {
+          targetLocale: 'fr',
+          provider: new InMemoryTranslationProvider(),
+          onWrite: (mutation) => writes.push(mutation),
+        });
+      } finally {
+        writer.mockImplementation(actual.writeJsonFile);
+      }
+
+      expect(result.failedCount).toBe(1);
+      expect(result.failures).toEqual([{ key: 'second.cancel', error: 'second metadata write failed' }]);
+      expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
+      expect(writes).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBe('[fr] Cancel');
+      expect(read(TRACKER_META_FILENAME, 'second')).toEqual(originalMeta);
+    });
+
+    it('continues with later batches after a folder save fails', async () => {
+      seedResources(collection(), { 'first.ok': { source: 'OK' }, 'second.cancel': { source: 'Cancel' } });
+      const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+        '../file-io/json-file-operations',
+      );
+      const writer = vi.mocked(writeJsonFile);
+      writer.mockImplementation((options) => {
+        if (options.filePath.endsWith(join('first', TRACKER_META_FILENAME))) {
+          throw new Error('first metadata write failed');
+        }
+        actual.writeJsonFile(options);
+      });
+
+      let result: Awaited<ReturnType<typeof translateLocale>>;
+      try {
+        result = await translateLocale(withBatchSize(1), {
+          targetLocale: 'fr',
+          provider: new InMemoryTranslationProvider(),
+        });
+      } finally {
+        writer.mockImplementation(actual.writeJsonFile);
+      }
+
+      expect(result.failedCount).toBe(1);
+      expect(result.failures).toEqual([{ key: 'first.ok', error: 'first metadata write failed' }]);
+      expect(result.translatedCount).toBe(1);
+      expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBe('[fr] Cancel');
+    });
+
     it('sends one provider call per batch of batchSize, and reports progress after each', async () => {
       seedResources(collection(), { a: { source: 'A' }, b: { source: 'B' }, c: { source: 'C' } });
       const provider = new InMemoryTranslationProvider();
@@ -344,5 +452,16 @@ describe('translateLocale', () => {
       code: 'MISSING_API_KEY',
       retryable: false,
     });
+  });
+
+  it('reports no write when opening the provider fails', async () => {
+    seedResources(collection(), { ok: { source: 'OK' } });
+    const onWrite = vi.fn();
+
+    await expect(translateLocale(collection(), { targetLocale: 'fr', onWrite })).rejects.toMatchObject({
+      code: 'MISSING_API_KEY',
+    });
+
+    expect(onWrite).not.toHaveBeenCalled();
   });
 });

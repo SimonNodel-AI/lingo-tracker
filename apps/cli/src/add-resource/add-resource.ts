@@ -1,5 +1,5 @@
-import type { Collection } from '@simoncodes-ca/core';
-import { addResource, openResourceFolder, resolveResourcePaths } from '@simoncodes-ca/core';
+import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
+import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { type Ask, CommandCancelledError, defineCommand } from '../runner/command-runner';
@@ -18,6 +18,7 @@ export interface AddResourceOptions {
   comment?: string;
   tags?: string;
   targetFolder?: string;
+  override?: boolean;
   /** Raw `--translations` JSON: an array of `{ locale, value, status }`. Parsed in `run`. */
   translations?: string;
 }
@@ -66,36 +67,35 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
         ? await promptForTranslations(collection, value, ask)
         : undefined;
 
-    const { resolvedKey, folderPath, entryKey } = resolveResourcePaths({
-      key,
-      translationsFolder: collection.translationsFolder,
-      targetFolder,
-    });
-
-    // Interactive: an existing entry is only overwritten after confirmation.
-    if (interactive && hasEntryKey(folderPath, entryKey)) {
-      const confirm = await ask({
-        type: 'confirm',
-        name: 'value',
-        message: `Resource "${resolvedKey}" already exists. Override?`,
-        initial: false,
-      });
-      if (confirm.value !== true) {
-        throw new CommandCancelledError();
-      }
-    }
-
     const tagsArray = parseCommaSeparatedList(answers.tags) ?? [];
 
     // Locales without a supplied translation are seeded by core (auto-translated or copied as `new`).
-    const result = await addResource(collection, {
+    const params = {
       key,
       baseValue: value,
       comment: answers.comment || undefined,
       tags: tagsArray.length > 0 ? tagsArray : undefined,
       targetFolder,
       translations,
-    });
+    };
+    let result: AddResourceResult;
+    try {
+      result = await addResource(collection, params, { onExisting: answers.override ? 'replace' : 'fail' });
+    } catch (error) {
+      if (!(error instanceof ResourceAlreadyExistsError) || answers.override) throw error;
+      if (!interactive) {
+        ConsoleFormatter.error(error.message, ['Use --override to replace it, or edit-resource to change it.']);
+        return { exitCode: 1 };
+      }
+      const confirm = await ask({
+        type: 'confirm',
+        name: 'value',
+        message: `Resource "${error.key}" already exists. Override?`,
+        initial: false,
+      });
+      if (confirm.value !== true) throw new CommandCancelledError();
+      result = await addResource(collection, params, { onExisting: 'replace' });
+    }
 
     ConsoleFormatter.success(`Resource added: ${result.resolvedKey}`);
     if (result.created) {
@@ -186,15 +186,4 @@ async function promptForTranslations(
     });
   }
   return translations;
-}
-
-/**
- * Checks if a resource entry already exists in a folder. Unreadable files count as "not found".
- */
-function hasEntryKey(folderPath: string, entryKey: string): boolean {
-  try {
-    return openResourceFolder(folderPath).has(entryKey);
-  } catch {
-    return false;
-  }
 }

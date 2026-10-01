@@ -1,10 +1,9 @@
 import {
   displayTermPath,
-  editPreferredTerminology,
   type LingoTrackerConfig,
-  loadPreferredTerminology,
   type PreferredTerminologyEditResult,
   PreferredTerminologyValidationError,
+  updateProjectTerms,
 } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
@@ -37,38 +36,28 @@ export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOpt
 /** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
 function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const hasList = options.list === true;
-  const hasAdd = options.add !== undefined;
-  const hasRemove = options.remove !== undefined;
-
-  if (!hasList && !hasAdd && !hasRemove) {
-    throw new Error('Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>');
-  }
-  if (hasAdd && hasRemove) {
-    throw new Error('--add and --remove cannot be combined; run them separately');
-  }
-  if (!hasAdd && (options.preferred !== undefined || options.reason !== undefined)) {
-    throw new Error('--preferred and --reason can only be used with --add');
-  }
-  if (hasAdd && options.preferred === undefined) {
-    throw new Error('--add requires --preferred <preferred>');
-  }
-
-  const loaded = loadPreferredTerminology(config, cwd);
-  const where = displayTermPath(loaded.filePath, cwd);
-  if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
-  if (hasList) {
-    ConsoleFormatter.section('Preferred Terminology');
-    ConsoleFormatter.keyValue('File', where);
-    if (loaded.error) throw new Error(loaded.error);
-    if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
-    else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
-  }
-  if (!hasAdd && !hasRemove) return;
-  if (loaded.error) throw new Error(loaded.error);
-
-  let result: PreferredTerminologyEditResult;
+  let result: PreferredTerminologyEditResult | undefined;
   try {
-    result = editPreferredTerminology(config, options, cwd, loaded);
+    result = updateProjectTerms(
+      config,
+      { preferredTerminology: options },
+      {
+        cwd,
+        beforeWrite: ({ preferredTerminology: loaded }) => {
+          if (loaded === undefined) return;
+          const where = displayTermPath(loaded.filePath, cwd);
+          if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
+          if (hasList) {
+            ConsoleFormatter.section('Preferred Terminology');
+            ConsoleFormatter.keyValue('File', where);
+            if (loaded.error) throw new Error(loaded.error);
+            if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
+            else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
+          }
+          if (loaded.error) throw new Error(loaded.error);
+        },
+      },
+    ).preferredTerminologyResult;
   } catch (error) {
     if (error instanceof PreferredTerminologyValidationError) {
       ConsoleFormatter.error(
@@ -83,8 +72,9 @@ function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, c
     }
     throw new Error(error instanceof Error ? error.message : String(error));
   }
-  if (result.action && result.changedRule) {
+  if (result?.action && result.changedRule) {
     const verb = result.action === 'added' ? 'Added' : result.action === 'updated' ? 'Updated' : 'Removed';
+    const where = displayTermPath(result.filePath, cwd);
     ConsoleFormatter.success(`${verb} preferred terminology rule: ${formatRule(result.changedRule)} (${where})`);
   }
 }

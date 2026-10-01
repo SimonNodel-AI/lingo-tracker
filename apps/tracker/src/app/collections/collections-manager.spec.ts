@@ -153,11 +153,11 @@ describe('CollectionsManager', () => {
     expect(component.showFilter()).toBe(false);
   });
 
-  it('navigates to the browser with the collection name encoded', () => {
+  it('passes the collection name to the router as one path segment', () => {
     const router = spectator.inject(Router);
-    component.navigateToBrowser('a b');
+    component.navigateToBrowser('a% b./&#é');
 
-    expect(router.navigate).toHaveBeenCalledWith(['/browser', 'a%20b']);
+    expect(router.navigate).toHaveBeenCalledWith(['/browser', 'a% b./&#é']);
   });
 
   it('titles the page with the project name and summarises collections, bundles and base locale', () => {

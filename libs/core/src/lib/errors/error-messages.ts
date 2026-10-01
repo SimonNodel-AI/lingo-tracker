@@ -35,6 +35,12 @@ export const ErrorMessages = {
 
   collectionAlreadyExists: (name: string) => `Collection "${name}" already exists`,
 
+  collectionRequiredByBundles: (name: string, bundles: readonly string[]) =>
+    `Collection "${name}" is the only collection of bundle(s) ${bundles.map((bundle) => `"${bundle}"`).join(', ')}. Remove it from those bundles or delete them first.`,
+
+  collectionRenameBundleConflict: (oldName: string, newName: string, bundles: readonly string[]) =>
+    `Cannot rename collection "${oldName}" to "${newName}": bundle(s) ${bundles.map((bundle) => `"${bundle}"`).join(', ')} already reference "${newName}". Remove those references first.`,
+
   collectionTagEditConflict: () => '--set-tags cannot be combined with --add-tag or --remove-tag',
 
   collectionTagEditMissing: () => 'Provide at least one of --add-tag, --remove-tag, or --set-tags',

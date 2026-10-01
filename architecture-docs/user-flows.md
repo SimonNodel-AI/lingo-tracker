@@ -116,9 +116,9 @@ sequenceDiagram
 
     Dev->>CLI: export --locale fr --format json --output ./exports
     CLI->>FS: read .lingo-tracker.json → openCollection() per collection
-    CLI->>Core: validateOutputDirectory(outputDir)
-    CLI->>Core: exportTargetLocales(collections, ["fr"]) → print the plan
     CLI->>Core: runExport(collections, options + protected terms)
+    Core->>Core: validate options; resolve output directory and target locales
+    Core-->>CLI: onStart({ outputDirectory, locales }) → print the plan
     Core->>Core: loadResources(collection) for each collection
     Note right of Core: readCollection() (Collection Reader) walks each translationsFolder<br/>and opens every folder through ResourceFolder
     Core->>FS: read resource_entries.json + tracker_meta.json (per folder)
@@ -126,7 +126,7 @@ sequenceDiagram
         Core->>Core: filterResources() — collections with this target locale,<br/>status and tag filters, protected-term annotation
         Core->>FS: write fr.json (JSON or XLIFF exporter; skipped in a dry run)
     end
-    Core-->>CLI: ExportRunResult { totals, localeResults, summary }
+    Core-->>CLI: ExportRunResult { totals, locales, localeResults, summary }
     CLI-->>Dev: Per-locale lines + export summary
     CLI->>FS: write the summary file (printed instead in a dry run)
 ```
@@ -135,7 +135,7 @@ sequenceDiagram
 
 ### Import
 
-Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). `runImport` detects and parses the file, then applies the resources. Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
+Import ingests a translated file for one locale and reconciles it with the existing resource tree using the chosen [import strategy](glossary.md#import-strategy). The CLI prompts use domain's default strategy and importable-locale rule for their choices; the import session enforces the same rule. `runImport` detects and parses the file, then applies the resources. Core functions are documented in [core-library.md — Import Pipeline](core-library.md#import-pipeline).
 
 <!-- Import: parse file → resolve / normalize / auto-fix → validate → merge per strategy per folder → report -->
 

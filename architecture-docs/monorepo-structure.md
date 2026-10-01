@@ -206,7 +206,7 @@ Each library's [public surface](glossary.md#public-surface) is its `src/index.ts
 | Library | Barrel | Groups |
 |---|---|---|
 | `domain` | `libs/domain/src/index.ts` (69 names) | shared types, keys, staleness, status summary, ICU/Transloco, validation, terminology, references, tags, utilities. `index.spec.ts` pins the runtime export list. |
-| `core` | `libs/core/src/index.ts` (172 names) | operations, collection & config, `ResourceFolder`, read models, errors, operation parameter and result types. See [core-library.md](core-library.md#public-surface). |
+| `core` | `libs/core/src/index.ts` (202 names) | operations, collection & config, `ResourceFolder`, read models, errors, operation parameter and result types. See [core-library.md](core-library.md#public-surface). |
 | `data-transfer` | `libs/data-transfer/src/index.ts` | `export *` of each DTO file. The library holds only DTOs, so every export is part of the contract. |
 
 `core` does not re-export `domain` names. A caller that needs `TranslationStatus`, `TokenCasing` or `ImportStrategy` imports it from `@simoncodes-ca/domain`.

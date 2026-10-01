@@ -7,10 +7,12 @@ vi.mock('./add-resource/add-resource', () => ({ addResourceCommand: vi.fn() }));
 vi.mock('./delete-collection/delete-collection', () => ({ deleteCollectionCommand: vi.fn() }));
 vi.mock('./commands/move', () => ({ moveResourceCommand: vi.fn() }));
 vi.mock('./commands/find-similar', () => ({ findSimilarCommand: vi.fn() }));
+vi.mock('./commands/import-cmd', () => ({ importCommand: vi.fn() }));
 
 import { addResourceCommand } from './add-resource/add-resource';
 import { moveResourceCommand } from './commands/move';
 import { findSimilarCommand } from './commands/find-similar';
+import { importCommand } from './commands/import-cmd';
 import { validateCommand } from './commands/validate';
 import { deleteCollectionCommand } from './delete-collection/delete-collection';
 
@@ -28,6 +30,7 @@ async function runCli(...args: string[]): Promise<void> {
       deleteCollectionCommand,
       moveResourceCommand,
       findSimilarCommand,
+      importCommand,
     ].map((command) => vi.mocked(command).mock.calls.length);
     if (calls.every((count) => count === 0)) {
       throw new Error('command not called yet');
@@ -59,6 +62,12 @@ describe('main.ts flag wiring', () => {
     expect(addResourceCommand).toHaveBeenCalledWith(expect.objectContaining({ translations: '[{"locale":' }));
   });
 
+  it('passes --override to add-resource', async () => {
+    await runCli('add-resource', '--key', 'a.b', '--value', 'OK', '--override');
+
+    expect(addResourceCommand).toHaveBeenCalledWith(expect.objectContaining({ override: true }));
+  });
+
   it('passes --yes to delete-collection', async () => {
     await runCli('delete-collection', '--collection-name', 'app', '--yes');
 
@@ -80,5 +89,11 @@ describe('main.ts flag wiring', () => {
     await runCli('find-similar', '--collection', 'main', '--value', 'Hello', '--max-results', '8');
 
     expect(findSimilarCommand).toHaveBeenCalledWith({ collection: 'main', value: 'Hello', maxResults: 8 });
+  });
+
+  it('passes the default strategy to import', async () => {
+    await runCli('import', '--source', 'file.json', '--locale', 'fr');
+
+    expect(importCommand).toHaveBeenCalledWith(expect.objectContaining({ strategy: 'translation-service' }));
   });
 });

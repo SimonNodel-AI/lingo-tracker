@@ -1,4 +1,3 @@
-import * as fs from 'node:fs';
 import * as core from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,21 +10,6 @@ vi.mock('prompts', () => ({
 }));
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 
-const fsMocks = vi.hoisted(() => ({
-  existsSync: vi.fn(),
-  readFileSync: vi.fn(),
-  writeFileSync: vi.fn(),
-}));
-
-// fs is mocked so the existing-entry check (openResourceFolder) reads what each test says.
-vi.mock('node:fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual, ...fsMocks } };
-});
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return { ...actual, ...fsMocks, default: { ...actual, ...fsMocks } };
-});
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
@@ -49,10 +33,6 @@ describe('addResourceCommand', () => {
     process.env.INIT_CWD = '/test';
     process.exitCode = undefined;
     vi.clearAllMocks();
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    vi.mocked(fs.readFileSync).mockImplementation(() => {
-      throw new Error('File not found');
-    });
     vi.mocked(prompts).mockResolvedValue({});
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
     vi.mocked(core.loadConfig).mockImplementation(() => {
@@ -186,6 +166,7 @@ describe('addResourceCommand', () => {
           { locale: 'es', value: 'Aceptar', status: 'verified' },
         ],
       },
+      { onExisting: 'fail' },
     );
     expect(process.exitCode).toBe(0);
   });
@@ -223,30 +204,16 @@ describe('addResourceCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('should prompt for overwrite confirmation when resource exists in interactive mode', async () => {
-    vi.mocked(core.loadConfig).mockReturnValue({
-      ...configDefaults,
-      collections: {
-        TestCollection: {
-          translationsFolder: 'translations',
-          baseLocale: 'en',
-        },
-      },
-      baseLocale: 'en',
-    });
+  const existingConfig = () => ({
+    ...configDefaults,
+    collections: { TestCollection: { translationsFolder: 'translations', baseLocale: 'en' } },
+    baseLocale: 'en',
+  });
 
-    vi.mocked(fs.readFileSync).mockImplementation((path: fs.PathOrFileDescriptor) => {
-      if (String(path).includes('resource_entries.json')) {
-        return JSON.stringify({ ok: { source: 'OK' } });
-      }
-      throw new Error('File not found');
-    });
-
-    // Mock resource file exists and contains the entry
-    vi.mocked(fs.existsSync).mockImplementation((path: fs.PathLike) => String(path).includes('resource_entries.json'));
-
+  it('cancels after an interactive conflict is declined', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue(existingConfig());
+    vi.mocked(core.addResource).mockRejectedValueOnce(new core.ResourceAlreadyExistsError('buttons.ok'));
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
-    // Optional fields are asked first; then the user declines the overwrite.
     vi.mocked(prompts).mockResolvedValueOnce({}).mockResolvedValueOnce({ value: false });
 
     await addResourceCommand({
@@ -262,8 +229,55 @@ describe('addResourceCommand', () => {
       }),
       expect.anything(),
     );
-    expect(core.addResource).not.toHaveBeenCalled();
+    expect(core.addResource).toHaveBeenCalledTimes(1);
+    expect(core.addResource).toHaveBeenCalledWith(expect.any(Object), expect.any(Object), { onExisting: 'fail' });
     expect(console.error).toHaveBeenCalledWith('❌ Add resource cancelled.');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('retries with replace after an interactive conflict is accepted', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue(existingConfig());
+    vi.mocked(core.addResource).mockRejectedValueOnce(new core.ResourceAlreadyExistsError('buttons.ok'));
+    vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+    vi.mocked(prompts).mockResolvedValueOnce({}).mockResolvedValueOnce({ value: true });
+
+    await addResourceCommand({ collection: 'TestCollection', key: 'buttons.ok', value: 'OK' });
+
+    expect(prompts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'confirm',
+        message: 'Resource "buttons.ok" already exists. Override?',
+        initial: false,
+      }),
+      expect.anything(),
+    );
+    expect(core.addResource).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(core.addResource).mock.calls[0][2]).toEqual({ onExisting: 'fail' });
+    expect(vi.mocked(core.addResource).mock.calls[1][2]).toEqual({ onExisting: 'replace' });
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('reports an existing key and exits 1 without prompting in non-interactive mode', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue(existingConfig());
+    vi.mocked(core.addResource).mockRejectedValueOnce(new core.ResourceAlreadyExistsError('buttons.ok'));
+
+    await addResourceCommand({ collection: 'TestCollection', key: 'buttons.ok', value: 'OK' });
+
+    expect(console.error).toHaveBeenCalledWith('❌ Resource already exists: buttons.ok');
+    expect(console.error).toHaveBeenCalledWith('  Use --override to replace it, or edit-resource to change it.');
+    expect(core.addResource).toHaveBeenCalledTimes(1);
+    expect(prompts).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('passes --override as replace in one call without prompting', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue(existingConfig());
+
+    await addResourceCommand({ collection: 'TestCollection', key: 'buttons.ok', value: 'OK', override: true });
+
+    expect(core.addResource).toHaveBeenCalledTimes(1);
+    expect(core.addResource).toHaveBeenCalledWith(expect.any(Object), expect.any(Object), { onExisting: 'replace' });
+    expect(prompts).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(0);
   });
 

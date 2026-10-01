@@ -6,7 +6,12 @@ import { ConfigService } from '../config/config.service';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import * as core from '@simoncodes-ca/core';
-import { CollectionAlreadyExistsError, CollectionNotFoundError } from '@simoncodes-ca/core';
+import {
+  CollectionAlreadyExistsError,
+  CollectionNotFoundError,
+  CollectionRenameBundleConflictError,
+  CollectionRequiredByBundleError,
+} from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 
 // Mock the core writes; keep the real config resolution and mutation helpers
@@ -70,19 +75,19 @@ describe('CollectionsController', () => {
       expect(deleteCollectionByName).toHaveBeenCalledWith('test-collection');
     });
 
-    it('should URI decode collection names with special characters', async () => {
+    it('passes the route param through verbatim', async () => {
       const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
       deleteCollectionByName.mockReturnValue({
         message: 'Collection "My Collection" deleted successfully',
         mutations: [],
       });
 
-      const result = await collectionsController.deleteCollection('My%20Collection');
+      const result = await collectionsController.deleteCollection('My%Collection');
 
       expect(result).toEqual({
         message: 'Collection "My Collection" deleted successfully',
       });
-      expect(deleteCollectionByName).toHaveBeenCalledWith('My Collection');
+      expect(deleteCollectionByName).toHaveBeenCalledWith('My%Collection');
     });
 
     it('lets CollectionNotFoundError through, which the filter answers with 404', async () => {
@@ -95,6 +100,24 @@ describe('CollectionsController', () => {
 
       expect(error).toBeInstanceOf(CollectionNotFoundError);
       expect(toHttpException(error).getStatus()).toBe(404);
+      expect(mockIndex.apply).not.toHaveBeenCalled();
+    });
+
+    it('answers a refused deletion with 409 and leaves the index alone', async () => {
+      (core.deleteCollectionByName as jest.Mock).mockImplementation(() => {
+        throw new CollectionRequiredByBundleError('test-collection', ['main']);
+      });
+
+      const error = await collectionsController.deleteCollection('test-collection').catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CollectionRequiredByBundleError);
+      expect(toHttpException(error).getStatus()).toBe(409);
+      expect(toHttpException(error).getResponse()).toEqual({
+        message:
+          'Collection "test-collection" is the only collection of bundle(s) "main". Remove it from those bundles or delete them first.',
+        error: 'Conflict',
+        statusCode: 409,
+      });
       expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
@@ -195,6 +218,29 @@ describe('CollectionsController', () => {
   });
 
   describe('updateCollectionByName', () => {
+    it('answers a rename onto a dangling bundle reference with 409', async () => {
+      (core.updateCollection as jest.Mock).mockImplementation(() => {
+        throw new CollectionRenameBundleConflictError('test-collection', 'legacy', ['main']);
+      });
+
+      const error = await collectionsController
+        .updateCollectionByName('test-collection', {
+          name: 'legacy',
+          collection: { translationsFolder: './translations/test' },
+        })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(CollectionRenameBundleConflictError);
+      expect(toHttpException(error).getStatus()).toBe(409);
+      expect(toHttpException(error).getResponse()).toEqual({
+        message:
+          'Cannot rename collection "test-collection" to "legacy": bundle(s) "main" already reference "legacy". Remove those references first.',
+        error: 'Conflict',
+        statusCode: 409,
+      });
+      expect(mockIndex.apply).not.toHaveBeenCalled();
+    });
+
     it('should successfully update a collection', async () => {
       const updateCollection = core.updateCollection as jest.Mock;
       updateCollection.mockReturnValue({
@@ -222,7 +268,7 @@ describe('CollectionsController', () => {
       });
     });
 
-    it('should URI decode collection names with special characters', async () => {
+    it('passes the route param through verbatim', async () => {
       const updateCollection = core.updateCollection as jest.Mock;
       updateCollection.mockReturnValue({
         message: 'Collection "My Collection" updated successfully',
@@ -236,9 +282,9 @@ describe('CollectionsController', () => {
         },
       };
 
-      await collectionsController.updateCollectionByName('My%20Collection', dto as unknown as UpdateCollectionDto);
+      await collectionsController.updateCollectionByName('My%Collection', dto as unknown as UpdateCollectionDto);
 
-      expect(updateCollection).toHaveBeenCalledWith('My Collection', 'My Collection', dto.collection, {
+      expect(updateCollection).toHaveBeenCalledWith('My%Collection', 'My Collection', dto.collection, {
         protectedTerms: undefined,
       });
     });

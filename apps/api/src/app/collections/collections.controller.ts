@@ -54,8 +54,7 @@ export class CollectionsController {
   /** Core's typed errors (for example `CollectionNotFoundError`, 404) reach the global exception filter. */
   @Delete(':collectionName')
   async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
-    const decodedCollectionName = decodeURIComponent(collectionName);
-    const result = deleteCollectionByName(decodedCollectionName);
+    const result = deleteCollectionByName(collectionName);
     this.#index.apply(result.mutations);
     return { message: result.message };
   }
@@ -85,9 +84,8 @@ export class CollectionsController {
     @Body() body: UpdateCollectionDto,
   ): Promise<{ message: string }> {
     assertCollectionBody(body, 'optional');
-    const decodedCollectionName = decodeURIComponent(collectionName);
     const { name, collection } = body;
-    const result = await updateCollection(decodedCollectionName, name, mapDtoToCollection(collection), {
+    const result = await updateCollection(collectionName, name, mapDtoToCollection(collection), {
       protectedTerms: collection.protectedTerms,
     });
     this.#index.apply(result.mutations);
