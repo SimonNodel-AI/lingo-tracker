@@ -1,4 +1,10 @@
-import { type LingoTrackerConfig, loadConfig, moveResource } from '@simoncodes-ca/core';
+import {
+  CollectionNotFoundError,
+  type LingoTrackerConfig,
+  loadConfig,
+  moveResource,
+  ReadOnlyCollectionError,
+} from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -46,7 +52,6 @@ describe('moveResourceCommand', () => {
       source: 'a.ok',
       destination: 'b.ok',
       override: true,
-      destinationCollection: undefined,
     });
     expect(console.log).toHaveBeenCalledWith('✅ Moved 1 resource(s)');
     expect(process.exitCode).toBe(0);
@@ -55,32 +60,29 @@ describe('moveResourceCommand', () => {
   it('moves into the collection named by --dest-collection', async () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'admin' });
 
-    expect(moveResource).toHaveBeenCalledWith(collectionNamed('main'), {
-      source: 'a.ok',
-      destination: 'b.ok',
-      override: undefined,
-      destinationCollection: expect.objectContaining({
-        name: 'admin',
-        translationsFolder: '/project/src/admin',
-        readOnly: false,
-      }),
-    });
+    expect(moveResource).toHaveBeenCalledWith(
+      collectionNamed('main'),
+      { source: 'a.ok', destination: 'b.ok', override: undefined, toCollection: 'admin' },
+      { config: CONFIG, cwd: '/project' },
+    );
     expect(console.log).toHaveBeenCalledWith('✅ Moved 1 resource(s)');
     expect(process.exitCode).toBe(0);
   });
 
   it('exits 1 for an unknown destination collection', async () => {
+    vi.mocked(moveResource).mockRejectedValue(new CollectionNotFoundError('missing', 'destination'));
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'missing' });
 
-    expect(moveResource).not.toHaveBeenCalled();
-    expect(console.error).toHaveBeenCalledWith('❌ Collection "missing" not found');
+    expect(moveResource).toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ Destination collection "missing" not found');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 for a read-only destination collection', async () => {
+    vi.mocked(moveResource).mockRejectedValue(new ReadOnlyCollectionError('vendor'));
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'vendor' });
 
-    expect(moveResource).not.toHaveBeenCalled();
+    expect(moveResource).toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(
       '❌ Collection "vendor" is read-only. Its resources cannot be modified.',
     );

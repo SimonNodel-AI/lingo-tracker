@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { moveResource } from './move-resource';
 
 function collection(translationsFolder: string, name = 'main'): Collection {
@@ -22,6 +23,14 @@ function collection(translationsFolder: string, name = 'main'): Collection {
     config: { translationsFolder },
   };
 }
+
+const moveConfig = (name: string, translationsFolder: string): LingoTrackerConfig => ({
+  exportFolder: 'dist',
+  importFolder: 'import',
+  baseLocale: 'en',
+  locales: ['en'],
+  collections: { [name]: { translationsFolder } },
+});
 
 // Mock node:fs
 vi.mock('node:fs', () => {
@@ -345,11 +354,15 @@ describe('Move Resource', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       mockDirectories.add(collectionBFolder);
 
-      const result = await moveResource(collection(collectionAFolder, 'collectionA'), {
-        source: 'common.buttons.ok',
-        destination: 'common.actions.ok',
-        destinationCollection: collection(collectionBFolder, 'collectionB'),
-      });
+      const result = await moveResource(
+        collection(collectionAFolder, 'collectionA'),
+        {
+          source: 'common.buttons.ok',
+          destination: 'common.actions.ok',
+          toCollection: 'collectionB',
+        },
+        { config: moveConfig('collectionB', collectionBFolder) },
+      );
 
       expect(result.movedCount).toBe(1);
       expect(result.errors).toHaveLength(0);
@@ -388,11 +401,15 @@ describe('Move Resource', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       mockDirectories.add(collectionBFolder);
 
-      const result = await moveResource(collection(collectionAFolder, 'collectionA'), {
-        source: 'common.buttons.*',
-        destination: 'common.actions',
-        destinationCollection: collection(collectionBFolder, 'collectionB'),
-      });
+      const result = await moveResource(
+        collection(collectionAFolder, 'collectionA'),
+        {
+          source: 'common.buttons.*',
+          destination: 'common.actions',
+          toCollection: 'collectionB',
+        },
+        { config: moveConfig('collectionB', collectionBFolder) },
+      );
 
       expect(result.movedCount).toBe(2);
 

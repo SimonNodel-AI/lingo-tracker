@@ -11,7 +11,6 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
 import { CollectionIndex } from '../../cache/collection-index.service';
-import { openDestinationCollection } from '../open-route-collection';
 import { RouteCollection } from '../route-collection';
 
 @Controller('collections/:collectionName/folders')
@@ -100,10 +99,6 @@ export class FoldersController {
       );
     }
 
-    const destinationCollection = moveFolderDto.toCollection
-      ? openDestinationCollection(config, moveFolderDto.toCollection)
-      : undefined;
-
     const result = await moveFolder(
       collection,
       {
@@ -111,9 +106,9 @@ export class FoldersController {
         destinationFolderPath: moveFolderDto.destinationFolderPath,
         override: moveFolderDto.override,
         nestUnderDestination: moveFolderDto.nestUnderDestination,
-        destinationCollection,
+        toCollection: moveFolderDto.toCollection,
       },
-      { onMutation: this.index.sink },
+      { config, onMutation: this.index.sink },
     );
 
     return {

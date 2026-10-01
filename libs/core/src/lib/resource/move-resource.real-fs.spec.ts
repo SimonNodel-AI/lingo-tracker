@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { Collection } from '../config/open-collection';
+import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { moveFolder } from '../folder/move-folder';
 import { calculateChecksum } from './checksum';
@@ -119,12 +120,80 @@ describe('moving resources keeps metadata (real fs)', () => {
       {
         source: 'common.ok',
         destination: 'common.ok',
-        destinationCollection: collection(otherCollection, 'other'),
+        toCollection: 'other',
       },
-      { onMutation },
+      {
+        onMutation,
+        config: {
+          exportFolder: 'dist',
+          importFolder: 'import',
+          baseLocale: 'en',
+          locales: ['en', 'fr', 'es'],
+          collections: { other: { translationsFolder: otherCollection } },
+        },
+      },
     );
 
     expect(read('tracker_meta.json', 'other', 'common')).toEqual(meta);
+  });
+
+  it('refuses a missing destination before a single resource move writes', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { main: { translationsFolder: root } },
+    };
+    await expect(
+      moveResource(
+        collection(),
+        { source: 'common.ok', destination: 'shared.ok', toCollection: 'missing' },
+        { config, onMutation },
+      ),
+    ).rejects.toThrow(CollectionNotFoundError);
+    expect(collected).toEqual([]);
+    expect(read('resource_entries.json', 'common')).toEqual(entries);
+  });
+
+  it('refuses a read-only destination before a single resource move writes', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { vendor: { translationsFolder: 'vendor', readOnly: true } },
+    };
+    await expect(
+      moveResource(
+        collection(),
+        { source: 'common.ok', destination: 'shared.ok', toCollection: 'vendor' },
+        { config, cwd: root, onMutation },
+      ),
+    ).rejects.toThrow(ReadOnlyCollectionError);
+    expect(collected).toEqual([]);
+    expect(read('resource_entries.json', 'common')).toEqual(entries);
+  });
+
+  it('resolves a relative destination using the supplied cwd', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { other: { translationsFolder: 'other' } },
+    };
+    const result = await moveResource(
+      collection(),
+      { source: 'common.ok', destination: 'shared.ok', toCollection: 'other' },
+      { config, cwd: root, onMutation },
+    );
+    expect(result.movedCount).toBe(1);
+    expect(read('resource_entries.json', 'other', 'shared')).toEqual(entries);
+    expect(collected.map(({ translationsFolder }) => translationsFolder)).toEqual([root, join(root, 'other')]);
   });
 
   it('moveFolder keeps statuses', async () => {
@@ -253,5 +322,35 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(result.errors).toEqual(['Collection "vendor" is read-only. Its resources cannot be modified.']);
     expect(result.movedCount).toBe(0);
     expect(existsSync(join(root, 'common', 'resource_entries.json'))).toBe(true);
+    expect(collected).toEqual([]);
+  });
+
+  it('continues a batch after a read-only destination and resolves a later destination with cwd', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: {
+        vendor: { translationsFolder: 'vendor', readOnly: true },
+        other: { translationsFolder: 'other' },
+      },
+    };
+    const result = await moveResources(
+      collection(),
+      [
+        { source: 'common.ok', destination: 'ignored.ok', toCollection: 'vendor' },
+        { source: 'common.ok', destination: 'shared.ok', toCollection: 'other' },
+      ],
+      { config, cwd: root, onMutation },
+    );
+    expect(result).toEqual({
+      movedCount: 1,
+      warnings: [],
+      errors: ['Collection "vendor" is read-only. Its resources cannot be modified.'],
+    });
+    expect(read('resource_entries.json', 'other', 'shared')).toEqual(entries);
+    expect(collected.map(({ translationsFolder }) => translationsFolder)).toEqual([root, join(root, 'other')]);
   });
 });
