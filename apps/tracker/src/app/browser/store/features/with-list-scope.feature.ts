@@ -1,13 +1,14 @@
 import { computed, inject } from '@angular/core';
-import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
-import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { EMPTY, type Observable, catchError, map, of, pipe, switchMap, tap } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
+import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
-import { NotificationService } from '../../../shared/notification';
-import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/browser-api.service';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
+import { catchError, EMPTY, map, type Observable, of, pipe, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
+import { NotificationService } from '../../../shared/notification';
+import { BrowserApiService } from '../../services/browser-api.service';
+import { handleLoadFailure } from '../load-failure';
 import { captureSession, type SessionCheck, withinSession } from '../session-guard';
 
 /** What the translation list shows: one folder's resources, or the hits of one search query. */
@@ -119,15 +120,15 @@ export function withListScopeFeature<_>() {
             ? TRACKER_TOKENS.BROWSER.TOAST.LOADTRANSLATIONSFAILED
             : TRACKER_TOKENS.BROWSER.TOAST.SEARCHTRANSLATIONSFAILED;
         const message = apiErrorMessage(error, transloco.translate(fallback));
-        // The index can go not-ready mid-session. Once a list is on screen, go back to the last scope
-        // that loaded (its rows are the ones on screen) and toast: the error state would replace it.
+        // The one load-failure rule (load-failure.ts). Once a list is on screen, a not-ready index
+        // sends the list back to the last scope that loaded (its rows are the ones on screen).
         const shown = store.shownScope();
-        if (error instanceof CollectionIndexNotReadyError && shown) {
-          patchState(store, { isListLoading: false, ...shown });
-          notifications.error(message);
-          return;
-        }
-        patchState(store, { isListLoading: false, listError: message });
+        handleLoadFailure(error, message, {
+          hasContentOnScreen: shown !== null,
+          keepContent: () => patchState(store, { isListLoading: false, ...shown }),
+          showError: (text) => patchState(store, { isListLoading: false, listError: text }),
+          toast: (text) => notifications.error(text),
+        });
       }
 
       const runLoads = rxMethod<ListLoad | null>(

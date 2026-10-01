@@ -1,35 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import { PreferredTerminologyValidationError } from '../config/preferred-terminology-file';
 import { TranslationError } from '../translation/translation-provider';
-import * as errorClasses from './lingo-tracker-error';
 import { ErrorMessages } from './error-messages';
+import * as errorClasses from './lingo-tracker-error';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
+  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
   CoreOperationError,
-  GlossaryBaseLocaleMismatchError,
-  GlossaryNoCollectionsError,
-  GlossaryExtractorError,
-  ImportSourceError,
-  InvalidImportLocaleError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
+  GlossaryBaseLocaleMismatchError,
+  GlossaryExtractorError,
+  GlossaryNoCollectionsError,
+  ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
-  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
+  InvalidImportLocaleError,
   InvalidLocaleError,
+  InvalidProjectTermsEditError,
   InvalidResourceKeyError,
+  InvalidTranslationStatusError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
@@ -40,7 +43,6 @@ import {
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
-  CannotTranslateBaseLocaleError,
   TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
 
@@ -102,10 +104,10 @@ describe('LingoTrackerError subclasses', () => {
       message: 'translationsFolder is required',
     },
     {
-      error: new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately'),
+      error: new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
       name: 'InvalidProjectTermsEditError',
       code: 'INVALID_PROJECT_TERMS_EDIT',
-      message: '--add and --remove cannot be combined; run them separately',
+      message: 'Only one preferred terminology edit can be applied at a time',
     },
     {
       error: new ProtectedTermsFileNotSetError('app'),
@@ -148,6 +150,12 @@ describe('LingoTrackerError subclasses', () => {
       name: 'InvalidResourceKeyError',
       code: 'INVALID_RESOURCE_KEY',
       message: 'Key validation: Invalid key format "a..b"',
+    },
+    {
+      error: new InvalidTranslationStatusError('verifed'),
+      name: 'InvalidTranslationStatusError',
+      code: 'INVALID_TRANSLATION_STATUS',
+      message: 'Invalid translation status "verifed". Valid statuses: new, translated, stale, verified',
     },
     {
       error: new ResourceNotFoundError('common.ok'),
@@ -229,6 +237,7 @@ describe('LingoTrackerError subclasses', () => {
       new GlossaryExtractorError('unknown'),
       new ProtectedTermsFileError('/p/terms.json', 'bad terms'),
       new InvalidConfigError('bad config'),
+      new ConfigChangedError(),
       new CannotTranslateBaseLocaleError('en'),
       new TranslationLocaleNotConfiguredError('ja', ['en']),
       new MultipleBundleConstantNameError(),

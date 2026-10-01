@@ -43,9 +43,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['new-feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['new-feature'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag, new-feature');
     expect(process.exitCode).toBe(0);
@@ -55,9 +55,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['new-feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['new-feature'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag, new-feature');
   });
@@ -66,9 +66,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['New Feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['New Feature'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag, new-feature');
   });
@@ -78,9 +78,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['existing-tag'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag');
   });
@@ -90,9 +90,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { removeTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: undefined, remove: ['existing-tag'], set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags cleared');
   });
@@ -102,9 +102,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { setTags: 'alpha, beta' });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
-      { add: undefined, remove: undefined, set: 'alpha, beta' },
-      { cwd: '/test/project' },
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
+      { add: undefined, remove: undefined, set: ['alpha', ' beta'] },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: alpha, beta');
   });
@@ -114,51 +114,30 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { setTags: '' });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
-      { add: undefined, remove: undefined, set: '' },
-      { cwd: '/test/project' },
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
+      { add: undefined, remove: undefined, set: [''] },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags cleared');
   });
 
   it('exits 1 when --set-tags is combined with --add-tag', async () => {
-    mockEditCollectionTags.mockImplementationOnce(() => {
-      throw new InvalidCollectionError('--set-tags cannot be combined with --add-tag or --remove-tag');
-    });
     await editCollectionCommand('myApp', { setTags: 'foo', addTag: ['bar'] });
-    expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
-      { add: ['bar'], remove: undefined, set: 'foo' },
-      { cwd: '/test/project' },
-    );
+    expect(mockEditCollectionTags).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when --set-tags is combined with --remove-tag', async () => {
-    mockEditCollectionTags.mockImplementationOnce(() => {
-      throw new InvalidCollectionError('--set-tags cannot be combined with --add-tag or --remove-tag');
-    });
     await editCollectionCommand('myApp', { setTags: 'foo', removeTag: ['existing-tag'] });
-    expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
-      { add: undefined, remove: ['existing-tag'], set: 'foo' },
-      { cwd: '/test/project' },
-    );
+    expect(mockEditCollectionTags).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when no options provided', async () => {
-    mockEditCollectionTags.mockImplementationOnce(() => {
-      throw new InvalidCollectionError('Provide at least one of --add-tag, --remove-tag, or --set-tags');
-    });
     await editCollectionCommand('myApp', {});
-    expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
-      { add: undefined, remove: undefined, set: undefined },
-      { cwd: '/test/project' },
-    );
+    expect(mockEditCollectionTags).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('❌ Provide at least one of --add-tag, --remove-tag, or --set-tags');
     expect(process.exitCode).toBe(1);
   });
@@ -172,17 +151,17 @@ describe('editCollectionCommand', () => {
 
   it('prints a typed core tag error and exits 1', async () => {
     mockEditCollectionTags.mockImplementationOnce(() => {
-      throw new InvalidCollectionError('--set-tags cannot be combined with --add-tag or --remove-tag');
+      throw new InvalidCollectionError('A tag edit needs a replacement, addition, or removal');
     });
 
-    await editCollectionCommand('myApp', { setTags: 'alpha', addTag: ['beta'] });
+    await editCollectionCommand('myApp', { addTag: ['beta'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
-      { add: ['beta'], remove: undefined, set: 'alpha' },
-      { cwd: '/test/project' },
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
+      { add: ['beta'], remove: undefined, set: undefined },
     );
-    expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
+    expect(console.error).toHaveBeenCalledWith('❌ A tag edit needs a replacement, addition, or removal');
     expect(process.exitCode).toBe(1);
   });
 });

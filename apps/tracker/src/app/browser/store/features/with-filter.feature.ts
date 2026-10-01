@@ -1,5 +1,5 @@
 import { computed } from '@angular/core';
-import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
+import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 
 export interface FilterState {
@@ -8,6 +8,13 @@ export interface FilterState {
   sortField: 'key' | 'status';
   sortDirection: 'asc' | 'desc';
 }
+
+/**
+ * What the locale filter trigger reports, as data: the component words it. `locale` names
+ * the one locale on screen (a single selection, or whatever compact shows); `count` is a
+ * partial selection of two or more.
+ */
+export type LocaleFilterLabel = { kind: 'all' } | { kind: 'locale'; locale: string } | { kind: 'count'; count: number };
 
 export const initialFilterState: FilterState = {
   selectedLocales: [],
@@ -47,19 +54,19 @@ export function withFilterFeature<_>() {
         return selected.length === 0 || selected.length === available.length;
       }),
 
-      localeFilterText: computed(() => {
+      localeFilterLabel: computed((): LocaleFilterLabel => {
         const selected = selectedLocales();
         const available = availableLocales();
 
-        // Compact shows exactly one locale, so "All locales" would be a lie about
+        // Compact shows exactly one locale, so "all locales" would be a lie about
         // what is on screen. Name the locale the rows are actually showing.
         if (densityMode() === 'compact') {
-          return resolveCompactDisplayLocale(selected, available, baseLocale());
+          return { kind: 'locale', locale: resolveCompactDisplayLocale(selected, available, baseLocale()) };
         }
 
-        if (selected.length === 0 || selected.length === available.length) return 'All locales';
-        if (selected.length === 1) return selected[0];
-        return `${selected.length} locales`;
+        if (selected.length === 0 || selected.length === available.length) return { kind: 'all' };
+        if (selected.length === 1) return { kind: 'locale', locale: selected[0] };
+        return { kind: 'count', count: selected.length };
       }),
 
       filteredLocales: computed(() => {

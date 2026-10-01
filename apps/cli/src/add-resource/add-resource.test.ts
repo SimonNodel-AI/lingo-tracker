@@ -184,6 +184,27 @@ describe('addResourceCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('accepts a supplied translation without a status', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
+      collections: { TestCollection: { translationsFolder: 'translations' } },
+    });
+
+    await addResourceCommand({
+      collection: 'TestCollection',
+      key: 'a.b',
+      value: 'OK',
+      translations: '[{"locale":"fr","value":"OK"}]',
+    });
+
+    expect(core.addResource).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ translations: [{ locale: 'fr', value: 'OK' }] }),
+      { onExisting: 'fail' },
+    );
+    expect(process.exitCode).toBe(0);
+  });
+
   it('should exit 1 when --translations is valid JSON of the wrong shape', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
       ...configDefaults,
@@ -198,7 +219,7 @@ describe('addResourceCommand', () => {
     });
 
     expect(console.error).toHaveBeenCalledWith(
-      '❌ Invalid --translations: expected a JSON array of { "locale", "value", "status" } with status one of new, translated, stale, verified',
+      '❌ Invalid --translations: expected a JSON array of { "locale", "value" } with optional "status" one of new, translated, stale, verified',
     );
     expect(core.addResource).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);

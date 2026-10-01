@@ -214,6 +214,29 @@ describe('CollectionFormDialog — create mode', () => {
     expect(component.isEditMode).toBe(false);
   });
 
+  it('should default read-only when the typed folder is under node_modules', () => {
+    component.form.controls.translationsFolder.setValue('./node_modules/pkg/i18n');
+
+    expect(component.form.controls.readOnly.value).toBe(true);
+    expect(component.isNodeModulesPath).toBe(true);
+  });
+
+  it('should keep read-only off after the user toggles it off and changes the folder', () => {
+    component.form.controls.translationsFolder.setValue('./node_modules/pkg/i18n');
+    fixture.detectChanges();
+    const toggle = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('mat-slide-toggle button');
+    const toggleHandler = vi.spyOn(component, 'onReadOnlyToggle');
+    expect(toggle).not.toBeNull();
+
+    toggle?.click();
+    fixture.detectChanges();
+    expect(toggleHandler).toHaveBeenCalledWith(false);
+    expect(component.form.controls.readOnly.value).toBe(false);
+
+    component.form.controls.translationsFolder.setValue('./node_modules/other/i18n');
+    expect(component.form.controls.readOnly.value).toBe(false);
+  });
+
   it('should add a valid locale and auto-set it as base', () => {
     component.addLocaleInput.setValue('en');
     component.addLocale();
@@ -624,6 +647,22 @@ describe('CollectionFormDialog — edit mode', () => {
 
   it('should open the disclosure when protected terms already exist', () => {
     expect(component.advancedOpen()).toBe(true);
+  });
+});
+
+describe('CollectionFormDialog — edit mode with a stored read-only choice', () => {
+  it('should keep a stored read-only false when the folder changes to node_modules', () => {
+    const { fixture } = buildHarness({
+      mode: 'edit',
+      name: 'writable-app',
+      config: { translationsFolder: './i18n', readOnly: false },
+    });
+    const dialog = fixture.componentInstance;
+
+    dialog.form.controls.translationsFolder.setValue('./node_modules/pkg/i18n');
+
+    expect(dialog.form.controls.readOnly.value).toBe(false);
+    expect(dialog.isNodeModulesPath).toBe(true);
   });
 });
 

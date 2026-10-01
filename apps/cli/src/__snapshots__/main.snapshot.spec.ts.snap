@@ -226,13 +226,7 @@ Options:
       "dryRun": false,
       "format": "json",
       "includeBase": true,
-      "includeComment": false,
-      "includeStatus": false,
-      "includeTags": false,
       "protectNotes": false,
-      "rich": false,
-      "status": "new,stale",
-      "structure": "hierarchical",
       "verbose": false,
     },
   },
@@ -296,14 +290,18 @@ Options:
   -c, --collection <name>  Target collection to import into
   --strategy <strategy>    Import strategy (translation-service | verification |
                            migration | update) (default: "translation-service")
-  --update-comments        Update resource comments from import data (default:
-                           false)
-  --update-tags            Update resource tags from rich JSON (default: false)
+  --update-comments        Update resource comments from import data (migration:
+                           true) (default: false)
+  --update-tags            Update resource tags from rich JSON (migration: true)
+                           (default: false)
   --preserve-status        Allow rich JSON to specify status (advanced)
                            (default: false)
-  --create-missing         Create new resources if they don't exist
+  --create-missing         Create new resources if they don't exist (migration:
+                           true) (default: false)
   --validate-base          Warn if source base value differs from existing
                            (default: true)
+  --no-validate-base       Do not warn when source base value differs from
+                           existing
   --dry-run                Show what would be imported without modifying files
                            (default: false)
   --verbose                Show detailed import progress (default: false)
@@ -313,11 +311,7 @@ Options:
       "createMissing": true,
       "dryRun": false,
       "locale": "fr",
-      "preserveStatus": false,
       "source": "app.xlf",
-      "strategy": "translation-service",
-      "updateComments": false,
-      "updateTags": false,
       "validateBase": true,
       "verbose": false,
     },

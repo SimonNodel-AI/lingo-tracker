@@ -1,4 +1,4 @@
-import type { LingoTrackerCollection } from '@simoncodes-ca/core';
+import { assertCollectionFields, assertProtectedTerms, type LingoTrackerCollection } from '@simoncodes-ca/core';
 import type { LingoTrackerCollectionDto } from '@simoncodes-ca/data-transfer';
 
 /** Resolved protected-terms data for one collection, read from its file by the caller. */
@@ -33,6 +33,8 @@ export function mapCollectionToDto(
  * there separately; only the pointer belongs in the config.
  */
 export function mapDtoToCollection(dto: LingoTrackerCollectionDto): LingoTrackerCollection {
+  assertCollectionFields(dto, { requireTranslationsFolder: true });
+  if (dto.protectedTerms !== undefined) assertProtectedTerms(dto.protectedTerms);
   const { protectedTerms: _terms, protectedTermsFilePath: _path, ...collection } = dto;
   return collection;
 }

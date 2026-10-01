@@ -1,3 +1,4 @@
+import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import { ErrorMessages, type FolderPathPart } from './error-messages';
 
 export type ErrorKind = 'not-found' | 'conflict' | 'invalid' | 'forbidden' | 'unavailable' | 'upstream' | 'internal';
@@ -106,6 +107,14 @@ export class ConfigParseError extends LingoTrackerError {
   }
 }
 
+/** A config writer's source snapshot no longer matches the file on disk. */
+export class ConfigChangedError extends LingoTrackerError {
+  readonly kind = 'conflict' as const;
+  constructor() {
+    super('The configuration file changed after it was read; run the command again', 'CONFIG_CHANGED');
+  }
+}
+
 /**
  * `.lingo-tracker.json` cannot be used: a required field is missing or has the wrong shape, a
  * file pointer in it is not a string, or the file cannot be read or written. The message is
@@ -211,8 +220,11 @@ export class ReadOnlyCollectionError extends LingoTrackerError {
 /** A collection record cannot be stored as given (for example a blank `translationsFolder`). */
 export class InvalidCollectionError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
-  constructor(message: string) {
+  /** Set for a field-shape error whose API message includes the `collection.` prefix. */
+  readonly field?: string;
+  constructor(message: string, options?: { readonly field?: string }) {
     super(message, 'INVALID_COLLECTION');
+    this.field = options?.field;
   }
 }
 
@@ -241,6 +253,18 @@ export class ParentDirectoryMissingError extends LingoTrackerError {
 }
 
 // --- Locales -----------------------------------------------------------------
+
+/** A caller supplied a translation status outside the domain status list. */
+export class InvalidTranslationStatusError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+
+  constructor(status: unknown) {
+    super(
+      `Invalid translation status "${String(status)}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
+      'INVALID_TRANSLATION_STATUS',
+    );
+  }
+}
 
 /** The locale string is malformed. The message is the domain validator's text. */
 export class InvalidLocaleError extends LingoTrackerError {

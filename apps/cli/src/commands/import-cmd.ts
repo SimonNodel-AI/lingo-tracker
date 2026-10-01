@@ -1,22 +1,19 @@
 import {
   detectImportFormat,
-  ImportSourceError,
+  getStrategyDefaults,
   type ImportFormat,
   type ImportResult,
   type ImportRunOptions,
+  ImportSourceError,
   runImport,
 } from '@simoncodes-ca/core';
-import {
-  canImportLocale,
-  DEFAULT_IMPORT_STRATEGY,
-  importableLocales,
-  type ImportStrategy,
-} from '@simoncodes-ca/domain';
+import { canImportLocale, type ImportStrategy, importableLocales } from '@simoncodes-ca/domain';
 import * as fs from 'fs';
 import * as path from 'path';
 import type prompts from 'prompts';
 import { defineCommand } from '../runner/command-runner';
 import { buildSummaryPath, ConsoleFormatter, writeRunSummary } from '../utils';
+import { IMPORT_DEFAULTS } from './run-option-defaults';
 
 export interface ImportCommandOptions {
   format?: ImportFormat;
@@ -45,14 +42,14 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     // terminology); a rule-file problem comes back in the result's warnings.
     const runOptions: ImportRunOptions = {
       locale: answers.locale,
-      strategy: answers.strategy || DEFAULT_IMPORT_STRATEGY,
+      strategy: answers.strategy || IMPORT_DEFAULTS.strategy,
       updateComments: answers.updateComments,
       updateTags: answers.updateTags,
-      preserveStatus: answers.preserveStatus,
+      preserveStatus: answers.preserveStatus ?? IMPORT_DEFAULTS.preserveStatus,
       createMissing: answers.createMissing,
-      validateBase: answers.validateBase !== false, // Default true
-      dryRun: answers.dryRun || false,
-      verbose: answers.verbose || false,
+      validateBase: answers.validateBase ?? IMPORT_DEFAULTS.validateBase,
+      dryRun: answers.dryRun,
+      verbose: answers.verbose,
       onProgress: answers.verbose ? (msg: string) => console.log(`  ${msg}`) : undefined,
     };
 
@@ -134,7 +131,7 @@ function buildQuestions(
 ): prompts.PromptObject[] {
   const questions: prompts.PromptObject[] = [];
   const strategyOf = (values: Record<string, unknown>): ImportStrategy =>
-    options.strategy ?? (values.strategy as ImportStrategy | undefined) ?? DEFAULT_IMPORT_STRATEGY;
+    options.strategy ?? (values.strategy as ImportStrategy | undefined) ?? IMPORT_DEFAULTS.strategy;
   const localesFor = (strategy: ImportStrategy): readonly string[] =>
     importableLocales(configuredLocales, baseLocale, strategy);
 
@@ -184,7 +181,7 @@ function buildQuestions(
       choices: [
         {
           title: 'Translation Service',
-          value: DEFAULT_IMPORT_STRATEGY,
+          value: IMPORT_DEFAULTS.strategy,
           description: 'Import from professional translation services (default)',
         },
         { title: 'Verification', value: 'verification', description: 'Language expert verification workflow' },
@@ -196,7 +193,7 @@ function buildQuestions(
 
   if (!options.locale) {
     // `validate` is not given the earlier answers, so the `type` callback records the strategy for it.
-    let strategy: ImportStrategy = options.strategy ?? DEFAULT_IMPORT_STRATEGY;
+    let strategy: ImportStrategy = options.strategy ?? IMPORT_DEFAULTS.strategy;
     questions.push({
       type: (_prev: unknown, values: Record<string, unknown>) => {
         strategy = strategyOf(values);
@@ -231,7 +228,7 @@ function buildQuestions(
           strategyOf(values) === 'migration' ? 'confirm' : null,
         name,
         message,
-        initial: true,
+        initial: getStrategyDefaults('migration')[name],
       });
     }
   };

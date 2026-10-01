@@ -214,7 +214,7 @@
             formControlName="readOnly"
             color="primary"
             hideIcon
-            (change)="onReadOnlyToggle()"
+            (change)="onReadOnlyToggle($event.checked)"
             aria-labelledby="readonly-label"
             aria-describedby="readonly-description"
           ></mat-slide-toggle>

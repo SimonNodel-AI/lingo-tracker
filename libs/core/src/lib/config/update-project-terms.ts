@@ -1,18 +1,25 @@
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { listEditProblem, normalizeProtectedTerms, validatePreferredTermRules } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { InvalidCollectionError, InvalidProjectTermsEditError } from '../errors/lingo-tracker-error';
+import { ConfigChangedError, InvalidProjectTermsEditError } from '../errors/lingo-tracker-error';
 import { patchCollectionEntry } from './collection-entry';
-import { updateConfig } from './config-file-operations';
+import { createConfigFileOperations, updateConfig } from './config-file-operations';
+import { configReadVersion, loadConfig } from './load-config';
 import {
   editPreferredTerminology,
-  loadPreferredTerminology,
   type LoadPreferredTerminologyResult,
+  loadPreferredTerminology,
   type PreferredTerminologyEdit,
   type PreferredTerminologyEditResult,
   PreferredTerminologyValidationError,
   resolvePreferredTerminologyFilePath,
 } from './preferred-terminology-file';
+import {
+  assertWritableProtectedTermsPath,
+  resolveGlobalProtectedTermsFilePath,
+  resolveProtectedTermsFilePath,
+  resolveWritableCollectionProtectedTermsPath,
+} from './protected-terms-file';
 import {
   assertProtectedTerms,
   editProtectedTerms,
@@ -24,13 +31,6 @@ import {
   setGlobalProtectedTerms,
   setGlobalProtectedTermsFile,
 } from './set-protected-terms';
-import {
-  assertWritableProtectedTermsPath,
-  resolveGlobalProtectedTermsFilePath,
-  resolveProtectedTermsFilePath,
-  resolveWritableCollectionProtectedTermsPath,
-} from './protected-terms-file';
-import { loadConfig } from './load-config';
 import { assertWritableTermFilePath } from './term-file';
 
 export interface ProjectTermsUpdate {
@@ -55,63 +55,72 @@ export interface ProjectTermsUpdateResult extends ProjectTermsUpdateView {
   readonly preferredTerminologyResult?: PreferredTerminologyEditResult;
 }
 
-/** Checks command flag combinations and submitted values before a pointer or term file changes. */
-function validateProjectTermsUpdate(update: ProjectTermsUpdate): void {
+export interface ProjectTermsUpdatePlan {
+  readonly view: ProjectTermsUpdateView;
+  apply(): ProjectTermsUpdateResult;
+}
+
+interface ValidatedEdit {
+  readonly replacing: boolean;
+  readonly hasProtectedEdit: boolean;
+  readonly hasPreferredEdit: boolean;
+}
+
+/** Checks edit combinations and submitted values once, before a pointer or term file changes. */
+function validateProjectTermsUpdate(update: ProjectTermsUpdate): ValidatedEdit {
   const protectedRequest = update.protectedTerms;
   const preferredRequest = update.preferredTerminology;
   const protectedEdit = protectedRequest?.edit;
   const replacing = protectedRequest !== undefined && 'replace' in protectedRequest;
+  const protectedProblem = protectedEdit === undefined ? 'missing' : listEditProblem(protectedEdit);
 
   if (protectedRequest !== undefined) {
-    if (protectedEdit !== undefined && listEditProblem(protectedEdit) === 'conflict') {
-      throw new InvalidProjectTermsEditError('--set cannot be combined with --add or --remove');
+    if (protectedRequest.file !== undefined && typeof protectedRequest.file !== 'string') {
+      throw new InvalidProjectTermsEditError('Protected terms file path must be a string');
     }
-    if (
-      !replacing &&
-      (protectedEdit === undefined || listEditProblem(protectedEdit) === 'missing') &&
-      !protectedRequest.list &&
-      protectedRequest.file === undefined
-    ) {
-      throw new InvalidProjectTermsEditError('Provide at least one of --add, --remove, --set, --list, or --file');
+    if (protectedProblem === 'conflict') {
+      throw new InvalidProjectTermsEditError('A replacement list cannot be combined with additions or removals');
+    }
+    if (!replacing && protectedProblem === 'missing' && !protectedRequest.list && protectedRequest.file === undefined) {
+      throw new InvalidProjectTermsEditError('A protected terms update needs a list edit, list view, or file path');
     }
     if (replacing) assertProtectedTerms(protectedRequest.replace);
     if (protectedEdit?.add !== undefined) assertProtectedTerms(protectedEdit.add);
     if (protectedEdit?.remove !== undefined) assertProtectedTerms(protectedEdit.remove);
-    if (protectedEdit?.set !== undefined && typeof protectedEdit.set !== 'string') {
-      throw new InvalidProjectTermsEditError('--set must be a comma-separated string');
+    if (protectedEdit?.set !== undefined) assertProtectedTerms(protectedEdit.set);
+    if (replacing && protectedProblem !== 'missing') {
+      throw new InvalidProjectTermsEditError('A replacement list cannot be combined with another list edit');
     }
   }
 
   const hasPreferredEdit =
     preferredRequest?.set !== undefined ||
-    preferredRequest?.add !== undefined ||
+    preferredRequest?.upsert !== undefined ||
     preferredRequest?.remove !== undefined;
   if (preferredRequest !== undefined) {
-    if (!hasPreferredEdit && !preferredRequest.list) {
-      throw new InvalidProjectTermsEditError(
-        'Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>',
-      );
+    if (preferredRequest.remove !== undefined && typeof preferredRequest.remove !== 'string') {
+      throw new InvalidProjectTermsEditError('A rule to remove must name a discouraged term');
     }
-    if (preferredRequest.add !== undefined && preferredRequest.remove !== undefined) {
-      throw new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately');
+    if (!hasPreferredEdit && !preferredRequest.list) {
+      throw new InvalidProjectTermsEditError('A preferred terminology update needs a rule edit or list view');
     }
     if (
-      preferredRequest.add === undefined &&
-      (preferredRequest.preferred !== undefined || preferredRequest.reason !== undefined)
+      Number(preferredRequest.set !== undefined) +
+        Number(preferredRequest.upsert !== undefined) +
+        Number(preferredRequest.remove !== undefined) >
+      1
     ) {
-      throw new InvalidProjectTermsEditError('--preferred and --reason can only be used with --add');
-    }
-    if (preferredRequest.add !== undefined && preferredRequest.preferred === undefined) {
-      throw new InvalidProjectTermsEditError('--add requires --preferred <preferred>');
+      throw new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time');
     }
     if (preferredRequest.set !== undefined) {
       if (!Array.isArray(preferredRequest.set)) {
-        throw new InvalidCollectionError('preferredTerminology must be an array of rules');
+        throw new InvalidProjectTermsEditError('Preferred terminology replacement must be an array of rules');
       }
       const errors = validatePreferredTermRules(preferredRequest.set);
       if (errors.length > 0) throw new PreferredTerminologyValidationError(errors, preferredRequest.set);
     }
   }
+  return { replacing, hasProtectedEdit: protectedProblem !== 'missing', hasPreferredEdit };
 }
 
 interface FileSnapshot {
@@ -167,27 +176,77 @@ function restorePointer(change: PointerChange, cwd: string): void {
   }, cwd);
 }
 
-/** Validate both edits, expose the read view, then write; restore changed files after a failure. */
-export function updateProjectTerms(
+/** Validate and read without writing. The caller can show the view before applying the edit. */
+export function planProjectTermsUpdate(
   config: LingoTrackerConfig | undefined,
   update: ProjectTermsUpdate,
-  options: {
-    readonly cwd?: string;
-    /** Throwing aborts the update and restores any pointer change already made. */
-    readonly beforeWrite?: (view: ProjectTermsUpdateView) => void;
-  } = {},
-): ProjectTermsUpdateResult {
-  validateProjectTermsUpdate(update);
+  options: { readonly cwd?: string } = {},
+): ProjectTermsUpdatePlan {
+  const validated = validateProjectTermsUpdate(update);
   const cwd = options.cwd ?? process.cwd();
+  const currentConfig = config ?? loadConfig({ cwd });
+  const protectedRequest = update.protectedTerms;
+  const { replacing } = validated;
+  const preferredRequest = update.preferredTerminology;
+  let protectedTerms =
+    protectedRequest !== undefined && !replacing
+      ? readProtectedTermsTarget(currentConfig, protectedRequest.target ?? {}, cwd)
+      : undefined;
+  const preferredTerminology =
+    preferredRequest !== undefined && preferredRequest.set === undefined
+      ? loadPreferredTerminology(currentConfig, cwd)
+      : undefined;
+  let protectedTermsFileChange: ProjectTermsUpdateView['protectedTermsFileChange'];
+  if (protectedRequest?.file !== undefined) {
+    const pointer = protectedRequest.file.trim() || undefined;
+    const collectionName = protectedRequest.target?.collection;
+    const filePath = collectionName
+      ? pointer === undefined
+        ? undefined
+        : resolveProtectedTermsFilePath(pointer, cwd)
+      : resolveGlobalProtectedTermsFilePath({ ...currentConfig, protectedTermsFile: pointer }, cwd);
+    if (filePath !== undefined) assertWritableProtectedTermsPath(filePath);
+    protectedTermsFileChange = {
+      message: collectionName
+        ? filePath === undefined
+          ? `Collection "${collectionName}" protected terms file cleared`
+          : `Collection "${collectionName}" protected terms file set to ${filePath}`
+        : `Global protected terms file set to ${filePath}`,
+      filePath,
+    };
+    if (protectedTerms !== undefined) {
+      const collectionTerms = collectionName && filePath === undefined ? [] : protectedTerms.collectionTerms;
+      const previousPath = collectionName ? protectedTerms.collectionFilePath : protectedTerms.globalFilePath;
+      protectedTerms = {
+        ...protectedTerms,
+        globalFilePath: collectionName ? protectedTerms.globalFilePath : (filePath ?? protectedTerms.globalFilePath),
+        collectionFilePath: collectionName ? filePath : protectedTerms.collectionFilePath,
+        collectionTerms,
+        effectiveTerms: normalizeProtectedTerms([...protectedTerms.globalTerms, ...collectionTerms]),
+        storedTerms: collectionName ? [...collectionTerms] : protectedTerms.storedTerms,
+        warnings: protectedTerms.warnings.filter(
+          (warning) => previousPath === undefined || !warning.includes(previousPath),
+        ),
+      };
+    }
+  }
+  return {
+    view: { protectedTerms, preferredTerminology, protectedTermsFileChange },
+    apply: () => applyProjectTermsUpdate(currentConfig, update, cwd, validated),
+  };
+}
+
+/** Apply a validated plan, restoring changed files and pointers after a failure. */
+function applyProjectTermsUpdate(
+  config: LingoTrackerConfig,
+  update: ProjectTermsUpdate,
+  cwd: string,
+  validated: ValidatedEdit,
+): ProjectTermsUpdateResult {
   const protectedRequest = update.protectedTerms;
   const preferredRequest = update.preferredTerminology;
   const protectedEdit = protectedRequest?.edit;
-  const replacing = protectedRequest !== undefined && 'replace' in protectedRequest;
-  const hasProtectedEdit = protectedEdit !== undefined && listEditProblem(protectedEdit) !== 'missing';
-  const hasPreferredEdit =
-    preferredRequest?.set !== undefined ||
-    preferredRequest?.add !== undefined ||
-    preferredRequest?.remove !== undefined;
+  const { replacing, hasProtectedEdit, hasPreferredEdit } = validated;
   const snapshots = new Map<string, FileSnapshot>();
   const changed: string[] = [];
   const markChanged = (path: string): void => {
@@ -195,14 +254,16 @@ export function updateProjectTerms(
     if (!changed.includes(path)) changed.push(path);
   };
   let pointerChange: PointerChange | undefined;
+  const configFile =
+    configReadVersion(config) === undefined ? undefined : createConfigFileOperations({ cwd, snapshot: config });
 
   try {
-    let currentConfig = config ?? loadConfig({ cwd });
+    configFile?.assertUnchanged();
+    let currentConfig = config;
     let protectedTermsFileChange: ProjectTermsUpdateView['protectedTermsFileChange'];
     if (protectedRequest?.file !== undefined) {
       const pointer = protectedRequest.file.trim() || undefined;
       const collectionName = protectedRequest.target?.collection;
-      currentConfig = loadConfig({ cwd });
       pointerChange = {
         collection: collectionName,
         previous: collectionName
@@ -217,9 +278,17 @@ export function updateProjectTerms(
         : resolveGlobalProtectedTermsFilePath({ ...currentConfig, protectedTermsFile: pointer }, cwd);
       if (destination !== undefined) markChanged(destination);
       protectedTermsFileChange = collectionName
-        ? setCollectionProtectedTermsFile(collectionName, pointer, { cwd })
-        : setGlobalProtectedTermsFile(pointer, { cwd });
-      currentConfig = loadConfig({ cwd });
+        ? setCollectionProtectedTermsFile(collectionName, pointer, { cwd, config: currentConfig, configFile })
+        : setGlobalProtectedTermsFile(pointer, { cwd, config: currentConfig, configFile });
+      currentConfig = collectionName
+        ? {
+            ...currentConfig,
+            collections: {
+              ...currentConfig.collections,
+              [collectionName]: { ...currentConfig.collections[collectionName], protectedTermsFile: pointer },
+            },
+          }
+        : { ...currentConfig, protectedTermsFile: pointer };
     }
 
     const protectedTerms =
@@ -231,7 +300,6 @@ export function updateProjectTerms(
         ? loadPreferredTerminology(currentConfig, cwd)
         : undefined;
     const view = { protectedTerms, preferredTerminology, protectedTermsFileChange };
-    options.beforeWrite?.(view);
 
     const preferredPath = hasPreferredEdit ? resolvePreferredTerminologyFilePath(currentConfig, cwd) : undefined;
     if (preferredPath !== undefined) assertWritableTermFilePath('preferred terminology file', preferredPath);
@@ -255,16 +323,19 @@ export function updateProjectTerms(
       markChanged(protectedPath);
       if (replacing && protectedRequest?.replace !== undefined) {
         const terms = normalizeProtectedTerms([...protectedRequest.replace]);
-        const result = setGlobalProtectedTerms(terms, { cwd });
+        const result = setGlobalProtectedTerms(terms, { cwd, config: currentConfig });
         protectedTermsResult = { terms, filePath: result.filePath };
       } else if (hasProtectedEdit && protectedEdit !== undefined && protectedTerms !== undefined) {
         protectedTermsResult = editProtectedTerms(protectedRequest?.target ?? {}, protectedTerms, protectedEdit, {
           cwd,
+          config: currentConfig,
         });
       }
     }
     return { ...view, protectedTermsResult, preferredTerminologyResult };
   } catch (error) {
+    // The guarded handle rejects before it changes config or a term file.
+    if (error instanceof ConfigChangedError) throw error;
     const restoreFailures: unknown[] = [];
     for (const path of changed.reverse()) {
       const snapshot = snapshots.get(path);
@@ -289,4 +360,13 @@ export function updateProjectTerms(
     attachRestoreFailure(error, restoreFailures);
     throw error;
   }
+}
+
+/** Convenience entry point for callers that do not show a preview. */
+export function updateProjectTerms(
+  config: LingoTrackerConfig | undefined,
+  update: ProjectTermsUpdate,
+  options: { readonly cwd?: string } = {},
+): ProjectTermsUpdateResult {
+  return planProjectTermsUpdate(config, update, options).apply();
 }

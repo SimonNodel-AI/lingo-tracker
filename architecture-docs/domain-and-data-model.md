@@ -354,12 +354,15 @@ flowchart TD
     STALE["stale\nBase value changed\nafter translation was written"]
     VERIFIED["verified\nReviewed and approved\nby a language expert"]
 
-    NEW -- "Translation value written\n(import or edit)" --> TRANSLATED
+    NEW -- "Different value written without status" --> TRANSLATED
+    NEW -- "Explicit translated status" --> TRANSLATED
+    NEW -- "Identical copy verified" --> VERIFIED
     TRANSLATED -- "Reviewed and approved" --> VERIFIED
     VERIFIED -- "Reviewed and approved" --> VERIFIED
     TRANSLATED -- "Base locale value changes" --> STALE
     VERIFIED -- "Base locale value changes" --> STALE
-    STALE -- "Translation updated\nto match new base" --> TRANSLATED
+    STALE -- "Different value written without status" --> TRANSLATED
+    STALE -- "Base copy written without status" --> NEW
 
     style NEW fill:#fff3cd,stroke:#ffc107,color:#000
     style TRANSLATED fill:#d1ecf1,stroke:#17a2b8,color:#000
@@ -378,7 +381,7 @@ Status in CI validation:
 
 Only `verified` entries pass CI validation without flags. This forces an explicit human review step before a translation is considered production-ready.
 
-The status is stored in `tracker_meta.json` — never in `resource_entries.json`. Separating content from metadata means translation values can be diffed cleanly in Git without checksum noise.
+The status is stored in `tracker_meta.json` — never in `resource_entries.json`. Separating content from metadata means translation values can be diffed cleanly in Git without checksum noise. When a writer omits the status, `recordTranslation` in `libs/domain/src/lib/staleness.ts` infers `new` for a base copy or `translated` for another value. It keeps an explicit status, including `translated`, when the values match.
 
 ---
 
@@ -389,16 +392,7 @@ The status is stored in `tracker_meta.json` — never in `resource_entries.json`
 1. **`checksum`** — MD5 of the entry's own locale value at the last write.
 2. **`baseChecksum`** — MD5 of the base locale value at the time this translation was last written.
 
-When the base locale value is updated (via `edit-resource` or import), `core` recomputes the base entry's `checksum`. For every non-base locale, it then compares the stored `baseChecksum` against the new base `checksum`. If they differ, the locale's status is automatically set to `stale` — no separate scan command is needed.
-
-The check happens in `shouldMarkStale()` in `@simoncodes-ca/domain`:
-
-```typescript
-function shouldMarkStale(currentMetadata: LocaleMetadata, newBaseChecksum: string): boolean {
-  return currentMetadata.baseChecksum !== undefined
-    && currentMetadata.baseChecksum !== newBaseChecksum;
-}
-```
+When the base locale value changes, `core` computes its new checksum. `applyBaseChange` in `libs/domain/src/lib/staleness.ts` updates each target locale's `baseChecksum`. It sets the status to `stale`, or to `new` when the translation checksum equals the new base checksum. `ResourceFolder.setBase` applies this rule during edit, import, and normalize.
 
 **Why MD5?** LingoTracker uses MD5 solely as a fast, deterministic, fixed-length content fingerprint — not as a cryptographic security primitive. MD5 produces a 32-character hex digest (`calculateChecksum` uses `node:crypto` via `crypto.createHash('md5').update(value).digest('hex')`). Collision resistance is not required here: the values being hashed are human-readable translation strings, and a collision would at worst suppress a stale detection for one entry. MD5 is faster than SHA-256 for this high-frequency, low-risk use case, and its 32-character output is compact enough to keep `tracker_meta.json` files readable in Git diffs.
 

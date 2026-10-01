@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { BundleNotFoundError } from '../errors';
 import type { MultipleBundleConstantNameError } from '../errors';
+import { BundleNotFoundError } from '../errors';
 import { generateBundles } from './generate-bundles';
 
 describe('generateBundles', () => {
@@ -122,6 +123,32 @@ describe('generateBundles', () => {
     );
 
     expect(events).toEqual(['start', 'type-warning', 'result']);
+  });
+
+  it('emits the prepared type warning when a bundle write fails', async () => {
+    writeFileSync(join(cwd(), 'blocked'), 'a file');
+    const events: Array<{ kind: string; warning?: string }> = [];
+    const legacy = {
+      bundleName: 'first-{locale}',
+      dist: 'blocked',
+      collections: 'All',
+      typeDist: 'types/first.ts',
+    } as BundleDefinition;
+    const result = await generateBundles(
+      {
+        ...populatedConfig(),
+        bundles: { first: legacy },
+      },
+      {
+        names: ['first'],
+        cwd: cwd(),
+        onEvent: (event) => events.push(event),
+      },
+    );
+
+    expect(result.outcomes[0]?.error).toBeInstanceOf(Error);
+    expect(events.map((event) => event.kind)).toEqual(['start', 'type-warning', 'result']);
+    expect(events[1]?.warning).toContain("Bundle 'first': 'typeDist' is deprecated");
   });
 
   it('forwards overrides and allows a constant name for one named bundle', async () => {

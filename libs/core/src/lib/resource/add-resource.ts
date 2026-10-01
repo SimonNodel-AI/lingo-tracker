@@ -1,18 +1,21 @@
-import { isUntranslatedCopy, normalizeTags, translocoToICU } from '@simoncodes-ca/domain';
+import { normalizeTags, type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
 import { ResourceAlreadyExistsError } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import type { OpenTranslatorOptions } from '../translation/translator';
-import { type ResolvedResourcePaths, validateAndResolvePaths } from './resource-file-paths';
-import { openResourceFolder, type ResourceFolder } from './resource-folder';
-import { type ResourceMutation, upsertMutation } from './resource-mutation';
 import {
   assertCollectionLocales,
   type ResourceTranslation,
   seedLocales,
   withTranslatorProblems,
 } from './locale-seeding';
+import { type ResolvedResourcePaths, validateAndResolvePaths } from './resource-file-paths';
+import { openResourceFolder, type ResourceFolder } from './resource-folder';
+import { type ResourceMutation, upsertMutation } from './resource-mutation';
+import { assertTranslationStatus } from './translation-status-input';
+
+type ResourceTranslationInput = Pick<ResourceTranslation, 'locale' | 'value'> & { readonly status?: TranslationStatus };
 
 export interface AddResourceParams {
   /** Dot-delimited key, e.g., "apps.common.buttons.ok". */
@@ -28,9 +31,9 @@ export interface AddResourceParams {
   /**
    * Translations the caller supplies. Each locale must be one of the collection's locales
    * (a value for the base locale is ignored). Target locales without one are seeded
-   * (see {@link seedLocales}).
+   * (see {@link seedLocales}). An omitted status is inferred from the value.
    */
-  readonly translations?: readonly ResourceTranslation[];
+  readonly translations?: readonly ResourceTranslationInput[];
 }
 
 export type ExistingResourcePolicy = 'replace' | 'fail';
@@ -67,7 +70,7 @@ export interface PreparedResourceAdd {
   readonly params: AddResourceParams;
   readonly paths: ResolvedResourcePaths;
   readonly baseValue: string;
-  readonly translations: ResourceTranslation[];
+  readonly translations: ResourceTranslationInput[];
   readonly skippedLocales?: string[];
   readonly terminology: TerminologyFindings;
 }
@@ -78,8 +81,8 @@ export interface PreparedResourceAdd {
  *
  * Every target locale of the collection gets a value: the supplied translation, else an
  * auto-translation when the collection has it enabled, else a copy of the base value as
- * `new` (the Locale seeding rule, {@link seedLocales}). A translation identical to the base
- * value is stored as `new` whatever its requested status (Staleness rule).
+ * `new` (the Locale seeding rule, {@link seedLocales}). When a supplied translation
+ * has no status, the Staleness rule infers `new` for a copy or `translated` otherwise.
  *
  * Values are normalized to ICU before they are stored. Nothing is written when the
  * translation provider fails. The stored base value is checked against the preferred
@@ -114,6 +117,9 @@ export function resolveResourceAdd(
     collection,
     (params.translations ?? []).map(({ locale }) => locale),
   );
+  for (const translation of params.translations ?? []) {
+    if (translation.status !== undefined) assertTranslationStatus(translation.status);
+  }
   const existed = openResourceFolder(paths.folderPath, { baseLocale }).has(paths.entryKey);
   if (existed && onExisting === 'fail') throw new ResourceAlreadyExistsError(paths.resolvedKey);
   return { params, paths };
@@ -132,14 +138,9 @@ export async function prepareResourceAdd(
   const baseValue = translocoToICU(params.baseValue);
   // Resolve every value before touching the disk, so a provider failure writes nothing.
   const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) }, options);
-  const translations: ResourceTranslation[] = [
-    ...supplied.map(({ locale, value, status }) => {
-      const normalized = translocoToICU(value);
-      return { locale, value: normalized, status: isUntranslatedCopy(normalized, baseValue) ? 'new' : status };
-    }),
-    ...seeding.translations.map((translation) =>
-      isUntranslatedCopy(translation.value, baseValue) ? { ...translation, status: 'new' as const } : translation,
-    ),
+  const translations: ResourceTranslationInput[] = [
+    ...supplied.map(({ locale, value, status }) => ({ locale, value: translocoToICU(value), status })),
+    ...seeding.translations,
   ];
 
   return {
@@ -197,12 +198,18 @@ export function writePreparedResourceAdd(
   for (const { locale, value, status } of translations) {
     folder.setTranslation(paths.entryKey, locale, value, status);
   }
+  const stored = folder.get(paths.entryKey);
+  const storedTranslations: ResourceTranslation[] = translations.map((translation) => {
+    const status = stored?.meta?.[translation.locale]?.status;
+    if (status === undefined) throw new Error(`Missing status for locale "${translation.locale}"`);
+    return { ...translation, status };
+  });
   folder.save();
 
   return {
     resolvedKey: paths.resolvedKey,
     created,
-    translations,
+    translations: storedTranslations,
     ...(prepared.skippedLocales !== undefined && { skippedLocales: prepared.skippedLocales }),
     mutations: [upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey))],
     terminology: prepared.terminology,

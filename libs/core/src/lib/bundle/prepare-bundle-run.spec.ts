@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
+import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { prepareBundleRun } from './prepare-bundle-run';
 
@@ -66,8 +67,11 @@ describe('prepareBundleRun', () => {
       bundleKey: 'preview',
       bundleDefinition: { ...definition, dist: ' ./dist ' },
       config,
+      cwd: 'project',
     });
     expect(prepared.definition).toEqual({ ...definition, dist: './dist' });
+    expect(prepared.bundleKey).toBe('preview');
+    expect(prepared.cwd).toBe(resolve('project'));
     expect(prepared.locales).toEqual(['en', 'fr']);
   });
 
@@ -80,6 +84,8 @@ describe('prepareBundleRun', () => {
       locales: ['fr'],
     });
     expect(prepared.definition).toBe(saved);
+    expect(prepared.bundleKey).toBe('main');
+    expect(prepared.cwd).toBe(process.cwd());
     expect(prepared.locales).toEqual(['fr']);
     expect(prepared.settings.tokenConstantName).toBe('1bad');
     expect(() => prepareBundleRun({ source: 'saved', bundleKey: 'missing', config })).toThrow(

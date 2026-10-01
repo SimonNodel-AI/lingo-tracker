@@ -93,9 +93,8 @@ export interface BundlePlan {
  * Plans a bundle run without writing anything.
  */
 export function planBundle(params: PlanBundleParams): BundlePlan {
-  const { bundleKey } = params;
-  const cwd = params.cwd ?? process.cwd();
   const prepared = prepareBundleRun({ ...params, source: 'supplied' });
+  const { bundleKey, cwd } = prepared;
   const { definition: bundleDefinition, settings, locales: targetLocales } = prepared;
   const warnings = [...prepared.collections.warnings];
   const keysPerLocale: Record<string, number> = {};
@@ -108,7 +107,7 @@ export function planBundle(params: PlanBundleParams): BundlePlan {
     });
 
   for (const locale of targetLocales) {
-    const selection = selectPreparedBundleLocale(prepared, bundleKey, locale, cache);
+    const selection = selectPreparedBundleLocale(prepared, locale, cache);
     warnings.push(...selection.warnings);
 
     const keysCount = selection.entries.size;

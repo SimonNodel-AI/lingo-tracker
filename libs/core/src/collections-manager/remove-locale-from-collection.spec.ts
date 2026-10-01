@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import { createConfigFileOperations } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import {
   BaseLocaleImmutableError,
@@ -31,7 +32,10 @@ describe('removeLocaleFromCollection', () => {
   const readConfig = (): LingoTrackerConfig => JSON.parse(readFileSync(join(tempDir(), CONFIG_FILENAME), 'utf8'));
   const entries = (): ResourceEntries => JSON.parse(readFileSync(join(folder(), RESOURCE_ENTRIES_FILENAME), 'utf8'));
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
-  const remove = (name = 'main', locale = 'fr') => removeLocaleFromCollection(name, locale, { cwd: tempDir() });
+  const remove = async (name = 'main', locale = 'fr') => {
+    const configFile = createConfigFileOperations({ cwd: tempDir() });
+    return removeLocaleFromCollection(openCollection(configFile.read(), name, { cwd: tempDir() }), configFile, locale);
+  };
 
   beforeEach(() => writeConfig());
 
@@ -169,6 +173,6 @@ describe('removeLocaleFromCollection', () => {
   });
 
   it('validates the locale before looking up a missing collection', async () => {
-    await expect(remove('missing', 'not-valid-123')).rejects.toThrow(InvalidLocaleError);
+    await expect(remove('missing', 'not-valid-123')).rejects.toThrow(CollectionNotFoundError);
   });
 });

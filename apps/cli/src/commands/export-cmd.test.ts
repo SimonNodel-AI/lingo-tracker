@@ -176,6 +176,26 @@ describe('exportCommand', () => {
   });
 
   describe('non-interactive mode', () => {
+    it.each(['', ' , '])('rejects an empty --status value (%j)', async (status) => {
+      await exportCommand({ format: 'json', status });
+
+      expect(console.error).toHaveBeenCalledWith(
+        `❌ Invalid --status "${status}". Valid statuses: new, translated, stale, verified`,
+      );
+      expect(process.exitCode).toBe(1);
+      expect(mockRunExport).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown export status as a usage error', async () => {
+      await exportCommand({ format: 'json', status: 'new,verifed' });
+
+      expect(console.error).toHaveBeenCalledWith(
+        '❌ Invalid --status "verifed". Valid statuses: new, translated, stale, verified',
+      );
+      expect(process.exitCode).toBe(1);
+      expect(mockRunExport).not.toHaveBeenCalled();
+    });
+
     it('should export the chosen collection and locale to JSON', async () => {
       await exportCommand({
         format: 'json',
@@ -224,12 +244,15 @@ describe('exportCommand', () => {
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Locales: fr, es'));
     });
 
-    it('should not filter by status when not provided', async () => {
+    it('should filter by new and stale status when not provided', async () => {
       await exportCommand({
         format: 'json',
       });
 
-      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ status: undefined }));
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ status: ['new', 'stale'] }),
+      );
     });
 
     it('should handle dry run mode', async () => {
@@ -348,6 +371,7 @@ describe('exportCommand', () => {
   });
 
   describe('interactive mode', () => {
+    // The real status multiselect requires at least one selection; prompt mocks must do the same.
     beforeEach(() => {
       vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     });
@@ -426,7 +450,7 @@ describe('exportCommand', () => {
         format: 'json',
         collections: ['__ALL__'],
         locales: ['__ALL__'],
-        statusFilter: [],
+        statusFilter: ['new', 'stale'],
         tags: '',
         output: 'dist/export',
         structure: 'hierarchical',
@@ -450,7 +474,7 @@ describe('exportCommand', () => {
         format: 'json',
         collections: ['common'],
         locales: ['__ALL__'],
-        statusFilter: [],
+        statusFilter: ['new', 'stale'],
         tags: '',
         output: 'dist/export',
         structure: 'hierarchical',
@@ -515,7 +539,7 @@ describe('exportCommand', () => {
         format: 'json',
         collections: ['__ALL__'],
         locales: ['__ALL__'],
-        statusFilter: [],
+        statusFilter: ['new', 'stale'],
         tags: '',
         output: 'dist/export',
         structure: 'hierarchical',
@@ -567,7 +591,7 @@ describe('exportCommand', () => {
         format: 'xliff',
         collections: ['__ALL__'],
         locales: ['__ALL__'],
-        statusFilter: [],
+        statusFilter: ['new', 'stale'],
         tags: '',
         output: 'dist/export',
         filename: '',

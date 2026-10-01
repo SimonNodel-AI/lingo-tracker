@@ -39,6 +39,7 @@ export class ConfigController {
     if (update.protectedTerms === undefined && update.preferredTerminology === undefined) {
       return { message: 'Configuration updated successfully' };
     }
+    // Let core read a protected-only update so its typed config-file errors reach the HTTP filter.
     updateProjectTerms(
       update.preferredTerminology === undefined ? undefined : this.configService.getConfig(),
       {

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+import { getStrategyDefaults } from '@simoncodes-ca/core';
 import { Command } from 'commander';
-import { DEFAULT_IMPORT_STRATEGY } from '@simoncodes-ca/domain';
 import type { EditCollectionOptions } from './commands/edit-collection';
 import type { findSimilarCommand } from './commands/find-similar';
+import { EXPORT_DEFAULTS, IMPORT_DEFAULTS } from './commands/run-option-defaults';
 import { importHelpText, preferredTerminologyHelpText, validateHelpText } from './runner/help-text';
 import {
   choiceOption,
@@ -20,6 +21,8 @@ import {
 import { registerCommand } from './runner/register-command';
 
 const program = new Command();
+const importStrategyDefaults = getStrategyDefaults(IMPORT_DEFAULTS.strategy);
+const migrationDefaults = getStrategyDefaults('migration');
 
 program
   .name('lingo-tracker')
@@ -220,20 +223,36 @@ registerCommand(program, {
     option({
       flags: '-s, --status <statuses>',
       description: 'Filter by translation status (comma-separated)',
-      defaultValue: 'new,stale',
+      helpDefault: EXPORT_DEFAULTS.status,
     }),
     option({ flags: '-t, --tags <tags>', description: 'Filter by tags (comma-separated)' }),
     option({ flags: '-o, --output <path>', description: 'Output directory path' }),
     option({
       flags: '--structure <type>',
       description: 'JSON structure (flat | hierarchical)',
-      defaultValue: 'hierarchical',
+      helpDefault: EXPORT_DEFAULTS.structure,
     }),
-    option({ flags: '--rich', description: 'Include metadata in JSON objects', defaultValue: false }),
-    option({ flags: '--include-base', description: 'Include base locale value (JSON only)', defaultValue: false }),
-    option({ flags: '--include-status', description: 'Include translation status (JSON only)', defaultValue: false }),
-    option({ flags: '--include-comment', description: 'Include comment (JSON only)', defaultValue: false }),
-    option({ flags: '--include-tags', description: 'Include tags array (JSON only)', defaultValue: false }),
+    option({ flags: '--rich', description: 'Include metadata in JSON objects', helpDefault: EXPORT_DEFAULTS.rich }),
+    option({
+      flags: '--include-base',
+      description: 'Include base locale value (JSON only)',
+      helpDefault: EXPORT_DEFAULTS.includeBase,
+    }),
+    option({
+      flags: '--include-status',
+      description: 'Include translation status (JSON only)',
+      helpDefault: EXPORT_DEFAULTS.includeStatus,
+    }),
+    option({
+      flags: '--include-comment',
+      description: 'Include comment (JSON only)',
+      helpDefault: EXPORT_DEFAULTS.includeComment,
+    }),
+    option({
+      flags: '--include-tags',
+      description: 'Include tags array (JSON only)',
+      helpDefault: EXPORT_DEFAULTS.includeTags,
+    }),
     option({
       flags: '--no-protect-notes',
       description: 'Do not emit do-not-translate instructions for protected terms',
@@ -267,25 +286,34 @@ registerCommand(program, {
     option({
       flags: '--strategy <strategy>',
       description: 'Import strategy (translation-service | verification | migration | update)',
-      defaultValue: DEFAULT_IMPORT_STRATEGY,
+      helpDefault: IMPORT_DEFAULTS.strategy,
     }),
     option({
       flags: '--update-comments',
-      description: 'Update resource comments from import data',
-      defaultValue: false,
+      description: `Update resource comments from import data (migration: ${migrationDefaults.updateComments})`,
+      helpDefault: importStrategyDefaults.updateComments,
     }),
-    option({ flags: '--update-tags', description: 'Update resource tags from rich JSON', defaultValue: false }),
+    option({
+      flags: '--update-tags',
+      description: `Update resource tags from rich JSON (migration: ${migrationDefaults.updateTags})`,
+      helpDefault: importStrategyDefaults.updateTags,
+    }),
     option({
       flags: '--preserve-status',
       description: 'Allow rich JSON to specify status (advanced)',
-      defaultValue: false,
+      helpDefault: IMPORT_DEFAULTS.preserveStatus,
     }),
-    option({ flags: '--create-missing', description: "Create new resources if they don't exist" }),
+    option({
+      flags: '--create-missing',
+      description: `Create new resources if they don't exist (migration: ${migrationDefaults.createMissing})`,
+      helpDefault: importStrategyDefaults.createMissing,
+    }),
     option({
       flags: '--validate-base',
       description: 'Warn if source base value differs from existing',
-      defaultValue: true,
+      helpDefault: IMPORT_DEFAULTS.validateBase,
     }),
+    option({ flags: '--no-validate-base', description: 'Do not warn when source base value differs from existing' }),
     option({
       flags: '--dry-run',
       description: 'Show what would be imported without modifying files',

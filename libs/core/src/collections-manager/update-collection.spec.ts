@@ -1,22 +1,26 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import type { TranslationConfig } from '../config/translation-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { openCollection } from '../lib/config/open-collection';
 import {
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
+  ConfigChangedError,
   InvalidLocaleError,
   ReadOnlyCollectionError,
 } from '../lib/errors/lingo-tracker-error';
 import type { ResourceEntries } from '../lib/resource/resource-entry';
 import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
-import { updateCollection } from './update-collection';
 import { deleteCollectionByName } from './delete-collection-by-name';
+import { type UpdateCollectionOptions, updateCollection } from './update-collection';
 
 const TRANSLATION: TranslationConfig = { enabled: false, provider: 'none', apiKeyEnv: 'NONE' };
 
@@ -50,6 +54,22 @@ describe('updateCollection', () => {
     meta: JSON.parse(readFileSync(join(i18n(), folder, TRACKER_META_FILENAME), 'utf8')),
   });
 
+  const update = async (
+    name: string,
+    newName: string | undefined,
+    patch: Partial<LingoTrackerCollection>,
+    options: UpdateCollectionOptions = {},
+  ) => {
+    const configFile = createConfigFileOperations({ cwd: cwd() });
+    return updateCollection(
+      openCollection(configFile.read(), name, { cwd: cwd() }),
+      configFile,
+      newName,
+      patch,
+      options,
+    );
+  };
+
   beforeEach(() => {
     writeConfig();
     seedResources(testCollection(i18n(), { locales: ['en', 'es', 'fr-ca'] }), {
@@ -57,17 +77,32 @@ describe('updateCollection', () => {
     });
   });
 
+  it('refuses a changed config snapshot before writing locale files', async () => {
+    const configFile = createConfigFileOperations({ cwd: cwd() });
+    const current = openCollection(configFile.read(), 'myApp', { cwd: cwd() });
+    const externalConfig = { ...config(), exportFolder: 'external/export' };
+    const folderBytes = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME));
+    writeConfig(externalConfig);
+
+    await expect(updateCollection(current, configFile, undefined, { locales: ['en', 'es', 'de'] })).rejects.toThrow(
+      ConfigChangedError,
+    );
+
+    expect(readConfig()).toEqual(externalConfig);
+    expect(readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME))).toEqual(folderBytes);
+  });
+
   it('keeps the translation override when only the tags change, whether the caller carries the record over (CLI) or not', async () => {
     const stored = config().collections['myApp'];
 
-    const result = await updateCollection('myApp', undefined, { ...stored, tags: ['Team X'] }, { cwd: cwd() });
+    const result = await update('myApp', undefined, { ...stored, tags: ['Team X'] }, {});
     expect(result).toEqual({
       message: 'Collection "myApp" updated successfully',
       mutations: [{ kind: 'reindex', translationsFolder: i18n() }],
     });
     expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-x'] });
 
-    await updateCollection('myApp', undefined, { tags: ['Team Y'] }, { cwd: cwd() });
+    await update('myApp', undefined, { tags: ['Team Y'] }, {});
     expect(readConfig().collections['myApp']).toEqual({ ...stored, tags: ['team-y'] });
   });
 
@@ -80,7 +115,7 @@ describe('updateCollection', () => {
       tags: ['Team X'],
     };
 
-    await updateCollection('myApp', undefined, trackerPayload, { cwd: cwd() });
+    await update('myApp', undefined, trackerPayload, {});
 
     expect(readConfig().collections['myApp']).toEqual({ ...config().collections['myApp'], tags: ['team-x'] });
   });
@@ -89,18 +124,13 @@ describe('updateCollection', () => {
     const stored = { ...config().collections['myApp'], readOnly: true, tags: ['a'], protectedTermsFile: 'terms.json' };
     writeConfig({ ...config(), collections: { ...config().collections, myApp: stored } });
 
-    await updateCollection('myApp', undefined, { tags: [], readOnly: false, protectedTermsFile: '' }, { cwd: cwd() });
+    await update('myApp', undefined, { tags: [], readOnly: false, protectedTermsFile: '' }, {});
 
     expect(readConfig().collections['myApp']).toEqual(config().collections['myApp']);
   });
 
   it('seeds the files for an added locale and purges a removed one, then writes the config once', async () => {
-    const result = await updateCollection(
-      'myApp',
-      undefined,
-      { translationsFolder: './i18n', locales: ['en', 'es', 'de'] },
-      { cwd: cwd() },
-    );
+    const result = await update('myApp', undefined, { translationsFolder: './i18n', locales: ['en', 'es', 'de'] }, {});
 
     expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     const { entries, meta } = readFolder('apps');
@@ -115,12 +145,7 @@ describe('updateCollection', () => {
 
   it('never removes the base locale, and touches no files when the locales are unchanged or left out', async () => {
     for (const locales of [['es', 'fr-ca'], ['en', 'es', 'fr-ca'], undefined]) {
-      const result = await updateCollection(
-        'myApp',
-        undefined,
-        { translationsFolder: './i18n', locales },
-        { cwd: cwd() },
-      );
+      const result = await update('myApp', undefined, { translationsFolder: './i18n', locales }, {});
 
       expect(result.mutations).toEqual(locales ? [{ kind: 'reindex', translationsFolder: i18n() }] : []);
       expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
@@ -130,7 +155,7 @@ describe('updateCollection', () => {
   it('stores an empty locales list as inherit, and the files follow the global locales', async () => {
     writeConfig({ ...config(), locales: ['en', 'es'] });
 
-    await updateCollection('myApp', undefined, { locales: [] }, { cwd: cwd() });
+    await update('myApp', undefined, { locales: [] }, {});
 
     expect(readConfig().collections['myApp']).not.toHaveProperty('locales');
     expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale' });
@@ -139,7 +164,7 @@ describe('updateCollection', () => {
   it('reads every folder before writing, so an unreadable one fails the update with nothing changed', async () => {
     writeFolderFiles(i18n(), 'broken', { entries: '{ not json' });
 
-    await expect(updateCollection('myApp', undefined, { locales: ['en', 'es', 'de'] }, { cwd: cwd() })).rejects.toThrow(
+    await expect(update('myApp', undefined, { locales: ['en', 'es', 'de'] }, {})).rejects.toThrow(
       RESOURCE_ENTRIES_FILENAME,
     );
 
@@ -153,12 +178,7 @@ describe('updateCollection', () => {
       'apps.ok': { source: 'OK', translations: { es: 'Vale', 'fr-ca': 'OK' } },
     });
 
-    const result = await updateCollection(
-      'myApp',
-      'renamed',
-      { translationsFolder: './moved', locales: ['en', 'es', 'de'] },
-      { cwd: cwd() },
-    );
+    const result = await update('myApp', 'renamed', { translationsFolder: './moved', locales: ['en', 'es', 'de'] }, {});
 
     expect(result.mutations).toEqual([
       { kind: 'reindex', translationsFolder: i18n() },
@@ -173,7 +193,7 @@ describe('updateCollection', () => {
   });
 
   it('never seeds or purges a base locale, old or new, when the base locale changes in the same update', async () => {
-    await updateCollection('myApp', undefined, { baseLocale: 'de', locales: ['de', 'es'] }, { cwd: cwd() });
+    await update('myApp', undefined, { baseLocale: 'de', locales: ['de', 'es'] }, {});
 
     // de is the new base (not seeded as a translation), en the old one (not purged), fr-ca is gone.
     expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale' });
@@ -191,20 +211,13 @@ describe('updateCollection', () => {
       collections: { myApp: { translationsFolder: './i18n' } },
     });
 
-    await updateCollection(
-      'myApp',
-      undefined,
-      { translationsFolder: './i18n', locales: ['en', 'es', 'fr-ca', 'de'] },
-      {
-        cwd: cwd(),
-      },
-    );
+    await update('myApp', undefined, { translationsFolder: './i18n', locales: ['en', 'es', 'fr-ca', 'de'] }, {});
 
     expect(readFolder('apps').entries['ok']?.['de']).toBe('OK');
   });
 
   it('renames the collection', async () => {
-    const result = await updateCollection('myApp', 'renamed', { translationsFolder: './i18n' }, { cwd: cwd() });
+    const result = await update('myApp', 'renamed', { translationsFolder: './i18n' }, {});
 
     expect(result.message).toBe('Collection "myApp" renamed to "renamed" and updated successfully');
     expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
@@ -227,7 +240,7 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    await updateCollection('myApp', 'renamed', {}, { cwd: cwd() });
+    await update('myApp', 'renamed', {}, {});
 
     expect(readConfig().bundles).toEqual({
       main: {
@@ -263,10 +276,10 @@ describe('updateCollection', () => {
     const configBytes = readFileSync(join(cwd(), CONFIG_FILENAME));
     const entriesBytes = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME));
 
-    await expect(updateCollection('myApp', 'legacy', { locales: ['en', 'de'] }, { cwd: cwd() })).rejects.toThrow(
+    await expect(update('myApp', 'legacy', { locales: ['en', 'de'] }, {})).rejects.toThrow(
       CollectionRenameBundleConflictError,
     );
-    await expect(updateCollection('myApp', 'legacy', {}, { cwd: cwd() })).rejects.toThrow(
+    await expect(update('myApp', 'legacy', {}, {})).rejects.toThrow(
       'Cannot rename collection "myApp" to "legacy": bundle(s) "first", "second" already reference "legacy". Remove those references first.',
     );
     expect(readFileSync(join(cwd(), CONFIG_FILENAME))).toEqual(configBytes);
@@ -289,7 +302,7 @@ describe('updateCollection', () => {
     };
     writeConfig({ ...config(), bundles: malformed as unknown as LingoTrackerConfig['bundles'] });
 
-    await updateCollection('myApp', 'renamed', {}, { cwd: cwd() });
+    await update('myApp', 'renamed', {}, {});
 
     expect(readConfig().bundles).toEqual({
       ...malformed,
@@ -400,9 +413,9 @@ describe('updateCollection', () => {
   });
 
   it('throws on a rename collision before any locale file changes', async () => {
-    await expect(
-      updateCollection('myApp', 'other', { translationsFolder: './i18n', locales: ['en', 'de'] }, { cwd: cwd() }),
-    ).rejects.toThrow(CollectionAlreadyExistsError);
+    await expect(update('myApp', 'other', { translationsFolder: './i18n', locales: ['en', 'de'] }, {})).rejects.toThrow(
+      CollectionAlreadyExistsError,
+    );
 
     expect(readFolder('apps').entries['ok']).toEqual({ source: 'OK', es: 'Vale', 'fr-ca': 'OK' });
     expect(readConfig()).toEqual(config());
@@ -413,7 +426,7 @@ describe('updateCollection', () => {
     ['a blank translationsFolder', 'myApp', { translationsFolder: '  ' }, Error],
     ['a malformed added locale', 'myApp', { translationsFolder: './i18n', locales: ['en', 'x!'] }, InvalidLocaleError],
   ])('rejects %s and writes nothing', async (_label, name, collection, error) => {
-    await expect(updateCollection(name, undefined, collection, { cwd: cwd() })).rejects.toThrow(error);
+    await expect(update(name, undefined, collection, {})).rejects.toThrow(error);
 
     expect(readConfig()).toEqual(config());
   });
@@ -424,7 +437,7 @@ describe('updateCollection', () => {
     writeConfig(readOnly);
 
     await expect(
-      updateCollection('myApp', undefined, { translationsFolder: './i18n', locales: ['en', 'de'] }, { cwd: cwd() }),
+      update('myApp', undefined, { translationsFolder: './i18n', locales: ['en', 'de'] }, {}),
     ).rejects.toThrow(ReadOnlyCollectionError);
     expect(readConfig()).toEqual(readOnly);
   });

@@ -1,20 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { describe, expect, it } from 'vitest';
+import { folderDrop } from './folder-drop';
 import {
-  insertFolderIntoTree,
-  removeFolderFromTree,
-  findFolderInTree,
-  filterFolderTree,
-  rebaseFolderPaths,
-  collectExpandablePaths,
   collectAncestorPaths,
+  collectExpandablePaths,
+  collectVisibleFolderPaths,
+  filterFolderTree,
+  findFolderInTree,
+  insertFolderIntoTree,
+  parentFolderPath,
   prunePathsUnder,
   rebaseExpandedPaths,
+  rebaseFolderPaths,
+  removeFolderFromTree,
   toggleExpandedPath,
-  collectVisibleFolderPaths,
-  parentFolderPath,
-  folderMoveNoOp,
+  updateFolderInTree,
 } from './folder-tree.utils';
-import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 
 const leaf = (name: string, fullPath: string): FolderNodeDto => ({
   name,
@@ -59,10 +60,10 @@ describe('shared folder navigation', () => {
   });
 
   it('identifies folder moves that cannot change the tree', () => {
-    expect(folderMoveNoOp('common.buttons', 'common.buttons')).toBe('same-folder');
-    expect(folderMoveNoOp('common.buttons', 'common')).toBe('already-at-location');
-    expect(folderMoveNoOp('common', '')).toBe('already-at-location');
-    expect(folderMoveNoOp('common.buttons', 'errors')).toBeNull();
+    expect(folderDrop({ type: 'folder', path: 'common.buttons' }, 'common.buttons', false).noOp).toBe('same-folder');
+    expect(folderDrop({ type: 'folder', path: 'common.buttons' }, 'common', false).noOp).toBe('already-at-location');
+    expect(folderDrop({ type: 'folder', path: 'common' }, '', false).noOp).toBe('already-at-location');
+    expect(folderDrop({ type: 'folder', path: 'common.buttons' }, 'errors', false).noOp).toBeNull();
   });
 });
 
@@ -382,5 +383,41 @@ describe('filterFolderTree', () => {
 
   it('should return nothing when no folder matches', () => {
     expect(filterFolderTree(tree, 'missing')).toEqual([]);
+  });
+});
+
+describe('updateFolderInTree', () => {
+  const loadedTree = { path: 'common.buttons', resources: [], children: [leaf('ok', 'common.buttons.ok')] };
+
+  it('marks a root folder loaded and gives it the tree', () => {
+    const folders = [leaf('common', 'common'), leaf('errors', 'errors')];
+    const result = updateFolderInTree(folders, 'errors', { ...loadedTree, path: 'errors' });
+
+    expect(result[0]).toBe(folders[0]);
+    expect(result[1]).toEqual({
+      name: 'errors',
+      fullPath: 'errors',
+      loaded: true,
+      tree: { ...loadedTree, path: 'errors' },
+    });
+  });
+
+  it('updates a nested folder without mutating the original tree', () => {
+    const folders = [withChildren(leaf('common', 'common'), [leaf('buttons', 'common.buttons')])];
+    const result = updateFolderInTree(folders, 'common.buttons', loadedTree);
+
+    expect(result[0].tree?.children[0]).toEqual({
+      name: 'buttons',
+      fullPath: 'common.buttons',
+      loaded: true,
+      tree: loadedTree,
+    });
+    expect(folders[0].tree?.children[0].loaded).toBe(false);
+  });
+
+  it('changes nothing when the path is not in the tree', () => {
+    const folders = [withChildren(leaf('common', 'common'), [leaf('buttons', 'common.buttons')])];
+
+    expect(updateFolderInTree(folders, 'missing', loadedTree)).toEqual(folders);
   });
 });

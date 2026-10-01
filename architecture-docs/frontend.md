@@ -12,6 +12,7 @@ Return to [architecture README](README.md).
 - [Component Trees](#component-trees)
   - [App Shell](#app-shell)
   - [Collections Feature](#collections-feature)
+  - [Collection Connector Links](#collection-connector-links)
   - [Browser Feature](#browser-feature)
 - [State Management Architecture](#state-management-architecture)
   - [BrowserStore — Feature Composition](#browserstore--feature-composition)
@@ -19,6 +20,7 @@ Return to [architecture README](README.md).
   - [List Scope — What the List Shows](#list-scope--what-the-list-shows)
   - [TranslationListStore](#translationliststore)
   - [CollectionsStore](#collectionsstore)
+  - [Collection Form Dialog](#collection-form-dialog)
   - [API Errors — One Adapter at the HTTP Seam](#api-errors--one-adapter-at-the-http-seam)
 - [Key UI Patterns](#key-ui-patterns)
   - [Virtual Scrolling](#virtual-scrolling)
@@ -89,6 +91,12 @@ flowchart TD
 
 ---
 
+### Collection Connector Links
+
+`apps/tracker/src/app/collections/collections-manager.ts` measures the `.split` container, the bundles column, the hovered bundle card and only its referenced collection cards on hover, scroll, resize or card changes. It passes those plain viewport rectangles and bundle references to `collectionLinks` in `apps/tracker/src/app/collections/collection-links.ts`. That Angular-free function selects the hovered bundle and returns SVG paths, collection dot centres and the shared bundle port. It rounds coordinates to one decimal, keeps the port inside the bundles column, and limits curve handles to half the horizontal span. When the columns stack or no measured collection matches, it returns no links and no port. `collection-links.spec.ts` fixes the path strings against values captured from the former component calculation for side-by-side, stacked, clamped and several-collection layouts.
+
+---
+
 ### Browser Feature
 
 <!-- Full component hierarchy for the Translation Browser (/browser/:collectionName route) -->
@@ -146,7 +154,7 @@ flowchart TD
 
     Root --> WLS["withListScopeFeature\n(with-list-scope.feature.ts)\nAdds: listScope, translations, loadedFolderPath,\nsearchResults, isListLoading, listLoaded,\nshowNestedResources\nComputed: isSearchMode, searchQuery,\nisTranslationsLoading, isSearchLoading\nMethods: showFolder, showQuery, clearSearch,\nreloadList, setNestedResources"]
 
-    Root --> WF["withFilterFeature\n(with-filter.feature.ts)\nAdds: selectedLocales, selectedStatuses,\nsortField, sortDirection\nComputed: filteredLocales, filterableLocales,\nlocaleFilterText, statusFilterText\nMethods: toggleLocale, setSortField,\ntoggleStatus, selectNeedsWorkStatuses, …"]
+    Root --> WF["withFilterFeature\n(with-filter.feature.ts)\nAdds: selectedLocales, selectedStatuses,\nsortField, sortDirection\nComputed: filteredLocales, filterableLocales,\nlocaleFilterLabel\nMethods: toggleLocale, setSortField,\ntoggleStatus, selectNeedsWorkStatuses, …"]
 
     Root --> WT["withTranslationsFeature\n(with-translations.feature.ts)\nNo new state\nComputed: sortedTranslations, displayedTranslations,\nstatusCounts, needsWorkCount, isEmpty,\ntranslationCount, _statusLocales (private)"]
 
@@ -154,7 +162,7 @@ flowchart TD
 
     Root --> WFT["withFolderTreeFeature\n(with-folder-tree.feature.ts)\nAdds: rootFolders, folderTreeLoaded,\nexpandedFolders, preFilterExpandedFolders,\nisRootExpanded, folderTreeFilter, isFolderTreeLoading\nComputed: filteredFolders, breadcrumbs, isLoading\nMethods: loadRootFolders, loadFolderChildren"]
 
-    Root --> WM["withFolderWritesFeature\n(with-folder-writes.feature.ts)\nAdds: add-folder draft, delete flags, movesInFlight\nComputed: isMoving\nMethods: createFolder, deleteFolder, moveFolder, moveResource (cold Observables), startAddingFolder, cancelAddingFolder"]
+    Root --> WM["withFolderWritesFeature\n(with-folder-writes.feature.ts)\nAdds: add-folder draft, delete flags, movesInFlight\nComputed: isMoving\nMethods: createFolder, deleteFolder, requestFolderMove, moveFolder, moveResource (cold Observables), startAddingFolder, cancelAddingFolder"]
 
     Root --> WCS["withCacheStatusFeature\n(with-cache-status.feature.ts)\nAdds: cacheStatus, cacheError, collectionStats\nComputed: isCacheReady, isCacheIndexing,\ncollectionTotalKeys, collectionLocaleCount\nMethods: checkCacheStatus (rxMethod — polls every 2s\nuntil status = 'ready')"]
 
@@ -189,11 +197,11 @@ flowchart TD
 | Feature file | State owned | Key computed signals | Key methods |
 |---|---|---|---|
 | `with-list-scope.feature.ts` | `listScope`, `translations`, `loadedFolderPath`, `searchResults`, `isListLoading`, `shownScope`, `listError`, `showNestedResources` | `listLoaded`, `isSearchMode`, `searchQuery`, `isTranslationsLoading`, `isSearchLoading` | `showFolder`, `showQuery`, `clearSearch`, `reloadList`, `setNestedResources` — see [List Scope](#list-scope--what-the-list-shows) |
-| `with-filter.feature.ts` | `selectedLocales`, `selectedStatuses`, `sortField`, `sortDirection` | `filteredLocales`, `filterableLocales`, `localeFilterText`, `statusFilterText`, `isShowingAllLocales`, `isShowingAllStatuses` | `toggleLocale`, `setSelectedLocales`, `setSortField`, `toggleSortDirection`, `toggleStatus`, `selectNeedsWorkStatuses` |
+| `with-filter.feature.ts` | `selectedLocales`, `selectedStatuses`, `sortField`, `sortDirection` | `filteredLocales`, `filterableLocales`, `localeFilterLabel`, `statusFilterText`, `isShowingAllLocales`, `isShowingAllStatuses` | `toggleLocale`, `setSelectedLocales`, `setSortField`, `toggleSortDirection`, `toggleStatus`, `selectNeedsWorkStatuses` |
 | `with-translations.feature.ts` | (no new state) | `sortedTranslations`, `displayedTranslations`, `statusCounts`, `needsWorkCount`, `isEmpty`, `translationCount`, `hasTranslations` | — |
 | `with-entry-writes.feature.ts` | (no new state) | — | `createResource`, `updateResource`, `deleteResource`, `translateResource` — see [Writing a Resource Entry](#writing-a-resource-entry) |
 | `with-folder-tree.feature.ts` | `rootFolders`, `folderTreeLoaded`, `expandedFolders` and `preFilterExpandedFolders` (both `ReadonlySet<string>`, replaced on every change), `isRootExpanded`, `folderTreeFilter`, `isFolderTreeLoading` | `filteredFolders`, `breadcrumbs`, `isLoading`, `visibleExpandedFolders`, `areAllFoldersExpanded` | `loadRootFolders` (the tree only, without nested resources), `loadFolderChildren`, `setFolderTreeFilter`, `toggleFolderExpanded`, `expandFolder`, `toggleRootExpanded`, `expandAllFolders`, `collapseAllFolders`, tree load error handling |
-| `with-folder-writes.feature.ts` | `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath`, `movesInFlight` | `isMoving` | Cold typed outcome Observables: `createFolder`, `deleteFolder`, `moveResource`, `moveFolder`; sidebar draft methods — see [Optimistic Updates with Rollback](#optimistic-updates-with-rollback) |
+| `with-folder-writes.feature.ts` | `isAddingFolder`, `addFolderParentPath`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath`, `movesInFlight` | `isMoving` | Cold typed outcome Observables: `createFolder`, `deleteFolder`, `moveResource`, `moveFolder`, `requestFolderMove`; sidebar draft methods — see [Optimistic Updates with Rollback](#optimistic-updates-with-rollback) |
 | `with-cache-status.feature.ts` | `cacheStatus`, `cacheError`, `collectionStats` | `isCacheReady`, `isCacheIndexing`, `collectionTotalKeys`, `collectionLocaleCount`, `hasCollectionStats` | `checkCacheStatus` (sets `cacheStatus: 'not-started'` and clears `cacheError`/`collectionStats` on every call, including an overlay retry; then polls every 2 s via `interval` until the status is no longer indexing) |
 | `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `restoreViewPreferences` (reads `localStorage` for one collection and applies it) |
 | `with-browser-session.feature.ts` | (no new state; writes the root `sessionId` and `collectionSettings`) | — | `openCollection(settings)` — the [Browser Session](glossary.md#browser-session): `sessionId` bumped, every feature to its initial state, settings applied, preferences restored, polling started; `updateSettings(settings)` — a no-op when equal; reopens via `openCollection` when `locales`, `baseLocale` or `translationsFolder` differ; otherwise patches `readOnly`/`translationEnabled` in place |
@@ -230,7 +238,7 @@ The callers are the folder tree (a folder click, a delete shows the parent), `Tr
 
 **One busy state.** `isListLoading`. `isSearchLoading` (the search box's spinner) is the flag in a search scope. `isTranslationsLoading` (the list's spinner) is the flag in a folder scope, and in a search scope with no hits yet (the first search from a folder), so the list does not show its empty state while that search loads; a refined search keeps its hits up.
 
-**One failure rule.** When a load fails with `CollectionIndexNotReadyError` and a list has already loaded in this session (`listLoaded`), the scope goes back to `shownScope`, the last scope that loaded (or that `clearSearch` went back to), so the scope and `currentFolderPath` match the rows on screen even when a newer scope was cancelled before it loaded; a toast gives the message. Any other failure is `listError`, with the Retry button. Only the List Scope writes `listError` (a list load clears it as it starts), so the folder tree's loads, which clear the shared `error`, cannot bring the previous folder's rows back under a new breadcrumb. The fallback message is `browser.toast.loadTranslationsFailed` for a folder and `browser.toast.searchTranslationsFailed` for a search.
+**One failure rule.** The rule is `handleLoadFailure` (`store/load-failure.ts`), shared with the folder tree's loads; each caller supplies what "on screen", "keep" and "error state" mean for its own state. When a load fails with `CollectionIndexNotReadyError` and a list has already loaded in this session (`listLoaded`), the scope goes back to `shownScope`, the last scope that loaded (or that `clearSearch` went back to), so the scope and `currentFolderPath` match the rows on screen even when a newer scope was cancelled before it loaded; a toast gives the message. Any other failure is `listError`, with the Retry button. Only the List Scope writes `listError` (a list load clears it as it starts), so the folder tree's loads, which clear the shared `error`, cannot bring the previous folder's rows back under a new breadcrumb. The fallback message is `browser.toast.loadTranslationsFailed` for a folder and `browser.toast.searchTranslationsFailed` for a search.
 
 **Tests.** `with-list-scope.feature.spec.ts` drives the store through the real HTTP seam (`HttpTestingController`) and checks scope changes: show folder A, a query, folder B, and check the rows, the busy flags and that a cancelled load never lands.
 
@@ -256,6 +264,10 @@ Because `TranslationListStore` is component-provided, each `TranslationList` ins
 The two form dialogs use `NamedEntrySubmit` in [Dialog Config Submit](glossary.md#dialog-config-submit) to choose the create or update write, build the rename patch, validate a server-taken name, and select the localized refusal fallback. It passes the cold Observable and saved result to `submitDialogConfigWrite`, which owns `saving`, the temporary `disableClose` lock, the success close, and restoration on refusal. The forms render its name-conflict or message outcome themselves, including any API details. `classifyConfigRefusal` remains available to Settings for row rule errors. Its page-owned subscription and `saving` signal survive navigation so the outcome toast still appears after the page is gone.
 
 `updateCollection` sends `PUT /collections/:name`; locale diffing and file-system changes happen on the core side. `updateGlobalConfig` sends the writable top-level fields to `PUT /config`: the global protected-terms list and the preferred-terminology rules; rejected rules come back as an `invalid` error whose `details` are the per-row `PreferredTermRuleErrorDto`s.
+
+### Collection Form Dialog
+
+`collections/collection-form-dialog/collection-draft.ts` is the Angular-free [Collection Draft](glossary.md#collection-draft). It seeds plain values from an existing collection or a blank create, validates and normalizes added locales, picks and protects the base locale, and compares current locales with the original list before a destructive save. The draft also owns the read-only folder default and the user-choice latch. Its result builder sends empty locale and tag lists to clear overrides, omits an unset base locale, sends `protectedTermsFile: ''` when no file is configured, and includes terms only with a file. `collection-form-dialog.ts` keeps the typed FormGroup and FormArray, renders chips and Transloco text, opens the removal confirmation, and submits the draft result through `NamedEntrySubmit`. The dialog passes the current controls to the draft for mutations and save; display helpers read only the controls they need.
 
 ### Protected Terms in the UI
 
@@ -305,7 +317,7 @@ The viewport recalculates its size via `viewport.checkViewportSize()` inside `re
 
 All folder writes live in `withFolderWritesFeature`. Each method returns a cold Observable with a typed outcome: success, no-op, refusal (`ApiError`), read-only, no collection, or stale session. Subscribing starts the request. The feature guards cached state by Browser Session and refuses writes to read-only collections before HTTP. It never writes the shared root `error`; callers map outcomes to their existing messages. `movesInFlight` locks navigation while an optimistic move is pending.
 
-`FolderTree` owns confirmation for delete and folder move. It captures a store-provided session check before opening the move confirmation; the component does not read `sessionId`. The sidebar and picker call the same `createFolder` method. The picker retains its own draft because its dialog can coexist with the sidebar, but both use the same `folder-draft.ts` transition functions. Picker expansion remains local. The sidebar's inline create error stays visible through unrelated tree updates. `folderCreateErrorEpoch` advances on any new sidebar draft or successful create, and the component's captured session check clears the error on a collection switch or reopen.
+`FolderTree` owns the delete confirmation and supplies the move confirmation dialog to `requestFolderMove` in `with-folder-writes.feature.ts`. That store entry point checks for a no-op, captures the session, requests confirmation when needed, and moves the folder. `FolderTree` does not read `sessionId` or capture a move session. The sidebar and picker call the same `createFolder` method. The picker retains its own draft because its dialog can coexist with the sidebar, but both use the same `folder-draft.ts` transition functions. Picker expansion remains local. The sidebar's inline create error stays visible through unrelated tree updates. `folderCreateErrorEpoch` advances on any new sidebar draft or successful create, and the component's captured session check clears the error on a collection switch or reopen.
 
 A resource drop removes its row optimistically, then reloads the tree and List Scope on success. On failure it puts that row back only if the list still shows the same folder and the row is absent. A folder move removes its node optimistically; on success it rebases and inserts the node, updates expansion, and shows the moved folder. `folder-move-plan.ts` computes the successful move from the current tree, current expansion, and the source node captured before the request. Its plan names the expansion patch, the folder to show, and either a tree patch with any destination-child load or a root reload. The feature applies those effects in order: tree patch, destination children or root load, expansion patch, then navigation. On failure, the same module plans rollback against the current tree. It inserts the source node only if absent and its parent is loaded; an unloaded parent gets its children on its next load. A tree load that arrived during the request is preserved. Deleting a folder prunes its expansion paths and navigates to its parent only when the shown folder was deleted or lay below it.
 
@@ -331,7 +343,7 @@ When a drag starts on `TranslationItem`, the `dragStarted` output bubbles up thr
 
 `FolderTree` also implements edge-proximity auto-scroll: a `mousemove` listener during drag checks the cursor position against the folder list's bounding rect. If within `50px` of the top or bottom edge, a `setInterval` scrolls at `15px` per `50ms` until the cursor moves away.
 
-On drop, `FolderTree` calls either `BrowserStore.moveResource` or `BrowserStore.moveFolder`, both of which apply optimistic updates as described above.
+`folder-drop.ts` returns `canLand` for a folder or root drop target and a separate no-op reason. `FolderNode` and `FolderTree` use `canLand` for highlighting and CDK predicates; Folder Writes uses the no-op reason before HTTP. A folder may land on its current parent, where the move returns `already-at-location` and shows the existing info toast. A resource whose `folderPath` is `''` can move from the collection root into a folder. On drop, `FolderTree` calls `BrowserStore.moveResource` or `BrowserStore.requestFolderMove`; both apply optimistic updates as described above.
 
 ---
 
@@ -348,10 +360,13 @@ import('./path/to/dialog').then((m) => {
 This keeps dialog modules out of the initial bundle entirely. The pattern is used for:
 
 - `CollectionFormDialog` — create / edit collection (from `CollectionsManager`)
+- `BundleFormDialog` — create / edit bundle (from `CollectionsManager`)
 - `TranslationEditorDialog` — create / edit resource (only from `TranslationEditorLauncher`, which the header, the list's rows and the "Open existing" hand-off call)
 - `ConfirmationDialog` — delete collection, delete resource, delete folder, move folder (from multiple call sites)
 
-The listed collection, folder, and editor confirmations use [Confirmation](glossary.md#confirmation) (`injectConfirm`). It owns the lazy open and resolves a boolean; callers provide their existing data, width, and close options. Folder moves also give it a Browser Session guard checked after the import, then check the session again after the answer.
+The listed collection, folder, and editor confirmations use [Confirmation](glossary.md#confirmation) (`injectConfirm`). It owns the lazy open and resolves a boolean; callers provide their existing data, width, and close options. For a folder move, Folder Writes passes a Browser Session guard to the dialog callback and checks the session again after the answer.
+
+`CollectionsManager.#openSavedDialog` is the shared launcher for the collection and bundle forms. It imports the selected dialog, opens it with its own panel class and input focus, then shows the existing success toast only when the dialog closes with a saved result.
 
 `TranslationEditorDialog` opens the `FolderPicker` (a nested dialog via `MatDialog`) if the user wants to move the resource to a different folder. `FolderPicker` in turn calls `BrowserStore.createFolder(name, parentPath)` to create folders inline without leaving the dialog.
 
@@ -361,13 +376,13 @@ The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autoc
 
 `TranslationEditorDialog` (`browser/dialogs/translation-editor/`) creates and edits one resource entry. It has two parts:
 
-- **The component** owns the Angular parts: the reactive form, focus choreography, the location popover and the other-locales drawer, clipboard, flash timers, and the confirmation dialogs.
+- **The component** owns the Angular parts: the reactive form, focus choreography, the location popover and the other-locales drawer, clipboard, flash timers, and rendering the confirmation dialogs.
 - **`SimilarValues`** owns the [Similar Values](glossary.md#similar-values) lookup: the shared three-character minimum, 300 ms pause, distinct values, and an empty result on failure.
 - **`FolderPeek`** opens a [Folder Peek](glossary.md#folder-peek) scope for each editor. That scope caches entries and shares in-flight reads until the dialog closes. The launcher opens a fresh scope for each `openByFullKey` call. The service shares only concurrent reads across scopes; responses from an earlier Browser Session are dropped.
 - **`EditorLocation`** owns [Editor Location](glossary.md#editor-location): the selected folder, dotted-key continuation, the browser and peek entry sources, the collision and context views, and the decision to peek an unknown target folder. The dialog owns the popover's staged folder and filter. Edit mode can peek both the original folder and a destination; the edited entry's key is exempt only in its original folder.
-- **`resource-entry-draft.ts`** owns the rules. It is a pure module with no Angular imports. The dialog turns its form, target folder and tags into a plain `ResourceEntryDraft` and asks the module for every decision.
+- **`resource-entry-draft.ts`** owns the entry rules. It is a pure module with no Angular imports. The dialog turns its form, target folder and tags into a plain `ResourceEntryDraft`. `resolveDraftKey` gives the preview, create request and conflict hand-off one trimmed full key.
 - **`editor-entry-sources.ts`** derives tag suggestions from the browser's current entries.
-- **`editor-submit.ts`** owns [Editor Submit](glossary.md#editor-submit): `submitGate` checks the first reason to stop a save; `submitEditor` builds the request and maps the response to an Editor Outcome or classifies a refusal. Store writes are passed in, and the dialog keeps confirmation, error text, conflict dialogs and closing. One `toSignal` bridge from the reactive form keeps the dialog's computeds current without revision counters.
+- **`editor-submit.ts`** owns [Editor Submit](glossary.md#editor-submit): `EditorSubmitSession` holds the phase from the first prompt through the write or conflict choice, ignores another trigger while occupied, and remembers "Save Anyway" for a retry after refusal. Store writes and the two prompts are passed in. `submitEditor` builds the request and maps the response to an Editor Outcome or classified refusal. The session turns refusals into message or hand-off decisions; the dialog renders their localized text, focus and closing. One `toSignal` bridge from the reactive form keeps the dialog's computeds current without revision counters.
 
 | Function | Rule |
 |---|---|
@@ -395,6 +410,8 @@ Every status the Tracker shows, filters, counts or sorts by is the display statu
 
 The status filter, its counts, `needsWorkCount` and sort by status all read one list of locales: the private `_statusLocales` computed in `with-translations.feature.ts`. It is the selected locales or, when none is selected (the UI's "All locales"), every available locale. Before, sort by status got the empty selection, so every row ranked as `verified` and the list fell back to key order.
 
+**Locale filter text.** The store holds no display text. `localeFilterLabel` is data (`{ kind: 'all' }`, `{ kind: 'locale', locale }` or `{ kind: 'count', count }`), and `LocaleFilter` words it through Transloco (`browser.localeFilter.allLocales`, the ICU plural `browser.localeFilter.localesCountX`), including in the trigger's aria-label.
+
 ### Translation Rows and the Row View
 
 Every row in the list shows one [Resource Summary](glossary.md#resource-summary) (`ResourceSummaryDto`). The summary already carries the explicit address (`fullKey`, `folderPath`, `entryKey`), the base locale and value, and one target row per collection locale with `needsWork` and `sameAsBase`. So no row module works out a key, filters out the base locale, or re-implements "new or stale".
@@ -414,7 +431,7 @@ The pure module `browser/translations/list/translation-item/row-view.ts` (no Ang
 
 The list's entry actions live in `withItemActions` on `TranslationListStore`. The row and header pass the `ResourceSummaryDto` only; the actions read the open collection from `BrowserStore` when they run. Delete and translate stop before an API call when no collection is open or the collection is read-only. Delete applies that guard before opening the shared confirmation dialog, while the header uses `isReadOnly` to render disabled actions and its lock glyph. Copy writes the entry's `fullKey`; edit hands the entry to `TranslationEditorLauncher`. The action feature owns request feedback and the translating and recently updated row state. Its interface tests cover confirmation, guards, API outcomes and clipboard results.
 
-`BrowserApiService.getResourceTree` hides the collection index's "not ready" answer (HTTP 202): it retries and gives its consumers only a tree, so the List Scope, `loadRootFolders`, `loadFolderChildren`, `FolderPeek`, the launcher and the editor have no retry or shape check of their own. If the index is still not ready after the retries, the error is a `CollectionIndexNotReadyError`. When a root tree has already loaded for the collection (`folderTreeLoaded`), the folder tree loads keep the tree and show a toast; when a list has already loaded (`listLoaded`), the List Scope keeps the list and the scope it shows. On the first load, the store goes to the `error` state. `folderTreeLoaded` is not the same as "some root folders": a collection with only root resources has no folders. It is reset when the collection changes.
+`BrowserApiService.getResourceTree` hides the collection index's "not ready" answer (HTTP 202): it retries and gives its consumers only a tree, so the List Scope, `loadRootFolders`, `loadFolderChildren`, `FolderPeek`, the launcher and the editor have no retry or shape check of their own. If the index is still not ready after the retries, the error is a `CollectionIndexNotReadyError`. When a root tree has already loaded for the collection (`folderTreeLoaded`), the folder tree loads keep the tree and show a toast (the same `handleLoadFailure` rule); when a list has already loaded (`listLoaded`), the List Scope keeps the list and the scope it shows. On the first load, the store goes to the `error` state. `folderTreeLoaded` is not the same as "some root folders": a collection with only root resources has no folders. It is reset when the collection changes.
 
 ### Writing a Resource Entry
 
@@ -427,7 +444,7 @@ All UI writes of a resource entry go through `withEntryWritesFeature` on `Browse
 | `deleteResource(collectionName, fullKey)` | `withItemActions.deleteTranslation` | Removes the entry when `entriesDeleted > 0`. |
 | `translateResource(collectionName, fullKey)` | `withItemActions.translateResource` | Patches the entry in place. |
 
-Each method takes the full dot-delimited key and returns the API `Observable`. The caller subscribes and keeps its own error handling on the [`ApiError`](#api-errors--one-adapter-at-the-http-seam) it receives, for example the dialog's key-conflict dialog on `conflict` and its `invalid` and `not-found` messages. The store changes its caches only on success.
+Each method takes the full dot-delimited key and returns the API `Observable`. `EditorSubmitSession` consumes the create or update result and classifies [`ApiError`](#api-errors--one-adapter-at-the-http-seam) refusals. The dialog shows the chosen key-conflict prompt or localized `invalid` and `not-found` message. The store changes its caches only on success.
 
 `toUpdateDto` includes `moveTo` only when the entry changes folder, and `''` means the collection root. The server edits the entry, then moves it there (core `editResource` with `moveTo`). The store then drops the row, and it does not check whether the destination is still in the list's scope. `doesUpdateMoveEntry` is the one presence test used by the store and the dialog's Editor Outcome. Limitation: with nested resources on (`includeNested`), the list shows a folder and its descendants. An entry that moves from one descendant to another stays in scope, but its row disappears until the next reload of the folder.
 

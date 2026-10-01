@@ -1,8 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
-import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type {
   CacheStatusDto,
   ResourceSummaryDto,
@@ -203,17 +203,26 @@ describe('BrowserStore', () => {
       expect(resource).not.toHaveBeenCalled();
     });
 
-    it('returns the server refusal for a direct folder move into a descendant', () => {
-      const failure = serverError(409, 'Cannot move into descendant');
-      const move = vi.spyOn(apiService, 'moveFolder').mockReturnValue(throwError(() => failure));
-      let received: unknown;
+    it('rejects a direct folder move into a descendant before HTTP', () => {
+      const move = vi.spyOn(apiService, 'moveFolder');
+      let received: string | undefined;
 
       store.moveFolder({ sourceFolderPath: 'common', destinationFolderPath: 'common.buttons' }).subscribe((outcome) => {
-        if (outcome.kind === 'refused') received = outcome.error;
+        received = outcome.kind;
       });
 
-      expect(move).toHaveBeenCalledWith('app-translations', 'common', 'common.buttons');
-      expect(received).toBe(failure);
+      expect(move).not.toHaveBeenCalled();
+      expect(received).toBe('invalid-drop');
+    });
+
+    it('runs confirmation and move through the requested folder move entry point', async () => {
+      const confirm = vi.fn().mockResolvedValue(true);
+      const move = vi.spyOn(apiService, 'moveFolder').mockReturnValue(NEVER);
+      const { requestFolderMove } = store;
+
+      requestFolderMove({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' }, confirm).subscribe();
+      await vi.waitFor(() => expect(move).toHaveBeenCalledWith('app-translations', 'common.buttons', 'errors'));
+      expect(confirm).toHaveBeenCalledOnce();
     });
 
     it('does not cancel the sidebar draft when the picker creates a folder', () => {
@@ -1651,6 +1660,17 @@ describe('BrowserStore', () => {
   });
 
   describe('moveResource', () => {
+    it('moves a root-level resource into a folder', () => {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeRoot));
+      const move = vi.spyOn(apiService, 'moveResource').mockReturnValue(NEVER);
+      store.openCollection(collectionSettings({ name: 'app-translations', locales: ['en'] }));
+
+      store.moveResource({ sourceKey: 'welcome', destinationFolderPath: 'common' }).subscribe();
+
+      expect(move).toHaveBeenCalledWith('app-translations', 'welcome', 'common.welcome');
+    });
+
     it('should optimistically remove a non-root folder row by its full key', async () => {
       const row = summary('common.buttons.save', 'Save');
       vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
@@ -1740,32 +1760,32 @@ describe('BrowserStore', () => {
       });
     });
 
-    describe('Computed: localeFilterText', () => {
-      it('should return "All locales" when none selected', () => {
-        expect(store.localeFilterText()).toBe('All locales');
+    describe('Computed: localeFilterLabel', () => {
+      it('should be "all" when none selected', () => {
+        expect(store.localeFilterLabel()).toEqual({ kind: 'all' });
       });
 
-      it('should return "All locales" when all selected', () => {
+      it('should be "all" when all selected', () => {
         store.setSelectedLocales(['en', 'es', 'fr', 'de']);
-        expect(store.localeFilterText()).toBe('All locales');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'all' });
       });
 
-      it('should return locale code when one selected', () => {
+      it('should name the locale when one selected', () => {
         store.setSelectedLocales(['en']);
-        expect(store.localeFilterText()).toBe('en');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'en' });
       });
 
-      it('should return count when multiple selected', () => {
+      it('should carry the count when multiple selected', () => {
         store.setSelectedLocales(['en', 'es']);
-        expect(store.localeFilterText()).toBe('2 locales');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'count', count: 2 });
       });
 
-      it('should name the displayed locale in compact mode, never "All locales"', () => {
+      it('should name the displayed locale in compact mode, never "all"', () => {
         store.setDensityMode('compact');
-        expect(store.localeFilterText()).toBe('en');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'en' });
 
         store.setSelectedLocales(['fr']);
-        expect(store.localeFilterText()).toBe('fr');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'fr' });
       });
     });
 

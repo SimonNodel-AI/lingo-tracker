@@ -3,7 +3,7 @@ import {
   type LingoTrackerConfig,
   type PreferredTerminologyEditResult,
   PreferredTerminologyValidationError,
-  updateProjectTerms,
+  planProjectTermsUpdate,
 } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
@@ -36,28 +36,48 @@ export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOpt
 /** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
 function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const hasList = options.list === true;
+  if (options.add === undefined && options.remove === undefined && !hasList) {
+    throw new Error('Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>');
+  }
+  if (options.add !== undefined && options.remove !== undefined) {
+    throw new Error('--add and --remove cannot be combined; run them separately');
+  }
+  if (options.add === undefined && (options.preferred !== undefined || options.reason !== undefined)) {
+    throw new Error('--preferred and --reason can only be used with --add');
+  }
+  if (options.add !== undefined && options.preferred === undefined) {
+    throw new Error('--add requires --preferred <preferred>');
+  }
   let result: PreferredTerminologyEditResult | undefined;
   try {
-    result = updateProjectTerms(
+    const plan = planProjectTermsUpdate(
       config,
-      { preferredTerminology: options },
       {
-        cwd,
-        beforeWrite: ({ preferredTerminology: loaded }) => {
-          if (loaded === undefined) return;
-          const where = displayTermPath(loaded.filePath, cwd);
-          if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
-          if (hasList) {
-            ConsoleFormatter.section('Preferred Terminology');
-            ConsoleFormatter.keyValue('File', where);
-            if (loaded.error) throw new Error(loaded.error);
-            if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
-            else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
-          }
-          if (loaded.error) throw new Error(loaded.error);
+        preferredTerminology: {
+          list: hasList,
+          ...(options.add !== undefined &&
+            options.preferred !== undefined && {
+              upsert: { discouraged: options.add, preferred: options.preferred, reason: options.reason },
+            }),
+          ...(options.remove !== undefined && { remove: options.remove }),
         },
       },
-    ).preferredTerminologyResult;
+      { cwd },
+    );
+    const { preferredTerminology: loaded } = plan.view;
+    if (loaded !== undefined) {
+      const where = displayTermPath(loaded.filePath, cwd);
+      if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
+      if (hasList) {
+        ConsoleFormatter.section('Preferred Terminology');
+        ConsoleFormatter.keyValue('File', where);
+        if (loaded.error) throw new Error(loaded.error);
+        if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
+        else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
+      }
+      if (loaded.error) throw new Error(loaded.error);
+    }
+    result = plan.apply().preferredTerminologyResult;
   } catch (error) {
     if (error instanceof PreferredTerminologyValidationError) {
       ConsoleFormatter.error(

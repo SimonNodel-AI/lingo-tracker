@@ -139,6 +139,21 @@ describe('translateExistingResource', () => {
     expect(read(TRACKER_META_FILENAME, 'common').save.fr.status).toBe('translated');
   });
 
+  it('stores translated when the translator returns the base value and skips it on the next run', async () => {
+    const target = collection({ locales: ['en', 'fr'] });
+    seedResources(target, {
+      'common.save': { source: 'Save', translations: { fr: { value: 'Save', status: 'new' } } },
+    });
+
+    const result = await translateExistingResource(target, 'common.save', {
+      provider: new InMemoryTranslationProvider(() => 'Save'),
+    });
+
+    expect(result.translatedCount).toBe(1);
+    expect(read(TRACKER_META_FILENAME, 'common').save.fr.status).toBe('translated');
+    expect((await translateExistingResource(target, 'common.save')).translatedCount).toBe(0);
+  });
+
   it('returns the current entry and writes nothing when no locale needs work', async () => {
     const target = collection({ locales: ['en', 'fr'] });
     seedResources(target, { 'common.save': { source: 'Save', translations: { fr: 'Sauvegarder' } } });

@@ -1,4 +1,3 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { relative, resolve } from 'node:path';
 import {
   normalizePreferredTermRules,
@@ -8,7 +7,12 @@ import {
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { InvalidCollectionError, InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
+import {
+  CoreOperationError,
+  InvalidConfigError,
+  InvalidProjectTermsEditError,
+  LingoTrackerError,
+} from '../errors/lingo-tracker-error';
 import {
   readTermFile,
   resolveTermFilePath,
@@ -136,9 +140,7 @@ export function writePreferredTerminology(filePath: string, rules: readonly Pref
 
 export interface PreferredTerminologyEdit {
   readonly set?: readonly PreferredTermRule[];
-  readonly add?: string;
-  readonly preferred?: string;
-  readonly reason?: string;
+  readonly upsert?: PreferredTermRule;
   readonly remove?: string;
 }
 
@@ -156,7 +158,20 @@ export function editPreferredTerminology(
 ): PreferredTerminologyEditResult {
   const replacement: unknown = edit.set;
   if (replacement !== undefined && !Array.isArray(replacement)) {
-    throw new InvalidCollectionError('preferredTerminology must be an array of rules');
+    throw new InvalidProjectTermsEditError('Preferred terminology replacement must be an array of rules');
+  }
+  const upsert: unknown = edit.upsert;
+  if (
+    upsert !== undefined &&
+    (typeof upsert !== 'object' ||
+      upsert === null ||
+      !('discouraged' in upsert) ||
+      typeof upsert.discouraged !== 'string' ||
+      !('preferred' in upsert) ||
+      typeof upsert.preferred !== 'string' ||
+      ('reason' in upsert && upsert.reason !== undefined && typeof upsert.reason !== 'string'))
+  ) {
+    throw new InvalidProjectTermsEditError('A preferred terminology upsert needs a rule with string terms');
   }
   let loaded: LoadPreferredTerminologyResult | undefined;
   let next: PreferredTermRule[];
@@ -166,7 +181,7 @@ export function editPreferredTerminology(
     next = [...edit.set];
   } else {
     loaded = previous ?? loadPreferredTerminology(config, cwd);
-    if (edit.add === undefined && edit.remove === undefined) return loaded;
+    if (edit.upsert === undefined && edit.remove === undefined) return loaded;
     if (loaded.error !== undefined) {
       throw new CoreOperationError(loaded.error);
     }
@@ -182,12 +197,12 @@ export function editPreferredTerminology(
       const [removed] = next.splice(index, 1);
       changedRule = removed;
       action = 'removed';
-    } else if (edit.add !== undefined) {
-      // An upsert replaces the whole rule: omitting --reason clears the previous reason.
+    } else if (edit.upsert !== undefined) {
+      // An upsert replaces the whole rule; an omitted reason clears the previous reason.
       const rule: PreferredTermRule = {
-        discouraged: edit.add.trim(),
-        preferred: (edit.preferred ?? '').trim(),
-        ...(edit.reason?.trim() ? { reason: edit.reason.trim() } : {}),
+        discouraged: edit.upsert.discouraged.trim(),
+        preferred: edit.upsert.preferred.trim(),
+        ...(edit.upsert.reason?.trim() ? { reason: edit.upsert.reason.trim() } : {}),
       };
       const index = next.findIndex((existing) => sameTerm(existing.discouraged, rule.discouraged));
       if (index === -1) {

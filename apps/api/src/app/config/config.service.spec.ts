@@ -1,13 +1,23 @@
-import { Test, type TestingModule } from '@nestjs/testing';
-import { NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { ConfigNotFoundError, ConfigParseError, InvalidConfigError } from '@simoncodes-ca/core';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { ConfigService } from './config.service';
 
 describe('ConfigService', () => {
   let service: ConfigService;
   let projectDir: string;
+
+  function catchConfigError(): unknown {
+    try {
+      service.getConfig();
+    } catch (error) {
+      return error;
+    }
+    throw new Error('Expected a config error');
+  }
 
   function writeConfig(content: string): void {
     writeFileSync(join(projectDir, '.lingo-tracker.json'), content, 'utf8');
@@ -59,37 +69,52 @@ describe('ConfigService', () => {
     });
 
     it('should throw NotFoundException when file does not exist', () => {
-      expect(() => service.getConfig()).toThrow(NotFoundException);
-      expect(() => service.getConfig()).toThrow('Configuration file not found');
+      expect(() => service.getConfig()).toThrow(ConfigNotFoundError);
+      expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
+        statusCode: 404,
+        message: 'Configuration file not found',
+      });
     });
 
     it('should throw InternalServerErrorException when the file cannot be read', () => {
       // A directory in place of the file: it exists, but reading it fails (EISDIR).
       mkdirSync(join(projectDir, '.lingo-tracker.json'));
 
-      expect(() => service.getConfig()).toThrow(InternalServerErrorException);
-      expect(() => service.getConfig()).toThrow('Failed to read configuration file');
+      expect(() => service.getConfig()).toThrow(InvalidConfigError);
+      expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
+        statusCode: 500,
+        message: 'Failed to read configuration file',
+      });
     });
 
     it('should throw InternalServerErrorException when file contains invalid JSON', () => {
       writeConfig('invalid json content {');
 
-      expect(() => service.getConfig()).toThrow(InternalServerErrorException);
-      expect(() => service.getConfig()).toThrow('Invalid configuration file format');
+      expect(() => service.getConfig()).toThrow(ConfigParseError);
+      expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
+        statusCode: 500,
+        message: 'Invalid configuration file format',
+      });
     });
 
     it('should throw InternalServerErrorException when file is empty', () => {
       writeConfig('');
 
-      expect(() => service.getConfig()).toThrow(InternalServerErrorException);
-      expect(() => service.getConfig()).toThrow('Invalid configuration file format');
+      expect(() => service.getConfig()).toThrow(ConfigParseError);
+      expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
+        statusCode: 500,
+        message: 'Invalid configuration file format',
+      });
     });
 
     it('should throw InternalServerErrorException when file contains non-JSON content', () => {
       writeConfig('This is not JSON at all');
 
-      expect(() => service.getConfig()).toThrow(InternalServerErrorException);
-      expect(() => service.getConfig()).toThrow('Invalid configuration file format');
+      expect(() => service.getConfig()).toThrow(ConfigParseError);
+      expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
+        statusCode: 500,
+        message: 'Invalid configuration file format',
+      });
     });
 
     it('should handle minimal valid config', () => {

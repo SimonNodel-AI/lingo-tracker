@@ -1,4 +1,4 @@
-import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import type { FolderNodeDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
 
 /**
  * Inserts a new folder into the tree at the specified parent path.
@@ -62,6 +62,23 @@ export function removeFolderFromTree(folders: FolderNodeDto[], pathToRemove: str
       }
       return folder;
     });
+}
+
+/**
+ * Marks the folder at `fullPath` as loaded and gives it `tree`, wherever it sits in the tree.
+ * Returns a new array (immutable update); a path that is not in the tree changes nothing.
+ */
+export function updateFolderInTree(folders: FolderNodeDto[], fullPath: string, tree: ResourceTreeDto): FolderNodeDto[] {
+  return folders.map((folder) => {
+    if (folder.fullPath === fullPath) return { ...folder, loaded: true, tree };
+    if (folder.tree) {
+      return {
+        ...folder,
+        tree: { ...folder.tree, children: updateFolderInTree(folder.tree.children, fullPath, tree) },
+      };
+    }
+    return folder;
+  });
 }
 
 /**
@@ -186,16 +203,6 @@ export function collectVisibleFolderPaths(folders: readonly FolderNodeDto[], exp
 export function parentFolderPath(path: string): string | null {
   const lastDot = path.lastIndexOf('.');
   return lastDot < 0 ? null : path.slice(0, lastDot);
-}
-
-/** A folder move that cannot change the tree, before asking for confirmation. */
-export function folderMoveNoOp(
-  sourceFolderPath: string,
-  destinationFolderPath: string,
-): 'same-folder' | 'already-at-location' | null {
-  if (sourceFolderPath === destinationFolderPath) return 'same-folder';
-  if ((parentFolderPath(sourceFolderPath) ?? '') === destinationFolderPath) return 'already-at-location';
-  return null;
 }
 
 /**

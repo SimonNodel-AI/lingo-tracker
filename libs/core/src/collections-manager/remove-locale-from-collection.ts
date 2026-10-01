@@ -1,11 +1,9 @@
+import type { ConfigFileOperations } from '../lib/config/config-file-operations';
+import type { OpenedCollection } from '../lib/config/open-collection';
 import { BaseLocaleImmutableError, LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
 import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';
 import { changeCollection } from './update-collection';
-
-export interface RemoveLocaleFromCollectionOptions {
-  readonly cwd?: string;
-}
 
 export interface RemoveLocaleFromCollectionResult {
   readonly message: string;
@@ -16,12 +14,13 @@ export interface RemoveLocaleFromCollectionResult {
 }
 
 export async function removeLocaleFromCollection(
-  collectionName: string,
+  collection: OpenedCollection,
+  configFile: Pick<ConfigFileOperations, 'write' | 'assertUnchanged'>,
   locale: string,
-  options: RemoveLocaleFromCollectionOptions = {},
 ): Promise<RemoveLocaleFromCollectionResult> {
   assertValidLocale(locale);
-  const result = await changeCollection(collectionName, undefined, {}, options, (current) => {
+  const collectionName = collection.name;
+  const result = await changeCollection(collection, configFile, undefined, {}, {}, (current) => {
     if (locale === current.baseLocale) {
       throw new BaseLocaleImmutableError(locale);
     }

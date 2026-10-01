@@ -2,36 +2,35 @@ import { Controller, Get, HttpException, type INestApplication, Logger, NotFound
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
-// Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
-import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
-  CannotTranslateBaseLocaleError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
+  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
+  ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
-  InvalidProjectTermsEditError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
+  InvalidProjectTermsEditError,
   InvalidResourceKeyError,
-  ImportSourceError,
+  InvalidTranslationStatusError,
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
-  TranslationLocaleNotConfiguredError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
@@ -40,7 +39,10 @@ import {
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
   TranslationError,
+  TranslationLocaleNotConfiguredError,
 } from '@simoncodes-ca/core';
+// Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
+import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-exception.filter';
 
 describe('toHttpException', () => {
@@ -61,6 +63,15 @@ describe('toHttpException', () => {
       { message: 'Folder not found: apps.missing', error: 'Not Found', statusCode: 404 },
     ],
     [new BundleNotFoundError('main'), 404, { message: 'Bundle "main" not found', error: 'Not Found', statusCode: 404 }],
+    [
+      new ConfigChangedError(),
+      409,
+      {
+        message: 'The configuration file changed after it was read; run the command again',
+        error: 'Conflict',
+        statusCode: 409,
+      },
+    ],
     [
       new InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales'),
       400,
@@ -147,6 +158,15 @@ describe('toHttpException', () => {
       { message: 'Key validation: bad', error: 'Bad Request', statusCode: 400 },
     ],
     [
+      new InvalidTranslationStatusError('verifed'),
+      400,
+      {
+        message: 'Invalid translation status "verifed". Valid statuses: new, translated, stale, verified',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
+    ],
+    [
       new InvalidLocaleError('x!', 'Invalid locale format: "x!"'),
       400,
       { message: 'Invalid locale format: "x!"', error: 'Bad Request', statusCode: 400 },
@@ -197,10 +217,10 @@ describe('toHttpException', () => {
       { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately'),
+      new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
       400,
       {
-        message: '--add and --remove cannot be combined; run them separately',
+        message: 'Only one preferred terminology edit can be applied at a time',
         error: 'Bad Request',
         statusCode: 400,
       },
@@ -209,7 +229,7 @@ describe('toHttpException', () => {
       new ProtectedTermsFileNotSetError('app'),
       400,
       {
-        message: 'Collection "app" has no protected terms file. Set one first with --file <path>.',
+        message: 'Collection "app" has no protected terms file. Set a file path first.',
         error: 'Bad Request',
         statusCode: 400,
       },

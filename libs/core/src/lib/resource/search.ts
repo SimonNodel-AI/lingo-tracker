@@ -1,8 +1,8 @@
 import { normalizedLevenshtein } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import type { ResourceEntryMetadata } from './resource-entry-metadata';
 import type { ResourceTreeNode } from './load-resource-tree';
 import type { StoredResource } from './read-collection';
+import type { ResourceEntryMetadata } from './resource-entry-metadata';
 
 /**
  * Resource Search — the one matcher over a collection's resources.
@@ -33,7 +33,7 @@ import type { StoredResource } from './read-collection';
  * its `similarity`.
  *
  * An entry whose hand-edited `source` is not a string has the base value `''`: it never matches
- * on its value, and its result carries `source: ''`. A limit that is not a positive integer is 100.
+ * on its value, and its result carries `source: ''`.
  */
 
 /** How the query is compared with each resource. */
@@ -48,7 +48,7 @@ export type MatchType = 'exact-key' | 'partial-key' | 'exact-value' | 'partial-v
 export interface SearchOptions {
   /** Default: `'text'`. */
   readonly mode?: SearchMode;
-  /** How many results to return, after ranking. Default (also for a value that is not a positive integer): 100. */
+  /** How many results to return, after ranking. Default: 100; maximum: 500. */
   readonly limit?: number;
 }
 
@@ -84,28 +84,49 @@ export const SIMILARITY_THRESHOLD = 0.8;
 export const CONTAINMENT_MIN_SCORE = 0.4;
 
 const DEFAULT_LIMIT = 100;
+const MAX_SEARCH_LIMIT = 500;
 
-/** API search page size: default 100 for invalid input, maximum 500. */
-export function clampSearchLimit(requested: number): number {
-  return Number.isInteger(requested) && requested > 0 ? Math.min(requested, 500) : DEFAULT_LIMIT;
+export interface SearchRequest {
+  readonly kind: 'search';
+  readonly query: string;
+  readonly mode: SearchMode;
+  readonly limit: number;
+}
+
+export type NormalizedSearchRequest = { readonly kind: 'blank' } | SearchRequest;
+
+/** The shared request rule. Callers choose their default and map transport values before calling it. */
+export function normalizeSearchRequest(
+  request: { readonly query: string; readonly mode: SearchMode; readonly limit?: number },
+  defaultLimit: number,
+): NormalizedSearchRequest {
+  const query = request.query.trim();
+  if (query.length === 0) return { kind: 'blank' };
+  const requested = request.limit;
+  const limit = requested !== undefined && Number.isInteger(requested) && requested > 0 ? requested : defaultLimit;
+  return { kind: 'search', query, mode: request.mode, limit: Math.min(limit, MAX_SEARCH_LIMIT) };
 }
 
 export interface SearchPage {
   readonly results: SearchResult[];
   readonly limited: boolean;
   readonly limit: number;
+  readonly totalFound: number;
 }
 
-/** Fetches one extra hit so the caller can report whether the page was limited. */
+/** Ranks every hit once, then returns the requested page and its true total. */
 export function searchPage(
-  search: (options: SearchOptions) => SearchResult[],
-  request: { readonly maxResults?: unknown; readonly mode?: unknown },
+  resources: Iterable<SearchableResource>,
+  collection: Pick<Collection, 'baseLocale'>,
+  request: SearchRequest,
 ): SearchPage {
-  const limit = clampSearchLimit(Number(request.maxResults));
-  const mode = request.mode === 'similar' ? 'similar-value' : 'text';
-  const hits = search({ mode, limit: limit + 1 });
-  const limited = hits.length > limit;
-  return { results: limited ? hits.slice(0, limit) : hits, limited, limit };
+  const candidates = rankCandidates(resources, collection, request.query, request.mode);
+  return {
+    results: candidates.slice(0, request.limit).map(toResult),
+    limited: candidates.length > request.limit,
+    limit: request.limit,
+    totalFound: candidates.length,
+  };
 }
 
 const TEXT_RANK: Record<MatchType, number> = {
@@ -135,12 +156,18 @@ export function searchResources(
   query: string,
   options: SearchOptions = {},
 ): SearchResult[] {
-  const { mode = 'text' } = options;
-  const limit = isPositiveInteger(options.limit) ? options.limit : DEFAULT_LIMIT;
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.length === 0) {
-    return [];
-  }
+  const request = normalizeSearchRequest({ query, mode: options.mode ?? 'text', limit: options.limit }, DEFAULT_LIMIT);
+  if (request.kind === 'blank') return [];
+  return rankCandidates(resources, collection, request.query, request.mode).slice(0, request.limit).map(toResult);
+}
+
+function rankCandidates(
+  resources: Iterable<SearchableResource>,
+  collection: Pick<Collection, 'baseLocale'>,
+  query: string,
+  mode: SearchMode,
+): Candidate[] {
+  const normalizedQuery = query.toLowerCase();
 
   const match = mode === 'text' ? matchText : matchSimilarValue;
   const candidates: Candidate[] = [];
@@ -158,7 +185,7 @@ export function searchResources(
         a.resource.fullKey.localeCompare(b.resource.fullKey),
   );
 
-  return candidates.slice(0, limit).map(toResult);
+  return candidates;
 }
 
 /** Every resource of an index tree with its full key, from the loaded folders only. */
@@ -244,10 +271,6 @@ function containsAsWords(text: string, part: string): boolean {
  */
 function isWordCharacter(character: string | undefined): boolean {
   return character !== undefined && /[\p{L}\p{N}'’]/u.test(character);
-}
-
-function isPositiveInteger(value: number | undefined): value is number {
-  return value !== undefined && Number.isInteger(value) && value > 0;
 }
 
 function toResult({ resource, matchType, matchedLocales, similarity }: Candidate): SearchResult {

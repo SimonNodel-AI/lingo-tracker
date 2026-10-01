@@ -1,18 +1,19 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import type { Collection } from '../config/open-collection';
 import { type SeedResource, seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
+import type { Collection } from '../config/open-collection';
+import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors';
 import {
   type BundleProgressEvent,
   type GenerateBundleParams,
   generateBundle as generateBundleByName,
+  generatePreparedBundle,
 } from './generate-bundle';
-import { validateBundleLocales } from './prepare-bundle-run';
-import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors';
+import { prepareBundleRun, validateBundleLocales } from './prepare-bundle-run';
 
 async function generateBundle(params: GenerateBundleParams & { bundleDefinition: BundleDefinition }) {
   const { bundleDefinition, ...request } = params;
@@ -128,6 +129,24 @@ describe('generateBundle (real fs)', () => {
     expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/fr.json', 'dist/bundles/es.json']);
     expect(result.localesProcessed).toEqual(['en', 'fr', 'es']);
     expect(result.warnings).toEqual([]);
+  });
+
+  it('generates from the prepared bundle key and root', async () => {
+    const common = seed('common', { welcome: { source: 'Welcome' } });
+    const prepared = prepareBundleRun({
+      source: 'saved',
+      bundleKey: 'prepared',
+      config: config({ common }, { bundles: { prepared: definition({ typeDistFile: 'types/prepared.ts' }) } }),
+      locales: ['en'],
+      cwd: root(),
+    });
+
+    const result = await generatePreparedBundle(prepared);
+
+    expect(result.bundleKey).toBe('prepared');
+    expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'types/prepared.ts']);
+    expect(existsSync(join(root(), 'dist/bundles/en.json'))).toBe(true);
+    expect(existsSync(join(root(), 'types/prepared.ts'))).toBe(true);
   });
 
   it('generates only the requested locale subset', async () => {

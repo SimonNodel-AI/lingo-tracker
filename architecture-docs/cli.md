@@ -38,10 +38,10 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `init` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales`, `--setup-bundle`, `--bundle-dist`, `--bundle-name`, `--token-casing`, `--type-dist-file`, `--enable-auto-translation`, `--translation-provider`, `--translation-api-key-env` | Calls core `initConfig()` to validate and write `.lingo-tracker.json`; keeps the same default JSON bytes |
 | `add-collection` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales` | `addCollection()` |
 | `delete-collection` | `--collection-name`, `--yes` | `deleteCollectionByName()`. Interactive, it first asks `Delete collection "x" (translations folder: …)?` unless `--yes`; a decline prints `❌ Delete collection cancelled.` and exits 0. Non-interactive, it does not ask. The registration and explicit bundle references are removed in one config write; the files stay. If a bundle would become empty, it prints the conflict and exits 1 |
-| `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | `editCollectionTags()`; core checks flag combinations and normalizes tags. This CLI command does not rename collections; core and API renames update explicit bundle references |
+| `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | The command checks flag combinations and splits `--set-tags`; `editCollectionTags()` normalizes the array edit. This CLI command does not rename collections; core and API renames update explicit bundle references |
 | `add-locale` | `--collection`, `--locale` | `addLocaleToCollection()` |
 | `remove-locale` | `--collection`, `--locale` | `removeLocaleFromCollection()` |
-| `add-resource` | `--collection`, `--key`, `--value`, `--comment`, `--tags`, `--target-folder`, `--translations <json>`, `--override` | `addResource()` (locales without a `--translations` value are seeded by core: [locale seeding](glossary.md#locale-seeding)). An existing key exits 1 with `❌ Resource already exists: <key>` in non-interactive mode; `--override` replaces it, while interactive mode asks for confirmation. `--translations` is parsed inside the command; malformed JSON, or anything but an array of `{ locale, value, status }`, exits 1 with `❌ Invalid --translations …` |
+| `add-resource` | `--collection`, `--key`, `--value`, `--comment`, `--tags`, `--target-folder`, `--translations <json>`, `--override` | `addResource()` (locales without a `--translations` value are seeded by core: [locale seeding](glossary.md#locale-seeding)). An existing key exits 1 with `❌ Resource already exists: <key>` in non-interactive mode; `--override` replaces it, while interactive mode asks for confirmation. `--translations` is parsed inside the command; malformed JSON, or anything but an array of `{ locale, value, status? }`, exits 1 with `❌ Invalid --translations …` |
 | `edit-resource` | `--collection`, `--key` (full key), `--base-value`, `--comment`, `--tags`, `--target-folder` (moves the entry into this folder; core `moveTo`), `--locale`, `--locale-value` | `editResource()` |
 | `delete-resource` | `--collection`, `--key`, `--yes` | `deleteResource()` |
 | `move` | `--collection`, `--source`, `--dest`, `--dest-collection`, `--override` | `moveResource()`. `--dest-collection` opens that collection with core `openCollection(config, name, { cwd, writable: true })` and passes it as `destinationCollection`; `--dest` is then a key in that collection. An unknown or read-only destination is the core typed error (exit 1). It is never prompted for. Core copies the entry and its metadata verbatim, so a move between collections with different base locales keeps the source-locale `source` text and checksums, and does not add or drop target locales (a known limitation of core) |
@@ -49,24 +49,24 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `translate-locale` | `--collection`, `--locale`, `--verbose` | `translateLocale(collection, { targetLocale, onProgress })` (through the [Translator](glossary.md#translator)); the summary prints `Skipped (needs human translation)` for complex ICU, lost placeholders and dropped protected terms |
 | `bundle` | `--name`, `--locale`, `--quiet`, `--verbose`, `--token-casing`, `--token-constant-name`, `--no-transform-icu-to-transloco`, `--debug-keys` | `generateBundles()` (with the project `cwd`) |
 | `export` | `-f/--format`, `-c/--collection`, `-l/--locale`, `-s/--status`, `-t/--tags`, `-o/--output`, `--structure`, `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name`, `--filename`, `--no-protect-notes`, `--dry-run`, `--verbose` | `runExport()` |
-| `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--dry-run`, `--verbose` | `runImport()` |
+| `import` | `-f/--format`, `-s/--source`, `-l/--locale`, `-c/--collection`, `--strategy`, `--update-comments`, `--update-tags`, `--preserve-status`, `--create-missing`, `--validate-base`, `--no-validate-base`, `--dry-run`, `--verbose` | `runImport()` |
 | `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | Command Runner opens every collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
 | `find-similar` | `--collection`, `--value`, `--max-results` | `readCollection()` → `searchResources(…, { mode: 'similar-value', limit })` ([Resource Search](glossary.md#resource-search)) |
 | `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `buildGlossary()` ([Term Glossary](glossary.md#term-glossary)) |
-| `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `updateProjectTerms()` for the pointer change, read view and edit |
-| `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | `updateProjectTerms()` for display, case-insensitive upsert/remove, validation and write |
+| `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | Checks flags, splits `--set`, then calls `planProjectTermsUpdate()` for the view and edit |
+| `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | Checks flags, builds a rule edit, then calls `planProjectTermsUpdate()` for display, validation and write |
 | `install-skill` | `--collection <spec>` (repeatable), `--dir`, `--token-casing` | No core call — generates a `.claude/` skill file by template |
 
 `add-resource` and `edit-resource` print the `terminology` core returned (one `⚠️  Preferred terminology: consider "X" instead of "Y"` per finding, the rule's reason on the next line, and one warning per rule-file problem) through `printTerminologyFindings` in `utils/terminology-findings.ts`; `edit-resource` only when the edit supplied a base value. They also print, as warnings, a named protected-terms file that does not exist when auto-translation ran (core adds it to `terminology.problems`); `translate-locale` prints it with the run's other `warnings`. `import` and `export` pass no terms: the run reads the collection's [Project Terms](glossary.md#project-terms) and reports a term-file problem in its `warnings` (deduped), which the summary prints; `export` with protect notes on (the default) reports a broken protected-terms file in `errors` instead and exits 1, while `--no-protect-notes` reads no terms file and cannot fail on one. The [Validate Run](glossary.md#validate-run) reads the Project Terms of every collection and returns each problem once in `warnings`; the command prints them to stderr: a missing named file or a broken protected-terms file is only a warning (validate checks translations, not protected terms), and a broken rule file becomes a terminology validation failure. Core also resolves target and skipped locales and returns the summary or a failure with the no-target-locales hint. The command opens collections, prints the result, and sets the exit code. `protected-terms` prints a named terms file that does not exist as a warning (on `--list` and on every write).
 
 ### `protected-terms` scoping
 
-The command passes `--file` to core's `updateProjectTerms()` before it writes any term. `--file x.json --add Foo` therefore names the new file first, then writes into it. Core restores the pointer and the files it changed if the update fails. The command prints the pointer line only after core reads the new view. If a later step fails, it warns that the printed pointer change was reverted.
+The command includes `--file` in the structured edit passed to `planProjectTermsUpdate()`. `--file x.json --add Foo` therefore names the new file first during `apply()`, then writes into it. Core restores the pointer and the files it changed if the update fails. The command prints the pointer line after a successful preview. If apply later fails, it warns that the printed pointer change was reverted.
 
-Both scopes read through `updateProjectTerms()`. Its `beforeWrite` callback lets the command print warnings and lists before the file write. Core validates flag combinations and uses the shared list merge with protected-term normalization.
+Both scopes read through the plan's `view`. The command prints warnings and lists, then calls `apply()`; it raises the original flag usage messages before planning. Core validates the structured edit and uses the shared list merge with protected-term normalization.
 
-- **Global** — `updateProjectTerms()` reads the configured protected-terms file, or `.lingo-tracker-protected-terms.json` beside the config when no global pointer is set.
-- **Collection** — `updateProjectTerms()` reads the collection file when configured and combines those terms with the global list. A collection with no file contributes an empty list.
+- **Global** — the plan reads the configured protected-terms file, or `.lingo-tracker-protected-terms.json` beside the config when no global pointer is set.
+- **Collection** — the plan reads the collection file when configured and combines those terms with the global list. A collection with no file contributes an empty list.
 
 `--list` on a collection prints three lists: the global terms, the collection's terms, and `effectiveProtectedTerms()` of the two. It names the resolved file behind each list. Paths inside the project root print as relative paths.
 
@@ -86,7 +86,7 @@ The Command Runner resolves the configured collections before `normalize` checks
 
 `normalizeCollections` in core decides what to do with the opened read-only collections. The command maps flags, prints core events, and prints the returned totals and JSON payload. Any read-only collection in a named selection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
 
-The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and the API job service prepares a run then calls `generatePreparedBundle`. A legacy `typeDist` warning comes from the type outcome and is printed on the same console stream.
+The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and the API job service prepares a run then calls `generatePreparedBundle`. A legacy `typeDist` warning comes from the prepared run or the type outcome and is printed on the same console stream, including when generation fails after preparation.
 
 ### `glossary` pipeline
 
@@ -94,7 +94,7 @@ The command resolves input (`--text` → `--input` → stdin), selects one or al
 
 For the full description of what each core function does internally, see [core-library.md](core-library.md).
 
-`export` maps flags and prompt answers to `runExport`. Core validates the base property name and output directory, resolves the output folder, and returns an empty `locales` list when no target remains. The command prints the plan from `onStart`, then renders the result and writes the summary. Its prompt uses `DEFAULT_CONFIG.exportFolder` when the config has no export folder. `import` uses domain's default strategy and importable-locale rule for prompt choices; the import session enforces the same locale rule.
+`export` maps flags and prompt answers to `runExport`. `apps/cli/src/main.ts` leaves promptable export values unset; `apps/cli/src/commands/run-option-defaults.ts` holds the values that `apps/cli/src/commands/export-cmd.ts` uses for prompt preselection and answer resolution. The default status filter is `new,stale`; JSON structure is hierarchical and metadata switches are off. Empty collection, locale, and status selections are refused instead of selecting all. Before the run, `export-cmd.ts` checks each `--status` value with domain's `isTranslationStatus`. An unknown value or an explicitly empty `--status` list names the valid statuses on stderr and exits 1. Core validates the base property name and output directory, resolves the output folder, and returns an empty `locales` list when no target remains. The command prints the plan from `onStart`, then renders the result and writes the summary. Its prompt uses `DEFAULT_CONFIG.exportFolder` when the config has no export folder. `import` uses domain's default strategy and importable-locale rule for prompt choices; `apps/cli/src/commands/import-cmd.ts` leaves unset comment, tag, and create-missing switches undefined for the import session's strategy defaults. `--no-validate-base` disables the base-value warning; without it, validation stays on. Import also resolves an omitted `--preserve-status` to false before calling core, including for migration. The import session enforces the same locale rule.
 
 For the import and export sequence diagrams showing the full end-to-end flow, see [user-flows.md](user-flows.md).
 
@@ -102,7 +102,7 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 
 ## Command Runner
 
-`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. That function does the same steps for every command, in this order:
+`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. For locale and tag edits, it passes the opened collection, including its config snapshot, and a config write handle to core. That function does the same steps for every command, in this order:
 
 1. Finds the project root: `INIT_CWD` (set by pnpm to the directory where the command was typed), else `process.cwd()`.
 2. Reads the [interactive rule](#the-interactive-rule) once.
@@ -113,6 +113,8 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 7. For `many`, selects the final ordered collection list and applies its read or writable policy. Calls `run`, and turns the result or the thrown error into output and an exit code ([Errors and Exit Codes](#errors-and-exit-codes)).
 
 The runner sets `process.exitCode` and returns. No CLI code calls `process.exit()`, so Commander finishes normally.
+
+`loadConfig()` records the bytes read from `.lingo-tracker.json`. The locale and tag commands pass the opened collection's `sourceConfig` to `createConfigFileOperations()` after prompting. If another process changes the file while a prompt is open, the handle throws `ConfigChangedError` before the lifecycle edits locale files. The runner prints `❌ The configuration file changed after it was read; run the command again` and exits 1.
 
 ### Defining a Command
 
@@ -125,7 +127,11 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
     options.locale ? [] : [{ type: 'text', name: 'locale', message: 'Enter locale to add (e.g. fr-ca, de, es)' }],
   required: ['locale'],               // checked after the questions; `run` sees it as a string
   run: async ({ collection, cwd, answers }) => {
-    const result = await addLocaleToCollection(collection.name, answers.locale, { cwd });
+    const result = await addLocaleToCollection(
+      collection,
+      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
+      answers.locale,
+    );
     ConsoleFormatter.success(result.message);
   },
 });
@@ -133,7 +139,7 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 
 `defineCommand<Options>()` is curried: the options type is given, and the rest is inferred from the spec. The spec fields:
 
-Command modules retain their explicit `Options` interfaces. Those interfaces also describe prompt answers and conditional values that Commander flag definitions cannot infer; keeping them makes the runner context and `required` checks precise. `CommandRegistration<Options>` takes `{ name, description, options, argument?, helpText?, load, mapOptions? }`. The type of the loaded handler fixes `Options`; `mapOptions` handles raw Commander values only where conversion is needed. An option definition takes a Commander `Command`, registers a fresh option, and returns nothing. `option({ flags, description?, defaultValue?, parse? })` distinguishes help descriptions from parsed defaults. Choice and custom parser failures still come from Commander or the existing parser, before the lazy command import.
+Command modules retain their explicit `Options` interfaces. Those interfaces also describe prompt answers and conditional values that Commander flag definitions cannot infer; keeping them makes the runner context and `required` checks precise. `CommandRegistration<Options>` takes `{ name, description, options, argument?, helpText?, load, mapOptions? }`. The type of the loaded handler fixes `Options`; `mapOptions` handles raw Commander values only where conversion is needed. An option definition takes a Commander `Command`, registers a fresh option, and returns nothing. `option({ flags, description?, defaultValue?, helpDefault?, parse? })` distinguishes parsed defaults from `helpDefault`, which prints a default label without setting a Commander value. Import and export help labels read the same defaults as their command resolution; update-switch labels read core's strategy defaults. Choice and custom parser failures still come from Commander or the existing parser, before the lazy command import.
 
 | Field | Meaning |
 |---|---|
@@ -289,7 +295,7 @@ Exit codes:
 | A required flag missing in non-interactive mode (every command, including `import --source` and `--locale`, `export --format`, `normalize` without `--collection`/`--all`, `install-skill` without `--collection`), or an empty interactive answer to a required question | 1 |
 | `remove-locale` without `--locale` on a collection with no target locale (`No removable locales in collection "x".`); `translate-locale` on a collection with auto-translation off (`Auto-translation is not enabled for collection "x". Set translation.enabled = true in your configuration`, before any prompt and even when nothing needs translating) or with no target locale | 1 |
 | `bundle --token-constant-name` with several bundles | 1 |
-| `add-resource --translations` that is not valid JSON or not an array of `{ locale, value, status }` | 1 |
+| `add-resource --translations` that is not valid JSON or not an array of `{ locale, value, status? }` | 1 |
 | Missing or conflicting flags in `edit-collection`, `find-similar`, `protected-terms`, `preferred-terminology` | 1 |
 | Core error in any command (for example in `add-collection`, `delete-collection`, `add-resource`, `edit-resource`, `delete-resource`, `move`, `add-locale`, `remove-locale`) | 1 |
 | Partial failure: `delete-resource` or `move` reports per-key errors; `normalize` fails on a collection; `bundle` fails on a bundle, names an unknown bundle, or finds no bundles | 1 |
@@ -317,7 +323,7 @@ For scripts written against the earlier CLI:
 
 ### Changes Introduced by Resource Search
 
-`find-similar` reads the collection with `readCollection` and asks [Resource Search](glossary.md#resource-search) for the `--max-results` best similar-value matches. The output format is unchanged (`  key → "value" (similarity: NN%)`).
+`find-similar` uses `normalizeSearchRequest` in `libs/core/src/lib/resource/search.ts` with default 5, then reads the collection with `readCollection` and asks [Resource Search](glossary.md#resource-search) for the `--max-results` best similar-value matches. A blank query still exits with a usage error. Limits above 500 now return at most 500 matches. The output format is unchanged (`  key → "value" (similarity: NN%)`).
 
 - Every base value is compared. The 500-candidate cap and its `Note: only the first 500 candidates were compared` warning are gone.
 - A match is a base value at least 80% similar to `--value` (as before), **or** one that contains `--value` or is contained in it as whole words with a similarity of at least 40%. So `--value "Save"` now also reports `"Save draft"` (similarity 40%), but not `"Save and Close"` (29%). A fragment inside a word does not count (`connect` in `connection`, `don` in `don't`).
@@ -337,7 +343,7 @@ The runner loads the config before anything else, unless the command sets `confi
 - **Parse or read error** — `❌ Failed to parse configuration file: <reason>` (the JSON parser's message, or the I/O error), exit 1.
 - **Context** — `ctx.config` and `ctx.configPath` (absolute path of `.lingo-tracker.json`).
 
-The command uses the config loaded by the runner. Core reloads it after `--file` changes a pointer, before listing or editing terms.
+The command uses the config loaded by the runner. Core uses that config for the preview and the paths used during apply.
 
 ### Collection Resolution
 

@@ -1,18 +1,18 @@
-import { effectiveProtectedTerms, mergeListEdit, normalizeProtectedTerms } from '@simoncodes-ca/domain';
+import { effectiveProtectedTerms, type ListEdit, mergeListEdit, normalizeProtectedTerms } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { CollectionNotFoundError, InvalidCollectionError } from '../errors/lingo-tracker-error';
 import { patchCollectionEntry } from './collection-entry';
-import { createConfigFileOperations, updateConfig } from './config-file-operations';
+import { type ConfigFileOperations, createConfigFileOperations, updateConfig } from './config-file-operations';
 import {
   assertWritableProtectedTermsPath,
   readCollectionProtectedTerms,
   readGlobalProtectedTerms,
   resolveCollectionProtectedTermsFilePath,
-  resolveWritableCollectionProtectedTermsPath,
   resolveGlobalProtectedTermsFilePath,
   resolveProtectedTermsFilePath,
+  resolveWritableCollectionProtectedTermsPath,
   writeProtectedTermsFile,
 } from './protected-terms-file';
-import { CollectionNotFoundError, InvalidCollectionError } from '../errors/lingo-tracker-error';
 
 /** Rejects an untyped request before it can change a term file or a collection entry. */
 export function assertProtectedTerms(terms: unknown): asserts terms is string[] {
@@ -21,11 +21,7 @@ export function assertProtectedTerms(terms: unknown): asserts terms is string[] 
   }
 }
 
-export interface ProtectedTermsEdit {
-  readonly add?: readonly string[];
-  readonly remove?: readonly string[];
-  readonly set?: string;
-}
+export type ProtectedTermsEdit = ListEdit;
 
 export interface ProtectedTermsView {
   readonly globalTerms: string[];
@@ -88,6 +84,10 @@ export function editProtectedTerms(
 
 export interface SetProtectedTermsOptions {
   cwd?: string;
+  /** Config already used to plan the edit; omit it for a standalone setter call. */
+  config?: LingoTrackerConfig;
+  /** A handle tied to that config's read, when it has a tracked snapshot. */
+  configFile?: Pick<ConfigFileOperations, 'write'>;
 }
 
 export interface SetProtectedTermsResult {
@@ -106,7 +106,7 @@ export function setGlobalProtectedTerms(
 ): SetProtectedTermsResult {
   assertProtectedTerms(terms);
   const cwd = options.cwd ?? process.cwd();
-  const config = createConfigFileOperations({ cwd }).read();
+  const config = options.config ?? createConfigFileOperations({ cwd }).read();
   const filePath = resolveGlobalProtectedTermsFilePath(config, cwd);
 
   writeProtectedTermsFile(filePath, terms);
@@ -126,7 +126,7 @@ export function setCollectionProtectedTerms(
 ): SetProtectedTermsResult {
   assertProtectedTerms(terms);
   const cwd = options.cwd ?? process.cwd();
-  const config = createConfigFileOperations({ cwd }).read();
+  const config = options.config ?? createConfigFileOperations({ cwd }).read();
   const collection = config.collections?.[collectionName];
 
   if (!collection) {
@@ -151,7 +151,7 @@ export function setGlobalProtectedTermsFile(
 ): SetProtectedTermsResult {
   const cwd = options.cwd ?? process.cwd();
   const pointer = normalizePointer(rawPointer);
-  const previousConfig = createConfigFileOperations({ cwd }).read();
+  const previousConfig = options.config ?? createConfigFileOperations({ cwd }).read();
   const carried = readGlobalProtectedTerms(previousConfig, cwd).terms;
 
   // Validate before touching config, so a bad path never leaves a dangling pointer behind.
@@ -159,14 +159,18 @@ export function setGlobalProtectedTermsFile(
     assertWritableProtectedTermsPath(resolveProtectedTermsFilePath(pointer, cwd));
   }
 
-  const config = updateConfig((current) => {
-    if (pointer === undefined) {
-      delete current.protectedTermsFile;
-    } else {
-      current.protectedTermsFile = pointer;
-    }
-    return current;
-  }, cwd);
+  const config = { ...previousConfig };
+  if (pointer === undefined) delete config.protectedTermsFile;
+  else config.protectedTermsFile = pointer;
+  if (options.configFile) {
+    options.configFile.write(config);
+  } else {
+    updateConfig((current) => {
+      if (pointer === undefined) delete current.protectedTermsFile;
+      else current.protectedTermsFile = pointer;
+      return current;
+    }, cwd);
+  }
 
   const filePath = resolveGlobalProtectedTermsFilePath(config, cwd);
   writeProtectedTermsFile(filePath, carried);
@@ -186,7 +190,7 @@ export function setCollectionProtectedTermsFile(
 ): SetProtectedTermsResult | { message: string; filePath: undefined } {
   const cwd = options.cwd ?? process.cwd();
   const pointer = normalizePointer(rawPointer);
-  const config = createConfigFileOperations({ cwd }).read();
+  const config = options.config ?? createConfigFileOperations({ cwd }).read();
   const collection = config.collections?.[collectionName];
 
   if (!collection) {
@@ -202,7 +206,14 @@ export function setCollectionProtectedTermsFile(
   }
 
   // A patch of one key (`''` clears it): the rest of the record (including a `translation` override) stays as is.
-  updateConfig((current) => patchCollectionEntry(current, collectionName, { protectedTermsFile: pointer ?? '' }), cwd);
+  if (options.configFile) {
+    options.configFile.write(patchCollectionEntry(config, collectionName, { protectedTermsFile: pointer ?? '' }));
+  } else {
+    updateConfig(
+      (current) => patchCollectionEntry(current, collectionName, { protectedTermsFile: pointer ?? '' }),
+      cwd,
+    );
+  }
 
   if (filePath === undefined) {
     return { message: `Collection "${collectionName}" protected terms file cleared`, filePath: undefined };

@@ -6,8 +6,8 @@ import type {
   UpdateResourceDto,
 } from '@simoncodes-ca/data-transfer';
 import { isValidSegment, resolveResourceKey, summaryTarget } from '@simoncodes-ca/domain';
-import { findFolderInTree } from '../../store/folder-tree.utils';
 import { addTagToList, removeTagFromList } from '../../../shared/tag-list-edit';
+import { findFolderInTree } from '../../store/folder-tree.utils';
 
 /*
  * Resource Entry Draft: the translation editor's rules, as plain data and functions.
@@ -36,6 +36,11 @@ export interface ResourceEntryDraft {
   tags: readonly string[];
   /** Every non-base locale, in the editor's order. */
   translations: readonly LocaleDraft[];
+}
+
+/** One trimmed address for the preview, conflict hand-off and create request. */
+export function resolveDraftKey(draft: Pick<ResourceEntryDraft, 'key' | 'folderPath'>): string {
+  return resolveResourceKey(draft.key.trim(), draft.folderPath);
 }
 
 // ── Dotted-key absorption ────────────────────────────────────────────────────
@@ -296,7 +301,7 @@ export function toCreateDto(draft: ResourceEntryDraft): CreateResourceDto {
     .map((translation) => ({ locale: translation.locale, value: translation.value, status: 'new' as const }));
 
   return {
-    key: resolveResourceKey(draft.key, draft.folderPath),
+    key: resolveDraftKey(draft),
     baseValue: draft.baseValue,
     comment: draft.comment.trim() || undefined,
     tags: draft.tags.length > 0 ? [...draft.tags] : undefined,

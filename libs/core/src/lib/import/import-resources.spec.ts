@@ -2,9 +2,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { calculateChecksum } from '../resource/checksum';
 import { type Collection, openCollection } from '../config/open-collection';
 import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import { calculateChecksum } from '../resource/checksum';
 import { openResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';
 import type { ImportedResource } from './types';
@@ -217,6 +217,20 @@ describe('importResources', () => {
   });
 
   describe('strategy defaults', () => {
+    it('updates comments and tags when migration flags are explicitly undefined', () => {
+      seed('common', { ok: { source: 'OK', es: 'Vale' } });
+
+      importResources(collection, [{ key: 'common.ok', value: 'Aceptar', comment: 'Button', tags: ['ui'] }], {
+        locale: 'es',
+        strategy: 'migration',
+        updateComments: undefined,
+        updateTags: undefined,
+        createMissing: undefined,
+      });
+
+      expect(stored('common', 'ok')?.entry).toMatchObject({ comment: 'Button', tags: ['ui'] });
+    });
+
     it('lets migration create resources and update comments and tags by default', () => {
       seed('common', { ok: { source: 'OK', es: 'Vale' } });
 

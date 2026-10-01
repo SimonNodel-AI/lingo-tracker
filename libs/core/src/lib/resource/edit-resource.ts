@@ -1,21 +1,28 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import {
   isUntranslatedCopy,
   needsTranslation,
   normalizeTags,
   type TranslationStatus,
   translocoToICU,
+  validateTargetFolder,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
-import { ResourceAlreadyExistsError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import {
+  CoreOperationError,
+  InvalidResourceKeyError,
+  ResourceAlreadyExistsError,
+  ResourceNotFoundError,
+} from '../errors/lingo-tracker-error';
+import type { OpenTranslatorOptions } from '../translation/translator';
 import type { ResourceTreeEntry } from './load-resource-tree';
-import { validateAndResolvePaths } from './resource-file-paths';
+import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
+import { planMove } from './move-plan';
+import { relocateEntries } from './relocate-entries';
+import { resolveResourcePaths, validateAndResolvePaths } from './resource-file-paths';
 import { openResourceFolder } from './resource-folder';
 import { type ResourceMutation, upsertMutation } from './resource-mutation';
-import type { OpenTranslatorOptions } from '../translation/translator';
-import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
-import { relocateEntries } from './relocate-entries';
+import { assertTranslationStatus } from './translation-status-input';
 
 /** What to change on an entry. `undefined` leaves a field alone. */
 export interface EditResourceChanges {
@@ -24,7 +31,7 @@ export interface EditResourceChanges {
   readonly comment?: string;
   /** Replaces the tags; an empty list removes them. */
   readonly tags?: readonly string[];
-  /** Translations by locale. `status` defaults to `translated`. A value for the base locale is ignored. */
+  /** Translations by locale. An omitted status is inferred when the value changes. A base-locale value is ignored. */
   readonly translations?: Readonly<Record<string, { readonly value: string; readonly status?: TranslationStatus }>>;
   /**
    * Destination folder (dot-delimited; `''` for the collection root). The entry keeps its
@@ -92,7 +99,11 @@ export async function editResource(
     throw new ResourceNotFoundError(paths.resolvedKey);
   }
 
-  const translations = Object.entries(changes.translations ?? {}).filter(([locale]) => locale !== baseLocale);
+  const requestedTranslations = Object.entries(changes.translations ?? {});
+  for (const [, translation] of requestedTranslations) {
+    if (translation.status !== undefined) assertTranslationStatus(translation.status);
+  }
+  const translations = requestedTranslations.filter(([locale]) => locale !== baseLocale);
   assertCollectionLocales(
     collection,
     translations.map(([locale]) => locale),
@@ -121,14 +132,14 @@ export async function editResource(
     hasChanges = true;
   }
 
-  for (const [locale, { value, status = 'translated' }] of translations) {
+  for (const [locale, { value, status }] of translations) {
     const normalized = translocoToICU(value);
     if (normalized !== entry[locale]) {
       folder.setTranslation(entryKey, locale, normalized, status);
       hasChanges = true;
     } else {
       const localeMeta = folder.get(entryKey)?.meta?.[locale];
-      if (localeMeta && localeMeta.status !== status) {
+      if (status !== undefined && localeMeta && localeMeta.status !== status) {
         folder.setStatus(entryKey, locale, status);
         hasChanges = true;
       }
@@ -205,19 +216,21 @@ function resolveDestination(
   source: { readonly resolvedKey: string; readonly entryKey: string },
   moveTo: string,
 ): string | undefined {
-  const paths = validateAndResolvePaths({
-    key: source.entryKey,
-    translationsFolder: collection.translationsFolder,
-    targetFolder: moveTo,
-  });
-  if (paths.resolvedKey === source.resolvedKey) {
+  try {
+    if (moveTo) validateTargetFolder(moveTo);
+  } catch (error) {
+    throw new InvalidResourceKeyError(source.entryKey, error instanceof Error ? error.message : String(error));
+  }
+  const [relocation] = planMove({ kind: 'entry', key: source.resolvedKey }, moveTo).relocations;
+  if (!relocation || relocation.to === source.resolvedKey) {
     return undefined;
   }
 
+  const paths = resolveResourcePaths({ key: relocation.to, translationsFolder: collection.translationsFolder });
   if (openResourceFolder(paths.folderPath, { baseLocale: collection.baseLocale }).has(paths.entryKey)) {
-    throw new ResourceAlreadyExistsError(paths.resolvedKey);
+    throw new ResourceAlreadyExistsError(relocation.to);
   }
-  return paths.resolvedKey;
+  return relocation.to;
 }
 
 /**

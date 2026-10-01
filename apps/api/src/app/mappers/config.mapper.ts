@@ -97,6 +97,6 @@ export function mapDtoToConfigUpdate(dto: UpdateConfigDto): Partial<LingoTracker
 /** Writable lists that live in their own files rather than in `.lingo-tracker.json`. */
 export interface ConfigFileUpdate {
   protectedTerms?: string[];
-  /** Passed through untouched: the controller shape-checks it and the core writer validates it. */
+  /** Passed through untouched for core to shape-check and validate. */
   preferredTerminology?: PreferredTermRuleDto[];
 }

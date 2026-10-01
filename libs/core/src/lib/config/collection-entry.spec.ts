@@ -185,7 +185,7 @@ describe('patchCollectionEntry', () => {
     const patch: Partial<LingoTrackerCollection> = JSON.parse(`{ "${field}": null }`);
 
     expect(() => patchCollectionEntry(config, 'app', patch)).toThrow(
-      new InvalidCollectionError(`${field} must not be null`),
+      new InvalidCollectionError(`${field} must not be null`, { field }),
     );
   });
 

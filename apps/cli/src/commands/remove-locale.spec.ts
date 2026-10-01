@@ -8,7 +8,7 @@ import {
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
-import { removeLocaleCommand, type RemoveLocaleOptions } from './remove-locale';
+import { type RemoveLocaleOptions, removeLocaleCommand } from './remove-locale';
 
 vi.mock('prompts');
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
@@ -84,7 +84,11 @@ describe('removeLocaleCommand', () => {
       const options: RemoveLocaleOptions = { collection: 'main', locale: 'fr' };
       await removeLocaleCommand(options);
 
-      expect(mockCore).toHaveBeenCalledWith('main', 'fr', { cwd: '/project' });
+      expect(mockCore).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
+        expect.objectContaining({ write: expect.any(Function) }),
+        'fr',
+      );
       expect(console.log).toHaveBeenCalledWith('✅ Locale "fr" removed from collection "main" successfully');
       expect(console.log).toHaveBeenCalledWith('  Entries purged: 5');
       expect(console.log).toHaveBeenCalledWith('  Files updated: 3');
@@ -148,7 +152,11 @@ describe('removeLocaleCommand', () => {
         [expect.objectContaining({ name: 'locale', type: 'select' })],
         expect.anything(),
       );
-      expect(mockCore).toHaveBeenCalledWith('main', 'fr', { cwd: '/project' });
+      expect(mockCore).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
+        expect.objectContaining({ write: expect.any(Function) }),
+        'fr',
+      );
     });
 
     it('cancelling the prompt prints one cancel line and exits 0', async () => {

@@ -1,9 +1,12 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../constants';
+import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { openCollection } from '../lib/config/open-collection';
 import {
   InvalidCollectionError,
   ParentDirectoryMissingError,
@@ -11,7 +14,7 @@ import {
 } from '../lib/errors/lingo-tracker-error';
 import { seedResources, testCollection } from '../testing/temp-dir.spec-helpers';
 import { addCollection } from './add-collection';
-import { updateCollection } from './update-collection';
+import { type UpdateCollectionOptions, updateCollection } from './update-collection';
 
 describe('collection lifecycle refused writes', () => {
   let cwd: string;
@@ -22,6 +25,16 @@ describe('collection lifecycle refused writes', () => {
     locales: ['en', 'es'],
     collections: { app: { translationsFolder: './i18n', locales: ['en', 'es'] } },
   });
+
+  const update = (
+    name: string,
+    newName: string | undefined,
+    patch: Partial<LingoTrackerCollection>,
+    options: UpdateCollectionOptions & { cwd?: string } = {},
+  ) => {
+    const configFile = createConfigFileOperations({ cwd });
+    return updateCollection(openCollection(configFile.read(), name, { cwd }), configFile, newName, patch, options);
+  };
 
   /** Includes config, both terms lists, all locale resource files, and directory names. */
   const snapshot = (): Record<string, Buffer> => {
@@ -65,16 +78,16 @@ describe('collection lifecycle refused writes', () => {
   it('refuses an added locale with terms and no resulting pointer before seeding', async () => {
     const before = snapshot();
     await expect(
-      updateCollection('app', undefined, { locales: ['en', 'es', 'de'] }, { cwd, protectedTerms: ['Pixel'] }),
+      update('app', undefined, { locales: ['en', 'es', 'de'] }, { cwd, protectedTerms: ['Pixel'] }),
     ).rejects.toThrow(ProtectedTermsFileNotSetError);
     expect(snapshot()).toEqual(before);
   });
 
   it('refuses a removed locale with terms and no resulting pointer before purging', async () => {
     const before = snapshot();
-    await expect(
-      updateCollection('app', undefined, { locales: ['en'] }, { cwd, protectedTerms: ['Pixel'] }),
-    ).rejects.toThrow(ProtectedTermsFileNotSetError);
+    await expect(update('app', undefined, { locales: ['en'] }, { cwd, protectedTerms: ['Pixel'] })).rejects.toThrow(
+      ProtectedTermsFileNotSetError,
+    );
     expect(snapshot()).toEqual(before);
   });
 
@@ -84,7 +97,7 @@ describe('collection lifecycle refused writes', () => {
     writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify(withPointer));
     const before = snapshot();
     await expect(
-      updateCollection('app', undefined, { protectedTermsFile: '' }, { cwd, protectedTerms: ['Pixel'] }),
+      update('app', undefined, { protectedTermsFile: '' }, { cwd, protectedTerms: ['Pixel'] }),
     ).rejects.toThrow(ProtectedTermsFileNotSetError);
     expect(snapshot()).toEqual(before);
   });
@@ -104,7 +117,7 @@ describe('collection lifecycle refused writes', () => {
   it('refuses a renamed update with a missing terms parent before seeding or writing', async () => {
     const before = snapshot();
     await expect(
-      updateCollection(
+      update(
         'app',
         'renamed',
         { protectedTermsFile: 'missing/terms.json', locales: ['en', 'es', 'de'] },
@@ -126,10 +139,10 @@ describe('collection lifecycle refused writes', () => {
     expect(snapshot()).toEqual(before);
   });
 
-  it('checks malformed terms before an unknown update target', async () => {
+  it('checks malformed terms before updating', async () => {
     const before = snapshot();
     await expect(
-      updateCollection('unknown', undefined, {}, { cwd, protectedTerms: ['valid', 42] as unknown as string[] }),
+      update('app', undefined, {}, { cwd, protectedTerms: ['valid', 42] as unknown as string[] }),
     ).rejects.toThrow(InvalidCollectionError);
     expect(snapshot()).toEqual(before);
   });
