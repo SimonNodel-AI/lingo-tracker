@@ -22,13 +22,10 @@ import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { SearchInput } from '../../../shared/components/search-input';
 import { injectConfirm } from '../../../shared/confirm';
-import { NotificationService } from '../../../shared/notification';
-import { resourceMovedToast } from '../../services/resource-moved-toast';
+import { injectFeedback } from '../../feedback';
 import { BrowserStore } from '../../store/browser.store';
-import type { MoveResourceOutcome, RequestedFolderMoveOutcome } from '../../store/features/with-folder-writes.feature';
 import { folderDrop } from '../../store/folder-drop';
 import type { DragData } from '../../types/drag-data';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
@@ -77,7 +74,7 @@ export class FolderTree {
   readonly #confirm = injectConfirm();
   readonly TOKENS = TRACKER_TOKENS;
   readonly #transloco = inject(TranslocoService);
-  readonly #notifications = inject(NotificationService);
+  readonly #feedback = injectFeedback();
 
   /** Name of the collection to browse */
   readonly collectionName = input.required<string>();
@@ -103,15 +100,10 @@ export class FolderTree {
   /** True while a drag hovers the root row, for drop-target styling */
   readonly isRootHoveredDuringDrag = signal(false);
 
-  /** The store advances this epoch on a new draft or a successful create. */
-  readonly #folderWriteFailure = signal<{
-    message: string;
-    inSession: () => boolean;
-    epoch: number;
-  } | null>(null);
+  /** The refusal of the last create typed into the tree, as the store decided it. */
   readonly folderWriteError = computed(() => {
-    const failure = this.#folderWriteFailure();
-    return failure?.inSession() && this.store.folderCreateErrorEpoch() === failure.epoch ? failure.message : null;
+    const feedback = this.store.folderCreateError();
+    return feedback ? this.#feedback.text(feedback) : null;
   });
 
   /** Root accepts folders only: a resource is moved between folders, never onto the collection. */
@@ -274,24 +266,12 @@ export class FolderTree {
 
   /**
    * Handles confirmation of folder name from inline input.
-   * Calls the store to create the folder.
+   * The store closes the draft and keeps a refusal for the inline error; a toast shows the rest.
    */
   onFolderConfirm(folderName: string, parentPath: string | null = this.store.addFolderParentPath()): void {
-    this.store.createFolder(folderName, parentPath).subscribe((outcome) => {
-      if (outcome.kind === 'created') this.store.cancelAddingFolder();
-      if (outcome.kind === 'no-collection' || outcome.kind === 'read-only') this.store.cancelAddingFolder();
-      if (outcome.kind === 'refused') {
-        this.store.cancelAddingFolder();
-        this.#folderWriteFailure.set({
-          message: apiErrorMessage(
-            outcome.error,
-            this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CREATEFOLDERFAILED),
-          ),
-          inSession: this.store.captureFolderWriteSession(),
-          epoch: this.store.folderCreateErrorEpoch(),
-        });
-      }
-    });
+    this.store
+      .confirmFolderDraft(folderName, parentPath)
+      .subscribe((outcome) => this.#feedback.toast(outcome.feedback));
   }
 
   /**
@@ -317,29 +297,22 @@ export class FolderTree {
    */
   onDeleteFolder(folderPath: string): void {
     const folderName = extractFolderNameFromPath(folderPath);
-    const inSession = this.store.captureFolderWriteSession();
 
-    this.#confirm(
-      {
-        title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
-        message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, { name: folderName }),
-        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-        actionType: 'destructive',
-      },
-      { width: '400px' },
-    ).then((confirmed) => {
-      if (confirmed && inSession())
-        this.store.deleteFolder(folderPath).subscribe((outcome) => {
-          if (outcome.kind === 'refused') {
-            this.#notifications.error(
-              apiErrorMessage(
-                outcome.error,
-                this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFOLDERFAILED),
-              ),
-            );
-          }
-        });
-    });
+    this.store
+      .requestFolderDelete(folderPath, (inSession) =>
+        this.#confirm(
+          {
+            title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
+            message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, {
+              name: folderName,
+            }),
+            confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
+            actionType: 'destructive',
+          },
+          { width: '400px', canOpen: inSession },
+        ),
+      )
+      .subscribe((outcome) => this.#feedback.toast(outcome.feedback));
   }
 
   /** Confirms a folder move before handing the write to the store. */
@@ -359,7 +332,7 @@ export class FolderTree {
           { width: '400px', canOpen: inSession },
         ),
       )
-      .subscribe((outcome) => this.#showFolderMoveOutcome(outcome));
+      .subscribe((outcome) => this.#feedback.toast(outcome.feedback));
   }
 
   /**
@@ -379,38 +352,7 @@ export class FolderTree {
         sourceKey: dragData.key,
         destinationFolderPath: targetFolderPath,
       })
-      .subscribe((outcome) => this.#showResourceMoveOutcome(outcome));
-  }
-
-  #showFolderMoveOutcome(outcome: RequestedFolderMoveOutcome): void {
-    if (outcome.kind === 'moved') {
-      this.#notifications.success(
-        this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERMOVEDX, {
-          name: outcome.folderName,
-          dest:
-            outcome.destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-        }),
-      );
-    } else if (outcome.kind === 'noop' && outcome.reason === 'already-at-location') {
-      this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.FOLDERALREADYATLOCATION));
-    } else if (outcome.kind === 'refused') {
-      this.#notifications.error(
-        apiErrorMessage(outcome.error, this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVEFOLDERFAILED)),
-      );
-    }
-    // CDK drop predicates reject invalid-drop before a UI event reaches this handler.
-  }
-
-  #showResourceMoveOutcome(outcome: MoveResourceOutcome): void {
-    if (outcome.kind === 'moved') {
-      this.#notifications.success(resourceMovedToast(this.#transloco, outcome.entryKey, outcome.destinationFolderPath));
-    } else if (outcome.kind === 'noop') {
-      this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEALREADYINFOLDER));
-    } else if (outcome.kind === 'refused') {
-      this.#notifications.error(
-        apiErrorMessage(outcome.error, this.#transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.MOVERESOURCEFAILED)),
-      );
-    }
+      .subscribe((outcome) => this.#feedback.toast(outcome.feedback));
   }
 
   /**

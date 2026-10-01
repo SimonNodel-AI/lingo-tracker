@@ -2,12 +2,30 @@ import { computed, inject } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
 import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { splitResolvedKey } from '@simoncodes-ca/domain';
-import { catchError, defer, finalize, from, map, type Observable, of, switchMap } from 'rxjs';
+import { catchError, defer, finalize, from, map, type Observable, of, switchMap, tap } from 'rxjs';
 import { ApiError } from '../../../shared/api-error/api-error';
+import type { Feedback } from '../../feedback';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 import { cancelFolderDraft, startFolderDraft } from '../folder-draft';
 import { folderDrop } from '../folder-drop';
+import {
+  type CreateFolderOutcome,
+  type CreateFolderResult,
+  type DeleteFolderOutcome,
+  type DeleteFolderResult,
+  decideCreateFolder,
+  decideDeleteFolder,
+  decideMoveFolder,
+  decideMoveResource,
+  type MoveFolderOutcome,
+  type MoveFolderResult,
+  type MoveResourceOutcome,
+  type MoveResourceResult,
+  type Refusal,
+  type RequestedFolderDeleteOutcome,
+  type RequestedFolderMoveOutcome,
+} from '../folder-write-feedback';
 import { planFolderMove, planFolderMoveRollback } from '../folder-move-plan';
 import {
   findFolderInTree,
@@ -21,8 +39,15 @@ import { captureSession } from '../session-guard';
 export interface FolderWritesState {
   isAddingFolder: boolean;
   addFolderParentPath: string | null;
-  /** Advances when an inline create error should be cleared. */
-  folderCreateErrorEpoch: number;
+  /**
+   * The refusal of the last `confirmFolderDraft`, shown under the still-open draft's input
+   * until the name is edited (`dismissFolderCreateError`), the draft is cancelled or restarted,
+   * a create succeeds, or another collection opens. The session reset is the
+   * validity rule: a refusal that arrives after the session closed is never written.
+   */
+  folderCreateError: Feedback | null;
+  /** Identifies the current add-folder draft; a start or a cancel replaces it. */
+  folderDraftId: number;
   newlyCreatedFolderPath: string | null;
   isDeletingFolder: boolean;
   deletingFolderPath: string | null;
@@ -32,33 +57,22 @@ export interface FolderWritesState {
 export const initialFolderWritesState: FolderWritesState = {
   isAddingFolder: false,
   addFolderParentPath: null,
-  folderCreateErrorEpoch: 0,
+  folderCreateError: null,
+  folderDraftId: 0,
   newlyCreatedFolderPath: null,
   isDeletingFolder: false,
   deletingFolderPath: null,
   movesInFlight: 0,
 };
 
-type Refusal =
-  | { kind: 'refused'; error: ApiError }
-  | { kind: 'read-only' }
-  | { kind: 'no-collection' }
-  | { kind: 'stale-session' };
-export type CreateFolderOutcome = Refusal | { kind: 'created'; folder: FolderNodeDto; created: boolean };
-export type DeleteFolderOutcome = Refusal | { kind: 'deleted'; deleted: boolean };
-export type MoveFolderOutcome =
-  | Refusal
-  | { kind: 'invalid-drop' }
-  | { kind: 'moved'; folderName: string; destinationFolderPath: string }
-  | {
-      kind: 'noop';
-      reason: 'same-folder' | 'already-at-location';
-    };
-export type MoveResourceOutcome =
-  | Refusal
-  | { kind: 'moved'; entryKey: string; destinationFolderPath: string }
-  | { kind: 'noop'; reason: 'already-in-folder' };
-export type RequestedFolderMoveOutcome = MoveFolderOutcome | { kind: 'cancelled' };
+export type {
+  CreateFolderOutcome,
+  DeleteFolderOutcome,
+  MoveFolderOutcome,
+  MoveResourceOutcome,
+  RequestedFolderDeleteOutcome,
+  RequestedFolderMoveOutcome,
+};
 
 function refused(error: unknown): Refusal {
   return {
@@ -113,13 +127,13 @@ export function withFolderWritesFeature<_>() {
         });
       }
 
-      function moveFolder({
+      function moveFolderResult({
         sourceFolderPath,
         destinationFolderPath,
       }: {
         sourceFolderPath: string;
         destinationFolderPath: string;
-      }): Observable<MoveFolderOutcome> {
+      }): Observable<MoveFolderResult> {
         return defer(() => {
           if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
           const collection = store.selectedCollection();
@@ -136,7 +150,7 @@ export function withFolderWritesFeature<_>() {
           patchState(store, { rootFolders: optimisticTree });
           return moving(
             api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
-              map((): MoveFolderOutcome => {
+              map((): MoveFolderResult => {
                 if (!inSession()) return { kind: 'stale-session' };
                 const plan = planFolderMove(
                   { tree: store.rootFolders(), expanded: store.expandedFolders(), sourceNode },
@@ -164,86 +178,150 @@ export function withFolderWritesFeature<_>() {
         });
       }
 
-      return {
-        captureFolderWriteSession(): () => boolean {
-          return captureSession(store);
-        },
-        startAddingFolder(parentPath: string | null): void {
-          if (!store.isReadOnly()) {
-            patchState(store, startFolderDraft(parentPath), {
-              folderCreateErrorEpoch: store.folderCreateErrorEpoch() + 1,
-            });
-          }
-        },
-        cancelAddingFolder(): void {
-          patchState(store, cancelFolderDraft());
-        },
-        createFolder(folderName: string, parentPath: string | null): Observable<CreateFolderOutcome> {
-          return defer(() => {
-            if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
-            const collection = store.selectedCollection();
-            if (!collection) return of({ kind: 'no-collection' } as const);
-            const inSession = captureSession(store);
-            return api.createFolder(collection, folderName, parentPath || undefined).pipe(
-              map((response): CreateFolderOutcome => {
-                if (!inSession()) return { kind: 'stale-session' };
-                patchState(store, {
-                  rootFolders: insertFolderIntoTree(store.rootFolders(), response.folder, parentPath),
-                  newlyCreatedFolderPath: response.folder.fullPath,
-                  folderCreateErrorEpoch: store.folderCreateErrorEpoch() + 1,
-                });
-                setTimeout(() => {
-                  if (inSession() && store.newlyCreatedFolderPath() === response.folder.fullPath) {
-                    patchState(store, { newlyCreatedFolderPath: null });
-                  }
-                }, 3000);
-                return {
-                  kind: 'created',
-                  folder: response.folder,
-                  created: response.created,
-                };
-              }),
-              catchError((error: unknown) => of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const))),
-            );
+      function moveFolder(move: { sourceFolderPath: string; destinationFolderPath: string }) {
+        return moveFolderResult(move).pipe(map(decideMoveFolder));
+      }
+
+      function createFolderResult(folderName: string, parentPath: string | null): Observable<CreateFolderResult> {
+        return defer(() => {
+          if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
+          const collection = store.selectedCollection();
+          if (!collection) return of({ kind: 'no-collection' } as const);
+          const inSession = captureSession(store);
+          return api.createFolder(collection, folderName, parentPath || undefined).pipe(
+            map((response): CreateFolderResult => {
+              if (!inSession()) return { kind: 'stale-session' };
+              patchState(store, {
+                rootFolders: insertFolderIntoTree(store.rootFolders(), response.folder, parentPath),
+                newlyCreatedFolderPath: response.folder.fullPath,
+              });
+              setTimeout(() => {
+                if (inSession() && store.newlyCreatedFolderPath() === response.folder.fullPath) {
+                  patchState(store, { newlyCreatedFolderPath: null });
+                }
+              }, 3000);
+              return {
+                kind: 'created',
+                folder: response.folder,
+                created: response.created,
+              };
+            }),
+            catchError((error: unknown) => of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const))),
+          );
+        });
+      }
+
+      function deleteFolderResult(folderPath: string): Observable<DeleteFolderResult> {
+        return defer(() => {
+          if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
+          const collection = store.selectedCollection();
+          if (!collection) return of({ kind: 'no-collection' } as const);
+          const inSession = captureSession(store);
+          patchState(store, {
+            isDeletingFolder: true,
+            deletingFolderPath: folderPath,
           });
-        },
-        deleteFolder(folderPath: string): Observable<DeleteFolderOutcome> {
-          return defer(() => {
-            if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
-            const collection = store.selectedCollection();
-            if (!collection) return of({ kind: 'no-collection' } as const);
-            const inSession = captureSession(store);
-            patchState(store, {
-              isDeletingFolder: true,
-              deletingFolderPath: folderPath,
-            });
-            return api.deleteFolder(collection, folderPath).pipe(
-              map((response): DeleteFolderOutcome => {
-                if (!inSession()) return { kind: 'stale-session' };
+          return api.deleteFolder(collection, folderPath).pipe(
+            map((response): DeleteFolderResult => {
+              if (!inSession()) return { kind: 'stale-session' };
+              patchState(store, {
+                isDeletingFolder: false,
+                deletingFolderPath: null,
+              });
+              if (response.deleted) {
+                patchState(store, {
+                  rootFolders: removeFolderFromTree(store.rootFolders(), folderPath),
+                  expandedFolders: prunePathsUnder(store.expandedFolders(), folderPath),
+                });
+                const shown = store.currentFolderPath();
+                if (shown === folderPath || shown.startsWith(`${folderPath}.`)) {
+                  store.showFolder(parentFolderPath(folderPath) ?? '');
+                }
+              }
+              return { kind: 'deleted', deleted: response.deleted };
+            }),
+            catchError((error: unknown) => {
+              if (inSession())
                 patchState(store, {
                   isDeletingFolder: false,
                   deletingFolderPath: null,
                 });
-                if (response.deleted) {
-                  patchState(store, {
-                    rootFolders: removeFolderFromTree(store.rootFolders(), folderPath),
-                    expandedFolders: prunePathsUnder(store.expandedFolders(), folderPath),
-                  });
-                  const shown = store.currentFolderPath();
-                  if (shown === folderPath || shown.startsWith(`${folderPath}.`)) {
-                    store.showFolder(parentFolderPath(folderPath) ?? '');
-                  }
-                }
-                return { kind: 'deleted', deleted: response.deleted };
+              return of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const));
+            }),
+          );
+        });
+      }
+
+      /** Runs the confirmation in the session the request began in; a closed session ends it as stale. */
+      function confirmed<T>(
+        confirm: (inSession: () => boolean) => Promise<boolean>,
+        then: () => Observable<T>,
+      ): Observable<T | { kind: 'stale-session' } | { kind: 'cancelled' }> {
+        const inSession = captureSession(store);
+        return from(confirm(inSession)).pipe(
+          switchMap((yes) => {
+            if (!inSession()) return of({ kind: 'stale-session' } as const);
+            if (!yes) return of({ kind: 'cancelled' } as const);
+            return then();
+          }),
+        );
+      }
+
+      return {
+        startAddingFolder(parentPath: string | null): void {
+          if (!store.isReadOnly()) {
+            patchState(store, startFolderDraft(parentPath), {
+              folderCreateError: null,
+              folderDraftId: store.folderDraftId() + 1,
+            });
+          }
+        },
+        cancelAddingFolder(): void {
+          patchState(store, cancelFolderDraft(), { folderCreateError: null, folderDraftId: store.folderDraftId() + 1 });
+        },
+        /** Retires a create refusal, once the user edits the refused name. */
+        dismissFolderCreateError(): void {
+          patchState(store, { folderCreateError: null });
+        },
+        /** Creates a folder with no effect on the add-folder draft (the picker keeps its own). */
+        createFolder(folderName: string, parentPath: string | null): Observable<CreateFolderOutcome> {
+          return createFolderResult(folderName, parentPath).pipe(map(decideCreateFolder));
+        },
+        /**
+         * Creates a folder from the add-folder draft. The draft closes when the create ends
+         * (created, read-only, no collection). A refusal keeps it open and stays in
+         * `folderCreateError`, shown under the input so the name can be corrected. A create that
+         * outlived its session, or whose draft was cancelled or replaced meanwhile, leaves the
+         * draft state alone (the folder itself is still created and shown in the tree).
+         */
+        confirmFolderDraft(folderName: string, parentPath: string | null): Observable<CreateFolderOutcome> {
+          return defer(() => {
+            const draftId = store.folderDraftId();
+            return createFolderResult(folderName, parentPath).pipe(
+              map(decideCreateFolder),
+              tap((outcome) => {
+                if (outcome.kind === 'stale-session' || store.folderDraftId() !== draftId) return;
+                if (outcome.kind === 'refused') patchState(store, { folderCreateError: outcome.feedback });
+                else patchState(store, cancelFolderDraft(), { folderCreateError: null });
               }),
-              catchError((error: unknown) => {
-                if (inSession())
-                  patchState(store, {
-                    isDeletingFolder: false,
-                    deletingFolderPath: null,
-                  });
-                return of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const));
-              }),
+            );
+          });
+        },
+        deleteFolder(folderPath: string): Observable<DeleteFolderOutcome> {
+          return deleteFolderResult(folderPath).pipe(map(decideDeleteFolder));
+        },
+        /** Deletes a folder once `confirm` says yes; `confirm` is given the session guard to check before it opens. */
+        requestFolderDelete(
+          folderPath: string,
+          confirm: (inSession: () => boolean) => Promise<boolean>,
+        ): Observable<RequestedFolderDeleteOutcome> {
+          return defer(() => {
+            if (store.isReadOnly()) return of({ kind: 'read-only', feedback: null } as const);
+            if (!store.selectedCollection()) return of({ kind: 'no-collection', feedback: null } as const);
+            return confirmed(confirm, () => deleteFolderResult(folderPath)).pipe(
+              map((result) =>
+                result.kind === 'cancelled' ? { ...result, feedback: null } : decideDeleteFolder(result),
+              ),
             );
           });
         },
@@ -253,21 +331,16 @@ export function withFolderWritesFeature<_>() {
           confirm: (inSession: () => boolean) => Promise<boolean>,
         ): Observable<RequestedFolderMoveOutcome> {
           return defer(() => {
-            if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
-            if (!store.selectedCollection()) return of({ kind: 'no-collection' } as const);
+            if (store.isReadOnly()) return of({ kind: 'read-only', feedback: null } as const);
+            if (!store.selectedCollection()) return of({ kind: 'no-collection', feedback: null } as const);
             const decision = folderDrop(
               { type: 'folder', path: move.sourceFolderPath },
               move.destinationFolderPath,
               false,
             );
             if (decision.noOp || !decision.canLand) return moveFolder(move);
-            const inSession = captureSession(store);
-            return from(confirm(inSession)).pipe(
-              switchMap((confirmed) => {
-                if (!inSession()) return of({ kind: 'stale-session' } as const);
-                if (!confirmed) return of({ kind: 'cancelled' } as const);
-                return moveFolder(move);
-              }),
+            return confirmed(confirm, () => moveFolderResult(move)).pipe(
+              map((result) => (result.kind === 'cancelled' ? { ...result, feedback: null } : decideMoveFolder(result))),
             );
           });
         },
@@ -278,7 +351,7 @@ export function withFolderWritesFeature<_>() {
           sourceKey: string;
           destinationFolderPath: string;
         }): Observable<MoveResourceOutcome> {
-          return defer(() => {
+          return defer((): Observable<MoveResourceResult> => {
             if (store.isReadOnly()) return of({ kind: 'read-only' } as const);
             const collection = store.selectedCollection();
             if (!collection) return of({ kind: 'no-collection' } as const);
@@ -300,7 +373,7 @@ export function withFolderWritesFeature<_>() {
             const destinationKey = destinationFolderPath ? `${destinationFolderPath}.${entryKey}` : entryKey;
             return moving(
               api.moveResource(collection, sourceKey, destinationKey).pipe(
-                map((): MoveResourceOutcome => {
+                map((): MoveResourceResult => {
                   if (!inSession()) return { kind: 'stale-session' };
                   store.loadRootFolders();
                   store.reloadList();
@@ -322,7 +395,7 @@ export function withFolderWritesFeature<_>() {
               ),
               inSession,
             );
-          });
+          }).pipe(map(decideMoveResource));
         },
       };
     }),

@@ -49,13 +49,6 @@
     </div>
   }
 
-  @if (folderWriteError() && !store.error()) {
-    <div class="error-container" role="alert" aria-live="assertive">
-      <mat-icon>error</mat-icon>
-      <p class="error-text">{{ folderWriteError() }}</p>
-    </div>
-  }
-
   @if (!store.error() && !(store.isFolderTreeLoading() && store.rootFolders().length === 0)) {
     <div
       #folderList
@@ -121,7 +114,9 @@
           @if (isAddingFolder() && addFolderParentPath() === null) {
             <app-inline-folder-input
               [parentPath]="null"
+              [error]="folderWriteError()"
               (confirm)="onFolderConfirm($event)"
+              (edited)="store.dismissFolderCreateError()"
               (cancelInput)="onFolderCancel()"
             />
           }
