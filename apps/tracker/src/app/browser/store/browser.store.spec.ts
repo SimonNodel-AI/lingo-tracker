@@ -1760,32 +1760,32 @@ describe('BrowserStore', () => {
       });
     });
 
-    describe('Computed: localeFilterText', () => {
-      it('should return "All locales" when none selected', () => {
-        expect(store.localeFilterText()).toBe('All locales');
+    describe('Computed: localeFilterLabel', () => {
+      it('should be "all" when none selected', () => {
+        expect(store.localeFilterLabel()).toEqual({ kind: 'all' });
       });
 
-      it('should return "All locales" when all selected', () => {
+      it('should be "all" when all selected', () => {
         store.setSelectedLocales(['en', 'es', 'fr', 'de']);
-        expect(store.localeFilterText()).toBe('All locales');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'all' });
       });
 
-      it('should return locale code when one selected', () => {
+      it('should name the locale when one selected', () => {
         store.setSelectedLocales(['en']);
-        expect(store.localeFilterText()).toBe('en');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'en' });
       });
 
-      it('should return count when multiple selected', () => {
+      it('should carry the count when multiple selected', () => {
         store.setSelectedLocales(['en', 'es']);
-        expect(store.localeFilterText()).toBe('2 locales');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'count', count: 2 });
       });
 
-      it('should name the displayed locale in compact mode, never "All locales"', () => {
+      it('should name the displayed locale in compact mode, never "all"', () => {
         store.setDensityMode('compact');
-        expect(store.localeFilterText()).toBe('en');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'en' });
 
         store.setSelectedLocales(['fr']);
-        expect(store.localeFilterText()).toBe('fr');
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'fr' });
       });
     });
 

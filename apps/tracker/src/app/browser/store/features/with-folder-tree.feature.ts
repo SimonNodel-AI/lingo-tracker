@@ -1,20 +1,22 @@
 import { computed, inject, type Signal } from '@angular/core';
-import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
-import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, tap, switchMap, catchError, of } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
-import { NotificationService } from '../../../shared/notification';
-import { BrowserApiService, CollectionIndexNotReadyError } from '../../services/browser-api.service';
-import {
-  filterFolderTree,
-  collectExpandablePaths,
-  collectAncestorPaths,
-  toggleExpandedPath,
-} from '../folder-tree.utils';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
-import { captureSession, withinSession } from '../session-guard';
-import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { catchError, of, pipe, switchMap, tap } from 'rxjs';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
+import { NotificationService } from '../../../shared/notification';
+import { BrowserApiService } from '../../services/browser-api.service';
+import {
+  collectAncestorPaths,
+  collectExpandablePaths,
+  filterFolderTree,
+  toggleExpandedPath,
+  updateFolderInTree,
+} from '../folder-tree.utils';
+import { handleLoadFailure } from '../load-failure';
+import { captureSession, withinSession } from '../session-guard';
 
 export interface FolderTreeState {
   rootFolders: FolderNodeDto[];
@@ -101,17 +103,15 @@ export function withFolderTreeFeature<_>() {
       const transloco = inject(TranslocoService);
       const notifications = inject(NotificationService);
 
-      /**
-       * The index can go not-ready mid-session (reindex, outside change, eviction). When a tree read
-       * gives up for that reason and a root tree has already loaded (`folderTreeLoaded`, which also
-       * covers a collection with root resources and no folders), keep it and toast: the `error`
-       * state would replace the tree. Returns false (not handled) for other errors and on first load.
-       */
-      function keepTreeOnNotReady(error: unknown, message: string): boolean {
-        if (!(error instanceof CollectionIndexNotReadyError) || !store.folderTreeLoaded()) return false;
-        patchState(store, { isFolderTreeLoading: false });
-        notifications.error(message);
-        return true;
+      /** The one load-failure rule (load-failure.ts): a loaded tree stays on screen, anything else is the error state. */
+      function failTreeLoad(error: unknown, message: string): void {
+        handleLoadFailure(error, message, {
+          // `folderTreeLoaded` also covers a collection with root resources and no folders.
+          hasContentOnScreen: store.folderTreeLoaded(),
+          keepContent: () => patchState(store, { isFolderTreeLoading: false }),
+          showError: (text) => patchState(store, { isFolderTreeLoading: false, error: text }),
+          toast: (text) => notifications.error(text),
+        });
       }
 
       return {
@@ -196,9 +196,7 @@ export function withFolderTreeFeature<_>() {
                     error,
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERSFAILED),
                   );
-                  if (!keepTreeOnNotReady(error, message)) {
-                    patchState(store, { isFolderTreeLoading: false, error: message });
-                  }
+                  failTreeLoad(error, message);
                   return of(null);
                 }),
               );
@@ -220,34 +218,18 @@ export function withFolderTreeFeature<_>() {
 
               return api.getResourceTree(collection, folderPath, includeNested).pipe(
                 withinSession(inSession),
-                tap((treeData) => {
-                  const updateFolder = (folders: FolderNodeDto[]): FolderNodeDto[] =>
-                    folders.map((folder) => {
-                      if (folder.fullPath === folderPath) {
-                        return { ...folder, loaded: true, tree: treeData };
-                      }
-                      if (folder.tree) {
-                        return {
-                          ...folder,
-                          tree: { ...folder.tree, children: updateFolder(folder.tree.children) },
-                        };
-                      }
-                      return folder;
-                    });
-
+                tap((treeData) =>
                   patchState(store, {
-                    rootFolders: updateFolder(store.rootFolders()),
+                    rootFolders: updateFolderInTree(store.rootFolders(), folderPath, treeData),
                     isFolderTreeLoading: false,
-                  });
-                }),
+                  }),
+                ),
                 catchError((error: unknown) => {
                   const message = apiErrorMessage(
                     error,
                     transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOADFOLDERCHILDRENFAILED),
                   );
-                  if (!keepTreeOnNotReady(error, message)) {
-                    patchState(store, { isFolderTreeLoading: false, error: message });
-                  }
+                  failTreeLoad(error, message);
                   return of(null);
                 }),
               );
