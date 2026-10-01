@@ -126,7 +126,5 @@ export function parseValidateOptions(options: {
 export function parseFindSimilarOptions<Options extends { maxResults: string }>(
   options: Options,
 ): Omit<Options, 'maxResults'> & { maxResults: number } {
-  const raw = parseInt(options.maxResults, 10);
-  const maxResults = Number.isNaN(raw) || raw < 1 ? 5 : raw;
-  return { ...options, maxResults };
+  return { ...options, maxResults: parseInt(options.maxResults, 10) };
 }

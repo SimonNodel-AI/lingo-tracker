@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { ResourceTreeEntry, ResourceTreeNode } from './load-resource-tree';
 import { readCollection } from './read-collection';
-import { clampSearchLimit, type SearchableResource, searchPage, searchResources, treeResources } from './search';
+import { normalizeSearchRequest, type SearchableResource, searchPage, searchResources, treeResources } from './search';
 
 const EN = { baseLocale: 'en' };
 
@@ -21,45 +21,117 @@ function resource(
 
 const keys = (results: { key: string }[]): string[] => results.map((result) => result.key);
 
-it('clamps the API search limit to the default and maximum', () => {
-  expect(clampSearchLimit(0)).toBe(100);
-  expect(clampSearchLimit(Number.NaN)).toBe(100);
-  expect(clampSearchLimit(2.5)).toBe(100);
-  expect(clampSearchLimit(7)).toBe(7);
-  expect(clampSearchLimit(1000)).toBe(500);
+it('applies the shared limit to direct matcher calls', () => {
+  const resources = Array.from({ length: 501 }, (_, i) => resource(`key${i}`, 'value'));
+  expect(searchResources(resources, EN, 'key', { limit: 1000 })).toHaveLength(500);
+});
+
+it.each([
+  { query: '', mode: 'text', limit: 1, defaultLimit: 100, expected: { kind: 'blank' } },
+  { query: '  ', mode: 'text', limit: 1, defaultLimit: 100, expected: { kind: 'blank' } },
+  {
+    query: ' Save ',
+    mode: 'similar-value',
+    limit: 7,
+    defaultLimit: 100,
+    expected: { kind: 'search', query: 'Save', mode: 'similar-value', limit: 7 },
+  },
+  {
+    query: 'save',
+    mode: 'text',
+    limit: 0,
+    defaultLimit: 100,
+    expected: { kind: 'search', query: 'save', mode: 'text', limit: 100 },
+  },
+  {
+    query: 'save',
+    mode: 'text',
+    limit: -2,
+    defaultLimit: 100,
+    expected: { kind: 'search', query: 'save', mode: 'text', limit: 100 },
+  },
+  {
+    query: 'save',
+    mode: 'text',
+    limit: 501,
+    defaultLimit: 100,
+    expected: { kind: 'search', query: 'save', mode: 'text', limit: 500 },
+  },
+  {
+    query: 'save',
+    mode: 'text',
+    limit: 2.5,
+    defaultLimit: 100,
+    expected: { kind: 'search', query: 'save', mode: 'text', limit: 100 },
+  },
+  {
+    query: 'save',
+    mode: 'text',
+    limit: Number.NaN,
+    defaultLimit: 100,
+    expected: { kind: 'search', query: 'save', mode: 'text', limit: 100 },
+  },
+  {
+    query: 'save',
+    mode: 'text',
+    limit: undefined,
+    defaultLimit: 100,
+    expected: { kind: 'search', query: 'save', mode: 'text', limit: 100 },
+  },
+  {
+    query: 'save',
+    mode: 'similar-value',
+    limit: undefined,
+    defaultLimit: 5,
+    expected: { kind: 'search', query: 'save', mode: 'similar-value', limit: 5 },
+  },
+] as const)('normalizes a search request: $query, $mode, $limit, default $defaultLimit', ({
+  query,
+  mode,
+  limit,
+  defaultLimit,
+  expected,
+}) => {
+  expect(normalizeSearchRequest({ query, mode, limit }, defaultLimit)).toEqual(expected);
 });
 
 describe('searchPage', () => {
-  it('caps the page at 500 and asks for one extra hit', () => {
-    const hits = searchResources(
-      Array.from({ length: 501 }, (_, i) => resource(`key${i}`, 'value')),
-      EN,
-      'key',
-      { limit: 501 },
-    );
-    const search = vi.fn(() => hits);
-    const page = searchPage(search, { maxResults: 1000 });
-    expect(search).toHaveBeenCalledWith({ mode: 'text', limit: 501 });
+  it('reports the true total after ranking and limiting', () => {
+    const resources = Array.from({ length: 501 }, (_, i) => resource(`key${i}`, 'value'));
+    const page = searchPage(resources, EN, { kind: 'search', query: 'key', mode: 'text', limit: 500 });
     expect(page.results).toHaveLength(500);
-    expect(page).toMatchObject({ limited: true, limit: 500 });
+    expect(page).toMatchObject({ limited: true, limit: 500, totalFound: 501 });
   });
 
-  it('maps similar mode to similar-value', () => {
-    const search = vi.fn(() => []);
-    expect(searchPage(search, { mode: 'similar', maxResults: 11 }).limited).toBe(false);
-    expect(search).toHaveBeenCalledWith({ mode: 'similar-value', limit: 12 });
+  it('searches in similar-value mode', () => {
+    const page = searchPage([resource('common.save', 'Save')], EN, {
+      kind: 'search',
+      query: 'Save',
+      mode: 'similar-value',
+      limit: 11,
+    });
+    expect(page.results[0]?.matchType).toBe('similar-value');
+    expect(page).toMatchObject({ limited: false, totalFound: 1 });
   });
 
-  it.each(['abc', '-2', '0', '2.5'])('defaults invalid maxResults %s to 100', (maxResults) => {
-    const search = vi.fn(() => []);
-    expect(searchPage(search, { maxResults }).limit).toBe(100);
-    expect(search).toHaveBeenCalledWith({ mode: 'text', limit: 101 });
+  it.each([1, 2])('returns exactly the requested page size %s', (limit) => {
+    const page = searchPage([resource('key.a', 'x'), resource('key.b', 'x')], EN, {
+      kind: 'search',
+      query: 'key',
+      mode: 'text',
+      limit,
+    });
+    expect(page.results).toHaveLength(limit);
+    expect(page.totalFound).toBe(2);
   });
 
-  it('accepts a numeric string and treats unknown mode as text', () => {
-    const search = vi.fn(() => []);
-    expect(searchPage(search, { maxResults: '7', mode: 'fuzzy' }).limit).toBe(7);
-    expect(search).toHaveBeenCalledWith({ mode: 'text', limit: 8 });
+  it('returns an empty page when there are no matches', () => {
+    expect(searchPage([], EN, { kind: 'search', query: 'save', mode: 'text', limit: 7 })).toEqual({
+      results: [],
+      limited: false,
+      limit: 7,
+      totalFound: 0,
+    });
   });
 });
 

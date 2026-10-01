@@ -30,7 +30,7 @@ export interface SearchResultsDto {
   /** Array of search results */
   results: SearchResultDto[];
 
-  /** Total number of results found (may be more than returned if limited) */
+  /** Total number of matches before the result limit is applied. */
   totalFound: number;
 
   /** Whether results were limited by maxResults */

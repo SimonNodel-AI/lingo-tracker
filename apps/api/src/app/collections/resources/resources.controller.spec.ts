@@ -73,7 +73,7 @@ describe('ResourcesController', () => {
 
   const mockIndex = {
     tree: jest.fn(),
-    search: jest.fn(),
+    searchPage: jest.fn(),
     status: jest.fn(),
     apply: jest.fn(),
   };
@@ -966,18 +966,23 @@ describe('ResourcesController', () => {
 
   describe('search', () => {
     it('should map the search results from the index', async () => {
-      mockIndex.search.mockReturnValue([
-        {
-          key: 'app.title',
-          source: 'LingoTracker',
-          translations: { es: 'LingoTracker' },
-          metadata: { en: { checksum: 'a' }, es: { status: 'translated', checksum: 'b', baseChecksum: 'a' } },
-        },
-      ]);
+      mockIndex.searchPage.mockReturnValue({
+        results: [
+          {
+            key: 'app.title',
+            source: 'LingoTracker',
+            translations: { es: 'LingoTracker' },
+            metadata: { en: { checksum: 'a' }, es: { status: 'translated', checksum: 'b', baseChecksum: 'a' } },
+          },
+        ],
+        totalFound: 1,
+        limited: false,
+        limit: 100,
+      });
 
-      const result = await resourcesController.search(collectionFor('test-collection'), { query: 'lingo' });
+      const result = await resourcesController.search(collectionFor('test-collection'), { query: ' lingo ' });
 
-      expect(result.query).toBe('lingo');
+      expect(result.query).toBe(' lingo ');
       expect(result.results.map((r) => [r.fullKey, r.folderPath, r.entryKey])).toEqual([['app.title', 'app', 'title']]);
       expect(result.results[0].base).toEqual({ locale: 'en', value: 'LingoTracker' });
       expect(result.results[0].targets.map((t) => [t.locale, t.status, t.sameAsBase])).toEqual([
@@ -985,45 +990,65 @@ describe('ResourcesController', () => {
         ['es', 'translated', true],
       ]);
       expect(result.limited).toBe(false);
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), 'lingo', {
+      expect(result.totalFound).toBe(1);
+      expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), {
+        kind: 'search',
+        query: 'lingo',
         mode: 'text',
-        limit: 101,
+        limit: 100,
       });
     });
 
     it('should return empty results for empty query', async () => {
       const result = await resourcesController.search(collectionFor('test-collection'), { query: '' });
       expect(result.results).toEqual([]);
-      expect(mockIndex.search).not.toHaveBeenCalled();
+      expect(result.totalFound).toBe(0);
+      const whitespace = await resourcesController.search(collectionFor('test-collection'), { query: '   ' });
+      expect(whitespace).toEqual({ query: '   ', results: [], totalFound: 0, limited: false });
+      expect(mockIndex.searchPage).not.toHaveBeenCalled();
     });
 
-    it('should cap maxResults at 500 and report limited results', async () => {
-      mockIndex.search.mockReturnValue(
-        Array.from({ length: 501 }, (_, i) => ({ key: `k${i}`, source: 'x', translations: {}, metadata: {} })),
-      );
+    it('should report the true total supplied by core', async () => {
+      mockIndex.searchPage.mockReturnValue({
+        results: [{ key: 'k0', source: 'x', translations: {}, metadata: {} }],
+        totalFound: 501,
+        limited: true,
+        limit: 1,
+      });
 
       const result = await resourcesController.search(collectionFor('test-collection'), {
         query: 'test',
-        maxResults: 1000,
+        maxResults: 1,
       });
 
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'test', { mode: 'text', limit: 501 });
+      expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.anything(), {
+        kind: 'search',
+        query: 'test',
+        mode: 'text',
+        limit: 1,
+      });
       expect(result.limited).toBe(true);
-      expect(result.results).toHaveLength(500);
+      expect(result.results).toHaveLength(1);
+      expect(result.totalFound).toBe(501);
     });
 
     it('should run a similar-value search for mode=similar and return the similarity', async () => {
-      mockIndex.search.mockReturnValue([
-        {
-          key: 'common.save',
-          source: 'Save',
-          translations: {},
-          metadata: {},
-          matchType: 'similar-value',
-          matchedLocales: ['en'],
-          similarity: 0.4,
-        },
-      ]);
+      mockIndex.searchPage.mockReturnValue({
+        results: [
+          {
+            key: 'common.save',
+            source: 'Save',
+            translations: {},
+            metadata: {},
+            matchType: 'similar-value',
+            matchedLocales: ['en'],
+            similarity: 0.4,
+          },
+        ],
+        totalFound: 1,
+        limited: false,
+        limit: 11,
+      });
 
       const result = await resourcesController.search(collectionFor('test-collection'), {
         query: 'Save draft',
@@ -1031,40 +1056,57 @@ describe('ResourcesController', () => {
         mode: 'similar',
       });
 
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'Save draft', {
+      expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.anything(), {
+        kind: 'search',
+        query: 'Save draft',
         mode: 'similar-value',
-        limit: 12,
+        limit: 11,
       });
       expect(result.results.map((r) => [r.fullKey, r.matchType, r.similarity])).toEqual([
         ['common.save', 'similar-value', 0.4],
       ]);
     });
 
-    it.each(['abc', '-2', '0', '2.5'])('should fall back to 100 results for maxResults=%s', async (maxResults) => {
-      mockIndex.search.mockReturnValue([]);
-      const dto = { query: 'save', maxResults } as unknown as SearchTranslationsDto;
-
-      await resourcesController.search(collectionFor('test-collection'), dto);
-
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 101 });
-    });
-
     it('should read maxResults from its query-string form', async () => {
-      mockIndex.search.mockReturnValue([]);
+      mockIndex.searchPage.mockReturnValue({ results: [], totalFound: 0, limited: false, limit: 7 });
       const dto = { query: 'save', maxResults: '7' } as unknown as SearchTranslationsDto;
 
       await resourcesController.search(collectionFor('test-collection'), dto);
 
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 8 });
+      expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.anything(), {
+        kind: 'search',
+        query: 'save',
+        mode: 'text',
+        limit: 7,
+      });
+    });
+
+    it('should default an invalid query-string maxResults to 100', async () => {
+      mockIndex.searchPage.mockReturnValue({ results: [], totalFound: 0, limited: false, limit: 100 });
+      const dto = { query: 'save', maxResults: 'abc' } as unknown as SearchTranslationsDto;
+
+      await resourcesController.search(collectionFor('test-collection'), dto);
+
+      expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.anything(), {
+        kind: 'search',
+        query: 'save',
+        mode: 'text',
+        limit: 100,
+      });
     });
 
     it('should run a text search for an unknown mode', async () => {
-      mockIndex.search.mockReturnValue([]);
+      mockIndex.searchPage.mockReturnValue({ results: [], totalFound: 0, limited: false, limit: 100 });
       const dto = { query: 'save', mode: 'fuzzy' } as unknown as SearchTranslationsDto;
 
       await resourcesController.search(collectionFor('test-collection'), dto);
 
-      expect(mockIndex.search).toHaveBeenCalledWith(expect.anything(), 'save', { mode: 'text', limit: 101 });
+      expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.anything(), {
+        kind: 'search',
+        query: 'save',
+        mode: 'text',
+        limit: 100,
+      });
     });
   });
 

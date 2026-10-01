@@ -333,7 +333,7 @@ sequenceDiagram
     TS->>BS: showQuery("confirm")
     Note right of BS: patchState({ listScope: { kind: "search", query }, isListLoading: true, listError: null })<br/>isSearchMode, searchQuery, isSearchLoading and isDisabled are derived from it.<br/>The switchMap cancels any list load still in flight.
     BS->>API: GET /api/collections/{name}/resources/search?query=confirm
-    Note right of API: CollectionIndex.search() runs searchResources (text mode)<br/>over the indexed tree (treeResources)<br/>or the disk (readCollection) if not indexed;<br/>every match is ranked, then maxResults applies
+    Note right of API: CollectionIndex.searchPage() runs Resource Search (text mode)<br/>over the indexed tree (treeResources)<br/>or the disk (readCollection) if not indexed;<br/>every match is ranked, then maxResults applies
 
     API-->>BS: SearchResultsDto { results: SearchResultDto[] }
     BS->>BS: patchState({ searchResults, isListLoading: false })

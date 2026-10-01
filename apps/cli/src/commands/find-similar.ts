@@ -1,5 +1,5 @@
-import { type Collection, readCollection, searchResources } from '@simoncodes-ca/core';
-import { defineCommand } from '../runner/command-runner';
+import { type Collection, normalizeSearchRequest, readCollection, searchResources } from '@simoncodes-ca/core';
+import { defineCommand, requireOptions } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
 export interface FindSimilarOptions {
@@ -12,15 +12,19 @@ export const findSimilarCommand = defineCommand<FindSimilarOptions>()({
   name: 'Find similar',
   collection: 'read',
   prompts: (options) =>
-    options.value?.trim() ? [] : [{ type: 'text', name: 'value', message: 'Base locale text to search for' }],
-  required: ['value'],
-  run: ({ collection, answers }) => {
-    // `required` rejects an absent or empty value; a blank one has nothing to compare either.
-    const query = answers.value.trim();
-    if (query.length === 0) {
+    normalizeSearchRequest({ query: options.value ?? '', mode: 'similar-value' }, 5).kind === 'blank'
+      ? [{ type: 'text', name: 'value', message: 'Base locale text to search for' }]
+      : [],
+  run: ({ collection, answers, interactive }) => {
+    const request = normalizeSearchRequest(
+      { query: answers.value ?? '', mode: 'similar-value', limit: answers.maxResults },
+      5,
+    );
+    if (request.kind === 'blank') {
+      requireOptions(answers, ['value'], interactive);
       throw new Error('--value must not be blank');
     }
-    reportSimilar(collection, query, answers.maxResults ?? 5);
+    reportSimilar(collection, request.query, request.limit);
   },
 });
 

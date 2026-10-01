@@ -317,7 +317,7 @@ For scripts written against the earlier CLI:
 
 ### Changes Introduced by Resource Search
 
-`find-similar` reads the collection with `readCollection` and asks [Resource Search](glossary.md#resource-search) for the `--max-results` best similar-value matches. The output format is unchanged (`  key → "value" (similarity: NN%)`).
+`find-similar` uses `normalizeSearchRequest` in `libs/core/src/lib/resource/search.ts` with default 5, then reads the collection with `readCollection` and asks [Resource Search](glossary.md#resource-search) for the `--max-results` best similar-value matches. A blank query still exits with a usage error. Limits above 500 now return at most 500 matches. The output format is unchanged (`  key → "value" (similarity: NN%)`).
 
 - Every base value is compared. The 500-candidate cap and its `Note: only the first 500 candidates were compared` warning are gone.
 - A match is a base value at least 80% similar to `--value` (as before), **or** one that contains `--value` or is contained in it as whole words with a similarity of at least 40%. So `--value "Save"` now also reports `"Save draft"` (similarity 40%), but not `"Save and Close"` (29%). A fragment inside a word does not count (`connect` in `connection`, `don` in `don't`).

@@ -498,7 +498,7 @@ The caller decides what a problem means:
 | Bundle generation, the dry-run plan and type generation (the [Bundle Selection](#bundle-selection), through `loadCollectionResources`) | Adds a warning to the bundle result or the plan, once for each collection per run. |
 | [Term Glossary](#term-glossary) | Returns the problem with the readable terms; the CLI writes a warning to stderr. |
 | `find-similar` (CLI, through [Resource Search](#resource-search)) | Prints one `⚠️  Skipped unreadable folder: <message>` line for each problem, then the matches from the other folders. |
-| `CollectionIndex.search` (API disk search, before the collection is indexed) | Logs one `Logger.warn` line per search that names the count and the messages. The results come from the other folders. |
+| `CollectionIndex.searchPage` (API disk search, before the collection is indexed) | Logs one `Logger.warn` line per search that names the count and the messages. The results come from the other folders. |
 | `loadResourceTree` | Logs it. The tree keeps the folder, with no resources. |
 | `translateLocale` | Does not translate the folder's resources and adds one line to `warnings` in the result (`Folder '<path>' was not translated: <message>`). The CLI prints the warnings after the summary; the API translation job logs them with `Logger.warn`. |
 
@@ -508,7 +508,7 @@ The caller decides what a problem means:
 
 [Resource Search](glossary.md#resource-search) is the one matcher over a collection's resources. It takes any `Iterable<SearchableResource>` (`{ fullKey, entry }`), so the caller picks the source: `readCollection(collection).resources` for the disk, or `treeResources(tree)` for an index tree (the loaded folders only, each entry keyed from its folder's `folderPathSegments`). It is pure. The reader's `problems` are the caller's to report (see the table above). `collection` is only read for `baseLocale`.
 
-It collects every match, ranks lightweight candidates, applies `limit` (default 100; a limit that is not a positive integer is 100), and only then builds the `SearchResult`s. A better match is never lost because the walk found it late. A blank query returns `[]`. The query is trimmed and compared case-insensitively.
+`normalizeSearchRequest(request, defaultLimit)` trims the query, returns `blank` for empty text, uses the caller's default for an invalid limit, and caps positive integer limits at 500. The API uses default 100; the CLI uses default 5. `searchResources` also uses this rule with default 100. It collects every match, ranks lightweight candidates, applies the normalized `limit`, and only then builds the `SearchResult`s. A better match is never lost because the walk found it late. A blank query returns `[]`. Matching is case-insensitive.
 
 | Mode | Compares the query with | Match rule | Ranking | Result |
 |---|---|---|---|---|
@@ -519,9 +519,9 @@ Why whole words: the search reads the whole collection, so a substring rule matc
 
 A `SearchResult` carries `key`, `source` (`''` when a hand-edited entry has no string `source`; such an entry never matches on its base value), `translations` (a copy of the stored ones, without the base value), `metadata`, `comment`, `tags` and the match fields. It fits the domain `buildResourceSummary` input.
 
-`searchPage(search, request)` beside the matcher applies the API page-size rule: invalid input becomes 100, and positive integers are capped at 500. It requests one extra hit, returns the requested page, and reports `limited` and `limit`.
+`searchPage(resources, collection, request)` takes the normalized core `SearchRequest`, counts all ranked candidates, and returns the requested page with `limited`, `limit`, and the true `totalFound` before slicing. The API controller maps its DTO/query strings to the core mode and numeric limit before calling the normalizer; core never reads HTTP vocabulary.
 
-Callers: `CollectionIndex.search` in the API (the index tree when the collection is indexed, else the reader) and the CLI `find-similar` (the reader, `mode: 'similar-value'`). Before this module, disk search and tree search were two copies of the matcher that stopped at the limit before they ranked, the CLI scored the first 500 text hits with Levenshtein, and the Tracker filtered a 25-hit text search by substring.
+Callers: `CollectionIndex.searchPage` in the API (the index tree when the collection is indexed, else the reader) and the CLI `find-similar` (the reader, `mode: 'similar-value'`). Before this module, disk search and tree search were two copies of the matcher that stopped at the limit before they ranked, the CLI scored the first 500 text hits with Levenshtein, and the Tracker filtered a 25-hit text search by substring.
 
 ---
 
