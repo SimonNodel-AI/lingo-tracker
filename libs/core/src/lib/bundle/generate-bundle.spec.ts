@@ -418,6 +418,7 @@ describe('generateBundle (real fs)', () => {
       });
 
       expect(result.typeOutcome).toMatchObject({ status: 'failed' });
+      expect(result.outcome).toBe('failed');
       expect(result.warnings.some((warning) => warning.startsWith("Type generation failed for 'main':"))).toBe(false);
     });
 
@@ -431,6 +432,7 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
       expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
+      expect(result.outcome).toBe('failed');
       expect(result.warnings).toEqual([]);
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
     });

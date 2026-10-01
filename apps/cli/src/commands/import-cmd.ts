@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type prompts from 'prompts';
 import { defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { buildSummaryPath, ConsoleFormatter, writeRunSummary } from '../utils';
 import { IMPORT_DEFAULTS } from './run-option-defaults';
 
@@ -112,8 +113,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       console.log(`Import summary would be written to: ${summaryPath}`);
     }
 
-    // Exit with appropriate code
-    return result.resourcesFailed > 0 || result.errors.length > 0 ? { exitCode: 1 } : undefined;
+    return exitForRunOutcome(run.outcome);
   },
 });
 

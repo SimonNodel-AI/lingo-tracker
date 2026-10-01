@@ -19,6 +19,7 @@ type BundleRun = core.GenerateBundlesResult;
 
 function makeBundleResult(overrides: Partial<BundleResult> = {}): BundleResult {
   return {
+    outcome: overrides.typeOutcome?.status === 'failed' ? 'failed' : 'succeeded',
     bundleKey: 'core',
     filesGenerated: 3,
     writtenFiles: [],
@@ -39,19 +40,21 @@ function setRun(events: readonly BundleEvent[], result: BundleRun): void {
 
 function setSingle(overrides: Partial<BundleResult> = {}, name = 'core'): void {
   const result = makeBundleResult(overrides);
-  const outcome = { name, result };
+  const outcome = { name, outcome: result.outcome, result };
   const events: BundleEvent[] = [{ kind: 'start', name }];
   if (result.typeOutcome.warning) events.push({ kind: 'type-warning', warning: result.typeOutcome.warning });
   events.push({ kind: 'result', outcome });
   setRun(events, {
+    outcome: result.outcome,
     outcomes: [outcome],
     totals: { bundlesProcessed: 1, filesGenerated: result.filesGenerated, warningsCount: result.warnings.length },
   });
 }
 
 function setFailure(error: Error, name = 'core'): void {
-  const outcome = { name, error };
+  const outcome = { name, outcome: 'failed' as const, error };
   setRun([{ kind: 'result', outcome }], {
+    outcome: 'failed',
     outcomes: [outcome],
     totals: { bundlesProcessed: 0, filesGenerated: 0, warningsCount: 0 },
   });
@@ -60,8 +63,8 @@ function setFailure(error: Error, name = 'core'): void {
 function setTwo(first: Partial<BundleResult>, second: Partial<BundleResult>): void {
   const firstResult = makeBundleResult(first);
   const secondResult = makeBundleResult(second);
-  const firstOutcome = { name: 'core', result: firstResult };
-  const secondOutcome = { name: 'admin', result: secondResult };
+  const firstOutcome = { name: 'core', outcome: firstResult.outcome, result: firstResult };
+  const secondOutcome = { name: 'admin', outcome: secondResult.outcome, result: secondResult };
   setRun(
     [
       { kind: 'start', name: 'core' },
@@ -70,6 +73,7 @@ function setTwo(first: Partial<BundleResult>, second: Partial<BundleResult>): vo
       { kind: 'result', outcome: secondOutcome },
     ],
     {
+      outcome: firstResult.outcome === 'succeeded' && secondResult.outcome === 'succeeded' ? 'succeeded' : 'failed',
       outcomes: [firstOutcome, secondOutcome],
       totals: { bundlesProcessed: 2, filesGenerated: 5, warningsCount: 1 },
     },
@@ -77,9 +81,10 @@ function setTwo(first: Partial<BundleResult>, second: Partial<BundleResult>): vo
 }
 
 function setPartialFailure(message: string): void {
-  const failed = { name: 'core', error: new Error(message) };
+  const failed = { name: 'core', outcome: 'failed' as const, error: new Error(message) };
   const succeeded = {
     name: 'admin',
+    outcome: 'succeeded' as const,
     result: makeBundleResult({ bundleKey: 'admin', filesGenerated: 2, localesProcessed: ['en', 'fr'] }),
   };
   setRun(
@@ -90,6 +95,7 @@ function setPartialFailure(message: string): void {
       { kind: 'result', outcome: succeeded },
     ],
     {
+      outcome: 'failed',
       outcomes: [failed, succeeded],
       totals: { bundlesProcessed: 1, filesGenerated: 2, warningsCount: 0 },
     },
@@ -133,6 +139,7 @@ describe('bundleCommand', () => {
 
     mockGenerateBundles.mockReset();
     mockGenerateBundles.mockResolvedValue({
+      outcome: 'succeeded',
       outcomes: [],
       totals: { bundlesProcessed: 0, filesGenerated: 0, warningsCount: 0 },
     });
@@ -404,6 +411,7 @@ describe('bundleCommand', () => {
       expect(console.log).not.toHaveBeenCalled();
       expect(console.error).toHaveBeenCalledTimes(1);
       expect(console.error).toHaveBeenCalledWith('❌ Type generation failed: Unable to write type file');
+      expect(process.exitCode).toBe(1);
     });
 
     it('should display warnings count when warnings exist', async () => {

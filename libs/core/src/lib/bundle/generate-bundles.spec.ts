@@ -32,6 +32,8 @@ describe('generateBundles', () => {
   it('runs all bundles and totals their outcomes', async () => {
     const result = await generateBundles(config, { cwd: cwd() });
     expect(result.outcomes.map(({ name }) => name)).toEqual(['first', 'second']);
+    expect(result.outcome).toBe('succeeded');
+    expect(result.outcomes.map((item) => item.outcome)).toEqual(['succeeded', 'succeeded']);
     expect(result.totals).toEqual({ bundlesProcessed: 2, filesGenerated: 0, warningsCount: 2 });
   });
 
@@ -44,8 +46,32 @@ describe('generateBundles', () => {
   it('returns the existing typed error for an unknown name and continues', async () => {
     const result = await generateBundles(config, { names: ['missing', 'first'], cwd: cwd() });
     expect(result.outcomes[0]?.error).toBeInstanceOf(BundleNotFoundError);
+    expect(result.outcome).toBe('failed');
+    expect(result.outcomes.map((item) => item.outcome)).toEqual(['failed', 'succeeded']);
     expect((result.outcomes[0]?.error as BundleNotFoundError).message).toBe('Bundle "missing" not found');
     expect(result.totals.bundlesProcessed).toBe(1);
+  });
+
+  it('fails when every selected bundle fails', async () => {
+    const result = await generateBundles(config, { names: ['missing'], cwd: cwd() });
+    expect(result.outcome).toBe('failed');
+    expect(result.outcomes[0]?.outcome).toBe('failed');
+  });
+
+  it('reports failed type generation on the bundle and whole run', async () => {
+    const populated = populatedConfig();
+    const result = await generateBundles(
+      {
+        ...populated,
+        bundles: {
+          first: { bundleName: 'first-{locale}', dist: 'out', collections: 'All', typeDistFile: 'types/invalid.txt' },
+        },
+      },
+      { cwd: cwd() },
+    );
+    expect(result.outcomes[0]?.result?.typeOutcome.status).toBe('failed');
+    expect(result.outcomes[0]?.outcome).toBe('failed');
+    expect(result.outcome).toBe('failed');
   });
 
   it('keeps a saved bundle running when one named collection is gone', async () => {
@@ -98,6 +124,7 @@ describe('generateBundles', () => {
     );
 
     expect(result.outcomes[0]?.error).toBeInstanceOf(Error);
+    expect(result.outcome).toBe('failed');
     expect(result.outcomes[1]?.result?.filesGenerated).toBe(1);
     expect(result.totals).toEqual({ bundlesProcessed: 1, filesGenerated: 1, warningsCount: 0 });
     expect(existsSync(join(cwd(), 'out/second-en.json'))).toBe(true);

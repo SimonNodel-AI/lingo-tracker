@@ -293,7 +293,7 @@ Explained in context: [`core-library.md`](core-library.md#add-resource)
 
 ### Export Run
 
-One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI defaults are in `apps/cli/src/commands/run-option-defaults.ts` and prompt preselection is in `apps/cli/src/commands/export-cmd.ts`; a prompt answer with no selected collection, locale, or status is refused.
+One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, the [Run Outcome](#run-outcome), and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI defaults are in `apps/cli/src/commands/run-option-defaults.ts` and prompt preselection is in `apps/cli/src/commands/export-cmd.ts`; a prompt answer with no selected collection, locale, or status is refused.
 
 Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 
@@ -618,6 +618,14 @@ Explained in context: [`api.md`](api.md#mapper-layer), [`frontend.md`](frontend.
 The API parameter seam for resource, folder, and locale routes. `@RouteCollection()` supplies the `Collection` opened by `RouteCollectionPipe` from the already-decoded `:collectionName` param. The pipe reads config once and retains that snapshot on the opened collection for locale writes, requires writable access for methods other than `GET` by default, and maps missing or read-only collections to 404 or 403. Collection registration routes do not use it. The Tracker encodes names once in API URL path segments; its router also encodes navigation segments, and `TranslationBrowser` uses the decoded route name directly.
 
 Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](frontend.md#route-structure)
+
+---
+
+### Run Outcome
+
+Core's `RunOutcome` is `succeeded` or `failed` on each completed export, import, translate-locale, validate, and bundle run. `failed` means the run met its failure condition, even if some files or resources were produced; the CLI exits 1. A warning or intentional skip alone does not fail a run. Export ignores errors and hierarchical conflicts in a dry run, while import counts failed resources and errors even in a dry run. Preconditions that throw have no run outcome. Bundle generation also gives each selected bundle an outcome; a thrown bundle error or failed type generation fails the whole run.
+
+Explained in context: [`core-library.md`](core-library.md), [`cli.md`](cli.md#errors-and-exit-codes)
 
 ---
 

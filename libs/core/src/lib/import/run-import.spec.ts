@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openCollection, type Collection } from '../config/open-collection';
 import { ImportSourceError, InvalidImportLocaleError } from '../errors';
-import { useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { seedResources, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { runImport } from './run-import';
 
 describe('runImport', () => {
@@ -39,6 +39,7 @@ describe('runImport', () => {
       strategy: 'migration',
     });
     expect(run.format).toBe('json');
+    expect(run.outcome).toBe('succeeded');
     expect(run.result.resourcesCreated).toBe(1);
     expect(run.summary()).toContain('**Source File**: source.json');
     expect(readdirSync(collection.translationsFolder)).toContain('common');
@@ -71,6 +72,7 @@ describe('runImport', () => {
       dryRun: true,
     });
     expect(run.format).toBe('json');
+    expect(run.outcome).toBe('succeeded');
     noWrites();
   });
 
@@ -99,6 +101,32 @@ describe('runImport', () => {
       runImport(collection, { source: 'missing.json', cwd: directory, locale: 'es' }),
     ).rejects.toBeInstanceOf(ImportSourceError);
     noWrites();
+  });
+
+  it('reports failure in a dry run with or without successful resources', async () => {
+    writeFileSync(join(directory, 'failed.json'), JSON.stringify({ 'new.missing': 'Falta' }));
+    const failed = await runImport(collection, {
+      source: 'failed.json',
+      cwd: directory,
+      locale: 'es',
+      strategy: 'migration',
+      dryRun: true,
+    });
+    expect(failed.result.resourcesFailed).toBe(1);
+    expect(failed.outcome).toBe('failed');
+
+    seedResources(collection, { 'common.ok': { source: 'OK' } });
+    writeFileSync(join(directory, 'mixed.json'), JSON.stringify({ 'new.missing': 'Falta', 'common.ok': 'Aceptar' }));
+    const mixed = await runImport(collection, {
+      source: 'mixed.json',
+      cwd: directory,
+      locale: 'es',
+      strategy: 'migration',
+      dryRun: true,
+    });
+    expect(mixed.result.resourcesFailed).toBe(1);
+    expect(mixed.result.resourcesImported).toBe(1);
+    expect(mixed.outcome).toBe('failed');
   });
 
   it('rejects an unknown source format with a typed error before writing', async () => {

@@ -28,6 +28,7 @@ const CONFIG = {
 
 const success = {
   status: 'complete' as const,
+  outcome: 'succeeded' as const,
   summary: 'summary',
   warnings: [],
   validation: {

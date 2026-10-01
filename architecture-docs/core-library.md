@@ -844,7 +844,7 @@ The function never stops at the first failure — it validates all resources and
 
 `generateValidationSummary()` in `generate-validation-summary.ts` converts this result into a human-readable string for CLI output.
 
-The CLI's `validate` command exits with a non-zero code when the run fails or `passed` is `false`, making it suitable for use as a blocking step in CI pipelines. The `--allow-translated` flag maps directly to `options.allowTranslated`.
+Core returns a [Run Outcome](glossary.md#run-outcome) with each completed export, import, translate-locale, validate, and bundle run; bundle runs also report it per bundle. `succeeded` exits 0 in the CLI, while `failed` exits 1, even when some output was produced. Export ignores errors and hierarchical conflicts in a dry run; import still fails for errors or failed resources in a dry run. A failed bundle type generation now gives the CLI exit code 1. Validate retains its `status` field for in-band precondition failures and uses `outcome` for the final success decision. The `--allow-translated` flag maps directly to `options.allowTranslated`.
 
 `ValidationOptions.skippedLocales` removes locales from every collection's target locales. `generateValidationSummary()` also prints them as a `Skipped Locales: <list> (<count>)` line between "Locales Validated" and "Collections Validated". The other options are `icu` (`{ compileValues, requirePortablePlurals }`), `placeholders` (a boolean) and `terminology` (`{ rules, loadError }`). None of them names a locale: the locales come from the collections.
 

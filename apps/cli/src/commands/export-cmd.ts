@@ -9,6 +9,7 @@ import {
 import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { type Answers, defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import {
   ConsoleFormatter,
   multiselectResultToString,
@@ -107,8 +108,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       console.log('\n📄 Summary (Dry Run):');
       console.log(result.summary);
     }
-    const failed = result.errors.length + result.hierarchicalConflicts.length > 0 && !options.dryRun;
-    return failed ? { exitCode: 1 } : undefined;
+    return exitForRunOutcome(result.outcome);
   },
 });
 

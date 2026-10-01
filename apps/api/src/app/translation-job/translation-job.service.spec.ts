@@ -15,6 +15,7 @@ jest.mock('@simoncodes-ca/core', () => {
 });
 
 const makeSuccessResult = (overrides: Partial<TranslateLocaleResult> = {}): TranslateLocaleResult => ({
+  outcome: 'failed',
   totalResources: 10,
   translatedCount: 9,
   failedCount: 1,

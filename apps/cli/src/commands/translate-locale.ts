@@ -5,6 +5,7 @@ import {
   translateLocale,
 } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter } from '../utils';
 
 export interface TranslateLocaleOptions {
@@ -94,6 +95,6 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
       }
     }
 
-    return result.failedCount > 0 ? { exitCode: 1 } : undefined;
+    return exitForRunOutcome(result.outcome);
   },
 });

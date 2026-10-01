@@ -35,6 +35,7 @@ const CONFIG: LingoTrackerConfig = {
 };
 
 const RESULT: TranslateLocaleResult = {
+  outcome: 'succeeded',
   totalResources: 4,
   translatedCount: 3,
   skippedCount: 1,
@@ -82,6 +83,7 @@ describe('translateLocaleCommand', () => {
   it('exits 1 when some entries failed', async () => {
     vi.mocked(translateLocale).mockResolvedValue({
       ...RESULT,
+      outcome: 'failed',
       failedCount: 1,
       failures: [{ key: 'a.b', error: 'quota' }],
     });

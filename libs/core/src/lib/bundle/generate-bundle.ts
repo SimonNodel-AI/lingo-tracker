@@ -7,6 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { bundleOutputFile, hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import type { RunOutcome } from '../run-outcome';
 import { type BundleSelection, selectBundleEntries, selectionValues } from './bundle-selection';
 import { buildHierarchy } from './hierarchy-builder';
 import { type PreparedBundleRun, prepareBundleRun, selectPreparedBundleLocale } from './prepare-bundle-run';
@@ -65,6 +66,7 @@ export interface BundleProgressEvent {
 }
 
 export interface GenerateBundleResult {
+  readonly outcome: RunOutcome;
   readonly bundleKey: string;
   readonly filesGenerated: number;
   /** Every successfully written file, in write order, relative to `cwd` with `/` separators. An output outside `cwd` begins with `../`. */
@@ -174,6 +176,7 @@ export async function generatePreparedBundle(
   if (typeOutcome.status === 'written') writtenFiles.push(typeOutcome.path);
 
   return {
+    outcome: typeOutcome.status === 'failed' ? 'failed' : 'succeeded',
     bundleKey,
     filesGenerated: localesProcessed.length,
     writtenFiles,

@@ -1,5 +1,6 @@
 import { type Collection, runValidate } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter } from '../utils';
 
 /**
@@ -152,8 +153,8 @@ function validate(options: ValidateCommandOptions, collections: Collection[]): C
   for (const warning of result.warnings) ConsoleFormatter.warning(warning);
   if (result.status === 'failed') {
     ConsoleFormatter.error(result.error, result.details);
-    return { exitCode: 1 };
+    return exitForRunOutcome(result.outcome);
   }
   console.log(result.summary);
-  return result.validation.passed ? undefined : { exitCode: 1 };
+  return exitForRunOutcome(result.outcome);
 }
