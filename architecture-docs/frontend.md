@@ -12,6 +12,7 @@ Return to [architecture README](README.md).
 - [Component Trees](#component-trees)
   - [App Shell](#app-shell)
   - [Collections Feature](#collections-feature)
+  - [Collection Connector Links](#collection-connector-links)
   - [Browser Feature](#browser-feature)
 - [State Management Architecture](#state-management-architecture)
   - [BrowserStore — Feature Composition](#browserstore--feature-composition)
@@ -87,6 +88,12 @@ flowchart TD
 ```
 
 `CollectionsManager` reads from `CollectionsStore` (provided in root). Dialogs are opened via `MatDialog.open()` using dynamic `import()` — they are never in the initial bundle.
+
+---
+
+### Collection Connector Links
+
+`apps/tracker/src/app/collections/collections-manager.ts` measures the `.split` container, the bundles column, the hovered bundle card and only its referenced collection cards on hover, scroll, resize or card changes. It passes those plain viewport rectangles and bundle references to `collectionLinks` in `apps/tracker/src/app/collections/collection-links.ts`. That Angular-free function selects the hovered bundle and returns SVG paths, collection dot centres and the shared bundle port. It rounds coordinates to one decimal, keeps the port inside the bundles column, and limits curve handles to half the horizontal span. When the columns stack or no measured collection matches, it returns no links and no port. `collection-links.spec.ts` fixes the path strings against values captured from the former component calculation for side-by-side, stacked, clamped and several-collection layouts.
 
 ---
 
@@ -353,10 +360,13 @@ import('./path/to/dialog').then((m) => {
 This keeps dialog modules out of the initial bundle entirely. The pattern is used for:
 
 - `CollectionFormDialog` — create / edit collection (from `CollectionsManager`)
+- `BundleFormDialog` — create / edit bundle (from `CollectionsManager`)
 - `TranslationEditorDialog` — create / edit resource (only from `TranslationEditorLauncher`, which the header, the list's rows and the "Open existing" hand-off call)
 - `ConfirmationDialog` — delete collection, delete resource, delete folder, move folder (from multiple call sites)
 
 The listed collection, folder, and editor confirmations use [Confirmation](glossary.md#confirmation) (`injectConfirm`). It owns the lazy open and resolves a boolean; callers provide their existing data, width, and close options. For a folder move, Folder Writes passes a Browser Session guard to the dialog callback and checks the session again after the answer.
+
+`CollectionsManager.#openSavedDialog` is the shared launcher for the collection and bundle forms. It imports the selected dialog, opens it with its own panel class and input focus, then shows the existing success toast only when the dialog closes with a saved result.
 
 `TranslationEditorDialog` opens the `FolderPicker` (a nested dialog via `MatDialog`) if the user wants to move the resource to a different folder. `FolderPicker` in turn calls `BrowserStore.createFolder(name, parentPath)` to create folders inline without leaving the dialog.
 

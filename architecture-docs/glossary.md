@@ -221,6 +221,14 @@ Explained in context: [`frontend.md`](frontend.md#lazy-loaded-dialogs)
 
 ---
 
+### Connector Links
+
+The lines from collection cards to a hovered bundle card in the Tracker's Collections Manager. `apps/tracker/src/app/collections/collections-manager.ts` measures the hovered bundle and only its referenced collection cards, then passes their rectangles to `collectionLinks` in `apps/tracker/src/app/collections/collection-links.ts`. The pure function returns the SVG paths and dot positions. It draws nothing when the columns stack or no referenced collection card is present. Its fixed port offset, column inset, dot standoff, rounding and curve reach keep the lines aligned with the cards.
+
+Explained in context: [`frontend.md`](frontend.md#collection-connector-links)
+
+---
+
 ## D
 
 ### Dialog Config Submit
