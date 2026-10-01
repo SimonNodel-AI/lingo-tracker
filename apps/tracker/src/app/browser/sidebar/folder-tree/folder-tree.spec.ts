@@ -1,20 +1,18 @@
-import { provideHttpClient } from '@angular/common/http';
-import { MatDialog } from '@angular/material/dialog';
+import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import type { ComponentFixture } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
-import { FolderTree } from './folder-tree';
-import { BrowserStore } from '../../store/browser.store';
-import { Subject } from 'rxjs';
-import { of } from 'rxjs';
-import { HttpErrorResponse } from '@angular/common/http';
-import { toApiError } from '../../../shared/api-error/api-error';
-import { BrowserApiService } from '../../services/browser-api.service';
-import { collectionSettings } from '../../../../testing/collection-settings';
 import type { CreateFolderResponseDto } from '@simoncodes-ca/data-transfer';
+import { NEVER, of, Subject } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { collectionSettings } from '../../../../testing/collection-settings';
+import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { toApiError } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
+import { BrowserApiService } from '../../services/browser-api.service';
+import { BrowserStore } from '../../store/browser.store';
+import { FolderTree } from './folder-tree';
 
 describe('FolderTree', () => {
   let component: FolderTree;
@@ -155,9 +153,10 @@ describe('FolderTree', () => {
 
   it('opens the move confirmation and calls the store only when confirmed', async () => {
     createComponent();
+    openCollection('my-collection');
     const closed = new Subject<boolean>();
     dialog.open.mockReturnValue({ afterClosed: () => closed.asObservable() });
-    const move = vi.spyOn(component.store, 'moveFolder').mockReturnValue(of({ kind: 'no-collection' }));
+    const move = vi.spyOn(spectator.inject(BrowserApiService), 'moveFolder').mockReturnValue(NEVER);
 
     component.confirmMoveFolder('common.buttons', 'errors');
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalled());
@@ -182,9 +181,7 @@ describe('FolderTree', () => {
     await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(2));
     confirmed.next(true);
     confirmed.complete();
-    await vi.waitFor(() =>
-      expect(move).toHaveBeenCalledWith({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' }),
-    );
+    await vi.waitFor(() => expect(move).toHaveBeenCalledWith('my-collection', 'common.buttons', 'errors'));
   });
 
   it('opens delete confirmation and calls the store only when confirmed', async () => {
@@ -231,11 +228,41 @@ describe('FolderTree', () => {
     expect(move).not.toHaveBeenCalled();
   });
 
+  it('toasts when a folder is dropped onto its current parent', () => {
+    createComponent();
+    openCollection('my-collection');
+    const info = vi.spyOn(spectator.inject(NotificationService), 'info').mockImplementation(() => undefined);
+    const move = vi.spyOn(spectator.inject(BrowserApiService), 'moveFolder');
+
+    component.onFolderDropped({
+      dragData: { type: 'folder', path: 'common.buttons' },
+      targetFolderPath: 'common',
+    });
+
+    expect(info).toHaveBeenCalledWith('Folder is already at this location');
+    expect(dialog.open).not.toHaveBeenCalled();
+    expect(move).not.toHaveBeenCalled();
+  });
+
+  it('moves a resource dropped from the collection root into a folder', () => {
+    createComponent();
+    openCollection('my-collection');
+    const move = vi.spyOn(spectator.inject(BrowserApiService), 'moveResource').mockReturnValue(NEVER);
+
+    component.onResourceDropped({
+      dragData: { type: 'resource', key: 'welcome', folderPath: '' },
+      targetFolderPath: 'common',
+    });
+
+    expect(move).toHaveBeenCalledWith('my-collection', 'welcome', 'common.welcome');
+  });
+
   it('does not write a folder move when confirmation is cancelled', async () => {
     createComponent();
+    openCollection('my-collection');
     const closed = new Subject<boolean>();
     dialog.open.mockReturnValue({ afterClosed: () => closed.asObservable() });
-    const move = vi.spyOn(component.store, 'moveFolder').mockReturnValue(of({ kind: 'no-collection' }));
+    const move = vi.spyOn(spectator.inject(BrowserApiService), 'moveFolder');
 
     component.confirmMoveFolder('common.buttons', 'errors');
 

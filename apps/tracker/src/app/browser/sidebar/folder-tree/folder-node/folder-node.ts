@@ -1,14 +1,15 @@
-import { Component, ChangeDetectionStrategy, input, output, computed, inject, signal } from '@angular/core';
+import { CdkDrag, type CdkDragDrop, CdkDragHandle, CdkDropList } from '@angular/cdk/drag-drop';
 import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
-import { CdkDrag, CdkDragHandle, CdkDropList, type CdkDragDrop } from '@angular/cdk/drag-drop';
-import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { MatIconModule } from '@angular/material/icon';
 import { TranslocoModule } from '@jsverse/transloco';
+import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { InlineFolderInput } from '../inline-folder-input/inline-folder-input';
 import { BrowserStore } from '../../../store/browser.store';
+import { folderDrop } from '../../../store/folder-drop';
 import type { DragData } from '../../../types/drag-data';
+import { InlineFolderInput } from '../inline-folder-input/inline-folder-input';
 
 /**
  * Recursive component for rendering folder tree nodes.
@@ -245,42 +246,7 @@ export class FolderNode {
    * Returns true if this folder can accept the currently dragged item.
    */
   readonly isValidDropTarget = computed(() => {
-    const dragData = this.activeDragData();
-    if (!dragData) return false;
-
-    const targetFolderPath = this.folder().fullPath;
-
-    if (dragData.type === 'folder') {
-      const sourceFolderPath = dragData.path;
-      if (!sourceFolderPath) return false;
-
-      // Cannot drop folder onto itself
-      if (sourceFolderPath === targetFolderPath) {
-        return false;
-      }
-
-      // Cannot drop folder onto its own descendant (circular dependency)
-      // Target is a descendant if it starts with source path followed by "."
-      if (targetFolderPath.startsWith(`${sourceFolderPath}.`)) {
-        return false;
-      }
-
-      return true;
-    }
-
-    if (dragData.type === 'resource') {
-      const currentFolderPath = dragData.folderPath;
-      if (!currentFolderPath) return false;
-
-      // Cannot drop resource onto its current parent folder
-      if (currentFolderPath === targetFolderPath) {
-        return false;
-      }
-
-      return true;
-    }
-
-    return false;
+    return folderDrop(this.activeDragData(), this.folder().fullPath, this.readOnly()).canLand;
   });
 
   /**
@@ -293,10 +259,7 @@ export class FolderNode {
     const dragData = event.item.data as DragData;
     const targetFolderPath = this.folder().fullPath;
 
-    // Skip if dropped back into same container (no-op)
-    if (dragData.type === 'folder' && dragData.path === targetFolderPath) {
-      return;
-    }
+    if (!folderDrop(dragData, targetFolderPath, this.readOnly()).canLand) return;
 
     if (dragData.type === 'resource') {
       this.resourceDropped.emit({ dragData, targetFolderPath });
@@ -354,28 +317,6 @@ export class FolderNode {
    * Predicate function for CDK drop list to determine if drop is allowed.
    */
   canDrop = (drag: CdkDrag<DragData>): boolean => {
-    if (this.readOnly()) return false;
-
-    const dragData = drag.data;
-    if (!dragData) return false;
-
-    const targetFolderPath = this.folder().fullPath;
-
-    if (dragData.type === 'folder') {
-      const sourceFolderPath = dragData.path;
-      if (!sourceFolderPath) return false;
-      if (sourceFolderPath === targetFolderPath) return false;
-      if (targetFolderPath.startsWith(`${sourceFolderPath}.`)) return false;
-      return true;
-    }
-
-    if (dragData.type === 'resource') {
-      const currentFolderPath = dragData.folderPath;
-      if (!currentFolderPath) return false;
-      if (currentFolderPath === targetFolderPath) return false;
-      return true;
-    }
-
-    return false;
+    return folderDrop(drag.data, this.folder().fullPath, this.readOnly()).canLand;
   };
 }

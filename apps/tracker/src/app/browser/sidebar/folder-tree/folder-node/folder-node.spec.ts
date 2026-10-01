@@ -40,6 +40,32 @@ describe('FolderNode', () => {
     expect(component).toBeTruthy();
   });
 
+  it('accepts a root-level resource on a folder', () => {
+    fixture.componentRef.setInput('folder', folderWithChildren);
+    fixture.componentRef.setInput('activeDragData', { type: 'resource', key: 'welcome', folderPath: '' });
+
+    expect(component.isValidDropTarget()).toBe(true);
+    expect(
+      component.canDrop({ data: { type: 'resource', key: 'welcome', folderPath: '' } } as Parameters<
+        typeof component.canDrop
+      >[0]),
+    ).toBe(true);
+  });
+
+  it('emits a folder dropped onto its current parent', () => {
+    fixture.componentRef.setInput('folder', folderWithChildren);
+    const dragData = { type: 'folder' as const, path: 'common.buttons' };
+    fixture.componentRef.setInput('activeDragData', dragData);
+    const dropped = vi.fn();
+    component.folderDropped.subscribe(dropped);
+
+    expect(component.isValidDropTarget()).toBe(true);
+    expect(component.canDrop({ data: dragData } as Parameters<typeof component.canDrop>[0])).toBe(true);
+    component.onDrop({ item: { data: dragData } } as Parameters<typeof component.onDrop>[0]);
+
+    expect(dropped).toHaveBeenCalledWith({ dragData, targetFolderPath: 'common' });
+  });
+
   it('passes its own path with a confirmed folder name to the sidebar', () => {
     fixture.componentRef.setInput('folder', folderWithChildren);
     const create = vi.fn();
