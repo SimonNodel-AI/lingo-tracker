@@ -8,7 +8,7 @@ jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
   return {
     ...actual,
-    generatePreparedBundle: (params: unknown, prepared: unknown) => mockGenerateBundle(params, prepared),
+    generatePreparedBundle: (prepared: unknown, options: unknown) => mockGenerateBundle(prepared, options),
   };
 });
 
@@ -118,16 +118,15 @@ describe('BundleJobService', () => {
     await flush();
 
     expect(mockGenerateBundle).toHaveBeenCalledTimes(1);
-    const params = mockGenerateBundle.mock.calls[0][0] as GenerateBundleParams;
-    expect(params.bundleKey).toBe('main');
-    expect('config' in params).toBe(false);
-    expect('locales' in params).toBe(false);
-    expect(params.cwd).toBe(process.cwd());
-    expect(typeof params.onProgress).toBe('function');
-    expect(mockGenerateBundle.mock.calls[0][1]).toMatchObject({
+    const prepared = mockGenerateBundle.mock.calls[0][0];
+    const options = mockGenerateBundle.mock.calls[0][1] as Pick<GenerateBundleParams, 'onProgress'>;
+    expect(prepared).toMatchObject({
+      bundleKey: 'main',
+      cwd: process.cwd(),
       definition: bundleDefinition,
       locales: ['fr'],
     });
+    expect(typeof options.onProgress).toBe('function');
   });
 
   it('keeps the default locales only in the prepared run', async () => {
@@ -136,9 +135,9 @@ describe('BundleJobService', () => {
     service.startJob(makeParams());
     await flush();
 
-    const params = mockGenerateBundle.mock.calls[0][0] as GenerateBundleParams;
-    expect('locales' in params).toBe(false);
-    expect(mockGenerateBundle.mock.calls[0][1]).toMatchObject({ locales: ['en', 'fr'] });
+    const options = mockGenerateBundle.mock.calls[0][1] as Pick<GenerateBundleParams, 'onProgress'>;
+    expect('locales' in options).toBe(false);
+    expect(mockGenerateBundle.mock.calls[0][0]).toMatchObject({ locales: ['en', 'fr'] });
   });
 
   it('logs the legacy type setting warning returned by core', async () => {
@@ -155,10 +154,26 @@ describe('BundleJobService', () => {
     expect(logger.warn).toHaveBeenCalledWith(warning);
   });
 
+  it('logs the prepared legacy type warning when generation fails', async () => {
+    mockGenerateBundle.mockRejectedValue(new Error('disk full'));
+    const legacy = {
+      bundleName: '{locale}',
+      dist: './dist/i18n',
+      collections: 'All' as const,
+      typeDist: 'types/legacy.ts',
+    };
+
+    const jobId = service.startJob({ bundleName: 'main', config: { ...config, bundles: { main: legacy } } });
+    await flush();
+
+    expect(service.getJob(jobId)?.status).toBe('failed');
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Bundle 'main': 'typeDist' is deprecated"));
+  });
+
   it('reflects onProgress events in the job snapshot while running', async () => {
     let capturedProgress: ((event: BundleProgressEvent) => void) | undefined;
-    mockGenerateBundle.mockImplementation((params: GenerateBundleParams) => {
-      capturedProgress = params.onProgress;
+    mockGenerateBundle.mockImplementation((_prepared: unknown, options: Pick<GenerateBundleParams, 'onProgress'>) => {
+      capturedProgress = options.onProgress;
       return new Promise(() => {});
     });
 
@@ -174,11 +189,13 @@ describe('BundleJobService', () => {
   });
 
   it('marks the job completed with the mapped result and ISO timestamps', async () => {
-    mockGenerateBundle.mockImplementation(async (params: GenerateBundleParams) => {
-      params.onProgress?.({ locale: 'en', index: 1, total: 2, file: 'dist/i18n/en.json' });
-      params.onProgress?.({ locale: 'fr', index: 2, total: 2, file: 'dist/i18n/fr.json' });
-      return makeResult({ warnings: ['careful'] });
-    });
+    mockGenerateBundle.mockImplementation(
+      async (_prepared: unknown, options: Pick<GenerateBundleParams, 'onProgress'>) => {
+        options.onProgress?.({ locale: 'en', index: 1, total: 2, file: 'dist/i18n/en.json' });
+        options.onProgress?.({ locale: 'fr', index: 2, total: 2, file: 'dist/i18n/fr.json' });
+        return makeResult({ warnings: ['careful'] });
+      },
+    );
 
     const jobId = service.startJob(makeParams());
     await flush();

@@ -90,17 +90,17 @@ export type BundleTypeOutcome =
  */
 export async function generateBundle(params: GenerateBundleParams): Promise<GenerateBundleResult> {
   const prepared = prepareBundleRun({ ...params, source: 'saved' });
-  const { bundleKey, debugKeysLocale, onProgress, cwd } = params;
-  return generatePreparedBundle({ bundleKey, debugKeysLocale, onProgress, cwd }, prepared);
+  const { debugKeysLocale, onProgress } = params;
+  return generatePreparedBundle(prepared, { debugKeysLocale, onProgress });
 }
 
 /** The job service and run coordinator use an already prepared run. */
 export async function generatePreparedBundle(
-  params: Pick<GenerateBundleParams, 'bundleKey' | 'debugKeysLocale' | 'onProgress' | 'cwd'>,
   prepared: PreparedBundleRun,
+  options: Pick<GenerateBundleParams, 'debugKeysLocale' | 'onProgress'> = {},
 ): Promise<GenerateBundleResult> {
-  const { bundleKey, debugKeysLocale, onProgress } = params;
-  const cwd = params.cwd ?? process.cwd();
+  const { bundleKey, cwd } = prepared;
+  const { debugKeysLocale, onProgress } = options;
   const bundleDefinition = prepared.definition;
   const { tokenCasing } = prepared.settings;
   const warnings = [...prepared.collections.warnings];
@@ -139,7 +139,7 @@ export async function generatePreparedBundle(
 
   targetLocales.forEach((locale, index) => {
     progress(locale, index + 1);
-    const selection = selectPreparedBundleLocale(prepared, bundleKey, locale, cache);
+    const selection = selectPreparedBundleLocale(prepared, locale, cache);
     warnings.push(...selection.warnings);
     if (selection.entries.size === 0) {
       return;

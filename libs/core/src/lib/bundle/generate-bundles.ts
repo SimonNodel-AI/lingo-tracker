@@ -1,7 +1,7 @@
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { MultipleBundleConstantNameError } from '../errors';
 import { type GenerateBundleParams, type GenerateBundleResult, generatePreparedBundle } from './generate-bundle';
-import { prepareBundleRun, type PreparedBundleRun } from './prepare-bundle-run';
+import { type PreparedBundleRun, prepareBundleRun } from './prepare-bundle-run';
 
 export interface GenerateBundlesOptions {
   readonly names?: readonly string[];
@@ -52,8 +52,7 @@ export async function generateBundles(
     }
     onEvent?.({ kind: 'start', name });
     try {
-      const params = { bundleKey: name, cwd, debugKeysLocale: overrides?.debugKeysLocale };
-      const result = await generatePreparedBundle(params, prepared);
+      const result = await generatePreparedBundle(prepared, { debugKeysLocale: overrides?.debugKeysLocale });
       outcome = { name, result };
       totals.bundlesProcessed++;
       totals.filesGenerated += result.filesGenerated;
@@ -61,8 +60,8 @@ export async function generateBundles(
     } catch (error) {
       outcome = { name, error };
     }
-    if (outcome.result?.typeOutcome.warning)
-      onEvent?.({ kind: 'type-warning', warning: outcome.result.typeOutcome.warning });
+    const typeWarning = outcome.result?.typeOutcome.warning ?? prepared.typeWarning;
+    if (typeWarning) onEvent?.({ kind: 'type-warning', warning: typeWarning });
     outcomes.push(outcome);
     onEvent?.({ kind: 'result', outcome });
   }
