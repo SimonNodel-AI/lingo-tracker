@@ -38,6 +38,12 @@ export interface Collection {
   readonly config: LingoTrackerCollection;
 }
 
+/** An opened collection also carries the config snapshot and root used to resolve it. */
+export interface OpenedCollection extends Collection {
+  readonly sourceConfig: LingoTrackerConfig;
+  readonly projectRoot: string;
+}
+
 /** The term files in force for a collection (see `readProjectTerms`). */
 export interface TermFiles {
   /** The global protected-terms file: `protectedTermsFile` from the config, else the default file beside it. */
@@ -68,7 +74,7 @@ export function openCollection(
   config: LingoTrackerConfig,
   name: string,
   options: OpenCollectionOptions = {},
-): Collection {
+): OpenedCollection {
   const collections = config.collections ?? {};
   // Own keys only: a name like 'constructor' must not resolve to an Object.prototype member.
   const raw = Object.keys(collections).includes(name) ? collections[name] : undefined;
@@ -88,6 +94,8 @@ export function openCollection(
 
   return {
     name,
+    sourceConfig: config,
+    projectRoot: cwd,
     translationsFolder: resolve(cwd, raw.translationsFolder),
     baseLocale,
     locales,

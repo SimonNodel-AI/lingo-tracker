@@ -201,7 +201,11 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
   prompts: (options) => (options.locale ? [] : [{ type: 'text', name: 'locale', message: 'Locale' }]),
   required: ['locale'],            // exit 1 when missing; typed as present in run
   run: async ({ collection, cwd, answers }) => {
-    const result = await addLocaleToCollection(collection.name, answers.locale, { cwd });
+    const result = await addLocaleToCollection(
+      collection,
+      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
+      answers.locale,
+    );
     ConsoleFormatter.success(result.message);
   },
 });

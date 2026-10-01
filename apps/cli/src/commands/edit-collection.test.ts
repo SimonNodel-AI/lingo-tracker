@@ -43,9 +43,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['new-feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['new-feature'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag, new-feature');
     expect(process.exitCode).toBe(0);
@@ -55,9 +55,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['new-feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['new-feature'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag, new-feature');
   });
@@ -66,9 +66,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['New Feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['New Feature'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag, new-feature');
   });
@@ -78,9 +78,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['existing-tag'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: existing-tag');
   });
@@ -90,9 +90,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { removeTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: undefined, remove: ['existing-tag'], set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags cleared');
   });
@@ -102,9 +102,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { setTags: 'alpha, beta' });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: undefined, remove: undefined, set: ['alpha', ' beta'] },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags updated: alpha, beta');
   });
@@ -114,9 +114,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { setTags: '' });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: undefined, remove: undefined, set: [''] },
-      { cwd: '/test/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "myApp" tags cleared');
   });
@@ -157,9 +157,9 @@ describe('editCollectionCommand', () => {
     await editCollectionCommand('myApp', { addTag: ['beta'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
-      'myApp',
+      expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
+      expect.objectContaining({ write: expect.any(Function) }),
       { add: ['beta'], remove: undefined, set: undefined },
-      { cwd: '/test/project' },
     );
     expect(console.error).toHaveBeenCalledWith('❌ A tag edit needs a replacement, addition, or removal');
     expect(process.exitCode).toBe(1);

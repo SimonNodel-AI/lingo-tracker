@@ -75,12 +75,7 @@ export function toCollectionEntry(
   config: LingoTrackerConfig,
   collection: LingoTrackerCollection,
 ): LingoTrackerCollection {
-  // JSON bodies can carry `null`, which the type does not allow and no field rule expects.
-  const nullField = Object.entries(collection).find(([, value]) => value === null)?.[0];
-  if (nullField !== undefined) {
-    throw new InvalidCollectionError(`${nullField} must not be null`);
-  }
-
+  assertCollectionFields(collection);
   const translationsFolder = collection.translationsFolder?.trim();
   if (!translationsFolder) {
     throw new InvalidCollectionError('translationsFolder is required');
@@ -115,8 +110,10 @@ export function addCollectionEntry(
     throw new CollectionAlreadyExistsError(name);
   }
 
-  const readOnly = collection.readOnly ?? isUnderNodeModules(collection.translationsFolder?.trim() ?? '');
-  const entry = toCollectionEntry(config, { ...collection, readOnly });
+  const entry = toCollectionEntry(config, collection);
+  if (collection.readOnly === undefined && isUnderNodeModules(entry.translationsFolder)) {
+    entry.readOnly = true;
+  }
   return { ...config, collections: { ...config.collections, [name]: entry } };
 }
 
@@ -147,6 +144,7 @@ export function patchCollectionEntry(
     throw new CollectionAlreadyExistsError(targetName);
   }
 
+  assertCollectionFields(patch);
   const stored = config.collections?.[name];
   const merged: LingoTrackerCollection = { ...stored };
   for (const key of Object.keys(patch) as Array<keyof LingoTrackerCollection>) {
@@ -174,4 +172,20 @@ function setDefined<K extends keyof LingoTrackerCollection>(
 function hasCollection(config: LingoTrackerConfig, name: string): boolean {
   // Own keys only: a name like 'constructor' must not resolve to an Object.prototype member.
   return Object.keys(config.collections ?? {}).includes(name);
+}
+
+/** Reject JSON-only values before defaults or patch merging can hide them. */
+export function assertCollectionFields(
+  collection: object,
+  options: { readonly requireTranslationsFolder?: boolean } = {},
+): void {
+  const fields = Object.entries(collection);
+  const nullField = fields.find(([, value]) => value === null)?.[0];
+  if (nullField !== undefined) {
+    throw new InvalidCollectionError(`${nullField} must not be null`, { field: nullField });
+  }
+  const folder = fields.find(([key]) => key === 'translationsFolder')?.[1];
+  if (typeof folder !== 'string' && (options.requireTranslationsFolder || folder !== undefined)) {
+    throw new InvalidCollectionError('translationsFolder must be a string', { field: 'translationsFolder' });
+  }
 }

@@ -1,17 +1,20 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
-import { InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
 import { ErrorMessages } from '../errors/error-messages';
+import { ConfigChangedError, InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
-import { loadConfig } from './load-config';
+import { configContentHash, configReadVersion, loadConfig } from './load-config';
 
 export interface ConfigFileOperations {
   /** Read the configuration file */
   read(): LingoTrackerConfig;
   /** Write the configuration file */
   write(config: LingoTrackerConfig): void;
+  /** Refuse a write based on a config snapshot if the file has changed since that read. */
+  assertUnchanged(): void;
   /** Create the file only if absent, using the same validation and serialization as write. */
   create(config: LingoTrackerConfig): void;
   /** Update configuration with a partial modification */
@@ -23,6 +26,8 @@ export interface ConfigFileParams {
   readonly cwd?: string;
   /** Validate config after reading (default: true) */
   readonly validate?: boolean;
+  /** A config returned by `loadConfig`; its original file hash becomes this handle's baseline. */
+  readonly snapshot?: LingoTrackerConfig;
 }
 
 /**
@@ -39,9 +44,25 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
   const cwd = params.cwd ?? process.cwd();
   const validate = params.validate ?? true;
   const configPath = resolve(cwd, CONFIG_FILENAME);
+  let expectedVersion = params.snapshot === undefined ? undefined : configReadVersion(params.snapshot);
+
+  const assertUnchanged = (): void => {
+    if (expectedVersion === undefined) return;
+    let currentContent: string;
+    try {
+      currentContent = readFileSync(configPath, 'utf8');
+    } catch (error) {
+      if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new ConfigChangedError();
+      }
+      throw new InvalidConfigError(`Could not read ${CONFIG_FILENAME}`, { cause: error });
+    }
+    if (configContentHash(currentContent) !== expectedVersion) throw new ConfigChangedError();
+  };
 
   const writeConfig = (config: LingoTrackerConfig, createOnly: boolean): void => {
     if (validate) validateConfig(config);
+    assertUnchanged();
     try {
       writeJsonFile({ filePath: configPath, data: config, pretty: true, createOnly });
     } catch (error) {
@@ -50,6 +71,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
       }
       throw new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: error });
     }
+    expectedVersion = configContentHash(JSON.stringify(config, null, 2));
   };
 
   return {
@@ -63,17 +85,21 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
         throw new InvalidConfigError(`Could not read ${CONFIG_FILENAME}`, { cause: error });
       }
 
-      if (validate) {
-        validateConfig(config);
-      }
+      expectedVersion = configReadVersion(config);
 
-      normalizeCollectionTags(config);
+      if (validate) {
+        prepareConfigSnapshot(config);
+      } else {
+        normalizeCollectionTags(config);
+      }
       return config;
     },
 
     write(config: LingoTrackerConfig): void {
       writeConfig(config, false);
     },
+
+    assertUnchanged,
 
     create(config: LingoTrackerConfig): void {
       writeConfig(config, true);
@@ -86,6 +112,12 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
       return updatedConfig;
     },
   };
+}
+
+/** Apply the same preflight checks and tag normalization as a config-file read, without another read. */
+export function prepareConfigSnapshot(config: LingoTrackerConfig): void {
+  validateConfig(config);
+  normalizeCollectionTags(config);
 }
 
 /**

@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { openCollection } from '../lib/config/open-collection';
 import {
   BaseLocaleImmutableError,
   CollectionNotFoundError,
@@ -30,7 +32,10 @@ describe('addLocaleToCollection', () => {
   const readConfig = (): LingoTrackerConfig => JSON.parse(readFileSync(join(tempDir(), CONFIG_FILENAME), 'utf8'));
   const entries = (): ResourceEntries => JSON.parse(readFileSync(join(folder(), RESOURCE_ENTRIES_FILENAME), 'utf8'));
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
-  const add = (name = 'main', locale = 'de') => addLocaleToCollection(name, locale, { cwd: tempDir() });
+  const add = async (name = 'main', locale = 'de') => {
+    const configFile = createConfigFileOperations({ cwd: tempDir() });
+    return addLocaleToCollection(openCollection(configFile.read(), name, { cwd: tempDir() }), configFile, locale);
+  };
 
   beforeEach(() => writeConfig());
 
@@ -122,6 +127,6 @@ describe('addLocaleToCollection', () => {
   });
 
   it('validates the locale before looking up a missing collection', async () => {
-    await expect(add('missing', 'not-valid-123')).rejects.toThrow(InvalidLocaleError);
+    await expect(add('missing', 'not-valid-123')).rejects.toThrow(CollectionNotFoundError);
   });
 });

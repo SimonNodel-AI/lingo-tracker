@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { listEditProblem, normalizeProtectedTerms, validatePreferredTermRules } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { InvalidProjectTermsEditError } from '../errors/lingo-tracker-error';
+import { ConfigChangedError, InvalidProjectTermsEditError } from '../errors/lingo-tracker-error';
 import { patchCollectionEntry } from './collection-entry';
-import { updateConfig } from './config-file-operations';
-import { loadConfig } from './load-config';
+import { createConfigFileOperations, updateConfig } from './config-file-operations';
+import { configReadVersion, loadConfig } from './load-config';
 import {
   editPreferredTerminology,
   type LoadPreferredTerminologyResult,
@@ -254,8 +254,11 @@ function applyProjectTermsUpdate(
     if (!changed.includes(path)) changed.push(path);
   };
   let pointerChange: PointerChange | undefined;
+  const configFile =
+    configReadVersion(config) === undefined ? undefined : createConfigFileOperations({ cwd, snapshot: config });
 
   try {
+    configFile?.assertUnchanged();
     let currentConfig = config;
     let protectedTermsFileChange: ProjectTermsUpdateView['protectedTermsFileChange'];
     if (protectedRequest?.file !== undefined) {
@@ -275,8 +278,8 @@ function applyProjectTermsUpdate(
         : resolveGlobalProtectedTermsFilePath({ ...currentConfig, protectedTermsFile: pointer }, cwd);
       if (destination !== undefined) markChanged(destination);
       protectedTermsFileChange = collectionName
-        ? setCollectionProtectedTermsFile(collectionName, pointer, { cwd, config: currentConfig })
-        : setGlobalProtectedTermsFile(pointer, { cwd, config: currentConfig });
+        ? setCollectionProtectedTermsFile(collectionName, pointer, { cwd, config: currentConfig, configFile })
+        : setGlobalProtectedTermsFile(pointer, { cwd, config: currentConfig, configFile });
       currentConfig = collectionName
         ? {
             ...currentConfig,
@@ -331,6 +334,8 @@ function applyProjectTermsUpdate(
     }
     return { ...view, protectedTermsResult, preferredTerminologyResult };
   } catch (error) {
+    // The guarded handle rejects before it changes config or a term file.
+    if (error instanceof ConfigChangedError) throw error;
     const restoreFailures: unknown[] = [];
     for (const path of changed.reverse()) {
       const snapshot = snapshots.get(path);

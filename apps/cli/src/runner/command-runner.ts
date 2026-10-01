@@ -1,14 +1,15 @@
-import * as path from 'path';
-import prompts from 'prompts';
 import {
-  type Collection,
   CONFIG_FILENAME,
+  type Collection,
   ConfigNotFoundError,
   ConfigParseError,
   type LingoTrackerConfig,
   loadConfig,
+  type OpenedCollection,
   openCollection,
 } from '@simoncodes-ca/core';
+import * as path from 'path';
+import prompts from 'prompts';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { isInteractiveTerminal } from './terminal';
 
@@ -55,7 +56,7 @@ interface ConfigResources {
 
 interface CollectionResources {
   /** The collection named by the collection flag (or selected), opened by core `openCollection`. */
-  readonly collection: Collection;
+  readonly collection: OpenedCollection;
 }
 
 interface ManyCollectionResources {

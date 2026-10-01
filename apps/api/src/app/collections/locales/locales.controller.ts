@@ -1,5 +1,10 @@
-import { Controller, Post, Delete, Param, Body } from '@nestjs/common';
-import { type Collection, addLocaleToCollection, removeLocaleFromCollection } from '@simoncodes-ca/core';
+import { Body, Controller, Delete, Param, Post } from '@nestjs/common';
+import {
+  addLocaleToCollection,
+  createConfigFileOperations,
+  type OpenedCollection,
+  removeLocaleFromCollection,
+} from '@simoncodes-ca/core';
 import type { AddLocaleDto, AddLocaleResponseDto, RemoveLocaleResponseDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { RouteCollection } from '../route-collection';
@@ -18,10 +23,14 @@ export class LocalesController {
 
   @Post()
   async addLocale(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @Body() body: AddLocaleDto,
   ): Promise<AddLocaleResponseDto> {
-    const { mutations, ...response } = await addLocaleToCollection(collection.name, body.locale);
+    const { mutations, ...response } = await addLocaleToCollection(
+      collection,
+      createConfigFileOperations({ cwd: collection.projectRoot, snapshot: collection.sourceConfig }),
+      body.locale,
+    );
     this.#index.apply(mutations);
 
     return response;
@@ -29,10 +38,14 @@ export class LocalesController {
 
   @Delete(':locale')
   async removeLocale(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @Param('locale') locale: string,
   ): Promise<RemoveLocaleResponseDto> {
-    const { mutations, ...response } = await removeLocaleFromCollection(collection.name, locale);
+    const { mutations, ...response } = await removeLocaleFromCollection(
+      collection,
+      createConfigFileOperations({ cwd: collection.projectRoot, snapshot: collection.sourceConfig }),
+      locale,
+    );
     this.#index.apply(mutations);
 
     return response;

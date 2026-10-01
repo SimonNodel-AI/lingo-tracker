@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONFIG_FILENAME } from '../constants';
+import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { openCollection } from '../lib/config/open-collection';
 import { InvalidCollectionError } from '../lib/errors/lingo-tracker-error';
 import { editCollectionTags } from './edit-collection-tags';
 
@@ -22,16 +24,24 @@ describe('editCollectionTags', () => {
   });
   afterEach(() => rmSync(cwd, { recursive: true, force: true }));
 
+  const edit = (changes: Parameters<typeof editCollectionTags>[2]): string[] => {
+    const configFile = createConfigFileOperations({ cwd });
+    const collection = openCollection(configFile.read(), 'app', { cwd });
+    return editCollectionTags(
+      collection,
+      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
+      changes,
+    );
+  };
+
   it('normalizes added tags and removes existing tags', () => {
-    expect(editCollectionTags('app', { add: ['New Feature'], remove: ['existing-tag'] }, { cwd })).toEqual([
-      'new-feature',
-    ]);
+    expect(edit({ add: ['New Feature'], remove: ['existing-tag'] })).toEqual(['new-feature']);
     expect(JSON.parse(read()).collections.app.tags).toEqual(['new-feature']);
   });
 
   it('set replaces and empty set clears tags', () => {
-    expect(editCollectionTags('app', { set: ['Alpha', 'beta', 'Alpha'] }, { cwd })).toEqual(['alpha', 'beta']);
-    expect(editCollectionTags('app', { set: [] }, { cwd })).toEqual([]);
+    expect(edit({ set: ['Alpha', 'beta', 'Alpha'] })).toEqual(['alpha', 'beta']);
+    expect(edit({ set: [] })).toEqual([]);
     expect(JSON.parse(read()).collections.app.tags).toBeUndefined();
   });
 
@@ -39,7 +49,7 @@ describe('editCollectionTags', () => {
     const before = read();
     let thrown: unknown;
     try {
-      editCollectionTags('app', { set: ['foo'], add: ['bar'] }, { cwd });
+      edit({ set: ['foo'], add: ['bar'] });
     } catch (error) {
       thrown = error;
     }
@@ -50,7 +60,7 @@ describe('editCollectionTags', () => {
 
   it('refuses an empty edit without writing', () => {
     const before = read();
-    expect(() => editCollectionTags('app', {}, { cwd })).toThrow(InvalidCollectionError);
+    expect(() => edit({})).toThrow(InvalidCollectionError);
     expect(read()).toBe(before);
   });
 });

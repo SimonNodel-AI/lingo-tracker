@@ -2,7 +2,7 @@ import { effectiveProtectedTerms, type ListEdit, mergeListEdit, normalizeProtect
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CollectionNotFoundError, InvalidCollectionError } from '../errors/lingo-tracker-error';
 import { patchCollectionEntry } from './collection-entry';
-import { createConfigFileOperations, updateConfig } from './config-file-operations';
+import { type ConfigFileOperations, createConfigFileOperations, updateConfig } from './config-file-operations';
 import {
   assertWritableProtectedTermsPath,
   readCollectionProtectedTerms,
@@ -86,6 +86,8 @@ export interface SetProtectedTermsOptions {
   cwd?: string;
   /** Config already used to plan the edit; omit it for a standalone setter call. */
   config?: LingoTrackerConfig;
+  /** A handle tied to that config's read, when it has a tracked snapshot. */
+  configFile?: Pick<ConfigFileOperations, 'write'>;
 }
 
 export interface SetProtectedTermsResult {
@@ -157,14 +159,18 @@ export function setGlobalProtectedTermsFile(
     assertWritableProtectedTermsPath(resolveProtectedTermsFilePath(pointer, cwd));
   }
 
-  const config = updateConfig((current) => {
-    if (pointer === undefined) {
-      delete current.protectedTermsFile;
-    } else {
-      current.protectedTermsFile = pointer;
-    }
-    return current;
-  }, cwd);
+  const config = { ...previousConfig };
+  if (pointer === undefined) delete config.protectedTermsFile;
+  else config.protectedTermsFile = pointer;
+  if (options.configFile) {
+    options.configFile.write(config);
+  } else {
+    updateConfig((current) => {
+      if (pointer === undefined) delete current.protectedTermsFile;
+      else current.protectedTermsFile = pointer;
+      return current;
+    }, cwd);
+  }
 
   const filePath = resolveGlobalProtectedTermsFilePath(config, cwd);
   writeProtectedTermsFile(filePath, carried);
@@ -200,7 +206,14 @@ export function setCollectionProtectedTermsFile(
   }
 
   // A patch of one key (`''` clears it): the rest of the record (including a `translation` override) stays as is.
-  updateConfig((current) => patchCollectionEntry(current, collectionName, { protectedTermsFile: pointer ?? '' }), cwd);
+  if (options.configFile) {
+    options.configFile.write(patchCollectionEntry(config, collectionName, { protectedTermsFile: pointer ?? '' }));
+  } else {
+    updateConfig(
+      (current) => patchCollectionEntry(current, collectionName, { protectedTermsFile: pointer ?? '' }),
+      cwd,
+    );
+  }
 
   if (filePath === undefined) {
     return { message: `Collection "${collectionName}" protected terms file cleared`, filePath: undefined };

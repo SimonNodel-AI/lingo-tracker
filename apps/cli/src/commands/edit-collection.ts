@@ -1,4 +1,4 @@
-import { editCollectionTags } from '@simoncodes-ca/core';
+import { createConfigFileOperations, editCollectionTags } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -25,9 +25,13 @@ const run = defineCommand<EditCollectionOptions & { name: string }>()({
       throw new Error('Provide at least one of --add-tag, --remove-tag, or --set-tags');
     }
     const currentTags = editCollectionTags(
-      collection.name,
-      { add: answers.addTag, remove: answers.removeTag, set: answers.setTags?.split(',') },
-      { cwd },
+      collection,
+      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
+      {
+        add: answers.addTag,
+        remove: answers.removeTag,
+        set: answers.setTags?.split(','),
+      },
     );
 
     if (currentTags.length === 0) {

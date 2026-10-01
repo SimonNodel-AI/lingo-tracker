@@ -54,6 +54,8 @@ describe('openCollection', () => {
 
     expect(collection).toEqual({
       name: 'inherits',
+      sourceConfig: config,
+      projectRoot: dir,
       translationsFolder: resolve(dir, 'src/i18n'),
       baseLocale: 'en',
       locales: ['en', 'fr', 'de'],

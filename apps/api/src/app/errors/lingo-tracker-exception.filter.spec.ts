@@ -12,6 +12,7 @@ import {
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
+  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
   FolderMoveIntoDescendantError,
@@ -62,6 +63,15 @@ describe('toHttpException', () => {
       { message: 'Folder not found: apps.missing', error: 'Not Found', statusCode: 404 },
     ],
     [new BundleNotFoundError('main'), 404, { message: 'Bundle "main" not found', error: 'Not Found', statusCode: 404 }],
+    [
+      new ConfigChangedError(),
+      409,
+      {
+        message: 'The configuration file changed after it was read; run the command again',
+        error: 'Conflict',
+        statusCode: 409,
+      },
+    ],
     [
       new InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales'),
       400,

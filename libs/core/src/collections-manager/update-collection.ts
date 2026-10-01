@@ -1,17 +1,16 @@
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { patchCollectionEntry } from '../lib/config/collection-entry';
-import { createConfigFileOperations } from '../lib/config/config-file-operations';
-import { type Collection, openCollection } from '../lib/config/open-collection';
+import { type ConfigFileOperations, prepareConfigSnapshot } from '../lib/config/config-file-operations';
+import { type Collection, type OpenedCollection, openCollection } from '../lib/config/open-collection';
 import { assertProtectedTerms } from '../lib/config/set-protected-terms';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
-import { reindexMutation, type ResourceMutation } from '../lib/resource/resource-mutation';
+import { type ResourceMutation, reindexMutation } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';
-import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
-import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 import { renameBundleCollectionReferences } from './bundle-collection-references';
+import { prepareCollectionProtectedTerms } from './collection-protected-terms';
+import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
 
 export interface UpdateCollectionOptions {
-  cwd?: string;
   protectedTerms?: string[];
 }
 
@@ -54,13 +53,14 @@ export interface UpdateCollectionOptions {
  * @throws {ParentDirectoryMissingError} The terms file's parent directory is missing.
  */
 export async function updateCollection(
-  collectionName: string,
+  current: OpenedCollection,
+  configFile: Pick<ConfigFileOperations, 'write' | 'assertUnchanged'>,
   newCollectionName: string | undefined,
   patch: Partial<LingoTrackerCollection>,
   options: UpdateCollectionOptions = {},
 ): Promise<{ message: string; mutations: ResourceMutation[] }> {
   if (options.protectedTerms !== undefined) assertProtectedTerms(options.protectedTerms);
-  const result = await changeCollection(collectionName, newCollectionName, patch, options);
+  const result = await changeCollection(current, configFile, newCollectionName, patch, options);
   return { message: result.message, mutations: result.mutations };
 }
 
@@ -74,31 +74,27 @@ interface CollectionChangeResult {
 
 /** The shared validation, folder rewrite and single config write for every locale change. */
 export async function changeCollection(
-  collectionName: string,
+  current: OpenedCollection,
+  configFile: Pick<ConfigFileOperations, 'write' | 'assertUnchanged'>,
   newCollectionName: string | undefined,
   patch: Partial<LingoTrackerCollection>,
   options: UpdateCollectionOptions = {},
   targetLocales?: (current: Collection) => string[],
 ): Promise<CollectionChangeResult> {
-  const { cwd } = options;
-  const configFile = createConfigFileOperations({ cwd });
-  const config = configFile.read();
-
-  // Sugar calls check writability and their locale-specific errors before building the patch.
-  const sugarCurrent = targetLocales ? openCollection(config, collectionName, { cwd, writable: true }) : undefined;
-  const effectivePatch = targetLocales && sugarCurrent ? { ...patch, locales: targetLocales(sugarCurrent) } : patch;
+  const { sourceConfig: config, projectRoot: cwd, name: collectionName } = current;
+  prepareConfigSnapshot(config);
+  // Locale sugar refuses read-only collections before its locale-specific checks.
+  if (targetLocales && current.readOnly) throw new ReadOnlyCollectionError(collectionName);
+  const effectivePatch = targetLocales ? { ...patch, locales: targetLocales(current) } : patch;
   const nextConfig = patchCollectionEntry(config, collectionName, effectivePatch, newCollectionName);
   const targetName = newCollectionName || collectionName;
   renameBundleCollectionReferences(nextConfig, collectionName, targetName);
-  const current = sugarCurrent ?? openCollection(config, collectionName, { cwd });
   const next = openCollection(nextConfig, targetName, { cwd });
   const { added, removed } = diffLocales(current, next);
-  const writeTerms = prepareCollectionProtectedTerms(
-    nextConfig,
-    targetName,
-    options.protectedTerms,
-    cwd ?? process.cwd(),
-  );
+  const writeTerms = prepareCollectionProtectedTerms(nextConfig, targetName, options.protectedTerms, cwd);
+
+  // Refuse a stale snapshot before locale files are seeded or purged. `write` checks again.
+  configFile.assertUnchanged();
 
   let entriesAdded = 0;
   let entriesRemoved = 0;

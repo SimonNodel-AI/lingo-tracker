@@ -5,10 +5,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
+  ConfigChangedError,
   InvalidCollectionError,
   InvalidProjectTermsEditError,
   ParentDirectoryMissingError,
 } from '../errors/lingo-tracker-error';
+import { loadConfig } from './load-config';
 import { PreferredTerminologyValidationError } from './preferred-terminology-file';
 import { type ProjectTermsUpdate, planProjectTermsUpdate, updateProjectTerms } from './update-project-terms';
 
@@ -206,6 +208,21 @@ describe('updateProjectTerms', () => {
     expect(plan.view.protectedTerms?.globalFilePath).toBe(newFile);
     expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual(JSON.parse(before));
     expect(existsSync(newFile)).toBe(false);
+  });
+
+  it('refuses a planned pointer edit when its loaded config changes before apply', () => {
+    const configPath = join(cwd, '.lingo-tracker.json');
+    const plan = planProjectTermsUpdate(
+      loadConfig({ cwd }),
+      { protectedTerms: { file: 'new-protected.json', list: true } },
+      { cwd },
+    );
+    const changed = `${JSON.stringify({ ...config, baseLocale: 'fr' })}\n`;
+    writeFileSync(configPath, changed);
+
+    expect(() => plan.apply()).toThrow(ConfigChangedError);
+    expect(readFileSync(configPath, 'utf8')).toBe(changed);
+    expect(existsSync(join(cwd, 'new-protected.json'))).toBe(false);
   });
 
   it('keeps an unrelated concurrent config edit when restoring a failed pointer update', () => {
