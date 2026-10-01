@@ -19,6 +19,7 @@ Return to [architecture README](README.md).
   - [edit-resource](#edit-resource)
   - [delete-resource](#delete-resource)
   - [move-resource](#move-resource)
+  - [Move Plan](#move-plan)
   - [Entry Relocation](#entry-relocation)
 - [Collection Reader](#collection-reader)
   - [Resource Search](#resource-search)
@@ -135,6 +136,7 @@ libs/core/src/
     │   ├── edit-resource.ts      # editResource()
     │   ├── delete-resource.ts    # deleteResource()
     │   ├── move-resource.ts      # moveResource()
+    │   ├── move-plan.ts          # planMove(): pure source-to-destination key calculation
     │   ├── relocate-entries.ts   # Entry Relocation used by moves
     │   ├── checksum.ts           # MD5 checksums
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
@@ -405,7 +407,7 @@ Steps:
 
 `addResources` resolves every item before preparing translations for any item, then writes only after all preparation succeeds: malformed keys and target-folder addresses, unknown locales, duplicate resolved keys within the batch, unreadable folder JSON and translation failures stop the batch before a write. An existing exact key is refused unless `onExisting: 'replace'` is passed; parent/child keys are allowed as with `addResource`. Preflight reads folders but does not create them or check whether a later filesystem write can succeed. It then saves each item through the same `ResourceFolder` write path as `addResource`, in request order. The result combines `entriesCreated`, `created`, deduplicated `skippedLocales`, findings in order, deduplicated terminology problems, and mutations in order. A later disk write failure, such as a file in the folder path or insufficient permissions, leaves all earlier completed writes on disk and may leave only `resource_entries.json` written in the failing folder. It returns no result or mutations; there is no rollback, and the Collection Index catches up through disk-fingerprint revalidation.
 
-`moveResources` runs each operation through `moveResource`, opening a plain destination collection name with `openCollection(config, name, { writable: true })`. The API passes the plain `toCollection` body value through unchanged. An absent or read-only destination adds that operation's error and does not stop later operations. It combines counts, warnings, errors and mutations in operation order. The API applies the combined mutations once. If operation N throws, earlier completed operations remain on disk, no result or mutations are returned, and the index catches up through disk-fingerprint revalidation.
+`moveResources` runs each operation through `moveResource`, opening a plain destination collection name with `openCollection(config, name, { writable: true })`. The API folder move and CLI move also use `openCollection` with `writable: true`; the API maps its typed `CollectionNotFoundError` and `ReadOnlyCollectionError` to 404 and 403. The API passes the plain `toCollection` body value through unchanged. An absent or read-only destination adds that operation's error and does not stop later operations. It combines counts, warnings, errors and mutations in operation order. The API applies the combined mutations once. If operation N throws, earlier completed operations remain on disk, no result or mutations are returned, and the index catches up through disk-fingerprint revalidation.
 
 ### edit-resource
 
@@ -438,12 +440,18 @@ Steps:
 
 **Entry point:** `moveResource(collection, { source, destination, override, destinationCollection })`
 
-Two modes, one move: both build a list of `{ from, to }` keys and hand it to the [Entry Relocation](#entry-relocation) in one call. A collision becomes a warning (`Destination key already exists: <key>. Use override option to force move.`); a failed relocation is an error.
+Two modes, one move: both get a list of `{ from, to }` keys from the [Move Plan](#move-plan) and hand it to the [Entry Relocation](#entry-relocation) in one call. A collision becomes a warning (`Destination key already exists: <key>. Use override option to force move.`); a failed relocation is an error.
 
 - **Single key move** — one relocation, `source` to `destination`.
 - **Wildcard pattern move** — a pattern ending with `*` is expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to every key under the prefix, each moved under `destination`. A folder the sweep cannot read is one error in the result; the other keys still move.
 
 `moveFolder()` works the same way: it lists the source tree's keys with `sweepKeys()`, maps each to its destination key (`nestUnderDestination`; a move to the root always nests), moves them as one relocation, and then, only when every key moved and nothing failed, removes the source folder tree where it is empty. The relocation's saves have already deleted the resource files of every emptied folder, so a folder that is still not empty holds content that is not part of the collection (a hidden folder, a stray file). That content is never deleted: the folders that hold it are kept, and the result warns `Source folder kept: holds content that is not part of the collection: <paths>`. A `remove-folder` is returned for the source folder when it is gone, else for each removed subfolder whose parent is kept. A source tree with no entries is handled the same way. `deleteFolder` is different: it deletes the whole tree.
+
+### Move Plan
+
+**Entry point:** `planMove(selection, destination)` in `lib/resource/move-plan.ts` (internal)
+
+The planner has no filesystem calls. A single key keeps its explicit destination. A wildcard prefix maps every swept key under the destination prefix, including the collection root. An edited entry keeps its last key segment when it moves to a destination folder; an empty or whitespace-only folder names the collection root. A folder move appends the source folder's last segment by default or when moving to the root. With `nestUnderDestination: false`, equal source and destination depths replace the source folder path, and unequal depths append that last segment. The planner also supplies the same-folder and current-parent warnings. `moveFolder` still validates folder addresses and lists keys before relocation; `moveResource` still validates and sweeps patterns; `editResource` still checks the destination collision before saving.
 
 ### Entry Relocation
 

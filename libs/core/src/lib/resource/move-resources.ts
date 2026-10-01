@@ -1,7 +1,7 @@
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
-import { moveResource, type MoveResourceResult } from './move-resource';
+import { type MoveResourceResult, moveResource } from './move-resource';
 
 export interface MoveResourcesOperation {
   readonly source: string;

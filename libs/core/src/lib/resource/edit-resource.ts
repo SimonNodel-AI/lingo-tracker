@@ -4,15 +4,22 @@ import {
   normalizeTags,
   type TranslationStatus,
   translocoToICU,
+  validateTargetFolder,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
-import { CoreOperationError, ResourceAlreadyExistsError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import {
+  CoreOperationError,
+  InvalidResourceKeyError,
+  ResourceAlreadyExistsError,
+  ResourceNotFoundError,
+} from '../errors/lingo-tracker-error';
 import type { OpenTranslatorOptions } from '../translation/translator';
 import type { ResourceTreeEntry } from './load-resource-tree';
 import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
+import { planMove } from './move-plan';
 import { relocateEntries } from './relocate-entries';
-import { validateAndResolvePaths } from './resource-file-paths';
+import { resolveResourcePaths, validateAndResolvePaths } from './resource-file-paths';
 import { openResourceFolder } from './resource-folder';
 import { type ResourceMutation, upsertMutation } from './resource-mutation';
 import { assertTranslationStatus } from './translation-status-input';
@@ -209,19 +216,21 @@ function resolveDestination(
   source: { readonly resolvedKey: string; readonly entryKey: string },
   moveTo: string,
 ): string | undefined {
-  const paths = validateAndResolvePaths({
-    key: source.entryKey,
-    translationsFolder: collection.translationsFolder,
-    targetFolder: moveTo,
-  });
-  if (paths.resolvedKey === source.resolvedKey) {
+  try {
+    if (moveTo) validateTargetFolder(moveTo);
+  } catch (error) {
+    throw new InvalidResourceKeyError(source.entryKey, error instanceof Error ? error.message : String(error));
+  }
+  const [relocation] = planMove({ kind: 'entry', key: source.resolvedKey }, moveTo).relocations;
+  if (!relocation || relocation.to === source.resolvedKey) {
     return undefined;
   }
 
+  const paths = resolveResourcePaths({ key: relocation.to, translationsFolder: collection.translationsFolder });
   if (openResourceFolder(paths.folderPath, { baseLocale: collection.baseLocale }).has(paths.entryKey)) {
-    throw new ResourceAlreadyExistsError(paths.resolvedKey);
+    throw new ResourceAlreadyExistsError(relocation.to);
   }
-  return paths.resolvedKey;
+  return relocation.to;
 }
 
 /**

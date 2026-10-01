@@ -297,6 +297,15 @@ describe('editResource (real fs)', () => {
       expect(read('resource_entries.json').save.source).toBe('Save');
     });
 
+    it('moves the entry to the collection root with a whitespace-only moveTo', async () => {
+      const result = await editResource(collection(), 'common.save', { moveTo: '   ' });
+
+      expect(result.updated).toBe(true);
+      expect(result.resolvedKey).toBe('save');
+      expect(read('resource_entries.json').save.source).toBe('Save');
+      expect(existsSync(join(root, 'translations', 'common', 'resource_entries.json'))).toBe(false);
+    });
+
     it('edits in place when moveTo is the current folder', async () => {
       const result = await editResource(collection(), 'common.save', { comment: 'Same', moveTo: 'common' });
 

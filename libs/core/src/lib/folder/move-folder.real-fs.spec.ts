@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addResource } from '../resource/add-resource';
-import type { Collection } from '../config/open-collection';
-import { openResourceFolder } from '../resource/resource-folder';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
+import type { Collection } from '../config/open-collection';
+import { addResource } from '../resource/add-resource';
+import { openResourceFolder } from '../resource/resource-folder';
 import { moveFolder } from './move-folder';
 
 function collection(translationsFolder: string): Collection {
@@ -121,6 +121,23 @@ describe('moveFolder to the root without nesting (real fs)', () => {
       ['upsert', 'deep.one'],
       ['remove-folder', ''],
     ]);
+  });
+
+  it('nests common.testdata at the root and prunes the source folder', async () => {
+    const source = collection(root());
+    await addResource(source, { key: 'common.testdata.foo', baseValue: 'Foo' });
+
+    const result = await moveFolder(source, {
+      sourceFolderPath: 'common.testdata',
+      destinationFolderPath: '',
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.movedCount).toBe(1);
+    expect(result.foldersDeleted).toBe(1);
+    expect(openResourceFolder(join(root(), 'testdata')).get('foo')?.entry.source).toBe('Foo');
+    expect(existsSync(join(root(), 'testdata', 'resource_entries.json'))).toBe(true);
+    expect(existsSync(join(root(), 'common', 'testdata'))).toBe(false);
   });
 });
 
