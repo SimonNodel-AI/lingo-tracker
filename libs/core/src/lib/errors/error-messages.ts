@@ -41,14 +41,14 @@ export const ErrorMessages = {
   collectionRenameBundleConflict: (oldName: string, newName: string, bundles: readonly string[]) =>
     `Cannot rename collection "${oldName}" to "${newName}": bundle(s) ${bundles.map((bundle) => `"${bundle}"`).join(', ')} already reference "${newName}". Remove those references first.`,
 
-  collectionTagEditConflict: () => '--set-tags cannot be combined with --add-tag or --remove-tag',
+  collectionTagEditConflict: () => 'A replacement list cannot be combined with additions or removals',
 
-  collectionTagEditMissing: () => 'Provide at least one of --add-tag, --remove-tag, or --set-tags',
+  collectionTagEditMissing: () => 'A tag edit needs a replacement, addition, or removal',
 
   configAlreadyExists: () => '.lingo-tracker.json already exists',
 
   protectedTermsFileNotSet: (name: string) =>
-    `Collection "${name}" has no protected terms file. Set one first with --file <path>.`,
+    `Collection "${name}" has no protected terms file. Set a file path first.`,
 
   parentDirectoryMissing: (what: string, directory: string) =>
     `Cannot write ${what} — directory does not exist: ${directory}`,

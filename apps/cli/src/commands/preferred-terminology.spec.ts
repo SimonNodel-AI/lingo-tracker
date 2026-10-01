@@ -61,6 +61,24 @@ describe('preferredTerminologyCommand', () => {
       expect(process.exitCode).toBe(1);
     });
 
+    it('uses the missing-operation wording for --preferred alone', async () => {
+      await preferredTerminologyCommand({ preferred: 'Sign in' });
+
+      expect(ConsoleFormatter.error).toHaveBeenCalledWith(
+        'Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>',
+      );
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('uses the missing-operation wording for --reason alone', async () => {
+      await preferredTerminologyCommand({ reason: 'House style' });
+
+      expect(ConsoleFormatter.error).toHaveBeenCalledWith(
+        'Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>',
+      );
+      expect(process.exitCode).toBe(1);
+    });
+
     it('rejects --add combined with --remove', async () => {
       await preferredTerminologyCommand({ add: 'Expenditure', preferred: 'Investment', remove: 'Spend' });
 
@@ -173,6 +191,17 @@ describe('preferredTerminologyCommand', () => {
       expect(process.exitCode).toBe(1);
       expect(ConsoleFormatter.success).not.toHaveBeenCalled();
       expect(readFileSync(filePath, 'utf8')).toBe(before);
+    });
+
+    it('prints the requested list before reporting a rule validation failure', async () => {
+      writeRules([{ discouraged: 'Login', preferred: 'Sign in' }]);
+      await preferredTerminologyCommand({ list: true, add: 'Expenditure', preferred: '' });
+      expect(indented()).toEqual(['Login → Sign in']);
+      expect(ConsoleFormatter.error).toHaveBeenCalledWith('Preferred terminology not saved:', expect.any(Array));
+      const listOrder = vi.mocked(ConsoleFormatter.indent).mock.invocationCallOrder[0] ?? 0;
+      const errorOrder = vi.mocked(ConsoleFormatter.error).mock.invocationCallOrder[0] ?? 0;
+      expect(listOrder).toBeLessThan(errorOrder);
+      expect(process.exitCode).toBe(1);
     });
 
     it('refuses to write over a broken file', async () => {

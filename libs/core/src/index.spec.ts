@@ -82,6 +82,7 @@ describe('core public surface', () => {
       'openCollection',
       'openResourceFolder',
       'planBundle',
+      'planProjectTermsUpdate',
       'prepareBundleRun',
       'readCollection',
       'removeLocaleFromCollection',

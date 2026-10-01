@@ -30,14 +30,21 @@ describe('editCollectionTags', () => {
   });
 
   it('set replaces and empty set clears tags', () => {
-    expect(editCollectionTags('app', { set: 'Alpha, beta, Alpha' }, { cwd })).toEqual(['alpha', 'beta']);
-    expect(editCollectionTags('app', { set: '' }, { cwd })).toEqual([]);
+    expect(editCollectionTags('app', { set: ['Alpha', 'beta', 'Alpha'] }, { cwd })).toEqual(['alpha', 'beta']);
+    expect(editCollectionTags('app', { set: [] }, { cwd })).toEqual([]);
     expect(JSON.parse(read()).collections.app.tags).toBeUndefined();
   });
 
   it('refuses mixed set and add without writing', () => {
     const before = read();
-    expect(() => editCollectionTags('app', { set: 'foo', add: ['bar'] }, { cwd })).toThrow(InvalidCollectionError);
+    let thrown: unknown;
+    try {
+      editCollectionTags('app', { set: ['foo'], add: ['bar'] }, { cwd });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(InvalidCollectionError);
+    expect((thrown as InvalidCollectionError).kind).toBe('invalid');
     expect(read()).toBe(before);
   });
 

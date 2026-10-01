@@ -5,10 +5,10 @@ const normalize = (values: string[]) => [...new Set(values.map((value) => value.
 
 describe('list edit', () => {
   it('reports a set conflict and a missing edit', () => {
-    expect(listEditProblem({ set: 'A', add: ['B'] })).toBe('conflict');
-    expect(listEditProblem({ set: '', remove: ['B'] })).toBe('conflict');
+    expect(listEditProblem({ set: ['A'], add: ['B'] })).toBe('conflict');
+    expect(listEditProblem({ set: [], remove: ['B'] })).toBe('conflict');
     expect(listEditProblem({})).toBe('missing');
-    expect(listEditProblem({ set: '' })).toBeUndefined();
+    expect(listEditProblem({ set: [] })).toBeUndefined();
   });
 
   it('adds unique values, removes matches, and keeps the remaining order', () => {
@@ -16,6 +16,6 @@ describe('list edit', () => {
   });
 
   it('replaces a list after caller normalization', () => {
-    expect(mergeListEdit(['A'], { set: ' B, C, B ' }, normalize)).toEqual(['B', 'C']);
+    expect(mergeListEdit(['A'], { set: [' B', 'C', 'B '] }, normalize)).toEqual(['B', 'C']);
   });
 });

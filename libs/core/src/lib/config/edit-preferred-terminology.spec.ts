@@ -14,7 +14,11 @@ describe('editPreferredTerminology', () => {
 
   it('adds a trimmed rule and writes the sorted file', () => {
     seed([{ discouraged: 'Zoo', preferred: 'Park' }]);
-    const result = editPreferredTerminology(config, { add: ' Expenditure ', preferred: ' Investment ' }, tempDir());
+    const result = editPreferredTerminology(
+      config,
+      { upsert: { discouraged: ' Expenditure ', preferred: ' Investment ' } },
+      tempDir(),
+    );
     expect(result.action).toBe('added');
     expect(result.changedRule).toEqual({ discouraged: 'Expenditure', preferred: 'Investment' });
     expect(stored()).toEqual([
@@ -25,7 +29,11 @@ describe('editPreferredTerminology', () => {
 
   it('upserts case insensitively and drops an old reason when omitted', () => {
     seed([{ discouraged: 'Email', preferred: 'Mail', reason: 'old' }]);
-    const result = editPreferredTerminology(config, { add: 'email', preferred: 'electronic mail' }, tempDir());
+    const result = editPreferredTerminology(
+      config,
+      { upsert: { discouraged: 'email', preferred: 'electronic mail' } },
+      tempDir(),
+    );
     expect(result.action).toBe('updated');
     expect(stored()).toEqual([{ discouraged: 'email', preferred: 'electronic mail' }]);
   });
@@ -51,7 +59,7 @@ describe('editPreferredTerminology', () => {
     const before = readFileSync(filePath(), 'utf8');
     let thrown: unknown;
     try {
-      editPreferredTerminology(config, { add: 'Expenditure', preferred: '' }, tempDir());
+      editPreferredTerminology(config, { upsert: { discouraged: 'Expenditure', preferred: '' } }, tempDir());
     } catch (error) {
       thrown = error;
     }
@@ -83,7 +91,7 @@ describe('editPreferredTerminology', () => {
 
   it('rejects a non-array replacement before creating a file', () => {
     expect(() => editPreferredTerminology(config, { set: { discouraged: 'Email' } } as never, tempDir())).toThrow(
-      'preferredTerminology must be an array of rules',
+      'Preferred terminology replacement must be an array of rules',
     );
     expect(existsSync(filePath())).toBe(false);
   });

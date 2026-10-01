@@ -1,18 +1,19 @@
+import { resolve } from 'node:path';
 import { BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { resolve } from 'node:path';
-import { CollectionsController } from './collections.controller';
-import { ConfigService } from '../config/config.service';
-import { CollectionIndex } from '../cache/collection-index.service';
-import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import * as core from '@simoncodes-ca/core';
 import {
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
+  ProtectedTermsFileNotSetError,
 } from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
+import { CollectionIndex } from '../cache/collection-index.service';
+import { ConfigService } from '../config/config.service';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
+import { CollectionsController } from './collections.controller';
 
 // Mock the core writes; keep the real config resolution and mutation helpers
 jest.mock('@simoncodes-ca/core', () => {
@@ -148,6 +149,26 @@ describe('CollectionsController', () => {
   });
 
   describe('createCollection', () => {
+    it('answers a protected terms list without a file pointer with flag-free text', async () => {
+      (core.addCollection as jest.Mock).mockImplementation(() => {
+        throw new ProtectedTermsFileNotSetError('new-collection');
+      });
+      const error = await collectionsController
+        .createCollection({
+          name: 'new-collection',
+          collection: { translationsFolder: './translations/new', protectedTerms: ['iPhone'] },
+        })
+        .catch((caught: unknown) => caught);
+      const response = toHttpException(error);
+      expect(error).toBeInstanceOf(ProtectedTermsFileNotSetError);
+      expect(response.getStatus()).toBe(400);
+      expect(response.getResponse()).toEqual({
+        message: 'Collection "new-collection" has no protected terms file. Set a file path first.',
+        error: 'Bad Request',
+        statusCode: 400,
+      });
+    });
+
     it('should successfully create a collection', async () => {
       const addCollection = core.addCollection as jest.Mock;
       addCollection.mockReturnValue({

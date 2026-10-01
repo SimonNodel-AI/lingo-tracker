@@ -164,7 +164,7 @@ describe('protected terms edits', () => {
       editProtectedTerms(
         {},
         readProtectedTermsTarget(readConfig(), {}, tempDir()),
-        { set: ' C++, C++ ' },
+        { set: [' C++', ' C++ '] },
         { cwd: tempDir() },
       ).terms,
     ).toEqual(['C++']);

@@ -38,7 +38,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `init` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales`, `--setup-bundle`, `--bundle-dist`, `--bundle-name`, `--token-casing`, `--type-dist-file`, `--enable-auto-translation`, `--translation-provider`, `--translation-api-key-env` | Calls core `initConfig()` to validate and write `.lingo-tracker.json`; keeps the same default JSON bytes |
 | `add-collection` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales` | `addCollection()` |
 | `delete-collection` | `--collection-name`, `--yes` | `deleteCollectionByName()`. Interactive, it first asks `Delete collection "x" (translations folder: …)?` unless `--yes`; a decline prints `❌ Delete collection cancelled.` and exits 0. Non-interactive, it does not ask. The registration and explicit bundle references are removed in one config write; the files stay. If a bundle would become empty, it prints the conflict and exits 1 |
-| `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | `editCollectionTags()`; core checks flag combinations and normalizes tags. This CLI command does not rename collections; core and API renames update explicit bundle references |
+| `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | The command checks flag combinations and splits `--set-tags`; `editCollectionTags()` normalizes the array edit. This CLI command does not rename collections; core and API renames update explicit bundle references |
 | `add-locale` | `--collection`, `--locale` | `addLocaleToCollection()` |
 | `remove-locale` | `--collection`, `--locale` | `removeLocaleFromCollection()` |
 | `add-resource` | `--collection`, `--key`, `--value`, `--comment`, `--tags`, `--target-folder`, `--translations <json>`, `--override` | `addResource()` (locales without a `--translations` value are seeded by core: [locale seeding](glossary.md#locale-seeding)). An existing key exits 1 with `❌ Resource already exists: <key>` in non-interactive mode; `--override` replaces it, while interactive mode asks for confirmation. `--translations` is parsed inside the command; malformed JSON, or anything but an array of `{ locale, value, status? }`, exits 1 with `❌ Invalid --translations …` |
@@ -53,20 +53,20 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 | `validate` | `--allow-translated`, `--skip-locales`, `--skip-icu`, `--skip-placeholders`, `--require-portable-plurals` | Command Runner opens every collection → `runValidate()` ([Validate Run](glossary.md#validate-run)) |
 | `find-similar` | `--collection`, `--value`, `--max-results` | `readCollection()` → `searchResources(…, { mode: 'similar-value', limit })` ([Resource Search](glossary.md#resource-search)) |
 | `glossary` | `--text`, `--input`, `--output`, `--stdout`, `--collection`, `--locales`, `--include-all`, `--extractor` | `buildGlossary()` ([Term Glossary](glossary.md#term-glossary)) |
-| `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | `updateProjectTerms()` for the pointer change, read view and edit |
-| `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | `updateProjectTerms()` for display, case-insensitive upsert/remove, validation and write |
+| `protected-terms` | `--collection`, `--add` (repeatable), `--remove` (repeatable), `--set`, `--list`, `--file` | Checks flags, splits `--set`, then calls `planProjectTermsUpdate()` for the view and edit |
+| `preferred-terminology` | `--list`, `--add <discouraged>`, `--preferred`, `--reason`, `--remove <discouraged>` | Checks flags, builds a rule edit, then calls `planProjectTermsUpdate()` for display, validation and write |
 | `install-skill` | `--collection <spec>` (repeatable), `--dir`, `--token-casing` | No core call — generates a `.claude/` skill file by template |
 
 `add-resource` and `edit-resource` print the `terminology` core returned (one `⚠️  Preferred terminology: consider "X" instead of "Y"` per finding, the rule's reason on the next line, and one warning per rule-file problem) through `printTerminologyFindings` in `utils/terminology-findings.ts`; `edit-resource` only when the edit supplied a base value. They also print, as warnings, a named protected-terms file that does not exist when auto-translation ran (core adds it to `terminology.problems`); `translate-locale` prints it with the run's other `warnings`. `import` and `export` pass no terms: the run reads the collection's [Project Terms](glossary.md#project-terms) and reports a term-file problem in its `warnings` (deduped), which the summary prints; `export` with protect notes on (the default) reports a broken protected-terms file in `errors` instead and exits 1, while `--no-protect-notes` reads no terms file and cannot fail on one. The [Validate Run](glossary.md#validate-run) reads the Project Terms of every collection and returns each problem once in `warnings`; the command prints them to stderr: a missing named file or a broken protected-terms file is only a warning (validate checks translations, not protected terms), and a broken rule file becomes a terminology validation failure. Core also resolves target and skipped locales and returns the summary or a failure with the no-target-locales hint. The command opens collections, prints the result, and sets the exit code. `protected-terms` prints a named terms file that does not exist as a warning (on `--list` and on every write).
 
 ### `protected-terms` scoping
 
-The command passes `--file` to core's `updateProjectTerms()` before it writes any term. `--file x.json --add Foo` therefore names the new file first, then writes into it. Core restores the pointer and the files it changed if the update fails. The command prints the pointer line only after core reads the new view. If a later step fails, it warns that the printed pointer change was reverted.
+The command includes `--file` in the structured edit passed to `planProjectTermsUpdate()`. `--file x.json --add Foo` therefore names the new file first during `apply()`, then writes into it. Core restores the pointer and the files it changed if the update fails. The command prints the pointer line after a successful preview. If apply later fails, it warns that the printed pointer change was reverted.
 
-Both scopes read through `updateProjectTerms()`. Its `beforeWrite` callback lets the command print warnings and lists before the file write. Core validates flag combinations and uses the shared list merge with protected-term normalization.
+Both scopes read through the plan's `view`. The command prints warnings and lists, then calls `apply()`; it raises the original flag usage messages before planning. Core validates the structured edit and uses the shared list merge with protected-term normalization.
 
-- **Global** — `updateProjectTerms()` reads the configured protected-terms file, or `.lingo-tracker-protected-terms.json` beside the config when no global pointer is set.
-- **Collection** — `updateProjectTerms()` reads the collection file when configured and combines those terms with the global list. A collection with no file contributes an empty list.
+- **Global** — the plan reads the configured protected-terms file, or `.lingo-tracker-protected-terms.json` beside the config when no global pointer is set.
+- **Collection** — the plan reads the collection file when configured and combines those terms with the global list. A collection with no file contributes an empty list.
 
 `--list` on a collection prints three lists: the global terms, the collection's terms, and `effectiveProtectedTerms()` of the two. It names the resolved file behind each list. Paths inside the project root print as relative paths.
 
@@ -337,7 +337,7 @@ The runner loads the config before anything else, unless the command sets `confi
 - **Parse or read error** — `❌ Failed to parse configuration file: <reason>` (the JSON parser's message, or the I/O error), exit 1.
 - **Context** — `ctx.config` and `ctx.configPath` (absolute path of `.lingo-tracker.json`).
 
-The command uses the config loaded by the runner. Core reloads it after `--file` changes a pointer, before listing or editing terms.
+The command uses the config loaded by the runner. Core uses that config for the preview and the paths used during apply.
 
 ### Collection Resolution
 

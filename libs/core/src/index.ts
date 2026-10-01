@@ -71,6 +71,7 @@ export {
   loadPreferredTerminology,
   openCollection,
   PreferredTerminologyValidationError,
+  planProjectTermsUpdate,
   type ResolvedProtectedTerms,
   resolveProtectedTermsForConfig,
   type StoredProtectedTerms,
@@ -80,6 +81,7 @@ export {
 } from './lib/config';
 export type {
   ProjectTermsUpdate,
+  ProjectTermsUpdatePlan,
   ProjectTermsUpdateResult,
   ProjectTermsUpdateView,
 } from './lib/config/update-project-terms';

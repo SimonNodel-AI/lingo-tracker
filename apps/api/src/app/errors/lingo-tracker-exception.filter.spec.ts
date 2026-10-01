@@ -207,10 +207,10 @@ describe('toHttpException', () => {
       { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new InvalidProjectTermsEditError('--add and --remove cannot be combined; run them separately'),
+      new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
       400,
       {
-        message: '--add and --remove cannot be combined; run them separately',
+        message: 'Only one preferred terminology edit can be applied at a time',
         error: 'Bad Request',
         statusCode: 400,
       },
@@ -219,7 +219,7 @@ describe('toHttpException', () => {
       new ProtectedTermsFileNotSetError('app'),
       400,
       {
-        message: 'Collection "app" has no protected terms file. Set one first with --file <path>.',
+        message: 'Collection "app" has no protected terms file. Set a file path first.',
         error: 'Bad Request',
         statusCode: 400,
       },
