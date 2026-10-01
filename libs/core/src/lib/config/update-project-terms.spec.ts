@@ -321,17 +321,46 @@ describe('updateProjectTerms', () => {
     }
     expect(thrown).toBeInstanceOf(InvalidProjectTermsEditError);
     expect((thrown as InvalidProjectTermsEditError).kind).toBe('invalid');
+    expect((thrown as InvalidProjectTermsEditError).problem).toBe('preferred-replacement-shape');
     expect(readFileSync(preferredFile, 'utf8')).toBe(before);
   });
 
+  it('identifies malformed project-term edit fields before writing', () => {
+    const cases: readonly [unknown, InvalidProjectTermsEditError['problem']][] = [
+      [{ protectedTerms: { list: true, file: 42 } }, 'protected-file-path'],
+      [{ preferredTerminology: { remove: 42 } }, 'preferred-remove-shape'],
+      [{ preferredTerminology: { upsert: { discouraged: 'A' } } }, 'preferred-upsert-shape'],
+      [{ preferredTerminology: { upsert: { discouraged: 'A', preferred: 42 } } }, 'preferred-upsert-shape'],
+    ];
+    const protectedBefore = readFileSync(protectedFile, 'utf8');
+    const preferredBefore = readFileSync(preferredFile, 'utf8');
+    for (const [input, problem] of cases) {
+      let thrown: unknown;
+      try {
+        updateProjectTerms(config, input as ProjectTermsUpdate, { cwd });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(InvalidProjectTermsEditError);
+      expect((thrown as InvalidProjectTermsEditError).problem).toBe(problem);
+      if (problem === 'preferred-upsert-shape') {
+        expect((thrown as InvalidProjectTermsEditError).message).toBe(
+          'A preferred terminology upsert needs a rule with string terms',
+        );
+      }
+      expect(readFileSync(protectedFile, 'utf8')).toBe(protectedBefore);
+      expect(readFileSync(preferredFile, 'utf8')).toBe(preferredBefore);
+    }
+  });
+
   it.each([
-    [{ protectedTerms: { edit: {} } }],
-    [{ protectedTerms: { edit: { set: ['A'], add: ['B'] } } }],
-    [{ preferredTerminology: {} }],
-    [{ preferredTerminology: { upsert: { discouraged: 'A', preferred: 'B' }, remove: 'B' } }],
-    [{ preferredTerminology: { set: [], remove: 'B' } }],
-    [{ protectedTerms: { replace: ['A'], edit: { add: ['B'] } } }],
-  ] as const)('rejects an invalid edit combination before writing: %j', (update) => {
+    [{ protectedTerms: { edit: {} } }, 'protected-missing'],
+    [{ protectedTerms: { edit: { set: ['A'], add: ['B'] } } }, 'protected-conflict'],
+    [{ preferredTerminology: {} }, 'preferred-missing'],
+    [{ preferredTerminology: { upsert: { discouraged: 'A', preferred: 'B' }, remove: 'B' } }, 'preferred-conflict'],
+    [{ preferredTerminology: { set: [], remove: 'B' } }, 'preferred-conflict'],
+    [{ protectedTerms: { replace: ['A'], edit: { add: ['B'] } } }, 'protected-replacement-conflict'],
+  ] as const)('rejects an invalid edit combination before writing: %j', (update, problem) => {
     const before = readFileSync(protectedFile, 'utf8');
     let thrown: unknown;
     try {
@@ -341,6 +370,7 @@ describe('updateProjectTerms', () => {
     }
     expect(thrown).toBeInstanceOf(InvalidProjectTermsEditError);
     expect((thrown as InvalidProjectTermsEditError).kind).toBe('invalid');
+    expect((thrown as InvalidProjectTermsEditError).problem).toBe(problem);
     expect(readFileSync(protectedFile, 'utf8')).toBe(before);
   });
 });

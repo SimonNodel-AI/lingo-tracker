@@ -1,4 +1,9 @@
-import { createConfigFileOperations, editCollectionTags } from '@simoncodes-ca/core';
+import {
+  type CollectionTagEditProblem,
+  createConfigFileOperations,
+  editCollectionTags,
+  InvalidCollectionError,
+} from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -8,31 +13,34 @@ export interface EditCollectionOptions {
   setTags?: string;
 }
 
+const tagEditWording: Record<CollectionTagEditProblem, string> = {
+  'tag-conflict': '--set-tags cannot be combined with --add-tag or --remove-tag',
+  'tag-missing': 'Provide at least one of --add-tag, --remove-tag, or --set-tags',
+};
+
 const run = defineCommand<EditCollectionOptions & { name: string }>()({
   name: 'Edit collection',
   // Edits the collection's registration (tags), not its resources, so a read-only collection is allowed.
   collection: 'read',
   collectionOption: 'name',
   run: async ({ collection, cwd, answers }) => {
-    if (answers.setTags !== undefined && ((answers.addTag ?? []).length > 0 || (answers.removeTag ?? []).length > 0)) {
-      throw new Error('--set-tags cannot be combined with --add-tag or --remove-tag');
+    let currentTags: string[];
+    try {
+      currentTags = editCollectionTags(
+        collection,
+        createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
+        {
+          add: answers.addTag,
+          remove: answers.removeTag,
+          set: answers.setTags?.split(','),
+        },
+      );
+    } catch (error) {
+      if (error instanceof InvalidCollectionError && error.problem !== undefined) {
+        throw new Error(tagEditWording[error.problem]);
+      }
+      throw error;
     }
-    if (
-      answers.setTags === undefined &&
-      (answers.addTag ?? []).length === 0 &&
-      (answers.removeTag ?? []).length === 0
-    ) {
-      throw new Error('Provide at least one of --add-tag, --remove-tag, or --set-tags');
-    }
-    const currentTags = editCollectionTags(
-      collection,
-      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
-      {
-        add: answers.addTag,
-        remove: answers.removeTag,
-        set: answers.setTags?.split(','),
-      },
-    );
 
     if (currentTags.length === 0) {
       ConsoleFormatter.success(`Collection "${collection.name}" tags cleared`);

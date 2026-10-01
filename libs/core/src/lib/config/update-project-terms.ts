@@ -76,20 +76,29 @@ function validateProjectTermsUpdate(update: ProjectTermsUpdate): ValidatedEdit {
 
   if (protectedRequest !== undefined) {
     if (protectedRequest.file !== undefined && typeof protectedRequest.file !== 'string') {
-      throw new InvalidProjectTermsEditError('Protected terms file path must be a string');
+      throw new InvalidProjectTermsEditError('Protected terms file path must be a string', 'protected-file-path');
     }
     if (protectedProblem === 'conflict') {
-      throw new InvalidProjectTermsEditError('A replacement list cannot be combined with additions or removals');
+      throw new InvalidProjectTermsEditError(
+        'A replacement list cannot be combined with additions or removals',
+        'protected-conflict',
+      );
     }
     if (!replacing && protectedProblem === 'missing' && !protectedRequest.list && protectedRequest.file === undefined) {
-      throw new InvalidProjectTermsEditError('A protected terms update needs a list edit, list view, or file path');
+      throw new InvalidProjectTermsEditError(
+        'A protected terms update needs a list edit, list view, or file path',
+        'protected-missing',
+      );
     }
     if (replacing) assertProtectedTerms(protectedRequest.replace);
     if (protectedEdit?.add !== undefined) assertProtectedTerms(protectedEdit.add);
     if (protectedEdit?.remove !== undefined) assertProtectedTerms(protectedEdit.remove);
     if (protectedEdit?.set !== undefined) assertProtectedTerms(protectedEdit.set);
     if (replacing && protectedProblem !== 'missing') {
-      throw new InvalidProjectTermsEditError('A replacement list cannot be combined with another list edit');
+      throw new InvalidProjectTermsEditError(
+        'A replacement list cannot be combined with another list edit',
+        'protected-replacement-conflict',
+      );
     }
   }
 
@@ -98,11 +107,14 @@ function validateProjectTermsUpdate(update: ProjectTermsUpdate): ValidatedEdit {
     preferredRequest?.upsert !== undefined ||
     preferredRequest?.remove !== undefined;
   if (preferredRequest !== undefined) {
-    if (preferredRequest.remove !== undefined && typeof preferredRequest.remove !== 'string') {
-      throw new InvalidProjectTermsEditError('A rule to remove must name a discouraged term');
-    }
     if (!hasPreferredEdit && !preferredRequest.list) {
-      throw new InvalidProjectTermsEditError('A preferred terminology update needs a rule edit or list view');
+      throw new InvalidProjectTermsEditError(
+        'A preferred terminology update needs a rule edit or list view',
+        'preferred-missing',
+      );
+    }
+    if (preferredRequest.remove !== undefined && typeof preferredRequest.remove !== 'string') {
+      throw new InvalidProjectTermsEditError('A rule to remove must name a discouraged term', 'preferred-remove-shape');
     }
     if (
       Number(preferredRequest.set !== undefined) +
@@ -110,11 +122,17 @@ function validateProjectTermsUpdate(update: ProjectTermsUpdate): ValidatedEdit {
         Number(preferredRequest.remove !== undefined) >
       1
     ) {
-      throw new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time');
+      throw new InvalidProjectTermsEditError(
+        'Only one preferred terminology edit can be applied at a time',
+        'preferred-conflict',
+      );
     }
     if (preferredRequest.set !== undefined) {
       if (!Array.isArray(preferredRequest.set)) {
-        throw new InvalidProjectTermsEditError('Preferred terminology replacement must be an array of rules');
+        throw new InvalidProjectTermsEditError(
+          'Preferred terminology replacement must be an array of rules',
+          'preferred-replacement-shape',
+        );
       }
       const errors = validatePreferredTermRules(preferredRequest.set);
       if (errors.length > 0) throw new PreferredTerminologyValidationError(errors, preferredRequest.set);

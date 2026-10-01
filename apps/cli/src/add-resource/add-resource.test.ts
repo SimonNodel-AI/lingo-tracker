@@ -205,7 +205,33 @@ describe('addResourceCommand', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('should exit 1 when --translations is valid JSON of the wrong shape', async () => {
+  it('prints the typed core error for an invalid translation status', async () => {
+    vi.mocked(core.addResource).mockRejectedValueOnce(new core.InvalidTranslationStatusError('done'));
+    vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
+      locales: ['en', 'fr'],
+      collections: { TestCollection: { translationsFolder: 'translations' } },
+    });
+
+    await addResourceCommand({
+      collection: 'TestCollection',
+      key: 'a.b',
+      value: 'OK',
+      translations: '[{"locale":"fr","value":"Oui","status":"done"}]',
+    });
+
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ Invalid translation status "done". Valid statuses: new, translated, stale, verified',
+    );
+    expect(core.addResource).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ translations: [{ locale: 'fr', value: 'Oui', status: 'done' }] }),
+      { onExisting: 'fail' },
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('rejects a translation missing its value before calling core', async () => {
     vi.mocked(core.loadConfig).mockReturnValue({
       ...configDefaults,
       collections: { TestCollection: { translationsFolder: 'translations' } },
@@ -215,7 +241,7 @@ describe('addResourceCommand', () => {
       collection: 'TestCollection',
       key: 'a.b',
       value: 'OK',
-      translations: '[{"locale":"fr","value":"Oui","status":"done"}]',
+      translations: '[{"locale":"fr","status":"verified"}]',
     });
 
     expect(console.error).toHaveBeenCalledWith(

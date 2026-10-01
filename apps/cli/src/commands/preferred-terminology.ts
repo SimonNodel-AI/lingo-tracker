@@ -1,8 +1,10 @@
 import {
   displayTermPath,
+  InvalidProjectTermsEditError,
   type LingoTrackerConfig,
   type PreferredTerminologyEditResult,
   PreferredTerminologyValidationError,
+  type ProjectTermsEditProblem,
   planProjectTermsUpdate,
 } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
@@ -21,6 +23,18 @@ export interface PreferredTerminologyOptions {
   remove?: string;
 }
 
+const preferredEditWording: Record<ProjectTermsEditProblem, string | undefined> = {
+  'preferred-missing': 'Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>',
+  'preferred-conflict': '--add and --remove cannot be combined; run them separately',
+  'protected-conflict': undefined,
+  'protected-missing': undefined,
+  'protected-file-path': undefined,
+  'protected-replacement-conflict': undefined,
+  'preferred-remove-shape': undefined,
+  'preferred-replacement-shape': undefined,
+  'preferred-upsert-shape': undefined,
+};
+
 /** `Expenditure → Investment — reason`, without a reason suffix when there is none. */
 function formatRule(rule: PreferredTermRule): string {
   const base = `${rule.discouraged} → ${rule.preferred}`;
@@ -36,13 +50,15 @@ export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOpt
 /** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
 function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
   const hasList = options.list === true;
-  if (options.add === undefined && options.remove === undefined && !hasList) {
-    throw new Error('Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>');
-  }
-  if (options.add !== undefined && options.remove !== undefined) {
+  // A partial CLI rule cannot be represented as a core upsert. Keep only these flag-shape checks here.
+  if (options.add !== undefined && options.remove !== undefined && options.preferred === undefined) {
     throw new Error('--add and --remove cannot be combined; run them separately');
   }
-  if (options.add === undefined && (options.preferred !== undefined || options.reason !== undefined)) {
+  if (
+    options.add === undefined &&
+    (options.preferred !== undefined || options.reason !== undefined) &&
+    (options.remove !== undefined || hasList)
+  ) {
     throw new Error('--preferred and --reason can only be used with --add');
   }
   if (options.add !== undefined && options.preferred === undefined) {
@@ -79,6 +95,10 @@ function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, c
     }
     result = plan.apply().preferredTerminologyResult;
   } catch (error) {
+    if (error instanceof InvalidProjectTermsEditError) {
+      const message = preferredEditWording[error.problem];
+      if (message !== undefined) throw new Error(message);
+    }
     if (error instanceof PreferredTerminologyValidationError) {
       ConsoleFormatter.error(
         'Preferred terminology not saved:',

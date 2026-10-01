@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
-import { CoreOperationError } from '../errors/lingo-tracker-error';
+import { CoreOperationError, InvalidTranslationStatusError } from '../errors/lingo-tracker-error';
 import { openResourceFolder } from '../resource/resource-folder';
 import * as jsonExporter from './export-to-json';
 import { exportTargetLocales, runExport } from './run-export';
@@ -85,6 +85,21 @@ describe('runExport', () => {
     await expect(
       runExport([open('common')], { format: 'json', outputDirectory, basePropertyName: '' }),
     ).rejects.toThrow('basePropertyName cannot be empty');
+  });
+
+  it('rejects invalid and empty status filters before starting an export', async () => {
+    const onStart = vi.fn();
+    for (const status of [['new', 'verifed'], []]) {
+      await expect(
+        runExport([open('common')], {
+          format: 'json',
+          outputDirectory,
+          status,
+          onStart,
+        }),
+      ).rejects.toBeInstanceOf(InvalidTranslationStatusError);
+    }
+    expect(onStart).not.toHaveBeenCalled();
   });
 
   it('rejects an output path whose parent is a file', async () => {

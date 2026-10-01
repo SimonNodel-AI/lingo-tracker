@@ -217,7 +217,10 @@ describe('toHttpException', () => {
       { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
+      new InvalidProjectTermsEditError(
+        'Only one preferred terminology edit can be applied at a time',
+        'preferred-conflict',
+      ),
       400,
       {
         message: 'Only one preferred terminology edit can be applied at a time',

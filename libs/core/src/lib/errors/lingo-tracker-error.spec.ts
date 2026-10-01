@@ -104,7 +104,10 @@ describe('LingoTrackerError subclasses', () => {
       message: 'translationsFolder is required',
     },
     {
-      error: new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
+      error: new InvalidProjectTermsEditError(
+        'Only one preferred terminology edit can be applied at a time',
+        'preferred-conflict',
+      ),
       name: 'InvalidProjectTermsEditError',
       code: 'INVALID_PROJECT_TERMS_EDIT',
       message: 'Only one preferred terminology edit can be applied at a time',
