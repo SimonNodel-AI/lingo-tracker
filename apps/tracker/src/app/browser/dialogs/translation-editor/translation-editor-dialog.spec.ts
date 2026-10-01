@@ -14,6 +14,7 @@ import type {
   SearchResultDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
+import { isNeedsWorkStatus } from '@simoncodes-ca/domain';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
@@ -70,7 +71,7 @@ describe('TranslationEditorDialog', () => {
         locale,
         value,
         status,
-        needsWork: status === undefined || status === 'new' || status === 'stale',
+        needsWork: status === undefined || isNeedsWorkStatus(status),
         sameAsBase: (value?.trim() ?? '').length > 0 && value?.trim() === baseValue.trim(),
       })),
       tags: [],

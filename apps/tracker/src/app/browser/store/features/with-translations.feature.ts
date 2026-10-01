@@ -2,10 +2,14 @@ import { computed, type Signal } from '@angular/core';
 import { signalStoreFeature, withComputed, type } from '@ngrx/signals';
 import { sortTranslations } from '../../translations/utils/sort-translations';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
-import { countByStatus, STATUS_PRECEDENCE, summaryTarget, type TranslationStatus } from '@simoncodes-ca/domain';
-import { displayStatus } from '../../../shared/translation-status/display-status';
-
-const NEEDS_WORK_STATUSES: readonly TranslationStatus[] = ['new', 'stale'];
+import {
+  countByStatus,
+  displayStatus,
+  NEEDS_WORK_STATUSES,
+  STATUS_PRECEDENCE,
+  summaryTarget,
+  type TranslationStatus,
+} from '@simoncodes-ca/domain';
 
 /**
  * A resource is in scope for a status filter when any of the locales being

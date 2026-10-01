@@ -1,6 +1,5 @@
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import { countByStatus, summaryTarget } from '@simoncodes-ca/domain';
-import { displayStatus } from '../../../shared/translation-status/display-status';
+import { countByStatus, displayStatus, summaryTarget } from '@simoncodes-ca/domain';
 import { STATUS_DISPLAY_ORDER } from '../../../shared/translation-status/translation-status-presentation';
 
 export type SortField = 'key' | 'status';

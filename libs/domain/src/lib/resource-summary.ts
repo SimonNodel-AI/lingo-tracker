@@ -1,7 +1,7 @@
 import type { LocaleMetadata } from './locale-metadata';
 import { splitResolvedKey } from './resource-key';
 import { isUntranslatedCopy, needsTranslation } from './staleness';
-import type { TranslationStatus } from './translation-status';
+import { DEFAULT_MISSING_METADATA_STATUS, type TranslationStatus } from './translation-status';
 
 /**
  * Resource Summary — one resource entry as every reader (API, Tracker) sees it:
@@ -101,6 +101,11 @@ export function buildResourceSummary(
 /** The summary's row for `locale`; `undefined` for the base locale or a locale the collection does not target. */
 export function summaryTarget(summary: ResourceSummary, locale: string): ResourceSummaryTarget | undefined {
   return summary.targets.find((target) => target.locale === locale);
+}
+
+/** Status used for showing, filtering, counting and sorting a summary target; nothing is stored. */
+export function displayStatus(target: ResourceSummaryTarget | undefined): TranslationStatus | undefined {
+  return target?.status ?? (target?.needsWork ? DEFAULT_MISSING_METADATA_STATUS : undefined);
 }
 
 function isSameAsBase(value: string | undefined, baseValue: string): boolean {

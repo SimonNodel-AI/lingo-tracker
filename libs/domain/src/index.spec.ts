@@ -7,7 +7,9 @@ describe('domain public surface', () => {
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(domain).sort()).toEqual([
       'DEFAULT_IMPORT_STRATEGY',
+      'DEFAULT_MISSING_METADATA_STATUS',
       'JS_IDENTIFIER_PATTERN',
+      'NEEDS_WORK_STATUSES',
       'STATUS_PRECEDENCE',
       'TRANSLATION_STATUSES',
       'applyBaseChange',
@@ -23,6 +25,7 @@ describe('domain public surface', () => {
       'countByStatus',
       'detectDuplicateKeys',
       'detectHierarchicalConflicts',
+      'displayStatus',
       'effectiveProtectedTerms',
       'effectiveTags',
       'escapeRegExp',
@@ -45,6 +48,8 @@ describe('domain public surface', () => {
       'isIcuLocaleSupported',
       'isJavaScriptReservedWord',
       'isKeyTooLong',
+      'isNeedsWorkStatus',
+      'isNeedsWorkStatusSelection',
       'isTranslationStatus',
       'isTypeScriptFile',
       'isUnderNodeModules',
