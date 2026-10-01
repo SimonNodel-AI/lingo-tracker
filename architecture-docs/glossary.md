@@ -611,6 +611,16 @@ The API parameter seam for resource, folder, and locale routes. `@RouteCollectio
 
 Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](frontend.md#route-structure)
 
+---
+
+### Run Outcome
+
+Core's `RunOutcome` is `succeeded` or `failed` on each completed export, import, translate-locale, validate, and bundle run. `failed` means the run met its failure condition, even if some files or resources were produced; the CLI exits 1. A warning or intentional skip alone does not fail a run. Export ignores errors and hierarchical conflicts in a dry run, while import counts failed resources and errors even in a dry run. Preconditions that throw have no run outcome. Bundle generation also gives each selected bundle an outcome; a thrown bundle error or failed type generation fails the whole run.
+
+Explained in context: [`core-library.md`](core-library.md), [`cli.md`](cli.md#errors-and-exit-codes)
+
+---
+
 ### Run Summary Writer
 
 The CLI utility `writeRunSummary(kind, text)` in `apps/cli/src/utils/write-run-summary.ts` chooses a temporary Markdown summary path and writes the import or export run's text there. Core supplies the text through import's `summary()` or export's `summary`; the CLI owns the file path and the announcement printed after the write.

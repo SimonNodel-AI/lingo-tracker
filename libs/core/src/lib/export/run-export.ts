@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
+import type { RunOutcome } from '../run-outcome';
 import { filterResources, loadResources, validateBasePropertyName, validateOutputDirectory } from './export-common';
 import { generateExportSummary } from './export-summary';
 import { exportToJson } from './export-to-json';
@@ -34,6 +35,7 @@ export interface ExportLocaleResult {
 
 /** The totals over every locale, the outcome per locale, and the Markdown summary of the run. */
 export interface ExportRunResult extends ExportResult {
+  readonly outcome: RunOutcome;
   /** One entry per target locale, in export order. */
   localeResults: ExportLocaleResult[];
   summary: string;
@@ -173,6 +175,7 @@ export async function runExport(
   totals.errors = [...new Set(totals.errors)];
   return {
     ...totals,
+    outcome: !options.dryRun && totals.errors.length + totals.hierarchicalConflicts.length > 0 ? 'failed' : 'succeeded',
     localeResults,
     summary: generateExportSummary(totals, runOptions),
   };

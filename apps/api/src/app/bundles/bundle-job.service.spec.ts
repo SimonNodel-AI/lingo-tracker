@@ -33,6 +33,7 @@ const config = {
 };
 
 const makeResult = (overrides: Partial<GenerateBundleResult> = {}): GenerateBundleResult => ({
+  outcome: overrides.typeOutcome?.status === 'failed' ? 'failed' : 'succeeded',
   bundleKey: 'main',
   filesGenerated: 2,
   writtenFiles: ['dist/i18n/en.json', 'dist/i18n/fr.json', 'dist/i18n-types/main.ts'],
@@ -148,10 +149,11 @@ describe('BundleJobService', () => {
       }),
     );
 
-    service.startJob(makeParams());
+    const jobId = service.startJob(makeParams());
     await flush();
 
     expect(logger.warn).toHaveBeenCalledWith(warning);
+    expect(service.getJob(jobId)?.status).toBe('completed');
   });
 
   it('logs the prepared legacy type warning when generation fails', async () => {

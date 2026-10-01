@@ -1,5 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
+import type { RunOutcome } from '../run-outcome';
 import { generateValidationSummary } from './generate-validation-summary';
 import type { ResourceValidationResult, ValidationOptions } from './types';
 import { validateResources } from './validate-resources';
@@ -21,12 +22,14 @@ export interface ValidateRunOptions {
 export type ValidateRunResult =
   | {
       readonly status: 'failed';
+      readonly outcome: RunOutcome;
       readonly error: string;
       readonly details: readonly string[];
       readonly warnings: readonly string[];
     }
   | {
       readonly status: 'complete';
+      readonly outcome: RunOutcome;
       readonly validation: ResourceValidationResult;
       readonly summary: string;
       readonly warnings: readonly string[];
@@ -42,7 +45,13 @@ export type ValidateRunResult =
  */
 export function runValidate(collections: readonly Collection[], options: ValidateRunOptions = {}): ValidateRunResult {
   if (collections.length === 0) {
-    return { status: 'failed', error: 'No collections found in configuration.', details: [], warnings: [] };
+    return {
+      status: 'failed',
+      outcome: 'failed',
+      error: 'No collections found in configuration.',
+      details: [],
+      warnings: [],
+    };
   }
 
   // Each collection is validated against its own target locales: its locales without its base locale.
@@ -50,6 +59,7 @@ export function runValidate(collections: readonly Collection[], options: Validat
   if (targetLocales.length === 0) {
     return {
       status: 'failed',
+      outcome: 'failed',
       error: 'No target locales found in configuration.',
       details: ["Target locales are each collection's locales except its base locale."],
       warnings: [],
@@ -72,7 +82,13 @@ export function runValidate(collections: readonly Collection[], options: Validat
   }
 
   if (targetLocales.every((locale) => effectiveSkipped.includes(locale))) {
-    return { status: 'failed', error: 'All target locales were skipped; nothing to validate.', details: [], warnings };
+    return {
+      status: 'failed',
+      outcome: 'failed',
+      error: 'All target locales were skipped; nothing to validate.',
+      details: [],
+      warnings,
+    };
   }
 
   // Read every collection's Project Terms. Collections share the global files, so report each
@@ -111,6 +127,7 @@ export function runValidate(collections: readonly Collection[], options: Validat
   const validation = validateResources(collections, validationOptions);
   return {
     status: 'complete',
+    outcome: validation.passed ? 'succeeded' : 'failed',
     validation,
     summary: generateValidationSummary(validation, validationOptions),
     warnings,

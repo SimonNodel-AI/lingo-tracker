@@ -20,6 +20,7 @@ import { readCollection } from '../resource/read-collection';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
 import { reindexMutation, type ResourceMutation } from '../resource/resource-mutation';
+import type { RunOutcome } from '../run-outcome';
 import {
   assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
@@ -57,6 +58,7 @@ export interface TranslateLocaleProgress extends TranslateLocaleCounts {
 }
 
 export interface TranslateLocaleResult extends TranslateLocaleCounts {
+  readonly outcome: RunOutcome;
   readonly failures: ReadonlyArray<{ key: string; error: string }>;
   readonly skippedKeys: string[];
   /** One line per folder the Collection Reader could not read (its resources were not translated). */
@@ -183,6 +185,7 @@ export async function translateLocale(
 
   if (resourcesToTranslate.length === 0) {
     return {
+      outcome: 'succeeded',
       totalResources: 0,
       translatedCount: 0,
       failedCount: 0,
@@ -282,6 +285,7 @@ export async function translateLocale(
   }
 
   return {
+    outcome: failedCount > 0 ? 'failed' : 'succeeded',
     totalResources,
     translatedCount,
     failedCount,

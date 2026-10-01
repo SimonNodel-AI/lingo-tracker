@@ -1,5 +1,6 @@
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { MultipleBundleConstantNameError } from '../errors';
+import type { RunOutcome } from '../run-outcome';
 import { type GenerateBundleParams, type GenerateBundleResult, generatePreparedBundle } from './generate-bundle';
 import { type PreparedBundleRun, prepareBundleRun } from './prepare-bundle-run';
 
@@ -21,10 +22,16 @@ export interface GenerateBundlesOptions {
 }
 
 export type BundleRunOutcome =
-  | { readonly name: string; readonly result: GenerateBundleResult; readonly error?: never }
-  | { readonly name: string; readonly error: unknown; readonly result?: never };
+  | {
+      readonly name: string;
+      readonly outcome: RunOutcome;
+      readonly result: GenerateBundleResult;
+      readonly error?: never;
+    }
+  | { readonly name: string; readonly outcome: 'failed'; readonly error: unknown; readonly result?: never };
 
 export interface GenerateBundlesResult {
+  readonly outcome: RunOutcome;
   readonly outcomes: BundleRunOutcome[];
   readonly totals: { bundlesProcessed: number; filesGenerated: number; warningsCount: number };
 }
@@ -45,7 +52,7 @@ export async function generateBundles(
     try {
       prepared = prepareBundleRun({ source: 'saved', bundleKey: name, config, locales, cwd, ...overrides });
     } catch (error) {
-      outcome = { name, error };
+      outcome = { name, outcome: 'failed', error };
       outcomes.push(outcome);
       onEvent?.({ kind: 'result', outcome });
       continue;
@@ -53,17 +60,21 @@ export async function generateBundles(
     onEvent?.({ kind: 'start', name });
     try {
       const result = await generatePreparedBundle(prepared, { debugKeysLocale: overrides?.debugKeysLocale });
-      outcome = { name, result };
+      outcome = { name, outcome: result.outcome, result };
       totals.bundlesProcessed++;
       totals.filesGenerated += result.filesGenerated;
       totals.warningsCount += result.warnings.length;
     } catch (error) {
-      outcome = { name, error };
+      outcome = { name, outcome: 'failed', error };
     }
     const typeWarning = outcome.result?.typeOutcome.warning ?? prepared.typeWarning;
     if (typeWarning) onEvent?.({ kind: 'type-warning', warning: typeWarning });
     outcomes.push(outcome);
     onEvent?.({ kind: 'result', outcome });
   }
-  return { outcomes, totals };
+  return {
+    outcome: outcomes.some((item) => item.outcome === 'failed') ? 'failed' : 'succeeded',
+    outcomes,
+    totals,
+  };
 }

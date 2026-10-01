@@ -57,6 +57,7 @@ const importResult: ImportResult = {
 };
 
 const exportResult: ExportRunResult = {
+  outcome: 'succeeded',
   format: 'json',
   filesCreated: [],
   resourcesExported: 0,
@@ -88,6 +89,7 @@ describe('registered import and export options reaching core', () => {
     vi.mocked(loadConfig).mockReturnValue(config);
     vi.mocked(runImport).mockResolvedValue({
       format: 'json',
+      outcome: 'succeeded',
       result: importResult,
       summary: () => '# Import',
     });

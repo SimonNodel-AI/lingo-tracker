@@ -78,6 +78,7 @@ describe('translateLocale', () => {
       const result = await translateLocale(collection(), { targetLocale: 'fr' });
 
       expect(result).toEqual({
+        outcome: 'succeeded',
         totalResources: 0,
         translatedCount: 0,
         failedCount: 0,
@@ -234,6 +235,7 @@ describe('translateLocale', () => {
 
       expect(result.failedCount).toBe(1);
       expect(result.failures).toEqual([{ key: 'second.cancel', error: 'second metadata write failed' }]);
+      expect(result.outcome).toBe('failed');
       expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
       expect(writes).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
       expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBe('[fr] Cancel');
@@ -266,6 +268,7 @@ describe('translateLocale', () => {
       expect(result.failedCount).toBe(1);
       expect(result.failures).toEqual([{ key: 'first.ok', error: 'first metadata write failed' }]);
       expect(result.translatedCount).toBe(1);
+      expect(result.outcome).toBe('failed');
       expect(result.mutations).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
       expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBe('[fr] Cancel');
     });
@@ -301,6 +304,7 @@ describe('translateLocale', () => {
       const result = await translateLocale(withBatchSize(2), { targetLocale: 'fr', provider });
 
       expect(result.failedCount).toBe(2);
+      expect(result.outcome).toBe('failed');
       expect(result.failures).toEqual([
         { key: 'a', error: 'quota exceeded' },
         { key: 'b', error: 'quota exceeded' },

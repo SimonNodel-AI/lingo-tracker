@@ -54,6 +54,7 @@ const mockRunExport = vi.mocked(core.runExport);
 
 /** A run that exported fr and es; override any field. */
 const runResult = (overrides: Partial<ExportRunResult> = {}): ExportRunResult => ({
+  outcome: overrides.errors?.length || overrides.hierarchicalConflicts?.length ? 'failed' : 'succeeded',
   format: 'json',
   filesCreated: ['fr.json', 'es.json'],
   resourcesExported: 10,
@@ -653,7 +654,7 @@ describe('exportCommand', () => {
     });
 
     it('should not set exit code in dry run mode even with errors', async () => {
-      mockRunExport.mockResolvedValue(runResult({ errors: ['Export failed'] }));
+      mockRunExport.mockResolvedValue(runResult({ outcome: 'succeeded', errors: ['Export failed'] }));
 
       await exportCommand({
         format: 'json',

@@ -3,6 +3,7 @@
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 // Types: operation parameters and results
+export type { RunOutcome } from './lib/run-outcome';
 export type {
   AddCollectionOptions,
   AddLocaleToCollectionResult,

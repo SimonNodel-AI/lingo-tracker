@@ -91,8 +91,15 @@ describe('import-cmd', () => {
   const mockRun = (result: ImportResult): void => {
     vi.mocked(runImport).mockImplementation(async (_collection, options) => {
       const format = options.format ?? detectImportFormat(options.source);
+      const outcome =
+        result.resourcesFailed > 0 || result.errors.length > 0 ? ('failed' as const) : ('succeeded' as const);
       options.onStart?.(format);
-      return { format, result, summary: () => '# Import Summary\n\nTest summary' };
+      return {
+        format,
+        outcome,
+        result,
+        summary: () => '# Import Summary\n\nTest summary',
+      };
     });
   };
 
@@ -202,6 +209,7 @@ describe('import-cmd', () => {
         options.onStart?.('json');
         return {
           format: 'json',
+          outcome: 'succeeded',
           result: baseImportResult,
           summary: () => {
             throw new Error('summary failed');
@@ -222,6 +230,7 @@ describe('import-cmd', () => {
         options.onStart?.('json');
         return {
           format: 'json',
+          outcome: 'succeeded',
           result: baseImportResult,
           summary: () => {
             throw new Error('summary called');
@@ -295,7 +304,7 @@ describe('import-cmd', () => {
           details: ['Import may take longer than usual.'],
         });
         options.onStart?.('json');
-        return { format: 'json', result: baseImportResult, summary: () => '# Import Summary' };
+        return { format: 'json', outcome: 'succeeded', result: baseImportResult, summary: () => '# Import Summary' };
       });
 
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
