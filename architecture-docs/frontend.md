@@ -146,6 +146,8 @@ flowchart TD
 
 `BrowserStore` is a single `signalStore` provided in root. Its state is split across nine `signalStoreFeature` functions that compose sequentially. Cross-cutting state (the fields shared between multiple features) lives in the root `withState()` call (`store/root-state.ts`); each feature adds its own slice and exports its initial state. The last feature is the [Browser Session](glossary.md#browser-session): `openCollection(settings)` is the one way a collection is opened or switched, and `updateSettings(settings)` the one way the open collection's settings change.
 
+[Locale Selection](glossary.md#locale-selection) (`store/locale-selection.ts`) owns density, selected locales and compact-locale memory as one pure value. The filter feature delegates locale transitions and projections to it; the view-preferences feature delegates density changes and locale restoration. Storage keys, the saved shape and the persistence effect remain in the view-preferences feature. Every path uses the same default compact locale (available base, else first available); for an empty collection, the display projection preserves its historical base-string fallback while restoration selects nothing.
+
 <!-- BrowserStore feature composition — how with-* files build up the root store -->
 
 ```mermaid

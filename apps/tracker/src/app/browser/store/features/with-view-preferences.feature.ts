@@ -2,7 +2,13 @@ import { computed, effect } from '@angular/core';
 import { signalStoreFeature, withComputed, withMethods, withHooks, patchState, type } from '@ngrx/signals';
 import type { DensityMode } from '../../types/density-mode';
 import type { ViewPreferences } from '../view-preferences.types';
-import { computeDensityModeTransition, resolveCompactLocale } from '../density-mode.utils';
+import {
+  restoreLocaleSelection,
+  setDensity,
+  type LocaleContext,
+  type LocaleSelection,
+  type SavedLocaleSelection,
+} from '../locale-selection';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 
 function storageKey(collectionName: string): string {
@@ -10,7 +16,7 @@ function storageKey(collectionName: string): string {
 }
 
 /** What an older Tracker may have saved: any field can be missing, and density may be the retired 'medium'. */
-type SavedViewPreferences = Partial<Omit<ViewPreferences, 'densityMode'>> & { densityMode?: DensityMode | 'medium' };
+type SavedViewPreferences = Partial<Omit<ViewPreferences, 'densityMode'>> & SavedLocaleSelection;
 
 function readFromLocalStorage(collectionName: string): SavedViewPreferences | undefined {
   try {
@@ -33,43 +39,36 @@ function writeToLocalStorage(collectionName: string, prefs: ViewPreferences): vo
 export function withViewPreferencesFeature<_>() {
   return signalStoreFeature(
     {
-      state: type<{
-        selectedCollection: string | null;
-        densityMode: DensityMode;
-        selectedLocales: string[];
-        showNestedResources: boolean;
-        sortField: 'key' | 'status';
-        sortDirection: 'asc' | 'desc';
-        selectedStatuses: TranslationStatus[];
-        availableLocales: string[];
-        baseLocale: string;
-        compactLocale: string | undefined;
-        compactLocaleManuallyChanged: boolean;
-        nonCompactSelectedLocales: string[];
-      }>(),
+      state: type<
+        LocaleSelection &
+          LocaleContext & {
+            selectedCollection: string | null;
+            showNestedResources: boolean;
+            sortField: 'key' | 'status';
+            sortDirection: 'asc' | 'desc';
+            selectedStatuses: TranslationStatus[];
+          }
+      >(),
     },
     withComputed(({ densityMode }) => ({
       canShowMultipleLocales: computed(() => densityMode() !== 'compact'),
     })),
     withMethods((store) => ({
       setDensityMode(mode: DensityMode): void {
-        const transition = computeDensityModeTransition(mode, {
-          currentDensityMode: store.densityMode(),
-          currentSelectedLocales: store.selectedLocales(),
-          availableLocales: store.availableLocales(),
-          baseLocale: store.baseLocale(),
-          compactLocale: store.compactLocale(),
-          compactLocaleManuallyChanged: store.compactLocaleManuallyChanged(),
-          nonCompactSelectedLocales: store.nonCompactSelectedLocales(),
-        });
-
-        patchState(store, {
-          densityMode: mode,
-          selectedLocales: transition.selectedLocales,
-          compactLocale: transition.compactLocale,
-          compactLocaleManuallyChanged: transition.compactLocaleManuallyChanged,
-          nonCompactSelectedLocales: transition.nonCompactSelectedLocales,
-        });
+        patchState(
+          store,
+          setDensity(
+            {
+              densityMode: store.densityMode(),
+              selectedLocales: store.selectedLocales(),
+              compactLocale: store.compactLocale(),
+              compactLocaleManuallyChanged: store.compactLocaleManuallyChanged(),
+              nonCompactSelectedLocales: store.nonCompactSelectedLocales(),
+            },
+            mode,
+            { availableLocales: store.availableLocales(), baseLocale: store.baseLocale() },
+          ),
+        );
       },
 
       /**
@@ -85,27 +84,14 @@ export function withViewPreferencesFeature<_>() {
         const saved = readFromLocalStorage(collectionName);
         if (!saved) return;
 
-        const densityMode: DensityMode = saved.densityMode === 'full' ? 'full' : 'compact';
-        const availableLocales = store.availableLocales();
-        const savedSelectedLocales = (saved.selectedLocales ?? []).filter((locale) =>
-          availableLocales.includes(locale),
-        );
-        const selectedLocales =
-          densityMode === 'compact'
-            ? resolveCompactLocale({
-                savedCompactLocale: saved.compactLocale,
-                currentSelectedLocales: savedSelectedLocales,
-                availableLocales,
-                baseLocale: store.baseLocale(),
-              })
-            : savedSelectedLocales;
+        const restored = restoreLocaleSelection(saved, {
+          availableLocales: store.availableLocales(),
+          baseLocale: store.baseLocale(),
+        });
 
         patchState(store, {
-          densityMode,
-          selectedLocales,
+          ...restored,
           showNestedResources: saved.showNestedResources ?? store.showNestedResources(),
-          compactLocale: saved.compactLocale,
-          compactLocaleManuallyChanged: saved.compactLocaleManuallyChanged ?? false,
           sortField: saved.sortField ?? store.sortField(),
           sortDirection: saved.sortDirection ?? store.sortDirection(),
           selectedStatuses: saved.selectedStatuses ?? store.selectedStatuses(),

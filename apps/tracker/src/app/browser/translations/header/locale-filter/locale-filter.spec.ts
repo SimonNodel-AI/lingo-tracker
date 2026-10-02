@@ -8,7 +8,7 @@ import { type Observable, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { BrowserStore } from '../../../store/browser.store';
-import type { LocaleFilterLabel } from '../../../store/features/with-filter.feature';
+import type { LocaleFilterLabel } from '../../../store/locale-selection';
 import { LocaleFilter } from './locale-filter';
 
 describe('LocaleFilter', () => {
