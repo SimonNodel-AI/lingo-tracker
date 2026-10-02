@@ -251,9 +251,25 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ## E
 
+### Editor Advisories
+
+The translation editor's advice rules in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-advisories.ts`. `EditorAdvisories.observe()` follows base-value and Similar Values streams until `destroy()`: typed text updates at once, preferred-term findings update after a 300 ms pause, and a failed rule-file load suppresses them. It holds pinned hits and their clear/loading/ready state, identifies a trimmed, case-insensitive exact match, and applies a preferred term through the form's normal value-change path. Its signals are read-only to the dialog. Pure tag suggestion filtering excludes the entry's own and inherited tags. The dialog keeps rendering and focus after Use.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
+### Editor Entry Form
+
+The translation editor's typed form and [Resource Entry Draft](#resource-entry-draft) bridge in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-entry-form.ts`. `EditorEntryForm` seeds every non-base locale from the resource summary, gives missing metadata the domain's `new` status, publishes raw form snapshots, selects locales needing work with the domain status helper, and detects unsaved fields, folder or tag changes. It exposes tags for reading and owns `addTag` and `removeTag` through Tag List Edit. Its `draft(folderPath)` is the plain snapshot passed to [Editor Submit](#editor-submit). The dialog keeps the template bindings and UI focus.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
 ### Editor Location
 
-The translation editor's folder-selection state in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-location.ts`. It owns the selected folder, dotted-key continuation, known entries from the browser and [Folder Peek](#folder-peek), the live key collision and "Where it lands" tree, and the decision to peek an unknown target folder. An edit can peek its original folder or a destination; its own key is exempt from collision only in the original folder. The dialog keeps the form, popover staging and filter, and focus. [Editor Submit](#editor-submit) owns the save protocol.
+The translation editor's folder-selection state in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-location.ts`. It owns the selected folder, dotted-key continuation, known entries from the browser and [Folder Peek](#folder-peek), the live key collision and "Where it lands" tree, and the decision to peek an unknown target folder. An edit can peek its original folder or a destination; its own key is exempt from collision only in the original folder. The dialog keeps popover staging, filter and focus; [Editor Entry Form](#editor-entry-form) owns the form. [Editor Submit](#editor-submit) owns the save protocol.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 

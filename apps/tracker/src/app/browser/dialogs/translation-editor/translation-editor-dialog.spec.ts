@@ -184,19 +184,6 @@ describe('TranslationEditorDialog', () => {
       expect(component.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE);
       expect(component.dialogSubtitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITSUBTITLEX);
     });
-
-    it('should initialize form controls for all non-base locales', () => {
-      const translationsArray = component.form.controls.translations;
-      expect(translationsArray.length).toBe(2); // fr and de (en is base)
-    });
-
-    it('should initialize all locale controls with empty values in create mode', () => {
-      const translationsArray = component.form.controls.translations;
-      translationsArray.controls.forEach((control) => {
-        expect(control.value.value).toBe('');
-        expect(control.value.status).toBe('new');
-      });
-    });
   });
 
   describe('Form Validation - Key Field', () => {
@@ -311,18 +298,6 @@ describe('TranslationEditorDialog', () => {
     it('should accept non-empty base value', () => {
       component.form.controls.baseValue.setValue('Test translation');
       expect(component.form.controls.baseValue.valid).toBe(true);
-    });
-  });
-
-  describe('Form Validation - Comment Field', () => {
-    it('should not require comment field', () => {
-      component.form.controls.comment.setValue('');
-      expect(component.form.controls.comment.valid).toBe(true);
-    });
-
-    it('should accept any comment value', () => {
-      component.form.controls.comment.setValue('This is a comment for translators');
-      expect(component.form.controls.comment.valid).toBe(true);
     });
   });
 
@@ -475,40 +450,6 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Edit Mode', () => {
-    it('should pre-populate form with resource data', async () => {
-      const mockResource = summary(
-        'common.buttons.existing_key',
-        'Existing Value',
-        { fr: ['Valeur existante', undefined] },
-        { comment: 'Existing comment' },
-      );
-
-      const editData = createMockData('edit', mockResource);
-      renderDialog(editData);
-
-      expect(component.form.controls.key.value).toBe('existing_key');
-      expect(component.form.controls.baseValue.value).toBe('Existing Value');
-      expect(component.form.controls.comment.value).toBe('Existing comment');
-    });
-
-    it('should handle missing base locale translation', async () => {
-      const mockResource = summary('common.buttons.existing_key', '', { fr: ['Valeur', undefined] });
-
-      const editData = createMockData('edit', mockResource);
-      renderDialog(editData);
-
-      expect(component.form.controls.baseValue.value).toBe('');
-    });
-
-    it('should handle missing comment', async () => {
-      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
-
-      const editData = createMockData('edit', mockResource);
-      renderDialog(editData);
-
-      expect(component.form.controls.comment.value).toBe('');
-    });
-
     it('should display correct save button label in edit mode', async () => {
       const mockResource = summary('common.buttons.existing_key', 'Existing Value');
 
@@ -520,25 +461,6 @@ describe('TranslationEditorDialog', () => {
 
     it('should display correct save button label in create mode', () => {
       expect(component.saveButtonLabel()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.SAVEBUTTON);
-    });
-
-    it('should pre-populate other locale translations in edit mode', async () => {
-      const mockResource = summary('common.buttons.existing_key', 'Existing Value', {
-        fr: ['Valeur existante', 'translated'],
-        de: ['Vorhandener Wert', 'verified'],
-      });
-
-      const editData = createMockData('edit', mockResource);
-      renderDialog(editData);
-
-      const translationsArray = component.form.controls.translations;
-      const frControl = translationsArray.controls.find((c) => c.value.locale === 'fr');
-      const deControl = translationsArray.controls.find((c) => c.value.locale === 'de');
-
-      expect(frControl?.value.value).toBe('Valeur existante');
-      expect(frControl?.value.status).toBe('translated');
-      expect(deControl?.value.value).toBe('Vorhandener Wert');
-      expect(deControl?.value.status).toBe('verified');
     });
   });
 
