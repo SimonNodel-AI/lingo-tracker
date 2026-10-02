@@ -66,7 +66,7 @@ describe('RouteCollection over HTTP', () => {
       request('/collections/vendor/resources', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '[]',
+        body: '{"key":"a","baseValue":"b"}',
       }),
     ).resolves.toEqual({
       status: 403,
@@ -83,11 +83,24 @@ describe('RouteCollection over HTTP', () => {
       request('/collections/missing/resources', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '[]',
+        body: '{"key":"a","baseValue":"b"}',
       }),
     ).resolves.toEqual({
       status: 404,
       body: { message: 'Collection "missing" not found', error: 'Not Found', statusCode: 404 },
+    });
+  });
+
+  it('answers 400 with an exact shape error for a malformed resource key', async () => {
+    await expect(
+      request('/collections/a%25b/resources', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"key":5}',
+      }),
+    ).resolves.toEqual({
+      status: 400,
+      body: { statusCode: 400, message: 'key must be a string', error: 'Bad Request' },
     });
   });
 

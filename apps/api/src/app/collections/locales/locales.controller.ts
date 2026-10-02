@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Param, Post } from '@nestjs/common';
+import { Controller, Delete, Param, Post } from '@nestjs/common';
 import { addLocaleToCollection, type OpenedCollection, removeLocaleFromCollection } from '@simoncodes-ca/core';
 import type { AddLocaleDto, AddLocaleResponseDto, RemoveLocaleResponseDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { RouteCollection } from '../route-collection';
+import { addLocaleBody } from '../../validation/dto-schemas';
+import { ValidBody } from '../../validation/valid-body';
 
 /**
  * Core locale errors (invalid, missing, duplicate, base locale; read-only collection)
@@ -19,7 +21,7 @@ export class LocalesController {
   @Post()
   async addLocale(
     @RouteCollection() collection: OpenedCollection,
-    @Body() body: AddLocaleDto,
+    @ValidBody(addLocaleBody) body: AddLocaleDto,
   ): Promise<AddLocaleResponseDto> {
     const response = await addLocaleToCollection(collection, body.locale, { onMutation: this.#index.sink });
 
