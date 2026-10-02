@@ -164,11 +164,11 @@ describe('mapDeleteResourceResultToDto', () => {
 describe('mapMoveResourcesResultToDto', () => {
   it('always carries warnings and errors, including empty arrays', () => {
     for (const result of [
-      { movedCount: 1, warnings: [], errors: [] },
-      { movedCount: 0, warnings: ['Exists'], errors: ['Missing'] },
+      { outcome: 'succeeded' as const, movedCount: 1, warnings: [], errors: [] },
+      { outcome: 'failed' as const, movedCount: 0, warnings: ['Exists'], errors: ['Missing'] },
     ]) {
       const dto = mapMoveResourcesResultToDto(result);
-      expect(dto).toStrictEqual(result);
+      expect(dto).toStrictEqual({ movedCount: result.movedCount, warnings: result.warnings, errors: result.errors });
       expect(Object.keys(dto)).toEqual(['movedCount', 'warnings', 'errors']);
       expect(dto.warnings).toBe(result.warnings);
       expect(dto.errors).toBe(result.errors);

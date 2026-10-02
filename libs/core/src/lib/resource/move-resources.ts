@@ -2,6 +2,7 @@ import type { Collection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import type { MoveOptionsWithConfig } from './move-destination';
 import { type MoveResourceResult, moveResource } from './move-resource';
+import { withMoveOutcome } from './move-outcome';
 
 export interface MoveResourcesOperation {
   readonly source: string;
@@ -21,7 +22,7 @@ export async function moveResources(
   ops: readonly MoveResourcesOperation[],
   options: MoveOptionsWithConfig,
 ): Promise<MoveResourceResult> {
-  const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [] };
+  const result: Omit<MoveResourceResult, 'outcome'> = { movedCount: 0, warnings: [], errors: [] };
   for (const op of ops) {
     try {
       const moved = await moveResource(collection, op, options);
@@ -36,5 +37,5 @@ export async function moveResources(
       throw error;
     }
   }
-  return result;
+  return withMoveOutcome(result);
 }

@@ -1,5 +1,7 @@
 import { resolve } from 'node:path';
 import type { Collection } from '../config/open-collection';
+import type { RunOutcome } from '../run-outcome';
+import { withMoveOutcome } from '../resource/move-outcome';
 import {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
@@ -34,6 +36,7 @@ export interface MoveFolderParams {
 }
 
 export interface MoveFolderResult {
+  readonly outcome: RunOutcome;
   /** Number of resources moved */
   movedCount: number;
   /** Number of folders deleted after move */
@@ -71,7 +74,7 @@ export interface MoveFolderResult {
  *   sourceFolderPath: 'apps.common.buttons',
  *   destinationFolderPath: 'apps.shared'
  * });
- * // Result: { movedCount: 5, foldersDeleted: 1, warnings: [], errors: [] }
+ * // Result: { outcome: 'succeeded', movedCount: 5, foldersDeleted: 1, warnings: [], errors: [] }
  * // Resources like 'apps.common.buttons.ok' become 'apps.shared.buttons.ok'
  * ```
  */
@@ -94,7 +97,7 @@ export async function moveFolder(
   const destinationCollection = resolveMoveDestination(collection, params.toCollection, options);
   const sameCollection = resolve(destinationCollection.translationsFolder) === resolve(collection.translationsFolder);
 
-  const result: MoveFolderResult = {
+  const result: Omit<MoveFolderResult, 'outcome'> = {
     movedCount: 0,
     foldersDeleted: 0,
     warnings: [],
@@ -116,7 +119,7 @@ export async function moveFolder(
   const noOp = planMove({ ...selection, keys: [] }, destinationFolderPath);
   if (noOp.warnings.length > 0) {
     result.warnings.push(...noOp.warnings);
-    return result;
+    return withMoveOutcome(result);
   }
 
   let isDirectory: boolean;
@@ -142,7 +145,7 @@ export async function moveFolder(
   // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
   if (enumerationErrors.length > 0) {
     result.errors.push(...enumerationErrors);
-    return result;
+    return withMoveOutcome(result);
   }
 
   if (resourceKeys.length === 0) {
@@ -153,7 +156,7 @@ export async function moveFolder(
     } catch (error) {
       result.errors.push(`Failed to delete empty source folder: ${errorMessage(error)}`);
     }
-    return result;
+    return withMoveOutcome(result);
   }
 
   const { relocations } = planMove({ ...selection, keys: resourceKeys }, destinationFolderPath);
@@ -182,14 +185,14 @@ export async function moveFolder(
     }
   }
 
-  return result;
+  return withMoveOutcome(result);
 }
 
 /** Adapts shared pruning to the folder move's source count and warning format. */
 function pruneSource(
   collection: Collection,
   sourceFolderPath: string,
-  result: MoveFolderResult,
+  result: Omit<MoveFolderResult, 'outcome'>,
   onMutation?: MutationSink,
 ): void {
   const pruning = pruneEmptyFolders(collection, { startPath: sourceFolderPath, onMutation });

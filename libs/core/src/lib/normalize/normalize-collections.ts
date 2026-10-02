@@ -1,5 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors';
+import type { RunOutcome } from '../run-outcome';
 import { normalize, type NormalizeOptions, type NormalizeResult } from './normalize';
 
 const NUMERIC_FIELDS = [
@@ -29,14 +30,16 @@ export interface NormalizeCollectionsOptions extends NormalizeOptions {
 }
 
 export interface NormalizeCollectionsResult {
+  readonly outcome: RunOutcome;
   readonly collections: CollectionNormalizeResult[];
   readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
   readonly errors: readonly { name: string; error: unknown }[];
 }
 
-/** Empty report for a run refused before any collection is processed. */
+/** Empty report before any collection is processed. */
 export function emptyNormalizeCollectionsResult(): NormalizeCollectionsResult {
   return {
+    outcome: 'succeeded',
     collections: [],
     totals: {
       ...(Object.fromEntries(NUMERIC_FIELDS.map((field) => [field, 0])) as Record<
@@ -86,5 +89,5 @@ export async function normalizeCollections(
   for (const result of results) {
     for (const field of NUMERIC_FIELDS) totals[field] += result[field];
   }
-  return { collections: results, totals, errors };
+  return { outcome: errors.length > 0 ? 'failed' : 'succeeded', collections: results, totals, errors };
 }

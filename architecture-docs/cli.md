@@ -300,7 +300,9 @@ Exit codes:
 | Missing or conflicting flags in `edit-collection`, `find-similar`, `protected-terms`, `preferred-terminology` | 1 |
 | Core error in any command (for example in `add-collection`, `delete-collection`, `add-resource`, `edit-resource`, `delete-resource`, `move`, `add-locale`, `remove-locale`) | 1 |
 | Partial failure: `delete-resource` or `move` reports per-key errors; `normalize` fails on a collection; `bundle` fails on a bundle or type generation, names an unknown bundle, or finds no bundles | 1 |
-| Completed `validate`, `translate-locale`, `export`, or `import` run with a `failed` [Run Outcome](glossary.md#run-outcome); export errors and conflicts are exempt in `--dry-run`, while import errors and failed resources still fail in dry runs | 1 |
+| Completed `move`, `normalize`, `bundle`, `validate`, `translate-locale`, `export`, or `import` run with a `failed` [Run Outcome](glossary.md#run-outcome); export errors and conflicts are exempt in `--dry-run`, while import errors and failed resources still fail in dry runs | 1 |
+
+`move` and `normalize` return `exitForRunOutcome(result.outcome)`. Core decides whether a completed run fails: move counts result errors, and normalize counts collection errors, including in dry runs. Normalize folder problems remain warnings.
 
 `normalize --all` skips a read-only collection with a stderr warning and does not fail. A collection that fails, or a read-only `--collection`, prints `❌ Failed to normalize collection "x": <message>` or `❌ Collection "x" is read-only. …` on stderr, also with `--json`.
 

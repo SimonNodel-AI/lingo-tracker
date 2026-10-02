@@ -236,6 +236,7 @@ describe('Move Folder', () => {
       expect(result.movedCount).toBe(1);
       expect(result.foldersDeleted).toBe(1);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
       expect(result.warnings).toHaveLength(0);
 
       // Verify destination exists: apps.shared.buttons.ok
@@ -299,6 +300,7 @@ describe('Move Folder', () => {
       expect(result.movedCount).toBe(3);
       expect(result.foldersDeleted).toBe(1);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
 
       // Verify destination structure: apps.shared.buttons.ok, apps.shared.buttons.cancel, apps.shared.buttons.sub.item
       const sharedButtonsFolder = join(testDir, 'apps', 'shared', 'buttons');
@@ -425,6 +427,7 @@ describe('Move Folder', () => {
       expect(result.movedCount).toBe(1);
       expect(result.foldersDeleted).toBe(1);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
 
       // Verify destination: apps.actions.buttons.ok (new default behavior)
       const actionsButtonsFolder = join(testDir, 'apps', 'actions', 'buttons');
@@ -556,6 +559,7 @@ describe('Move Folder', () => {
       expect(result.movedCount).toBe(1);
       expect(result.foldersDeleted).toBe(1);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
 
       // Verify source gone from A
       expect(mockFileSystem.has(buttonsFile)).toBe(false);
@@ -697,6 +701,7 @@ describe('Move Folder', () => {
       expect(result.movedCount).toBe(1);
       expect(result.foldersDeleted).toBe(1);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
 
       // Verify both resources exist in common.testdata
       const mergedFile = join(destTestdataFolder, RESOURCE_ENTRIES_FILENAME);

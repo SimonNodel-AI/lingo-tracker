@@ -615,7 +615,7 @@ The CLI calls normalize through `normalizeCollections`. The API has no normalize
 
 Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `tagsNormalized`, `filesCreated`, `filesUpdated`, `foldersRemoved`, `dryRun`, and `problems` (the folders it could not read).
 
-`normalizeCollections` runs the selected opened collections, refuses any read-only collection in a named selection with `ReadOnlyCollectionError`, and skips read-only collections in all mode. It returns per-collection results, errors, and totals computed from one list of the seven numeric fields. The CLI prints its events and the returned JSON shape; an event callback error propagates instead of becoming a normalization failure.
+`normalizeCollections` runs the selected opened collections, refuses any read-only collection in a named selection with `ReadOnlyCollectionError`, and skips read-only collections in all mode. It returns a Run Outcome, per-collection results, errors, and totals computed from one list of the seven numeric fields. The CLI prints its events and the returned JSON shape; an event callback error propagates instead of becoming a normalization failure.
 
 `filesUpdated` can be higher than with earlier versions on the first run. A folder is now rewritten when its only drift is a stray base-locale property, the key order of its metadata, or a translation made from an older base. This is a one-time rewrite; the next run reports 0 for those folders.
 
@@ -891,7 +891,11 @@ The function never stops at the first failure — it validates all resources and
 
 `generateValidationSummary()` in `generate-validation-summary.ts` converts this result into a human-readable string for CLI output.
 
-Core returns a [Run Outcome](glossary.md#run-outcome) with each completed export, import, translate-locale, validate, and bundle run; bundle runs also report it per bundle. `succeeded` exits 0 in the CLI, while `failed` exits 1, even when some output was produced. Export ignores errors and hierarchical conflicts in a dry run; import still fails for errors or failed resources in a dry run. A failed bundle type generation now gives the CLI exit code 1. Validate retains its `status` field for in-band precondition failures and uses `outcome` for the final success decision. The `--allow-translated` flag maps directly to `options.allowTranslated`.
+Core returns a [Run Outcome](glossary.md#run-outcome) with each completed export, import, translate-locale, validate, bundle, move, and normalize run. Bundle runs also report it per bundle. `succeeded` exits 0 in the CLI, while `failed` exits 1, even when some output was produced.
+
+`moveResource`, `moveResources`, and `moveFolder` fail when their result contains errors. `normalizeCollections` fails when a collection raises an error, including in dry runs. Normalize folder problems and read-only skips in all mode do not fail the run. API move responses omit the outcome through explicit field mapping.
+
+Export ignores errors and hierarchical conflicts in a dry run; import still fails for errors or failed resources in a dry run. A failed bundle type generation now gives the CLI exit code 1. Validate retains its `status` field for in-band precondition failures and uses `outcome` for the final success decision. The `--allow-translated` flag maps directly to `options.allowTranslated`.
 
 `ValidationOptions.skippedLocales` removes locales from every collection's target locales. `generateValidationSummary()` also prints them as a `Skipped Locales: <list> (<count>)` line between "Locales Validated" and "Collections Validated". The other options are `icu` (`{ compileValues, requirePortablePlurals }`), `placeholders` (a boolean) and `terminology` (`{ rules, loadError }`). None of them names a locale: the locales come from the collections.
 
