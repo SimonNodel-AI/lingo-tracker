@@ -423,6 +423,25 @@ describe('translateLocale', () => {
       expect(read(TRACKER_META_FILENAME).ok.fr.status).toBe('translated');
     });
 
+    it('preserves a sibling entry written during the provider call', async () => {
+      const target = collection();
+      seedResources(target, { 'common.ok': { source: 'OK' } });
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(join(dir(), 'common'), target);
+        folder.setBase('cancel', 'Cancel');
+        folder.setTranslation('cancel', 'fr', 'Annuler', 'verified');
+        folder.save();
+        return 'Bien';
+      });
+
+      const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({ translatedCount: 1, skippedCount: 0 });
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'common').cancel).toEqual({ source: 'Cancel', fr: 'Annuler' });
+      expect(read(TRACKER_META_FILENAME, 'common').cancel.fr.status).toBe('verified');
+      expect(collected).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
+    });
+
     it('preserves a target marked verified during the provider call', async () => {
       const target = collection();
       seedResources(target, { ok: { source: 'OK', translations: { fr: { value: 'OK', status: 'new' } } } });

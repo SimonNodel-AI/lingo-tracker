@@ -221,4 +221,103 @@ describe('translateExistingResource', () => {
 
     expect(read(RESOURCE_ENTRIES_FILENAME, 'common').greet.fr).toBe('Bonjour {name}');
   });
+  describe('writes made during the provider call', () => {
+    function prepare(): Collection {
+      const target = collection({ locales: ['en', 'fr', 'es'] });
+      seedResources(target, {
+        'common.save': { source: 'Save', translations: { fr: { value: 'Save', status: 'new' } } },
+      });
+      return target;
+    }
+
+    it('preserves a sibling added meanwhile and reports one upsert with the fresh entry', async () => {
+      const target = prepare();
+      const provider = new InMemoryTranslationProvider(({ targetLocale }) => {
+        const folder = openResourceFolder(join(dir(), 'common'), target);
+        folder.setBase('cancel', 'Cancel');
+        folder.setDetails('save', { comment: 'Added meanwhile' });
+        folder.save();
+        return `[${targetLocale}] Save`;
+      });
+      const result = await translateExistingResource(target, 'common.save', { onMutation, provider });
+
+      expect(result.translatedCount).toBe(2);
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'common').cancel).toEqual({ source: 'Cancel' });
+      expect(result.entry.comment).toBe('Added meanwhile');
+      expect(collected).toEqual([
+        { kind: 'upsert', translationsFolder: dir(), key: 'common.save', entry: result.entry },
+      ]);
+    });
+
+    it('keeps a manual fr translation and reports it in skippedLocales', async () => {
+      const target = prepare();
+      const provider = new InMemoryTranslationProvider(({ targetLocale }) => {
+        const folder = openResourceFolder(join(dir(), 'common'), target);
+        folder.setTranslation('save', 'fr', 'Humain', 'translated');
+        folder.save();
+        return targetLocale === 'es' ? 'Guardar' : 'Machine';
+      });
+      const result = await translateExistingResource(target, 'common.save', { onMutation, provider });
+
+      expect(result.translatedCount).toBe(1);
+      expect(result.skippedLocales).toEqual(['fr']);
+      expect(result.entry.translations).toEqual({ fr: 'Humain', es: 'Guardar' });
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'common').save.fr).toBe('Humain');
+      expect(read(TRACKER_META_FILENAME, 'common').save.fr.status).toBe('translated');
+      expect(collected).toEqual([
+        { kind: 'upsert', translationsFolder: dir(), key: 'common.save', entry: result.entry },
+      ]);
+    });
+
+    it('skips all pending translations after a base change and returns the entry on disk', async () => {
+      const target = prepare();
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(join(dir(), 'common'), target);
+        folder.setBase('save', 'Save all');
+        folder.save();
+        return 'Machine';
+      });
+      const result = await translateExistingResource(target, 'common.save', { onMutation, provider });
+
+      expect(result.translatedCount).toBe(0);
+      expect(result.skippedLocales).toEqual(['fr', 'es']);
+      expect(result.entry).toEqual(openResourceFolder(join(dir(), 'common'), target).treeEntry('save'));
+      expect(result.entry.source).toBe('Save all');
+      expect(collected).toEqual([]);
+    });
+
+    it('throws ResourceNotFoundError after deletion without resurrecting the entry', async () => {
+      const target = prepare();
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(join(dir(), 'common'), target);
+        folder.remove('save');
+        folder.save();
+        return 'Machine';
+      });
+      await expect(translateExistingResource(target, 'common.save', { onMutation, provider })).rejects.toThrow(
+        ResourceNotFoundError,
+      );
+      expect(openResourceFolder(join(dir(), 'common'), target).has('save')).toBe(false);
+      expect(collected).toEqual([]);
+    });
+
+    it('reports translator skips before locales changed on disk', async () => {
+      const target = prepare();
+      const provider = new InMemoryTranslationProvider(({ targetLocale }) => {
+        const folder = openResourceFolder(join(dir(), 'common'), target);
+        folder.setTranslation('save', 'fr', 'Humain', 'new');
+        folder.save();
+        return targetLocale === 'es' ? 'Machine' : 'Save';
+      });
+      const result = await translateExistingResource(target, 'common.save', {
+        onMutation,
+        provider,
+        protectedTerms: ['Save'],
+      });
+      expect(result.translatedCount).toBe(0);
+      expect(result.skippedLocales).toEqual(['es', 'fr']);
+      expect(result.entry.translations['fr']).toBe('Humain');
+      expect(collected).toEqual([]);
+    });
+  });
 });
