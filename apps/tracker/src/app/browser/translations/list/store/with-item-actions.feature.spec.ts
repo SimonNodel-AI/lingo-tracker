@@ -176,7 +176,7 @@ describe('TranslationListStore item actions', () => {
     actions.translateResource(entry);
 
     expect(notifications.success).toHaveBeenCalledWith('2 locales translated successfully');
-    expect(notifications.warning).toHaveBeenCalledWith('Skipped locales (ICU format): de, ja');
+    expect(notifications.warning).toHaveBeenCalledWith('Auto-translation skipped for de, ja');
     expect(actions.isRecentlyUpdated(entry.fullKey)).toBe(true);
   });
 

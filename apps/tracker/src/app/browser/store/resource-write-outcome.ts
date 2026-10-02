@@ -12,7 +12,7 @@ export type RequestedEntryDeleteOutcome = DeleteResourceOutcome | { kind: 'cance
  * How a row's auto-translate ended.
  * - `translated`: at least one locale was translated and none skipped.
  * - `up-to-date`: nothing to translate and nothing skipped.
- * - `partial`: some locales were skipped (ICU format), whether or not others were translated.
+ * - `partial`: some locales were skipped (unsupported ICU, lost placeholder or protected term, or a concurrent change), whether or not others were translated.
  * - `refused`: the request failed.
  */
 export type TranslateResourceResult =
