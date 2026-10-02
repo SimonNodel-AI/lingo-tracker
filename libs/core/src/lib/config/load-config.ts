@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { ConfigNotFoundError, ConfigParseError } from '../errors/lingo-tracker-error';
+import { hasFsErrorCode } from '../file-io/fs-error';
 
 const readVersions = new WeakMap<LingoTrackerConfig, string>();
 
@@ -44,7 +45,7 @@ export function loadConfig(options: LoadConfigOptions = {}): LingoTrackerConfig 
     content = readFileSync(configPath, 'utf8');
   } catch (error) {
     // The file vanished between the two calls.
-    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (hasFsErrorCode(error, 'ENOENT')) {
       throw new ConfigNotFoundError(configPath);
     }
     throw error;

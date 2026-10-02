@@ -75,6 +75,7 @@ describe('core public surface', () => {
       'extractSubtree',
       'generateBundles',
       'generatePreparedBundle',
+      'hasFsErrorCode',
       'initConfig',
       'loadConfig',
       'loadPreferredTerminology',

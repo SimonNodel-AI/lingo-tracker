@@ -130,6 +130,7 @@ export {
   ResourceNotFoundError,
   TranslationLocaleNotConfiguredError,
 } from './lib/errors';
+export { hasFsErrorCode } from './lib/file-io/fs-error';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 // Operations: export
 export { exportTargetLocales, runExport } from './lib/export/run-export';

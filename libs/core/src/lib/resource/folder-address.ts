@@ -4,6 +4,7 @@ import { isValidSegment } from '@simoncodes-ca/domain';
 import type { FolderPathPart } from '../errors/error-messages';
 import type { CollectionFolderProblem } from './collection-folders';
 import { InvalidCollectionFolderError, InvalidFolderPathError } from '../errors/lingo-tracker-error';
+import { hasFsErrorCode } from '../file-io/fs-error';
 
 /** A dot-delimited folder address. The empty address names the collection root. */
 export function validateFolderAddress(address: string, part: FolderPathPart, allowRoot = true): string[] {
@@ -69,7 +70,7 @@ export function checkCollectionFolderPath(
         return problem('This folder is a symbolic link and is not part of the collection');
       }
     } catch (error) {
-      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return undefined;
+      if (hasFsErrorCode(error, 'ENOENT')) return undefined;
       return problem(error instanceof Error ? error.message : String(error));
     }
   }
