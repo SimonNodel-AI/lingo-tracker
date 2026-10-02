@@ -381,6 +381,18 @@ Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollba
 
 ---
 
+### Entry Writes
+
+The Tracker UI's store feature for resource creation, updates, deletion and auto-translation. `withEntryWritesFeature` in `apps/tracker/src/app/browser/store/features/with-entry-writes.feature.ts` is a sibling of [Folder Writes](#folder-writes). Both features share the `Refusal` type and `refused()` normalizer in `store/write-refusal.ts`. Entry Writes blocks read-only delete and translate writes before HTTP.
+
+Delete and translate return cold `Observable` outcomes with decided [Outcome Feedback](#outcome-feedback). These outcomes include `read-only`, `no-collection`, `stale-session` and `refused` with an `ApiError`. `requestEntryDelete(fullKey, confirm)` captures the [Browser Session](#browser-session), gives its guard to the caller's confirmation callback, and checks the session after confirmation.
+
+The feature updates the folder list and search results only in the session where the write began. A stale delete or translate response gives no feedback. The list actions supply the existing dialog and show the decided feedback. They own the translating keys and row flash. Editor create/update retain API responses and raw errors for [Editor Submit](#editor-submit), including the 409 key-conflict flow. Editor Submit enforces read-only before these pass-through store methods.
+
+Explained in context: [`frontend.md`](frontend.md#writing-a-resource-entry)
+
+---
+
 ## I
 
 ### ICU Format
@@ -497,7 +509,7 @@ An `OpenedProject` is the config as `loadConfig()` read it (`sourceConfig`) and 
 
 ### Outcome Feedback
 
-What a write has decided to tell the user about its outcome: the `Feedback` in `apps/tracker/src/app/browser/feedback.ts`, `{ tone: 'success' | 'info' | 'warning' | 'error', placement: 'inline' | 'toast', token, params?, detail? }`. `token` is a Transloco token, `params` may hold `{ token }` values that are themselves translated (the root folder's label), and `detail` is the failure's own message, which replaces the token's wording. It is plain data produced by pure mappings, so no TestBed is needed to test the choice: `decide*` in `store/folder-write-feedback.ts` for [Folder Writes](#folder-writes) (a `feedback` on each outcome, `null` when the write is silent), and `deleteFeedback` / `translateFeedback` in `translations/list/store/resource-action-feedback.ts` for the row actions (a translate can give two toasts, a success and a skipped-locales warning). Surfaces render it with `feedbackText` or `injectFeedback()` (`text`, and `toast`, which ignores inline feedback).
+What a write has decided to tell the user about its outcome: the `Feedback` in `apps/tracker/src/app/browser/feedback.ts`, `{ tone: 'success' | 'info' | 'warning' | 'error', placement: 'inline' | 'toast', token, params?, detail? }`. `token` is a Transloco token, `params` may hold `{ token }` values that are themselves translated (the root folder's label), and `detail` is the failure's own message, which replaces the token's wording. It is plain data produced by pure mappings, so no TestBed is needed to test the choice: `decide*` in `store/folder-write-feedback.ts` for [Folder Writes](#folder-writes) (a `feedback` on each outcome, `null` when the write is silent), and `decideDeleteResource` / `decideTranslateResource` in `store/resource-write-outcome.ts` for [Entry Writes](#entry-writes) (a translate carries an array of feedback for its success and skipped-locales warning). Surfaces render it with `feedbackText` or `injectFeedback()` (`text`, and `toast`, which ignores inline feedback).
 
 Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollback)
 

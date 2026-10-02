@@ -6,7 +6,7 @@ import { NotificationService } from '../../../../shared/notification';
 import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectFeedback } from '../../../feedback';
-import { deleteFeedback, translateFeedback } from './resource-action-feedback';
+import { firstValueFrom, tap } from 'rxjs';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
 import { injectConfirm } from '../../../../shared/confirm';
 import type { ConfirmationDialogData } from '../../../../shared/components/confirmation-dialog/confirmation-dialog-data';
@@ -51,12 +51,6 @@ export function withItemActions() {
         },
 
         async deleteTranslation(translation: ResourceSummaryDto): Promise<void> {
-          // Last line of defence for every caller. A read-only collection must
-          // never reach the confirmation dialog: asking the user to confirm a
-          // deletion the API will refuse is a promise the UI cannot keep.
-          const collectionName = browserStore.selectedCollection();
-          if (!collectionName || browserStore.isReadOnly()) return;
-
           const { fullKey } = translation;
 
           const dialogData: ConfirmationDialogData = {
@@ -67,26 +61,34 @@ export function withItemActions() {
             actionType: 'destructive',
           };
 
-          if (!(await confirm(dialogData, { canOpen: () => !destroyRef.destroyed })) || destroyRef.destroyed) return;
-          browserStore
-            .deleteResource(collectionName, fullKey)
-            .pipe(takeUntilDestroyed(destroyRef))
-            .subscribe((outcome) => feedback.toast(deleteFeedback(outcome)));
+          await firstValueFrom(
+            browserStore
+              .requestEntryDelete(fullKey, (inSession) =>
+                confirm(dialogData, { canOpen: () => inSession() && !destroyRef.destroyed }).then(
+                  (yes) => yes && !destroyRef.destroyed,
+                ),
+              )
+              .pipe(
+                takeUntilDestroyed(destroyRef),
+                tap((outcome) => feedback.toast(outcome.feedback)),
+              ),
+            { defaultValue: null },
+          );
         },
 
         translateResource(translation: ResourceSummaryDto): void {
-          const collectionName = browserStore.selectedCollection();
-          if (!collectionName || browserStore.isReadOnly()) return;
           const { fullKey } = translation;
           store.addTranslatingKey(fullKey);
 
           browserStore
-            .translateResource(collectionName, fullKey)
+            .translateResource(fullKey)
             .pipe(takeUntilDestroyed(destroyRef))
             .subscribe((outcome) => {
               store.removeTranslatingKey(fullKey);
-              if (outcome.kind !== 'refused') store.flashRecentlyUpdated(fullKey);
-              translateFeedback(outcome).forEach(feedback.toast);
+              if (outcome.kind === 'translated' || outcome.kind === 'up-to-date' || outcome.kind === 'partial') {
+                store.flashRecentlyUpdated(fullKey);
+              }
+              outcome.feedback.forEach(feedback.toast);
             });
         },
       };
