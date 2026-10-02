@@ -1,8 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { PreferredTerminologyValidationError } from '../config/preferred-terminology-file';
-import { TranslationError } from '../translation/translation-provider';
-import { ErrorMessages } from './error-messages';
-import * as errorClasses from './lingo-tracker-error';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
@@ -10,6 +6,7 @@ import {
   BundleNotFoundError,
   CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
+  CollectionBaseLocaleMismatchError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,
@@ -19,7 +16,6 @@ import {
   CoreOperationError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
-  CollectionBaseLocaleMismatchError,
   GlossaryExtractorError,
   GlossaryNoCollectionsError,
   ImportSourceError,
@@ -40,13 +36,17 @@ import {
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
   ParentDirectoryMissingError,
+  PreferredTerminologyValidationError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
+  TranslationError,
   TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
+import { ErrorMessages } from './error-messages';
+import * as errorClasses from './index';
 
 describe('LingoTrackerError subclasses', () => {
   it('keeps the string form of a former plain error for CLI summaries', () => {
@@ -247,35 +247,58 @@ describe('LingoTrackerError subclasses', () => {
     },
   ];
 
-  it('requires a kind on every error class in the core errors module and the two external subclasses', () => {
-    const additional = [
-      new ImportSourceError('source failed'),
-      new InvalidImportLocaleError('en', 'translation-service'),
-      new CollectionBaseLocaleMismatchError([
-        { name: 'a', baseLocale: 'en' },
-        { name: 'b', baseLocale: 'fr' },
-      ]),
-      new GlossaryNoCollectionsError(),
-      new GlossaryExtractorError('unknown'),
-      new ProtectedTermsFileError('/p/terms.json', 'bad terms'),
-      new InvalidConfigError('bad config'),
-      new ConfigChangedError(),
-      new CannotTranslateBaseLocaleError('en'),
-      new TranslationLocaleNotConfiguredError('ja', ['en']),
-      new MultipleBundleConstantNameError(),
-      new InvalidBundleLocalesError('bad locale'),
-      new CoreOperationError('operation failed'),
-    ];
+  const additional = [
+    new ImportSourceError('source failed'),
+    new InvalidImportLocaleError('en', 'translation-service'),
+    new CollectionBaseLocaleMismatchError([
+      { name: 'a', baseLocale: 'en' },
+      { name: 'b', baseLocale: 'fr' },
+    ]),
+    new GlossaryNoCollectionsError(),
+    new GlossaryExtractorError('unknown'),
+    new ProtectedTermsFileError('/p/terms.json', 'bad terms'),
+    new InvalidConfigError('bad config'),
+    new ConfigChangedError(),
+    new CannotTranslateBaseLocaleError('en'),
+    new TranslationLocaleNotConfiguredError('ja', ['en']),
+    new MultipleBundleConstantNameError(),
+    new InvalidBundleLocalesError('bad locale'),
+    new CoreOperationError('operation failed'),
+  ];
+
+  it('requires a kind on every error class in the core errors module', () => {
     const instances = [...cases.map(({ error }) => error), ...additional];
     const defined = Object.entries(errorClasses)
       .filter(([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError)
       .map(([name]) => name)
-      .concat('TranslationError', 'PreferredTerminologyValidationError')
       .sort();
     expect(instances.map((error) => error.constructor.name).sort()).toEqual(defined);
     for (const error of instances) {
       expect(error.kind).toMatch(/^(not-found|conflict|invalid|forbidden|unavailable|upstream|internal)$/);
     }
+  });
+
+  it('reserves the upstream kind for TranslationError, including future provider codes', () => {
+    const instances = [...cases.map(({ error }) => error), ...additional];
+    for (const [name, ErrorClass] of Object.entries(errorClasses)) {
+      if (typeof ErrorClass === 'function' && ErrorClass.prototype instanceof LingoTrackerError) {
+        const instance = instances.find((error): boolean => error.constructor === ErrorClass);
+        expect(instance, `Missing fixture for exported error ${name}`).toBeDefined();
+        expect(instance?.kind === 'upstream', `${name} upstream kind`).toBe(ErrorClass === TranslationError);
+      }
+    }
+    expect(new TranslationError('Unknown provider failure', 'FUTURE_PROVIDER_CODE', false).kind).toBe('upstream');
+  });
+
+  it('exposes validation details through the same lists used by existing callers', () => {
+    const bundle = new InvalidBundleDefinitionError(['first', 'second']);
+    const terminology = new PreferredTerminologyValidationError([
+      { index: 0, field: 'preferred', code: 'empty', message: 'empty' },
+    ]);
+    expect(bundle.details).toBe(bundle.errors);
+    expect(terminology.details).toBe(terminology.errors);
+    expect(new ResourceNotFoundError('common.ok').details).toBeUndefined();
+    expect(terminology.message).toBe('Invalid preferred terminology rules: row 1 preferred: empty');
   });
 
   it.each(cases)('$name has its name, code and message, and is a LingoTrackerError', ({

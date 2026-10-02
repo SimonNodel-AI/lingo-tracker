@@ -5,9 +5,8 @@ import type { TranslationConfig } from '../../config/translation-config';
 import { testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../config/protected-terms-file';
-import { AutoTranslationDisabledError, ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import { AutoTranslationDisabledError, ProtectedTermsFileError, TranslationError } from '../errors/lingo-tracker-error';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
-import { TranslationError } from './translation-provider';
 import { openTranslator } from './translator';
 
 const AUTO: TranslationConfig = { enabled: true, provider: 'google-translate', apiKeyEnv: 'TRANSLATOR_SPEC_KEY' };

@@ -8,6 +8,7 @@ import type { Collection } from '../config/open-collection';
 import {
   AutoTranslationDisabledError,
   CannotTranslateBaseLocaleError,
+  TranslationError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
@@ -15,7 +16,6 @@ import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
 import { assertCanTranslateLocale, type TranslateLocaleProgress, translateLocale } from './translate-locale';
-import { TranslationError } from './translation-provider';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {

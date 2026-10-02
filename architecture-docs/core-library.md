@@ -122,7 +122,7 @@ libs/core/src/
     │
     ├── translation/              # Machine translation: the Translator and the operations that use it
     │   ├── translator.ts                 # openTranslator(): setup, ICU skip, placeholder + protected-term guards, ICU normalisation
-    │   ├── translation-provider.ts       # TranslationProvider interface (the seam), TranslationError
+    │   ├── translation-provider.ts       # TranslationProvider interface (the seam)
     │   ├── translation-provider-factory.ts # createTranslationProvider(): the Google adapter's constructor site
     │   ├── google-translate-v2.provider.ts # GoogleTranslateV2Provider adapter
     │   ├── in-memory-translation-provider.ts # InMemoryTranslationProvider adapter (internal; core specs, no network)
@@ -161,7 +161,9 @@ libs/core/src/
     │
     └── errors/                   # Error messages and typed errors
         ├── error-messages.ts     # ErrorMessages: static error string builders (internal)
-        └── lingo-tracker-error.ts # LingoTrackerError and its typed subclasses (see Error Model)
+        ├── format-rule-errors.ts # Shared preferred-terminology row formatter (internal)
+        ├── lingo-tracker-error.ts # All core errors and domain details (see Error Model)
+        └── index.ts             # Complete internal error barrel
 ```
 
 <!-- Module relationship graph within @simoncodes-ca/core -->
@@ -298,7 +300,13 @@ Collection rename and delete also update [Bundle Collection References](glossary
 
 ## Error Model
 
-Core raises a [typed error](glossary.md#typed-errors) for operational failures that reach an adapter. Each subclass of the abstract `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`) must declare an `ErrorKind` and has a stable `code`; payload fields remain typed. The API maps kinds to HTTP statuses (see [api.md — Error Mapping](api.md#error-mapping)). `CoreOperationError` carries former plain-error messages to the CLI while telling the API to retain the generic 500 body without a message. Its `name` is `Error`, so `String(error)` keeps its earlier text. Most other message text comes from `ErrorMessages` (`lib/errors/error-messages.ts`). Neither adapter matches message text to decide what happened.
+Core raises a [typed error](glossary.md#typed-errors) for operational failures that reach an adapter. All core error classes live in `lib/errors/lingo-tracker-error.ts`, including `TranslationError` and `PreferredTerminologyValidationError`. Each subclass declares an `ErrorKind`, a stable `code`, and typed payload fields.
+
+Core errors expose domain facts: `code`, the affected `field` when available, and optional `details: readonly unknown[]`. Bundle and preferred-terminology validation errors expose their existing `errors` arrays through `details`. Core declares no HTTP statuses or presentation rules. The API maps `kind` to a default HTTP status and owns message transforms and status overrides. The [API Error Mapping](api.md#error-mapping) section describes these rules.
+
+The CLI continues to use the original `message` and typed payload fields. The error constructor and terminology-file reader share `formatRuleErrors` for their row messages. `CoreOperationError` sets `exposeMessage` to false, so the API returns its generic 500 body without a message. Its `name` is `Error`, so `String(error)` keeps its earlier text. Most other message text comes from `ErrorMessages` (`lib/errors/error-messages.ts`). Neither adapter matches message text to decide what happened.
+
+The internal `lib/errors/index.ts` barrel exports every error subclass. Its completeness spec discovers all modules in `errors/` and checks each subclass against the barrel. A source guard also rejects core error subclasses outside `errors/`, including subclasses through imported aliases. The core error spec reserves kind `upstream` for `TranslationError`, including unknown provider codes. The core public index exports only errors with consumers outside core. `src/index.spec.ts` pins that smaller public surface, and the completeness spec checks that public errors use the same constructors.
 
 | Class | `code` | Payload | Thrown by |
 |---|---|---|---|

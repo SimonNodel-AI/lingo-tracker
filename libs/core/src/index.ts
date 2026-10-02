@@ -70,7 +70,6 @@ export {
   loadConfig,
   loadPreferredTerminology,
   openCollection,
-  PreferredTerminologyValidationError,
   planProjectTermsUpdate,
   type ResolvedProtectedTerms,
   resolveProtectedTermsForConfig,
@@ -124,11 +123,13 @@ export {
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
   ParentDirectoryMissingError,
+  PreferredTerminologyValidationError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
+  TranslationError,
   TranslationLocaleNotConfiguredError,
 } from './lib/errors';
 export { hasFsErrorCode } from './lib/file-io/fs-error';
@@ -255,7 +256,6 @@ export type {
 export {
   assertAutoTranslationEnabled,
   assertCanTranslateLocale,
-  TranslationError,
   translateExistingResource,
   translateLocale,
 } from './lib/translation';

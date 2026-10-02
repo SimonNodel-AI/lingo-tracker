@@ -388,6 +388,18 @@ describe('toHttpException', () => {
     });
   });
 
+  it('prefixes collection field-shape messages', () => {
+    const http = toHttpException(
+      new InvalidCollectionError('translationsFolder is required', { field: 'translationsFolder' }),
+    );
+    expect(http.getStatus()).toBe(400);
+    expect(http.getResponse()).toEqual({
+      message: 'collection.translationsFolder is required',
+      error: 'Bad Request',
+      statusCode: 400,
+    });
+  });
+
   it('pins every public and internal core error subclass', () => {
     const errorExports = [...Object.entries(core), ...Object.entries(internalErrors)];
     const exported = [
@@ -464,6 +476,43 @@ describe('toHttpException', () => {
     const http = toHttpException(error);
     expect(http.getStatus()).toBe(500);
     expect(http.getResponse()).toEqual({ statusCode: 500, message: 'Future failure', error: 'Internal Server Error' });
+  });
+
+  it('hides domain details when the error does not expose its message', () => {
+    class HiddenDetailedError extends LingoTrackerError {
+      readonly kind = 'invalid' as const;
+      override readonly exposeMessage = false;
+      override readonly details = ['private detail'];
+    }
+    const http = toHttpException(new HiddenDetailedError('Private failure', 'PRIVATE'));
+    expect(http.getStatus()).toBe(500);
+    expect(http.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
+  });
+
+  it('maps a new domain error subclass by code and details', () => {
+    class DetailedValidationError extends LingoTrackerError {
+      readonly kind = 'invalid' as const;
+      override readonly details = ['first problem'];
+    }
+    const error = new DetailedValidationError('Original domain message', 'INVALID_BUNDLE_DEFINITION');
+    const http = toHttpException(error);
+    expect(error.message).toBe('Original domain message');
+    expect(http.getStatus()).toBe(400);
+    expect(http.getResponse()).toEqual({
+      message: 'Invalid bundle definition',
+      error: 'Bad Request',
+      statusCode: 400,
+      errors: ['first problem'],
+    });
+  });
+
+  it('does not treat provider codes on non-upstream errors as translation failures', () => {
+    class LocalError extends LingoTrackerError {
+      readonly kind = 'conflict' as const;
+    }
+    const http = toHttpException(new LocalError('Local failure', 'RATE_LIMIT'));
+    expect(http.getStatus()).toBe(409);
+    expect(http.getResponse()).toEqual({ message: 'Local failure', error: 'Conflict', statusCode: 409 });
   });
 });
 

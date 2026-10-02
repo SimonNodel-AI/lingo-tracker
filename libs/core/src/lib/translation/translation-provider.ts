@@ -6,8 +6,6 @@
  * the rest of the codebase to remain provider-agnostic.
  */
 
-import { LingoTrackerError } from '../errors/lingo-tracker-error';
-
 export interface TranslateRequest {
   readonly text: string;
   readonly sourceLocale: string;
@@ -29,24 +27,4 @@ export interface ProviderCapabilities {
 export interface TranslationProvider {
   translate(requests: TranslateRequest[]): Promise<TranslateResult[]>;
   getCapabilities(): ProviderCapabilities;
-}
-
-/**
- * Represents a failure that occurred during translation.
- *
- * The `retryable` flag indicates whether the caller can meaningfully
- * retry the operation (e.g. transient server errors) or whether retrying
- * would be pointless (e.g. invalid API key, malformed request).
- */
-export class TranslationError extends LingoTrackerError {
-  readonly kind = 'upstream' as const;
-  readonly retryable: boolean;
-  readonly providerErrorCode: string | undefined;
-
-  /** `code` names the failure kind, e.g. `MISSING_API_KEY`, `RATE_LIMIT`, `INVALID_REQUEST`. */
-  constructor(message: string, code: string, retryable: boolean, providerErrorCode?: string) {
-    super(message, code);
-    this.retryable = retryable;
-    this.providerErrorCode = providerErrorCode;
-  }
 }

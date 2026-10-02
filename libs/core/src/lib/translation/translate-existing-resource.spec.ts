@@ -6,11 +6,10 @@ import type { TranslationConfig } from '../../config/translation-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
-import { AutoTranslationDisabledError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import { AutoTranslationDisabledError, ResourceNotFoundError, TranslationError } from '../errors/lingo-tracker-error';
 import { openResourceFolder } from '../resource/resource-folder';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
 import { translateExistingResource } from './translate-existing-resource';
-import { TranslationError } from './translation-provider';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {

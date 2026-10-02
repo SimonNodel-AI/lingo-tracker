@@ -21,7 +21,6 @@ export {
   type LoadPreferredTerminologyResult,
   loadPreferredTerminology,
   type PreferredTerminologyEditResult,
-  PreferredTerminologyValidationError,
   resolvePreferredTerminologyFilePath,
 } from './preferred-terminology-file';
 export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './project-terms';
