@@ -1,5 +1,5 @@
 import type { Collection } from '../config/open-collection';
-import { canImportLocale, DEFAULT_IMPORT_STRATEGY } from '@simoncodes-ca/domain';
+import { canImportLocale, DEFAULT_IMPORT_STRATEGY, importStrategyPolicy } from '@simoncodes-ca/domain';
 import { InvalidImportLocaleError } from '../errors';
 import {
   describeTermFileProblem,
@@ -7,7 +7,6 @@ import {
   readProjectTerms,
   requireProtectedTerms,
 } from '../config/project-terms';
-import { getStrategyDefaults } from './import-common';
 import { calculateImportStatistics, calculateStatusTransitions } from './import-statistics';
 import type {
   ICUAutoFix,
@@ -58,7 +57,7 @@ export interface ImportSession {
  */
 export function openImportSession(collection: Collection, options: ImportRunOptions): ImportSession {
   const strategy = options.strategy ?? DEFAULT_IMPORT_STRATEGY;
-  const defaults = getStrategyDefaults(strategy);
+  const defaults = importStrategyPolicy(strategy).defaults;
   const isBaseLocaleImport = options.locale === collection.baseLocale;
 
   if (!canImportLocale(options.locale, collection.baseLocale, strategy)) {

@@ -1,4 +1,4 @@
-import { resolveAllReferences } from '@simoncodes-ca/domain';
+import { importStrategyPolicy, resolveAllReferences } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { assertTranslationStatus } from '../resource/translation-status-input';
 import { applyICUAutoFixToResources } from './apply-icu-auto-fix';
@@ -42,7 +42,7 @@ export function importResources(
   const { translationsFolder } = collection;
 
   let prepared = [...resources];
-  if (strategy === 'migration') {
+  if (importStrategyPolicy(strategy).resolvesReferences) {
     onProgress?.('Resolving Transloco-style references...');
     prepared = resolveAllReferences(prepared, true, session.warnings);
   }
