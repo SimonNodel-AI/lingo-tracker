@@ -1,74 +1,75 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeTranslocoSyntax, normalizeTranslocoSyntaxInResources } from './normalize-transloco-syntax';
+import { normalizeTranslocoSyntaxInResources } from './normalize-transloco-syntax';
+import { translocoToICU } from '@simoncodes-ca/domain';
 import type { ImportedResource } from './types';
 
-describe('normalizeTranslocoSyntax', () => {
+describe('translocoToICU', () => {
   it('converts a single double-brace variable to ICU format', () => {
-    expect(normalizeTranslocoSyntax('Hello {{ name }}')).toBe('Hello {name}');
+    expect(translocoToICU('Hello {{ name }}')).toBe('Hello {name}');
   });
 
   it('converts multiple double-brace variables in one string', () => {
-    expect(normalizeTranslocoSyntax('{{ greeting }} {{ name }}')).toBe('{greeting} {name}');
+    expect(translocoToICU('{{ greeting }} {{ name }}')).toBe('{greeting} {name}');
   });
 
   it('handles double braces with no surrounding spaces', () => {
-    expect(normalizeTranslocoSyntax('{{name}}')).toBe('{name}');
+    expect(translocoToICU('{{name}}')).toBe('{name}');
   });
 
   it('leaves already-correct ICU single-brace placeholders untouched', () => {
-    expect(normalizeTranslocoSyntax('{count} items')).toBe('{count} items');
+    expect(translocoToICU('{count} items')).toBe('{count} items');
   });
 
   it('normalizes Transloco variables alongside existing ICU placeholders', () => {
-    expect(normalizeTranslocoSyntax('{count} items for {{ name }}')).toBe('{count} items for {name}');
+    expect(translocoToICU('{count} items for {{ name }}')).toBe('{count} items for {name}');
   });
 
   it('returns plain strings without placeholders unchanged', () => {
-    expect(normalizeTranslocoSyntax('Hello world')).toBe('Hello world');
+    expect(translocoToICU('Hello world')).toBe('Hello world');
   });
 
   it('does not affect complex ICU plural expressions', () => {
     const plural = '{count, plural, one {# item} other {# items}}';
-    expect(normalizeTranslocoSyntax(plural)).toBe(plural);
+    expect(translocoToICU(plural)).toBe(plural);
   });
 
   it('does not affect complex ICU select expressions', () => {
     const select = '{gender, select, male {He} female {She} other {They}}';
-    expect(normalizeTranslocoSyntax(select)).toBe(select);
+    expect(translocoToICU(select)).toBe(select);
   });
 
   it('trims interior whitespace from variable names', () => {
-    expect(normalizeTranslocoSyntax('{{  firstName  }}')).toBe('{firstName}');
+    expect(translocoToICU('{{  firstName  }}')).toBe('{firstName}');
   });
 
   it('handles dotted Transloco variable paths', () => {
-    expect(normalizeTranslocoSyntax('{{ user.name }}')).toBe('{user.name}');
+    expect(translocoToICU('{{ user.name }}')).toBe('{user.name}');
   });
 
   it('returns an empty string unchanged', () => {
-    expect(normalizeTranslocoSyntax('')).toBe('');
+    expect(translocoToICU('')).toBe('');
   });
 
   it('leaves double-brace expressions with spaces in the identifier unchanged', () => {
-    expect(normalizeTranslocoSyntax('{{ first name }}')).toBe('{{ first name }}');
+    expect(translocoToICU('{{ first name }}')).toBe('{{ first name }}');
   });
 
   it('leaves double-brace expressions with a leading dot unchanged', () => {
-    expect(normalizeTranslocoSyntax('{{ .invalid }}')).toBe('{{ .invalid }}');
+    expect(translocoToICU('{{ .invalid }}')).toBe('{{ .invalid }}');
   });
 
   it('leaves double-brace expressions with a trailing dot unchanged', () => {
-    expect(normalizeTranslocoSyntax('{{ name. }}')).toBe('{{ name. }}');
+    expect(translocoToICU('{{ name. }}')).toBe('{{ name. }}');
   });
 
   it('leaves double-brace expressions with consecutive dots unchanged', () => {
-    expect(normalizeTranslocoSyntax('{{ a..b }}')).toBe('{{ a..b }}');
+    expect(translocoToICU('{{ a..b }}')).toBe('{{ a..b }}');
   });
 
   it('normalizes Transloco variables nested inside complex ICU sub-clauses', () => {
     const input = '{count, plural, one {# item for {{ name }}} other {# items for {{ name }}}}';
     const expected = '{count, plural, one {# item for {name}} other {# items for {name}}}';
-    expect(normalizeTranslocoSyntax(input)).toBe(expected);
+    expect(translocoToICU(input)).toBe(expected);
   });
 });
 

@@ -58,7 +58,6 @@ lingo-tracker/                         # Nx workspace root
 │   │       ├── icu-classifier.ts      # plain / simple-placeholders / complex-icu
 │   │       ├── icu-locale-validation.ts # compiles a value under its own locale
 │   │       ├── portable-plural-categories.ts # locale-dependent plural cases
-│   │       ├── normalize-transloco-syntax.ts  # {{ x }} → {x} normalizer
 │   │       ├── reference-resolver.ts  # Inlines Transloco key references ({{t('key')}}, {{key}})
 │   │       └── validation-utils.ts    # Locale code, key length, conflict checks
 │   ├── core/                          # Node.js business logic (file I/O, crypto)

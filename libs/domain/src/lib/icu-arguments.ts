@@ -1,5 +1,5 @@
 import { parse, type Token } from '@messageformat/parser';
-import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
+import { translocoToICU } from './transloco-to-icu';
 
 /**
  * The set of arguments a message interpolates.
@@ -50,7 +50,7 @@ import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
 function parseArguments(value: string): Set<string> | null {
   let tokens: Token[];
   try {
-    tokens = parse(normalizeTranslocoSyntax(value));
+    tokens = parse(translocoToICU(value));
   } catch {
     return null;
   }

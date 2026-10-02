@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { classifyICUContent } from './icu-classifier';
-import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
+import { translocoToICU } from './transloco-to-icu';
 
 /** A value whose `select` branch body is exactly one argument, so branch and argument braces are adjacent. */
 const PLACEHOLDER_ONLY_BRANCH_BODY =
@@ -67,14 +67,14 @@ describe('classifyICUContent', () => {
     });
 
     it('classifies the same whether or not the value has been normalized', () => {
-      const normalized = normalizeTranslocoSyntax(PLACEHOLDER_ONLY_BRANCH_BODY);
+      const normalized = translocoToICU(PLACEHOLDER_ONLY_BRANCH_BODY);
 
       expect(classifyICUContent(normalized)).toBe(classifyICUContent(PLACEHOLDER_ONLY_BRANCH_BODY));
     });
 
     it('classifies the same after repeated normalization', () => {
-      const once = normalizeTranslocoSyntax(PLACEHOLDER_ONLY_BRANCH_BODY);
-      const twice = normalizeTranslocoSyntax(once);
+      const once = translocoToICU(PLACEHOLDER_ONLY_BRANCH_BODY);
+      const twice = translocoToICU(once);
 
       expect(twice).toBe(once);
       expect(classifyICUContent(twice)).toBe(classifyICUContent(PLACEHOLDER_ONLY_BRANCH_BODY));

@@ -51,7 +51,6 @@ export { type ListEdit, type ListEditProblem, listEditProblem, mergeListEdit } f
 export type { LocaleMetadata } from './lib/locale-metadata';
 export { isUnderNodeModules } from './lib/node-modules';
 export { normalizeTag, normalizeTags } from './lib/normalize-tags';
-export { normalizeTranslocoSyntax } from './lib/normalize-transloco-syntax';
 // Terminology: protected terms, preferred terminology and similarity
 export { normalizedLevenshtein } from './lib/normalized-levenshtein';
 export { findUnportablePluralCases, type UnportablePluralCase } from './lib/portable-plural-categories';

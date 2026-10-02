@@ -44,7 +44,7 @@ describe('CollectionIndex', () => {
   /** Writes one entry (with metadata) the way core stores it. */
   function writeEntry(collectionName: string, key: string, value: string): void {
     const segments = key.split('.');
-    const folder = openResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)));
+    const folder = openResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)), { baseLocale: 'en' });
     folder.setBase(segments[segments.length - 1], value);
     folder.save();
   }

@@ -1,5 +1,5 @@
 import MessageFormat from '@messageformat/core';
-import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
+import { translocoToICU } from './transloco-to-icu';
 
 /**
  * Per-locale ICU compilation checks.
@@ -120,7 +120,7 @@ export function findIcuCompileError(value: string, locale: string): string | und
   if (!compiler) return undefined;
 
   try {
-    compiler.compile(normalizeTranslocoSyntax(value));
+    compiler.compile(translocoToICU(value));
     return undefined;
   } catch (error) {
     return summarizeCompileError(error);

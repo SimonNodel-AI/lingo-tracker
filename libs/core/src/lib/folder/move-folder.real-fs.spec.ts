@@ -155,7 +155,7 @@ describe('moveFolder to the root without nesting (real fs)', () => {
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(0);
     expect(collected).toEqual([]);
-    expect(openResourceFolder(join(root(), 'apps')).get('one')?.entry.source).toBe('One');
+    expect(openResourceFolder(join(root(), 'apps'), { baseLocale: 'en' }).get('one')?.entry.source).toBe('One');
   });
 
   it('nests a depth-two source under the root', async () => {
@@ -174,7 +174,7 @@ describe('moveFolder to the root without nesting (real fs)', () => {
 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(1);
-    expect(openResourceFolder(join(root(), 'deep')).get('one')?.entry.source).toBe('One');
+    expect(openResourceFolder(join(root(), 'deep'), { baseLocale: 'en' }).get('one')?.entry.source).toBe('One');
     expect(existsSync(join(root(), 'apps', 'deep'))).toBe(false);
     expect(collected.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
       ['remove', 'apps.deep.one'],
@@ -199,7 +199,7 @@ describe('moveFolder to the root without nesting (real fs)', () => {
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(1);
     expect(result.foldersDeleted).toBe(1);
-    expect(openResourceFolder(join(root(), 'testdata')).get('foo')?.entry.source).toBe('Foo');
+    expect(openResourceFolder(join(root(), 'testdata'), { baseLocale: 'en' }).get('foo')?.entry.source).toBe('Foo');
     expect(existsSync(join(root(), 'testdata', 'resource_entries.json'))).toBe(true);
     expect(existsSync(join(root(), 'common', 'testdata'))).toBe(false);
   });
@@ -240,9 +240,11 @@ describe('moveFolder with a destination collision (real fs)', () => {
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('src.a')]));
 
     expect(existsSync(join(root, 'src'))).toBe(true);
-    expect(openResourceFolder(join(root, 'src')).keys()).toEqual(['a']);
-    expect(openResourceFolder(join(root, 'dst', 'src')).get('b')?.entry.source).toBe('Source B');
-    expect(openResourceFolder(join(root, 'dst', 'src')).get('a')?.entry.source).toBe('Existing A');
+    expect(openResourceFolder(join(root, 'src'), { baseLocale: 'en' }).keys()).toEqual(['a']);
+    expect(openResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('b')?.entry.source).toBe('Source B');
+    expect(openResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('a')?.entry.source).toBe(
+      'Existing A',
+    );
 
     expect(collected.some((mutation) => mutation.kind === 'remove-folder')).toBe(false);
     expect(collected.some((mutation) => mutation.kind === 'remove' && mutation.key === 'src.a')).toBe(false);
@@ -288,7 +290,9 @@ describe('moveFolder across collections and around content outside the collectio
     expect(JSON.parse(readFileSync(join(hidden, 'resource_entries.json'), 'utf8'))).toEqual({ old: { source: 'Old' } });
     expect(existsSync(join(source.translationsFolder, 'apps', 'resource_entries.json'))).toBe(false);
     expect(existsSync(join(source.translationsFolder, 'apps', 'nested'))).toBe(false);
-    expect(openResourceFolder(join(source.translationsFolder, 'shared', 'apps', 'nested')).keys()).toEqual(['two']);
+    expect(
+      openResourceFolder(join(source.translationsFolder, 'shared', 'apps', 'nested'), { baseLocale: 'en' }).keys(),
+    ).toEqual(['two']);
     expect(collected.filter((mutation) => mutation.kind === 'remove-folder')).toEqual([
       { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps.nested' },
     ]);
@@ -372,7 +376,7 @@ describe('moveFolder across collections and around content outside the collectio
     );
 
     expect(result.movedCount).toBe(1);
-    const moved = openResourceFolder(join(target.translationsFolder, 'apps')).get('ok');
+    const moved = openResourceFolder(join(target.translationsFolder, 'apps'), { baseLocale: 'en' }).get('ok');
     expect(moved?.entry).toEqual({ source: 'OK', fr: 'Bien', de: 'OK' });
     expect(moved?.meta?.['de']?.status).toBe('new');
     expect(moved?.meta?.['es']).toBeUndefined();

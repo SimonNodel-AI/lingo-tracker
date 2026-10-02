@@ -12,7 +12,11 @@ import type { ImportedResource } from './types';
  * @param translationsFolder - Absolute path of the translations folder
  * @returns Map of resource keys to their base locale values
  */
-export function loadBaseLocaleValues(resources: ImportedResource[], translationsFolder: string): Map<string, string> {
+export function loadBaseLocaleValues(
+  resources: ImportedResource[],
+  translationsFolder: string,
+  baseLocale: string,
+): Map<string, string> {
   const baseValues = new Map<string, string>();
 
   // Group by folder to minimize file reads
@@ -33,7 +37,7 @@ export function loadBaseLocaleValues(resources: ImportedResource[], translations
   // Load base values from each folder
   for (const [folderPath, keys] of folderToKeys.entries()) {
     try {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale });
 
       for (const { key, entryKey } of keys) {
         const source = folder.get(entryKey)?.entry.source;

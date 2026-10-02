@@ -58,6 +58,10 @@ describe('translocoToICU', () => {
   });
 
   describe('multiple placeholders', () => {
+    it('converts two named placeholders separated by a space', () => {
+      expect(translocoToICU('{{ greeting }} {{ name }}')).toBe('{greeting} {name}');
+    });
+
     it('converts two separate placeholders', () => {
       expect(translocoToICU('Hello {{ firstName }} {{ lastName }}')).toBe('Hello {firstName} {lastName}');
     });
@@ -76,6 +80,10 @@ describe('translocoToICU', () => {
   });
 
   describe('already-ICU values pass through correctly', () => {
+    it('keeps an ICU argument beside a Transloco placeholder', () => {
+      expect(translocoToICU('{count} items for {{ name }}')).toBe('{count} items for {name}');
+    });
+
     it('does not alter single-brace ICU placeholders', () => {
       expect(translocoToICU('{name}')).toBe('{name}');
     });
@@ -87,6 +95,10 @@ describe('translocoToICU', () => {
   });
 
   describe('edge cases', () => {
+    it('leaves a multi-word placeholder name unchanged', () => {
+      expect(translocoToICU('{{ first name }}')).toBe('{{ first name }}');
+    });
+
     it('does not alter a lone opening brace that is not a Transloco pattern', () => {
       expect(translocoToICU('use { for sets')).toBe('use { for sets');
     });

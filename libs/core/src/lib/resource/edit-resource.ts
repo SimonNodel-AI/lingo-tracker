@@ -133,9 +133,8 @@ export async function editResource(
   }
 
   for (const [locale, { value, status }] of translations) {
-    const normalized = translocoToICU(value);
-    if (normalized !== entry[locale]) {
-      folder.setTranslation(entryKey, locale, normalized, status);
+    if (translocoToICU(value) !== entry[locale]) {
+      folder.setTranslation(entryKey, locale, value, status);
       hasChanges = true;
     } else {
       const localeMeta = folder.get(entryKey)?.meta?.[locale];
