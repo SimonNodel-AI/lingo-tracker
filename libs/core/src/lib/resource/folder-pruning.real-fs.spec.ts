@@ -321,7 +321,7 @@ describe('Folder Pruning (real fs)', () => {
     expect(result.removed).toEqual([]);
     expect(result.problems).toHaveLength(1);
     expect(result.problems[0]?.message).toContain(
-      'Removed tracker_meta.json, resource_entries.json but could not remove folder',
+      'Removed tracker_meta.json, resource_entries.json before removal failed',
     );
     expect(result.problems[0]?.message).toContain('ENOTEMPTY');
     expect(fs.readFileSync(join(empty, 'notes.md'), 'utf8')).toBe('arrived during pruning');
@@ -345,8 +345,19 @@ describe('Folder Pruning (real fs)', () => {
     fs.symlinkSync(join(root(), 'target'), join(root(), 'linked'));
     const result = pruneEmptyFolders(collection(), { startPath: 'linked.empty' });
     expect(result.removed).toEqual([]);
-    expect(result.kept).toEqual([{ folderPath: 'linked', reason: 'content', entries: ['linked'] }]);
+    expect(result.kept).toEqual([{ folderPath: 'linked', reason: 'problem', entries: ['linked'] }]);
     expect(fs.existsSync(target)).toBe(true);
+  });
+
+  it('keeps a symbolic link used directly as the start folder and reports it', () => {
+    const target = folder('target');
+    fs.symlinkSync(target, join(root(), 'linked'));
+    const result = pruneEmptyFolders(collection(), { startPath: 'linked' });
+    expect(result.removed).toEqual([]);
+    expect(result.kept).toEqual([{ folderPath: 'linked', reason: 'problem', entries: ['linked'] }]);
+    expect(result.problems).toEqual([expect.objectContaining({ kind: 'unreadable', folderPath: 'linked' })]);
+    expect(fs.existsSync(target)).toBe(true);
+    expect(fs.lstatSync(join(root(), 'linked')).isSymbolicLink()).toBe(true);
   });
 
   it('keeps newly populated entries after classification and deletes nothing', () => {
@@ -447,7 +458,7 @@ describe('Folder Pruning (real fs)', () => {
     expect(deleted).toEqual([join(empty, 'tracker_meta.json')]);
     expect(result.removed).toEqual([]);
     expect(result.kept.find((kept) => kept.folderPath === 'empty')?.reason).toBe('entries');
-    expect(result.problems[0]?.message).toContain('Removed tracker_meta.json but could not remove folder');
+    expect(result.problems[0]?.message).toContain('Removed tracker_meta.json before removal failed');
     expect(JSON.parse(fs.readFileSync(entriesPath, 'utf8'))).toEqual({ first: { source: 'New' } });
   });
 
@@ -465,7 +476,7 @@ describe('Folder Pruning (real fs)', () => {
       expect(result.removed).toEqual([]);
       expect(result.kept.find((kept) => kept.folderPath === 'parent.empty')?.reason).toBe('problem');
       expect(result.problems[0]?.message).toContain(
-        'Removed tracker_meta.json, resource_entries.json but could not remove folder',
+        'Removed tracker_meta.json, resource_entries.json before removal failed',
       );
       expect(result.problems[0]?.message).toContain('EACCES');
       expect(fs.existsSync(empty)).toBe(true);

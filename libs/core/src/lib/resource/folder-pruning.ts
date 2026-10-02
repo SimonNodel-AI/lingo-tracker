@@ -1,4 +1,4 @@
-import { lstatSync, readdirSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs';
+import { readdirSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
@@ -36,30 +36,8 @@ export interface PruneResult {
  * Never recursively deletes: unlink known files individually, then rmdir the empty directory.
  */
 export function pruneEmptyFolders(collection: Collection, options: PruneOptions = {}): PruneResult {
-  const startSegments = validateFolderAddress(options.startPath ?? '', 'folder path');
+  validateFolderAddress(options.startPath ?? '', 'folder path');
   const result: PruneResult = { removed: [], kept: [], problems: [] };
-  // A start address must not bypass the walk's refusal to descend into symbolic links.
-  for (let depth = 1; depth <= startSegments.length; depth++) {
-    const segments = startSegments.slice(0, depth);
-    const absolutePath = join(collection.translationsFolder, ...segments);
-    const folderPath = segments.join('.');
-    try {
-      if (lstatSync(absolutePath).isSymbolicLink()) {
-        result.kept.push({
-          folderPath,
-          reason: 'content',
-          entries: [relative(collection.translationsFolder, absolutePath)],
-        });
-        return result;
-      }
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return result;
-      const message = error instanceof Error ? error.message : String(error);
-      result.problems.push({ folderPath, absolutePath, message });
-      result.kept.push({ folderPath, reason: 'problem' });
-      return result;
-    }
-  }
   const removedPaths = new Set<string>();
   const visits = [...walkCollectionFolders(collection.translationsFolder, { startPath: options.startPath })];
   visits.sort((a, b) => b.segments.length - a.segments.length);
@@ -87,7 +65,8 @@ export function pruneEmptyFolders(collection: Collection, options: PruneOptions 
             ),
           ],
         });
-        if (removal.message) result.problems.push({ folderPath, absolutePath, message: removal.message });
+        if (removal.message)
+          result.problems.push({ kind: 'not-removed', folderPath, absolutePath, message: removal.message });
         continue;
       }
     }
@@ -161,7 +140,7 @@ function classifyFolder(
       folderPath,
       reason: 'problem',
       entries: [relative(translationsFolder, absolutePath)],
-      problem: { folderPath, absolutePath, message: errorMessage(error) },
+      problem: { kind: 'unreadable', folderPath, absolutePath, message: errorMessage(error) },
     };
   }
 }
@@ -188,9 +167,7 @@ function removeFolder(absolutePath: string, files: readonly string[]): FolderRem
         return {
           kind: 'entries',
           message:
-            removedFiles.length > 0
-              ? removalFailure(absolutePath, removedFiles, 'resource_entries.json now has entries')
-              : undefined,
+            removedFiles.length > 0 ? removalFailure(removedFiles, 'resource_entries.json now has entries') : undefined,
         };
       }
       unlinkSync(entriesPath);
@@ -199,14 +176,12 @@ function removeFolder(absolutePath: string, files: readonly string[]): FolderRem
     rmdirSync(absolutePath);
     return { kind: 'removed' };
   } catch (error) {
-    return { kind: 'problem', message: removalFailure(absolutePath, removedFiles, errorMessage(error)) };
+    return { kind: 'problem', message: removalFailure(removedFiles, errorMessage(error)) };
   }
 }
 
-function removalFailure(absolutePath: string, removedFiles: readonly string[], message: string): string {
-  return removedFiles.length > 0
-    ? `Removed ${removedFiles.join(', ')} but could not remove folder ${absolutePath}: ${message}`
-    : `Could not remove folder ${absolutePath}: ${message}`;
+function removalFailure(removedFiles: readonly string[], message: string): string {
+  return removedFiles.length > 0 ? `Removed ${removedFiles.join(', ')} before removal failed: ${message}` : message;
 }
 
 /** Validates object-shaped collection JSON; only the removal preflight permits a missing file. */

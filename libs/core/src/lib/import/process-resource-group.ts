@@ -264,7 +264,10 @@ export function processResourceGroup(session: ImportSession, group: ResourceGrou
 
   let folder: ResourceFolder;
   try {
-    folder = openResourceFolder(dirname(group.entryResourcePath), { baseLocale });
+    folder = openResourceFolder(dirname(group.entryResourcePath), {
+      baseLocale,
+      translationsFolder: session.collection.translationsFolder,
+    });
   } catch (error) {
     for (const { resource } of group.resources) {
       changes.push({ key: resource.key, type: 'failed', reason: `Failed to read resource files: ${error}` });

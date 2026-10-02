@@ -261,7 +261,7 @@ flowchart TD
 
 **Stdout is the payload, stderr is diagnostics.** Every `❌` error and `⚠️` warning a command prints goes to stderr, with its detail lines: the runner's failure and cancel lines, the config errors, and every `ConsoleFormatter.error` / `ConsoleFormatter.warning` call. Examples are a `bundle` that fails or has warnings (also with `--quiet`), an `export` locale that fails, `import` and `export` warning and error lists, the `delete-resource` confirmation warning, and the `validate` configuration errors. Success, info, progress, section, key-value and result lines stay on stdout. Two kinds of output use `❌`/`⚠️` as markers and stay on stdout, because they are not the command's diagnostics. The first is the `validate` summary, a report whose rows are marked by status. The second is the `--verbose` progress stream from core (`import --verbose` prints `❌ ICU auto-fix failed for …` lines). The same auto-fix failures are also recorded in the import summary file.
 
-So a command whose stdout is piped keeps it clean. `glossary --stdout` writes only the glossary JSON to stdout; its status line and warnings go to stderr. `normalize --json` writes only the JSON; a failed or read-only collection is still reported, on stderr. A folder normalize could not read is a `⚠️  Skipped unreadable folder` warning on stderr, and is also listed in that collection's `problems` in the JSON. No blank line is printed on stdout only to frame a stderr block.
+So a command whose stdout is piped keeps it clean. `glossary --stdout` writes only the glossary JSON to stdout; its status line and warnings go to stderr. `normalize --json` writes only the JSON; a failed or read-only collection is still reported, on stderr. A folder normalize could not read is a `⚠️  Collection '<name>': Skipped unreadable folder '<path or (root)>': <message>` warning on stderr, and is also listed in that collection's `problems` in the JSON. Pruning failures use `Collection '<name>': Could not remove folder '<path>': <message>`. No blank line is printed on stdout only to frame a stderr block.
 
 **Breaking change for scripts:** failure and warning text that a script captured from stdout is now on stderr (`2>&1` restores the old combined output).
 
@@ -325,7 +325,7 @@ For scripts written against the earlier CLI:
 - Every base value is compared. The 500-candidate cap and its `Note: only the first 500 candidates were compared` warning are gone.
 - A match is a base value at least 80% similar to `--value` (as before), **or** one that contains `--value` or is contained in it as whole words with a similarity of at least 40%. So `--value "Save"` now also reports `"Save draft"` (similarity 40%), but not `"Save and Close"` (29%). A fragment inside a word does not count (`connect` in `connection`, `don` in `don't`).
 - Ranking: similarity, then an entry whose key contains `--value`, then key (key order is new; ties were in discovery order before).
-- A folder the reader cannot read prints `⚠️  Skipped unreadable folder: <message>` on stderr (a warning; it was a `console.error` line from the search), and the other folders are still searched.
+- A folder the reader cannot read prints `⚠️  Skipped unreadable folder '<path or (root)>': <message>` on stderr (a warning; it was a `console.error` line from the search), and the other folders are still searched.
 
 ---
 

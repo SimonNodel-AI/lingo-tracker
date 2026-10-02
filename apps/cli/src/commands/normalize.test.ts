@@ -186,19 +186,41 @@ describe('normalizeCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('labels pruning removal failures on stderr', async () => {
+    vi.mocked(normalize).mockResolvedValueOnce({
+      ...NORMALIZE_RESULT,
+      problems: [{ kind: 'not-removed', folderPath: 'empty', absolutePath: '/p/path/App/empty', message: 'ENOTEMPTY' }],
+    });
+    await normalizeCommand({ collection: 'App', json: true });
+    expect(errored()).toContain("⚠️  Collection 'App': Could not remove folder 'empty': ENOTEMPTY");
+    expect(process.exitCode).toBe(0);
+  });
+
   it('warns on stderr about each folder problem normalize reports, and still succeeds', async () => {
     vi.mocked(normalize).mockResolvedValueOnce({
       ...NORMALIZE_RESULT,
       problems: [
-        { folderPath: 'bad', absolutePath: '/p/path/App/bad', message: 'Unexpected token in resource_entries.json' },
+        {
+          kind: 'unreadable',
+          folderPath: 'bad',
+          absolutePath: '/p/path/App/bad',
+          message: 'Unexpected token in resource_entries.json',
+        },
       ],
     });
 
     await normalizeCommand({ collection: 'App', json: true });
 
-    expect(errored()).toContain('⚠️  Folder problem: Unexpected token in resource_entries.json');
+    expect(errored()).toContain(
+      "⚠️  Collection 'App': Skipped unreadable folder 'bad': Unexpected token in resource_entries.json",
+    );
     expect(JSON.parse(logged()[0]).collections[0].problems).toEqual([
-      { folderPath: 'bad', absolutePath: '/p/path/App/bad', message: 'Unexpected token in resource_entries.json' },
+      {
+        kind: 'unreadable',
+        folderPath: 'bad',
+        absolutePath: '/p/path/App/bad',
+        message: 'Unexpected token in resource_entries.json',
+      },
     ]);
     expect(process.exitCode).toBe(0);
   });

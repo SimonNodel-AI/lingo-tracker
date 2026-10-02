@@ -1,8 +1,9 @@
-import { existsSync, statSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, lstatSync, statSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isValidSegment } from '@simoncodes-ca/domain';
 import type { FolderPathPart } from '../errors/error-messages';
-import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
+import type { CollectionFolderProblem } from './collection-folders';
+import { InvalidCollectionFolderError, InvalidFolderPathError } from '../errors/lingo-tracker-error';
 
 /** A dot-delimited folder address. The empty address names the collection root. */
 export function validateFolderAddress(address: string, part: FolderPathPart, allowRoot = true): string[] {
@@ -17,7 +18,10 @@ export function validateFolderAddress(address: string, part: FolderPathPart, all
 /** Resolve a folder address beneath a collection's translations folder. */
 export function resolveFolderAddress(translationsFolder: string, address: string, cwd = process.cwd()): string {
   const segments = address === '' ? [] : address.split('.');
-  return resolve(cwd, translationsFolder, ...segments);
+  const root = resolve(cwd, translationsFolder);
+  const absolutePath = resolve(root, ...segments);
+  assertCollectionFolderPath(root, absolutePath);
+  return absolutePath;
 }
 
 /** Whether the addressed path exists (a file also counts as existing). */
@@ -32,4 +36,48 @@ export function inspectFolderAddress(
 ): { readonly absolutePath: string; readonly isDirectory: boolean } {
   const absolutePath = resolveFolderAddress(translationsFolder, address);
   return { absolutePath, isDirectory: existsSync(absolutePath) && statSync(absolutePath).isDirectory() };
+}
+
+/** Checks collection-relative segments without following a symbolic link. Missing paths may be created. */
+export function checkCollectionFolderPath(
+  translationsFolder: string,
+  folderPath: string,
+): CollectionFolderProblem | undefined {
+  const root = resolve(translationsFolder);
+  const relativePath = relative(root, resolve(folderPath));
+  const segments = relativePath.split(sep).filter(Boolean);
+  if (segments[0] === '..' || isAbsolute(relativePath)) {
+    return {
+      kind: 'unreadable',
+      // An outside path has no collection address; use a relative filesystem label.
+      folderPath: relativePath.split(sep).join('/'),
+      absolutePath: resolve(folderPath),
+      message: 'This folder is outside the collection',
+    };
+  }
+  for (let length = 1; length <= segments.length; length++) {
+    const absolutePath = join(root, ...segments.slice(0, length));
+    const folderPath = segments.slice(0, length).join('.');
+    const problem = (message: string): CollectionFolderProblem => ({
+      kind: 'unreadable',
+      folderPath,
+      absolutePath,
+      message,
+    });
+    try {
+      if (lstatSync(absolutePath).isSymbolicLink()) {
+        return problem('This folder is a symbolic link and is not part of the collection');
+      }
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') return undefined;
+      return problem(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return undefined;
+}
+
+/** Refuses a collection folder before a direct read or write. */
+export function assertCollectionFolderPath(translationsFolder: string, absolutePath: string): void {
+  const problem = checkCollectionFolderPath(translationsFolder, absolutePath);
+  if (problem) throw new InvalidCollectionFolderError(problem);
 }

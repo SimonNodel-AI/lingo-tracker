@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DEFAULT_CONFIG } from '../../constants';
 import type { Collection } from '../config/open-collection';
+import { describeFolderProblem } from '../resource/collection-folders';
 import { collectionSetTargetLocales, readCollectionSet } from '../collection-set/collection-set';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
@@ -135,7 +136,9 @@ export async function runExport(
         );
       }
     }
-    totals.malformedFiles.push(...set.readProblems.map((problem) => problem.message));
+    totals.malformedFiles.push(
+      ...set.readProblems.map((problem) => describeFolderProblem(problem, { collectionName: problem.collection })),
+    );
     const protectedTermsByCollection = new Map(
       collections.map((collection) => [collection.name, protectedTermsOf(collection)]),
     );

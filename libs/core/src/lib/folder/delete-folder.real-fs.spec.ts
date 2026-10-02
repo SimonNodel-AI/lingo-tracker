@@ -1,5 +1,5 @@
 import type { ResourceMutation } from '../resource/resource-mutation';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, symlinkSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
@@ -28,6 +28,17 @@ describe('deleteFolder (real fs)', () => {
     });
     expect(collected).toEqual([{ kind: 'remove-folder', translationsFolder: root(), path: 'apps' }]);
     expect(existsSync(join(root(), 'apps'))).toBe(false);
+  });
+
+  it('stops before deleting through a symlinked start folder or ancestor', () => {
+    const target = writeFolderFiles(root(), 'target.nested', { entries: { ok: { source: 'OK' } } });
+    symlinkSync(join(root(), 'target'), join(root(), 'linked'));
+    for (const folderPath of ['linked', 'linked.nested']) {
+      expect(() => deleteFolder(testCollection(root()), { folderPath }, { onMutation })).toThrow('symbolic link');
+      expect(collected).toEqual([]);
+      expect(lstatSync(join(root(), 'linked')).isSymbolicLink()).toBe(true);
+      expect(readFileSync(join(target, 'resource_entries.json'), 'utf8')).toContain('OK');
+    }
   });
 
   it('reports a missing folder', () => {

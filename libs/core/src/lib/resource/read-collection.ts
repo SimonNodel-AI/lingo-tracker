@@ -73,11 +73,14 @@ export type ReadCollectionFoldersOptions = WalkCollectionFoldersOptions;
  * Reads every resource entry of a collection.
  * Never throws for a folder it cannot read; see the module rules above.
  */
-export function readCollection(collection: CollectionReadTarget): CollectionRead {
+export function readCollection(
+  collection: CollectionReadTarget,
+  options: ReadCollectionFoldersOptions = {},
+): CollectionRead {
   const resources: StoredResource[] = [];
   const problems: CollectionReadProblem[] = [];
 
-  for (const folder of readCollectionFolders(collection)) {
+  for (const folder of readCollectionFolders(collection, options)) {
     if (folder.problem) {
       problems.push(folder.problem);
     } else {
@@ -107,13 +110,19 @@ export function* readCollectionFolders(
 
     let resources: StoredResource[];
     try {
-      resources = readFolder(visit.absolutePath, visit.folderPath, collection.baseLocale, collectionTags);
+      resources = readFolder(
+        visit.absolutePath,
+        visit.folderPath,
+        collection.baseLocale,
+        collectionTags,
+        collection.translationsFolder,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       yield {
         ...visit,
         resources: [],
-        problem: { folderPath: visit.folderPath, absolutePath: visit.absolutePath, message },
+        problem: { kind: 'unreadable', folderPath: visit.folderPath, absolutePath: visit.absolutePath, message },
       };
       continue;
     }
@@ -127,8 +136,9 @@ function readFolder(
   folderPath: string,
   baseLocale: string,
   collectionTags: string[],
+  translationsFolder: string,
 ): StoredResource[] {
-  const folder = openResourceFolder(absolutePath, { baseLocale });
+  const folder = openResourceFolder(absolutePath, { baseLocale, translationsFolder });
   const resources: StoredResource[] = [];
 
   for (const entryKey of folder.keys()) {

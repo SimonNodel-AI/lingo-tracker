@@ -1,4 +1,5 @@
 import type { Collection } from '../config/open-collection';
+import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import {
   type CollectionFolderAddress,
   type CollectionFolderProblem,
@@ -52,10 +53,17 @@ export function* sweepCollection(
 
     let folder: ResourceFolder;
     try {
-      folder = openResourceFolder(absolutePath, { baseLocale: collection.baseLocale });
+      folder = openResourceFolder(absolutePath, {
+        baseLocale: collection.baseLocale,
+        translationsFolder: collection.translationsFolder,
+      });
     } catch (error) {
+      if (error instanceof InvalidCollectionFolderError) {
+        yield { ...address, problem: error.problem };
+        continue;
+      }
       const message = error instanceof Error ? error.message : String(error);
-      yield { ...address, problem: { folderPath, absolutePath, message } };
+      yield { ...address, problem: { kind: 'unreadable', folderPath, absolutePath, message } };
       continue;
     }
     yield { ...address, folder };

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { InvalidFolderPathError } from '../errors/lingo-tracker-error';
 import {
+  checkCollectionFolderPath,
   folderAddressExists,
   inspectFolderAddress,
   resolveFolderAddress,
@@ -58,6 +59,17 @@ describe('Folder Address', () => {
     expect(inspectFolderAddress(root(), 'missing')).toEqual({
       absolutePath: join(root(), 'missing'),
       isDirectory: false,
+    });
+  });
+
+  it('reports an outside path with a readable relative label and the absolute location', () => {
+    const translationsFolder = join(root(), 'translations');
+    const outsideFolder = join(root(), 'outside', 'nested');
+    expect(checkCollectionFolderPath(translationsFolder, outsideFolder)).toEqual({
+      kind: 'unreadable',
+      folderPath: '../outside/nested',
+      absolutePath: outsideFolder,
+      message: 'This folder is outside the collection',
     });
   });
 });

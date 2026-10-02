@@ -1,5 +1,7 @@
 // Resource operations, folder files, and the read models built from them.
 
+export { type CollectionFolderProblem, describeFolderProblem } from './collection-folders';
+
 export {
   type AddResourceOptions,
   type AddResourceParams,

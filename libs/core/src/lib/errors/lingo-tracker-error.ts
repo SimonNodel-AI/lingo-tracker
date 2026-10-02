@@ -1,3 +1,4 @@
+import type { CollectionFolderProblem } from '../resource/collection-folders';
 import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import { ErrorMessages, type FolderPathPart } from './error-messages';
 
@@ -379,6 +380,20 @@ export class FolderNotFoundError extends LingoTrackerError {
   constructor(folderPath: string) {
     super(ErrorMessages.folderNotFound(folderPath), 'FOLDER_NOT_FOUND');
     this.folderPath = folderPath;
+  }
+}
+
+/** An address names a folder outside the collection policy, or one that cannot be accessed. */
+export class InvalidCollectionFolderError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor(
+    readonly problem: CollectionFolderProblem,
+    operation: 'access' | 'delete' | 'move' = 'access',
+    targetPath = problem.folderPath,
+  ) {
+    const reason =
+      targetPath === problem.folderPath ? problem.message : `Folder '${problem.folderPath}': ${problem.message}`;
+    super(`Cannot ${operation} folder '${targetPath || '(root)'}': ${reason}`, 'INVALID_COLLECTION_FOLDER');
   }
 }
 

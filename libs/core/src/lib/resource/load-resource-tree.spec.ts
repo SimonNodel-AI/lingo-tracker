@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, symlinkSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
@@ -352,17 +352,33 @@ describe('loadResourceTree (real fs)', () => {
       expect(result.resources).toEqual([{ key: 'orphan', source: 'Orphan', translations: {}, metadata: {} }]);
     });
 
-    it('keeps an unreadable folder in the tree without resources, and logs it', () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    it('keeps an unreadable folder in the tree without resources, and reports it', () => {
+      const onProblem = vi.fn();
       writeFolderFiles(translationsFolder, 'apps.broken', { entries: '{ nope' });
 
-      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'apps', depth: 1 });
+      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'apps', depth: 1, onProblem });
 
       const broken = result.children.find((child) => child.name === 'broken');
       expect(broken?.loaded).toBe(true);
       expect(broken?.tree?.resources).toEqual([]);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('resource_entries.json'));
-      warn.mockRestore();
+      expect(onProblem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'unreadable',
+          folderPath: 'apps.broken',
+          message: expect.stringContaining('resource_entries.json'),
+        }),
+      );
+    });
+
+    it('reports a symlinked ancestor without loading resources through it', () => {
+      symlinkSync(join(translationsFolder, 'apps'), join(translationsFolder, 'linked'));
+      const onProblem = vi.fn();
+      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'linked.common', onProblem });
+      expect(result.folderPathSegments).toEqual(['linked', 'common']);
+      expect(result.resources).toEqual([]);
+      expect(result.children).toEqual([]);
+      expect(onProblem).toHaveBeenCalledTimes(1);
+      expect(onProblem).toHaveBeenCalledWith(expect.objectContaining({ kind: 'unreadable', folderPath: 'linked' }));
     });
 
     it('throws when the translations folder is a file', () => {

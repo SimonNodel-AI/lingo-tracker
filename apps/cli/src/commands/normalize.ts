@@ -1,4 +1,5 @@
 import {
+  describeFolderProblem,
   emptyNormalizeCollectionsResult,
   type NormalizeCollectionsResult,
   normalizeCollections,
@@ -73,7 +74,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
             case 'result': {
               const item = event.result;
               for (const problem of item.problems) {
-                ConsoleFormatter.warning(`Folder problem: ${problem.message}`);
+                ConsoleFormatter.warning(describeFolderProblem(problem, { collectionName: item.collectionName }));
               }
               if (!answers.json) {
                 ConsoleFormatter.indent(`✅ Entries processed: ${item.entriesProcessed}`);

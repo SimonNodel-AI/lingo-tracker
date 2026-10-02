@@ -37,7 +37,7 @@ export function loadBaseLocaleValues(
   // Load base values from each folder
   for (const [folderPath, keys] of folderToKeys.entries()) {
     try {
-      const folder = openResourceFolder(folderPath, { baseLocale });
+      const folder = openResourceFolder(folderPath, { baseLocale, translationsFolder });
 
       for (const { key, entryKey } of keys) {
         const source = folder.get(entryKey)?.entry.source;
