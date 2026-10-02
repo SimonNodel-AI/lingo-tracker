@@ -1,5 +1,7 @@
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
+import type { RunOutcome } from '../run-outcome';
+import { withMoveOutcome } from './move-outcome';
 import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from './move-destination';
 import { describeFolderProblem } from './collection-folders';
 import { sweepKeys } from './collection-sweep';
@@ -19,6 +21,7 @@ export interface MoveResourceParams {
 }
 
 export interface MoveResourceResult {
+  readonly outcome: RunOutcome;
   movedCount: number;
   warnings: string[];
   errors: string[];
@@ -47,12 +50,12 @@ export async function moveResource(
 ): Promise<MoveResourceResult> {
   const { source, destination, override = false } = params;
   const destinationCollection = resolveMoveDestination(collection, params.toCollection, options);
-  const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [] };
+  const result: Omit<MoveResourceResult, 'outcome'> = { movedCount: 0, warnings: [], errors: [] };
 
   let relocations: Relocation[];
   if (source.endsWith('*')) {
     const expanded = expandPattern(collection, source, destination, result);
-    if (!expanded) return result;
+    if (!expanded) return withMoveOutcome(result);
     relocations = expanded;
   } else {
     relocations = [...planMove({ kind: 'key', key: source }, destination).relocations];
@@ -62,11 +65,14 @@ export async function moveResource(
     override,
     onMutation: options.onMutation,
   });
-  return mergeRelocation(result, relocation);
+  return withMoveOutcome(mergeRelocation(result, relocation));
 }
 
 /** Adds a relocation's outcome to a move result: collisions become warnings. */
-export function mergeRelocation<T extends MoveResourceResult>(result: T, relocation: RelocationResult): T {
+export function mergeRelocation<T extends Omit<MoveResourceResult, 'outcome'>>(
+  result: T,
+  relocation: RelocationResult,
+): T {
   result.movedCount += relocation.moved.length;
   result.warnings.push(...relocation.collisions.map(({ to }) => collisionWarning(to)));
   result.errors.push(...relocation.errors);
@@ -85,7 +91,7 @@ function expandPattern(
   collection: Collection,
   pattern: string,
   destinationKey: string,
-  result: MoveResourceResult,
+  result: Omit<MoveResourceResult, 'outcome'>,
 ): Relocation[] | undefined {
   const prefix = pattern.slice(0, -1); // remove '*'
   const cleanPrefix = prefix.endsWith('.') ? prefix.slice(0, -1) : prefix;

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
@@ -65,6 +65,7 @@ describe('Move Resource (real fs)', () => {
 
       expect(result.movedCount).toBe(1);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
 
       // Verify source gone
       // In this case, since 'ok' was the only key, the file should be deleted by deleteResource -> unlinkSync
@@ -113,6 +114,7 @@ describe('Move Resource (real fs)', () => {
 
       expect(result.movedCount).toBe(0);
       expect(result.warnings).toHaveLength(1);
+      expect(result.outcome).toBe('succeeded');
       expect(result.warnings[0]).toContain('already exists');
 
       // Verify no change
@@ -182,6 +184,7 @@ describe('Move Resource (real fs)', () => {
 
       expect(result.movedCount).toBe(2);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
 
       // Verify dest
       const destFolder = join(testDir, 'common', 'actions');
@@ -271,6 +274,7 @@ describe('Move Resource (real fs)', () => {
 
       expect(result.movedCount).toBe(1);
       expect(result.errors).toHaveLength(0);
+      expect(result.outcome).toBe('succeeded');
 
       // Verify source gone from A
       expect(fs.existsSync(sourceFile)).toBe(false);
@@ -348,7 +352,28 @@ describe('Move Resource (real fs)', () => {
 
       // It should return error
       expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.outcome).toBe('failed');
       expect(result.errors[0]).toContain('Invalid key segment');
     });
+  });
+
+  it('fails a wildcard run that moves readable resources but reports an unreadable folder', async () => {
+    writeFolderFiles(testDir, 'source.good', { entries: { ok: { source: 'OK' } } });
+    writeFolderFiles(testDir, 'source.bad', { entries: '{ invalid json' });
+
+    const result = await moveResource(collection(testDir), { source: 'source.*', destination: 'dest' });
+
+    expect(result.movedCount).toBe(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.outcome).toBe('failed');
+    expect(fs.existsSync(join(testDir, 'source', 'bad', RESOURCE_ENTRIES_FILENAME))).toBe(true);
+  });
+
+  it('fails a single resource move when the source does not exist', async () => {
+    const result = await moveResource(collection(testDir), { source: 'missing.key', destination: 'dest.key' });
+
+    expect(result.movedCount).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.outcome).toBe('failed');
   });
 });

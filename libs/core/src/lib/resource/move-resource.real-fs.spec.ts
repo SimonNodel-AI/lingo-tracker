@@ -88,6 +88,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     );
 
     expect(result).toEqual({
+      outcome: 'succeeded',
       movedCount: 1,
       warnings: [],
       errors: [],
@@ -209,6 +210,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     );
 
     expect(result.errors).toEqual([]);
+    expect(result.outcome).toBe('succeeded');
     expect(read('resource_entries.json', 'shared', 'buttons')).toEqual(entries);
     expect(read('tracker_meta.json', 'shared', 'buttons')).toEqual(meta);
     expect(existsSync(join(root, 'apps', 'buttons'))).toBe(false);
@@ -231,6 +233,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     const result = await moveResource(collection(), { source: 'common.*', destination: '' }, { onMutation });
 
     expect(result.errors).toEqual([]);
+    expect(result.outcome).toBe('succeeded');
     expect(result.movedCount).toBe(1);
     expect(read('resource_entries.json', 'buttons')).toEqual(entries);
     expect(read('tracker_meta.json', 'buttons')).toEqual(meta);
@@ -256,6 +259,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     );
 
     expect(result.errors).toEqual(['Destination collection "missing" not found']);
+    expect(result.outcome).toBe('failed');
     expect(result.movedCount).toBe(1);
     expect(read('resource_entries.json', 'shared')).toEqual(entries);
     expect(collected.map(({ kind }) => kind)).toEqual(['remove', 'upsert']);
@@ -293,6 +297,7 @@ describe('moving resources keeps metadata (real fs)', () => {
       writer.mockImplementation(actual.writeJsonFile);
     }
     expect(result.errors).toEqual([expect.stringContaining('Failed to write the move')]);
+    expect(result.outcome).toBe('failed');
     expect(collected).toEqual([
       { kind: 'remove', translationsFolder: root, key: 'common.ok' },
       expect.objectContaining({ kind: 'upsert', translationsFolder: root, key: 'shared.ok' }),
@@ -320,6 +325,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     );
 
     expect(result.errors).toEqual(['Collection "vendor" is read-only. Its resources cannot be modified.']);
+    expect(result.outcome).toBe('failed');
     expect(result.movedCount).toBe(0);
     expect(existsSync(join(root, 'common', 'resource_entries.json'))).toBe(true);
     expect(collected).toEqual([]);
@@ -346,6 +352,7 @@ describe('moving resources keeps metadata (real fs)', () => {
       { config, cwd: root, onMutation },
     );
     expect(result).toEqual({
+      outcome: 'failed',
       movedCount: 1,
       warnings: [],
       errors: ['Collection "vendor" is read-only. Its resources cannot be modified.'],

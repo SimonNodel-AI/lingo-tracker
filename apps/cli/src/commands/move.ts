@@ -1,5 +1,6 @@
 import { moveResource } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter } from '../utils';
 
 export interface MoveResourceOptions {
@@ -62,7 +63,7 @@ export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
         'Errors:',
         result.errors.map((error) => `- ${error}`),
       );
-      return { exitCode: 1 };
     }
+    return exitForRunOutcome(result.outcome);
   },
 });

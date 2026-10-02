@@ -751,7 +751,9 @@ Explained in context: [`cli.md`](cli.md#command-inventory)
 
 ### Run Outcome
 
-Core's `RunOutcome` is `succeeded` or `failed` on each completed export, import, translate-locale, validate, and bundle run. `failed` means the run met its failure condition, even if some files or resources were produced; the CLI exits 1. A warning or intentional skip alone does not fail a run. Export ignores errors and hierarchical conflicts in a dry run, while import counts failed resources and errors even in a dry run. Preconditions that throw have no run outcome. Bundle generation also gives each selected bundle an outcome; a thrown bundle error or failed type generation fails the whole run.
+Core's `RunOutcome` is `succeeded` or `failed`. Its producers are `runExport`, `runImport`, `translateLocale`, `runValidate`, `generateBundles`, `generateBundle`, `generatePreparedBundle`, `moveResource`, `moveResources`, `moveFolder`, and `normalizeCollections`. The CLI maps completed outcomes to exit codes through `exitForRunOutcome`. A `failed` outcome gives exit code 1, even with partial output. A warning or intentional skip alone does not fail a run. Preconditions that throw have no run outcome.
+
+Move fails when its result contains errors. Normalize fails when a collection raises an error, including in dry runs. Folder problems and read-only skips under `--all` do not fail normalize. Export ignores errors and hierarchical conflicts in a dry run. Import counts failed resources and errors even in a dry run. Bundle generation reports outcomes per bundle and fails the whole run on a thrown bundle error or failed type generation.
 
 Explained in context: [`core-library.md`](core-library.md), [`cli.md`](cli.md#errors-and-exit-codes)
 

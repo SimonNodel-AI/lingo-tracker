@@ -133,6 +133,7 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
     );
 
     expect(result.errors).toHaveLength(1);
+    expect(result.outcome).toBe('failed');
     expect(result.errors[0]).toContain('apps.bad');
     expect(result.movedCount).toBe(0);
     expect(result.foldersDeleted).toBe(0);
@@ -154,6 +155,7 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
     );
 
     expect(result.errors).toHaveLength(1);
+    expect(result.outcome).toBe('failed');
     expect(result.foldersDeleted).toBe(0);
     expect(readFileSync(join(root, 'apps', 'bad', 'resource_entries.json'), 'utf8')).toBe(entries);
   });
@@ -383,7 +385,7 @@ describe('moveFolder across collections and around content outside the collectio
       },
     );
 
-    expect(result).toEqual({ movedCount: 3, foldersDeleted: 1, warnings: [], errors: [] });
+    expect(result).toEqual({ outcome: 'succeeded', movedCount: 3, foldersDeleted: 1, warnings: [], errors: [] });
     expect(
       collected.map((mutation) => [
         mutation.kind,
@@ -417,7 +419,7 @@ describe('moveFolder across collections and around content outside the collectio
       { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
       { onMutation },
     );
-    expect(result).toEqual({ movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] });
+    expect(result).toEqual({ outcome: 'succeeded', movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] });
     expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
     expect(collected.filter((mutation) => mutation.kind === 'remove-folder')).toEqual([
       { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps.deep' },
@@ -445,6 +447,7 @@ describe('moveFolder across collections and around content outside the collectio
       },
     );
     expect(result).toEqual({
+      outcome: 'succeeded',
       movedCount: 1,
       foldersDeleted: 0,
       warnings: [`Source folder kept: it has resources again: ${join('apps', 'resource_entries.json')}`],

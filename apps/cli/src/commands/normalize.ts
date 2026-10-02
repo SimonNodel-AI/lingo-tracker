@@ -6,6 +6,7 @@ import {
   ReadOnlyCollectionError,
 } from '@simoncodes-ca/core';
 import { CommandCancelledError, defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter, parseNameSelection, selectionPrompt } from '../utils';
 
 export interface NormalizeOptions {
@@ -97,18 +98,18 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
     } catch (error) {
       if (!(error instanceof ReadOnlyCollectionError)) throw error;
       ConsoleFormatter.error(error.message);
-      result = emptyNormalizeCollectionsResult();
-      printSummary(result, 0, answers);
+      if (answers.json) printJsonSummary(emptyNormalizeCollectionsResult());
+      else printDryRunWarning(answers);
       return { exitCode: 1 };
     }
     printSummary(result, collections.length, answers);
-    return result.errors.length > 0 ? { exitCode: 1 } : undefined;
+    return exitForRunOutcome(result.outcome);
   },
 });
 
 function printSummary(result: NormalizeCollectionsResult, collectionCount: number, options: NormalizeOptions): void {
   if (options.json) {
-    console.log(JSON.stringify({ collections: result.collections, totals: result.totals }, null, 2));
+    printJsonSummary(result);
     return;
   }
 
@@ -126,6 +127,14 @@ function printSummary(result: NormalizeCollectionsResult, collectionCount: numbe
     ConsoleFormatter.keyValue('Total folders removed', summary.foldersRemoved);
   }
 
+  printDryRunWarning(options);
+}
+
+function printJsonSummary(result: Pick<NormalizeCollectionsResult, 'collections' | 'totals'>): void {
+  console.log(JSON.stringify({ collections: result.collections, totals: result.totals }, null, 2));
+}
+
+function printDryRunWarning(options: NormalizeOptions): void {
   if (options.dryRun) {
     ConsoleFormatter.warning('Dry run completed - no changes were made.');
   }
