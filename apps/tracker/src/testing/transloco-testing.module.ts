@@ -49,9 +49,7 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'browser.folderPicker.folderLabel': 'Folder:',
         'browser.folderPicker.noFoldersYet': 'No folders yet',
         'browser.folderPicker.createFirstFolder': 'Create First Folder',
-        'browser.folderPicker.folderCreated': 'Folder created successfully',
         'browser.folderPicker.folderAlreadyExists': 'Folder already exists',
-        'browser.folderPicker.createFolderFailed': 'Failed to create folder',
         'browser.folderPicker.rootLabel': 'root',
         'browser.indexingOverlay.message': 'Indexing collection...',
         'browser.indexingOverlay.errorTitle': 'Indexing Failed',
@@ -89,6 +87,8 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'browser.toast.folderMovedX': 'Moved "{{name}}" into {{dest}}',
         'browser.toast.moveResourceFailed': 'Failed to move resource',
         'browser.toast.moveFolderFailed': 'Failed to move folder',
+        'browser.toast.createFolderFailed': 'Failed to create folder',
+        'browser.toast.deleteFolderFailed': 'Failed to delete folder',
         'browser.translationEditor.closeDialog': 'Close dialog',
         'browser.translationEditor.translationKey': 'Translation Key',
         'browser.translationEditor.keyHint':

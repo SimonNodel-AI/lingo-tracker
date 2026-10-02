@@ -1,4 +1,5 @@
 import { Component, ChangeDetectionStrategy, input, output, effect, viewChild, type ElementRef } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -34,6 +35,12 @@ export class InlineFolderInput {
   /** Emitted when user confirms the folder name (Enter key) */
   readonly confirm = output<string>();
 
+  /** A refusal of the last confirmed name, shown under the input until the name is edited. */
+  readonly error = input<string | null>(null);
+
+  /** Emitted when the user edits the name, which retires a refusal of the previous one. */
+  readonly edited = output<void>();
+
   /** Emitted when user cancels (Escape key or blur) */
   readonly cancelInput = output<void>();
 
@@ -50,6 +57,12 @@ export class InlineFolderInput {
   #confirmed = false;
 
   constructor() {
+    this.folderNameControl.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      // A refused name leaves the input open: editing it re-arms blur-to-cancel.
+      this.#confirmed = false;
+      this.edited.emit();
+    });
+
     // Auto-focus the input when component appears
     effect(() => {
       const element = this.inputElement();

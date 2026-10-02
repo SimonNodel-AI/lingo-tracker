@@ -3,24 +3,30 @@ import { patchState, signalStoreFeature, type, withMethods } from '@ngrx/signals
 import type {
   CreateResourceDto,
   CreateResourceResponseDto,
-  DeleteResourceResponseDto,
   ResourceSummaryDto,
   SearchResultDto,
-  TranslateResourceResponseDto,
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
-import { type Observable, tap } from 'rxjs';
+import { catchError, map, type Observable, of, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { captureSession } from '../session-guard';
 import { doesUpdateMoveEntry } from '../does-update-move-entry';
+import {
+  type DeleteResourceOutcome,
+  deleteOutcome,
+  type TranslateResourceOutcome,
+  translateOutcome,
+} from '../resource-write-outcome';
 
 /**
  * How a Resource entry is written from the UI.
  *
- * Every method takes the entry's full dot-delimited key (or a DTO carrying it)
- * and returns the API call, so the caller still owns its own error handling —
- * the editor's 409 conflict dialog, a failure toast. On success the store brings
+ * Every method takes the entry's full dot-delimited key (or a DTO carrying it).
+ * `createResource` and `updateResource` return the API call, so the caller owns its
+ * own error handling (the editor's 409 conflict dialog). `deleteResource` and
+ * `translateResource` return an outcome (`resource-write-outcome.ts`) that never
+ * errors; the row actions decide its toast. On success the store brings
  * its caches in line before the caller hears back, but only in the Browser
  * Session (`sessionId`) that was open when the call was made: a write whose
  * response arrives after another collection has opened (the translation editor
@@ -95,26 +101,36 @@ export function withEntryWritesFeature<_>() {
           );
         },
 
-        /** Deletes one entry and drops it from the caches once the server confirms it. */
-        deleteResource(collectionName: string, fullKey: string): Observable<DeleteResourceResponseDto> {
+        /**
+         * Deletes one entry and drops it from the caches once the server confirms it. Never errors:
+         * a failed request is the `refused` outcome.
+         */
+        deleteResource(collectionName: string, fullKey: string): Observable<DeleteResourceOutcome> {
           const inSession = captureSession(store);
-          // The caller still gets its response; only the store write is session-guarded.
+          // The caller still gets its outcome; only the store write is session-guarded.
           return api.deleteResource(collectionName, [fullKey]).pipe(
             tap((response) => {
               if (inSession() && response.entriesDeleted > 0) {
                 dropEntry(fullKey);
               }
             }),
+            map(deleteOutcome),
+            catchError((error: unknown) => of<DeleteResourceOutcome>({ kind: 'refused', error })),
           );
         },
 
-        /** Auto-translates one entry and patches the caches with the result. */
-        translateResource(collectionName: string, fullKey: string): Observable<TranslateResourceResponseDto> {
+        /**
+         * Auto-translates one entry and patches the caches with the result. Never errors: a failed
+         * request is the `refused` outcome.
+         */
+        translateResource(collectionName: string, fullKey: string): Observable<TranslateResourceOutcome> {
           const inSession = captureSession(store);
-          // The caller still gets its response; only the store write is session-guarded.
-          return api
-            .translateResource(collectionName, fullKey)
-            .pipe(tap((response) => inSession() && patchEntry(fullKey, response.resource)));
+          // The caller still gets its outcome; only the store write is session-guarded.
+          return api.translateResource(collectionName, fullKey).pipe(
+            tap((response) => inSession() && patchEntry(fullKey, response.resource)),
+            map(translateOutcome),
+            catchError((error: unknown) => of<TranslateResourceOutcome>({ kind: 'refused', error })),
+          );
         },
       };
     }),

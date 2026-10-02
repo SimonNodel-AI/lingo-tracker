@@ -5,11 +5,12 @@ import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../../../../shared/notification';
 import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../../../shared/api-error/api-error';
+import { injectFeedback } from '../../../feedback';
+import { deleteFeedback, translateFeedback } from './resource-action-feedback';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
 import { injectConfirm } from '../../../../shared/confirm';
 import type { ConfirmationDialogData } from '../../../../shared/components/confirmation-dialog/confirmation-dialog-data';
-import type { ResourceSummaryDto, TranslateResourceResponseDto } from '@simoncodes-ca/data-transfer';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 
 export function withItemActions() {
   return signalStoreFeature(
@@ -27,6 +28,7 @@ export function withItemActions() {
       const launcher = inject(TranslationEditorLauncher);
       const destroyRef = inject(DestroyRef);
       const notifications = inject(NotificationService);
+      const feedback = injectFeedback();
       const transloco = inject(TranslocoService);
 
       return {
@@ -69,19 +71,7 @@ export function withItemActions() {
           browserStore
             .deleteResource(collectionName, fullKey)
             .pipe(takeUntilDestroyed(destroyRef))
-            .subscribe({
-              next: (response) => {
-                if (response.entriesDeleted > 0) {
-                  notifications.success(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.RESOURCEDELETED));
-                } else {
-                  notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED));
-                }
-              },
-              error: (error: unknown) => {
-                const message = apiErrorMessage(error, transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.DELETEFAILED));
-                notifications.error(message);
-              },
-            });
+            .subscribe((outcome) => feedback.toast(deleteFeedback(outcome)));
         },
 
         translateResource(translation: ResourceSummaryDto): void {
@@ -93,39 +83,10 @@ export function withItemActions() {
           browserStore
             .translateResource(collectionName, fullKey)
             .pipe(takeUntilDestroyed(destroyRef))
-            .subscribe({
-              next: (response: TranslateResourceResponseDto) => {
-                store.removeTranslatingKey(fullKey);
-                store.flashRecentlyUpdated(fullKey);
-
-                const { translatedCount, skippedLocales } = response;
-                if (translatedCount > 0) {
-                  const successMessage =
-                    translatedCount === 1
-                      ? transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOCALETRANSLATED)
-                      : transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.LOCALESTRANSLATEDX, {
-                          count: translatedCount,
-                        });
-                  notifications.success(successMessage);
-                } else if (skippedLocales.length === 0) {
-                  notifications.info(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.ALLLOCALESUPTODATE));
-                }
-                if (skippedLocales.length > 0) {
-                  notifications.warning(
-                    transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.SKIPPEDLOCALESX, {
-                      locales: skippedLocales.join(', '),
-                    }),
-                  );
-                }
-              },
-              error: (error: unknown) => {
-                store.removeTranslatingKey(fullKey);
-                const message = apiErrorMessage(
-                  error,
-                  transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.TRANSLATEFAILED),
-                );
-                notifications.error(message);
-              },
+            .subscribe((outcome) => {
+              store.removeTranslatingKey(fullKey);
+              if (outcome.kind !== 'refused') store.flashRecentlyUpdated(fullKey);
+              translateFeedback(outcome).forEach(feedback.toast);
             });
         },
       };

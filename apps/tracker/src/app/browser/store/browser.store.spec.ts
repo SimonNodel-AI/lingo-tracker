@@ -579,7 +579,7 @@ describe('BrowserStore', () => {
         response = value;
       });
 
-      expect(response).toEqual({ kind: 'no-collection' });
+      expect(response).toEqual({ kind: 'no-collection', feedback: null });
       expect(create).not.toHaveBeenCalled();
     });
 

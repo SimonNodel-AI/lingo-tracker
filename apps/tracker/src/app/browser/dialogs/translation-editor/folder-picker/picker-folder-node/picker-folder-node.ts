@@ -43,6 +43,9 @@ export class PickerFolderNode {
   readonly addFolderParentPath = input<string | null>(null);
 
   /** Emitted when a folder is selected */
+  /** The refusal of the last create, shown under the open input. */
+  readonly createError = input<string | null>(null);
+
   readonly folderSelect = output<string>();
 
   /** Emitted when expand/collapse is toggled */
@@ -56,6 +59,9 @@ export class PickerFolderNode {
 
   /** Emitted when new folder creation is cancelled */
   readonly cancelNewFolder = output<void>();
+
+  /** Emitted when the user edits the name in the open input. */
+  readonly newFolderEdited = output<void>();
 
   /** Whether this folder is currently selected */
   readonly isSelected = computed(() => {

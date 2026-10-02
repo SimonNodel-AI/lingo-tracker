@@ -14,10 +14,9 @@ import { MatButtonModule } from '@angular/material/button';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { PickerFolderNode } from './picker-folder-node/picker-folder-node';
 import { BrowserStore } from '../../../store/browser.store';
-import { NotificationService } from '../../../../shared/notification';
+import { type Feedback, injectFeedback } from '../../../feedback';
 import { TranslocoService } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../../../shared/api-error/api-error';
 import { TranslocoPipe } from '@jsverse/transloco';
 import {
   collectAncestorPaths,
@@ -48,7 +47,7 @@ import { startFolderDraft, cancelFolderDraft, type FolderDraft } from '../../../
 })
 export class FolderPicker implements OnInit {
   readonly #store = inject(BrowserStore);
-  readonly #notifications = inject(NotificationService);
+  readonly #feedback = injectFeedback();
   readonly #transloco = inject(TranslocoService);
   readonly TOKENS = TRACKER_TOKENS;
 
@@ -81,6 +80,19 @@ export class FolderPicker implements OnInit {
   readonly isAddingFolder = signal(false);
   readonly addFolderParentPath = signal<string | null>(null);
   readonly isCreatingFolder = signal(false);
+
+  /**
+   * The refusal of the last create, as Folder Writes decided it, shown under the still-open input.
+   * The picker keeps its own add-folder draft rather than the store's: the editor dialog is open
+   * over the sidebar, and a shared draft would also open (and focus) the sidebar's input behind
+   * the dialog. The store keeps the refusal for a create made from its own draft only, so the
+   * picker holds this one itself.
+   */
+  readonly #createFeedback = signal<Feedback | null>(null);
+  readonly createError = computed(() => {
+    const feedback = this.#createFeedback();
+    return feedback ? this.#feedback.text(feedback) : null;
+  });
 
   readonly displayPath = computed(() => {
     const rootLabel = this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL) || 'root';
@@ -139,11 +151,18 @@ export class FolderPicker implements OnInit {
     this.addFolderParentPath.set(draft.addFolderParentPath);
   }
 
+  /** Identifies the current draft; a start or a cancel replaces it, so a late response can tell. */
+  #draftId = 0;
+
   onCreateFirstFolder(): void {
+    this.#draftId++;
+    this.#createFeedback.set(null);
     this.setDraft(startFolderDraft(''));
   }
 
   onAddFolder(parentPath: string): void {
+    this.#draftId++;
+    this.#createFeedback.set(null);
     this.setDraft(startFolderDraft(parentPath));
     // Auto-expand the parent folder to show the inline input
     this.expandedPaths.update((expanded) => new Set(expanded).add(parentPath));
@@ -156,31 +175,30 @@ export class FolderPicker implements OnInit {
     }
 
     this.isCreatingFolder.set(true);
+    const draftId = this.#draftId;
 
     this.#store.createFolder(folderName, parentPath || null).subscribe((outcome) => {
       this.isCreatingFolder.set(false);
-      this.setDraft(cancelFolderDraft());
+      const isCurrentDraft = draftId === this.#draftId;
+      // A refusal keeps the draft open so the name can be corrected under its input.
+      if (isCurrentDraft && outcome.kind !== 'refused') this.setDraft(cancelFolderDraft());
       if (outcome.kind === 'created') {
         this.folderCreated.emit(outcome.folder);
         this.selectedPath.set(outcome.folder.fullPath);
         if (parentPath) this.expandedPaths.update((expanded) => new Set(expanded).add(parentPath));
-        if (outcome.created) {
-          this.#notifications.success(this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.FOLDERCREATED));
-        } else {
-          this.#notifications.info(this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.FOLDERALREADYEXISTS));
-        }
-      } else if (outcome.kind === 'refused') {
-        this.#notifications.error(
-          apiErrorMessage(
-            outcome.error,
-            this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.CREATEFOLDERFAILED),
-          ),
-        );
       }
+      if (isCurrentDraft) this.#createFeedback.set(outcome.feedback?.placement === 'inline' ? outcome.feedback : null);
+      this.#feedback.toast(outcome.feedback);
     });
   }
 
+  onFolderNameEdited(): void {
+    this.#createFeedback.set(null);
+  }
+
   onFolderNameCancelled(): void {
+    this.#draftId++;
+    this.#createFeedback.set(null);
     this.setDraft(cancelFolderDraft());
   }
 
