@@ -91,6 +91,10 @@ flowchart TD
 
 ---
 
+### Collection Cards
+
+`collections/collection-cards.ts` prepares the collection and bundle cards without Angular dependencies. It filters collections by name or folder, sorts names with locale comparison, and puts the base locale first. When more than four locales exist, it reserves the fourth chip for overflow. Bundle cards expand `'All'` from every configured collection, including those hidden by the filter. The manager supplies store values to these functions and keeps the DOM measurements for [Connector Links](glossary.md#connector-links).
+
 ### Collection Connector Links
 
 `apps/tracker/src/app/collections/collections-manager.ts` measures the `.split` container, the bundles column, the hovered bundle card and only its referenced collection cards on hover, scroll, resize or card changes. It passes those plain viewport rectangles and bundle references to `collectionLinks` in `apps/tracker/src/app/collections/collection-links.ts`. That Angular-free function selects the hovered bundle and returns SVG paths, collection dot centres and the shared bundle port. It rounds coordinates to one decimal, keeps the port inside the bundles column, and limits curve handles to half the horizontal span. When the columns stack or no measured collection matches, it returns no links and no port. `collection-links.spec.ts` fixes the path strings against values captured from the former component calculation for side-by-side, stacked, clamped and several-collection layouts.
@@ -266,6 +270,14 @@ Because `TranslationListStore` is component-provided, each `TranslationList` ins
 The two form dialogs use `NamedEntrySubmit` in [Dialog Config Submit](glossary.md#dialog-config-submit) to choose the create or update write, build the rename patch, validate a server-taken name, and select the localized refusal fallback. It passes the cold Observable and saved result to `submitDialogConfigWrite`, which owns `saving`, the temporary `disableClose` lock, the success close, and restoration on refusal. The forms render its name-conflict or message outcome themselves, including any API details. `classifyConfigRefusal` remains available to Settings for row rule errors. Its page-owned subscription and `saving` signal survive navigation so the outcome toast still appears after the page is gone.
 
 `updateCollection` sends `PUT /collections/:name`; locale diffing and file-system changes happen on the core side. `updateGlobalConfig` sends the writable top-level fields to `PUT /config`: the global protected-terms list and the preferred-terminology rules; rejected rules come back as an `invalid` error whose `details` are the per-row `PreferredTermRuleErrorDto`s.
+
+### Bundle Runs
+
+[Bundle Runs](glossary.md#bundle-runs) belongs to `withBundlesFeature` in `CollectionsStore`. `generateAllBundles` records only the names it starts in `bundleBatch`. A bundle already running is excluded. The computed signals `batchTotal`, `batchPosition`, and `isBatchRunning` drive the manager's busy button. Completed and failed runs advance the position, which remains between one and the batch total for a nonempty batch. The button remains disabled while any bundle runs, including a single-card run.
+
+The pure `collections/store/bundle-runs.ts` module exports `mapJobToRun`, `toBundleErrorMessage`, and `readPersistedRuns`. The mapper preserves a seeded locale total until the API supplies one. The store supplies a fallback completion timestamp, formats failures through the module, and polls each job independently every 500 milliseconds.
+
+The store mirrors run state to session storage and resumes active jobs after reload. It removes restored runs whose jobs disappeared from the [Job Registry](glossary.md#job-registry). The batch is not persisted, matching the previous manager behavior. Table-driven specs cover snapshots, errors, and malformed persisted data. Store specs cover polling, restored jobs, and batch progress when a configured bundle already runs.
 
 ### Collection Form Dialog
 
