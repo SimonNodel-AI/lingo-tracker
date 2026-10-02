@@ -3,6 +3,7 @@ import type { TokenCasing } from '@simoncodes-ca/domain';
 import {
   BundleNotFoundError,
   type BundleTypeOutcome,
+  bundleTypeOutcomeDetail,
   generateBundles,
   MultipleBundleConstantNameError,
 } from '@simoncodes-ca/core';
@@ -126,9 +127,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         ConsoleFormatter.indent(`✅ Files generated: ${result.filesGenerated}`);
         ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
       }
-      const typeLine = typeOutcomeLine(result.typeOutcome);
-      if (result.typeOutcome.status === 'failed') ConsoleFormatter.error(typeLine);
-      else if (!options.quiet) ConsoleFormatter.indent(typeLine);
+      printTypeOutcome(result.typeOutcome, options.quiet ?? false);
       if (result.warnings.length > 0) {
         ConsoleFormatter.warning(
           `Warnings: ${result.warnings.length}`,
@@ -155,15 +154,14 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
   return exitForRunOutcome(runResult.outcome);
 }
 
-function typeOutcomeLine(outcome: BundleTypeOutcome): string {
-  switch (outcome.status) {
-    case 'written':
-      return `└─ Types: ${outcome.path} (${outcome.keysCount} keys)`;
-    case 'skipped':
-      return `└─ Types: Skipped (${outcome.reason})`;
-    case 'failed':
-      return `Type generation failed: ${outcome.reason}`;
-    case 'not-configured':
-      return '└─ Types: Skipped (no typeDistFile configured)';
+function printTypeOutcome(outcome: BundleTypeOutcome, quiet: boolean): void {
+  const detail = bundleTypeOutcomeDetail(outcome);
+  if (outcome.status === 'failed') {
+    ConsoleFormatter.error(`Type generation failed: ${detail}`);
+    return;
+  }
+  if (!quiet) {
+    const line = outcome.status === 'written' ? `└─ Types: ${detail}` : `└─ Types: Skipped (${detail})`;
+    ConsoleFormatter.indent(line);
   }
 }

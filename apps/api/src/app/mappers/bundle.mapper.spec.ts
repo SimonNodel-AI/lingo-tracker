@@ -101,16 +101,16 @@ describe('bundle.mapper', () => {
       const dto = mapGenerateBundleResultToJobResult({
         ...result,
         writtenFiles: result.writtenFiles.slice(0, 2),
-        typeOutcome: { status: 'skipped', reason: 'bundle has no keys' },
+        typeOutcome: { status: 'skipped', reason: 'empty-bundle' },
       });
 
       expect(dto.filesGenerated).toHaveLength(2);
       expect('typeDistFile' in dto).toBe(false);
       expect('typesKeysCount' in dto).toBe(false);
-      expect(dto.warnings).toEqual(['Bundle empty for de', "Type generation skipped for 'main': Bundle is empty"]);
+      expect(dto.warnings).toEqual(['Bundle empty for de', "Type generation skipped for 'main': bundle is empty"]);
     });
 
-    it('restores the previous Tracker warning for a failed type file', () => {
+    it('frames the core description as a Tracker warning for a failed type file', () => {
       const dto = mapGenerateBundleResultToJobResult({
         ...result,
         outcome: 'failed',
@@ -131,6 +131,7 @@ describe('bundle.mapper', () => {
 
       expect(dto.filesGenerated).toHaveLength(2);
       expect(dto.typeDistFile).toBeUndefined();
+      expect(dto.warnings).toEqual(['Bundle empty for de']);
     });
   });
 });

@@ -16,6 +16,7 @@ export {
   type BundleTypeOutcome,
   type GenerateBundleParams,
   type GenerateBundleResult,
+  bundleTypeOutcomeDetail,
   generateBundle,
   generatePreparedBundle,
 } from './generate-bundle';
