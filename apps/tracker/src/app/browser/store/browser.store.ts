@@ -7,6 +7,7 @@ import { withFilterFeature } from './features/with-filter.feature';
 import { withViewPreferencesFeature } from './features/with-view-preferences.feature';
 import { withTranslationsFeature } from './features/with-translations.feature';
 import { withFolderTreeFeature } from './features/with-folder-tree.feature';
+import { withFolderTreeInteractionsFeature } from './features/with-folder-tree-interactions.feature';
 import { withEntryWritesFeature } from './features/with-entry-writes.feature';
 import { withFolderWritesFeature } from './features/with-folder-writes.feature';
 import { withBrowserSessionFeature } from './features/with-browser-session.feature';
@@ -34,6 +35,7 @@ export const BrowserStore = signalStore(
       listErrorMessage: computed(() => store.listError() ?? store.error()),
     };
   }),
+  withFolderTreeInteractionsFeature(),
   withMethods((store) => ({
     clearError(): void {
       patchState(store, { error: null, listError: null });

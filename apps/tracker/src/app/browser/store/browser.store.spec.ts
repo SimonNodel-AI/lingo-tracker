@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
-import { patchState } from '@ngrx/signals';
+import { getState, patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
 import type {
   CacheStatusDto,
@@ -1098,10 +1098,10 @@ describe('BrowserStore', () => {
     });
 
     it('should toggle the root row', () => {
-      store.toggleRootExpanded();
+      store.setRootExpanded();
       expect(store.isRootExpanded()).toBe(false);
 
-      store.toggleRootExpanded();
+      store.setRootExpanded();
       expect(store.isRootExpanded()).toBe(true);
     });
 
@@ -1322,6 +1322,195 @@ describe('BrowserStore', () => {
   });
 
   describe('Disabled State', () => {
+    async function prepareFolderInteractions(): Promise<void> {
+      vi.spyOn(apiService, 'getCacheStatus').mockReturnValue(of(mockCacheReady));
+      vi.spyOn(apiService, 'getResourceTree').mockReturnValue(of(mockTreeWithNesting));
+      vi.spyOn(apiService, 'searchTranslations').mockReturnValue(
+        of({ query: 'save', results: [], totalFound: 0, limited: false }),
+      );
+      store.openCollection(collectionSettings({ name: 'app-translations', locales: [] }));
+      await waitForSignals();
+      store.showFolder('common.buttons');
+      await waitForSignals();
+    }
+
+    function expectFolderInteractionsRefused(): void {
+      const treeRead = vi.mocked(apiService.getResourceTree);
+      const search = vi.mocked(apiService.searchTranslations);
+      treeRead.mockClear();
+      search.mockClear();
+      const http = spectator.inject(HttpTestingController);
+      const actions = [
+        () => expect(store.selectFolder('errors')).toBe(false),
+        () => expect(store.selectFolder('')).toBe(false),
+        () => store.toggleFolderExpanded('common'),
+        () => store.expandFolder('errors'),
+        () => expect(store.setRootExpanded()).toBe(false),
+        () => expect(store.setRootExpanded(true)).toBe(false),
+        () => expect(store.setRootExpanded(false)).toBe(false),
+        () => store.expandAllFolders(),
+        () => store.collapseAllFolders(),
+        () => store.toggleAllFoldersExpanded(),
+      ];
+
+      for (const open of [false, true]) {
+        patchState(unprotected(store), {
+          isRootExpanded: open,
+          expandedFolders: open ? new Set(['common', 'errors']) : new Set<string>(),
+          folderTreeFilter: open ? 'buttons' : '',
+        });
+        const before = getState(store);
+        for (const action of actions) {
+          action();
+          expect(getState(store)).toStrictEqual(before);
+          expect(store.expandedFolders()).toBe(before.expandedFolders);
+        }
+      }
+      expect(treeRead).not.toHaveBeenCalled();
+      expect(search).not.toHaveBeenCalled();
+      http.expectNone(() => true);
+    }
+
+    it('refuses user folder selection and expansion while search is shown without state changes or HTTP', async () => {
+      await prepareFolderInteractions();
+      store.showQuery('save');
+      await waitForSignals();
+
+      expect(store.isDisabled()).toBe(true);
+      expectFolderInteractionsRefused();
+      expect(store.searchQuery()).toBe('save');
+      expect(store.currentFolderPath()).toBe('common.buttons');
+    });
+
+    it('refuses user folder selection and expansion while a move is in flight without state changes or HTTP', async () => {
+      await prepareFolderInteractions();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(NEVER);
+      const move = store
+        .moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' })
+        .subscribe();
+
+      expect(store.isDisabled()).toBe(true);
+      expectFolderInteractionsRefused();
+      expect(store.currentFolderPath()).toBe('common.buttons');
+      move.unsubscribe();
+      expect(store.isDisabled()).toBe(false);
+    });
+
+    function expectFilterAppliedWhileDisabled(): void {
+      vi.mocked(apiService.getResourceTree).mockClear();
+      vi.mocked(apiService.searchTranslations).mockClear();
+      const before = getState(store);
+
+      store.setFolderTreeFilter('buttons');
+      expect(store.folderTreeFilter()).toBe('buttons');
+      expect([...store.expandedFolders()]).toEqual(['common']);
+      expect(store.preFilterExpandedFolders()).toBe(before.expandedFolders);
+      expect(store.currentFolderPath()).toBe(before.currentFolderPath);
+      expect(store.listScope()).toBe(before.listScope);
+      expect(store.isDisabled()).toBe(true);
+
+      store.setFolderTreeFilter('');
+      expect(store.folderTreeFilter()).toBe('');
+      expect(store.expandedFolders()).toBe(before.expandedFolders);
+      expect(store.preFilterExpandedFolders()).toBeNull();
+      expect(store.currentFolderPath()).toBe(before.currentFolderPath);
+      expect(store.listScope()).toBe(before.listScope);
+      expect(store.isDisabled()).toBe(true);
+      expect(apiService.getResourceTree).not.toHaveBeenCalled();
+      expect(apiService.searchTranslations).not.toHaveBeenCalled();
+      spectator.inject(HttpTestingController).expectNone(() => true);
+    }
+
+    it('applies and clears folder filters during search without navigation or HTTP', async () => {
+      await prepareFolderInteractions();
+      store.showQuery('save');
+      await waitForSignals();
+
+      expectFilterAppliedWhileDisabled();
+    });
+
+    it('applies and clears folder filters during a move without navigation or HTTP', async () => {
+      await prepareFolderInteractions();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(NEVER);
+      const move = store.moveFolder({ sourceFolderPath: 'errors.http', destinationFolderPath: 'common' }).subscribe();
+      try {
+        expectFilterAppliedWhileDisabled();
+      } finally {
+        move.unsubscribe();
+      }
+    });
+
+    it('allows programmatic showFolder to leave search and load a folder', async () => {
+      await prepareFolderInteractions();
+      store.showQuery('save');
+      await waitForSignals();
+      expect(store.isDisabled()).toBe(true);
+      vi.mocked(apiService.getResourceTree).mockClear();
+
+      store.showFolder('errors');
+      await waitForSignals();
+
+      expect(store.currentFolderPath()).toBe('errors');
+      expect(store.isSearchMode()).toBe(false);
+      expect(apiService.getResourceTree).toHaveBeenCalledWith('app-translations', 'errors', true);
+    });
+
+    it('allows programmatic showFolder to load a folder during a move', async () => {
+      await prepareFolderInteractions();
+      vi.spyOn(apiService, 'moveFolder').mockReturnValue(NEVER);
+      const move = store
+        .moveFolder({ sourceFolderPath: 'common.buttons', destinationFolderPath: 'errors' })
+        .subscribe();
+      vi.mocked(apiService.getResourceTree).mockClear();
+
+      store.showFolder('errors');
+      await waitForSignals();
+
+      expect(store.isDisabled()).toBe(true);
+      expect(store.currentFolderPath()).toBe('errors');
+      expect(apiService.getResourceTree).toHaveBeenCalledWith('app-translations', 'errors', true);
+      move.unsubscribe();
+    });
+
+    it('accepts user selection and expansion in a read-only collection', async () => {
+      await prepareFolderInteractions();
+      patchState(unprotected(store), { isReadOnly: true });
+      expect(store.effectiveDisabled()).toBe(true);
+      expect(store.isDisabled()).toBe(false);
+
+      expect(store.selectFolder('errors')).toBe(true);
+      store.expandFolder('common');
+      store.setRootExpanded(false);
+      expect(store.currentFolderPath()).toBe('errors');
+      expect(store.expandedFolders().has('common')).toBe(true);
+      expect(store.isRootExpanded()).toBe(false);
+    });
+
+    it('sets the root open or shut idempotently and toggles when no state is supplied', () => {
+      expect(store.setRootExpanded(false)).toBe(true);
+      const closed = getState(store);
+      expect(store.setRootExpanded(false)).toBe(false);
+      expect(getState(store)).toStrictEqual(closed);
+      expect(store.setRootExpanded(true)).toBe(true);
+      const open = getState(store);
+      expect(store.setRootExpanded(true)).toBe(false);
+      expect(getState(store)).toStrictEqual(open);
+      expect(store.setRootExpanded()).toBe(true);
+      expect(store.isRootExpanded()).toBe(false);
+    });
+
+    it('toggles all folders in the filtered subtree and keeps the root open', async () => {
+      await prepareFolderInteractions();
+      store.setFolderTreeFilter('buttons');
+      store.setRootExpanded(false);
+      store.toggleAllFoldersExpanded();
+      expect(store.expandedFolders().size).toBe(0);
+      expect(store.isRootExpanded()).toBe(true);
+      store.toggleAllFoldersExpanded();
+      expect([...store.expandedFolders()]).toEqual(['common']);
+      expect(store.isRootExpanded()).toBe(true);
+    });
+
     it('should reflect an active search as disabled, and clear it once the search ends', () => {
       expect(store.isDisabled()).toBe(false);
 

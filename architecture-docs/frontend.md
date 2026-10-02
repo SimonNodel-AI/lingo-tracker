@@ -176,6 +176,10 @@ flowchart TD
 
     Root --> WBS["withBrowserSessionFeature\n(with-browser-session.feature.ts)\nNo new state\nMethods: openCollection(settings) — sessionId\nbumped, every feature back to its initial state,\nsettings applied, prefs restored, polling started;\nupdateSettings(settings) — reopens when locales,\nbaseLocale or translationsFolder differ,\nelse patches readOnly/translationEnabled in place"]
 
+    Root --> WFI["withFolderTreeInteractionsFeature\n(with-folder-tree-interactions.feature.ts)\nNo new state\nMethods: selectFolder, setFolderTreeFilter,\nsetRootExpanded, toggleFolderExpanded,\nexpandFolder, expandAllFolders,\ncollapseAllFolders, toggleAllFoldersExpanded\nGate: isDisabled"]
+
+    WFI -.->|"calls showFolder"| WLS
+    WFI -.->|"reads folder state and projections"| WFT
     WLS -.->|"translations, searchResults,\nisSearchMode read by"| WT
     WBS -.->|"calls restoreViewPreferences\nprovided by"| WVP
     WBS -.->|"calls checkCacheStatus\nprovided by"| WCS
@@ -188,7 +192,9 @@ flowchart TD
     WBS -.->|"calls _cancelListLoads"| WLS
 ```
 
-**Composition order matters.** `withListScopeFeature` comes first after the root state: `withTranslationsFeature` derives from its rows, and `withEntryWritesFeature` and `withFolderWritesFeature` ask it to show a folder or reload. `withFolderWritesFeature` also calls the folder tree's loads, so it follows `withFolderTreeFeature`. `withCacheStatusFeature` requires `reloadList` and `loadRootFolders`, so it follows both. `withViewPreferencesFeature` reads from every other feature's state. `withBrowserSessionFeature` calls `restoreViewPreferences` and `checkCacheStatus`, and is last.
+**Composition order matters.** `withListScopeFeature` comes first after the root state: `withTranslationsFeature` derives from its rows, and `withEntryWritesFeature` and `withFolderWritesFeature` ask it to show a folder or reload. `withFolderWritesFeature` also calls the folder tree's loads, so it follows `withFolderTreeFeature`. `withCacheStatusFeature` requires `reloadList` and `loadRootFolders`, so it follows both. `withViewPreferencesFeature` reads from every other feature's state. `withBrowserSessionFeature` calls `restoreViewPreferences` and `checkCacheStatus`, and follows those features.
+
+`withFolderTreeInteractionsFeature` follows the root computed signals because its methods require `isDisabled`.
 
 **Opening a collection.** The store is root-provided, so it outlives the `/browser/:collectionName` route. When the config changes, `TranslationBrowser` resolves the routed collection's settings with `resolveCollectionSettings(config, name)`. This function calls domain's [Collection Settings](glossary.md#collection-settings) rule. The Tracker adds raw `translationsFolder` (`''` when the collection is unknown) and `translationEnabled` (`translation?.enabled === true`). Both core and the Tracker find collections through domain's `findCollectionEntry`, which reads own properties only. When the routed collection is not the open one, it calls `store.openCollection(settings)`. The session bumps `sessionId`, patches every feature's exported initial state together with the root state, stores the settings (`collectionSettings`, plus the projections `selectedCollection`, `availableLocales`, `baseLocale`, `isReadOnly`), then has the view-preferences feature restore what `localStorage` holds for that collection (a saved `medium` density, or none, reads as `compact`; in compact the one displayed locale is resolved against the collection's locales), and starts index polling. The folder, search, filter, translations, folder-tree and cache-status state of the previous collection does not survive the switch.
 
@@ -206,11 +212,22 @@ flowchart TD
 | `with-filter.feature.ts` | `selectedLocales`, `selectedStatuses`, `sortField`, `sortDirection` | `filteredLocales`, `filterableLocales`, `localeFilterLabel`, `statusFilterText`, `isShowingAllLocales`, `isShowingAllStatuses` | `toggleLocale`, `setSelectedLocales`, `setSortField`, `toggleSortDirection`, `toggleStatus`, `selectNeedsWorkStatuses` |
 | `with-translations.feature.ts` | (no new state) | `sortedTranslations`, `displayedTranslations`, `statusCounts`, `needsWorkCount`, `isEmpty`, `translationCount`, `hasTranslations` | — |
 | `with-entry-writes.feature.ts` | (no new state) | — | `createResource`, `updateResource`, `deleteResource`, `requestEntryDelete`, `translateResource` — see [Writing a Resource Entry](#writing-a-resource-entry) |
-| `with-folder-tree.feature.ts` | `rootFolders`, `folderTreeLoaded`, `expandedFolders` and `preFilterExpandedFolders` (both `ReadonlySet<string>`, replaced on every change), `isRootExpanded`, `folderTreeFilter`, `isFolderTreeLoading` | `filteredFolders`, `breadcrumbs`, `isLoading`, `visibleExpandedFolders`, `areAllFoldersExpanded` | `loadRootFolders` (the tree only, without nested resources), `loadFolderChildren`, `setFolderTreeFilter`, `toggleFolderExpanded`, `expandFolder`, `toggleRootExpanded`, `expandAllFolders`, `collapseAllFolders`, tree load error handling |
+| `with-folder-tree.feature.ts` | `rootFolders`, `folderTreeLoaded`, `expandedFolders` and `preFilterExpandedFolders` (both `ReadonlySet<string>`, replaced on every change), `isRootExpanded`, `folderTreeFilter`, `isFolderTreeLoading` | `filteredFolders`, `breadcrumbs`, `isLoading`, `visibleExpandedFolders`, `areAllFoldersExpanded` | `loadRootFolders` (the tree only, without nested resources), `loadFolderChildren`, tree load error handling |
+| `with-folder-tree-interactions.feature.ts` | (no new state) | — | `selectFolder`, `setFolderTreeFilter`, `toggleFolderExpanded`, `expandFolder`, `setRootExpanded`, `expandAllFolders`, `collapseAllFolders`, `toggleAllFoldersExpanded`. Selection and expansion refuse changes when `isDisabled` is true. Pending folder filters still apply. |
 | `with-folder-writes.feature.ts` | `isAddingFolder`, `addFolderParentPath`, `folderCreateError`, `newlyCreatedFolderPath`, `isDeletingFolder`, `deletingFolderPath`, `movesInFlight` | `isMoving` | Cold typed outcome Observables, each outcome with its decided `feedback`: `createFolder`, `confirmFolderDraft`, `deleteFolder`, `requestFolderDelete`, `moveResource`, `moveFolder`, `requestFolderMove`; sidebar draft methods — see [Optimistic Updates with Rollback](#optimistic-updates-with-rollback) |
 | `with-cache-status.feature.ts` | `cacheStatus`, `cacheError`, `collectionStats` | `isCacheReady`, `isCacheIndexing`, `collectionTotalKeys`, `collectionLocaleCount`, `hasCollectionStats` | `checkCacheStatus` (sets `cacheStatus: 'not-started'` and clears `cacheError`/`collectionStats` on every call, including an overlay retry; then polls every 2 s via `interval` until the status is no longer indexing) |
 | `with-view-preferences.feature.ts` | (no new state) | `canShowMultipleLocales` | `setDensityMode`, `restoreViewPreferences` (reads `localStorage` for one collection and applies it) |
 | `with-browser-session.feature.ts` | (no new state; writes the root `sessionId` and `collectionSettings`) | — | `openCollection(settings)` — the [Browser Session](glossary.md#browser-session): `sessionId` bumped, every feature to its initial state, settings applied, preferences restored, polling started; `updateSettings(settings)` — a no-op when equal; reopens via `openCollection` when `locales`, `baseLocale` or `translationsFolder` differ; otherwise patches `readOnly`/`translationEnabled` in place |
+
+**Folder interaction gate.** `withFolderTreeInteractionsFeature` owns user selection, folder filtering, and expansion. When `isDisabled` is true, selection and expansion leave state unchanged and send no HTTP requests. The gate applies during search and while a move is in flight. `selectFolder(path)` returns whether the store accepted the selection. The sidebar emits its selection output only after acceptance.
+
+`setRootExpanded(open)` opens or closes the root without toggling an already correct state. Without an argument, it toggles the root. It returns whether the root changed, so no-op keydowns retain their default behavior. `toggleAllFoldersExpanded` chooses expansion or collapse in the store.
+
+`FolderNode` forwards navigation intent to the sidebar, which calls these store actions. Disabled nodes remain visible, with presentation roles and no place in the tab order.
+
+The template disables the folder filter input while `isDisabled` is true. `setFolderTreeFilter` remains ungated so a pending debounced edit still applies after search or a move starts. This keeps the input text and stored filter consistent. Folder filtering changes only the visible tree and its expansion. It does not navigate or send HTTP requests.
+
+Programmatic `showFolder(path)` remains available during search and moves. Move completion, search reveal, and session navigation can still show their destination folder. Read-only collections still permit user selection and expansion because these actions use `isDisabled`, not `effectiveDisabled`.
 
 Root-level members of `BrowserStore` (not in a feature):
 
@@ -359,7 +376,9 @@ When a drag starts on `TranslationItem`, the `dragStarted` output bubbles up thr
 
 `FolderTree` also implements edge-proximity auto-scroll: a `mousemove` listener during drag checks the cursor position against the folder list's bounding rect. If within `50px` of the top or bottom edge, a `setInterval` scrolls at `15px` per `50ms` until the cursor moves away.
 
-`folder-drop.ts` returns `canLand` for a folder or root drop target and a separate no-op reason. `FolderNode` and `FolderTree` use `canLand` for highlighting and CDK predicates; Folder Writes uses the no-op reason before HTTP. A folder may land on its current parent, where the move returns `already-at-location` and shows the existing info toast. A resource whose `folderPath` is `''` can move from the collection root into a folder. On drop, `FolderTree` calls `BrowserStore.moveResource` or `BrowserStore.requestFolderMove`; both apply optimistic updates as described above.
+`folder-drop.ts` returns `canLand` for a folder or root drop target and a separate no-op reason. `FolderTree` computes the tracked root drag decision once for highlighting, the CDK predicate, and the drop handler. Root drops refuse folders while `isDisabled` is true (search shown or a move in flight). Read-only collections also refuse root drops through `effectiveDisabled`.
+
+`FolderNode` uses `canLand` for highlighting and its CDK predicate; Folder Writes uses the no-op reason before HTTP. A folder may land on its current parent, where the move returns `already-at-location` and shows the existing info toast. A resource whose `folderPath` is `''` can move from the collection root into a folder. On drop, `FolderTree` calls `BrowserStore.moveResource` or `BrowserStore.requestFolderMove`; both apply optimistic updates as described above.
 
 ---
 

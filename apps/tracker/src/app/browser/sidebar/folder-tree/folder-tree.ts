@@ -107,9 +107,9 @@ export class FolderTree {
   });
 
   /** Root accepts folders only: a resource is moved between folders, never onto the collection. */
-  readonly isValidRootDropTarget = computed(() => {
-    return folderDrop(this.activeDragData(), '', this.store.isReadOnly()).canLand;
-  });
+  readonly #rootDropDecision = computed(() => folderDrop(this.activeDragData(), '', this.store.effectiveDisabled()));
+
+  readonly isValidRootDropTarget = computed(() => this.#rootDropDecision().canLand);
 
   /** Drives the icon flip animation — true for one animation frame when toggled */
   readonly isNestedToggleFlipping = signal(false);
@@ -165,15 +165,12 @@ export class FolderTree {
    * Single click selects the folder and shows its translations.
    */
   onFolderClick(folder: FolderNodeDto): void {
-    this.store.showFolder(folder.fullPath);
-    this.folderSelected.emit(folder.fullPath);
+    if (this.store.selectFolder(folder.fullPath)) this.folderSelected.emit(folder.fullPath);
   }
 
   /** Selects the collection root, whose resource list spans every folder. */
   onRootClick(): void {
-    if (this.store.isDisabled()) return;
-    this.store.showFolder('');
-    this.folderSelected.emit('');
+    if (this.store.selectFolder('')) this.folderSelected.emit('');
   }
 
   /** Flips one folder open or shut from its chevron. */
@@ -189,22 +186,17 @@ export class FolderTree {
   /** Flips the root row itself, hiding or revealing the whole tree. */
   onToggleRootExpanded(event: Event): void {
     event.stopPropagation();
-    if (this.store.isDisabled()) return;
-    this.store.toggleRootExpanded();
+    this.store.setRootExpanded();
   }
 
   /** ArrowRight on the root row opens it. */
   onRootExpandKeydown(event: Event): void {
-    if (this.store.isDisabled() || this.store.isRootExpanded()) return;
-    event.preventDefault();
-    this.store.toggleRootExpanded();
+    if (this.store.setRootExpanded(true)) event.preventDefault();
   }
 
   /** ArrowLeft on the root row shuts it. */
   onRootCollapseKeydown(event: Event): void {
-    if (this.store.isDisabled() || !this.store.isRootExpanded()) return;
-    event.preventDefault();
-    this.store.toggleRootExpanded();
+    if (this.store.setRootExpanded(false)) event.preventDefault();
   }
 
   /**
@@ -213,15 +205,12 @@ export class FolderTree {
    */
   onToggleExpandAll(event: Event): void {
     event.stopPropagation();
-    if (this.store.isDisabled()) return;
-
-    if (this.store.areAllFoldersExpanded()) this.store.collapseAllFolders();
-    else this.store.expandAllFolders();
+    this.store.toggleAllFoldersExpanded();
   }
 
   /** Predicate for the root drop list: folders only, and only ones not already at root. */
   canDropOnRoot = (drag: CdkDrag<DragData>): boolean => {
-    return folderDrop(drag.data, '', this.store.isReadOnly()).canLand;
+    return this.#rootDropDecisionFor(drag.data).canLand;
   };
 
   /** Moves a folder dropped on the root row out to the top level. */
@@ -229,10 +218,17 @@ export class FolderTree {
     this.isRootHoveredDuringDrag.set(false);
 
     const dragData = event.item.data as DragData;
-    if (!folderDrop(dragData, '', this.store.isReadOnly()).canLand) return;
+    const decision = this.#rootDropDecisionFor(dragData);
+    if (!decision.canLand) return;
     if (dragData.type !== 'folder' || !dragData.path) return;
 
     this.confirmMoveFolder(dragData.path, '');
+  }
+
+  #rootDropDecisionFor(dragData: DragData) {
+    return dragData === this.activeDragData()
+      ? this.#rootDropDecision()
+      : folderDrop(dragData, '', this.store.effectiveDisabled());
   }
 
   /**

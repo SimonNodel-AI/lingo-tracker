@@ -3,6 +3,8 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import { getState, patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import type { CreateFolderResponseDto } from '@simoncodes-ca/data-transfer';
 import { NEVER, of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +14,7 @@ import { toApiError } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../../store/browser.store';
+import * as folderDropRules from '../../store/folder-drop';
 import { FolderTree } from './folder-tree';
 
 describe('FolderTree', () => {
@@ -105,6 +108,139 @@ describe('FolderTree', () => {
     // No HTTP call needed for this test
   });
 
+  it('refuses direct folder and root handlers during search without emitting a selection', () => {
+    createComponent();
+    component.store.showFolder('common.buttons');
+    component.store.showQuery('save');
+    const selected = vi.fn();
+    component.folderSelected.subscribe(selected);
+    const before = getState(component.store);
+
+    component.onFolderClick({ name: 'errors', fullPath: 'errors', loaded: false });
+    component.onRootClick();
+    component.onToggleExpanded('common');
+    component.onExpandRequested('common');
+    component.onToggleRootExpanded(new MouseEvent('click'));
+    const right = new KeyboardEvent('keydown', { cancelable: true });
+    const left = new KeyboardEvent('keydown', { cancelable: true });
+    component.onRootExpandKeydown(right);
+    component.onRootCollapseKeydown(left);
+    expect(right.defaultPrevented).toBe(false);
+    expect(left.defaultPrevented).toBe(false);
+    component.onToggleExpandAll(new MouseEvent('click'));
+
+    expect(getState(component.store)).toStrictEqual(before);
+    expect(component.store.expandedFolders()).toBe(before.expandedFolders);
+    expect(selected).not.toHaveBeenCalled();
+  });
+
+  it('refuses disabled node mouse and keyboard navigation through the store', () => {
+    createComponent();
+    const folder = {
+      name: 'common',
+      fullPath: 'common',
+      loaded: true,
+      tree: {
+        path: 'common',
+        resources: [],
+        children: [{ name: 'buttons', fullPath: 'common.buttons', loaded: true }],
+      },
+    };
+    patchState(unprotected(component.store), { rootFolders: [folder] });
+    component.store.showQuery('save');
+    fixture.detectChanges();
+    const selected = vi.fn();
+    component.folderSelected.subscribe(selected);
+    const select = vi.spyOn(component.store, 'selectFolder');
+    const before = getState(component.store);
+    const header = spectator.query('.folder-header');
+    expect(header?.getAttribute('tabindex')).toBe('-1');
+    expect(header?.getAttribute('role')).toBe('presentation');
+
+    header?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    header?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    header?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    header?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    spectator.query('.folder-header .expand-toggle')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(select).toHaveBeenCalledWith('common');
+    expect(getState(component.store)).toStrictEqual(before);
+    expect(component.store.expandedFolders()).toBe(before.expandedFolders);
+    expect(selected).not.toHaveBeenCalled();
+  });
+
+  it('delegates root open, close and toggle and keeps selection separate', () => {
+    createComponent();
+    const selected = vi.fn();
+    component.folderSelected.subscribe(selected);
+    const toggle = new MouseEvent('click');
+    const stop = vi.spyOn(toggle, 'stopPropagation');
+    component.onToggleRootExpanded(toggle);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(component.store.isRootExpanded()).toBe(false);
+
+    const right = new KeyboardEvent('keydown', { cancelable: true });
+    component.onRootExpandKeydown(right);
+    expect(right.defaultPrevented).toBe(true);
+    expect(component.store.isRootExpanded()).toBe(true);
+    const rightNoOp = new KeyboardEvent('keydown', { cancelable: true });
+    component.onRootExpandKeydown(rightNoOp);
+    expect(rightNoOp.defaultPrevented).toBe(false);
+    expect(component.store.isRootExpanded()).toBe(true);
+
+    const left = new KeyboardEvent('keydown', { cancelable: true });
+    component.onRootCollapseKeydown(left);
+    expect(left.defaultPrevented).toBe(true);
+    expect(component.store.isRootExpanded()).toBe(false);
+    const leftNoOp = new KeyboardEvent('keydown', { cancelable: true });
+    component.onRootCollapseKeydown(leftNoOp);
+    expect(leftNoOp.defaultPrevented).toBe(false);
+    expect(component.store.isRootExpanded()).toBe(false);
+    expect(selected).not.toHaveBeenCalled();
+
+    component.onRootClick();
+    expect(selected).toHaveBeenCalledWith('');
+  });
+
+  it('shares one root drop decision between highlighting, the predicate and the drop', () => {
+    createComponent();
+    const dragData = { type: 'folder' as const, path: 'common.buttons' };
+    fixture.componentRef.setInput('activeDragDataFromParent', dragData);
+    const decide = vi.spyOn(folderDropRules, 'folderDrop');
+    const confirm = vi.spyOn(component, 'confirmMoveFolder').mockImplementation(() => undefined);
+
+    expect(component.isValidRootDropTarget()).toBe(true);
+    expect(component.canDropOnRoot({ data: dragData } as Parameters<typeof component.canDropOnRoot>[0])).toBe(true);
+    component.onRootDrop({ item: { data: dragData } } as Parameters<typeof component.onRootDrop>[0]);
+
+    expect(decide).toHaveBeenCalledOnce();
+    expect(confirm).toHaveBeenCalledWith('common.buttons', '');
+    decide.mockRestore();
+  });
+
+  it('re-evaluates root drops for read-only state and refuses resources and folders already at root', () => {
+    createComponent();
+    const dragData = { type: 'folder' as const, path: 'common.buttons' };
+    fixture.componentRef.setInput('activeDragDataFromParent', dragData);
+    expect(component.isValidRootDropTarget()).toBe(true);
+    patchState(unprotected(component.store), { isReadOnly: true });
+    const confirm = vi.spyOn(component, 'confirmMoveFolder').mockImplementation(() => undefined);
+    expect(component.isValidRootDropTarget()).toBe(false);
+    component.onRootDrop({ item: { data: dragData } } as Parameters<typeof component.onRootDrop>[0]);
+    expect(confirm).not.toHaveBeenCalled();
+
+    patchState(unprotected(component.store), { isReadOnly: false });
+    for (const data of [
+      { type: 'folder' as const, path: 'common' },
+      { type: 'resource' as const, key: 'common.save', folderPath: 'common' },
+    ]) {
+      fixture.componentRef.setInput('activeDragDataFromParent', data);
+      expect(component.canDropOnRoot({ data } as Parameters<typeof component.canDropOnRoot>[0])).toBe(false);
+      component.onRootDrop({ item: { data } } as Parameters<typeof component.onRootDrop>[0]);
+    }
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it('should not load folders on init (delegated to parent)', () => {
     createComponent();
     fixture.componentRef.setInput('collectionName', 'my-collection');
@@ -156,6 +292,51 @@ describe('FolderTree', () => {
     expect(setSpy).toHaveBeenCalledWith('c');
 
     vi.useRealTimers();
+  });
+
+  async function expectPendingFilterApplied(disable: () => void, enable: () => void): Promise<void> {
+    vi.useFakeTimers();
+    try {
+      createComponent();
+      spectator.detectComponentChanges();
+      component.onSearchChange('common');
+      await vi.advanceTimersByTimeAsync(100);
+      expect(component.store.folderTreeFilter()).toBe('');
+
+      disable();
+      spectator.detectComponentChanges();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(component.store.isDisabled()).toBe(true);
+      expect(spectator.query<HTMLInputElement>('app-search-input input')?.disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(250);
+      expect(component.store.folderTreeFilter()).toBe('common');
+      expect(component.store.isDisabled()).toBe(true);
+
+      enable();
+      spectator.detectComponentChanges();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(spectator.query<HTMLInputElement>('app-search-input input')?.disabled).toBe(false);
+      component.onSearchChange('common');
+      await vi.advanceTimersByTimeAsync(300);
+      expect(component.store.folderTreeFilter()).toBe('common');
+      expect(spectator.query<HTMLInputElement>('app-search-input input')?.value).toBe('common');
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it('applies a pending debounced filter when search disables the input', async () => {
+    await expectPendingFilterApplied(
+      () => component.store.showQuery('save'),
+      () => component.store.clearSearch(),
+    );
+  });
+
+  it('applies a pending debounced filter when an in-flight move disables the input', async () => {
+    await expectPendingFilterApplied(
+      () => patchState(unprotected(component.store), { movesInFlight: 1 }),
+      () => patchState(unprotected(component.store), { movesInFlight: 0 }),
+    );
   });
 
   it('opens the move confirmation and calls the store only when confirmed', async () => {
