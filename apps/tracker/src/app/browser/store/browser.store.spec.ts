@@ -2018,6 +2018,30 @@ describe('BrowserStore', () => {
       expect(store.statusCounts()).toEqual({ new: 2, stale: 1, translated: 1, verified: 2 });
     });
 
+    it('should preserve the counts reference when only sort or selected statuses changes', () => {
+      const counts = store.statusCounts();
+      const needsWorkCount = store.needsWorkCount();
+
+      store.toggleSortDirection();
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['gamma', 'beta', 'alpha']);
+      expect(store.statusCounts()).toBe(counts);
+      expect(store.needsWorkCount()).toBe(needsWorkCount);
+
+      store.setSelectedStatuses(['new']);
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['beta', 'alpha']);
+      expect(store.statusCounts()).toBe(counts);
+      expect(store.needsWorkCount()).toBe(needsWorkCount);
+
+      store.setSortField('status');
+      expect(store.statusCounts()).toBe(counts);
+      expect(store.needsWorkCount()).toBe(needsWorkCount);
+
+      store.setSelectedLocales(['de']);
+      expect(store.statusCounts()).not.toBe(counts);
+      expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 1, verified: 2 });
+      expect(store.needsWorkCount()).toBe(0);
+    });
+
     it('should narrow counts to the selected locales', () => {
       store.setSelectedLocales(['de']);
       expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 1, verified: 2 });

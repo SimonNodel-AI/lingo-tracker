@@ -112,7 +112,13 @@ export {
   type TranslationStatus,
 } from './lib/translation-status';
 // Status summary: roll-ups over many statuses
-export { countByStatus, STATUS_PRECEDENCE, type StatusCounts, worstStatus } from './lib/translation-status-summary';
+export {
+  countByStatus,
+  STATUS_PRECEDENCE,
+  type StatusCounts,
+  statusCountsOver,
+  worstStatus,
+} from './lib/translation-status-summary';
 export { hasUnbundlableBranchBody } from './lib/transloco-brace-scan';
 export { translocoToICU } from './lib/transloco-to-icu';
 // Validation: import keys, locales, values and key-set conflicts

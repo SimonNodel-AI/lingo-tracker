@@ -804,6 +804,16 @@ Explained in context: [`core-library.md`](core-library.md#auto-translation-pipel
 
 ---
 
+### Translation List View
+
+The Tracker's status filter, sort, per-status counts and needs-work count for a set of [Resource Summaries](#resource-summary). The pure module is `apps/tracker/src/app/browser/translations/utils/translation-list-view.ts`. `resourceStatusScope(items, locales)` returns per-item counts, status counts and a needs-work count. `translationListRows(scope, selection)` filters the scope and delegates sort to `sortTranslationRecords`, which reuses those per-item counts. Status and sort changes preserve the scope and its counts reference.
+
+The filter and counts use one predicate over domain `statusCountsOver` results. Each status count equals the rows that status alone keeps. Counts use the status-unfiltered resources, and needs work counts the union of `new` and `stale` once per resource.
+
+Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
+
+---
+
 ### Translation Status
 
 A status (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review lifecycle of a non-base locale translation. `TRANSLATION_STATUSES` defines the four values, and `isTranslationStatus` checks input at runtime. `NEEDS_WORK_STATUSES` defines `new` and `stale`; `isNeedsWorkStatus` and `isNeedsWorkStatusSelection` test one status or an exact shortcut selection. `DEFAULT_MISSING_METADATA_STATUS` is `new` for a locale with no stored metadata:
@@ -823,7 +833,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Translation Status Summary
 
-The roll-up of a set of locale [translation statuses](#translation-status): the number of locales in each status (`StatusCounts`) and the worst status. The pure module `libs/domain/src/lib/translation-status-summary.ts` holds the rules. `countByStatus(statuses)` counts the statuses and ignores a locale with no status. `worstStatus(counts)` applies `STATUS_PRECEDENCE`, which is worst first: `stale` > `new` > `translated` > `verified`. Every roll-up in the Tracker UI uses this module: the rollup ring, the screen-reader breakdown, the locale column, the status filter counts, and sort by status. The Tracker counts each locale's domain `displayStatus(target)`: the stored status, or `new` for a locale that needs work and has no metadata. The glyphs, label tokens and UI display order are presentation. They are in one Tracker table, `shared/translation-status/translation-status-presentation.ts`, which the rows and the translation editor's status labels both use. UI display order starts with `new`; worst-status precedence starts with `stale`. The rollup ring's arc geometry and tooltip row order are pure functions in `rollup-geometry.ts` next to `TranslationRollup`.
+The roll-up of a set of locale [translation statuses](#translation-status): the number of locales in each status (`StatusCounts`) and the worst status. The pure module `libs/domain/src/lib/translation-status-summary.ts` holds the rules. `countByStatus(statuses)` counts the statuses and ignores a locale with no status. `statusCountsOver(summary, locales)` counts one resource's display statuses over the supplied locales. A target without metadata counts as `new`. Base and unknown locales contribute nothing. `worstStatus(counts)` applies `STATUS_PRECEDENCE`, which is worst first: `stale` > `new` > `translated` > `verified`. Every roll-up in the Tracker UI uses this module: the rollup ring, the screen-reader breakdown, the locale column, the status filter counts, and sort by status. The Tracker counts each locale's domain `displayStatus(target)`: the stored status, or `new` for a locale that needs work and has no metadata. The glyphs, label tokens and UI display order are presentation. They are in one Tracker table, `shared/translation-status/translation-status-presentation.ts`, which the rows and the translation editor's status labels both use. UI display order starts with `new`; worst-status precedence starts with `stale`. The rollup ring's arc geometry and tooltip row order are pure functions in `rollup-geometry.ts` next to `TranslationRollup`.
 
 Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
 

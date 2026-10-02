@@ -72,6 +72,7 @@ describe('domain public surface', () => {
       'resolveResourceKey',
       'sortPreferredTermRules',
       'splitResolvedKey',
+      'statusCountsOver',
       'summaryTarget',
       'translocoToICU',
       'validateBundleDefinition',
