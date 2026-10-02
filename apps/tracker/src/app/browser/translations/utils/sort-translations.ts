@@ -1,6 +1,5 @@
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import type { StatusCounts } from '@simoncodes-ca/domain';
-import { STATUS_DISPLAY_ORDER } from '../../../shared/translation-status/translation-status-presentation';
+import { STATUS_PRECEDENCE, type StatusCounts } from '@simoncodes-ca/domain';
 
 export type SortField = 'key' | 'status';
 export type SortDirection = 'asc' | 'desc';
@@ -10,18 +9,15 @@ export interface TranslationStatusRecord<T extends ResourceSummaryDto> {
   readonly counts: StatusCounts;
 }
 
-const VERIFIED_RANK = STATUS_DISPLAY_ORDER.indexOf('verified');
+const VERIFIED_RANK = STATUS_PRECEDENCE.indexOf('verified');
 
 /**
- * Sort rank of an item: the position, in the display order (new first), of the
- * earliest display status its locales carry (a locale with no metadata is `new`).
+ * Sort rank of an item: the position, in STATUS_PRECEDENCE (most urgent first), of the
+ * earliest status its locales carry (a locale with no metadata is `new`).
  * Locales with no status rank as verified.
- * Status sort puts `new` work first (STATUS_DISPLAY_ORDER), while rows show the
- * worst locale first (STATUS_PRECEDENCE, `stale` first), a difference that remains
- * an open product question.
  */
 function statusRank(counts: StatusCounts): number {
-  const rank = STATUS_DISPLAY_ORDER.findIndex((status) => counts[status] > 0);
+  const rank = STATUS_PRECEDENCE.findIndex((status) => counts[status] > 0);
   return rank === -1 ? VERIFIED_RANK : rank;
 }
 

@@ -8,7 +8,7 @@ export type TranslationStatus = (typeof TRANSLATION_STATUSES)[number];
 /** A locale without stored metadata starts as new. */
 export const DEFAULT_MISSING_METADATA_STATUS: 'new' = 'new';
 
-/** Statuses that still need translation work, in shortcut display order. */
+/** Statuses that still need translation work: the "Needs work" selection set. Order is not a ranking; `STATUS_PRECEDENCE` owns all ranking. */
 export const NEEDS_WORK_STATUSES = ['new', 'stale'] as const satisfies readonly TranslationStatus[];
 
 export function isNeedsWorkStatus(status: TranslationStatus): boolean {

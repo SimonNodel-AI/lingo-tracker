@@ -27,11 +27,11 @@ describe('ringSegments', () => {
     expect(segment.dashOffset).toBe(-0);
   });
 
-  it('draws arcs in reverse display order with offsets that accumulate the earlier arc lengths', () => {
+  it('draws arcs in reverse status precedence with offsets that accumulate the earlier arc lengths', () => {
     const segments = ringSegments(counts({ new: 1, stale: 1, translated: 1, verified: 1 }), 4, RADIUS);
     const quarter = CIRCUMFERENCE / 4;
 
-    expect(segments.map((s) => s.status)).toEqual(['verified', 'translated', 'stale', 'new']);
+    expect(segments.map((s) => s.status)).toEqual(['verified', 'translated', 'new', 'stale']);
     segments.forEach((segment, index) => {
       expect(segment.length).toBeCloseTo(quarter, 10);
       expect(segment.dashOffset).toBeCloseTo(-quarter * index, 10);
@@ -72,7 +72,7 @@ describe('ringSegments', () => {
 describe('sortLocaleRows', () => {
   const row = (code: string, status: TranslationStatus) => ({ code, status });
 
-  it('orders by status display order, then by locale code', () => {
+  it('orders by status precedence (most urgent first), then by locale code', () => {
     const sorted = sortLocaleRows([
       row('fr', 'verified'),
       row('de', 'translated'),
@@ -83,9 +83,9 @@ describe('sortLocaleRows', () => {
     ]);
 
     expect(sorted.map((r) => `${r.status}:${r.code}`)).toEqual([
+      'stale:ja',
       'new:de-ch',
       'new:es',
-      'stale:ja',
       'translated:de',
       'verified:ar',
       'verified:fr',

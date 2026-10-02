@@ -67,9 +67,9 @@ export const IMPORT_STRATEGIES: readonly ImportStrategy[] = Object.freeze(
   Object.keys(IMPORT_STRATEGY_POLICIES) as ImportStrategy[],
 );
 
-/** Checks untrusted input against the policy table's own keys. */
+/** Checks untrusted input against the list of import strategies. */
 export function isImportStrategy(value: unknown): value is ImportStrategy {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(IMPORT_STRATEGY_POLICIES, value);
+  return typeof value === 'string' && (IMPORT_STRATEGIES as readonly string[]).includes(value);
 }
 
 /** Returns the same frozen policy; an invalid strategy is a programmer error. */

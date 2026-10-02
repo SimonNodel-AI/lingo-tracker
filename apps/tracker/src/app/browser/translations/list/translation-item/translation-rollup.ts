@@ -383,7 +383,7 @@ export class TranslationRollup implements OnDestroy {
   /** Ring segments for SVG */
   readonly ringSegments = computed(() => ringSegments(this.counts(), this.total(), this.radius));
 
-  /** Tooltip rows - one row per locale, in display order then by locale code */
+  /** Tooltip rows - one row per locale, most urgent status first, then by locale code */
   readonly tooltipLocaleRows = computed(() =>
     sortLocaleRows(
       this.locales().map((l) => ({

@@ -108,9 +108,9 @@ describe('translationListView', () => {
   it.each<[SortField, SortDirection, string[], string[]]>([
     ['key', 'asc', allLocales, allKeys],
     ['key', 'desc', allLocales, [...allKeys].reverse()],
-    ['status', 'asc', allLocales, ['alpha', 'beta', 'delta', 'epsilon', 'gamma', 'no-target']],
-    ['status', 'desc', allLocales, ['no-target', 'gamma', 'epsilon', 'delta', 'beta', 'alpha']],
-    ['status', 'asc', ['es'], ['beta', 'alpha', 'epsilon', 'delta', 'gamma', 'no-target']],
+    ['status', 'asc', allLocales, ['alpha', 'epsilon', 'beta', 'delta', 'gamma', 'no-target']],
+    ['status', 'desc', allLocales, ['no-target', 'gamma', 'delta', 'beta', 'epsilon', 'alpha']],
+    ['status', 'asc', ['es'], ['alpha', 'beta', 'epsilon', 'delta', 'gamma', 'no-target']],
     ['status', 'asc', [], allKeys],
   ])('sorts by %s %s over %j with key ties and no status ranked as verified', (sortField, sortDirection, locales, keys) => {
     expect(
