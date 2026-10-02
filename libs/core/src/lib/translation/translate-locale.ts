@@ -12,15 +12,19 @@
  * @module translate-locale
  */
 
-import { type LocaleMetadata, needsTranslation } from '@simoncodes-ca/domain';
+import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { CannotTranslateBaseLocaleError, TranslationLocaleNotConfiguredError } from '../errors/lingo-tracker-error';
-import { calculateChecksum } from '../resource/checksum';
 import { readCollection } from '../resource/read-collection';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
-import { openResourceFolder } from '../resource/resource-folder';
 import { reindexMutation, type MutationSinkOptions } from '../resource/resource-mutation';
 import type { RunOutcome } from '../run-outcome';
+import {
+  type PendingTranslation,
+  snapshotTranslation,
+  type TranslationSnapshot,
+  writeBackTranslations,
+} from './translation-write-back';
 import {
   assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
@@ -71,61 +75,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-interface TranslationSnapshot {
-  readonly baseChecksum: string;
-  readonly targetChecksum: string | undefined;
-  readonly targetStatus: LocaleMetadata['status'];
-}
-
-/**
- * Opens a folder once, stores every translated value for it, and saves once.
- * Values whose entry, base value, or target locale changed during translation are not written.
- */
-function writeTranslatedValues(
-  translationsFolder: string,
-  folderPath: string,
-  values: readonly {
-    readonly entryKey: string;
-    readonly value: TranslatedValue;
-    readonly snapshot?: TranslationSnapshot;
-  }[],
-  baseLocale: string,
-  onSave: () => void,
-): { writtenKeys: string[]; skippedKeys: string[] } {
-  const folder = openResourceFolder(folderPath, { baseLocale, translationsFolder });
-  const writtenKeys: string[] = [];
-  const skippedKeys: string[] = [];
-
-  for (const { entryKey, value, snapshot } of values) {
-    const current = folder.get(entryKey);
-    const currentTarget = current?.meta?.[value.locale];
-    if (
-      !current ||
-      !snapshot ||
-      calculateChecksum(current.entry.source) !== snapshot.baseChecksum ||
-      currentTarget?.checksum !== snapshot.targetChecksum ||
-      currentTarget?.status !== snapshot.targetStatus ||
-      !needsTranslation(currentTarget)
-    ) {
-      skippedKeys.push(value.key);
-      continue;
-    }
-    folder.setTranslation(entryKey, value.locale, value.value, 'translated');
-    writtenKeys.push(value.key);
-  }
-
-  if (writtenKeys.length > 0) {
-    try {
-      folder.save();
-    } finally {
-      // The first JSON file may have been written even if the second failed.
-      onSave();
-    }
-  }
-
-  return { writtenKeys, skippedKeys };
-}
-
 // ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
@@ -172,7 +121,7 @@ export async function translateLocale(
   params: TranslateLocaleParams,
 ): Promise<TranslateLocaleResult> {
   const { targetLocale, onProgress, onMutation } = params;
-  const { baseLocale, translationsFolder } = collection;
+  const { translationsFolder } = collection;
   assertCanTranslateLocale(collection, targetLocale);
 
   const { resources, problems } = readCollection(collection);
@@ -208,9 +157,6 @@ export async function translateLocale(
   let skippedCount = 0;
   const failures: Array<{ key: string; error: string }> = [];
   const skippedKeys: string[] = [];
-  const reportWrite = (): void => {
-    onMutation?.(reindexMutation(translationsFolder));
-  };
 
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
     const batchStart = batchIndex * batchSize;
@@ -218,11 +164,7 @@ export async function translateLocale(
     const snapshots = new Map<string, TranslationSnapshot>(
       batch.map((resource) => [
         resource.fullKey,
-        {
-          baseChecksum: calculateChecksum(resource.entry.source),
-          targetChecksum: resource.entry.metadata[targetLocale]?.checksum,
-          targetStatus: resource.entry.metadata[targetLocale]?.status,
-        },
+        snapshotTranslation(resource.entry.source, resource.entry.metadata[targetLocale]),
       ]),
     );
 
@@ -250,10 +192,23 @@ export async function translateLocale(
       }
 
       for (const [folderPath, folderValues] of byFolder) {
-        const written = writeTranslatedValues(translationsFolder, folderPath, folderValues, baseLocale, reportWrite);
-        translatedCount += written.writtenKeys.length;
-        skippedCount += written.skippedKeys.length;
-        skippedKeys.push(...written.skippedKeys);
+        const keysByEntry = new Map(folderValues.map(({ entryKey, value }) => [entryKey, value.key]));
+        const pending: PendingTranslation[] = [];
+        for (const { entryKey, value, snapshot } of folderValues) {
+          if (!snapshot) {
+            skippedKeys.push(value.key);
+            skippedCount++;
+            continue;
+          }
+          pending.push({ entryKey, locale: value.locale, value: value.value, snapshot });
+        }
+        const writeBack = writeBackTranslations(collection, folderPath, pending, {
+          onMutation,
+          saved: () => [reindexMutation(translationsFolder)],
+        });
+        translatedCount += writeBack.written.length;
+        skippedCount += writeBack.skipped.length;
+        skippedKeys.push(...writeBack.skipped.map(({ entryKey }) => keysByEntry.get(entryKey) ?? entryKey));
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

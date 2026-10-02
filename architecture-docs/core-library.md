@@ -621,7 +621,7 @@ The [Translator](glossary.md#translator) is the only way core machine-translates
 | Caller | Entries → locales | Stores |
 |---|---|---|
 | [Locale seeding](#locale-seeding) (`addResource`, `editResource` on a base value change) | the base value → the target locales that need work and were not supplied | values as `translated`; a skipped locale gets a copy of the base as `new`, except on edit where it holds a real translation (kept, `stale`) |
-| `translateExistingResource(collection, key)` | the entry → its target locales with `needsTranslation` | values as `translated`; skipped locales stay as they are |
+| `translateExistingResource(collection, key)` | the entry → its target locales with `needsTranslation` | values as `translated` through Translation Write-back; skipped locales stay as they are; count and entry reflect fresh disk state |
 | `translateLocale(collection, { targetLocale })` | every entry with `needsTranslation` for the locale (read with the [Collection Reader](#collection-reader)), in batches of `batchSize` with `delayMs` between them → `[targetLocale]` | values as `translated`, one save per folder per batch; skipped keys in `skippedKeys`; folders the reader could not read in `warnings` |
 
 <!-- Auto-translation pipeline flowchart -->
@@ -663,7 +663,15 @@ flowchart TD
 
 **What the Translator owns.** Setup (the enabled check, the API key, the provider), the ICU skip, the placeholder guard, the protected-term guard, and normalisation. Each happens in one place, for every caller. There is one code path: a single text is a batch of one. A provider failure (`TranslationError`) propagates; locale seeding passes it on, and `translateLocale` marks the batch as failed and goes on with the next one, including after a `TIMEOUT`.
 
-The Google Translate v2 provider bounds each HTTP request to 30 seconds. A timeout aborts the request and raises a retryable `TranslationError` with code `TIMEOUT`; `translateLocale` records the affected batch in `failures`, then continues with later batches. The provider rejects an invalid timeout option at construction with `INVALID_REQUEST_TIMEOUT`. When `translateLocale` reopens each Resource Folder to write, it compares the current base checksum and the target locale's checksum and status with those read before the provider call. If the entry was removed, either locale changed, or the target no longer needs translation, it leaves that entry untouched and includes its key in `skippedKeys`.
+The Google Translate v2 provider bounds each HTTP request to 30 seconds. A timeout aborts the request and raises a retryable `TranslationError` with code `TIMEOUT`; `translateLocale` records the affected batch in `failures`, then continues with later batches. The provider rejects an invalid timeout option at construction with `INVALID_REQUEST_TIMEOUT`.
+
+**Translation Write-back.** `translateLocale`, `translateExistingResource`, and phase 2 of `editResource` share [Translation Write-back](glossary.md#translation-write-back). The internal `translation-write-back.ts` module snapshots the stored ICU base checksum and target checksum and status before translation. For edit, the snapshot represents the saved phase-1 state. After the await, write-back reopens each Resource Folder from disk. It skips missing entries, changed base checksums, changed target checksums or statuses, and targets that no longer need translation. This preserves sibling entries and concurrent edits, including deletion.
+
+Write-back normalizes values through `setTranslation` and saves once per folder, only if it wrote a value. The default status is `translated`, while edit passes `new` for seeded copies. Each caller supplies its saved mutations, and edit supplies one `upsert` with the fresh entry. `translateExistingResource` sends one `upsert` with the fresh entry and counts only written locales. `translateLocale` supplies a `reindex` after success, and `saveReporting` sends `reindex` before a failed save throws. Thus bulk translation retains one `reindex` per save attempt and its existing batch failure handling.
+
+Callers append write-back skips to `skippedLocales` or `skippedKeys`. Edit reports `skippedLocales` only when auto-translation ran. If an entry disappears during translation, single-entry callers throw `ResourceNotFoundError` without restoring it. Edit keeps its saved phase-1 changes if the provider fails. A synchronous TOCTOU gap remains between reopening and saving, and the two-file save is not atomic.
+
+Reopening can throw if another writer leaves invalid JSON after the provider call. Add operations retain their existing fresh-folder write path and conflict rule.
 
 **Skip reasons.** `SkippedTranslation.reason` is `complex-icu`, `placeholder-mismatch` or `protected-term` (with the dropped `terms`). A translation that drops a protected term would be rejected by import, so it is not stored. The callers report skipped locales (`skippedLocales`) or keys (`skippedKeys`) without the reason.
 

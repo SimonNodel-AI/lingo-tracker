@@ -14,6 +14,7 @@ import {
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
+import { snapshotTranslation, writeBackTranslations } from '../translation/translation-write-back';
 import type { OpenTranslatorOptions } from '../translation/translator';
 import type { ResourceTreeEntry } from './load-resource-tree';
 import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
@@ -48,7 +49,10 @@ export interface EditResourceResult {
   readonly updated: boolean;
   readonly message?: string;
   readonly entry?: ResourceTreeEntry;
-  /** Locales the Translator skipped (see {@link seedLocales}). Present only when auto-translation ran. */
+  /**
+   * Locales the Translator skipped (see {@link seedLocales}), or whose value changed on disk
+   * during the provider call. Present only when auto-translation ran.
+   */
   readonly skippedLocales?: string[];
   /**
    * Advisory: discouraged terms in the base value, any rule-file problem that limited the check,
@@ -156,9 +160,16 @@ export async function editResource(
     ]);
   }
 
+  let updatedFolder = folder;
   let skippedLocales: string[] | undefined;
   let translatorProblems: readonly string[] | undefined;
   if (baseChanged) {
+    const snapshots = new Map(
+      collection.targetLocales.map((locale) => [
+        locale,
+        snapshotTranslation(entry.source, folder.get(entryKey)?.meta?.[locale]),
+      ]),
+    );
     const seeding = await seedLocales(
       collection,
       {
@@ -173,23 +184,28 @@ export async function editResource(
       },
       options,
     );
-    for (const translation of seeding.translations) {
-      folder.setTranslation(entryKey, translation.locale, translation.value, translation.status);
+    const pending = seeding.translations.flatMap((translation) => {
+      const snapshot = snapshots.get(translation.locale);
+      return snapshot ? [{ entryKey, ...translation, snapshot }] : [];
+    });
+    const writeBack = writeBackTranslations(collection, paths.folderPath, pending, {
+      onMutation: options.onMutation,
+      saved: (folder) => [upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(entryKey))],
+    });
+    updatedFolder = writeBack.folder;
+    if (!updatedFolder.has(entryKey)) {
+      throw new ResourceNotFoundError(paths.resolvedKey);
     }
-    if (seeding.translations.length > 0) {
-      saveReporting(folder, translationsFolder, options.onMutation, () => [
-        upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(entryKey)),
-      ]);
-    }
-    if (seeding.skippedLocales && seeding.skippedLocales.length > 0) {
-      skippedLocales = seeding.skippedLocales;
+    if (seeding.skippedLocales !== undefined) {
+      const skipped = [...new Set([...seeding.skippedLocales, ...writeBack.skipped.map(({ locale }) => locale)])];
+      if (skipped.length > 0) skippedLocales = skipped;
     }
     translatorProblems = seeding.problems;
   }
 
   const moved = destination ? moveEntry(collection, paths.resolvedKey, destination, options.onMutation) : undefined;
   const resolvedKey = moved?.resolvedKey ?? paths.resolvedKey;
-  const updatedEntry = moved?.entry ?? folder.treeEntry(entryKey);
+  const updatedEntry = moved?.entry ?? updatedFolder.treeEntry(entryKey);
   if (!updatedEntry) {
     throw new ResourceNotFoundError(resolvedKey);
   }

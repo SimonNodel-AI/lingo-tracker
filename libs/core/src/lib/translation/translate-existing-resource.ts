@@ -4,12 +4,13 @@ import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import { type MutationSinkOptions, saveReporting, upsertMutation } from '../resource/resource-mutation';
+import { type MutationSinkOptions, upsertMutation } from '../resource/resource-mutation';
+import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
 import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
 
 export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
-  /** Locales the Translator skipped (complex ICU, a lost placeholder, or a dropped protected term). */
+  /** Locales the Translator skipped, or whose value changed on disk during the provider call. */
   readonly skippedLocales: string[];
   readonly entry: ResourceTreeEntry;
   /** Problems that did not stop the Translator (a named protected-terms file that does not exist). */
@@ -64,31 +65,32 @@ export async function translateExistingResource(
     };
   }
 
+  const snapshots = new Map(targetLocales.map((locale) => [locale, snapshotTranslation(entry.source, meta[locale])]));
   const translator = openTranslator(collection, options);
   const { values, skipped } = await translator.translate(
     [{ key: paths.resolvedKey, source: entry.source }],
     targetLocales,
   );
 
-  for (const { locale, value } of values) {
-    folder.setTranslation(paths.entryKey, locale, value, 'translated');
-  }
-
-  if (values.length > 0) {
-    saveReporting(folder, translationsFolder, options.onMutation, () => [
+  const pending = values.flatMap(({ locale, value }) => {
+    const snapshot = snapshots.get(locale);
+    return snapshot ? [{ entryKey: paths.entryKey, locale, value, snapshot }] : [];
+  });
+  const writeBack = writeBackTranslations(collection, paths.folderPath, pending, {
+    onMutation: options.onMutation,
+    saved: (freshFolder) => [
       upsertMutation(
         translationsFolder,
         paths.resolvedKey,
-        requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
+        requireTreeEntry(freshFolder, paths.entryKey, paths.resolvedKey),
       ),
-    ]);
-  }
-
-  const updatedEntry = requireTreeEntry(folder, paths.entryKey, paths.resolvedKey);
+    ],
+  });
+  const updatedEntry = requireTreeEntry(writeBack.folder, paths.entryKey, paths.resolvedKey);
 
   return {
-    translatedCount: values.length,
-    skippedLocales: skipped.map(({ locale }) => locale),
+    translatedCount: writeBack.written.length,
+    skippedLocales: [...skipped.map(({ locale }) => locale), ...writeBack.skipped.map(({ locale }) => locale)],
     entry: updatedEntry,
     warnings: [...translator.problems],
   };
