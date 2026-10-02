@@ -18,6 +18,7 @@ export {
   ConfigParseError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
+  GlossaryExtractorError,
   ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,

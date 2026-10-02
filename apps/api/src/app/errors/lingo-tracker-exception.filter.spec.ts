@@ -292,7 +292,7 @@ describe('toHttpException', () => {
       new MultipleBundleConstantNameError(),
       500,
       {
-        message: 'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
+        message: 'A token constant name override needs exactly one bundle.',
         error: 'Internal Server Error',
         statusCode: 500,
       },
@@ -328,7 +328,7 @@ describe('toHttpException', () => {
       new internalErrors.GlossaryExtractorError('ai'),
       500,
       {
-        message: 'The "ai" extractor is not yet implemented. Use --extractor ngram (the default).',
+        message: 'The "ai" extractor is not yet implemented; use the "ngram" extractor (the default).',
         error: 'Internal Server Error',
         statusCode: 500,
       },

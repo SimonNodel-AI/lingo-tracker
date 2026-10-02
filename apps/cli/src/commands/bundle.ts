@@ -1,6 +1,11 @@
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import type { TokenCasing } from '@simoncodes-ca/domain';
-import { BundleNotFoundError, type BundleTypeOutcome, generateBundles } from '@simoncodes-ca/core';
+import {
+  BundleNotFoundError,
+  type BundleTypeOutcome,
+  generateBundles,
+  MultipleBundleConstantNameError,
+} from '@simoncodes-ca/core';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ALL_ITEMS_SENTINEL, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
@@ -29,6 +34,14 @@ export interface BundleOptions {
 }
 
 const DEFAULT_DEBUG_KEYS_LOCALE = '99';
+
+/** Core names the data (one bundle per constant name); the command words it as the flag. */
+function wordConstantNameConflict(error: unknown): never {
+  if (error instanceof MultipleBundleConstantNameError) {
+    throw new Error('Cannot use --token-constant-name with multiple bundles. Please target a single bundle.');
+  }
+  throw error;
+}
 
 export const bundleCommand = defineCommand<BundleOptions>()({
   name: 'Bundle generation',
@@ -123,7 +136,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         );
       }
     },
-  });
+  }).catch(wordConstantNameConflict);
 
   if (runResult.outcomes.length > 1) {
     const { totals } = runResult;

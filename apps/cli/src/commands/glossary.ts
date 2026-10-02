@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGlossary, type Collection } from '@simoncodes-ca/core';
+import { buildGlossary, type Collection, GlossaryExtractorError } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { hasPipedStdin } from '../runner/terminal';
 import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
@@ -63,6 +63,22 @@ function buildOutputPath(options: GlossaryCommandOptions, cwd: string): string {
   return path.resolve(cwd, `lingo-tracker-glossary-${timestamp}.json`);
 }
 
+/** Core names the extractor, not the flag; the command words the unimplemented "ai" mode as the flag. */
+function buildWithFlagWording(collections: Collection[], block: string, options: GlossaryCommandOptions) {
+  try {
+    return buildGlossary(collections, block, {
+      extractor: options.extractor,
+      locales: parseCommaSeparatedList(options.locales),
+      includeAll: options.includeAll,
+    });
+  } catch (error) {
+    if (error instanceof GlossaryExtractorError && error.mode === 'ai') {
+      throw new Error('The "ai" extractor is not yet implemented. Use --extractor ngram (the default).');
+    }
+    throw error;
+  }
+}
+
 export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
   name: 'Glossary',
   collection: 'many',
@@ -76,11 +92,7 @@ function runGlossary(options: GlossaryCommandOptions, cwd: string, collections: 
     return { exitCode: 1 };
   }
 
-  const { readProblems, ...glossary } = buildGlossary(collections, block, {
-    extractor: options.extractor,
-    locales: parseCommaSeparatedList(options.locales),
-    includeAll: options.includeAll,
-  });
+  const { readProblems, ...glossary } = buildWithFlagWording(collections, block, options);
 
   for (const problem of readProblems) {
     ConsoleFormatter.warning(`Collection '${problem.collectionName}': skipped unreadable folder: ${problem.message}`);

@@ -579,9 +579,8 @@ describe('bundleCommand', () => {
       await bundleCommand({ name: 'core,admin', tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
+        '❌ Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
       );
-      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundles).toHaveBeenCalledWith(
         mockConfig,
         expect.objectContaining({ names: ['core', 'admin'] }),
@@ -595,9 +594,8 @@ describe('bundleCommand', () => {
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
+        '❌ Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
       );
-      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: undefined }));
     });
 

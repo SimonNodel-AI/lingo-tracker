@@ -454,10 +454,7 @@ export class TranslationLocaleNotConfiguredError extends LingoTrackerError {
 export class MultipleBundleConstantNameError extends LingoTrackerError {
   readonly kind = 'internal' as const;
   constructor() {
-    super(
-      'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
-      'MULTIPLE_BUNDLE_CONSTANT_NAME',
-    );
+    super('A token constant name override needs exactly one bundle.', 'MULTIPLE_BUNDLE_CONSTANT_NAME');
   }
 }
 

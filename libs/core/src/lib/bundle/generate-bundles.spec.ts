@@ -105,7 +105,7 @@ describe('generateBundles', () => {
       generateBundles(config, { cwd: cwd(), overrides: { tokenConstantName: 'TOKENS' } }),
     ).rejects.toMatchObject({
       name: 'MultipleBundleConstantNameError',
-      message: 'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
+      message: 'A token constant name override needs exactly one bundle.',
     } satisfies Partial<MultipleBundleConstantNameError>);
   });
 

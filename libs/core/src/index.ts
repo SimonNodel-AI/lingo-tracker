@@ -104,6 +104,7 @@ export {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   type FolderPathPart,
+  GlossaryExtractorError,
   ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
