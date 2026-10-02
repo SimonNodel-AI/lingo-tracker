@@ -1,4 +1,3 @@
-import type { ConfigFileOperations } from '../lib/config/config-file-operations';
 import type { OpenedCollection } from '../lib/config/open-collection';
 import { BaseLocaleImmutableError, LocaleAlreadyExistsError } from '../lib/errors/lingo-tracker-error';
 import type { MutationSinkOptions } from '../lib/resource/resource-mutation';
@@ -13,21 +12,27 @@ export interface AddLocaleToCollectionResult {
 
 export async function addLocaleToCollection(
   collection: OpenedCollection,
-  configFile: Pick<ConfigFileOperations, 'write' | 'assertUnchanged'>,
   locale: string,
   options: MutationSinkOptions = {},
 ): Promise<AddLocaleToCollectionResult> {
   assertValidLocale(locale);
   const collectionName = collection.name;
-  const result = await changeCollection(collection, configFile, undefined, {}, options, (current) => {
-    if (locale === current.baseLocale) {
-      throw new BaseLocaleImmutableError(locale);
-    }
-    if (current.locales.includes(locale)) {
-      throw new LocaleAlreadyExistsError(locale, collectionName);
-    }
-    return [...current.locales, locale];
-  });
+  const result = await changeCollection(
+    collection,
+    {
+      patch: {},
+      targetLocales: (current) => {
+        if (locale === current.baseLocale) {
+          throw new BaseLocaleImmutableError(locale);
+        }
+        if (current.locales.includes(locale)) {
+          throw new LocaleAlreadyExistsError(locale, collectionName);
+        }
+        return [...current.locales, locale];
+      },
+    },
+    options,
+  );
 
   return {
     message: `Locale "${locale}" added to collection "${collectionName}" successfully`,

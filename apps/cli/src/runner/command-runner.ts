@@ -6,6 +6,7 @@ import {
   type LingoTrackerConfig,
   loadConfig,
   type OpenedCollection,
+  type OpenedProject,
   openCollection,
 } from '@simoncodes-ca/core';
 import * as path from 'path';
@@ -20,7 +21,7 @@ import { isInteractiveTerminal } from './terminal';
  * - `'many'` — several collections, selected and opened by the runner.
  * - `'none'` — no collection; the command reads `config` itself (or nothing, with `config: false`).
  */
-export type CollectionNeed = 'writable' | 'read' | 'many' | 'none';
+export type CollectionNeed = 'writable' | 'read' | 'deletable' | 'many' | 'none';
 
 /** What `run` may return: nothing (exit 0), or `{ exitCode: 1 }` for a failure it has already reported. */
 export type CommandResult = { readonly exitCode: 0 | 1 } | undefined;
@@ -50,6 +51,7 @@ interface BaseContext {
 
 interface ConfigResources {
   readonly config: LingoTrackerConfig;
+  readonly project: OpenedProject;
   /** Absolute path of `.lingo-tracker.json`. */
   readonly configPath: string;
 }
@@ -210,7 +212,11 @@ async function execute<
 
     if (spec.config !== false) {
       const config = readConfig(cwd);
-      resources = { config, configPath: path.join(cwd, CONFIG_FILENAME) };
+      resources = {
+        config,
+        configPath: path.join(cwd, CONFIG_FILENAME),
+        project: { projectRoot: cwd, sourceConfig: config },
+      };
 
       if (spec.collection === 'many') {
         const names = Object.keys(config.collections ?? {});
@@ -223,7 +229,11 @@ async function execute<
           typeof given === 'string' && given.length > 0 ? given : await selectCollection(config, interactive, flag);
         resources = {
           ...resources,
-          collection: openCollection(config, name, { cwd, writable: spec.collection === 'writable' }),
+          collection: openCollection(config, name, {
+            cwd,
+            writable: spec.collection === 'writable',
+            forDeletion: spec.collection === 'deletable',
+          }),
         };
       }
     }

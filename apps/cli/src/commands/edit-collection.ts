@@ -1,9 +1,4 @@
-import {
-  type CollectionTagEditProblem,
-  createConfigFileOperations,
-  editCollectionTags,
-  InvalidCollectionError,
-} from '@simoncodes-ca/core';
+import { type CollectionTagEditProblem, editCollectionTags, InvalidCollectionError } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -23,18 +18,14 @@ const run = defineCommand<EditCollectionOptions & { name: string }>()({
   // Edits the collection's registration (tags), not its resources, so a read-only collection is allowed.
   collection: 'read',
   collectionOption: 'name',
-  run: async ({ collection, cwd, answers }) => {
+  run: async ({ collection, answers }) => {
     let currentTags: string[];
     try {
-      currentTags = editCollectionTags(
-        collection,
-        createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
-        {
-          add: answers.addTag,
-          remove: answers.removeTag,
-          set: answers.setTags?.split(','),
-        },
-      );
+      currentTags = editCollectionTags(collection, {
+        add: answers.addTag,
+        remove: answers.removeTag,
+        set: answers.setTags?.split(','),
+      });
     } catch (error) {
       if (error instanceof InvalidCollectionError && error.problem !== undefined) {
         throw new Error(tagEditWording[error.problem]);

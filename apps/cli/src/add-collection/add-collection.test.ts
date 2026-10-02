@@ -37,6 +37,7 @@ describe('addCollectionCommand', () => {
     await addCollectionCommand({ collectionName: 'admin', translationsFolder: 'src/admin' });
 
     expect(addCollection).toHaveBeenCalledWith(
+      expect.objectContaining({ projectRoot: '/project', sourceConfig: CONFIG }),
       'admin',
       {
         translationsFolder: 'src/admin',
@@ -45,7 +46,6 @@ describe('addCollectionCommand', () => {
         baseLocale: 'en',
         locales: expect.any(Array),
       },
-      { cwd: '/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Collection "admin" added in .lingo-tracker.json');
     expect(process.exitCode).toBe(0);
@@ -54,9 +54,11 @@ describe('addCollectionCommand', () => {
   it('leaves the read-only default to core when non-interactive and no flag is given', async () => {
     await addCollectionCommand({ collectionName: 'vendor', translationsFolder: 'node_modules/lib/i18n' });
 
-    expect(addCollection).toHaveBeenCalledWith('vendor', expect.objectContaining({ readOnly: undefined }), {
-      cwd: '/project',
-    });
+    expect(addCollection).toHaveBeenCalledWith(
+      expect.objectContaining({ projectRoot: '/project', sourceConfig: CONFIG }),
+      'vendor',
+      expect.objectContaining({ readOnly: undefined }),
+    );
   });
 
   it('lets --no-read-only override the node_modules detection', async () => {
@@ -66,9 +68,11 @@ describe('addCollectionCommand', () => {
       readOnly: false,
     });
 
-    expect(addCollection).toHaveBeenCalledWith('vendor', expect.not.objectContaining({ readOnly: true }), {
-      cwd: '/project',
-    });
+    expect(addCollection).toHaveBeenCalledWith(
+      expect.objectContaining({ projectRoot: '/project', sourceConfig: CONFIG }),
+      'vendor',
+      expect.not.objectContaining({ readOnly: true }),
+    );
   });
 
   it('exits 1 naming the missing flags in non-interactive mode', async () => {
@@ -116,9 +120,9 @@ describe('addCollectionCommand', () => {
       await addCollectionCommand({});
 
       expect(addCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ projectRoot: '/project', sourceConfig: CONFIG }),
         'admin',
         expect.objectContaining({ translationsFolder: 'src/admin', locales: ['en', 'de'], readOnly: true }),
-        { cwd: '/project' },
       );
     });
 

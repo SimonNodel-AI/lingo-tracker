@@ -5,7 +5,7 @@ export {
   type AddLocaleToCollectionResult,
   addLocaleToCollection,
 } from './add-locale-to-collection';
-export { type DeleteCollectionOptions, deleteCollectionByName } from './delete-collection-by-name';
+export { deleteCollection } from './delete-collection';
 export { type CollectionTagEdit, editCollectionTags } from './edit-collection-tags';
 export {
   type RemoveLocaleFromCollectionResult,

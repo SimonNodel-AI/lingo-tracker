@@ -6,7 +6,7 @@ import type { LingoTrackerCollection } from '../config/lingo-tracker-collection'
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import type { TranslationConfig } from '../config/translation-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
-import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { loadConfig } from '../lib/config/load-config';
 import { openCollection } from '../lib/config/open-collection';
 import {
   CollectionAlreadyExistsError,
@@ -20,7 +20,7 @@ import {
 import type { ResourceEntries } from '../lib/resource/resource-entry';
 import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
-import { deleteCollectionByName } from './delete-collection-by-name';
+import { deleteCollection } from './delete-collection';
 import { type UpdateCollectionOptions, updateCollection } from './update-collection';
 
 const collected: ResourceMutation[] = [];
@@ -69,8 +69,7 @@ describe('updateCollection', () => {
     patch: Partial<LingoTrackerCollection>,
     options: UpdateCollectionOptions = {},
   ) => {
-    const configFile = createConfigFileOperations({ cwd: cwd() });
-    return updateCollection(openCollection(configFile.read(), name, { cwd: cwd() }), configFile, newName, patch, {
+    return updateCollection(openCollection(loadConfig({ cwd: cwd() }), name, { cwd: cwd() }), newName, patch, {
       ...options,
       onMutation,
     });
@@ -84,15 +83,14 @@ describe('updateCollection', () => {
   });
 
   it('refuses a changed config snapshot before writing locale files', async () => {
-    const configFile = createConfigFileOperations({ cwd: cwd() });
-    const current = openCollection(configFile.read(), 'myApp', { cwd: cwd() });
+    const current = openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() });
     const externalConfig = { ...config(), exportFolder: 'external/export' };
     const folderBytes = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME));
     writeConfig(externalConfig);
 
-    await expect(
-      updateCollection(current, configFile, undefined, { locales: ['en', 'es', 'de'] }, { onMutation }),
-    ).rejects.toThrow(ConfigChangedError);
+    await expect(updateCollection(current, undefined, { locales: ['en', 'es', 'de'] }, { onMutation })).rejects.toThrow(
+      ConfigChangedError,
+    );
 
     expect(readConfig()).toEqual(externalConfig);
     expect(readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME))).toEqual(folderBytes);
@@ -324,7 +322,7 @@ describe('updateCollection', () => {
     });
 
     writeConfig({ ...config(), bundles: malformed as unknown as LingoTrackerConfig['bundles'] });
-    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
+    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
 
     expect(readConfig().bundles).toEqual({
       ...malformed,
@@ -351,7 +349,7 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
+    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
 
     expect(readConfig().bundles?.['main']?.collections).toEqual([{ name: 'other', entriesSelectionRules: 'All' }]);
     expect(readConfig().bundles?.['all']).toEqual(original.bundles['all']);
@@ -387,8 +385,12 @@ describe('updateCollection', () => {
     const entriesBytes = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME));
     const metaBytes = readFileSync(join(i18n(), 'apps', TRACKER_META_FILENAME));
 
-    expect(() => deleteCollectionByName('myApp', { onMutation, cwd: cwd() })).toThrow(CollectionRequiredByBundleError);
-    expect(() => deleteCollectionByName('myApp', { onMutation, cwd: cwd() })).toThrow(
+    expect(() =>
+      deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation }),
+    ).toThrow(CollectionRequiredByBundleError);
+    expect(() =>
+      deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation }),
+    ).toThrow(
       'Collection "myApp" is the only collection of bundle(s) "first", "second". Remove it from those bundles or delete them first.',
     );
     expect(readFileSync(join(cwd(), CONFIG_FILENAME))).toEqual(configBytes);
@@ -407,13 +409,13 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
+    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
 
     expect(readConfig().bundles).toEqual(original.bundles);
   });
 
   it('delivers the deleted collection folder for reindexing', () => {
-    deleteCollectionByName('myApp', { onMutation, cwd: cwd() });
+    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
 
     expect(collected).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     expect(readConfig().collections).not.toHaveProperty('myApp');

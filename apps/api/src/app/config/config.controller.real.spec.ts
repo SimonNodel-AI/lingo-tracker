@@ -25,7 +25,12 @@ describe('ConfigController preferred terminology (real core)', () => {
     };
     const module = await Test.createTestingModule({
       controllers: [ConfigController],
-      providers: [{ provide: ConfigService, useValue: { getConfig: () => config } }],
+      providers: [
+        {
+          provide: ConfigService,
+          useValue: { getConfig: () => config, openProject: () => ({ projectRoot: projectDir, sourceConfig: config }) },
+        },
+      ],
     }).compile();
     controller = module.get(ConfigController);
   });
@@ -103,7 +108,7 @@ describe('ConfigController preferred terminology (real core)', () => {
     expect(readFileSync(filePath(), 'utf8')).toBe(original);
   });
 
-  it('keeps the protected-terms-only missing-config error and status from core', () => {
+  it('answers a missing config for a protected-terms-only update with 404', () => {
     let thrown: unknown;
     try {
       new ConfigController(new ConfigService()).updateConfig({ protectedTerms: ['Changed'] });
@@ -111,10 +116,10 @@ describe('ConfigController preferred terminology (real core)', () => {
       thrown = error;
     }
     expect(thrown).toBeInstanceOf(ConfigNotFoundError);
-    expect(toHttpException(thrown).getStatus()).toBe(500);
+    expect(toHttpException(thrown).getStatus()).toBe(404);
   });
 
-  it('keeps the protected-terms-only malformed-config error and body from core', () => {
+  it('answers malformed config with the standard config-read message', () => {
     writeFileSync(join(projectDir, '.lingo-tracker.json'), '{bad');
     let thrown: unknown;
     try {
@@ -127,7 +132,7 @@ describe('ConfigController preferred terminology (real core)', () => {
     expect(http.getStatus()).toBe(500);
     expect(http.getResponse()).toEqual(
       expect.objectContaining({
-        message: expect.stringContaining('Failed to parse JSON file'),
+        message: 'Invalid configuration file format',
       }),
     );
   });

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
-import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { loadConfig } from '../lib/config/load-config';
 import { openCollection } from '../lib/config/open-collection';
 import { writeJsonFile } from '../lib/file-io/json-file-operations';
 import {
@@ -48,8 +48,7 @@ describe('addLocaleToCollection', () => {
   const entries = (): ResourceEntries => JSON.parse(readFileSync(join(folder(), RESOURCE_ENTRIES_FILENAME), 'utf8'));
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
   const add = async (name = 'main', locale = 'de') => {
-    const configFile = createConfigFileOperations({ cwd: tempDir() });
-    return addLocaleToCollection(openCollection(configFile.read(), name, { cwd: tempDir() }), configFile, locale, {
+    return addLocaleToCollection(openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }), locale, {
       onMutation,
     });
   };

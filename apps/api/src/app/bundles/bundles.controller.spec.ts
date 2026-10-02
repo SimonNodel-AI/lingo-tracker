@@ -83,7 +83,10 @@ describe('BundlesController', () => {
   let moduleRef: TestingModule;
   let controller: BundlesController;
 
-  const configService = { getConfig: jest.fn() };
+  const configService = {
+    getConfig: jest.fn(),
+    openProject: jest.fn(() => ({ projectRoot: process.cwd(), sourceConfig: config })),
+  };
   const jobService = { startJob: jest.fn(), getJob: jest.fn() };
 
   beforeAll(async () => {
@@ -112,13 +115,21 @@ describe('BundlesController', () => {
       const result = controller.createBundle({ name: ' main ', bundle });
 
       expect(result).toEqual({ message: 'Bundle "main" added successfully' });
-      expect(core.addBundleDefinition).toHaveBeenCalledWith('main', bundle, { cwd: process.cwd() });
+      expect(core.addBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        'main',
+        bundle,
+      );
     });
 
     it('passes a missing name as empty so the key rule reports it', () => {
       controller.createBundle({ bundle: requestDefinition } as never);
 
-      expect(core.addBundleDefinition).toHaveBeenCalledWith('', requestDefinition, { cwd: process.cwd() });
+      expect(core.addBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        '',
+        requestDefinition,
+      );
     });
 
     it('returns 400 with every message when core rejects the definition', () => {
@@ -173,7 +184,12 @@ describe('BundlesController', () => {
     it('passes the route name through verbatim', () => {
       (core.updateBundleDefinition as jest.Mock).mockReturnValue({ message: 'updated' });
       controller.updateBundle('tracker%v1', { bundle: requestDefinition });
-      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker%v1', requestDefinition, { cwd: process.cwd() });
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        'tracker%v1',
+        requestDefinition,
+        {},
+      );
     });
 
     it('returns 404 when core reports the bundle missing', () => {
@@ -192,7 +208,12 @@ describe('BundlesController', () => {
       const result = controller.updateBundle('tracker', { bundle: requestDefinition });
 
       expect(result).toEqual({ message: 'updated' });
-      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker', requestDefinition, { cwd: process.cwd() });
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        'tracker',
+        requestDefinition,
+        {},
+      );
     });
 
     it('returns 400 for a missing bundle when the body has no definition', () => {
@@ -208,10 +229,14 @@ describe('BundlesController', () => {
 
       controller.updateBundle('tracker', { name: 'tracker', bundle: requestDefinition });
 
-      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker', requestDefinition, {
-        cwd: process.cwd(),
-        newKey: 'tracker',
-      });
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        'tracker',
+        requestDefinition,
+        {
+          newKey: 'tracker',
+        },
+      );
     });
 
     it('passes the route name through when renaming via body.name', () => {
@@ -219,10 +244,14 @@ describe('BundlesController', () => {
 
       controller.updateBundle('tracker-v1', { name: 'tracker-v2', bundle: requestDefinition });
 
-      expect(core.updateBundleDefinition).toHaveBeenCalledWith('tracker-v1', requestDefinition, {
-        cwd: process.cwd(),
-        newKey: 'tracker-v2',
-      });
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        'tracker-v1',
+        requestDefinition,
+        {
+          newKey: 'tracker-v2',
+        },
+      );
     });
 
     it('returns 409 when core reports a rename collision', () => {
@@ -252,7 +281,10 @@ describe('BundlesController', () => {
       (core.deleteBundleDefinition as jest.Mock).mockReturnValue({ message: 'deleted' });
 
       expect(controller.deleteBundle('tracker')).toEqual({ message: 'deleted' });
-      expect(core.deleteBundleDefinition).toHaveBeenCalledWith('tracker', { cwd: process.cwd() });
+      expect(core.deleteBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        'tracker',
+      );
     });
 
     it('maps a core not-found error to 404', () => {
@@ -279,8 +311,8 @@ describe('BundlesController', () => {
         bundleKey: 'preview',
         bundleDefinition: { ...requestDefinition, dist: ' ./dist/i18n ', typeDistFile: '' },
         config,
-        locales: ['en'],
         cwd: process.cwd(),
+        locales: ['en'],
       });
       expect(result.name).toBe('preview');
       expect(result.files).toEqual([

@@ -1,4 +1,4 @@
-import { createConfigFileOperations, removeLocaleFromCollection } from '@simoncodes-ca/core';
+import { removeLocaleFromCollection } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -28,12 +28,8 @@ export const removeLocaleCommand = defineCommand<RemoveLocaleOptions>()({
     ];
   },
   required: ['locale'],
-  run: async ({ collection, cwd, answers }) => {
-    const result = await removeLocaleFromCollection(
-      collection,
-      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
-      answers.locale,
-    );
+  run: async ({ collection, answers }) => {
+    const result = await removeLocaleFromCollection(collection, answers.locale);
     ConsoleFormatter.success(result.message);
     ConsoleFormatter.keyValue('Entries purged', result.entriesPurged);
     ConsoleFormatter.keyValue('Files updated', result.filesUpdated);

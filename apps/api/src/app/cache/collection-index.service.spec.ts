@@ -7,13 +7,13 @@ import {
   addResource,
   addResources,
   type Collection,
-  createConfigFileOperations,
   createFolder,
   deleteFolder,
   deleteResource,
   editResource,
   type FolderChild,
   type LingoTrackerConfig,
+  loadConfig,
   loadResourceTree,
   moveFolder,
   moveResource,
@@ -231,8 +231,7 @@ describe('CollectionIndex', () => {
       const configPath = path.join(root, '.lingo-tracker.json');
       fs.writeFileSync(configPath, JSON.stringify(config('main')));
 
-      const configFile = createConfigFileOperations({ cwd: root });
-      await addLocaleToCollection(openCollection(configFile.read(), 'main', { cwd: root }), configFile, 'de', {
+      await addLocaleToCollection(openCollection(loadConfig({ cwd: root }), 'main', { cwd: root }), 'de', {
         onMutation: index.sink,
       });
 

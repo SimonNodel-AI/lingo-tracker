@@ -12,7 +12,7 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   return {
     ...actual,
     loadConfig: vi.fn(),
-    deleteCollectionByName: vi.fn(),
+    deleteCollection: vi.fn(),
   };
 });
 
@@ -46,7 +46,7 @@ describe('deleteCollectionCommand', () => {
 
   it('should delete specified collection from config', async () => {
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
-    vi.mocked(core.deleteCollectionByName).mockReturnValue({
+    vi.mocked(core.deleteCollection).mockReturnValue({
       message: 'Collection "Collection1" deleted successfully',
     });
 
@@ -56,9 +56,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).toHaveBeenCalledWith('Collection1', {
-      cwd: '/test/project',
-    });
+    expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'Collection1' }));
     expect(process.exitCode).toBe(0);
   });
 
@@ -73,7 +71,7 @@ describe('deleteCollectionCommand', () => {
     };
 
     vi.mocked(core.loadConfig).mockReturnValue(singleCollectionConfig);
-    vi.mocked(core.deleteCollectionByName).mockReturnValue({
+    vi.mocked(core.deleteCollection).mockReturnValue({
       message: 'Collection "OnlyCollection" deleted successfully',
     });
 
@@ -83,9 +81,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', {
-      cwd: '/test/project',
-    });
+    expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'OnlyCollection' }));
     expect(process.exitCode).toBe(0);
   });
 
@@ -100,7 +96,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+    expect(core.deleteCollection).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -115,7 +111,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+    expect(core.deleteCollection).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -133,7 +129,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+    expect(core.deleteCollection).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -154,7 +150,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+    expect(core.deleteCollection).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -168,7 +164,7 @@ describe('deleteCollectionCommand', () => {
     await deleteCollectionCommand(options);
 
     expect(console.error).toHaveBeenCalledWith('❌ Collection "NonExistentCollection" not found');
-    expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+    expect(core.deleteCollection).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -183,7 +179,7 @@ describe('deleteCollectionCommand', () => {
     };
 
     vi.mocked(core.loadConfig).mockReturnValue(singleCollectionConfig);
-    vi.mocked(core.deleteCollectionByName).mockReturnValue({
+    vi.mocked(core.deleteCollection).mockReturnValue({
       message: 'Collection "OnlyCollection" deleted successfully',
     });
 
@@ -191,9 +187,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', {
-      cwd: '/test/project',
-    });
+    expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'OnlyCollection' }));
     expect(process.exitCode).toBe(0);
   });
 
@@ -205,7 +199,7 @@ describe('deleteCollectionCommand', () => {
     };
 
     vi.mocked(core.loadConfig).mockReturnValue(configWithExtraProps);
-    vi.mocked(core.deleteCollectionByName).mockReturnValue({
+    vi.mocked(core.deleteCollection).mockReturnValue({
       message: 'Collection "Collection1" deleted successfully',
     });
 
@@ -215,15 +209,13 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand(options);
 
-    expect(core.deleteCollectionByName).toHaveBeenCalledWith('Collection1', {
-      cwd: '/test/project',
-    });
+    expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'Collection1' }));
     expect(process.exitCode).toBe(0);
   });
 
   it('exits 1 when core refuses the deletion', async () => {
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
-    vi.mocked(core.deleteCollectionByName).mockImplementation(() => {
+    vi.mocked(core.deleteCollection).mockImplementation(() => {
       throw new Error('Cannot delete');
     });
 
@@ -236,7 +228,7 @@ describe('deleteCollectionCommand', () => {
   it('prints the typed bundle conflict and exits 1', async () => {
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
     const error = new core.CollectionRequiredByBundleError('Collection1', ['main']);
-    vi.mocked(core.deleteCollectionByName).mockImplementation(() => {
+    vi.mocked(core.deleteCollection).mockImplementation(() => {
       throw error;
     });
 
@@ -251,7 +243,7 @@ describe('deleteCollectionCommand', () => {
 
     await deleteCollectionCommand({});
 
-    expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+    expect(core.deleteCollection).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('❌ Missing required option: --collection-name');
     expect(process.exitCode).toBe(1);
   });
@@ -260,11 +252,11 @@ describe('deleteCollectionCommand', () => {
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
     vi.mocked(prompts).mockResolvedValueOnce({ collection: 'Collection2' }).mockResolvedValueOnce({ confirmed: true });
-    vi.mocked(core.deleteCollectionByName).mockReturnValue({ message: 'deleted' });
+    vi.mocked(core.deleteCollection).mockReturnValue({ message: 'deleted' });
 
     await deleteCollectionCommand({});
 
-    expect(core.deleteCollectionByName).toHaveBeenCalledWith('Collection2', { cwd: '/test/project' });
+    expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'Collection2' }));
   });
 
   describe('confirmation', () => {
@@ -275,7 +267,7 @@ describe('deleteCollectionCommand', () => {
 
     beforeEach(() => {
       vi.mocked(core.loadConfig).mockReturnValue(singleCollectionConfig);
-      vi.mocked(core.deleteCollectionByName).mockReturnValue({
+      vi.mocked(core.deleteCollection).mockReturnValue({
         message: 'Collection "OnlyCollection" deleted successfully',
       });
     });
@@ -297,7 +289,7 @@ describe('deleteCollectionCommand', () => {
         }),
         expect.anything(),
       );
-      expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', { cwd: '/test/project' });
+      expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'OnlyCollection' }));
       expect(console.log).toHaveBeenCalledWith('Collection "OnlyCollection" deleted successfully');
       expect(process.exitCode).toBe(0);
     });
@@ -308,7 +300,7 @@ describe('deleteCollectionCommand', () => {
 
       await deleteCollectionCommand({ collectionName: 'OnlyCollection' });
 
-      expect(core.deleteCollectionByName).not.toHaveBeenCalled();
+      expect(core.deleteCollection).not.toHaveBeenCalled();
       const cancelLines = vi.mocked(console.error).mock.calls.filter(([line]) => String(line).includes('cancelled'));
       expect(cancelLines).toEqual([['❌ Delete collection cancelled.']]);
       expect(process.exitCode).toBe(0);
@@ -320,7 +312,7 @@ describe('deleteCollectionCommand', () => {
       await deleteCollectionCommand({ collectionName: 'OnlyCollection', yes: true });
 
       expect(prompts).not.toHaveBeenCalled();
-      expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', { cwd: '/test/project' });
+      expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'OnlyCollection' }));
       expect(process.exitCode).toBe(0);
     });
 
@@ -328,7 +320,7 @@ describe('deleteCollectionCommand', () => {
       await deleteCollectionCommand({});
 
       expect(prompts).not.toHaveBeenCalled();
-      expect(core.deleteCollectionByName).toHaveBeenCalledWith('OnlyCollection', { cwd: '/test/project' });
+      expect(core.deleteCollection).toHaveBeenCalledWith(expect.objectContaining({ name: 'OnlyCollection' }));
       expect(process.exitCode).toBe(0);
     });
   });

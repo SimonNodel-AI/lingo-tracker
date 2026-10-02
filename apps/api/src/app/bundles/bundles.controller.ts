@@ -63,22 +63,26 @@ export class BundlesController {
 
   @Post()
   createBundle(@Body() body: CreateBundleDto): { message: string } {
-    return addBundleDefinition(nameOf(body?.name), requireDefinition(body?.bundle), { cwd: process.cwd() });
+    const definition = requireDefinition(body?.bundle);
+    return addBundleDefinition(this.#configService.openProject(), nameOf(body?.name), definition);
   }
 
   @Put(':name')
   updateBundle(@Param('name') name: string, @Body() body: UpdateBundleDto): { message: string } {
     const newName = typeof body?.name === 'string' && body.name.trim().length > 0 ? body.name : undefined;
 
-    return updateBundleDefinition(name, requireDefinition(body?.bundle), {
-      cwd: process.cwd(),
-      ...(newName !== undefined && { newKey: newName }),
-    });
+    const definition = requireDefinition(body?.bundle);
+    return updateBundleDefinition(
+      this.#configService.openProject(),
+      name,
+      definition,
+      newName !== undefined ? { newKey: newName } : {},
+    );
   }
 
   @Delete(':name')
   deleteBundle(@Param('name') name: string): { message: string } {
-    return deleteBundleDefinition(name, { cwd: process.cwd() });
+    return deleteBundleDefinition(this.#configService.openProject(), name);
   }
 
   /** Starts a generation job for a saved bundle and answers 202 with the job snapshot. */

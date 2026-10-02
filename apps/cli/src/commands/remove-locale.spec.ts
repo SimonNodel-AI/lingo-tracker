@@ -85,7 +85,6 @@ describe('removeLocaleCommand', () => {
 
       expect(mockCore).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
       );
       expect(console.log).toHaveBeenCalledWith('✅ Locale "fr" removed from collection "main" successfully');
@@ -152,7 +151,6 @@ describe('removeLocaleCommand', () => {
       );
       expect(mockCore).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
       );
     });

@@ -20,7 +20,7 @@ jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
   return {
     ...actual,
-    deleteCollectionByName: jest.fn(),
+    deleteCollection: jest.fn(),
     addCollection: jest.fn(),
     updateCollection: jest.fn(),
   };
@@ -45,7 +45,13 @@ describe('CollectionsController', () => {
     collectionsModule = await Test.createTestingModule({
       controllers: [CollectionsController],
       providers: [
-        { provide: ConfigService, useValue: { getConfig: jest.fn().mockReturnValue(mockConfig) } },
+        {
+          provide: ConfigService,
+          useValue: {
+            getConfig: jest.fn().mockReturnValue(mockConfig),
+            openProject: jest.fn(() => ({ projectRoot: process.cwd(), sourceConfig: mockConfig })),
+          },
+        },
         { provide: CollectionIndex, useValue: mockIndex },
       ],
     }).compile();
@@ -59,8 +65,8 @@ describe('CollectionsController', () => {
 
   describe('deleteCollection', () => {
     it('should successfully delete a collection', async () => {
-      const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
-      deleteCollectionByName.mockReturnValue({
+      const deleteCollection = core.deleteCollection as jest.Mock;
+      deleteCollection.mockReturnValue({
         message: 'Collection "test-collection" deleted successfully',
       });
 
@@ -69,15 +75,15 @@ describe('CollectionsController', () => {
       expect(result).toEqual({
         message: 'Collection "test-collection" deleted successfully',
       });
-      expect(deleteCollectionByName).toHaveBeenCalledWith(
-        'test-collection',
+      expect(deleteCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'test-collection' }),
         expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
     it('passes the route param through verbatim', async () => {
-      const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
-      deleteCollectionByName.mockReturnValue({
+      const deleteCollection = core.deleteCollection as jest.Mock;
+      deleteCollection.mockReturnValue({
         message: 'Collection "My Collection" deleted successfully',
       });
 
@@ -86,26 +92,42 @@ describe('CollectionsController', () => {
       expect(result).toEqual({
         message: 'Collection "My Collection" deleted successfully',
       });
-      expect(deleteCollectionByName).toHaveBeenCalledWith(
-        'My%Collection',
+      expect(deleteCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'My%Collection' }),
         expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
     it('lets CollectionNotFoundError through, which the filter answers with 404', async () => {
-      const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
-      deleteCollectionByName.mockImplementation(() => {
-        throw new CollectionNotFoundError('non-existent');
-      });
+      const deleteCollection = core.deleteCollection as jest.Mock;
 
       const error = await collectionsController.deleteCollection('non-existent').catch((e: unknown) => e);
 
       expect(error).toBeInstanceOf(CollectionNotFoundError);
       expect(toHttpException(error).getStatus()).toBe(404);
+      expect(deleteCollection).not.toHaveBeenCalled();
+    });
+
+    it('passes a registration without a translations folder to core deletion', async () => {
+      const configService = collectionsModule.get<ConfigService>(ConfigService);
+      (configService.getConfig as jest.Mock).mockReturnValueOnce({
+        ...mockConfig,
+        collections: { ...mockConfig.collections, broken: {} },
+      });
+      const deleteCollection = core.deleteCollection as jest.Mock;
+      deleteCollection.mockReturnValue({ message: 'Collection "broken" deleted successfully' });
+
+      await expect(collectionsController.deleteCollection('broken')).resolves.toEqual({
+        message: 'Collection "broken" deleted successfully',
+      });
+      expect(deleteCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'broken', config: {} }),
+        expect.objectContaining({ onMutation: mockIndex.sink }),
+      );
     });
 
     it('answers a refused deletion with 409 and leaves the index alone', async () => {
-      (core.deleteCollectionByName as jest.Mock).mockImplementation(() => {
+      (core.deleteCollection as jest.Mock).mockImplementation(() => {
         throw new CollectionRequiredByBundleError('test-collection', ['main']);
       });
 
@@ -122,8 +144,8 @@ describe('CollectionsController', () => {
     });
 
     it('propagates an unexpected error and leaves the index alone', async () => {
-      const deleteCollectionByName = core.deleteCollectionByName as jest.Mock;
-      deleteCollectionByName.mockImplementation(() => {
+      const deleteCollection = core.deleteCollection as jest.Mock;
+      deleteCollection.mockImplementation(() => {
         throw new Error('Failed to delete collection');
       });
 
@@ -133,7 +155,7 @@ describe('CollectionsController', () => {
     });
 
     it('drops the index entry for the deleted collection folder', async () => {
-      (core.deleteCollectionByName as jest.Mock).mockReturnValue({
+      (core.deleteCollection as jest.Mock).mockReturnValue({
         message: 'Collection "test-collection" deleted successfully',
       });
 
@@ -180,7 +202,12 @@ describe('CollectionsController', () => {
       expect(result).toEqual({
         message: 'Collection "new-collection" created successfully',
       });
-      expect(addCollection).toHaveBeenCalledWith('new-collection', dto.collection, { protectedTerms: undefined });
+      expect(addCollection).toHaveBeenCalledWith(
+        expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: mockConfig }),
+        'new-collection',
+        dto.collection,
+        { protectedTerms: undefined },
+      );
     });
 
     it.each([
@@ -204,7 +231,9 @@ describe('CollectionsController', () => {
       ['translationsFolder', { translationsFolder: null }],
       ['translation', { translationsFolder: './x', translation: null }],
     ])('keeps the 400 and message for a null %s field from core', async (field, collection) => {
-      (core.addCollection as jest.Mock).mockImplementation((_name, body: object) => core.assertCollectionFields(body));
+      (core.addCollection as jest.Mock).mockImplementation((_project, _name, body: object) =>
+        core.assertCollectionFields(body),
+      );
       const error = await collectionsController
         .createCollection({ name: 'new', collection } as unknown as CreateCollectionDto)
         .catch((caught: unknown) => caught);
@@ -215,7 +244,9 @@ describe('CollectionsController', () => {
     });
 
     it('keeps the 400 and message for a non-string translationsFolder from core', async () => {
-      (core.addCollection as jest.Mock).mockImplementation((_name, body: object) => core.assertCollectionFields(body));
+      (core.addCollection as jest.Mock).mockImplementation((_project, _name, body: object) =>
+        core.assertCollectionFields(body),
+      );
       const error = await collectionsController
         .createCollection({ name: 'new', collection: { translationsFolder: 1 } } as unknown as CreateCollectionDto)
         .catch((caught: unknown) => caught);
@@ -293,7 +324,6 @@ describe('CollectionsController', () => {
       });
       expect(updateCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'old-name' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'new-name',
         dto.collection,
         { onMutation: mockIndex.sink, protectedTerms: undefined },
@@ -317,7 +347,6 @@ describe('CollectionsController', () => {
 
       expect(updateCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'My%Collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'My Collection',
         dto.collection,
         { onMutation: mockIndex.sink, protectedTerms: undefined },
@@ -343,7 +372,7 @@ describe('CollectionsController', () => {
       ['locales', { translationsFolder: './x', locales: null }],
       ['translation', { translationsFolder: './x', translation: null }],
     ])('keeps the 400 and message for a null %s update field from core', async (field, collection) => {
-      (core.updateCollection as jest.Mock).mockImplementation((_opened, _write, _name, patch: object) =>
+      (core.updateCollection as jest.Mock).mockImplementation((_opened, _name, patch: object) =>
         core.assertCollectionFields(patch),
       );
       const error = await collectionsController
@@ -397,7 +426,6 @@ describe('CollectionsController', () => {
 
       expect(core.updateCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         undefined,
         expect.anything(),
         { onMutation: mockIndex.sink, protectedTerms: ['iPhone'] },
@@ -433,7 +461,6 @@ describe('CollectionsController', () => {
       const dto: UpdateCollectionDto = { collection: { translationsFolder: './translations/test' } };
       await collectionsController.updateCollectionByName('test-collection', dto);
       expect(core.updateCollection).toHaveBeenCalledWith(
-        expect.any(Object),
         expect.any(Object),
         undefined,
         expect.any(Object),
