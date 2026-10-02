@@ -126,7 +126,9 @@ graph TD
             TREEMP["resource-tree.mapper\nResourceTreeNode → ResourceTreeDto\nResourceTreeEntry + Collection → ResourceSummaryDto"]
             COLMAP["collection.mapper\nLingoTrackerCollectionDto ↔ LingoTrackerCollection"]
             CFGMAP["config.mapper\nLingoTrackerConfig → LingoTrackerConfigDto"]
-            SRCHMAP["search-result.mapper\nSearchResult + Collection → SearchResultDto"]
+            SRCHMAP["search-result.mapper\nQuery → SearchRequest\nSearchPage + Collection → SearchResultsDto"]
+            RESMAP["resource-response.mapper\nCore results → Resource response DTOs"]
+            STATUSMAP["index-status.mapper\nIndex read status → Retry body"]
         end
 
         STATIC["Express static middleware\nServes Angular SPA from\ndist/tracker/browser/"]
@@ -152,6 +154,8 @@ graph TD
 
     RESC --> TREEMP
     RESC --> SRCHMAP
+    RESC --> RESMAP
+    RESC --> STATUSMAP
     FOLDC --> TREEMP
     CONFIGC --> CFGMAP
     COLLC --> COLMAP
@@ -246,7 +250,7 @@ apply(changes: readonly ResourceMutation[]): void;              // used by sink 
 
 Controllers do not know how the index works. They read with `tree()`, `searchPage()` and `status()`, and pass `sink` as `onMutation` to each core write. These items are internal to the index:
 
-- **Indexing.** `tree()` indexes a collection that is not indexed or whose last attempt failed. `status()` indexes only a collection that is not indexed, and reports `error` as it is. Both report the state that they found, so the first read answers `not-started` (and `/tree` returns `202`). `searchPage()` never starts indexing. It runs [Resource Search](glossary.md#resource-search) over `treeResources(tree)` when the collection is indexed, and over the disk (`readCollection(collection).resources`) until then. On the disk path it logs the folders the reader could not read with one `Logger.warn` per problem, using `describeFolderProblem` with the collection name. The tree loader also sends problems through `onProblem` to this logger; core does not print them. Direct resource and folder operations reject linked addresses with `InvalidCollectionFolderError` (`invalid`, HTTP 400); folder move/delete refusals name the operation and target. Both sources give the same results, because the same matcher ranks every match before the limit applies. `resources.controller.ts` maps `mode=similar` to core's `similar-value` and parses `maxResults`, then calls `normalizeSearchRequest` with default 100. A blank query returns an empty page. Core `searchPage` reports `limited` and the true `totalFound` before slicing; `totalFound` was previously the returned page size when limited.
+- **Indexing.** `tree()` indexes a collection that is not indexed or whose last attempt failed. `status()` indexes only a collection that is not indexed, and reports `error` as it is. Both report the state that they found, so the first read answers `not-started` (and `/tree` returns `202`). `searchPage()` never starts indexing. It runs [Resource Search](glossary.md#resource-search) over `treeResources(tree)` when the collection is indexed, and over the disk (`readCollection(collection).resources`) until then. On the disk path it logs the folders the reader could not read with one `Logger.warn` per problem, using `describeFolderProblem` with the collection name. The tree loader also sends problems through `onProblem` to this logger; core does not print them. Direct resource and folder operations reject linked addresses with `InvalidCollectionFolderError` (`invalid`, HTTP 400); folder move/delete refusals name the operation and target. Both sources give the same results, because the same matcher ranks every match before the limit applies. `searchRequestFromQuery` in `search-result.mapper.ts` maps `mode=similar` to core's `similar-value` and parses `maxResults` with `Number`. It calls `normalizeSearchRequest` with default 100. Core caps valid limits at 500. A blank query returns an empty page. Core `searchPage` reports `limited` and the true `totalFound` before slicing; `totalFound` was previously the returned page size when limited.
 - **Revalidation.** Before each read, a ready entry compares a stat-only disk fingerprint (`computeTreeFingerprint`) with the fingerprint from its last index or own write. If they differ, the entry is dropped and indexed again. This makes CLI commands, `git checkout` and hand edits visible without a restart. Filesystem watching is not used, because inotify does not fire for Windows-side writes on a WSL `/mnt/c` mount, and the same is true for some network and container mounts. The check runs at most once per `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` (default 2000 ms) for each entry.
 - **Own writes.** After `apply()` patches an entry, the index refreshes that entry's fingerprint at the end of the tick. Each delivered mutation calls `apply`; the pending timer collapses all patches in a tick into one fingerprint scan. A read that comes before the refresh adopts the new fingerprint, so an own write is never read as an outside change.
 - **Patching.** One tree-walk helper applies each mutation to the tree. When a mutation does not match the tree (for example, a `remove` of a key that the index does not have), the index drops that collection. The next read indexes it again. A wrong patch never stays in memory.
@@ -404,11 +408,23 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 | Mapper file | Direction | Key transformation |
 |-------------|-----------|-------------------|
 | `resource-tree.mapper.ts` | `ResourceTreeNode` + `Collection` → `ResourceTreeDto` | Flattens `folderPathSegments[]` array to a dot-delimited `path` string; turns every resource into a Resource Summary |
-| `resource-tree.mapper.ts` | `ResourceTreeEntry` + folder path + `Collection` → `ResourceSummaryDto` | Resolves the entry's full key against the folder it is relative to and calls the domain `buildResourceSummary`. The base locale, the target locales and the `inheritedTags` come from the opened `Collection`; nothing is guessed from the metadata. The translate and update handlers call `buildResourceSummary` directly with the key they already hold. |
+| `resource-tree.mapper.ts` | `ResourceTreeEntry` + folder path + `Collection` → `ResourceSummaryDto` | Resolves the entry's full key against the folder it is relative to and calls the domain `buildResourceSummary`. The base locale, the target locales and the `inheritedTags` come from the opened `Collection`; nothing is guessed from the metadata. The translate and update response mappers call `buildResourceSummary` with the full key from the request or result. |
 | `collection.mapper.ts` | `LingoTrackerCollectionDto` ↔ `LingoTrackerCollection` | Bidirectional; shallow clone of `locales[]` and `tags[]` arrays to prevent aliasing. Carries the `protectedTermsFile` setting in both directions. Drops resolved `protectedTerms` on the way back to config, because terms live in a file and the collection lifecycle writes them there. |
 | `config.mapper.ts` | `LingoTrackerConfig` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper`; bundles pass through unmapped (the DTO is the domain `BundleDefinition`); shallow clone of `locales[]`. Takes an optional `ResolvedProtectedTerms` and `projectName` (basename of the API's working directory) from the controller, so the mapper itself reads no files. |
 | `bundle.mapper.ts` | `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | No definition mapping: `BundleDefinitionDto` is the domain type, and the domain `normalizeBundleDefinition` does the trimming. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper copies core's written paths, includes type metadata when the type outcome is `written`, and restores the previous warning text for failed or skipped type generation so the Tracker sees it. |
 | `search-result.mapper.ts` | `SearchResult` + `Collection` → `SearchResultDto` | The hit's Resource Summary (from its `key`, `source`, `translations` and `metadata`) plus `matchType` (`'similar-value'` for `mode=similar`), `matchedLocales`, and `similarity` (0..1) when the search was in similar mode |
+| `resource-response.mapper.ts` | Resource create, update, translate, delete and move results → endpoint response DTOs | Keeps each endpoint's optional-field rules. Supplies the full key and collection for Resource Summaries. Copies terminology findings and problems. |
+| `search-result.mapper.ts` | `SearchQuery` → `NormalizedSearchRequest`; `SearchPage` or blank outcome → `SearchResultsDto` | Translates the mode, parses the limit, and delegates normalization to core. Preserves the original query in the response. |
+| `resource-tree.mapper.ts` | Tree endpoint result + `includeNested` → `ResourceTreeDto` | Includes nested entries only for `includeNested=true`. Resolves their addresses against the requested folder, including the collection root. |
+| `index-status.mapper.ts` | Unavailable `TreeRead` status → `TreeStatusResponseDto` | Supplies the existing retry status and message. The controller sets HTTP 202. |
+
+The request and index-status adapters belong in `mappers/` because they translate API contracts. The Collection Index continues to own reads and indexing.
+
+The resource response mappers preserve the existing endpoint differences. Translate always includes `skippedLocales`, including an empty array, and omits empty `warnings`. Create omits empty `skippedLocales`. Update always includes `skippedLocales`, `message`, and `resource` as object fields, even when their values are `undefined`. JSON serialization omits those undefined values. Create and update omit `terminology` only when both findings and problems are empty or absent.
+
+Delete always includes the `errors` object field, even when its value is `undefined`. Move always includes `warnings` and `errors`, including empty arrays. Blank search responses use `query || ''`; normal search responses use `query ?? ''`. These rules remain unchanged.
+
+The translate-locale job service already returns a DTO. The controller passes it to `response.status(202).json(job)` without another mapper. The route decorators, HTTP statuses, and headers remain unchanged.
 
 **Why does `config.mapper.ts` take resolved terms as an argument?** Protected terms live in JSON files outside `.lingo-tracker.json`. Building the DTO therefore requires reading the filesystem.
 
