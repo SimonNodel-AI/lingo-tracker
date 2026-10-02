@@ -13,7 +13,7 @@ import * as path from 'path';
 import type prompts from 'prompts';
 import { defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
-import { buildSummaryPath, ConsoleFormatter, writeRunSummary } from '../utils';
+import { ConsoleFormatter, reportRunSummary } from '../utils';
 import { IMPORT_DEFAULTS } from './run-option-defaults';
 
 export interface ImportCommandOptions {
@@ -98,20 +98,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     // Display results
     displayResults(result, runOptions);
 
-    // Generate and write summary
-    if (!runOptions.dryRun) {
-      try {
-        const summaryPath = writeRunSummary('import', run.summary());
-        console.log('');
-        console.log(`Import summary written to: ${summaryPath}`);
-      } catch (error) {
-        ConsoleFormatter.warning(`Failed to write summary file: ${(error as Error).message}`);
-      }
-    } else {
-      const summaryPath = buildSummaryPath('import');
-      console.log('');
-      console.log(`Import summary would be written to: ${summaryPath}`);
-    }
+    reportRunSummary('import', run.summary, { dryRun: Boolean(runOptions.dryRun) });
 
     return exitForRunOutcome(run.outcome);
   },
