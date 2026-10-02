@@ -114,7 +114,7 @@ describe('name filters', () => {
 });
 
 describe('parseListSelection', () => {
-  const cases: { label: string; flag?: string | true; answer?: unknown; expected: Selection | undefined }[] = [
+  const cases: { label: string; flag?: string; answer?: unknown; expected: Selection | undefined }[] = [
     { label: 'flag only', flag: ' en, fr, ,', expected: { kind: 'some', names: ['en', 'fr'] } },
     { label: 'answer only', answer: 'main', expected: { kind: 'some', names: ['main'] } },
     { label: 'multiple answers', answer: ['en', 'fr'], expected: { kind: 'some', names: ['en', 'fr'] } },
@@ -124,7 +124,6 @@ describe('parseListSelection', () => {
     { label: 'empty flag', flag: '', expected: undefined },
     { label: 'empty answer', answer: '', expected: undefined },
     { label: 'no input', expected: undefined },
-    { label: 'all flag', flag: true, answer: 'main', expected: { kind: 'all' } },
     { label: 'both supplied', flag: 'en', answer: ['fr'], expected: { kind: 'some', names: ['en'] } },
     { label: 'flag over sentinel', flag: 'en', answer: '__ALL__', expected: { kind: 'some', names: ['en'] } },
     { label: 'empty flag over answer', flag: '', answer: 'main', expected: undefined },
@@ -182,7 +181,7 @@ describe('parseListSelection', () => {
 });
 
 describe('parseNameSelection', () => {
-  const cases: { label: string; flag?: string | true; answer?: unknown; expected: Selection | undefined }[] = [
+  const cases: { label: string; flag?: string; answer?: unknown; expected: Selection | undefined }[] = [
     { label: 'flag only', flag: ' main, admin ', expected: { kind: 'some', names: [' main, admin '] } },
     { label: 'answer only', answer: 'main', expected: { kind: 'some', names: ['main'] } },
     { label: 'sentinel', answer: '__ALL__', expected: { kind: 'all' } },

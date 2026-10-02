@@ -38,15 +38,13 @@ export function selectionPrompt(options: SelectionPromptOptions): prompts.Prompt
 }
 
 /** Resolves a literal single-name flag or prompt answer. A supplied flag takes precedence, including an empty flag. */
-export function parseNameSelection(flagValue: string | true | undefined, answerValue?: unknown): Selection | undefined {
-  if (flagValue === true) return { kind: 'all' };
+export function parseNameSelection(flagValue: string | undefined, answerValue?: unknown): Selection | undefined {
   if (flagValue !== undefined) return namedSelection(flagValue ? [flagValue] : undefined);
   return parsePromptSelection(answerValue);
 }
 
 /** Resolves a comma-list flag or prompt answer. A supplied flag takes precedence, including an empty flag. */
-export function parseListSelection(flagValue: string | true | undefined, answerValue?: unknown): Selection | undefined {
-  if (flagValue === true) return { kind: 'all' };
+export function parseListSelection(flagValue: string | undefined, answerValue?: unknown): Selection | undefined {
   if (flagValue !== undefined) return namedSelection(parseCommaSeparatedList(flagValue));
   return parsePromptSelection(answerValue);
 }

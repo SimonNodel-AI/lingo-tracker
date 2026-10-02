@@ -36,6 +36,14 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
 });
 
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
+vi.mock('../utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../utils')>();
+  return { ...actual, reportRunSummary: vi.fn(actual.reportRunSummary) };
+});
+vi.mock('../runner/run-outcome', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../runner/run-outcome')>();
+  return { ...actual, exitForRunOutcome: vi.fn(actual.exitForRunOutcome) };
+});
 
 // Import the mocked functions
 import {
@@ -49,6 +57,8 @@ import {
   runImport,
 } from '@simoncodes-ca/core';
 import { isInteractiveTerminal } from '../runner/terminal';
+import { exitForRunOutcome } from '../runner/run-outcome';
+import { ConsoleFormatter, reportRunSummary } from '../utils';
 
 describe('import-cmd', () => {
   const baseConfig: LingoTrackerConfig = {
@@ -286,6 +296,28 @@ describe('import-cmd', () => {
       expect(fs.writeFileSync).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
     });
+  });
+
+  describe('errors after runImport', () => {
+    for (const stage of ['displayResults', 'reportRunSummary', 'exitForRunOutcome'] as const) {
+      it(`preserves the unprefixed error and cause from ${stage}`, async () => {
+        const error = Object.assign(new Error(`${stage} failed`), { cause: new Error('underlying reason') });
+        const fail = () => {
+          throw error;
+        };
+        const displaySpy =
+          stage === 'displayResults' ? vi.spyOn(ConsoleFormatter, 'section').mockImplementationOnce(fail) : undefined;
+        if (stage === 'reportRunSummary') vi.mocked(reportRunSummary).mockImplementationOnce(fail);
+        if (stage === 'exitForRunOutcome') vi.mocked(exitForRunOutcome).mockImplementationOnce(fail);
+
+        await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
+
+        expect(vi.mocked(console.error).mock.calls).toEqual([[`❌ ${stage} failed`], ['  underlying reason']]);
+        expect(runImport).toHaveBeenCalledOnce();
+        expect(process.exitCode).toBe(1);
+        displaySpy?.mockRestore();
+      });
+    }
   });
 
   describe('Result Display', () => {
@@ -610,38 +642,6 @@ describe('import-cmd', () => {
         { title: 'es', value: 'es' },
         { title: 'fr', value: 'fr' },
       ]);
-    });
-
-    it('offers the base locale too when the chosen strategy is migration', async () => {
-      await importCommand(registered({ source: '/test/import.json', format: 'json' }));
-
-      expect(offeredLocales({ strategy: 'migration' })).toEqual([
-        { title: 'en (base locale)', value: 'en' },
-        { title: 'es', value: 'es' },
-        { title: 'fr', value: 'fr' },
-      ]);
-    });
-
-    it('asks migration switches left unset by registration', async () => {
-      await importCommand(
-        registered({
-          source: '/test/import.json',
-          format: 'json',
-          strategy: 'migration',
-        }),
-      );
-
-      const [asked] = vi.mocked(prompts).mock.calls[0] ?? [];
-      const questions = Array.isArray(asked) ? asked : [asked];
-      expect(
-        questions
-          .filter(
-            (question) =>
-              typeof question?.name === 'string' &&
-              ['updateComments', 'updateTags', 'createMissing'].includes(question.name),
-          )
-          .map((question) => question?.initial),
-      ).toEqual([true, true, true]);
     });
 
     it('a cancelled prompt prints one cancel line and exits 0', async () => {

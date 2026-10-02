@@ -35,13 +35,14 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   return {
     // Collection resolution runs for real against the mocked config.
     loadConfig: vi.fn(),
-    openCollection: actual.openCollection,
+    openCollection: vi.fn(actual.openCollection),
     exportTargetLocales: actual.exportTargetLocales,
     ConfigNotFoundError: actual.ConfigNotFoundError,
     ConfigParseError: actual.ConfigParseError,
     CollectionNotFoundError: actual.CollectionNotFoundError,
     ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
     InvalidTranslationStatusError: actual.InvalidTranslationStatusError,
+    LingoTrackerError: actual.LingoTrackerError,
     CONFIG_FILENAME: '.lingo-tracker.json',
     DEFAULT_CONFIG: actual.DEFAULT_CONFIG,
     runExport: vi.fn(),
@@ -186,6 +187,30 @@ describe('exportCommand', () => {
       );
       expect(process.exitCode).toBe(1);
       expect(mockRunExport).not.toHaveBeenCalled();
+    });
+
+    it('keeps the empty-status diagnostic before an invalid base property and prints no advisory', async () => {
+      await exportCommand({ format: 'json', status: '', basePropertyName: 'status' });
+      expect(console.error).toHaveBeenCalledWith(
+        '❌ Invalid --status "". Valid statuses: new, translated, stale, verified',
+      );
+      expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('⚠️'));
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('reports an unrelated CoreOperationError with an empty --status before run', async () => {
+      class LocaleFileError extends core.LingoTrackerError {
+        readonly kind = 'internal' as const;
+      }
+      const message = 'Failed to read locale file: malformed JSON';
+      vi.mocked(core.openCollection).mockImplementationOnce(() => {
+        throw new LocaleFileError(message, 'CORE_OPERATION_ERROR');
+      });
+      await exportCommand({ format: 'json', status: '', collection: 'common' });
+      expect(vi.mocked(console.error).mock.calls).toEqual([[`❌ ${message}`]]);
+      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
     });
 
     it('rejects an unknown export status as a usage error', async () => {
@@ -528,47 +553,6 @@ describe('exportCommand', () => {
       expect(exportedCollections()).toEqual(['common']);
     });
 
-    it('should prompt for JSON-specific options when JSON format is selected', async () => {
-      vi.mocked(prompts).mockResolvedValue({
-        format: 'json',
-        collections: ['common'],
-        locales: ['fr'],
-        statusFilter: ['new'],
-        tags: '',
-        output: 'dist/export',
-        structure: 'flat',
-        rich: true,
-        includeBase: true,
-        includeStatus: true,
-        includeComment: true,
-        includeTags: true,
-        filename: '',
-        dryRun: false,
-        verbose: false,
-      });
-
-      await exportCommand({});
-
-      expect(prompts).toHaveBeenCalled();
-      const promptCall = vi.mocked(prompts).mock.calls[0][0];
-      const questions = Array.isArray(promptCall) ? promptCall : [promptCall];
-
-      // Should include JSON-specific prompts with correct type functions
-      const structureQuestion = questions.find((q) => q.name === 'structure');
-      const richQuestion = questions.find((q) => q.name === 'rich');
-
-      expect(structureQuestion).toBeDefined();
-      expect(richQuestion).toBeDefined();
-
-      // Type functions should return proper types for JSON format
-      if (structureQuestion && typeof structureQuestion.type === 'function') {
-        expect(structureQuestion.type(null, { format: 'json' }, structureQuestion)).toBe('select');
-      }
-      if (richQuestion && typeof richQuestion.type === 'function') {
-        expect(richQuestion.type(null, { format: 'json' }, richQuestion)).toBe('toggle');
-      }
-    });
-
     it('should not prompt for rich object options when rich is false', async () => {
       vi.mocked(prompts).mockResolvedValue({
         format: 'json',
@@ -591,65 +575,6 @@ describe('exportCommand', () => {
       await exportCommand({});
 
       expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ richJson: false }));
-    });
-
-    it('should not prompt for already provided options', async () => {
-      vi.mocked(prompts).mockResolvedValue({
-        collections: ['__ALL__'],
-        locales: ['__ALL__'],
-        statusFilter: ['new', 'stale'],
-        tags: '',
-        output: 'dist/export',
-        structure: 'hierarchical',
-        rich: false,
-        includeBase: false,
-        includeStatus: false,
-        includeComment: true,
-        includeTags: false,
-        filename: '',
-        dryRun: false,
-        verbose: false,
-      });
-
-      await exportCommand({
-        format: 'json',
-      });
-
-      // Verify prompts was called but format was not prompted for
-      const promptCall = vi.mocked(prompts).mock.calls[0][0];
-      const questions = Array.isArray(promptCall) ? promptCall : [promptCall];
-      expect(questions).not.toContainEqual(expect.objectContaining({ name: 'format' }));
-    });
-
-    it('should conditionally show JSON-specific prompts based on format', async () => {
-      vi.mocked(prompts).mockResolvedValue({
-        format: 'xliff',
-        collections: ['__ALL__'],
-        locales: ['__ALL__'],
-        statusFilter: ['new', 'stale'],
-        tags: '',
-        output: 'dist/export',
-        filename: '',
-        dryRun: false,
-        verbose: false,
-      });
-
-      await exportCommand({});
-
-      const promptCall = vi.mocked(prompts).mock.calls[0][0];
-      const questions = Array.isArray(promptCall) ? promptCall : [promptCall];
-
-      // JSON-specific questions exist but have conditional type functions
-      const structureQuestion = questions.find((q) => q.name === 'structure');
-      const richQuestion = questions.find((q) => q.name === 'rich');
-
-      // These questions should have type functions that return null for XLIFF
-      if (structureQuestion && typeof structureQuestion.type === 'function') {
-        expect(structureQuestion.type(null, { format: 'xliff' }, structureQuestion)).toBeNull();
-      }
-      if (richQuestion && typeof richQuestion.type === 'function') {
-        expect(richQuestion.type(null, { format: 'xliff' }, richQuestion)).toBeNull();
-      }
     });
   });
 

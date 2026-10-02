@@ -1,9 +1,13 @@
 #!/usr/bin/env node
-import { importStrategyPolicy } from '@simoncodes-ca/domain';
 import { Command } from 'commander';
 import type { EditCollectionOptions } from './commands/edit-collection';
 import type { findSimilarCommand } from './commands/find-similar';
-import { EXPORT_DEFAULTS, IMPORT_DEFAULTS } from './commands/run-option-defaults';
+import {
+  EXPORT_DEFAULTS,
+  IMPORT_DEFAULTS,
+  IMPORT_STRATEGY_DEFAULTS as importStrategyDefaults,
+  IMPORT_MIGRATION_DEFAULTS as migrationDefaults,
+} from './commands/run-option-defaults';
 import { importHelpText, preferredTerminologyHelpText, validateHelpText } from './runner/help-text';
 import {
   choiceOption,
@@ -21,8 +25,6 @@ import {
 import { registerCommand } from './runner/register-command';
 
 const program = new Command();
-const importStrategyDefaults = importStrategyPolicy(IMPORT_DEFAULTS.strategy).defaults;
-const migrationDefaults = importStrategyPolicy('migration').defaults;
 
 program
   .name('lingo-tracker')

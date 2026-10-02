@@ -709,6 +709,14 @@ Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](fron
 
 ---
 
+### Run Options Resolution
+
+The pure CLI step that builds missing-option questions from flags and resolves the runner's merged answers and defaults to options for an [Export Run](#export-run) or [Import Run](#import-run). Export also returns advisories for the command to print on stderr. In code, `apps/cli/src/commands/export-options.ts` and `import-options.ts` own the option dependencies. Their question callbacks use the flag-over-answer merge in `commands/run-option-defaults.ts`; the [Command Runner](#command-runner) merges submitted answers over flags before final resolution. Export's table controls JSON question visibility and uses `EXPORT_DEFAULTS`. Its resolution rejects an empty status list before the core call and advisories; unknown statuses remain core's responsibility. Import uses `IMPORT_DEFAULTS` and the [Import Strategy Policy](#import-strategy-policy) for locale choices and migration prompt initials; unset strategy switches remain undefined for core to default. [Selection](#selection) validation preserves export's collection → locale → status error order before the runner looks up collection names. The commands own I/O and rendering; core still validates run preconditions.
+
+Explained in context: [`cli.md`](cli.md#command-inventory)
+
+---
+
 ### Run Outcome
 
 Core's `RunOutcome` is `succeeded` or `failed` on each completed export, import, translate-locale, validate, and bundle run. `failed` means the run met its failure condition, even if some files or resources were produced; the CLI exits 1. A warning or intentional skip alone does not fail a run. Export ignores errors and hierarchical conflicts in a dry run, while import counts failed resources and errors even in a dry run. Preconditions that throw have no run outcome. Bundle generation also gives each selected bundle an outcome; a thrown bundle error or failed type generation fails the whole run.
