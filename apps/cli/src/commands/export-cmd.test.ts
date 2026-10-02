@@ -637,15 +637,26 @@ describe('exportCommand', () => {
       );
     });
 
-    it('should print the summary instead of writing it in dry run mode', async () => {
+    it('should announce where the summary would go and print its text in dry run mode', async () => {
       await exportCommand({
         format: 'json',
         dryRun: true,
       });
 
       expect(fs.writeFileSync).not.toHaveBeenCalled();
-      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Summary (Dry Run)'));
+      expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Export summary would be written to:'));
       expect(console.log).toHaveBeenCalledWith('# Export Summary');
+    });
+
+    it('should only warn when the summary cannot be written, keeping the run outcome exit code', async () => {
+      vi.mocked(fs.writeFileSync).mockImplementationOnce(() => {
+        throw new Error('disk full');
+      });
+
+      await exportCommand({ format: 'json' });
+
+      expect(console.error).toHaveBeenCalledWith('⚠️  Failed to write export summary file: disk full');
+      expect(process.exitCode).toBe(0);
     });
 
     it('should set exit code when errors occur', async () => {

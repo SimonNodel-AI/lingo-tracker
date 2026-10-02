@@ -669,7 +669,7 @@ Explained in context: [`core-library.md`](core-library.md), [`cli.md`](cli.md#er
 
 ### Run Summary Writer
 
-The CLI utility `writeRunSummary(kind, text)` in `apps/cli/src/utils/write-run-summary.ts` chooses a temporary Markdown summary path and writes the import or export run's text there. Core supplies the text through import's `summary()` or export's `summary`; the CLI owns the file path and the announcement printed after the write.
+The CLI utility `reportRunSummary(kind, summary, { dryRun })` in `apps/cli/src/utils/write-run-summary.ts` owns both persistence and announcement of the import or export run's Markdown summary at a temporary path (`writeRunSummary` does the write). Core supplies the text through import's lazy `summary()` or export's `summary`. A real run writes and prints `<Kind> summary written to: <path>`; a failed write only warns and never changes the exit code, which comes from the run outcome. A dry run writes nothing and prints `<Kind> summary would be written to: <path>`; export passes `previewOnDryRun` and also prints the summary text as its only preview, while import renders nothing.
 
 Explained in context: [`cli.md`](cli.md#shared-utilities), [`core-library.md`](core-library.md#import-pipeline)
 

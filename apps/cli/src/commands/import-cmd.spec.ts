@@ -220,7 +220,7 @@ describe('import-cmd', () => {
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Import completed successfully!'));
-      expect(console.error).toHaveBeenCalledWith('⚠️  Failed to write summary file: summary failed');
+      expect(console.error).toHaveBeenCalledWith('⚠️  Failed to write import summary file: summary failed');
       expect(fs.writeFileSync).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });

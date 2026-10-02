@@ -392,7 +392,7 @@ A command spec gives flags in and checks the core call and the exit code:
 
 All shared utilities live in `apps/cli/src/utils/` and are re-exported from `apps/cli/src/utils/index.ts` as a flat namespace. Commands import from `'../utils'`.
 
-`writeRunSummary(kind, text)` builds a temporary summary path and writes the Markdown from an import or export run. The commands print the path after a successful write. Import calls the run's `summary()` after displaying results; it catches generation or write failures and prints its existing warning. A dry run does not call `summary()`. Export lets a write failure reach the runner.
+`reportRunSummary(kind, summary, { dryRun })` writes the Markdown from an import or export run (via `writeRunSummary`) and prints `<Kind> summary written to: <path>`. A write or lazy `summary()` failure only warns and never changes the exit code, which comes from the run outcome. A dry run writes nothing and prints `<Kind> summary would be written to: <path>`. Export passes `previewOnDryRun` and also prints the summary text as its only preview; import does not call `summary()`. Both commands call it after displaying results.
 
 The Command Runner and the interactive rule live in `apps/cli/src/runner/` ([Command Runner](#command-runner)); commands import them from `'../runner/command-runner'`.
 
