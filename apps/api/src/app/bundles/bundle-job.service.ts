@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { BundleProgressEvent, LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { BundleProgressEvent, OpenedProject } from '@simoncodes-ca/core';
 import { generatePreparedBundle, prepareBundleRun } from '@simoncodes-ca/core';
 import type {
   BundleGenerateJobDto,
@@ -13,7 +13,7 @@ export { JOB_RETENTION_MS, MAX_RETAINED_JOBS } from '../jobs/job-registry';
 
 export interface StartBundleJobParams {
   readonly bundleName: string;
-  readonly config: LingoTrackerConfig;
+  readonly project: OpenedProject;
   readonly locales?: readonly string[];
 }
 
@@ -49,9 +49,9 @@ export class BundleJobService {
     const prepared = prepareBundleRun({
       source: 'saved',
       bundleKey: params.bundleName,
-      config: params.config,
+      config: params.project.sourceConfig,
       locales: params.locales,
-      cwd: process.cwd(),
+      cwd: params.project.projectRoot,
     });
     return this.#jobs.start({
       initial: { bundleName: params.bundleName, progress: { current: 0, total: 0 } },

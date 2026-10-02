@@ -40,17 +40,18 @@ export interface PreparedBundleRun {
 /** Resolves a saved run or fully validates a supplied dry-run definition. */
 export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundleRun {
   const cwd = path.resolve(params.cwd ?? process.cwd());
+  const bundleKey = params.source === 'supplied' ? params.bundleKey.trim() : params.bundleKey;
   let definition: BundleDefinition;
   if (params.source === 'saved') {
-    const saved = findBundleDefinition(params.config.bundles, params.bundleKey);
-    if (!saved) throw new BundleNotFoundError(params.bundleKey);
+    const saved = findBundleDefinition(params.config.bundles, bundleKey);
+    if (!saved) throw new BundleNotFoundError(bundleKey);
     definition = saved;
   } else {
     const supplied = params.bundleDefinition;
     if (supplied === null || typeof supplied !== 'object' || Array.isArray(supplied)) {
       throw new InvalidBundleDefinitionError(['bundle definition is required.']);
     }
-    const checked = checkBundleDefinition(supplied, Object.keys(params.config.collections ?? {}), params.bundleKey);
+    const checked = checkBundleDefinition(supplied, Object.keys(params.config.collections ?? {}), bundleKey);
     if (checked.errors.length > 0) throw new InvalidBundleDefinitionError(checked.errors);
     definition = checked.definition;
   }
@@ -58,16 +59,16 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
   validateBundleLocales(params.locales, params.config);
   let collections: ResolvedBundleCollections | undefined;
   return {
-    bundleKey: params.bundleKey,
+    bundleKey,
     cwd,
     definition,
-    settings: resolveBundleSettings(params.bundleKey, params.config, definition, params),
+    settings: resolveBundleSettings(bundleKey, params.config, definition, params),
     locales: [...(params.locales ?? params.config.locales)],
     get collections() {
       collections ??= resolveBundleCollections(definition, params.config, { cwd });
       return collections;
     },
-    typeWarning: legacyTypeDistWarning(params.bundleKey, definition),
+    typeWarning: legacyTypeDistWarning(bundleKey, definition),
     tokenConstantNameOverride: params.tokenConstantName,
   };
 }

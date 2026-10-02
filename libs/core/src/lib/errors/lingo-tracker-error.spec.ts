@@ -31,6 +31,7 @@ import {
   InvalidFolderPathError,
   InvalidImportLocaleError,
   InvalidLocaleError,
+  InvalidNameError,
   InvalidProjectTermsEditError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
@@ -219,6 +220,12 @@ describe('LingoTrackerError subclasses', () => {
       name: 'BundleAlreadyExistsError',
       code: 'BUNDLE_ALREADY_EXISTS',
       message: ErrorMessages.bundleAlreadyExists('main'),
+    },
+    {
+      error: new InvalidNameError(),
+      name: 'InvalidNameError',
+      code: 'INVALID_NAME',
+      message: 'name must be a non-empty string',
     },
     {
       error: new InvalidBundleDefinitionError(['a', 'b']),

@@ -20,6 +20,7 @@ import { ValidBody } from '../validation/valid-body';
  * operations normalise and validate them, and the dry run delegates the same rules to core.
  * Invalid, missing and duplicate bundles surface as typed core errors that
  * `LingoTrackerExceptionFilter` maps to 400 (with `errors`), 404 and 409.
+ * A blank `name` on update is 400 (`InvalidNameError`).
  */
 @Controller('bundles')
 export class BundlesController {
@@ -34,12 +35,13 @@ export class BundlesController {
   /** Plans a bundle from the request body. The definition need not be saved. */
   @Post('dry-run')
   dryRun(@ValidBody(bundleDryRunBody) body: BundleDryRunRequestDto): BundleDryRunResultDto {
+    const project = this.#configService.openProject();
     const plan = planBundle({
-      bundleKey: body.name.trim(),
+      bundleKey: body.name,
       bundleDefinition: body.bundle,
-      config: this.#configService.getConfig(),
+      config: project.sourceConfig,
       ...(body.locales !== undefined && { locales: body.locales }),
-      cwd: process.cwd(),
+      cwd: project.projectRoot,
     });
     return mapBundlePlanToDto(plan);
   }
@@ -58,19 +60,17 @@ export class BundlesController {
   @Post()
   createBundle(@ValidBody(createBundleBody) body: CreateBundleDto): { message: string } {
     const definition = body.bundle;
-    return addBundleDefinition(this.#configService.openProject(), body.name.trim(), definition);
+    return addBundleDefinition(this.#configService.openProject(), body.name, definition);
   }
 
   @Put(':name')
   updateBundle(@Param('name') name: string, @ValidBody(updateBundleBody) body: UpdateBundleDto): { message: string } {
-    const newName = typeof body.name === 'string' && body.name.trim().length > 0 ? body.name : undefined;
-
     const definition = body.bundle;
     return updateBundleDefinition(
       this.#configService.openProject(),
       name,
       definition,
-      newName !== undefined ? { newKey: newName } : {},
+      body.name === undefined ? {} : { newKey: body.name },
     );
   }
 
@@ -86,11 +86,11 @@ export class BundlesController {
     @ValidBody(generateBundleBody) body: GenerateBundleRequestDto | undefined,
     @Res() response: Response,
   ): void {
-    const config = this.#configService.getConfig();
+    const project = this.#configService.openProject();
 
     const jobId = this.#jobService.startJob({
       bundleName: name,
-      config,
+      project,
       ...(body?.locales && { locales: body.locales }),
     });
 

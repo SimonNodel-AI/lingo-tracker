@@ -45,7 +45,7 @@ export class CollectionsController {
    * the Collection Entry): a field present in `body.collection` replaces the stored value, so
    * `tags: []`, `readOnly: false` or `locales: []` clear a setting, and a field left out keeps
    * its stored value (`translation`, `exportFolder`, `importFolder` survive a client that does
-   * not edit them). `name` renames; a blank one is 400 rather than "no rename".
+   * not edit them). `name` renames; blank → 400 (`InvalidNameError`, core).
    */
   @Put(':collectionName')
   async updateCollectionByName(

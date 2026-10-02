@@ -28,6 +28,7 @@ export {
   InvalidFolderPathError,
   InvalidImportLocaleError,
   InvalidLocaleError,
+  InvalidNameError,
   InvalidProjectTermsEditError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,

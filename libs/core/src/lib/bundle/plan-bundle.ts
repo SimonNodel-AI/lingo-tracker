@@ -90,7 +90,7 @@ export interface BundlePlan {
 }
 
 /**
- * Plans a bundle run without writing anything.
+ * Plans a bundle run without writing anything. Core trims the supplied bundle key before validation.
  */
 export function planBundle(params: PlanBundleParams): BundlePlan {
   const prepared = prepareBundleRun({ ...params, source: 'supplied' });

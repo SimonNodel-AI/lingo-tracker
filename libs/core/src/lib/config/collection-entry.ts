@@ -6,6 +6,7 @@ import {
   CollectionNotFoundError,
   InvalidCollectionError,
 } from '../errors/lingo-tracker-error';
+import { resolveRenameTarget } from './entry-name';
 
 /**
  * Collection Entry: the one place that decides what a collection's record in
@@ -127,6 +128,7 @@ export function addCollectionEntry(
  *
  * @throws {CollectionNotFoundError} No collection named `name`.
  * @throws {CollectionAlreadyExistsError} A collection named `newName` exists.
+ * @throws {InvalidNameError} The supplied new name is blank after trimming.
  * @throws {InvalidCollectionError} The merged `translationsFolder` is missing or blank, or a field is `null`.
  */
 export function patchCollectionEntry(
@@ -139,7 +141,7 @@ export function patchCollectionEntry(
     throw new CollectionNotFoundError(name);
   }
 
-  const targetName = newName || name;
+  const targetName = newName === undefined ? name : resolveRenameTarget(name, newName).target;
   if (targetName !== name && hasCollection(config, targetName)) {
     throw new CollectionAlreadyExistsError(targetName);
   }

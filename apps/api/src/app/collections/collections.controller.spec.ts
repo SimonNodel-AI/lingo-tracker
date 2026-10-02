@@ -62,6 +62,9 @@ describe('CollectionsController', () => {
   });
 
   afterEach(() => {
+    jest.mocked(core.addCollection).mockReset();
+    jest.mocked(core.updateCollection).mockReset();
+    jest.mocked(core.deleteCollection).mockReset();
     jest.clearAllMocks();
   });
 
@@ -353,9 +356,24 @@ describe('CollectionsController', () => {
 
     it.each([
       ['a blank name', { name: '', collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
-      ['a non-string name', { name: 1, collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
+      ['a non-string name', { name: 1, collection: { translationsFolder: './x' } }, 'name must be a string'],
       ['no collection', {}, 'collection must be an object'],
-    ])('answers 400 for %s, before core is called', async (_label, body, message) => {
+    ])('answers 400 for %s from shape validation or core', async (_label, body, message) => {
+      if ('name' in body && body.name === '') {
+        (core.updateCollection as jest.Mock).mockImplementation(
+          jest.requireActual<typeof core>('@simoncodes-ca/core').updateCollection,
+        );
+        const validated = new SchemaPipe(updateCollectionBody, 'request body').transform(body);
+        const error = await collectionsController
+          .updateCollectionByName('old-name', validated)
+          .catch((cause: unknown) => cause);
+        expect(toHttpException(error).getResponse()).toEqual({
+          statusCode: 400,
+          message: String(message),
+          error: 'Bad Request',
+        });
+        return;
+      }
       expect(() => new SchemaPipe(updateCollectionBody, 'request body').transform(body)).toThrow(
         exactMessage(String(message)),
       );

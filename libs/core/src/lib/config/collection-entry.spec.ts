@@ -5,6 +5,7 @@ import {
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
   InvalidCollectionError,
+  InvalidNameError,
 } from '../errors/lingo-tracker-error';
 import { addCollectionEntry, patchCollectionEntry, toCollectionEntry } from './collection-entry';
 
@@ -226,10 +227,21 @@ describe('patchCollectionEntry', () => {
     });
   });
 
-  it('treats an empty new name as no rename', () => {
-    const next = patchCollectionEntry(GLOBAL, 'app', {}, '');
+  it('rejects an empty new name', () => {
+    expect(() => patchCollectionEntry(GLOBAL, 'app', {}, '')).toThrow(InvalidNameError);
+  });
 
-    expect(Object.keys(next.collections)).toEqual(['first', 'app', 'last']);
+  it('rejects a whitespace new name', () => {
+    expect(() => patchCollectionEntry(GLOBAL, 'app', {}, '   ')).toThrow(InvalidNameError);
+  });
+
+  it('trims a padded rename target and treats the same name as a plain update', () => {
+    expect(Object.keys(patchCollectionEntry(GLOBAL, 'app', {}, ' renamed ').collections)).toEqual([
+      'first',
+      'renamed',
+      'last',
+    ]);
+    expect(Object.keys(patchCollectionEntry(GLOBAL, 'app', {}, ' app ').collections)).toEqual(['first', 'app', 'last']);
   });
 
   it('throws InvalidCollectionError when the patch blanks translationsFolder', () => {

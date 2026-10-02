@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { patchCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
+import { resolveRenameTarget } from '../lib/config/entry-name';
 import { type Collection, type OpenedCollection, openCollection } from '../lib/config/open-collection';
 import { assertProtectedTerms } from '../lib/config/set-protected-terms';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
@@ -45,6 +46,7 @@ export interface UpdateCollectionOptions extends MutationSinkOptions {
  *
  * @throws {CollectionNotFoundError} No collection named `collectionName`.
  * @throws {CollectionAlreadyExistsError} A collection named `newCollectionName` exists.
+ * @throws {InvalidNameError} The supplied new name is blank after trimming.
  * @throws {CollectionRenameBundleConflictError} A bundle already references `newCollectionName`.
  * @throws {InvalidCollectionError} The resulting `translationsFolder` is missing or blank, or a field is `null`.
  * @throws {ReadOnlyCollectionError} The locales change and the collection is read-only.
@@ -89,8 +91,14 @@ export async function changeCollection(
   // Locale sugar refuses read-only collections before its locale-specific checks.
   if (targetLocales && current.readOnly) throw new ReadOnlyCollectionError(collectionName);
   const effectivePatch = targetLocales ? { ...patch, locales: targetLocales(current) } : patch;
-  const nextConfig = patchCollectionEntry(config, collectionName, effectivePatch, newCollectionName);
-  const targetName = newCollectionName || collectionName;
+  const renameTarget = resolveRenameTarget(collectionName, newCollectionName);
+  const targetName = renameTarget.target;
+  const nextConfig = patchCollectionEntry(
+    config,
+    collectionName,
+    effectivePatch,
+    renameTarget.isRename ? renameTarget.target : undefined,
+  );
   renameBundleCollectionReferences(nextConfig, collectionName, targetName);
   const next = openCollection(nextConfig, targetName, { cwd });
   const reported = new Set<string>();

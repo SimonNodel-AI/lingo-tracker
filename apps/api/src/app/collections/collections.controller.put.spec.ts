@@ -7,6 +7,8 @@ import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/da
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
+import { createCollectionBody } from '../validation/dto-schemas';
+import { SchemaPipe } from '../validation/valid-body';
 import { CollectionsController } from './collections.controller';
 
 /**
@@ -49,6 +51,49 @@ describe('CollectionsController PUT (real core)', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it('answers the exact 400 body for blank and whitespace renames without changing config', async () => {
+    const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
+    for (const name of ['', ' ']) {
+      const error = await controller
+        .updateCollectionByName('app', {
+          name,
+          collection: { translationsFolder: './changed', locales: ['en', 'de'] },
+        })
+        .catch((cause: unknown) => cause);
+      const http = toHttpException(error);
+      expect(http.getStatus()).toBe(400);
+      expect(http.getResponse()).toEqual({
+        statusCode: 400,
+        message: 'name must be a non-empty string',
+        error: 'Bad Request',
+      });
+      let existingCollectionBody: unknown;
+      try {
+        new SchemaPipe(createCollectionBody, 'request body').transform({
+          name,
+          collection: { translationsFolder: './i18n' },
+        });
+      } catch (cause: unknown) {
+        existingCollectionBody = toHttpException(cause).getResponse();
+      }
+      expect(existingCollectionBody).toBeDefined();
+      expect(JSON.stringify(http.getResponse())).toBe(JSON.stringify(existingCollectionBody));
+      expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
+    }
+  });
+
+  it('answers 404 for a missing collection before validating a blank rename', async () => {
+    const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
+    const error = await controller
+      .updateCollectionByName('missing', {
+        name: '',
+        collection: { translationsFolder: './i18n' },
+      })
+      .catch((cause: unknown) => cause);
+    expect(toHttpException(error).getStatus()).toBe(404);
+    expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
   });
 
   it('keeps translation, exportFolder and importFolder through the Tracker form payload', async () => {
