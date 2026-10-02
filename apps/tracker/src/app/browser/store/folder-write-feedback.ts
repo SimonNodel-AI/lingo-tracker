@@ -1,7 +1,7 @@
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { type ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import type { Feedback } from '../feedback';
+import { type Refusal, refusedFeedback } from './write-refusal';
 
 const { TOAST, FOLDERPICKER } = TRACKER_TOKENS.BROWSER;
 const ROOT_LABEL = { token: FOLDERPICKER.ROOTLABEL };
@@ -12,12 +12,6 @@ const ROOT_LABEL = { token: FOLDERPICKER.ROOTLABEL };
  * with the feedback `decide*` adds. These mappings are the only place that decides
  * what a folder write says, where it shows, and in which words.
  */
-export type Refusal =
-  | { kind: 'refused'; error: ApiError }
-  | { kind: 'read-only' }
-  | { kind: 'no-collection' }
-  | { kind: 'stale-session' };
-
 export type CreateFolderResult = Refusal | { kind: 'created'; folder: FolderNodeDto; created: boolean };
 export type DeleteFolderResult = Refusal | { kind: 'deleted'; deleted: boolean };
 export type MoveFolderResult =
@@ -38,12 +32,6 @@ export type MoveFolderOutcome = Decided<MoveFolderResult>;
 export type MoveResourceOutcome = Decided<MoveResourceResult>;
 export type RequestedFolderMoveOutcome = MoveFolderOutcome | { kind: 'cancelled'; feedback: null };
 export type RequestedFolderDeleteOutcome = DeleteFolderOutcome | { kind: 'cancelled'; feedback: null };
-
-function refusedFeedback(error: ApiError, fallbackToken: string, placement: Feedback['placement']): Feedback {
-  // An empty fallback tells apiErrorMessage's "no message" apart from a real one.
-  const detail = apiErrorMessage(error, '');
-  return { tone: 'error', placement, token: fallbackToken, ...(detail ? { detail } : {}) };
-}
 
 /** A create refusal reads inline under the input the user typed in; an existing folder toasts. */
 export function createFolderFeedback(result: CreateFolderResult): Feedback | null {
