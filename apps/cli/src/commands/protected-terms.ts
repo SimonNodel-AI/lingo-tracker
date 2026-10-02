@@ -35,7 +35,7 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
   name: 'Protected terms',
   // `--collection` is optional: absent means the global scope, so the runner opens nothing.
   collection: 'none',
-  run: async ({ config, cwd, answers: options }) => {
+  run: async ({ project, cwd, answers: options }) => {
     const hasAdd = (options.add ?? []).length > 0;
     const hasRemove = (options.remove ?? []).length > 0;
     const hasSet = options.set !== undefined;
@@ -47,22 +47,18 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
     let pointerLinePrinted = false;
     let result: ProjectTermsUpdateResult;
     try {
-      const plan = planProjectTermsUpdate(
-        config,
-        {
-          protectedTerms: {
-            target,
-            edit: {
-              add: options.add,
-              remove: options.remove,
-              ...(hasSet && { set: options.set?.split(',') ?? [] }),
-            },
-            list: hasList,
-            ...(hasFile && { file: options.file }),
+      const plan = planProjectTermsUpdate(project, {
+        protectedTerms: {
+          target,
+          edit: {
+            add: options.add,
+            remove: options.remove,
+            ...(hasSet && { set: options.set?.split(',') ?? [] }),
           },
+          list: hasList,
+          ...(hasFile && { file: options.file }),
         },
-        { cwd },
-      );
+      });
       const { protectedTerms: view, protectedTermsFileChange } = plan.view;
       if (protectedTermsFileChange !== undefined) {
         ConsoleFormatter.success(protectedTermsFileChange.message);

@@ -7,7 +7,6 @@ export {
 } from './prepare-bundle-run';
 export {
   addBundleDefinition,
-  type BundleDefinitionOperationOptions,
   deleteBundleDefinition,
   type UpdateBundleDefinitionOptions,
   updateBundleDefinition,

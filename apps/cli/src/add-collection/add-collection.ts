@@ -72,7 +72,7 @@ export const addCollectionCommand = defineCommand<InitOptions>()({
   required: ['collectionName', 'translationsFolder'],
   // Core refuses a duplicate name (CollectionAlreadyExistsError) and defaults a folder under
   // node_modules to read-only when the flag is left unset.
-  run: async ({ cwd, answers, interactive, ask }) => {
+  run: async ({ project, answers, interactive, ask }) => {
     const { collectionName, translationsFolder } = answers;
 
     const readOnly = await resolveReadOnly(answers.readOnly, translationsFolder, interactive, ask);
@@ -86,7 +86,7 @@ export const addCollectionCommand = defineCommand<InitOptions>()({
       readOnly,
     };
 
-    const result = addCollection(collectionName, newCollection, { cwd });
+    const result = addCollection(project, collectionName, newCollection);
     ConsoleFormatter.success(`${result.message} in ${CONFIG_FILENAME}`);
   },
 });

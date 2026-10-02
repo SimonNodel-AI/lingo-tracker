@@ -1,4 +1,3 @@
-import type { ConfigFileOperations } from '../lib/config/config-file-operations';
 import type { OpenedCollection } from '../lib/config/open-collection';
 import { BaseLocaleImmutableError, LocaleNotFoundError } from '../lib/errors/lingo-tracker-error';
 import type { MutationSinkOptions } from '../lib/resource/resource-mutation';
@@ -13,22 +12,28 @@ export interface RemoveLocaleFromCollectionResult {
 
 export async function removeLocaleFromCollection(
   collection: OpenedCollection,
-  configFile: Pick<ConfigFileOperations, 'write' | 'assertUnchanged'>,
   locale: string,
   options: MutationSinkOptions = {},
 ): Promise<RemoveLocaleFromCollectionResult> {
   assertValidLocale(locale);
   const collectionName = collection.name;
-  const result = await changeCollection(collection, configFile, undefined, {}, options, (current) => {
-    if (locale === current.baseLocale) {
-      throw new BaseLocaleImmutableError(locale);
-    }
-    if (!current.locales.includes(locale)) {
-      throw new LocaleNotFoundError(locale, collectionName);
-    }
-    const remaining = current.locales.filter((candidate) => candidate !== locale);
-    return remaining.length === 0 ? [current.baseLocale] : remaining;
-  });
+  const result = await changeCollection(
+    collection,
+    {
+      patch: {},
+      targetLocales: (current) => {
+        if (locale === current.baseLocale) {
+          throw new BaseLocaleImmutableError(locale);
+        }
+        if (!current.locales.includes(locale)) {
+          throw new LocaleNotFoundError(locale, collectionName);
+        }
+        const remaining = current.locales.filter((candidate) => candidate !== locale);
+        return remaining.length === 0 ? [current.baseLocale] : remaining;
+      },
+    },
+    options,
+  );
 
   return {
     message: `Locale "${locale}" removed from collection "${collectionName}" successfully`,

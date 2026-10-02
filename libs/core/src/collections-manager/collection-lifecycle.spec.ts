@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../constants';
-import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { loadConfig } from '../lib/config/load-config';
 import { openCollection } from '../lib/config/open-collection';
 import {
   InvalidCollectionError,
@@ -32,8 +32,7 @@ describe('collection lifecycle refused writes', () => {
     patch: Partial<LingoTrackerCollection>,
     options: UpdateCollectionOptions & { cwd?: string } = {},
   ) => {
-    const configFile = createConfigFileOperations({ cwd });
-    return updateCollection(openCollection(configFile.read(), name, { cwd }), configFile, newName, patch, options);
+    return updateCollection(openCollection(loadConfig({ cwd }), name, { cwd }), newName, patch, options);
   };
 
   /** Includes config, both terms lists, all locale resource files, and directory names. */
@@ -69,9 +68,14 @@ describe('collection lifecycle refused writes', () => {
 
   it('refuses create with terms and no pointer before writing config or files', () => {
     const before = snapshot();
-    expect(() => addCollection('new', { translationsFolder: './new' }, { cwd, protectedTerms: ['Pixel'] })).toThrow(
-      ProtectedTermsFileNotSetError,
-    );
+    expect(() =>
+      addCollection(
+        { projectRoot: cwd, sourceConfig: loadConfig({ cwd }) },
+        'new',
+        { translationsFolder: './new' },
+        { protectedTerms: ['Pixel'] },
+      ),
+    ).toThrow(ProtectedTermsFileNotSetError);
     expect(snapshot()).toEqual(before);
   });
 
@@ -106,9 +110,10 @@ describe('collection lifecycle refused writes', () => {
     const before = snapshot();
     expect(() =>
       addCollection(
+        { projectRoot: cwd, sourceConfig: loadConfig({ cwd }) },
         'new',
         { translationsFolder: './new', protectedTermsFile: 'missing/terms.json' },
-        { cwd, protectedTerms: ['Pixel'] },
+        { protectedTerms: ['Pixel'] },
       ),
     ).toThrow(ParentDirectoryMissingError);
     expect(snapshot()).toEqual(before);
@@ -131,9 +136,10 @@ describe('collection lifecycle refused writes', () => {
     const before = snapshot();
     expect(() =>
       addCollection(
+        { projectRoot: cwd, sourceConfig: loadConfig({ cwd }) },
         'app',
         { translationsFolder: './other' },
-        { cwd, protectedTerms: ['valid', 42] as unknown as string[] },
+        { protectedTerms: ['valid', 42] as unknown as string[] },
       ),
     ).toThrow(InvalidCollectionError);
     expect(snapshot()).toEqual(before);

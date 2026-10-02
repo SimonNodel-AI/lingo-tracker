@@ -8,7 +8,6 @@ export type {
   AddCollectionOptions,
   AddLocaleToCollectionResult,
   CollectionTagEdit,
-  DeleteCollectionOptions,
   RemoveLocaleFromCollectionResult,
   UpdateCollectionOptions,
 } from './collections-manager';
@@ -16,7 +15,7 @@ export type {
 export {
   addCollection,
   addLocaleToCollection,
-  deleteCollectionByName,
+  deleteCollection,
   editCollectionTags,
   removeLocaleFromCollection,
   updateCollection,
@@ -27,7 +26,6 @@ export type { LingoTrackerConfig } from './config/lingo-tracker-config';
 export type { TranslationConfig } from './config/translation-config';
 export { CONFIG_FILENAME, DEFAULT_CONFIG } from './constants';
 export type {
-  BundleDefinitionOperationOptions,
   BundlePlan,
   BundlePlanExampleKey,
   BundlePlanFile,
@@ -58,6 +56,7 @@ export type {
   LoadConfigOptions,
   OpenCollectionOptions,
   OpenedCollection,
+  OpenedProject,
   PreferredTerminologyEditResult,
   TerminologyFindings,
 } from './lib/config';
@@ -80,7 +79,6 @@ export {
   updateProjectTerms,
 } from './lib/config';
 export { assertCollectionFields } from './lib/config/collection-entry';
-export { type ConfigFileOperations, createConfigFileOperations } from './lib/config/config-file-operations';
 export { assertProtectedTerms } from './lib/config/set-protected-terms';
 export type {
   ProjectTermsUpdate,

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
-import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { loadConfig } from '../lib/config/load-config';
 import { openCollection } from '../lib/config/open-collection';
 import {
   BaseLocaleImmutableError,
@@ -42,10 +42,13 @@ describe('removeLocaleFromCollection', () => {
   const entries = (): ResourceEntries => JSON.parse(readFileSync(join(folder(), RESOURCE_ENTRIES_FILENAME), 'utf8'));
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
   const remove = async (name = 'main', locale = 'fr') => {
-    const configFile = createConfigFileOperations({ cwd: tempDir() });
-    return removeLocaleFromCollection(openCollection(configFile.read(), name, { cwd: tempDir() }), configFile, locale, {
-      onMutation,
-    });
+    return removeLocaleFromCollection(
+      openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }),
+      locale,
+      {
+        onMutation,
+      },
+    );
   };
 
   beforeEach(() => writeConfig());

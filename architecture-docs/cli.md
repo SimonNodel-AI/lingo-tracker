@@ -37,7 +37,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 |---|---|---|
 | `init` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales`, `--setup-bundle`, `--bundle-dist`, `--bundle-name`, `--token-casing`, `--type-dist-file`, `--enable-auto-translation`, `--translation-provider`, `--translation-api-key-env` | Calls core `initConfig()` to validate and write `.lingo-tracker.json`; keeps the same default JSON bytes |
 | `add-collection` | `--collection-name`, `--translations-folder`, `--base-locale`, `--locales` | `addCollection()` |
-| `delete-collection` | `--collection-name`, `--yes` | `deleteCollectionByName()`. Interactive, it first asks `Delete collection "x" (translations folder: …)?` unless `--yes`; a decline prints `❌ Delete collection cancelled.` and exits 0. Non-interactive, it does not ask. The registration and explicit bundle references are removed in one config write; the files stay. If a bundle would become empty, it prints the conflict and exits 1 |
+| `delete-collection` | `--collection-name`, `--yes` | `deleteCollection()`. Interactive, it first asks `Delete collection "x" (translations folder: …)?` unless `--yes`; a decline prints `❌ Delete collection cancelled.` and exits 0. Non-interactive, it does not ask. The registration and explicit bundle references are removed in one config write; the files stay. If a bundle would become empty, it prints the conflict and exits 1 |
 | `edit-collection` | `<name>` (argument), `--add-tag` (repeatable), `--remove-tag` (repeatable), `--set-tags` | The command checks flag combinations and splits `--set-tags`; `editCollectionTags()` normalizes the array edit. This CLI command does not rename collections; core and API renames update explicit bundle references |
 | `add-locale` | `--collection`, `--locale` | `addLocaleToCollection()` |
 | `remove-locale` | `--collection`, `--locale` | `removeLocaleFromCollection()` |
@@ -102,7 +102,7 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 
 ## Command Runner
 
-`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. For locale and tag edits, it passes the opened collection, including its config snapshot, and a config write handle to core. That function does the same steps for every command, in this order:
+`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. For config edits, it passes the opened collection or `ctx.project` to core. That function does the same steps for every command, in this order:
 
 1. Finds the project root: `INIT_CWD` (set by pnpm to the directory where the command was typed), else `process.cwd()`.
 2. Reads the [interactive rule](#the-interactive-rule) once.
@@ -114,7 +114,7 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 
 The runner sets `process.exitCode` and returns. No CLI code calls `process.exit()`, so Commander finishes normally.
 
-`loadConfig()` records the bytes read from `.lingo-tracker.json`. The locale and tag commands pass the opened collection's `sourceConfig` to `createConfigFileOperations()` after prompting. If another process changes the file while a prompt is open, the handle throws `ConfigChangedError` before the lifecycle edits locale files. The runner prints `❌ The configuration file changed after it was read; run the command again` and exits 1.
+`loadConfig()` records the bytes read from `.lingo-tracker.json`. The runner provides `ctx.project` from that read; collection commands use the opened collection. Every config writer uses its opened snapshot through core’s guarded write. If another process changes the file while a prompt is open, the handle throws `ConfigChangedError` before the lifecycle edits locale files. The runner prints `❌ The configuration file changed after it was read; run the command again` and exits 1.
 
 ### Defining a Command
 
@@ -122,16 +122,12 @@ The runner sets `process.exitCode` and returns. No CLI code calls `process.exit(
 // apps/cli/src/commands/add-locale.ts
 export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
   name: 'Add locale',                 // used in "❌ Add locale cancelled."
-  collection: 'writable',             // 'writable' | 'read' | 'none'
+  collection: 'writable',             // 'writable' | 'read' | 'deletable' | 'many' | 'none'
   prompts: (options) =>               // questions for missing values; asked only when interactive
     options.locale ? [] : [{ type: 'text', name: 'locale', message: 'Enter locale to add (e.g. fr-ca, de, es)' }],
   required: ['locale'],               // checked after the questions; `run` sees it as a string
-  run: async ({ collection, cwd, answers }) => {
-    const result = await addLocaleToCollection(
-      collection,
-      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
-      answers.locale,
-    );
+  run: async ({ collection, answers }) => {
+    const result = await addLocaleToCollection(collection, answers.locale);
     ConsoleFormatter.success(result.message);
   },
 });
@@ -144,7 +140,7 @@ Command modules retain their explicit `Options` interfaces. Those interfaces als
 | Field | Meaning |
 |---|---|
 | `name` | Operation name for the cancel line. |
-| `collection` | `'writable'` opens one collection with `writable: true`. `'read'` opens one for reading. `'many'` opens several. `'none'` opens no collection. |
+| `collection` | `'writable'` opens one collection with `writable: true`. `'read'` opens one for reading. `'deletable'` opens one with `forDeletion: true`, tolerating a missing or non-string `translationsFolder`. `'many'` opens several. `'none'` opens no collection. |
 | `many` | For `'many'`, `select(answers, ctx)` chooses `'all'` or an explicit list after prompts; the default is all. The runner opens these collections for reading. |
 | `collectionOption` | The option that holds the collection name. Default `collection`. `delete-collection` uses `collectionName`; `edit-collection` uses its positional `<name>`. |
 | `config` | `false` skips loading the config. Only `init` and `install-skill` set it. It is only allowed with `collection: 'none'`. |
@@ -153,7 +149,7 @@ Command modules retain their explicit `Options` interfaces. Those interfaces als
 | `formatError(error, duringRun)` | Optionally chooses the printed message. `duringRun` is true only after `run` starts. The runner keeps the original error and still prints its `Error` cause below that message. `translate-locale` uses this for its configuration hint and run prefix. |
 | `run(ctx)` | The core call(s) and the output. It returns nothing, or `{ exitCode: 1 }` for a failure it has already reported. It throws to fail with `❌ <message>`. |
 
-The context (`CommandContext`) has `cwd`, `interactive`, `ask`, and `answers` (the flags merged with the prompt answers). It has `config` and `configPath` unless `config: false`. It has `collection` (the core `Collection`) for `'writable'` or `'read'`, and `collections` (`Collection[]`) for `'many'`. Prompt builders for `'many'` receive all configured collections; `run` receives the final selection. The type follows the spec, so a `'none'` command cannot read either resource.
+The context (`CommandContext`) has `cwd`, `interactive`, `ask`, and `answers` (the flags merged with the prompt answers). It has `config` and `configPath` unless `config: false`. It has `collection` (the core `Collection`) for `'writable'`, `'read'`, or `'deletable'`, and `collections` (`Collection[]`) for `'many'`. Prompt builders for `'many'` receive all configured collections; `run` receives the final selection. The type follows the spec, so a `'none'` command cannot read either resource.
 
 `ask(questions)` runs follow-up prompts inside `run`: confirmations (`delete-resource`, `delete-collection`, `normalize --all`, the `add-resource` override), the `add-resource` translations loop, the `add-collection` read-only question, and the `install-skill` loop. A cancel in `ask` is the same cancel as in the declared questions. A command throws `CommandCancelledError` when the user declines a confirmation.
 
@@ -164,7 +160,8 @@ A destructive command confirms only when interactive, and `--yes` skips the ques
 | Command | `collection` | Notes |
 |---|---|---|
 | `add-resource`, `edit-resource`, `delete-resource`, `move`, `add-locale`, `remove-locale`, `translate-locale`, `import` | `'writable'` | `move` opens an optional destination collection itself, also writable. |
-| `delete-collection`, `edit-collection`, `find-similar` | `'read'` | `delete-collection` and `edit-collection` change the registration, not the resources, so a read-only collection is allowed. |
+| `delete-collection` | `'deletable'` | Opens with `forDeletion: true`, so a registration with a missing or non-string `translationsFolder` can be deleted. A read-only collection is allowed. |
+| `edit-collection`, `find-similar` | `'read'` | `edit-collection` changes the registration, not the resources, so a read-only collection is allowed. |
 | `validate`, `export`, `normalize`, `glossary` | `'many'` | `validate` and an unqualified `glossary` open all. `export --collection` takes a comma-separated list; without it, all are opened. `normalize` selects one or all and confirms an interactive all selection, then [handles read-only collections](#normalize-collection-selection). Empty config fails with `NO_COLLECTIONS_MESSAGE`; unknown names fail with `CollectionNotFoundError`; names in a list are deduplicated in order. |
 | `add-collection`, `bundle`, `protected-terms`, `preferred-terminology` | `'none'` | `protected-terms` takes an optional `--collection`; the other commands handle their own scope. |
 | `init`, `install-skill` | `'none'`, `config: false` | Neither reads `.lingo-tracker.json`. |
@@ -209,7 +206,7 @@ flowchart TD
     NEEDS_CONFIG -- No --> LOAD_CONFIG["core loadConfig({ cwd })"]
     LOAD_CONFIG --> CONFIG_OK{"Found and valid?"}
     CONFIG_OK -- No --> EXIT_CONFIG(["Exit 1\n❌ Configuration file ... not found\n/ ❌ Failed to parse ..."])
-    CONFIG_OK -- Yes --> NEEDS_COLLECTION{"collection:\n'writable' / 'read'?"}
+    CONFIG_OK -- Yes --> NEEDS_COLLECTION{"collection:\n'writable' / 'read' / 'deletable'?"}
     NEEDS_COLLECTION -- "'none'" --> QUESTIONS
 
     NEEDS_COLLECTION -- Yes --> HAS_COLLECTION{"Collection flag\ngiven?"}
@@ -223,7 +220,7 @@ flowchart TD
     AUTO_SELECT --> OPEN
     PROMPT_COLLECTION --> OPEN
 
-    OPEN["core openCollection(config, name,\n{ cwd, writable })"]
+    OPEN["core openCollection(config, name,\n{ cwd, writable, forDeletion })"]
     OPEN --> OPEN_OK{"Opened?"}
     OPEN_OK -- "Not found" --> EXIT_RESOLVE(["Exit 1\n❌ Collection 'x' not found"])
     OPEN_OK -- "Read-only, 'writable'" --> EXIT_RO(["Exit 1\n❌ Collection 'x' is read-only..."])
@@ -275,6 +272,7 @@ Core raises [typed errors](glossary.md#typed-errors) whose message is already th
 |---|---|---|
 | `ConfigNotFoundError` | `❌ Configuration file .lingo-tracker.json not found.` and `Run "lingo-tracker init" to initialize a project.` (stderr) | 1 |
 | `ConfigParseError`, or another error reading the file | `❌ Failed to parse configuration file: <reason>` (stderr) | 1 |
+| `ConfigChangedError` | `❌ The configuration file changed after it was read; run the command again` (stderr), for every config-writing command | 1 |
 | `CommandCancelledError` (a cancelled prompt, or a declined confirmation) | `❌ <Name> cancelled.` (one line, stderr) | 0 |
 | Any other error (`CollectionNotFoundError` → `❌ Collection "x" not found`, `ReadOnlyCollectionError`, `ResourceNotFoundError`, a plain `Error`, …) | `❌ <message>` (stderr) | 1 |
 
@@ -341,13 +339,13 @@ The runner loads the config before anything else, unless the command sets `confi
 - **Directory** — the runner's private `getCwd()`: `process.env.INIT_CWD`, else `process.cwd()`. pnpm sets `INIT_CWD` to the user's directory even when it runs the script from the package directory. The command gets it as `ctx.cwd`, and resolves every relative path option against it: `export --output`, `import --source`, `glossary --input`/`--output`, `install-skill --dir`.
 - **File not found** — `❌ Configuration file .lingo-tracker.json not found.` and `Run "lingo-tracker init" to initialize a project.`, exit 1.
 - **Parse or read error** — `❌ Failed to parse configuration file: <reason>` (the JSON parser's message, or the I/O error), exit 1.
-- **Context** — `ctx.config` and `ctx.configPath` (absolute path of `.lingo-tracker.json`).
+- **Context** — `ctx.config`, `ctx.project` (the opened config and project root), and `ctx.configPath` (absolute path of `.lingo-tracker.json`).
 
 The command uses the config loaded by the runner. Core uses that config for the preview and the paths used during apply.
 
 ### Collection Resolution
 
-For a command with `collection: 'writable'` or `'read'`, the runner resolves the name from the collection option (`--collection`, unless `collectionOption` names another):
+For a command with `collection: 'writable'`, `'read'`, or `'deletable'`, the runner resolves the name from the collection option (`--collection`, unless `collectionOption` names another):
 
 1. If the option is given, use it.
 2. If no [collection](glossary.md#collection) is configured, fail: `❌ No collections found. Run \`lingo-tracker add-collection\` first.`, exit 1.
@@ -355,7 +353,7 @@ For a command with `collection: 'writable'` or `'read'`, the runner resolves the
 4. If several are configured and the command is interactive, show a `select` prompt.
 5. If several are configured and the command is non-interactive, fail: `❌ Missing required option: --collection`, exit 1.
 
-It then opens the name with core `openCollection(config, name, { cwd, writable })`, where `writable` is `true` for `'writable'`. The result, `ctx.collection`, is the core `Collection`: the absolute `translationsFolder` and the effective `baseLocale`, `locales`, `targetLocales`, and `translationConfig`. Commands read those fields; none of them applies the collection-then-global fallback itself.
+It then opens the name with core `openCollection(config, name, { cwd, writable, forDeletion })`, where `writable` is `true` for `'writable'` and `forDeletion` is `true` for `'deletable'`. The result, `ctx.collection`, is the core `Collection`: the absolute `translationsFolder` and the effective `baseLocale`, `locales`, `targetLocales`, and `translationConfig`. For `'deletable'`, a missing or non-string `translationsFolder` yields an empty path; only `delete-collection` uses that result. Commands read the other fields; none of them applies the collection-then-global fallback itself.
 
 **Many-collection resolution.** The runner first opens every configured collection for prompt choices and fails immediately when the config is empty. After prompts, `many.select` chooses `'all'` or an explicit name list. The runner deduplicates names in order and opens the selected set. `validate` reads all; `export` parses its comma-separated `--collection` choice; `glossary` reads all or one; `normalize` selects one or all and confirms all interactively. An unknown name raises core's `CollectionNotFoundError` and exits 1.
 
@@ -369,7 +367,7 @@ flowchart LR
     LOAD --> GETCONFIG["ctx.config, ctx.configPath, ctx.cwd"]
     GETCONFIG --> SELECT["runner: flag, else the only collection,\nelse select prompt (interactive)"]
     SELECT --> NAME["collection name"]
-    NAME --> OPEN["core openCollection(config, name, { cwd, writable })"]
+    NAME --> OPEN["core openCollection(config, name, { cwd, writable, forDeletion })"]
     OPEN --> RESOLVED["ctx.collection (core Collection)\n{ name, translationsFolder, baseLocale,\nlocales, targetLocales, translationConfig, ... }"]
     RESOLVED --> CORE["run(ctx) → @simoncodes-ca/core\ne.g. addResource(collection, params)"]
 ```

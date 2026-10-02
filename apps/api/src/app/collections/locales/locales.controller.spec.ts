@@ -86,7 +86,6 @@ describe('LocalesController', () => {
 
       expect(core.addLocaleToCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'de',
         expect.objectContaining({ onMutation: mockIndex.sink }),
       );
@@ -174,7 +173,6 @@ describe('LocalesController', () => {
 
       expect(core.removeLocaleFromCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
         expect.objectContaining({ onMutation: mockIndex.sink }),
       );
@@ -250,7 +248,6 @@ describe('LocalesController', () => {
 
       expect(core.removeLocaleFromCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
         expect.objectContaining({ onMutation: mockIndex.sink }),
       );

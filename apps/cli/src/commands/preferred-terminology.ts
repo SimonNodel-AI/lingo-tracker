@@ -1,7 +1,7 @@
 import {
   displayTermPath,
   InvalidProjectTermsEditError,
-  type LingoTrackerConfig,
+  type OpenedProject,
   type PreferredTerminologyEditResult,
   PreferredTerminologyValidationError,
   type ProjectTermsEditProblem,
@@ -44,11 +44,11 @@ function formatRule(rule: PreferredTermRule): string {
 export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOptions>()({
   name: 'Preferred terminology',
   collection: 'none',
-  run: ({ config, cwd, answers }) => run(answers, config, cwd),
+  run: ({ project, cwd, answers }) => run(answers, project, cwd),
 });
 
 /** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
-function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, cwd: string): CommandResult {
+function run(options: PreferredTerminologyOptions, project: OpenedProject, cwd: string): CommandResult {
   const hasList = options.list === true;
   // A partial CLI rule cannot be represented as a core upsert. Keep only these flag-shape checks here.
   if (options.add !== undefined && options.remove !== undefined && options.preferred === undefined) {
@@ -66,20 +66,16 @@ function run(options: PreferredTerminologyOptions, config: LingoTrackerConfig, c
   }
   let result: PreferredTerminologyEditResult | undefined;
   try {
-    const plan = planProjectTermsUpdate(
-      config,
-      {
-        preferredTerminology: {
-          list: hasList,
-          ...(options.add !== undefined &&
-            options.preferred !== undefined && {
-              upsert: { discouraged: options.add, preferred: options.preferred, reason: options.reason },
-            }),
-          ...(options.remove !== undefined && { remove: options.remove }),
-        },
+    const plan = planProjectTermsUpdate(project, {
+      preferredTerminology: {
+        list: hasList,
+        ...(options.add !== undefined &&
+          options.preferred !== undefined && {
+            upsert: { discouraged: options.add, preferred: options.preferred, reason: options.reason },
+          }),
+        ...(options.remove !== undefined && { remove: options.remove }),
       },
-      { cwd },
-    );
+    });
     const { preferredTerminology: loaded } = plan.view;
     if (loaded !== undefined) {
       const where = displayTermPath(loaded.filePath, cwd);
