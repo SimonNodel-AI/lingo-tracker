@@ -154,7 +154,6 @@ export type {
 // Operations: import
 export {
   detectImportFormat,
-  getStrategyDefaults,
   runImport,
 } from './lib/import';
 export type {

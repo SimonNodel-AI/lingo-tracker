@@ -1,11 +1,10 @@
-import type { ImportStrategy } from './staleness';
+import { importStrategyPolicy, type ImportStrategy } from './import-strategy-policy';
 
-/** Strategy used when an import does not specify one. */
-export const DEFAULT_IMPORT_STRATEGY: ImportStrategy = 'translation-service';
+export { DEFAULT_IMPORT_STRATEGY } from './import-strategy-policy';
 
 /** Whether the strategy may write the requested locale. */
 export function canImportLocale(locale: string, baseLocale: string, strategy: ImportStrategy): boolean {
-  return locale !== baseLocale || strategy === 'migration';
+  return locale !== baseLocale || importStrategyPolicy(strategy).writesBaseLocale;
 }
 
 /** Locale choices for an import, preserving configured order. */

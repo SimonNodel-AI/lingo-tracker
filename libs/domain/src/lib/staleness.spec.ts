@@ -4,9 +4,7 @@ import {
   type EntryLocaleMetadata,
   isUntranslatedCopy,
   needsTranslation,
-  type ResolveImportStatusParams,
   recordTranslation,
-  resolveImportStatus,
 } from './staleness';
 
 describe('isUntranslatedCopy', () => {
@@ -119,55 +117,5 @@ describe('needsTranslation', () => {
 
   it.each(['translated', 'verified'] as const)('is false for %s', (status) => {
     expect(needsTranslation({ checksum: 'x', status })).toBe(false);
-  });
-});
-
-describe('resolveImportStatus', () => {
-  const base: ResolveImportStatusParams = {
-    strategy: 'translation-service',
-    oldStatus: undefined,
-    incomingStatus: undefined,
-    valueChanged: true,
-    baseChecksumChanged: false,
-  };
-
-  it('uses an honoured incoming status over every strategy', () => {
-    expect(resolveImportStatus({ ...base, strategy: 'verification', incomingStatus: 'stale' })).toBe('stale');
-  });
-
-  it('verification always verifies', () => {
-    expect(resolveImportStatus({ ...base, strategy: 'verification', valueChanged: false, oldStatus: 'stale' })).toBe(
-      'verified',
-    );
-  });
-
-  it('update keeps the previous status, defaulting to translated', () => {
-    expect(resolveImportStatus({ ...base, strategy: 'update', oldStatus: 'verified' })).toBe('verified');
-    expect(resolveImportStatus({ ...base, strategy: 'update' })).toBe('translated');
-  });
-
-  it.each(['translation-service', 'migration'] as const)('%s marks a changed value translated', (strategy) => {
-    expect(resolveImportStatus({ ...base, strategy, oldStatus: 'verified' })).toBe('translated');
-  });
-
-  describe('unchanged value', () => {
-    const unchanged = { ...base, valueChanged: false };
-
-    it('translation-service re-confirms a stale value as translated', () => {
-      expect(resolveImportStatus({ ...unchanged, oldStatus: 'stale' })).toBe('translated');
-    });
-
-    it('translation-service re-confirms when the base checksum moved', () => {
-      expect(resolveImportStatus({ ...unchanged, oldStatus: 'new', baseChecksumChanged: true })).toBe('translated');
-    });
-
-    it('translation-service keeps a verified status when nothing moved', () => {
-      expect(resolveImportStatus({ ...unchanged, oldStatus: 'verified' })).toBe('verified');
-    });
-
-    it('migration keeps the previous status', () => {
-      expect(resolveImportStatus({ ...unchanged, strategy: 'migration', oldStatus: 'stale' })).toBe('stale');
-      expect(resolveImportStatus({ ...unchanged, strategy: 'migration' })).toBe('translated');
-    });
   });
 });

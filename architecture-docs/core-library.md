@@ -102,7 +102,6 @@ libs/core/src/
     │   ├── import-session.ts     # ImportSession: settings + accumulated changes, warnings, errors, files
     │   ├── process-resource-group.ts # Applies one folder's resources (internal)
     │   ├── resource-grouping.ts  # groupResourcesByFolder(): batches resources by target path
-    │   ├── determine-status.ts   # Which source status an import honours
     │   ├── apply-icu-auto-fix.ts # applyICUAutoFixToResources(): repairs malformed placeholders
     │   ├── normalize-transloco-syntax.ts # {{ x }} → {x} before storage
     │   ├── load-base-locale-values.ts    # Reads current base values for the auto-fix
@@ -690,6 +689,8 @@ An import has two parts. A **format adapter** reads one file and returns `Import
 8. **Build the result** — `sessionResult()` derives the counts and status transitions from the session's changes and returns the `ImportResult`.
 
 `openImportSession` reads the collection's [Project Terms](#project-terms) once. A protected-terms file that exists but cannot be used throws `ProtectedTermsFileError` before anything is written (the guard would otherwise run against nothing). A rule-file problem, or a named protected-terms file that does not exist, opens the resource result's `warnings` (each on the imports that would have used it), so the CLI and the summary show it without knowing about term files. The run reads no config. `generateImportSummary(result, { ...options, format, source })` renders the Markdown summary in core; the CLI owns only its destination path.
+
+Domain's [Import Strategy Policy](glossary.md#import-strategy-policy) (`libs/domain/src/lib/import-strategy-policy.ts`) defines each strategy once in a frozen table. The session and CLI read its defaults; locale permission, reference resolution, source-status preservation, status resolution, and checksum refresh all read its fields. Explicit `preserveStatus` overrides the source-status default; migration honours source status when that flag is omitted. New target resources still default to `translated`. Update's `statusOnUnchanged: 'untouched'` leaves unchanged values and metadata alone, while `reconfirmsUnchanged` controls checksum refresh for the other strategies. `resolveImportStatus` handles both status fields exhaustively. Domain exposes the table's valid keys as `IMPORT_STRATEGIES` and checks them with `isImportStrategy`; the CLI rejects unknown strategies with the valid choices and exit code 1. `detectImportFormat` remains in core.
 
 Import strategies control how the merge behaves:
 

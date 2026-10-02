@@ -37,8 +37,19 @@ export {
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
 export { findIcuCompileError, isIcuLocaleSupported } from './lib/icu-locale-validation';
 export { icuToTransloco } from './lib/icu-to-transloco';
-// Staleness: how edits and imports move a locale's status
-export { canImportLocale, DEFAULT_IMPORT_STRATEGY, importableLocales } from './lib/import-rules';
+// Imports: strategy policy, status resolution, and locale permission
+export { canImportLocale, importableLocales } from './lib/import-rules';
+export {
+  DEFAULT_IMPORT_STRATEGY,
+  honouredImportSourceStatus,
+  IMPORT_STRATEGIES,
+  importStrategyPolicy,
+  isImportStrategy,
+  type ImportStrategy,
+  type ImportStrategyPolicy,
+  type ResolveImportStatusParams,
+  resolveImportStatus,
+} from './lib/import-strategy-policy';
 // Keys: resource keys and generated-token identifiers
 export {
   isJavaScriptReservedWord,
@@ -94,12 +105,9 @@ export {
 export {
   applyBaseChange,
   type EntryLocaleMetadata,
-  type ImportStrategy,
   isUntranslatedCopy,
   needsTranslation,
-  type ResolveImportStatusParams,
   recordTranslation,
-  resolveImportStatus,
 } from './lib/staleness';
 export type { TokenCasing } from './lib/token-casing';
 export {

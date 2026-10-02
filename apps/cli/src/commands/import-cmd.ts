@@ -1,13 +1,19 @@
 import {
   detectImportFormat,
-  getStrategyDefaults,
   type ImportFormat,
   type ImportResult,
   type ImportRunOptions,
   ImportSourceError,
   runImport,
 } from '@simoncodes-ca/core';
-import { canImportLocale, type ImportStrategy, importableLocales } from '@simoncodes-ca/domain';
+import {
+  canImportLocale,
+  type ImportStrategy,
+  IMPORT_STRATEGIES,
+  importableLocales,
+  importStrategyPolicy,
+  isImportStrategy,
+} from '@simoncodes-ca/domain';
 import * as fs from 'fs';
 import * as path from 'path';
 import type prompts from 'prompts';
@@ -43,7 +49,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     // terminology); a rule-file problem comes back in the result's warnings.
     const runOptions: ImportRunOptions = {
       locale: answers.locale,
-      strategy: answers.strategy || IMPORT_DEFAULTS.strategy,
+      strategy: resolveStrategy(answers.strategy),
       updateComments: answers.updateComments,
       updateTags: answers.updateTags,
       preserveStatus: answers.preserveStatus ?? IMPORT_DEFAULTS.preserveStatus,
@@ -104,6 +110,13 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
   },
 });
 
+/** Validate Commander flags and prompt answers before reading the strategy policy. */
+function resolveStrategy(value: unknown): ImportStrategy {
+  if (value === undefined) return IMPORT_DEFAULTS.strategy;
+  if (isImportStrategy(value)) return value;
+  throw new Error(`Invalid --strategy "${String(value)}". Valid strategies: ${IMPORT_STRATEGIES.join(', ')}.`);
+}
+
 /**
  * The questions for what the flags left out. Later questions depend on earlier answers
  * (the format is only asked when the source's extension does not tell it; the locale
@@ -116,9 +129,10 @@ function buildQuestions(
   baseLocale: string,
   cwd: string,
 ): prompts.PromptObject[] {
+  const requestedStrategy = resolveStrategy(options.strategy);
   const questions: prompts.PromptObject[] = [];
   const strategyOf = (values: Record<string, unknown>): ImportStrategy =>
-    options.strategy ?? (values.strategy as ImportStrategy | undefined) ?? IMPORT_DEFAULTS.strategy;
+    resolveStrategy(options.strategy ?? values.strategy);
   const localesFor = (strategy: ImportStrategy): readonly string[] =>
     importableLocales(configuredLocales, baseLocale, strategy);
 
@@ -180,7 +194,7 @@ function buildQuestions(
 
   if (!options.locale) {
     // `validate` is not given the earlier answers, so the `type` callback records the strategy for it.
-    let strategy: ImportStrategy = options.strategy ?? IMPORT_DEFAULTS.strategy;
+    let strategy: ImportStrategy = requestedStrategy;
     questions.push({
       type: (_prev: unknown, values: Record<string, unknown>) => {
         strategy = strategyOf(values);
@@ -211,11 +225,12 @@ function buildQuestions(
   const migrationFlag = (name: 'updateComments' | 'updateTags' | 'createMissing', message: string) => {
     if (options[name] === undefined) {
       questions.push({
+        // Migration-only flag prompts are CLI UX, not a strategy rule.
         type: (_prev: unknown, values: Record<string, unknown>) =>
           strategyOf(values) === 'migration' ? 'confirm' : null,
         name,
         message,
-        initial: getStrategyDefaults('migration')[name],
+        initial: importStrategyPolicy('migration').defaults[name],
       });
     }
   };
