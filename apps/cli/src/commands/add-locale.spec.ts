@@ -79,7 +79,6 @@ describe('addLocaleCommand', () => {
         message: 'Locale "de" added to collection "main" successfully',
         entriesBackfilled: 3,
         filesUpdated: 2,
-        mutations: [],
       });
 
       const options: AddLocaleOptions = { collection: 'main', locale: 'de' };
@@ -87,7 +86,6 @@ describe('addLocaleCommand', () => {
 
       expect(mockCore).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'de',
       );
       expect(console.log).toHaveBeenCalledWith('✅ Locale "de" added to collection "main" successfully');
@@ -144,7 +142,6 @@ describe('addLocaleCommand', () => {
         message: 'Locale "de" added to collection "main" successfully',
         entriesBackfilled: 3,
         filesUpdated: 2,
-        mutations: [],
       });
       vi.mocked(prompts).mockResolvedValueOnce({ locale: 'de' });
 
@@ -156,7 +153,6 @@ describe('addLocaleCommand', () => {
       );
       expect(mockCore).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'de',
       );
     });

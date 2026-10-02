@@ -2,6 +2,7 @@ import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import type { TokenCasing } from '@simoncodes-ca/domain';
 import { BundleNotFoundError, type BundleTypeOutcome, generateBundles } from '@simoncodes-ca/core';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { ALL_ITEMS_SENTINEL, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
 
 export interface BundleOptions {
@@ -138,7 +139,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
     if (failures > 0) ConsoleFormatter.warning(`${failures} bundle(s) failed to generate`);
   }
 
-  return runResult.outcomes.some((outcome) => outcome.error !== undefined) ? { exitCode: 1 } : undefined;
+  return exitForRunOutcome(runResult.outcome);
 }
 
 function typeOutcomeLine(outcome: BundleTypeOutcome): string {

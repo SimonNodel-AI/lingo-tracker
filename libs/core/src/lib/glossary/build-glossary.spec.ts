@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { openCollection } from '../config/open-collection';
 import {
-  GlossaryBaseLocaleMismatchError,
+  CollectionBaseLocaleMismatchError,
   GlossaryExtractorError,
   GlossaryNoCollectionsError,
 } from '../errors/lingo-tracker-error';
@@ -138,7 +138,7 @@ describe('buildGlossary', () => {
 
   it('refuses collections with different base locales before reading', () => {
     vi.mocked(readCollection).mockClear();
-    expect(() => buildGlossary([open('app'), open('frenchBase')], 'Save')).toThrow(GlossaryBaseLocaleMismatchError);
+    expect(() => buildGlossary([open('app'), open('frenchBase')], 'Save')).toThrow(CollectionBaseLocaleMismatchError);
     expect(readCollection).not.toHaveBeenCalled();
   });
 

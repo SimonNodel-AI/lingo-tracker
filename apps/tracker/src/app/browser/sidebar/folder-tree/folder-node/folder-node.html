@@ -78,7 +78,9 @@
       @if (shouldShowInlineInput()) {
         <app-inline-folder-input
           [parentPath]="folder().fullPath"
+          [error]="createError()"
           (confirm)="onFolderConfirm($event)"
+          (edited)="store.dismissFolderCreateError()"
           (cancelInput)="onFolderCancel()"
         />
       }

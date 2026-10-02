@@ -5,3 +5,11 @@ import { InvalidTranslationStatusError } from '../errors/lingo-tracker-error';
 export function assertTranslationStatus(value: unknown): asserts value is TranslationStatus {
   if (!isTranslationStatus(value)) throw new InvalidTranslationStatusError(value);
 }
+
+/** Check an export filter before reading resources or writing files. */
+export function assertTranslationStatusList(
+  values: readonly unknown[],
+): asserts values is readonly TranslationStatus[] {
+  if (values.length === 0) throw new InvalidTranslationStatusError('');
+  for (const value of values) assertTranslationStatus(value);
+}

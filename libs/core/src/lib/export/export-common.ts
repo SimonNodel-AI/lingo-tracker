@@ -1,26 +1,11 @@
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import * as fs from 'node:fs';
-import type { Collection } from '../config/open-collection';
-import { type CollectionReadProblem, readCollection } from '../resource/read-collection';
 import { findProtectedTerms, type TranslationStatus } from '@simoncodes-ca/domain';
+import { collectionResourceStatus, type CollectionSetResource } from '../collection-set/collection-set';
 import type { FilteredResource } from './types';
 
-/** A stored resource flattened for the export and validate passes, with the collection it came from. */
-export interface LoadedResource {
-  key: string;
-  fullKey: string;
-  source: string;
-  translations: Record<string, string>;
-  /** The entry's own tags. */
-  tags?: string[];
-  /** The collection's tags united with the entry's own (from the Collection Reader). */
-  effectiveTags: readonly string[];
-  /** The protected terms in force for the entry's collection (its Project Terms), when the export annotates them. */
-  protectedTerms?: string[];
-  comment?: string;
-  status: Record<string, TranslationStatus>;
-  collection: string;
-}
+/** Project Terms are attached only for export filtering and notes. */
+export type ExportResource = CollectionSetResource & { protectedTerms?: string[] };
 
 /**
  * Validates that the output directory exists or can be created, and is writable.
@@ -55,44 +40,10 @@ export function validateOutputDirectory(directory: string): void {
 }
 
 /**
- * Reads one collection through the Collection Reader and flattens each entry for the export and
- * validate passes. Folders the reader could not read are returned as `problems`.
- */
-export function loadResources(
-  collection: Pick<Collection, 'name' | 'translationsFolder' | 'baseLocale' | 'tags'>,
-  protectedTerms?: string[],
-): { resources: LoadedResource[]; problems: CollectionReadProblem[] } {
-  const { resources, problems } = readCollection(collection);
-
-  return {
-    resources: resources.map(({ fullKey, entryKey, entry, effectiveTags }) => {
-      const status: Record<string, TranslationStatus> = {};
-      for (const [locale, localeMeta] of Object.entries(entry.metadata)) {
-        if (localeMeta?.status) status[locale] = localeMeta.status;
-      }
-
-      return {
-        key: entryKey,
-        fullKey,
-        source: entry.source,
-        translations: { ...entry.translations },
-        tags: entry.tags,
-        effectiveTags,
-        protectedTerms,
-        comment: entry.comment,
-        status,
-        collection: collection.name,
-      };
-    }),
-    problems,
-  };
-}
-
-/**
  * Filters resources based on status and tags for a specific target locale.
  */
 export function filterResources(
-  resources: LoadedResource[],
+  resources: ExportResource[],
   targetLocale: string,
   statusFilter: TranslationStatus[] | undefined,
   tagFilter: string[] | undefined,
@@ -104,13 +55,7 @@ export function filterResources(
   return resources
     .filter((res) => {
       // Status filter
-      const status = res.status[targetLocale];
-      // If status is undefined, it's effectively 'new' if we consider untranslated as new,
-      // but usually metadata should exist. If no metadata for locale, it's untracked/new.
-      // For now, let's assume if status is missing, it might be 'new' or we skip.
-      // The requirement says: "Resources with no translation in target locale are considered new"
-
-      const effectiveStatus = status || 'new';
+      const effectiveStatus = collectionResourceStatus(res, targetLocale);
 
       if (statusFilter && !statusFilter.includes(effectiveStatus)) {
         return false;
@@ -137,7 +82,7 @@ export function filterResources(
         value: res.translations[targetLocale] || '',
         baseValue: res.source,
         comment: res.comment,
-        status: res.status[targetLocale] || 'new',
+        status: collectionResourceStatus(res, targetLocale),
         tags: res.tags,
         collection: res.collection,
         locale: targetLocale,

@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { CONFIG_FILENAME, deleteCollectionByName } from '@simoncodes-ca/core';
+import { CONFIG_FILENAME, deleteCollection } from '@simoncodes-ca/core';
 import { CommandCancelledError, defineCommand } from '../runner/command-runner';
 
 export interface DeleteCollectionOptions {
@@ -15,7 +15,7 @@ export interface DeleteCollectionOptions {
  */
 export const deleteCollectionCommand = defineCommand<DeleteCollectionOptions>()({
   name: 'Delete collection',
-  collection: 'read',
+  collection: 'deletable',
   collectionOption: 'collectionName',
   run: async ({ collection, cwd, answers, interactive, ask }) => {
     if (!answers.yes && interactive) {
@@ -31,7 +31,7 @@ export const deleteCollectionCommand = defineCommand<DeleteCollectionOptions>()(
       }
     }
 
-    const result = deleteCollectionByName(collection.name, { cwd });
+    const result = deleteCollection(collection);
     console.log(result.message);
   },
 });

@@ -48,6 +48,7 @@ export class RouteCollectionPipe implements PipeTransform<RouteCollectionRef, Op
     try {
       return openCollection(this.#configService.getConfig(), name, { writable });
     } catch (error) {
+      // Route pipes also run in modules without the app-level exception filter.
       if (error instanceof CollectionNotFoundError) throw new NotFoundException(`Collection "${name}" not found`);
       if (error instanceof ReadOnlyCollectionError) throw new ForbiddenException(error.message);
       throw error;

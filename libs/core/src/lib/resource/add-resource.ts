@@ -12,7 +12,7 @@ import {
 } from './locale-seeding';
 import { type ResolvedResourcePaths, validateAndResolvePaths } from './resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from './resource-folder';
-import { type ResourceMutation, upsertMutation } from './resource-mutation';
+import { type MutationSink, type MutationSinkOptions, saveReporting, upsertMutation } from './resource-mutation';
 import { assertTranslationStatus } from './translation-status-input';
 
 type ResourceTranslationInput = Pick<ResourceTranslation, 'locale' | 'value'> & { readonly status?: TranslationStatus };
@@ -38,7 +38,7 @@ export interface AddResourceParams {
 
 export type ExistingResourcePolicy = 'replace' | 'fail';
 
-export interface AddResourceOptions extends OpenTranslatorOptions {
+export interface AddResourceOptions extends OpenTranslatorOptions, MutationSinkOptions {
   /** What to do when the resolved key already holds an entry. Default: 'fail'. */
   readonly onExisting?: ExistingResourcePolicy;
 }
@@ -57,8 +57,6 @@ export interface AddResourceResult {
   readonly translations: ResourceTranslation[];
   /** Locales the Translator skipped (see {@link seedLocales}). Present only when auto-translation ran. */
   readonly skippedLocales?: string[];
-  /** The `upsert` for the stored entry. */
-  readonly mutations: ResourceMutation[];
   /**
    * Advisory: discouraged terms in the stored base value, any rule-file problem that limited the
    * check, and, when auto-translation ran, a named protected-terms file that does not exist.
@@ -102,7 +100,12 @@ export async function addResource(
 ): Promise<AddResourceResult> {
   const onExisting = options.onExisting ?? 'fail';
   const resolved = resolveResourceAdd(collection, params, onExisting);
-  return writePreparedResourceAdd(collection, await prepareResourceAdd(collection, resolved, options), onExisting);
+  return writePreparedResourceAdd(
+    collection,
+    await prepareResourceAdd(collection, resolved, options),
+    onExisting,
+    options.onMutation,
+  );
 }
 
 /** Validates an entry and checks its resolved key before translation or writes. */
@@ -138,10 +141,7 @@ export async function prepareResourceAdd(
   const baseValue = translocoToICU(params.baseValue);
   // Resolve every value before touching the disk, so a provider failure writes nothing.
   const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) }, options);
-  const translations: ResourceTranslationInput[] = [
-    ...supplied.map(({ locale, value, status }) => ({ locale, value: translocoToICU(value), status })),
-    ...seeding.translations,
-  ];
+  const translations: ResourceTranslationInput[] = [...supplied, ...seeding.translations];
 
   return {
     params,
@@ -181,6 +181,7 @@ export function writePreparedResourceAdd(
   collection: Collection,
   prepared: PreparedResourceAdd,
   onExisting: ExistingResourcePolicy,
+  onMutation?: MutationSink,
 ): AddResourceResult {
   const { paths, params, baseValue, translations } = prepared;
   const { translationsFolder, baseLocale } = collection;
@@ -202,16 +203,19 @@ export function writePreparedResourceAdd(
   const storedTranslations: ResourceTranslation[] = translations.map((translation) => {
     const status = stored?.meta?.[translation.locale]?.status;
     if (status === undefined) throw new Error(`Missing status for locale "${translation.locale}"`);
-    return { ...translation, status };
+    const value = stored?.entry[translation.locale];
+    if (typeof value !== 'string') throw new Error(`Missing value for locale "${translation.locale}"`);
+    return { locale: translation.locale, value, status };
   });
-  folder.save();
+  saveReporting(folder, translationsFolder, onMutation, () => [
+    upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey)),
+  ]);
 
   return {
     resolvedKey: paths.resolvedKey,
     created,
     translations: storedTranslations,
     ...(prepared.skippedLocales !== undefined && { skippedLocales: prepared.skippedLocales }),
-    mutations: [upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey))],
     terminology: prepared.terminology,
   };
 }

@@ -1,10 +1,12 @@
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
-import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { loadConfig } from '../lib/config/load-config';
 import { openCollection } from '../lib/config/open-collection';
+import { writeJsonFile } from '../lib/file-io/json-file-operations';
 import {
   BaseLocaleImmutableError,
   CollectionNotFoundError,
@@ -16,6 +18,19 @@ import type { ResourceEntries } from '../lib/resource/resource-entry';
 import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { addLocaleToCollection } from './add-locale-to-collection';
+
+const collected: ResourceMutation[] = [];
+const onMutation = (mutation: ResourceMutation): void => {
+  collected.push(mutation);
+};
+beforeEach(() => {
+  collected.length = 0;
+});
+
+vi.mock('../lib/file-io/json-file-operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/file-io/json-file-operations')>();
+  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
+});
 
 describe('addLocaleToCollection', () => {
   const tempDir = useTempDir('add-locale-');
@@ -33,8 +48,9 @@ describe('addLocaleToCollection', () => {
   const entries = (): ResourceEntries => JSON.parse(readFileSync(join(folder(), RESOURCE_ENTRIES_FILENAME), 'utf8'));
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
   const add = async (name = 'main', locale = 'de') => {
-    const configFile = createConfigFileOperations({ cwd: tempDir() });
-    return addLocaleToCollection(openCollection(configFile.read(), name, { cwd: tempDir() }), configFile, locale);
+    return addLocaleToCollection(openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }), locale, {
+      onMutation,
+    });
   };
 
   beforeEach(() => writeConfig());
@@ -46,11 +62,31 @@ describe('addLocaleToCollection', () => {
       message: 'Locale "de" added to collection "main" successfully',
       entriesBackfilled: 1,
       filesUpdated: 1,
-      mutations: [{ kind: 'reindex', translationsFolder: folder() }],
     });
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: folder() }]);
     expect(readConfig().collections['main'].locales).toEqual(['en', 'fr', 'de']);
     expect(entries()['ok']?.['de']).toBe('OK');
     expect(meta()['ok']?.['de']).toMatchObject({ status: 'new' });
+  });
+
+  it('reports one reindex when the second folder seed fails and leaves config unchanged', async () => {
+    seedResources(testCollection(folder()), { 'first.ok': { source: 'OK' }, 'second.later': { source: 'Later' } });
+    const beforeConfig = readFileSync(join(tempDir(), CONFIG_FILENAME));
+    const actual = await vi.importActual<typeof import('../lib/file-io/json-file-operations')>(
+      '../lib/file-io/json-file-operations',
+    );
+    const writer = vi.mocked(writeJsonFile);
+    writer.mockImplementation((options) => {
+      if (options.filePath.endsWith(join('second', TRACKER_META_FILENAME))) throw new Error('second seed failed');
+      return actual.writeJsonFile(options);
+    });
+    try {
+      await expect(add()).rejects.toThrow('second seed failed');
+    } finally {
+      writer.mockImplementation(actual.writeJsonFile);
+    }
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: folder() }]);
+    expect(readFileSync(join(tempDir(), CONFIG_FILENAME))).toEqual(beforeConfig);
   });
 
   it('copies global locales into collection when collection has no locales override', async () => {

@@ -5,14 +5,15 @@ import { Logger } from '@nestjs/common';
 import {
   addLocaleToCollection,
   addResource,
+  addResources,
   type Collection,
-  createConfigFileOperations,
   createFolder,
   deleteFolder,
   deleteResource,
   editResource,
   type FolderChild,
   type LingoTrackerConfig,
+  loadConfig,
   loadResourceTree,
   moveFolder,
   moveResource,
@@ -43,7 +44,7 @@ describe('CollectionIndex', () => {
   /** Writes one entry (with metadata) the way core stores it. */
   function writeEntry(collectionName: string, key: string, value: string): void {
     const segments = key.split('.');
-    const folder = openResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)));
+    const folder = openResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)), { baseLocale: 'en' });
     folder.setBase(segments[segments.length - 1], value);
     folder.save();
   }
@@ -148,34 +149,35 @@ describe('CollectionIndex', () => {
     });
 
     it('adds a resource, creating its folders', async () => {
-      const result = await addResource(collection(), {
-        key: 'apps.dialogs.confirm.yes',
-        baseValue: 'Yes',
-      });
-      index.apply(result.mutations);
+      await addResource(
+        collection(),
+        {
+          key: 'apps.dialogs.confirm.yes',
+          baseValue: 'Yes',
+        },
+        { onMutation: index.sink },
+      );
 
       expect(keysOf(readyTree(collection(), 'apps.dialogs.confirm'))).toEqual(['yes']);
       expectIndexMatchesDisk();
     });
 
     it('replaces an edited resource in place', async () => {
-      const result = await editResource(collection(), 'common.ok', { baseValue: 'Okay' });
-      index.apply(result.mutations);
+      await editResource(collection(), 'common.ok', { baseValue: 'Okay' }, { onMutation: index.sink });
 
       expect(readyTree(collection(), 'common')?.resources.find((r) => r.key === 'ok')?.source).toBe('Okay');
       expectIndexMatchesDisk();
     });
 
     it('removes deleted resources', () => {
-      index.apply(deleteResource(collection(), { keys: ['common.ok', 'apps.title'] }).mutations);
+      deleteResource(collection(), { keys: ['common.ok', 'apps.title'] }, { onMutation: index.sink });
 
       expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);
       expectIndexMatchesDisk();
     });
 
     it('moves resources by pattern', async () => {
-      const result = await moveResource(collection(), { source: 'common.*', destination: 'shared' });
-      index.apply(result.mutations);
+      await moveResource(collection(), { source: 'common.*', destination: 'shared' }, { onMutation: index.sink });
 
       expect(keysOf(readyTree(collection(), 'shared'))).toEqual(['cancel', 'ok']);
       expect(keysOf(readyTree(collection(), 'common'))).toEqual([]);
@@ -187,12 +189,15 @@ describe('CollectionIndex', () => {
       const other = openCollection(config('other'), 'other', { cwd: root });
       readyTree(other);
 
-      const result = await moveResource(collection(), {
-        source: 'common.ok',
-        destination: 'imported.ok',
-        destinationCollection: other,
-      });
-      index.apply(result.mutations);
+      await moveResource(
+        collection(),
+        {
+          source: 'common.ok',
+          destination: 'imported.ok',
+          toCollection: 'other',
+        },
+        { onMutation: index.sink, config: config('other'), cwd: root },
+      );
 
       expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);
       expect(keysOf(readyTree(other, 'imported'))).toEqual(['ok']);
@@ -201,18 +206,22 @@ describe('CollectionIndex', () => {
     });
 
     it('creates, moves and deletes folders', async () => {
-      index.apply(createFolder(collection(), { folderName: 'empty', parentPath: 'apps' }).mutations);
+      createFolder(collection(), { folderName: 'empty', parentPath: 'apps' }, { onMutation: index.sink });
       expect(readyTree(collection(), 'apps.empty')).not.toBeNull();
 
-      const moved = await moveFolder(collection(), {
-        sourceFolderPath: 'common',
-        destinationFolderPath: 'apps',
-      });
-      index.apply(moved.mutations);
+      await moveFolder(
+        collection(),
+        {
+          sourceFolderPath: 'common',
+          destinationFolderPath: 'apps',
+        },
+        { onMutation: index.sink },
+      );
+
       expect(keysOf(readyTree(collection(), 'apps.common'))).toEqual(['cancel', 'ok']);
       expect(readyTree(collection(), 'common')).toBeNull();
 
-      index.apply(deleteFolder(collection(), { folderPath: 'apps.empty' }).mutations);
+      deleteFolder(collection(), { folderPath: 'apps.empty' }, { onMutation: index.sink });
       expect(readyTree(collection(), 'apps.empty')).toBeNull();
 
       expectIndexMatchesDisk();
@@ -222,16 +231,30 @@ describe('CollectionIndex', () => {
       const configPath = path.join(root, '.lingo-tracker.json');
       fs.writeFileSync(configPath, JSON.stringify(config('main')));
 
-      const configFile = createConfigFileOperations({ cwd: root });
-      const result = await addLocaleToCollection(
-        openCollection(configFile.read(), 'main', { cwd: root }),
-        configFile,
-        'de',
-      );
-      index.apply(result.mutations);
+      await addLocaleToCollection(openCollection(loadConfig({ cwd: root }), 'main', { cwd: root }), 'de', {
+        onMutation: index.sink,
+      });
 
       expect(index.tree(collection())).toEqual({ status: 'not-started' });
       expect(readyTree(collection(), 'common')?.resources.every((r) => r.translations.de !== undefined)).toBe(true);
+    });
+
+    it('rebuilds after each translation-style save, even when a read occurs between saves', async () => {
+      const target = collection();
+      const reindex = { kind: 'reindex' as const, translationsFolder: target.translationsFolder };
+
+      writeEntry('main', 'common.first', 'First');
+      index.sink(reindex);
+      expect(keysOf(readyTree(target, 'common'))).toEqual(['cancel', 'first', 'ok']);
+
+      writeEntry('main', 'common.second', 'Second');
+      await addResource(target, { key: 'common.user', baseValue: 'User' }, { onMutation: index.sink });
+      expect(keysOf(readyTree(target, 'common'))).toEqual(['cancel', 'first', 'ok', 'user']);
+
+      index.sink(reindex);
+      expect(index.tree(target)).toEqual({ status: 'not-started' });
+      expect(keysOf(readyTree(target, 'common'))).toEqual(['cancel', 'first', 'ok', 'second', 'user']);
+      expectIndexMatchesDisk(target);
     });
 
     it('re-indexes when a mutation does not match the indexed tree', () => {
@@ -242,10 +265,32 @@ describe('CollectionIndex', () => {
     });
 
     it('ignores mutations for collections that are not indexed', async () => {
-      const result = await addResource(collection('elsewhere'), { key: 'ok', baseValue: 'OK' });
-      index.apply(result.mutations);
+      await addResource(collection('elsewhere'), { key: 'ok', baseValue: 'OK' }, { onMutation: index.sink });
 
       expect(index.tree(collection()).status).toBe('ready');
+    });
+
+    it('follows a write that fails part-way', async () => {
+      fs.writeFileSync(path.join(root, 'main', 'blocked'), 'file');
+      await expect(
+        addResources(
+          collection(),
+          [
+            { key: 'created.ok', baseValue: 'OK' },
+            { key: 'blocked.later', baseValue: 'Later' },
+          ],
+          { onMutation: index.sink },
+        ),
+      ).rejects.toThrow();
+      expect(keysOf(readyTree(collection(), 'created'))).toEqual(['ok']);
+    });
+
+    it('a failing apply never reaches the write', () => {
+      jest.spyOn(index, 'apply').mockImplementation(() => {
+        throw new Error('index failed');
+      });
+      expect(() => index.sink({ kind: 'reindex', translationsFolder: collection().translationsFolder })).not.toThrow();
+      expect(Logger.prototype.error).toHaveBeenCalledWith('Could not apply a mutation: index failed');
     });
   });
 
@@ -273,13 +318,13 @@ describe('CollectionIndex', () => {
     });
 
     it('does not read its own write as an outside change', async () => {
-      index.apply((await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' })).mutations);
+      await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' }, { onMutation: index.sink });
 
       expect(index.tree(collection()).status).toBe('ready');
     });
 
     it('detects an outside change made after its own write settled', async () => {
-      index.apply((await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' })).mutations);
+      await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' }, { onMutation: index.sink });
       // Let the deferred fingerprint refresh run.
       await new Promise((resolve) => setTimeout(resolve, 5));
 

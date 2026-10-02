@@ -6,9 +6,10 @@ import {
   type LingoTrackerConfig,
   runExport,
 } from '@simoncodes-ca/core';
-import { isTranslationStatus, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { type Answers, defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import {
   ConsoleFormatter,
   multiselectResultToString,
@@ -57,11 +58,6 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       );
       return { exitCode: 1 };
     }
-    const invalidStatus = statuses?.find((status) => !isTranslationStatus(status));
-    if (invalidStatus !== undefined) {
-      ConsoleFormatter.error(`Invalid --status "${invalidStatus}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`);
-      return { exitCode: 1 };
-    }
 
     // Warn if --base-property-name was set without --include-base
     if (options.basePropertyName && !options.includeBase) {
@@ -74,7 +70,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       exportFolder: config.exportFolder,
       cwd,
       locales: parseCommaSeparatedList(options.locale),
-      status: statuses?.filter(isTranslationStatus),
+      status: statuses,
       tags: parseCommaSeparatedList(options.tags),
       filenamePattern: options.filename,
       dryRun: options.dryRun,
@@ -112,8 +108,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       console.log('\n📄 Summary (Dry Run):');
       console.log(result.summary);
     }
-    const failed = result.errors.length + result.hierarchicalConflicts.length > 0 && !options.dryRun;
-    return failed ? { exitCode: 1 } : undefined;
+    return exitForRunOutcome(result.outcome);
   },
 });
 

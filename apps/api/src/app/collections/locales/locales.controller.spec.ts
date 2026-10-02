@@ -37,7 +37,7 @@ describe('LocalesController', () => {
   const collectionFor = (name: string): core.OpenedCollection =>
     new RouteCollectionPipe(localesModule.get<ConfigService>(ConfigService)).transform({ name, writable: true });
 
-  const mockIndex = { apply: jest.fn() };
+  const mockIndex = { sink: jest.fn() };
 
   beforeEach(async () => {
     localesModule = await Test.createTestingModule({
@@ -80,17 +80,15 @@ describe('LocalesController', () => {
         entriesBackfilled: 4,
         filesUpdated: 2,
       };
-      const mutations = [{ kind: 'reindex', translationsFolder: '/t' }];
-      (core.addLocaleToCollection as jest.Mock).mockResolvedValue({ ...mockResult, mutations });
+      (core.addLocaleToCollection as jest.Mock).mockResolvedValue(mockResult);
 
       const result = await localesController.addLocale(collectionFor('test-collection'), { locale: 'de' });
 
       expect(core.addLocaleToCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'de',
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
-      expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
       // The mutations are for the index; the response is unchanged.
       expect(result).toEqual(mockResult);
     });
@@ -159,8 +157,6 @@ describe('LocalesController', () => {
 
     it('does not touch the index when collection lookup fails before core is called', async () => {
       expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
-
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
   });
 
@@ -171,17 +167,15 @@ describe('LocalesController', () => {
         entriesPurged: 3,
         filesUpdated: 2,
       };
-      const mutations = [{ kind: 'reindex', translationsFolder: '/t' }];
-      (core.removeLocaleFromCollection as jest.Mock).mockResolvedValue({ ...mockResult, mutations });
+      (core.removeLocaleFromCollection as jest.Mock).mockResolvedValue(mockResult);
 
       const result = await localesController.removeLocale(collectionFor('test-collection'), 'fr');
 
       expect(core.removeLocaleFromCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
-      expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
       // The mutations are for the index; the response is unchanged.
       expect(result).toEqual(mockResult);
     });
@@ -240,8 +234,6 @@ describe('LocalesController', () => {
 
     it('does not touch the index when collection lookup fails before core is called', async () => {
       expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
-
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
     it('passes the opened collection and locale to core function', async () => {
@@ -256,8 +248,8 @@ describe('LocalesController', () => {
 
       expect(core.removeLocaleFromCollection).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
   });

@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
-import { CoreOperationError } from '../errors/lingo-tracker-error';
+import { CoreOperationError, InvalidTranslationStatusError } from '../errors/lingo-tracker-error';
 import { openResourceFolder } from '../resource/resource-folder';
 import * as jsonExporter from './export-to-json';
 import { exportTargetLocales, runExport } from './run-export';
@@ -87,6 +87,21 @@ describe('runExport', () => {
     ).rejects.toThrow('basePropertyName cannot be empty');
   });
 
+  it('rejects invalid and empty status filters before starting an export', async () => {
+    const onStart = vi.fn();
+    for (const status of [['new', 'verifed'], []]) {
+      await expect(
+        runExport([open('common')], {
+          format: 'json',
+          outputDirectory,
+          status,
+          onStart,
+        }),
+      ).rejects.toBeInstanceOf(InvalidTranslationStatusError);
+    }
+    expect(onStart).not.toHaveBeenCalled();
+  });
+
   it('rejects an output path whose parent is a file', async () => {
     const parent = join(projectDir, 'file');
     writeFileSync(parent, 'occupied');
@@ -154,6 +169,7 @@ describe('runExport', () => {
     expect(existsSync(join(outputDirectory, 'en.json'))).toBe(false);
     expect(result.resourcesExported).toBe(4);
     expect(result.errors).toEqual([]);
+    expect(result.outcome).toBe('succeeded');
     expect(result.localeResults).toEqual([
       { locale: 'fr', outcome: 'exported', resourcesExported: 2, filesCreated: ['fr.json'] },
       { locale: 'es', outcome: 'exported', resourcesExported: 2, filesCreated: ['es.json'] },
@@ -239,6 +255,7 @@ describe('runExport', () => {
 
     expect(result.filesCreated).toEqual(['fr.json', 'es.json']);
     expect(existsSync(join(outputDirectory, 'fr.json'))).toBe(false);
+    expect(result.outcome).toBe('succeeded');
     expect(result.summary).toContain('# Export Summary (DRY RUN)');
   });
 
@@ -302,6 +319,7 @@ describe('runExport', () => {
     expect(result.errors).toEqual([
       expect.stringContaining(`Protected terms checks skipped: Protected terms file is not valid JSON: ${termsPath}`),
     ]);
+    expect(result.outcome).toBe('failed');
     expect(result.warnings).toEqual([]);
     expect(readJson('fr.json')).toEqual({ 'i.brand': { value: '' }, 'j.brand': { value: '' } });
 
@@ -309,6 +327,10 @@ describe('runExport', () => {
     const unprotected = await runExport([common, frOnly], { ...options, augmentProtectedTerms: false });
     expect(unprotected.errors).toEqual([]);
     expect(unprotected.warnings).toEqual(['Overwriting existing file: fr.json']);
+
+    const dry = await runExport([common, frOnly], { ...options, dryRun: true });
+    expect(dry.errors).toHaveLength(1);
+    expect(dry.outcome).toBe('succeeded');
   });
 
   it('warns once about a named protected-terms file that does not exist', async () => {
@@ -335,6 +357,7 @@ describe('runExport', () => {
 
     expect(result.errors).toEqual([]);
     expect(result.hierarchicalConflicts).toHaveLength(1);
+    expect(result.outcome).toBe('failed');
     expect(result.hierarchicalConflicts[0]).toContain('[fr]');
     expect(result.summary).toContain('### Hierarchical Key Conflicts');
   });
@@ -357,7 +380,20 @@ describe('runExport', () => {
     });
     expect(result.localeResults[1]).toMatchObject({ locale: 'es', outcome: 'exported' });
     expect(result.errors).toEqual(['Export for locale fr failed: disk full']);
+    expect(result.outcome).toBe('failed');
     expect(jsonExporter.exportToJson).toHaveBeenCalledTimes(2);
+  });
+
+  it('fails when an exporter error leaves no file', async () => {
+    const common = open('common');
+    seed(common, 'i', { ok: { source: 'OK' } });
+    vi.mocked(jsonExporter.exportToJson).mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+
+    const result = await runExport([common], { format: 'json', outputDirectory, locales: ['fr'] });
+    expect(result.filesCreated).toEqual([]);
+    expect(result.outcome).toBe('failed');
   });
 
   it("totals each exporter's omitted resources and malformed files", async () => {
@@ -452,7 +488,7 @@ describe('runExport', () => {
 
   it('refuses collections with different base locales', async () => {
     await expect(runExport([open('common'), open('french')], { format: 'json', outputDirectory })).rejects.toThrow(
-      'Cannot export collections with different base locales together (common: en, french: fr)',
+      'Cannot combine collections with different base locales (common: en, french: fr)',
     );
   });
 

@@ -12,6 +12,7 @@ export {
   type Collection,
   type OpenCollectionOptions,
   type OpenedCollection,
+  type OpenedProject,
   openCollection,
   type TermFiles,
 } from './open-collection';

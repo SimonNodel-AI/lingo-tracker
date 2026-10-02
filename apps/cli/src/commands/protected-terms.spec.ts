@@ -69,6 +69,17 @@ describe('protectedTermsCommand (real core)', () => {
     );
     expect(process.exitCode).toBe(0);
   });
+  it('refuses a config changed after load and leaves term files untouched', async () => {
+    vi.mocked(ConsoleFormatter.section).mockImplementationOnce(() => {
+      writeFileSync(configPath(), `${JSON.stringify(BASE_CONFIG)}\n`);
+    });
+    await protectedTermsCommand({ list: true, add: ['Pixel'] });
+    expect(ConsoleFormatter.error).toHaveBeenCalledWith(
+      'The configuration file changed after it was read; run the command again',
+    );
+    expect(process.exitCode).toBe(1);
+    expect(existsSync(globalPath())).toBe(false);
+  });
   it('passes collection additions to core', async () => {
     withCollectionFile();
     await protectedTermsCommand({ collection: 'main', add: ['iPhone', 'C++'] });
@@ -147,6 +158,17 @@ describe('protectedTermsCommand (real core)', () => {
       'Global protected terms updated: iPhone, Pixel (config/terms.json)',
     );
   });
+  it('warns when a file write fails after the pointer changes', async () => {
+    const destination = join(projectDir, 'config/terms.json');
+    mkdirSync(destination);
+
+    await protectedTermsCommand({ file: 'config/terms.json', add: ['Pixel'] });
+
+    expect(ConsoleFormatter.warning).toHaveBeenCalledWith('Protected terms file change was reverted.');
+    expect(readConfig().protectedTermsFile).toBeUndefined();
+    expect(existsSync(destination)).toBe(true);
+    expect(process.exitCode).toBe(1);
+  });
   it('warns about a missing named file on list and write', async () => {
     writeConfig({ ...BASE_CONFIG, protectedTermsFile: 'typo.json' });
     await protectedTermsCommand({ list: true });
@@ -170,17 +192,12 @@ describe('protectedTermsCommand (real core)', () => {
     expect(ConsoleFormatter.error).toHaveBeenCalledWith(expect.stringContaining('has no protected terms file'));
     expect(process.exitCode).toBe(1);
   });
-  it('prints warnings and the collection list before a later write failure', async () => {
+  it('refuses a collection list edit without a file before printing the preview', async () => {
     writeConfig({ ...BASE_CONFIG, protectedTermsFile: 'missing.json' });
     await protectedTermsCommand({ collection: 'main', list: true, add: ['Pixel'] });
-    const warningOrder = vi.mocked(ConsoleFormatter.warning).mock.invocationCallOrder[0] ?? 0;
-    const sectionOrder = vi.mocked(ConsoleFormatter.section).mock.invocationCallOrder[0] ?? 0;
-    const listOrder = vi.mocked(ConsoleFormatter.keyValue).mock.invocationCallOrder.at(-1) ?? 0;
-    const errorOrder = vi.mocked(ConsoleFormatter.error).mock.invocationCallOrder[0] ?? 0;
-    expect(warningOrder).toBeLessThan(sectionOrder);
-    expect(sectionOrder).toBeLessThan(listOrder);
-    expect(listOrder).toBeLessThan(errorOrder);
-    expect(ConsoleFormatter.keyValue).toHaveBeenCalledWith('Collection file', '(none)');
+    expect(ConsoleFormatter.warning).not.toHaveBeenCalled();
+    expect(ConsoleFormatter.section).not.toHaveBeenCalled();
+    expect(ConsoleFormatter.keyValue).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
   it('does not print a pointer success line when the new view cannot be read', async () => {
@@ -192,16 +209,11 @@ describe('protectedTermsCommand (real core)', () => {
     expect(readConfig().collections['main'].protectedTermsFile).toBeUndefined();
   });
 
-  it('warns when a printed pointer change is reverted after a later failure', async () => {
+  it('refuses clearing a collection pointer with a list edit before printing success', async () => {
     withCollectionFile();
     await protectedTermsCommand({ collection: 'main', file: '', add: ['Pixel'] });
-    expect(ConsoleFormatter.success).toHaveBeenCalledWith('Collection "main" protected terms file cleared');
-    expect(ConsoleFormatter.warning).toHaveBeenCalledWith('Protected terms file change was reverted.');
-    const successOrder = vi.mocked(ConsoleFormatter.success).mock.invocationCallOrder[0] ?? 0;
-    const warningOrder = vi.mocked(ConsoleFormatter.warning).mock.invocationCallOrder[0] ?? 0;
-    const errorOrder = vi.mocked(ConsoleFormatter.error).mock.invocationCallOrder[0] ?? 0;
-    expect(successOrder).toBeLessThan(warningOrder);
-    expect(warningOrder).toBeLessThan(errorOrder);
+    expect(ConsoleFormatter.success).not.toHaveBeenCalled();
+    expect(ConsoleFormatter.warning).not.toHaveBeenCalledWith('Protected terms file change was reverted.');
     expect(readConfig().collections['main'].protectedTermsFile).toBe('i18n/terms.json');
     expect(process.exitCode).toBe(1);
   });

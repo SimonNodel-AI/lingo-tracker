@@ -2,6 +2,8 @@ import { computed, inject } from '@angular/core';
 import { signalStoreFeature, withState, withComputed, withMethods, withHooks, patchState, type } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import { pipe, tap, switchMap, mergeMap, catchError, of, timer, takeWhile, type Observable } from 'rxjs';
+import { TranslocoService } from '@jsverse/transloco';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { CollectionsApiService } from '../../services/collections-api.service';
 import { injectConfigWrite } from '../config-write';
 import type {
@@ -92,9 +94,6 @@ function persistRuns(runs: Record<string, BundleRunState>): void {
   }
 }
 
-// TODO(step 7): replace this fallback with a TRACKER_TOKENS.BUNDLES.TOAST.* translation.
-const GENERATE_FAILED_FALLBACK = 'Failed to generate bundle.';
-
 /**
  * The message for a failed bundle run. An invalid bundle definition carries every rule
  * message as `details`; they are appended (`Invalid bundle definition: a; b`) so the
@@ -180,6 +179,7 @@ export function withBundlesFeature<_>() {
     }),
     withMethods((store) => {
       const api = inject(CollectionsApiService);
+      const transloco = inject(TranslocoService);
       const configWrite = injectConfigWrite(store);
 
       const writeRuns = (bundleRuns: Record<string, BundleRunState>): void => {
@@ -246,7 +246,7 @@ export function withBundlesFeature<_>() {
                 setRun(name, {
                   ...store.bundleRuns()[name],
                   status: 'failed',
-                  error: toBundleErrorMessage(error, GENERATE_FAILED_FALLBACK),
+                  error: toBundleErrorMessage(error, transloco.translate(TRACKER_TOKENS.BUNDLES.TOAST.GENERATEFAILED)),
                   finishedAt: new Date().toISOString(),
                 });
                 return of(null);

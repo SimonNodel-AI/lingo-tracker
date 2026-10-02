@@ -1,9 +1,11 @@
+import type { ResourceMutation } from './resource-mutation';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { openCollection } from '../config/open-collection';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import {
   InvalidResourceKeyError,
   LocaleNotFoundError,
@@ -14,6 +16,19 @@ import { TranslationError } from '../translation/translation-provider';
 import { addResource } from './add-resource';
 import { addResources } from './add-resources';
 import { openResourceFolder } from './resource-folder';
+
+const collected: ResourceMutation[] = [];
+const onMutation = (mutation: ResourceMutation): void => {
+  collected.push(mutation);
+};
+beforeEach(() => {
+  collected.length = 0;
+});
+
+vi.mock('../file-io/json-file-operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
+  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
+});
 
 describe('addResources (real fs)', () => {
   let root: string;
@@ -43,11 +58,15 @@ describe('addResources (real fs)', () => {
     const beforeMeta = readFileSync(file('existing', 'tracker_meta.json'), 'utf8');
 
     await expect(
-      addResources(target, [
-        { key: 'existing.new', baseValue: 'New' },
-        { key: 'fresh.first', baseValue: 'First' },
-        { key: 'invalid@key', baseValue: 'Bad' },
-      ]),
+      addResources(
+        target,
+        [
+          { key: 'existing.new', baseValue: 'New' },
+          { key: 'fresh.first', baseValue: 'First' },
+          { key: 'invalid@key', baseValue: 'Bad' },
+        ],
+        { onMutation },
+      ),
     ).rejects.toThrow(InvalidResourceKeyError);
 
     expect(readFileSync(file('existing', 'resource_entries.json'), 'utf8')).toBe(beforeEntries);
@@ -59,10 +78,14 @@ describe('addResources (real fs)', () => {
   it('rejects duplicate resolved keys but allows parent/child keys in a batch and on disk', async () => {
     const target = collection();
     await expect(
-      addResources(target, [
-        { key: 'ok', targetFolder: 'common', baseValue: 'OK' },
-        { key: 'common.ok', baseValue: 'Again' },
-      ]),
+      addResources(
+        target,
+        [
+          { key: 'ok', targetFolder: 'common', baseValue: 'OK' },
+          { key: 'common.ok', baseValue: 'Again' },
+        ],
+        { onMutation },
+      ),
     ).rejects.toThrow(ResourceAlreadyExistsError);
     expect(existsSync(join(root, 'translations'))).toBe(false);
 
@@ -85,11 +108,15 @@ describe('addResources (real fs)', () => {
     const beforeMeta = readFileSync(file('existing', 'tracker_meta.json'), 'utf8');
 
     await expect(
-      addResources(target, [
-        { key: 'existing.new', baseValue: 'New' },
-        { key: 'fresh.first', baseValue: 'First' },
-        { key: 'last', targetFolder: 'bad@folder', baseValue: 'Bad' },
-      ]),
+      addResources(
+        target,
+        [
+          { key: 'existing.new', baseValue: 'New' },
+          { key: 'fresh.first', baseValue: 'First' },
+          { key: 'last', targetFolder: 'bad@folder', baseValue: 'Bad' },
+        ],
+        { onMutation },
+      ),
     ).rejects.toThrow(InvalidResourceKeyError);
 
     expect(readFileSync(file('existing', 'resource_entries.json'), 'utf8')).toBe(beforeEntries);
@@ -105,11 +132,15 @@ describe('addResources (real fs)', () => {
     const beforeMeta = readFileSync(file('existing', 'tracker_meta.json'), 'utf8');
 
     await expect(
-      addResources(target, [
-        { key: 'existing.new', baseValue: 'New' },
-        { key: 'fresh.first', baseValue: 'First' },
-        { key: 'last', baseValue: 'Bad', translations: [{ locale: 'es', value: 'Mal', status: 'translated' }] },
-      ]),
+      addResources(
+        target,
+        [
+          { key: 'existing.new', baseValue: 'New' },
+          { key: 'fresh.first', baseValue: 'First' },
+          { key: 'last', baseValue: 'Bad', translations: [{ locale: 'es', value: 'Mal', status: 'translated' }] },
+        ],
+        { onMutation },
+      ),
     ).rejects.toThrow(LocaleNotFoundError);
 
     expect(readFileSync(file('existing', 'resource_entries.json'), 'utf8')).toBe(beforeEntries);
@@ -136,7 +167,7 @@ describe('addResources (real fs)', () => {
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'fresh.last', baseValue: 'Fail' },
         ],
-        { provider },
+        { onMutation, provider },
       ),
     ).rejects.toThrow(TranslationError);
 
@@ -150,11 +181,14 @@ describe('addResources (real fs)', () => {
     const target = collection();
     await addResource(target, { key: 'common.ok', baseValue: 'Old', comment: 'Old note' });
 
-    const result = await addResources(target, [{ key: 'common.ok', baseValue: 'New' }], { onExisting: 'replace' });
+    const result = await addResources(target, [{ key: 'common.ok', baseValue: 'New' }], {
+      onMutation,
+      onExisting: 'replace',
+    });
 
     expect(result.entriesCreated).toBe(0);
     expect(result.created).toBe(false);
-    expect(result.mutations).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.ok' })]);
+    expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.ok' })]);
     expect(JSON.parse(readFileSync(file('common', 'resource_entries.json'), 'utf8')).ok).toEqual({
       source: 'New',
       fr: 'New',
@@ -177,7 +211,7 @@ describe('addResources (real fs)', () => {
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'common.ok', baseValue: 'New' },
         ],
-        { provider, onExisting: 'fail' },
+        { onMutation, provider, onExisting: 'fail' },
       ),
     ).rejects.toMatchObject({ key: 'common.ok' });
 
@@ -215,7 +249,7 @@ describe('addResources (real fs)', () => {
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'common.ok', baseValue: 'Requested' },
         ],
-        { provider, onExisting: 'fail' },
+        { onMutation, provider, onExisting: 'fail' },
       ),
     ).rejects.toMatchObject({ key: 'common.ok' });
 
@@ -236,7 +270,7 @@ describe('addResources (real fs)', () => {
           { key: 'ok', targetFolder: 'common', baseValue: 'First' },
           { key: 'common.ok', baseValue: 'Second' },
         ],
-        { onExisting: 'replace' },
+        { onMutation, onExisting: 'replace' },
       ),
     ).rejects.toThrow(ResourceAlreadyExistsError);
     expect(existsSync(join(root, 'translations'))).toBe(false);
@@ -249,10 +283,14 @@ describe('addResources (real fs)', () => {
     writeFileSync(blockedPath, 'ordinary file', 'utf8');
 
     await expect(
-      addResources(target, [
-        { key: 'created.ok', baseValue: 'OK' },
-        { key: 'later', targetFolder: 'blocked', baseValue: 'Later' },
-      ]),
+      addResources(
+        target,
+        [
+          { key: 'created.ok', baseValue: 'OK' },
+          { key: 'later', targetFolder: 'blocked', baseValue: 'Later' },
+        ],
+        { onMutation },
+      ),
     ).rejects.toThrow(/Creating resource folder/);
 
     expect(JSON.parse(readFileSync(file('created', 'resource_entries.json'), 'utf8'))).toEqual({
@@ -262,6 +300,38 @@ describe('addResources (real fs)', () => {
     expect(readFileSync(blockedPath, 'utf8')).toBe('ordinary file');
     expect(existsSync(file('blocked', 'resource_entries.json'))).toBe(false);
     expect(existsSync(file('blocked', 'tracker_meta.json'))).toBe(false);
+    expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'created.ok' })]);
+  });
+
+  it('delivers a reindex when a folder save fails after its first file', async () => {
+    const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+      '../file-io/json-file-operations',
+    );
+    const writer = vi.mocked(writeJsonFile);
+    writer.mockImplementation((options) => {
+      if (options.filePath.endsWith(join('second', 'tracker_meta.json'))) {
+        throw new Error('second metadata write failed');
+      }
+      return actual.writeJsonFile(options);
+    });
+    try {
+      await expect(
+        addResources(
+          collection(),
+          [
+            { key: 'first.ok', baseValue: 'OK' },
+            { key: 'second.later', baseValue: 'Later' },
+          ],
+          { onMutation },
+        ),
+      ).rejects.toThrow('second metadata write failed');
+    } finally {
+      writer.mockImplementation(actual.writeJsonFile);
+    }
+    expect(collected).toEqual([
+      expect.objectContaining({ kind: 'upsert', key: 'first.ok' }),
+      { kind: 'reindex', translationsFolder: collection().translationsFolder },
+    ]);
   });
 
   it('merges skipped locales and terminology and returns every mutation in input order', async () => {
@@ -281,7 +351,7 @@ describe('addResources (real fs)', () => {
         { key: 'budget.one', baseValue: 'Expenditure {count, plural, other {items}}' },
         { key: 'budget.two', baseValue: 'More expenditure {count, plural, other {items}}' },
       ],
-      { provider },
+      { onMutation, provider },
     );
 
     expect(result.entriesCreated).toBe(2);
@@ -289,8 +359,8 @@ describe('addResources (real fs)', () => {
     expect(result.skippedLocales).toEqual(['fr', 'de']);
     expect(result.terminology.findings.map(({ key }) => key)).toEqual(['budget.one', 'budget.two']);
     expect(result.terminology.problems).toHaveLength(1);
-    expect(result.mutations.map(({ kind }) => kind)).toEqual(['upsert', 'upsert']);
-    expect(result.mutations.map((mutation) => (mutation.kind === 'upsert' ? mutation.key : ''))).toEqual([
+    expect(collected.map(({ kind }) => kind)).toEqual(['upsert', 'upsert']);
+    expect(collected.map((mutation) => (mutation.kind === 'upsert' ? mutation.key : ''))).toEqual([
       'budget.one',
       'budget.two',
     ]);

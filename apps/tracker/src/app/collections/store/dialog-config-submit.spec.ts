@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { toApiError } from '../../shared/api-error/api-error';
-import { classifyConfigRefusal, submitDialogConfigWrite } from './dialog-config-submit';
+import { submitDialogConfigWrite } from './dialog-config-submit';
 
 describe('dialog Config Write submit', () => {
   it('locks closing and saving until success, then closes with the result', () => {
@@ -83,14 +83,5 @@ describe('dialog Config Write submit', () => {
     write.next(null);
     expect(dialogRef.close).not.toHaveBeenCalled();
     expect(onRefusal).not.toHaveBeenCalled();
-  });
-
-  it('classifies invalid details and all other failures', () => {
-    const invalid = toApiError(new HttpErrorResponse({ status: 400, error: { errors: ['bad rule'] } }));
-    expect(classifyConfigRefusal(invalid)).toEqual({ kind: 'invalid', details: ['bad rule'], error: invalid });
-    const other = new Error('offline');
-    expect(classifyConfigRefusal(other)).toEqual({ kind: 'other', details: [], error: other });
-    const conflict = toApiError(new HttpErrorResponse({ status: 409, error: { errors: ['server detail'] } }));
-    expect(classifyConfigRefusal(conflict)).toEqual({ kind: 'conflict', details: ['server detail'], error: conflict });
   });
 });

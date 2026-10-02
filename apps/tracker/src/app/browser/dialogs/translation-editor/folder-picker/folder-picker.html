@@ -54,11 +54,13 @@
               [expandedPaths]="expandedPaths()"
               [isAddingFolder]="isAddingFolder()"
               [addFolderParentPath]="addFolderParentPath()"
+              [createError]="createError()"
               (folderSelect)="onFolderSelect($event)"
               (toggleExpand)="onExpandToggle($event)"
               (addFolder)="onAddFolder($event)"
               (confirmNewFolder)="onFolderNameConfirmed($event)"
               (cancelNewFolder)="onFolderNameCancelled()"
+              (newFolderEdited)="onFolderNameEdited()"
             />
           }
         </div>

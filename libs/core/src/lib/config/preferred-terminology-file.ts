@@ -158,7 +158,10 @@ export function editPreferredTerminology(
 ): PreferredTerminologyEditResult {
   const replacement: unknown = edit.set;
   if (replacement !== undefined && !Array.isArray(replacement)) {
-    throw new InvalidProjectTermsEditError('Preferred terminology replacement must be an array of rules');
+    throw new InvalidProjectTermsEditError(
+      'Preferred terminology replacement must be an array of rules',
+      'preferred-replacement-shape',
+    );
   }
   const upsert: unknown = edit.upsert;
   if (
@@ -171,7 +174,10 @@ export function editPreferredTerminology(
       typeof upsert.preferred !== 'string' ||
       ('reason' in upsert && upsert.reason !== undefined && typeof upsert.reason !== 'string'))
   ) {
-    throw new InvalidProjectTermsEditError('A preferred terminology upsert needs a rule with string terms');
+    throw new InvalidProjectTermsEditError(
+      'A preferred terminology upsert needs a rule with string terms',
+      'preferred-upsert-shape',
+    );
   }
   let loaded: LoadPreferredTerminologyResult | undefined;
   let next: PreferredTermRule[];

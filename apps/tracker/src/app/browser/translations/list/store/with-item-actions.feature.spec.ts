@@ -169,6 +169,36 @@ describe('TranslationListStore item actions', () => {
     expect(notifications.success).toHaveBeenCalled();
   });
 
+  it('toasts the translated locales and a warning for the skipped ones', () => {
+    openCollection();
+    api.translateResource.mockReturnValue(of({ resource: entry, translatedCount: 2, skippedLocales: ['de', 'ja'] }));
+
+    actions.translateResource(entry);
+
+    expect(notifications.success).toHaveBeenCalledWith('2 locales translated successfully');
+    expect(notifications.warning).toHaveBeenCalledWith('Skipped locales (ICU format): de, ja');
+    expect(actions.isRecentlyUpdated(entry.fullKey)).toBe(true);
+  });
+
+  it('says everything is up to date when nothing was translated or skipped', () => {
+    openCollection();
+    api.translateResource.mockReturnValue(of({ resource: entry, translatedCount: 0, skippedLocales: [] }));
+
+    actions.translateResource(entry);
+
+    expect(notifications.info).toHaveBeenCalledWith('All locales are already up to date');
+    expect(notifications.success).not.toHaveBeenCalled();
+  });
+
+  it('reports a delete that removed nothing as a failure', async () => {
+    openCollection();
+    api.deleteResource.mockReturnValue(of({ entriesDeleted: 0 }));
+
+    await actions.deleteTranslation(entry);
+
+    expect(notifications.error).toHaveBeenCalledWith('Failed to delete resource');
+  });
+
   it('reports translation failure and clears the pending state', () => {
     openCollection();
     api.translateResource.mockReturnValue(

@@ -6,6 +6,7 @@ import { CONFIG_FILENAME } from '../../constants';
 import { ErrorMessages } from '../errors/error-messages';
 import { ConfigChangedError, InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
+import type { OpenedProject } from './open-collection';
 import { configContentHash, configReadVersion, loadConfig } from './load-config';
 
 export interface ConfigFileOperations {
@@ -158,4 +159,10 @@ export function updateConfig(
   cwd?: string,
 ): LingoTrackerConfig {
   return createConfigFileOperations({ cwd }).update(updater);
+}
+
+/** The guarded write handle of an opened project or collection. */
+export function guardedConfigWrite(source: OpenedProject): ConfigFileOperations {
+  prepareConfigSnapshot(source.sourceConfig);
+  return createConfigFileOperations({ cwd: source.projectRoot, snapshot: source.sourceConfig });
 }

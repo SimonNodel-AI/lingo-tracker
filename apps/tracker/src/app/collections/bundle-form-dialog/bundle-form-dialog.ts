@@ -20,6 +20,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { catchError, debounceTime, map, of, startWith, switchMap, tap } from 'rxjs';
 import {
+  bundleKeyToConstantName,
   checkBundleDefinition,
   hasLocalePlaceholder,
   isTypeScriptFile,
@@ -78,9 +79,6 @@ const escapeHtml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const code = (value: string): string => `<code>${escapeHtml(value)}</code>`;
-
-/** Mirrors core's `bundleKeyToConstantName` without importing core into the browser. */
-const deriveConstantName = (bundleKey: string): string => `${bundleKey.replace(/-/g, '_').toUpperCase()}_TOKENS`;
 
 const TOKEN_SEPARATORS = /(?<=[._])/;
 
@@ -236,7 +234,7 @@ export class BundleFormDialog {
 
   readonly typeFileName = computed(() => typeFileName(this.#draft()));
 
-  readonly derivedConstantName = computed(() => deriveConstantName(this.#draft().name.trim() || 'bundle'));
+  readonly derivedConstantName = computed(() => bundleKeyToConstantName(this.#draft().name.trim() || 'bundle'));
 
   /** The bundle file per project locale, relative to the output folder. */
   readonly patternFiles = computed(() => patternFiles(this.#draft(), this.projectLocales()));

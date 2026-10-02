@@ -1,7 +1,14 @@
 import * as fs from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Collection } from '../config/open-collection';
 import { deleteResource } from './delete-resource';
+import type { ResourceMutation } from './resource-mutation';
+
+const collected: ResourceMutation[] = [];
+const onMutation = (mutation: ResourceMutation): void => {
+  collected.push(mutation);
+};
 
 const collection: Collection = {
   name: 'main',
@@ -24,6 +31,32 @@ vi.mock('node:fs');
 describe('deleteResource', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    collected.length = 0;
+  });
+
+  it('delivers removes around a failed key save', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockImplementation((filePath) =>
+      filePath.toString().includes('resource_entries.json')
+        ? JSON.stringify({ a: { source: 'A' }, b: { source: 'B' }, c: { source: 'C' } })
+        : JSON.stringify({ a: { en: { checksum: 'a' } }, b: { en: { checksum: 'b' } }, c: { en: { checksum: 'c' } } }),
+    );
+    let writes = 0;
+    vi.mocked(fs.writeFileSync).mockImplementation(() => {
+      writes++;
+      if (writes === 3) throw new Error('second write failed');
+    });
+
+    const result = deleteResource(collection, { keys: ['apps.a', 'apps.b', 'apps.c'] }, { onMutation });
+    expect(result.entriesDeleted).toBe(2);
+    expect(result.errors).toEqual([
+      { key: 'apps.b', error: 'Failed to delete resource apps.b: could not write folder apps' },
+    ]);
+    expect(collected).toEqual([
+      { kind: 'remove', translationsFolder: resolve('translations'), key: 'apps.a' },
+      { kind: 'reindex', translationsFolder: resolve('translations') },
+      { kind: 'remove', translationsFolder: resolve('translations'), key: 'apps.c' },
+    ]);
   });
 
   it('should delete existing resource successfully', () => {

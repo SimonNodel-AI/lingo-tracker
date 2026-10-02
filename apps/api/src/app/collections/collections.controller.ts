@@ -1,11 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from '@nestjs/common';
-import {
-  addCollection,
-  createConfigFileOperations,
-  deleteCollectionByName,
-  openCollection,
-  updateCollection,
-} from '@simoncodes-ca/core';
+import { addCollection, deleteCollection, openCollection, updateCollection } from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
@@ -53,8 +47,8 @@ export class CollectionsController {
   /** Core's typed errors (for example `CollectionNotFoundError`, 404) reach the global exception filter. */
   @Delete(':collectionName')
   async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
-    const result = deleteCollectionByName(collectionName);
-    this.#index.apply(result.mutations);
+    const current = openCollection(this.#configService.getConfig(), collectionName, { forDeletion: true });
+    const result = deleteCollection(current, { onMutation: this.#index.sink });
     return { message: result.message };
   }
 
@@ -67,7 +61,10 @@ export class CollectionsController {
   async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
     assertCollectionBody(body, 'required');
     const { name, collection } = body;
-    const result = addCollection(name, mapDtoToCollection(collection), { protectedTerms: collection.protectedTerms });
+    const mapped = mapDtoToCollection(collection);
+    const result = addCollection(this.#configService.openProject(), name, mapped, {
+      protectedTerms: collection.protectedTerms,
+    });
     return { message: result.message };
   }
 
@@ -87,16 +84,10 @@ export class CollectionsController {
     const { name, collection } = body;
     const patch = mapDtoToCollection(collection);
     const current = openCollection(this.#configService.getConfig(), collectionName);
-    const result = await updateCollection(
-      current,
-      createConfigFileOperations({ cwd: current.projectRoot, snapshot: current.sourceConfig }),
-      name,
-      patch,
-      {
-        protectedTerms: collection.protectedTerms,
-      },
-    );
-    this.#index.apply(result.mutations);
+    const result = await updateCollection(current, name, patch, {
+      protectedTerms: collection.protectedTerms,
+      onMutation: this.#index.sink,
+    });
     return { message: result.message };
   }
 }

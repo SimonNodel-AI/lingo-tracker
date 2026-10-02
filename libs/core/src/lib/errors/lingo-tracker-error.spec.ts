@@ -19,7 +19,7 @@ import {
   CoreOperationError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
-  GlossaryBaseLocaleMismatchError,
+  CollectionBaseLocaleMismatchError,
   GlossaryExtractorError,
   GlossaryNoCollectionsError,
   ImportSourceError,
@@ -104,7 +104,10 @@ describe('LingoTrackerError subclasses', () => {
       message: 'translationsFolder is required',
     },
     {
-      error: new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
+      error: new InvalidProjectTermsEditError(
+        'Only one preferred terminology edit can be applied at a time',
+        'preferred-conflict',
+      ),
       name: 'InvalidProjectTermsEditError',
       code: 'INVALID_PROJECT_TERMS_EDIT',
       message: 'Only one preferred terminology edit can be applied at a time',
@@ -229,7 +232,7 @@ describe('LingoTrackerError subclasses', () => {
     const additional = [
       new ImportSourceError('source failed'),
       new InvalidImportLocaleError('en', 'translation-service'),
-      new GlossaryBaseLocaleMismatchError([
+      new CollectionBaseLocaleMismatchError([
         { name: 'a', baseLocale: 'en' },
         { name: 'b', baseLocale: 'fr' },
       ]),

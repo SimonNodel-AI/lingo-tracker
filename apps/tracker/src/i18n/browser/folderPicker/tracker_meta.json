@@ -209,36 +209,6 @@
       "status": "translated"
     }
   },
-  "folderCreated": {
-    "en": {
-      "checksum": "a849da990cd1a54faca8b4923561fc60"
-    },
-    "es": {
-      "checksum": "86948708e3adfc07d4e8fe923ab1c912",
-      "baseChecksum": "a849da990cd1a54faca8b4923561fc60",
-      "status": "translated"
-    },
-    "fr-ca": {
-      "checksum": "163f36c9e2f540d418bcfdb38974dfc0",
-      "baseChecksum": "a849da990cd1a54faca8b4923561fc60",
-      "status": "translated"
-    },
-    "ru": {
-      "checksum": "bf70d281db45c6bd47d2f85bbba6c854",
-      "baseChecksum": "a849da990cd1a54faca8b4923561fc60",
-      "status": "translated"
-    },
-    "ja": {
-      "checksum": "251d9199ea2c2febe0c2464c333ef75c",
-      "baseChecksum": "a849da990cd1a54faca8b4923561fc60",
-      "status": "translated"
-    },
-    "de": {
-      "checksum": "736c372fdf8f87e58841d882710839c9",
-      "baseChecksum": "a849da990cd1a54faca8b4923561fc60",
-      "status": "translated"
-    }
-  },
   "folderAlreadyExists": {
     "en": {
       "checksum": "8f0c6e690f8fc7b4930fa26eea038fe6"
@@ -266,36 +236,6 @@
     "de": {
       "checksum": "db0b86b7564861a2e1388ab232ac7c53",
       "baseChecksum": "8f0c6e690f8fc7b4930fa26eea038fe6",
-      "status": "translated"
-    }
-  },
-  "createFolderFailed": {
-    "en": {
-      "checksum": "398dff483997d01292f5848d5f78e409"
-    },
-    "es": {
-      "checksum": "d9c23854c7a57fcf9485341984105791",
-      "baseChecksum": "398dff483997d01292f5848d5f78e409",
-      "status": "translated"
-    },
-    "fr-ca": {
-      "checksum": "3a8006f316f0b8e692ca464c5c728c70",
-      "baseChecksum": "398dff483997d01292f5848d5f78e409",
-      "status": "translated"
-    },
-    "ru": {
-      "checksum": "5c86bb3f4b6b381f42094b79f6e2ba62",
-      "baseChecksum": "398dff483997d01292f5848d5f78e409",
-      "status": "translated"
-    },
-    "ja": {
-      "checksum": "653707d6996bec51f6bbd51b29d7aee7",
-      "baseChecksum": "398dff483997d01292f5848d5f78e409",
-      "status": "translated"
-    },
-    "de": {
-      "checksum": "7cbd86dab907a1f49ee0fcf5ea2ac8e2",
-      "baseChecksum": "398dff483997d01292f5848d5f78e409",
       "status": "translated"
     }
   },

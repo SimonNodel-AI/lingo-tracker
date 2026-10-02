@@ -35,6 +35,7 @@ describe('runValidate', () => {
   it('reports no collections as an in-band failure', () => {
     expect(runValidate([])).toEqual({
       status: 'failed',
+      outcome: 'failed',
       error: 'No collections found in configuration.',
       details: [],
       warnings: [],
@@ -44,6 +45,7 @@ describe('runValidate', () => {
   it('reports no target locales with the CLI hint', () => {
     expect(runValidate([collection('main', { locales: ['en'], targetLocales: [] })])).toEqual({
       status: 'failed',
+      outcome: 'failed',
       error: 'No target locales found in configuration.',
       details: ["Target locales are each collection's locales except its base locale."],
       warnings: [],
@@ -139,6 +141,7 @@ describe('runValidate', () => {
   it('refuses when every target locale was skipped and retains earlier unknown-locale warnings', () => {
     expect(runValidate([collection('main')], { skipLocales: ['xx', 'fr', 'es'] })).toEqual({
       status: 'failed',
+      outcome: 'failed',
       error: 'All target locales were skipped; nothing to validate.',
       details: [],
       warnings: ["Skipping unknown locale 'xx' — not in configured locales"],
@@ -178,6 +181,7 @@ describe('runValidate', () => {
     );
     const result = complete([main]);
     expect(result.validation.passed).toBe(true);
+    expect(result.outcome).toBe('succeeded');
     expect(result.validation.terminology?.warnings).toHaveLength(1);
   });
 
@@ -186,6 +190,7 @@ describe('runValidate', () => {
     writeFileSync(main.termFiles.preferredTerminology.path, '{invalid');
     const result = complete([main]);
     expect(result.validation.passed).toBe(false);
+    expect(result.outcome).toBe('failed');
     expect(result.validation.terminology?.configError).toContain('not valid JSON');
   });
 

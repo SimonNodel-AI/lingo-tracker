@@ -2,9 +2,8 @@
  * Add / update / delete bundle definitions in `.lingo-tracker.json`.
  *
  * Every operation normalises the definition and validates it (with the domain
- * Bundle Definition rules) against the freshly read config inside the
- * `updateConfig` updater, so the check and the write see the same state. Key
- * order in `config.bundles` is preserved on update and rename.
+ * Bundle Definition rules) against the opened project's config, so the check
+ * and write see the same state. Key order in `config.bundles` is preserved.
  *
  * Failure order: a missing bundle (`BundleNotFoundError`), then every key and
  * definition problem at once (`InvalidBundleDefinitionError`), then a key
@@ -16,30 +15,29 @@
 
 import { type BundleDefinition, checkBundleDefinition, findBundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { updateConfig } from '../config/config-file-operations';
+import { guardedConfigWrite } from '../config/config-file-operations';
+import type { OpenedProject } from '../config/open-collection';
 import {
   BundleAlreadyExistsError,
   BundleNotFoundError,
   InvalidBundleDefinitionError,
 } from '../errors/lingo-tracker-error';
 
-export interface BundleDefinitionOperationOptions {
-  cwd?: string;
-}
-
-export interface UpdateBundleDefinitionOptions extends BundleDefinitionOperationOptions {
+export interface UpdateBundleDefinitionOptions {
   /** Rename the bundle to this key while updating it. */
   newKey?: string;
 }
 
 export function addBundleDefinition(
+  project: OpenedProject,
   key: string,
   definition: BundleDefinition,
-  options: BundleDefinitionOperationOptions = {},
 ): { message: string } {
   const bundleKey = key?.trim() ?? '';
 
-  updateConfig((config) => {
+  const configWrite = guardedConfigWrite(project);
+  const config = project.sourceConfig;
+  const next = (() => {
     const cleaned = assertValid(definition, config, bundleKey);
 
     if (findBundleDefinition(config.bundles, bundleKey)) {
@@ -51,12 +49,14 @@ export function addBundleDefinition(
       ...config,
       bundles: Object.fromEntries([...Object.entries(config.bundles ?? {}), [bundleKey, cleaned]]),
     };
-  }, options.cwd);
+  })();
+  configWrite.write(next);
 
   return { message: `Bundle "${bundleKey}" added successfully` };
 }
 
 export function updateBundleDefinition(
+  project: OpenedProject,
   key: string,
   definition: BundleDefinition,
   options: UpdateBundleDefinitionOptions = {},
@@ -66,7 +66,9 @@ export function updateBundleDefinition(
   const targetKey = newKey ?? bundleKey;
   const isRename = targetKey !== bundleKey;
 
-  updateConfig((config) => {
+  const configWrite = guardedConfigWrite(project);
+  const config = project.sourceConfig;
+  const next = (() => {
     const bundles = config.bundles ?? {};
 
     if (!findBundleDefinition(bundles, bundleKey)) {
@@ -87,20 +89,20 @@ export function updateBundleDefinition(
     );
 
     return { ...config, bundles: nextBundles };
-  }, options.cwd);
+  })();
+  configWrite.write(next);
 
   return isRename
     ? { message: `Bundle "${bundleKey}" renamed to "${targetKey}" and updated successfully` }
     : { message: `Bundle "${bundleKey}" updated successfully` };
 }
 
-export function deleteBundleDefinition(
-  key: string,
-  options: BundleDefinitionOperationOptions = {},
-): { message: string } {
+export function deleteBundleDefinition(project: OpenedProject, key: string): { message: string } {
   const bundleKey = key.trim();
 
-  updateConfig((config) => {
+  const configWrite = guardedConfigWrite(project);
+  const config = project.sourceConfig;
+  const next = (() => {
     const bundles = config.bundles ?? {};
 
     if (!findBundleDefinition(bundles, bundleKey)) {
@@ -108,15 +110,16 @@ export function deleteBundleDefinition(
     }
 
     const remaining = Object.fromEntries(Object.entries(bundles).filter(([existingKey]) => existingKey !== bundleKey));
-    const next: LingoTrackerConfig = { ...config, bundles: remaining };
+    const result: LingoTrackerConfig = { ...config, bundles: remaining };
 
     // Drop the `bundles` key entirely when the last bundle goes, keeping the file minimal.
     if (Object.keys(remaining).length === 0) {
-      delete next.bundles;
+      delete result.bundles;
     }
 
-    return next;
-  }, options.cwd);
+    return result;
+  })();
+  configWrite.write(next);
 
   return { message: `Bundle "${bundleKey}" deleted successfully` };
 }

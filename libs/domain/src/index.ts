@@ -5,6 +5,7 @@
 export {
   type BundleDefinition,
   type BundleDefinitionCheck,
+  bundleKeyToConstantName,
   bundleOutputFile,
   type CollectionBundleDefinition,
   checkBundleDefinition,
@@ -50,7 +51,6 @@ export { type ListEdit, type ListEditProblem, listEditProblem, mergeListEdit } f
 export type { LocaleMetadata } from './lib/locale-metadata';
 export { isUnderNodeModules } from './lib/node-modules';
 export { normalizeTag, normalizeTags } from './lib/normalize-tags';
-export { normalizeTranslocoSyntax } from './lib/normalize-transloco-syntax';
 // Terminology: protected terms, preferred terminology and similarity
 export { normalizedLevenshtein } from './lib/normalized-levenshtein';
 export { findUnportablePluralCases, type UnportablePluralCase } from './lib/portable-plural-categories';
@@ -84,6 +84,7 @@ export {
 // Resource Summary: one entry with an explicit address and per-target verdicts
 export {
   buildResourceSummary,
+  displayStatus,
   type ResourceSummary,
   type ResourceSummaryCollection,
   type ResourceSummaryEntry,
@@ -101,7 +102,15 @@ export {
   resolveImportStatus,
 } from './lib/staleness';
 export type { TokenCasing } from './lib/token-casing';
-export { isTranslationStatus, TRANSLATION_STATUSES, type TranslationStatus } from './lib/translation-status';
+export {
+  DEFAULT_MISSING_METADATA_STATUS,
+  isNeedsWorkStatus,
+  isNeedsWorkStatusSelection,
+  isTranslationStatus,
+  NEEDS_WORK_STATUSES,
+  TRANSLATION_STATUSES,
+  type TranslationStatus,
+} from './lib/translation-status';
 // Status summary: roll-ups over many statuses
 export { countByStatus, STATUS_PRECEDENCE, type StatusCounts, worstStatus } from './lib/translation-status-summary';
 export { hasUnbundlableBranchBody } from './lib/transloco-brace-scan';

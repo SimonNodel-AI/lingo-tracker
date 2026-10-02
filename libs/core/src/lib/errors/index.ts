@@ -1,7 +1,7 @@
 // Typed core errors. Callers map them by class (the API's exception filter, the CLI's reporter).
 
 export type { FolderPathPart } from './error-messages';
-export type { ErrorKind } from './lingo-tracker-error';
+export type { CollectionTagEditProblem, ErrorKind, ProjectTermsEditProblem } from './lingo-tracker-error';
 export {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
@@ -9,6 +9,7 @@ export {
   BundleNotFoundError,
   CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
+  CollectionBaseLocaleMismatchError,
   CollectionNotFoundError,
   CollectionRenameBundleConflictError,
   CollectionRequiredByBundleError,

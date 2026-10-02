@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, computed, inject } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
-import type { TranslationStatus } from '@simoncodes-ca/domain';
+import { isNeedsWorkStatusSelection, NEEDS_WORK_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
 import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import {
@@ -53,7 +53,7 @@ export class StatusFilter {
    */
   readonly isNeedsWorkSelected = computed(() => {
     const selected = this.store.selectedStatuses();
-    return selected.length === 2 && selected.includes('new') && selected.includes('stale');
+    return isNeedsWorkStatusSelection(selected);
   });
 
   readonly toggles = computed<readonly StatusToggle[]>(() => {
@@ -64,7 +64,7 @@ export class StatusFilter {
       {
         id: 'needsWork',
         label: TRACKER_TOKENS.BROWSER.STATUSFILTER.NEEDSWORK,
-        statuses: ['new', 'stale'] as const,
+        statuses: NEEDS_WORK_STATUSES,
         count: this.store.needsWorkCount(),
         selected: this.isNeedsWorkSelected(),
       },

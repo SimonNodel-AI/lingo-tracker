@@ -1,6 +1,5 @@
-import type { BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
+import { type BundleDefinition, bundleKeyToConstantName, type TokenCasing } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { bundleKeyToConstantName } from './type-generation/key-transformer';
 
 export interface BundleSettingsOverrides {
   readonly tokenCasing?: TokenCasing;

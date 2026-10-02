@@ -21,6 +21,7 @@ const mockRunValidate = vi.mocked(core.runValidate);
 
 const passed = {
   status: 'complete' as const,
+  outcome: 'succeeded' as const,
   summary: 'Validation summary output',
   warnings: [],
   validation: {
@@ -117,6 +118,7 @@ describe('validateCommand', () => {
     vi.mocked(core.loadConfig).mockReturnValue({ ...config, collections: {} });
     mockRunValidate.mockReturnValue({
       status: 'failed',
+      outcome: 'failed',
       error: 'No collections found in configuration.',
       details: [],
       warnings: [],
@@ -130,6 +132,7 @@ describe('validateCommand', () => {
   it('prints the no-target-locales hint', async () => {
     mockRunValidate.mockReturnValue({
       status: 'failed',
+      outcome: 'failed',
       error: 'No target locales found in configuration.',
       details: ["Target locales are each collection's locales except its base locale."],
       warnings: [],
@@ -149,7 +152,11 @@ describe('validateCommand', () => {
   });
 
   it('prints the summary and exits one when validation fails', async () => {
-    mockRunValidate.mockReturnValue({ ...passed, validation: { ...passed.validation, passed: false } });
+    mockRunValidate.mockReturnValue({
+      ...passed,
+      outcome: 'failed',
+      validation: { ...passed.validation, passed: false },
+    });
     await validateCommand({});
     expect(console.log).toHaveBeenCalledWith('Validation summary output');
     expect(process.exitCode).toBe(1);
@@ -158,6 +165,7 @@ describe('validateCommand', () => {
   it('reports new-resource failures in the summary', async () => {
     mockRunValidate.mockReturnValue({
       ...passed,
+      outcome: 'failed',
       summary: 'new: title (fr)',
       validation: { ...passed.validation, passed: false },
     });
@@ -169,6 +177,7 @@ describe('validateCommand', () => {
   it('reports stale-resource failures in the summary', async () => {
     mockRunValidate.mockReturnValue({
       ...passed,
+      outcome: 'failed',
       summary: 'stale: title (fr)',
       validation: { ...passed.validation, passed: false },
     });
@@ -180,6 +189,7 @@ describe('validateCommand', () => {
   it('reports translated-resource failures in strict mode', async () => {
     mockRunValidate.mockReturnValue({
       ...passed,
+      outcome: 'failed',
       summary: 'translated: title (fr)',
       validation: { ...passed.validation, passed: false },
     });
@@ -191,6 +201,7 @@ describe('validateCommand', () => {
   it('prints a summary with failures from multiple locales', async () => {
     mockRunValidate.mockReturnValue({
       ...passed,
+      outcome: 'failed',
       summary: 'fr: title\nes: title',
       validation: { ...passed.validation, passed: false },
     });
@@ -202,6 +213,7 @@ describe('validateCommand', () => {
   it('prints a summary with failures from multiple collections', async () => {
     mockRunValidate.mockReturnValue({
       ...passed,
+      outcome: 'failed',
       summary: 'common: title\nadmin: title',
       validation: { ...passed.validation, passed: false },
     });
@@ -213,6 +225,7 @@ describe('validateCommand', () => {
   it('prints a large failure summary without changing the exit code', async () => {
     mockRunValidate.mockReturnValue({
       ...passed,
+      outcome: 'failed',
       summary: '100 failures and more',
       validation: { ...passed.validation, passed: false },
     });
@@ -260,6 +273,7 @@ describe('validateCommand', () => {
   it('prints warnings before an all-skipped failure', async () => {
     mockRunValidate.mockReturnValue({
       status: 'failed',
+      outcome: 'failed',
       error: 'All target locales were skipped; nothing to validate.',
       details: [],
       warnings: ["Skipping unknown locale 'xx' — not in configured locales"],
@@ -298,7 +312,11 @@ describe('validateCommand', () => {
   });
 
   it('exits one when validation reports a broken terminology file', async () => {
-    mockRunValidate.mockReturnValue({ ...passed, validation: { ...passed.validation, passed: false } });
+    mockRunValidate.mockReturnValue({
+      ...passed,
+      outcome: 'failed',
+      validation: { ...passed.validation, passed: false },
+    });
     await validateCommand({});
     expect(process.exitCode).toBe(1);
   });

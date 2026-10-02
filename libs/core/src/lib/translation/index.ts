@@ -6,6 +6,7 @@ export {
   InMemoryTranslationProvider,
 } from './in-memory-translation-provider';
 export {
+  type TranslateExistingResourceOptions,
   type TranslateExistingResourceResult,
   translateExistingResource,
 } from './translate-existing-resource';

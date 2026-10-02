@@ -1,9 +1,9 @@
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
-import type { LoadedResource } from '../export/export-common';
+import type { CollectionSetResource } from '../collection-set/collection-set';
 import { validateTerminology } from './validate-terminology';
 
-const resource = (overrides: Partial<LoadedResource> = {}): LoadedResource => ({
+const resource = (overrides: Partial<CollectionSetResource> = {}): CollectionSetResource => ({
   key: 'title',
   fullKey: 'budget.title',
   source: 'Capital expenditure',
@@ -11,6 +11,7 @@ const resource = (overrides: Partial<LoadedResource> = {}): LoadedResource => ({
   status: { fr: 'verified', de: 'verified' },
   collection: 'main',
   effectiveTags: [],
+  targetLocales: [],
   ...overrides,
 });
 

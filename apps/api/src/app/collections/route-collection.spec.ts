@@ -1,7 +1,6 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import { ConfigService } from '../config/config.service';
-import { openDestinationCollection } from './open-route-collection';
 import { RouteCollectionPipe, routeCollectionRef } from './route-collection';
 
 describe('RouteCollection', () => {
@@ -24,6 +23,15 @@ describe('RouteCollection', () => {
     pipe.transform(
       routeCollectionRef(writable === undefined ? {} : { writable }, { method, params: { collectionName: name } }),
     );
+  const httpErrorOf = (fn: () => unknown): HttpException => {
+    try {
+      fn();
+    } catch (error) {
+      if (error instanceof HttpException) return error;
+      throw error;
+    }
+    throw new Error('expected an HTTP exception');
+  };
 
   beforeEach(() => getConfig.mockClear());
 
@@ -33,13 +41,25 @@ describe('RouteCollection', () => {
   });
 
   it('refuses a write to a read-only collection with the core message', () => {
-    expect(() => open('vendor', 'POST')).toThrow(ForbiddenException);
-    expect(() => open('vendor', 'POST')).toThrow('Collection "vendor" is read-only. Its resources cannot be modified.');
+    const error = httpErrorOf(() => open('vendor', 'POST'));
+    expect(error).toBeInstanceOf(ForbiddenException);
+    expect(error.getStatus()).toBe(403);
+    expect(error.getResponse()).toEqual({
+      statusCode: 403,
+      error: 'Forbidden',
+      message: 'Collection "vendor" is read-only. Its resources cannot be modified.',
+    });
   });
 
   it('answers 404 for a missing collection before read-only enforcement', () => {
-    expect(() => open('missing', 'POST')).toThrow(NotFoundException);
-    expect(() => open('missing', 'POST')).toThrow('Collection "missing" not found');
+    const error = httpErrorOf(() => open('missing', 'POST'));
+    expect(error).toBeInstanceOf(NotFoundException);
+    expect(error.getStatus()).toBe(404);
+    expect(error.getResponse()).toEqual({
+      statusCode: 404,
+      error: 'Not Found',
+      message: 'Collection "missing" not found',
+    });
   });
 
   it('allows an explicit read on POST', () => {
@@ -53,10 +73,5 @@ describe('RouteCollection', () => {
 
   it('defaults a missing parameter to an empty name', () => {
     expect(routeCollectionRef({}, { method: 'GET', params: {} })).toEqual({ name: '', writable: false });
-  });
-
-  it('uses a plain destination body name and names a missing destination', () => {
-    expect(openDestinationCollection(config, 'a%25b').name).toBe('a%25b');
-    expect(() => openDestinationCollection(config, 'gone')).toThrow('Destination collection "gone" not found');
   });
 });

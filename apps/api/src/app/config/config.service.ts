@@ -4,12 +4,17 @@ import {
   ConfigParseError,
   InvalidConfigError,
   type LingoTrackerConfig,
+  type OpenedProject,
   loadConfig,
 } from '@simoncodes-ca/core';
 import { ConfigReadNotFoundError, ConfigReadParseError } from '../errors/config-read.errors';
 
 @Injectable()
 export class ConfigService {
+  openProject(): OpenedProject {
+    return { projectRoot: process.cwd(), sourceConfig: this.getConfig() };
+  }
+
   /** Reads `.lingo-tracker.json` once per call; the exception filter maps typed failures. */
   getConfig(): LingoTrackerConfig {
     try {

@@ -217,7 +217,10 @@ describe('toHttpException', () => {
       { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new InvalidProjectTermsEditError('Only one preferred terminology edit can be applied at a time'),
+      new InvalidProjectTermsEditError(
+        'Only one preferred terminology edit can be applied at a time',
+        'preferred-conflict',
+      ),
       400,
       {
         message: 'Only one preferred terminology edit can be applied at a time',
@@ -305,16 +308,15 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new internalErrors.GlossaryBaseLocaleMismatchError([
+      new internalErrors.CollectionBaseLocaleMismatchError([
         { name: 'a', baseLocale: 'en' },
         { name: 'b', baseLocale: 'fr' },
       ]),
-      500,
+      400,
       {
-        message:
-          'Cannot build a glossary from collections with different base locales together (a: en, b: fr). Build them separately.',
-        error: 'Internal Server Error',
-        statusCode: 500,
+        message: 'Cannot combine collections with different base locales (a: en, b: fr). Run them separately.',
+        error: 'Bad Request',
+        statusCode: 400,
       },
     ],
     [
@@ -353,6 +355,16 @@ describe('toHttpException', () => {
 
     expect(http.getStatus()).toBe(status);
     expect(http.getResponse()).toEqual(response);
+  });
+
+  it('maps a missing move destination with its destination-specific message', () => {
+    const http = toHttpException(new CollectionNotFoundError('app', 'destination'));
+    expect(http.getStatus()).toBe(404);
+    expect(http.getResponse()).toEqual({
+      statusCode: 404,
+      message: 'Destination collection "app" not found',
+      error: 'Not Found',
+    });
   });
 
   it('pins every public and internal core error subclass', () => {

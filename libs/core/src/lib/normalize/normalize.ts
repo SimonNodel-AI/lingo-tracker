@@ -86,7 +86,11 @@ function normalizeFolder(folder: ResourceFolder, collection: Collection, dryRun:
     if (!stored) continue;
 
     const values = normalizeEntryValues(stored.entry);
-    const report = folder.normalizeEntry(key, values.entry, collection.targetLocales);
+    // The helper converts for counters; normalizeEntry converts the raw values again to enforce the write boundary.
+    const rawValues = { ...stored.entry };
+    if (values.entry.tags === undefined) delete rawValues.tags;
+    else rawValues.tags = values.entry.tags;
+    const report = folder.normalizeEntry(key, rawValues, collection.targetLocales);
 
     counters.entriesProcessed++;
     counters.localesAdded += report.localesAdded;

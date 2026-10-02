@@ -9,7 +9,12 @@ export {
 } from './add-resource';
 export { type AddResourcesResult, addResources } from './add-resources';
 export { type DeleteResourceParams, type DeleteResourceResult, deleteResource } from './delete-resource';
-export { type EditResourceChanges, type EditResourceResult, editResource } from './edit-resource';
+export {
+  type EditResourceChanges,
+  type EditResourceOptions,
+  type EditResourceResult,
+  editResource,
+} from './edit-resource';
 export { extractResourcesRecursively, extractSubtree } from './extract-subtree';
 export {
   type FolderChild,
@@ -38,7 +43,13 @@ export {
   type ResourceFolderEntry,
   type ResourceFolderSaveResult,
 } from './resource-folder';
-export { type ResourceMutation, reindexMutation } from './resource-mutation';
+export {
+  type MutationSink,
+  type MutationSinkOptions,
+  type ResourceMutation,
+  reindexMutation,
+  saveReporting,
+} from './resource-mutation';
 export {
   type MatchType,
   type NormalizedSearchRequest,

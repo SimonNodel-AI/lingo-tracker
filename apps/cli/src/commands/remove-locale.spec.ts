@@ -78,7 +78,6 @@ describe('removeLocaleCommand', () => {
         message: 'Locale "fr" removed from collection "main" successfully',
         entriesPurged: 5,
         filesUpdated: 3,
-        mutations: [],
       });
 
       const options: RemoveLocaleOptions = { collection: 'main', locale: 'fr' };
@@ -86,7 +85,6 @@ describe('removeLocaleCommand', () => {
 
       expect(mockCore).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
       );
       expect(console.log).toHaveBeenCalledWith('✅ Locale "fr" removed from collection "main" successfully');
@@ -142,7 +140,6 @@ describe('removeLocaleCommand', () => {
         message: 'Locale "fr" removed from collection "main" successfully',
         entriesPurged: 5,
         filesUpdated: 3,
-        mutations: [],
       });
       vi.mocked(prompts).mockResolvedValueOnce({ locale: 'fr' });
 
@@ -154,7 +151,6 @@ describe('removeLocaleCommand', () => {
       );
       expect(mockCore).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'main', sourceConfig: BASE_CONFIG, projectRoot: '/project' }),
-        expect.objectContaining({ write: expect.any(Function) }),
         'fr',
       );
     });

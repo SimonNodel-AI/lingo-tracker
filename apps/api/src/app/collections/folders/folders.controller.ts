@@ -11,7 +11,6 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { ConfigService } from '../../config/config.service';
 import { CollectionIndex } from '../../cache/collection-index.service';
-import { openDestinationCollection } from '../open-route-collection';
 import { RouteCollection } from '../route-collection';
 
 @Controller('collections/:collectionName/folders')
@@ -26,12 +25,14 @@ export class FoldersController {
     @RouteCollection() collection: Collection,
     @Body() createFolderDto: CreateFolderDto,
   ): Promise<CreateFolderResponseDto> {
-    const result = createFolder(collection, {
-      folderName: createFolderDto.folderName,
-      parentPath: createFolderDto.parentPath,
-    });
-
-    this.index.apply(result.mutations);
+    const result = createFolder(
+      collection,
+      {
+        folderName: createFolderDto.folderName,
+        parentPath: createFolderDto.parentPath,
+      },
+      { onMutation: this.index.sink },
+    );
 
     // Build the folder node for the frontend to insert into tree
     const fullPath = result.folderAddress;
@@ -60,11 +61,13 @@ export class FoldersController {
     @RouteCollection() collection: Collection,
     @Body() deleteFolderDto: DeleteFolderDto,
   ): Promise<DeleteFolderResponseDto> {
-    const result = deleteFolder(collection, {
-      folderPath: deleteFolderDto.folderPath,
-    });
-
-    this.index.apply(result.mutations);
+    const result = deleteFolder(
+      collection,
+      {
+        folderPath: deleteFolderDto.folderPath,
+      },
+      { onMutation: this.index.sink },
+    );
 
     return {
       deleted: true,
@@ -96,19 +99,17 @@ export class FoldersController {
       );
     }
 
-    const destinationCollection = moveFolderDto.toCollection
-      ? openDestinationCollection(config, moveFolderDto.toCollection)
-      : undefined;
-
-    const result = await moveFolder(collection, {
-      sourceFolderPath: moveFolderDto.sourceFolderPath,
-      destinationFolderPath: moveFolderDto.destinationFolderPath,
-      override: moveFolderDto.override,
-      nestUnderDestination: moveFolderDto.nestUnderDestination,
-      destinationCollection,
-    });
-
-    this.index.apply(result.mutations);
+    const result = await moveFolder(
+      collection,
+      {
+        sourceFolderPath: moveFolderDto.sourceFolderPath,
+        destinationFolderPath: moveFolderDto.destinationFolderPath,
+        override: moveFolderDto.override,
+        nestUnderDestination: moveFolderDto.nestUnderDestination,
+        toCollection: moveFolderDto.toCollection,
+      },
+      { config, onMutation: this.index.sink },
+    );
 
     return {
       movedCount: result.movedCount,

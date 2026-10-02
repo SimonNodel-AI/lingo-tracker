@@ -2,7 +2,7 @@ import { CoreOperationError, FolderNotFoundError, ResourceNotFoundError } from '
 import { existsSync } from 'node:fs';
 import { resolveResourcePaths } from './resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from './resource-folder';
-import { removeMutation, type ResourceMutation } from './resource-mutation';
+import { removeMutation, saveReporting, type MutationSink, type MutationSinkOptions } from './resource-mutation';
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 
@@ -16,23 +16,23 @@ export interface DeleteResourceResult {
     key: string;
     error: string;
   }>;
-  /** One `remove` per deleted key. */
-  mutations: ResourceMutation[];
 }
 
 /** Deletes entries from a collection. Per-key failures are reported in the result, not thrown. */
-export function deleteResource(collection: Collection, params: DeleteResourceParams): DeleteResourceResult {
+export function deleteResource(
+  collection: Collection,
+  params: DeleteResourceParams,
+  options: MutationSinkOptions = {},
+): DeleteResourceResult {
   const { translationsFolder, baseLocale } = collection;
   let entriesDeleted = 0;
   const errors: Array<{ key: string; error: string }> = [];
-  const mutations: ResourceMutation[] = [];
 
   for (const key of params.keys) {
     try {
-      const deletionSucceeded = deleteSingleResource(translationsFolder, baseLocale, key);
+      const deletionSucceeded = deleteSingleResource(translationsFolder, baseLocale, key, options.onMutation);
       if (deletionSucceeded) {
         entriesDeleted++;
-        mutations.push(removeMutation(translationsFolder, key));
       }
     } catch (caughtError) {
       const message = (caughtError as { message?: string })?.message || 'Unknown error occurred';
@@ -46,11 +46,15 @@ export function deleteResource(collection: Collection, params: DeleteResourcePar
   return {
     entriesDeleted,
     errors: errors.length > 0 ? errors : undefined,
-    mutations,
   };
 }
 
-function deleteSingleResource(translationsFolder: string, baseLocale: string, key: string): boolean {
+function deleteSingleResource(
+  translationsFolder: string,
+  baseLocale: string,
+  key: string,
+  onMutation?: MutationSink,
+): boolean {
   validateKey(key);
 
   const paths = resolveResourcePaths({
@@ -93,7 +97,7 @@ function deleteSingleResource(translationsFolder: string, baseLocale: string, ke
 
   try {
     // Removes both files when this was the folder's last entry.
-    folder.save();
+    saveReporting(folder, translationsFolder, onMutation, () => [removeMutation(translationsFolder, key)]);
   } catch (caughtError) {
     throw new CoreOperationError(
       `Failed to delete resource ${paths.resolvedKey}: could not write folder ${folderAddress}`,

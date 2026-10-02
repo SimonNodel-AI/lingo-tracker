@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Collection, ResourceMutation, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
+import type { Collection, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
 import { translateLocale } from '@simoncodes-ca/core';
 import type { TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
@@ -51,7 +51,6 @@ export class TranslationJobService {
         skippedKeys: [],
       },
       execute: async (jobId, update) => {
-        let mutations: ResourceMutation[] = [];
         const onProgress = (progress: TranslateLocaleProgress): void => {
           update({
             totalResources: progress.totalResources,
@@ -60,27 +59,22 @@ export class TranslationJobService {
             skippedCount: progress.skippedCount,
           });
         };
-        try {
-          const result = await translateLocale(collection, {
-            targetLocale,
-            onProgress,
-            onWrite: (mutation) => mutations.push(mutation),
-          });
-          mutations = result.mutations;
-          for (const warning of result.warnings) {
-            this.#logger.warn(`Translation job ${jobId}: ${warning}`);
-          }
-          update({
-            totalResources: result.totalResources,
-            translatedCount: result.translatedCount,
-            failedCount: result.failedCount,
-            skippedCount: result.skippedCount,
-            failures: [...result.failures],
-            skippedKeys: [...result.skippedKeys],
-          });
-        } finally {
-          if (mutations.length > 0) this.#index.apply(mutations);
+        const result = await translateLocale(collection, {
+          targetLocale,
+          onProgress,
+          onMutation: this.#index.sink,
+        });
+        for (const warning of result.warnings) {
+          this.#logger.warn(`Translation job ${jobId}: ${warning}`);
         }
+        update({
+          totalResources: result.totalResources,
+          translatedCount: result.translatedCount,
+          failedCount: result.failedCount,
+          skippedCount: result.skippedCount,
+          failures: [...result.failures],
+          skippedKeys: [...result.skippedKeys],
+        });
       },
       onError: (jobId, message) => {
         this.#logger.error(`Translation job ${jobId} failed: ${message}`);

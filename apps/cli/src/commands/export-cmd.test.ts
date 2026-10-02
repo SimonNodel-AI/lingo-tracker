@@ -41,6 +41,7 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     ConfigParseError: actual.ConfigParseError,
     CollectionNotFoundError: actual.CollectionNotFoundError,
     ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
+    InvalidTranslationStatusError: actual.InvalidTranslationStatusError,
     CONFIG_FILENAME: '.lingo-tracker.json',
     DEFAULT_CONFIG: actual.DEFAULT_CONFIG,
     runExport: vi.fn(),
@@ -54,6 +55,7 @@ const mockRunExport = vi.mocked(core.runExport);
 
 /** A run that exported fr and es; override any field. */
 const runResult = (overrides: Partial<ExportRunResult> = {}): ExportRunResult => ({
+  outcome: overrides.errors?.length || overrides.hierarchicalConflicts?.length ? 'failed' : 'succeeded',
   format: 'json',
   filesCreated: ['fr.json', 'es.json'],
   resourcesExported: 10,
@@ -187,13 +189,17 @@ describe('exportCommand', () => {
     });
 
     it('rejects an unknown export status as a usage error', async () => {
+      mockRunExport.mockRejectedValueOnce(new core.InvalidTranslationStatusError('verifed'));
       await exportCommand({ format: 'json', status: 'new,verifed' });
 
       expect(console.error).toHaveBeenCalledWith(
-        '❌ Invalid --status "verifed". Valid statuses: new, translated, stale, verified',
+        '❌ Invalid translation status "verifed". Valid statuses: new, translated, stale, verified',
       );
       expect(process.exitCode).toBe(1);
-      expect(mockRunExport).not.toHaveBeenCalled();
+      expect(mockRunExport).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({ status: ['new', 'verifed'] }),
+      );
     });
 
     it('should export the chosen collection and locale to JSON', async () => {
@@ -653,7 +659,7 @@ describe('exportCommand', () => {
     });
 
     it('should not set exit code in dry run mode even with errors', async () => {
-      mockRunExport.mockResolvedValue(runResult({ errors: ['Export failed'] }));
+      mockRunExport.mockResolvedValue(runResult({ outcome: 'succeeded', errors: ['Export failed'] }));
 
       await exportCommand({
         format: 'json',

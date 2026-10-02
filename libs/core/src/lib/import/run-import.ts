@@ -2,6 +2,7 @@ import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Collection } from '../config/open-collection';
 import { ImportSourceError } from '../errors';
+import type { RunOutcome } from '../run-outcome';
 import { detectImportFormat } from './import-common';
 import { importResources } from './import-resources';
 import { generateImportSummary } from './import-summary';
@@ -29,6 +30,7 @@ export interface ImportRunWarning {
 }
 
 export interface RunImportResult {
+  readonly outcome: RunOutcome;
   format: ImportFormat;
   result: ImportResult;
   /** Render only when needed: a summary failure must not hide an already completed import. */
@@ -76,6 +78,7 @@ export async function runImport(collection: Collection, options: RunImportOption
   return {
     format,
     result,
+    outcome: result.resourcesFailed > 0 || result.errors.length > 0 ? 'failed' : 'succeeded',
     summary: () => generateImportSummary(result, { ...options, format, source: options.source }),
   };
 }

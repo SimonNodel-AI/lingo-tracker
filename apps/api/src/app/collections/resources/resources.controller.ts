@@ -72,9 +72,7 @@ export class ResourcesController {
     @RouteCollection() collection: Collection,
     @Body() dto: TranslateResourceDto,
   ): Promise<TranslateResourceResponseDto> {
-    const result = await translateExistingResource(collection, dto.key);
-
-    this.#index.apply(result.mutations);
+    const result = await translateExistingResource(collection, dto.key, { onMutation: this.#index.sink });
 
     return {
       resource: buildResourceSummary(dto.key, result.entry, collection),
@@ -106,9 +104,8 @@ export class ResourcesController {
         targetFolder: resource.targetFolder,
         translations: resource.translations,
       })),
-      { onExisting: 'fail' },
+      { onExisting: 'fail', onMutation: this.#index.sink },
     );
-    this.#index.apply(result.mutations);
     const terminology = toTerminologyDto(result.terminology);
 
     return {
@@ -128,8 +125,7 @@ export class ResourcesController {
       throw new HttpException('Invalid request: keys array is required and must not be empty', HttpStatus.BAD_REQUEST);
     }
 
-    const result = deleteResource(collection, { keys: dto.keys });
-    this.#index.apply(result.mutations);
+    const result = deleteResource(collection, { keys: dto.keys }, { onMutation: this.#index.sink });
 
     return {
       entriesDeleted: result.entriesDeleted,
@@ -155,8 +151,7 @@ export class ResourcesController {
       override: op.override,
       ...(op.toCollection && { toCollection: op.toCollection }),
     }));
-    const result = await moveResources(collection, moves, { config });
-    this.#index.apply(result.mutations);
+    const result = await moveResources(collection, moves, { config, onMutation: this.#index.sink });
     return { movedCount: result.movedCount, warnings: result.warnings, errors: result.errors };
   }
 
@@ -165,15 +160,18 @@ export class ResourcesController {
     @RouteCollection() collection: Collection,
     @Body() dto: UpdateResourceDto,
   ): Promise<UpdateResourceResponseDto> {
-    const result = await editResource(collection, dto.key, {
-      baseValue: dto.baseValue,
-      comment: dto.comment,
-      tags: dto.tags,
-      translations: dto.locales,
-      moveTo: dto.moveTo,
-    });
-
-    this.#index.apply(result.mutations);
+    const result = await editResource(
+      collection,
+      dto.key,
+      {
+        baseValue: dto.baseValue,
+        comment: dto.comment,
+        tags: dto.tags,
+        translations: dto.locales,
+        moveTo: dto.moveTo,
+      },
+      { onMutation: this.#index.sink },
+    );
     const resourceDto: ResourceSummaryDto | undefined =
       result.updated && result.entry ? buildResourceSummary(result.resolvedKey, result.entry, collection) : undefined;
     const terminology = result.terminology && toTerminologyDto(result.terminology);

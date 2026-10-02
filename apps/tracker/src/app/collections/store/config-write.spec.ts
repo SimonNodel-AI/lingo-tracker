@@ -1,4 +1,5 @@
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
@@ -7,7 +8,8 @@ import type { Observable } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
-import { ApiError, provideTrackerHttpClient } from '../../shared/api-error/api-error';
+import { ApiError, provideTrackerHttpClient, toApiError } from '../../shared/api-error/api-error';
+import { classifyConfigRefusal } from './config-write';
 import { CollectionsStore } from './collections.store';
 
 const CONFIG_URL = '/api/config';
@@ -197,5 +199,16 @@ describe('CollectionsStore config writes', () => {
 
       expect(store.bundleRuns()['main']?.status).toBe('completed');
     });
+  });
+});
+
+describe('classifyConfigRefusal', () => {
+  it('classifies invalid details and all other failures', () => {
+    const invalid = toApiError(new HttpErrorResponse({ status: 400, error: { errors: ['bad rule'] } }));
+    expect(classifyConfigRefusal(invalid)).toEqual({ kind: 'invalid', details: ['bad rule'], error: invalid });
+    const other = new Error('offline');
+    expect(classifyConfigRefusal(other)).toEqual({ kind: 'other', details: [], error: other });
+    const conflict = toApiError(new HttpErrorResponse({ status: 409, error: { errors: ['server detail'] } }));
+    expect(classifyConfigRefusal(conflict)).toEqual({ kind: 'conflict', details: ['server detail'], error: conflict });
   });
 });

@@ -10,7 +10,7 @@
 import { escapeRegExp, type TranslationStatus } from '@simoncodes-ca/domain';
 import type { Candidate } from './glossary-extractor';
 
-/** A translation entry to match against (mapped from core's `LoadedResource`). */
+/** A translation entry to match against (mapped from the Collection Set). */
 export interface FlatEntry {
   /** Full dot-delimited key. */
   key: string;

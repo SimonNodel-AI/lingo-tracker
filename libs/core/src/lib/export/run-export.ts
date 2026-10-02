@@ -2,16 +2,26 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DEFAULT_CONFIG } from '../../constants';
 import type { Collection } from '../config/open-collection';
+import { collectionSetTargetLocales, readCollectionSet } from '../collection-set/collection-set';
 import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
-import { filterResources, loadResources, validateBasePropertyName, validateOutputDirectory } from './export-common';
+import { assertTranslationStatusList } from '../resource/translation-status-input';
+import type { RunOutcome } from '../run-outcome';
+import {
+  filterResources,
+  type ExportResource,
+  validateBasePropertyName,
+  validateOutputDirectory,
+} from './export-common';
 import { generateExportSummary } from './export-summary';
 import { exportToJson } from './export-to-json';
 import { exportToXliff } from './export-to-xliff';
 import type { ExportOptions, ExportResult } from './types';
 
 /** Options for {@link runExport}. `locales` narrows the export; unknown and base locales are ignored. */
-export type ExportRunOptions = Omit<ExportOptions, 'collections' | 'outputDirectory'> & {
+export type ExportRunOptions = Omit<ExportOptions, 'collections' | 'outputDirectory' | 'status'> & {
+  /** Status strings are checked at this boundary before the export starts. */
+  status?: readonly string[];
   /** Explicit output path, relative to cwd when needed. */
   outputDirectory?: string;
   /** Configured export folder, used when outputDirectory is absent. */
@@ -34,6 +44,7 @@ export interface ExportLocaleResult {
 
 /** The totals over every locale, the outcome per locale, and the Markdown summary of the run. */
 export interface ExportRunResult extends ExportResult {
+  readonly outcome: RunOutcome;
   /** One entry per target locale, in export order. */
   localeResults: ExportLocaleResult[];
   summary: string;
@@ -44,8 +55,7 @@ export interface ExportRunResult extends ExportResult {
  * appearance, narrowed to `requested` when given. A collection's base locale is never a target.
  */
 export function exportTargetLocales(collections: readonly Collection[], requested?: readonly string[]): string[] {
-  const locales = new Set(collections.flatMap((collection) => collection.targetLocales));
-  return [...locales].filter((locale) => !requested || requested.includes(locale));
+  return collectionSetTargetLocales(collections, requested);
 }
 
 /** Resolves an explicit path, the configured folder, or the shared default against the project root. */
@@ -68,20 +78,32 @@ function resolveExportOutputDirectory(
  * throws is reported and the run continues with the next locale.
  *
  * @throws {CoreOperationError} The base property name is invalid or the output directory cannot be used.
- * @throws {CoreOperationError} Target locales exist, but the collections do not share one base locale.
+ * @throws {InvalidTranslationStatusError} The status filter is empty or contains an unknown status.
+ * @throws {CollectionBaseLocaleMismatchError} Target locales exist, but the collections do not share one base locale.
  */
 export async function runExport(
   collections: readonly Collection[],
   options: ExportRunOptions,
 ): Promise<ExportRunResult> {
   if (options.basePropertyName !== undefined) validateBasePropertyName(options.basePropertyName);
+  const status = options.status;
+  let validatedStatus: ExportOptions['status'];
+  if (status !== undefined) {
+    assertTranslationStatusList(status);
+    validatedStatus = [...status];
+  }
   const outputDirectory = resolveExportOutputDirectory(options.outputDirectory, options.exportFolder, options.cwd);
   validateOutputDirectory(outputDirectory);
-  const targetLocales = exportTargetLocales(collections, options.locales);
-  if (targetLocales.length > 0) options.onStart?.({ outputDirectory, locales: targetLocales });
+  const set = readCollectionSet(collections, {
+    locales: options.locales,
+    skipReadWhenNoTargets: true,
+    onBeforeRead: (locales) => options.onStart?.({ outputDirectory, locales }),
+  });
+  const targetLocales = set.targetLocales;
   const augmentProtectedTerms = options.augmentProtectedTerms !== false;
   const runOptions: ExportOptions = {
     ...options,
+    status: validatedStatus,
     outputDirectory,
     collections: collections.map((collection) => collection.name),
     locales: targetLocales,
@@ -103,22 +125,19 @@ export async function runExport(
   const localeResults: ExportLocaleResult[] = [];
 
   if (targetLocales.length > 0) {
-    const baseLocale = sharedBaseLocale(collections);
-    // Read per collection so a key shared by two collections survives in each one's own locales.
-    const resourcesByCollection = new Map(
-      collections.map((collection) => {
-        // The reader reads a missing folder as an empty collection; say so, since a mistyped
-        // translationsFolder would otherwise export nothing without a word.
-        if (!existsSync(collection.translationsFolder)) {
-          totals.warnings.push(
-            `Collection '${collection.name}': translations folder not found: ${collection.translationsFolder}`,
-          );
-        }
-        const { resources, problems } = loadResources(collection, protectedTermsOf(collection));
-        // A folder the reader could not read is left out of every locale file; the summary lists it.
-        totals.malformedFiles.push(...problems.map((problem) => problem.message));
-        return [collection.name, resources];
-      }),
+    const baseLocale = set.baseLocale;
+    // A nonempty target scope can only come from at least one collection.
+    if (baseLocale === undefined) throw new CoreOperationError('An export with target locales requires collections.');
+    for (const collection of collections) {
+      if (!existsSync(collection.translationsFolder)) {
+        totals.warnings.push(
+          `Collection '${collection.name}': translations folder not found: ${collection.translationsFolder}`,
+        );
+      }
+    }
+    totals.malformedFiles.push(...set.readProblems.map((problem) => problem.message));
+    const protectedTermsByCollection = new Map(
+      collections.map((collection) => [collection.name, protectedTermsOf(collection)]),
     );
 
     for (const locale of targetLocales) {
@@ -126,10 +145,14 @@ export async function runExport(
       const eligible = new Map(
         collections
           .filter((collection) => collection.targetLocales.includes(locale))
-          .flatMap((collection) => resourcesByCollection.get(collection.name) ?? [])
+          .flatMap((collection) => set.resources.filter((resource) => resource.collection === collection.name))
           .map((resource) => [resource.fullKey, resource]),
       );
-      const filtered = filterResources([...eligible.values()], locale, options.status, options.tags, {
+      const exportResources: ExportResource[] = [...eligible.values()].map((resource) => ({
+        ...resource,
+        protectedTerms: protectedTermsByCollection.get(resource.collection),
+      }));
+      const filtered = filterResources(exportResources, locale, validatedStatus, options.tags, {
         augmentProtectedTerms,
         baseLocale,
       });
@@ -173,6 +196,7 @@ export async function runExport(
   totals.errors = [...new Set(totals.errors)];
   return {
     ...totals,
+    outcome: !options.dryRun && totals.errors.length + totals.hierarchicalConflicts.length > 0 ? 'failed' : 'succeeded',
     localeResults,
     summary: generateExportSummary(totals, runOptions),
   };
@@ -192,16 +216,4 @@ export async function runExport(
     }
     return [...terms.protectedTerms];
   }
-}
-
-function sharedBaseLocale(collections: readonly Collection[]): string {
-  const baseLocales = new Set(collections.map((collection) => collection.baseLocale));
-  const [baseLocale] = baseLocales;
-  if (baseLocales.size !== 1 || baseLocale === undefined) {
-    const listed = collections.map((collection) => `${collection.name}: ${collection.baseLocale}`).join(', ');
-    throw new CoreOperationError(
-      `Cannot export collections with different base locales together (${listed}). Export them separately.`,
-    );
-  }
-  return baseLocale;
 }

@@ -1,5 +1,7 @@
 import {
   displayTermPath,
+  InvalidProjectTermsEditError,
+  type ProjectTermsEditProblem,
   type ProjectTermsUpdateResult,
   ProtectedTermsFileNotSetError,
   planProjectTermsUpdate,
@@ -17,42 +19,46 @@ export interface ProtectedTermsOptions {
   file?: string;
 }
 
+const protectedEditWording: Record<ProjectTermsEditProblem, string | undefined> = {
+  'protected-conflict': '--set cannot be combined with --add or --remove',
+  'protected-missing': 'Provide at least one of --add, --remove, --set, --list, or --file',
+  'protected-file-path': undefined,
+  'protected-replacement-conflict': undefined,
+  'preferred-missing': undefined,
+  'preferred-conflict': undefined,
+  'preferred-remove-shape': undefined,
+  'preferred-replacement-shape': undefined,
+  'preferred-upsert-shape': undefined,
+};
+
 export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
   name: 'Protected terms',
   // `--collection` is optional: absent means the global scope, so the runner opens nothing.
   collection: 'none',
-  run: async ({ config, cwd, answers: options }) => {
+  run: async ({ project, cwd, answers: options }) => {
     const hasAdd = (options.add ?? []).length > 0;
     const hasRemove = (options.remove ?? []).length > 0;
     const hasSet = options.set !== undefined;
     const hasList = options.list === true;
     const hasFile = options.file !== undefined;
-    if (hasSet && (hasAdd || hasRemove)) throw new Error('--set cannot be combined with --add or --remove');
-    if (!hasSet && !hasAdd && !hasRemove && !hasList && !hasFile) {
-      throw new Error('Provide at least one of --add, --remove, --set, --list, or --file');
-    }
 
     const collectionName = options.collection;
     const target = { collection: collectionName };
     let pointerLinePrinted = false;
     let result: ProjectTermsUpdateResult;
     try {
-      const plan = planProjectTermsUpdate(
-        config,
-        {
-          protectedTerms: {
-            target,
-            edit: {
-              add: options.add,
-              remove: options.remove,
-              ...(hasSet && { set: options.set?.split(',') ?? [] }),
-            },
-            list: hasList,
-            ...(hasFile && { file: options.file }),
+      const plan = planProjectTermsUpdate(project, {
+        protectedTerms: {
+          target,
+          edit: {
+            add: options.add,
+            remove: options.remove,
+            ...(hasSet && { set: options.set?.split(',') ?? [] }),
           },
+          list: hasList,
+          ...(hasFile && { file: options.file }),
         },
-        { cwd },
-      );
+      });
       const { protectedTerms: view, protectedTermsFileChange } = plan.view;
       if (protectedTermsFileChange !== undefined) {
         ConsoleFormatter.success(protectedTermsFileChange.message);
@@ -83,6 +89,10 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
       result = plan.apply();
     } catch (error) {
       if (pointerLinePrinted) ConsoleFormatter.warning('Protected terms file change was reverted.');
+      if (error instanceof InvalidProjectTermsEditError) {
+        const message = protectedEditWording[error.problem];
+        if (message !== undefined) throw new Error(message);
+      }
       if (error instanceof ProtectedTermsFileNotSetError) {
         throw new Error(
           `Collection "${error.collectionName}" has no protected terms file. Set one first with --file <path>.`,

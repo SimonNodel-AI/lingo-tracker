@@ -1,11 +1,10 @@
-import { chmodSync, existsSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
+import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import {
+  type ExportResource,
   filterResources,
-  type LoadedResource,
-  loadResources,
   validateBasePropertyName,
   validateOutputDirectory,
 } from './export-common';
@@ -43,65 +42,8 @@ describe('export-common', () => {
     });
   });
 
-  describe('loadResources (real fs)', () => {
-    it('flattens each entry with its collection, translations, status and tags', () => {
-      const collection = testCollection(root(), { name: 'Core', tags: ['shared'] });
-      seedResources(collection, {
-        'button.ok': {
-          source: 'OK',
-          comment: 'Confirm',
-          tags: ['ui'],
-          translations: { es: { value: 'Vale', status: 'translated' } },
-        },
-      });
-
-      const { resources, problems } = loadResources(collection, ['Acme']);
-
-      expect(problems).toEqual([]);
-      expect(resources).toEqual([
-        {
-          key: 'ok',
-          fullKey: 'button.ok',
-          source: 'OK',
-          translations: { es: 'Vale' },
-          tags: ['ui'],
-          effectiveTags: ['shared', 'ui'],
-          protectedTerms: ['Acme'],
-          comment: 'Confirm',
-          status: { es: 'translated' },
-          collection: 'Core',
-        },
-      ]);
-    });
-
-    it('includes an entry without metadata, with no status', () => {
-      writeFolderFiles(root(), '', { entries: { key: { source: 'val' } }, meta: {} });
-
-      const { resources } = loadResources(testCollection(root()));
-
-      expect(resources).toHaveLength(1);
-      expect(resources[0]?.status).toEqual({});
-    });
-
-    it('returns unreadable folders as problems', () => {
-      writeFolderFiles(root(), 'bad', { entries: '{ nope' });
-
-      const { resources, problems } = loadResources(testCollection(root()));
-
-      expect(resources).toEqual([]);
-      expect(problems.map((problem) => problem.folderPath)).toEqual(['bad']);
-    });
-
-    it('reads nothing from a missing translations folder', () => {
-      const missing = join(root(), 'missing');
-
-      expect(loadResources(testCollection(missing))).toEqual({ resources: [], problems: [] });
-      expect(existsSync(missing)).toBe(false);
-    });
-  });
-
   describe('filterResources', () => {
-    const mockResources: LoadedResource[] = [
+    const mockResources: ExportResource[] = [
       {
         key: 'key1',
         fullKey: 'key1',
@@ -109,6 +51,7 @@ describe('export-common', () => {
         translations: { es: 'Val 1' },
         status: { es: 'translated' },
         collection: 'Core',
+        targetLocales: ['es'],
         tags: ['ui'],
         effectiveTags: ['ui'],
       },
@@ -119,6 +62,7 @@ describe('export-common', () => {
         translations: {}, // Missing translation
         status: { es: 'new' },
         collection: 'Core',
+        targetLocales: ['es'],
         tags: ['backend'],
         effectiveTags: ['backend'],
       },
@@ -129,6 +73,7 @@ describe('export-common', () => {
         translations: { es: 'Val 3' },
         status: { es: 'verified' },
         collection: 'App',
+        targetLocales: ['es'],
         effectiveTags: [],
       },
     ];
@@ -157,7 +102,7 @@ describe('export-common', () => {
     });
 
     it("computes protectedTermsFound from the source and the resource's protected terms for non-base locales", () => {
-      const resources: LoadedResource[] = [
+      const resources: ExportResource[] = [
         {
           key: 'k1',
           fullKey: 'k1',
@@ -165,6 +110,7 @@ describe('export-common', () => {
           translations: { es: 'Bienvenido' },
           status: { es: 'new' },
           collection: 'Core',
+          targetLocales: ['es'],
           effectiveTags: [],
           protectedTerms: ['SimonCodes', 'iPhone'],
         },
@@ -184,7 +130,7 @@ describe('export-common', () => {
     });
 
     it('leaves protectedTermsFound undefined when augmentation is disabled', () => {
-      const resources: LoadedResource[] = [
+      const resources: ExportResource[] = [
         {
           key: 'k1',
           fullKey: 'k1',
@@ -192,6 +138,7 @@ describe('export-common', () => {
           translations: { es: 'Bienvenido' },
           status: { es: 'new' },
           collection: 'Core',
+          targetLocales: ['es'],
           effectiveTags: [],
         },
       ];

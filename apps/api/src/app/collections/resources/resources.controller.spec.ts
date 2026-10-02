@@ -45,7 +45,6 @@ const batchResult = (entriesCreated: number, extra: Record<string, unknown> = {}
   created: entriesCreated > 0,
   skippedLocales: [],
   terminology: noTerminology,
-  mutations: [],
   ...extra,
 });
 
@@ -75,7 +74,7 @@ describe('ResourcesController', () => {
     tree: jest.fn(),
     searchPage: jest.fn(),
     status: jest.fn(),
-    apply: jest.fn(),
+    sink: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -132,9 +131,8 @@ describe('ResourcesController', () => {
             translations: undefined,
           },
         ],
-        { onExisting: 'fail' },
+        { onMutation: mockIndex.sink, onExisting: 'fail' },
       );
-      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
     });
 
     it('should successfully create multiple resources (bulk operation)', async () => {
@@ -146,14 +144,12 @@ describe('ResourcesController', () => {
       });
       expect(batch()).toHaveBeenCalledTimes(1);
       expect(batch().mock.calls[0][1]).toHaveLength(2);
-      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
     });
 
     it('answers 409 when a resource already exists', async () => {
       batch().mockRejectedValue(new core.ResourceAlreadyExistsError(dto.key));
       const error = await httpErrorOf(resourcesController.createResources(collectionFor('test-collection'), dto));
       expect(error.getStatus()).toBe(409);
-      expect(mockIndex.apply).not.toHaveBeenCalled();
     });
 
     it('should aggregate results correctly when multiple resources are created', async () => {
@@ -178,6 +174,7 @@ describe('ResourcesController', () => {
       });
       await resourcesController.createResources(collectionFor('My%Collection'), dto);
       expect(batch()).toHaveBeenCalledWith(expect.objectContaining({ name: 'My%Collection' }), expect.any(Array), {
+        onMutation: mockIndex.sink,
         onExisting: 'fail',
       });
     });
@@ -255,7 +252,10 @@ describe('ResourcesController', () => {
         entriesCreated: 1,
         created: true,
       });
-      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining(full)], { onExisting: 'fail' });
+      expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining(full)], {
+        onMutation: mockIndex.sink,
+        onExisting: 'fail',
+      });
     });
 
     it('should handle resource with translations', async () => {
@@ -263,6 +263,7 @@ describe('ResourcesController', () => {
       const translations = [{ locale: 'fr-ca', value: "D'accord", status: 'translated' as TranslationStatus }];
       await resourcesController.createResources(collectionFor('test-collection'), { ...dto, translations });
       expect(batch()).toHaveBeenCalledWith(expect.any(Object), [expect.objectContaining({ translations })], {
+        onMutation: mockIndex.sink,
         onExisting: 'fail',
       });
     });
@@ -289,6 +290,7 @@ describe('ResourcesController', () => {
       expect(deleteResource).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         { keys: ['app.button.ok'] },
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
@@ -312,6 +314,7 @@ describe('ResourcesController', () => {
       expect(deleteResource).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         { keys: ['app.button.ok', 'app.button.cancel', 'app.button.save'] },
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
@@ -368,6 +371,7 @@ describe('ResourcesController', () => {
       expect(deleteResource).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'My%Collection', translationsFolder: resolve('./translations/my-collection') }),
         { keys: ['app.button.ok'] },
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
@@ -442,6 +446,7 @@ describe('ResourcesController', () => {
       expect(deleteResource).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
         { keys: ['apps.common.buttons.ok'] },
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
   });
@@ -453,12 +458,10 @@ describe('ResourcesController', () => {
       movedCount,
       warnings,
       errors,
-      mutations: [],
     });
 
     it('should successfully move resources', async () => {
-      const mutation = { kind: 'remove', translationsFolder: resolve('./translations/test'), key: op.source };
-      moves().mockResolvedValue({ ...result(), mutations: [mutation] });
+      moves().mockResolvedValue({ ...result() });
       expect(await resourcesController.move(collectionFor('test-collection'), { moves: [op] })).toEqual({
         movedCount: 1,
         warnings: [],
@@ -467,10 +470,8 @@ describe('ResourcesController', () => {
       expect(moves()).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'test-collection' }),
         [{ ...op, override: undefined }],
-        { config: mockConfig },
+        { onMutation: mockIndex.sink, config: mockConfig },
       );
-      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
-      expect(mockIndex.apply).toHaveBeenCalledWith([mutation]);
     });
 
     it('should pass override flag', async () => {
@@ -517,7 +518,7 @@ describe('ResourcesController', () => {
       expect(moves()).toHaveBeenCalledWith(
         expect.any(Object),
         [{ ...op, override: undefined, toCollection: 'My Collection' }],
-        { config },
+        { onMutation: mockIndex.sink, config },
       );
     });
 
@@ -528,7 +529,7 @@ describe('ResourcesController', () => {
       expect(moves()).toHaveBeenCalledWith(
         expect.any(Object),
         [{ ...op, override: undefined, toCollection: 'My%20Collection' }],
-        { config: mockConfig },
+        { onMutation: mockIndex.sink, config: mockConfig },
       );
     });
 
@@ -541,15 +542,12 @@ describe('ResourcesController', () => {
       expect(moves()).toHaveBeenCalledWith(
         expect.any(Object),
         [{ ...op, override: undefined, toCollection: 'non-existent' }],
-        { config: mockConfig },
+        { onMutation: mockIndex.sink, config: mockConfig },
       );
-      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
-      expect(mockIndex.apply).toHaveBeenCalledWith([]);
     });
 
     it('maps a mixed core move result and applies its merged mutations once', async () => {
-      const mutation = { kind: 'upsert', translationsFolder: resolve('./translations/test'), key: 'shared.ok' };
-      moves().mockResolvedValue({ ...result(1, ['collision'], ['destination read-only']), mutations: [mutation] });
+      moves().mockResolvedValue({ ...result(1, ['collision'], ['destination read-only']) });
       const operations = [
         { ...op, toCollection: 'vendor' },
         { source: 'common.ok', destination: 'shared.ok' },
@@ -562,10 +560,8 @@ describe('ResourcesController', () => {
           { ...op, override: undefined, toCollection: 'vendor' },
           { source: 'common.ok', destination: 'shared.ok', override: undefined },
         ],
-        { config: mockConfig },
+        { onMutation: mockIndex.sink, config: mockConfig },
       );
-      expect(mockIndex.apply).toHaveBeenCalledTimes(1);
-      expect(mockIndex.apply).toHaveBeenCalledWith([mutation]);
     });
   });
 
@@ -664,6 +660,7 @@ describe('ResourcesController', () => {
           translations: undefined,
           moveTo: undefined,
         },
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
@@ -701,6 +698,7 @@ describe('ResourcesController', () => {
         expect.objectContaining({ name: 'test-collection' }),
         'app.button.ok',
         expect.objectContaining({ moveTo: 'shared' }),
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
@@ -1204,7 +1202,6 @@ describe('ResourcesController', () => {
         translatedCount: 1,
         skippedLocales: [],
         entry: mockEntry,
-        mutations: [],
         warnings: [warning],
       });
 
@@ -1233,25 +1230,27 @@ describe('ResourcesController', () => {
           translationsFolder: resolve('./translations/test'),
         }),
         'buttons.save',
+        expect.objectContaining({ onMutation: mockIndex.sink }),
       );
     });
 
-    it('should hand the translation mutations to the index', async () => {
+    it('passes the index sink to translation', async () => {
       (configService.getConfig as jest.Mock).mockReturnValue(configWithTranslation);
 
-      const mutations = [{ kind: 'upsert', translationsFolder: '/t', key: 'buttons.save', entry: mockEntry }];
       const translateExistingResource = core.translateExistingResource as jest.Mock;
       translateExistingResource.mockResolvedValue({
         translatedCount: 1,
         skippedLocales: [],
         entry: mockEntry,
         warnings: [],
-        mutations,
       });
 
       await resourcesController.translateResource(collectionFor('test-collection'), { key: 'buttons.save' });
-
-      expect(mockIndex.apply).toHaveBeenCalledWith(mutations);
+      expect(translateExistingResource).toHaveBeenCalledWith(
+        expect.any(Object),
+        'buttons.save',
+        expect.objectContaining({ onMutation: mockIndex.sink }),
+      );
     });
 
     it('should include skipped locales in the response', async () => {

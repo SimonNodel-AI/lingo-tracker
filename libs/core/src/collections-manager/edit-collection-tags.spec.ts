@@ -3,9 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONFIG_FILENAME } from '../constants';
-import { createConfigFileOperations } from '../lib/config/config-file-operations';
+import { loadConfig } from '../lib/config/load-config';
 import { openCollection } from '../lib/config/open-collection';
-import { InvalidCollectionError } from '../lib/errors/lingo-tracker-error';
+import { ConfigChangedError, InvalidCollectionError } from '../lib/errors/lingo-tracker-error';
 import { editCollectionTags } from './edit-collection-tags';
 
 describe('editCollectionTags', () => {
@@ -24,14 +24,9 @@ describe('editCollectionTags', () => {
   });
   afterEach(() => rmSync(cwd, { recursive: true, force: true }));
 
-  const edit = (changes: Parameters<typeof editCollectionTags>[2]): string[] => {
-    const configFile = createConfigFileOperations({ cwd });
-    const collection = openCollection(configFile.read(), 'app', { cwd });
-    return editCollectionTags(
-      collection,
-      createConfigFileOperations({ cwd, snapshot: collection.sourceConfig }),
-      changes,
-    );
+  const edit = (changes: Parameters<typeof editCollectionTags>[1]): string[] => {
+    const collection = openCollection(loadConfig({ cwd }), 'app', { cwd });
+    return editCollectionTags(collection, changes);
   };
 
   it('normalizes added tags and removes existing tags', () => {
@@ -55,12 +50,28 @@ describe('editCollectionTags', () => {
     }
     expect(thrown).toBeInstanceOf(InvalidCollectionError);
     expect((thrown as InvalidCollectionError).kind).toBe('invalid');
+    expect((thrown as InvalidCollectionError).problem).toBe('tag-conflict');
     expect(read()).toBe(before);
+  });
+
+  it('refuses a stale collection and keeps the other writer’s bytes', () => {
+    const collection = openCollection(loadConfig({ cwd }), 'app', { cwd });
+    const other = `${read()}\n`;
+    writeFileSync(join(cwd, CONFIG_FILENAME), other);
+    expect(() => editCollectionTags(collection, { add: ['new'] })).toThrow(ConfigChangedError);
+    expect(read()).toBe(other);
   });
 
   it('refuses an empty edit without writing', () => {
     const before = read();
-    expect(() => edit({})).toThrow(InvalidCollectionError);
+    let thrown: unknown;
+    try {
+      edit({});
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(InvalidCollectionError);
+    expect((thrown as InvalidCollectionError).problem).toBe('tag-missing');
     expect(read()).toBe(before);
   });
 });

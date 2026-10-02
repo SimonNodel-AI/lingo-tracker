@@ -60,6 +60,7 @@ describe('ConfigController', () => {
 
   const configService = {
     getConfig: jest.fn(),
+    openProject: jest.fn(() => ({ projectRoot: process.cwd(), sourceConfig: baseConfig })),
   };
 
   beforeAll(async () => {
@@ -160,11 +161,9 @@ describe('ConfigController', () => {
       const result = controller.updateConfig({ protectedTerms: ['iPhone'] });
 
       expect(updateProjectTerms).toHaveBeenCalledWith(
-        undefined,
+        expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
         { protectedTerms: { replace: ['iPhone'] } },
-        { cwd: process.cwd() },
       );
-      expect(configService.getConfig).not.toHaveBeenCalled();
       expect(result).toEqual({ message: 'Configuration updated successfully' });
     });
 
@@ -178,9 +177,8 @@ describe('ConfigController', () => {
     it('throws 400 when protectedTerms is not a string array', () => {
       const error = catchHttpException(() => controller.updateConfig({ protectedTerms: 'iPhone' } as never));
       expect(updateProjectTerms).toHaveBeenCalledWith(
-        undefined,
+        expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
         { protectedTerms: { replace: 'iPhone' } },
-        { cwd: process.cwd() },
       );
       expect(error.getStatus()).toBe(400);
       expect(messageOf(error)).toBe('protectedTerms must be an array of strings');
@@ -196,9 +194,8 @@ describe('ConfigController', () => {
         const result = controller.updateConfig({ preferredTerminology: rules });
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { preferredTerminology: { set: rules } },
-          { cwd: process.cwd() },
         );
         expect(result).toEqual({ message: 'Configuration updated successfully' });
       });
@@ -207,9 +204,8 @@ describe('ConfigController', () => {
         controller.updateConfig({ preferredTerminology: [] });
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { preferredTerminology: { set: [] } },
-          { cwd: process.cwd() },
         );
       });
 
@@ -217,9 +213,8 @@ describe('ConfigController', () => {
         controller.updateConfig({ protectedTerms: ['iPhone'] });
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          undefined,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { protectedTerms: { replace: ['iPhone'] } },
-          { cwd: process.cwd() },
         );
       });
 
@@ -227,9 +222,8 @@ describe('ConfigController', () => {
         controller.updateConfig({ protectedTerms: ['iPhone'], preferredTerminology: rules });
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { protectedTerms: { replace: ['iPhone'] }, preferredTerminology: { set: rules } },
-          { cwd: process.cwd() },
         );
       });
 
@@ -243,9 +237,8 @@ describe('ConfigController', () => {
         expect(error.getStatus()).toBe(400);
         expect(messageOf(error)).toBe('preferredTerminology must be an array of rules');
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { preferredTerminology: { set: invalid } },
-          { cwd: process.cwd() },
         );
       });
 
@@ -271,9 +264,8 @@ describe('ConfigController', () => {
           { index: 2, code: 'empty' },
         ]);
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { preferredTerminology: { set: invalid } },
-          { cwd: process.cwd() },
         );
       });
 
@@ -292,9 +284,8 @@ describe('ConfigController', () => {
         );
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { protectedTerms: { replace: ['iPhone'] }, preferredTerminology: { set: invalid } },
-          { cwd: process.cwd() },
         );
       });
 
@@ -304,9 +295,8 @@ describe('ConfigController', () => {
         );
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { protectedTerms: { replace: 'iPhone' }, preferredTerminology: { set: rules } },
-          { cwd: process.cwd() },
         );
       });
 
@@ -370,9 +360,8 @@ describe('ConfigController', () => {
         expect(error.getStatus()).toBe(500);
         expect(messageOf(error)).toBe(message);
         expect(updateProjectTerms).toHaveBeenCalledWith(
-          baseConfig,
+          expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
           { preferredTerminology: { set: rules } },
-          { cwd: process.cwd() },
         );
       });
     });

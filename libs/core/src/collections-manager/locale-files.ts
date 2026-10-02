@@ -29,19 +29,28 @@ export function openLocaleFolders(collection: CollectionSweepTarget): ResourceFo
  * Seeds `locale` in the folders (from {@link openLocaleFolders}) through `ResourceFolder.seedLocale`
  * (the one seeding rule, which normalize shares). Touches only the translation files, never the config.
  */
-export function seedLocaleFiles(folders: readonly ResourceFolder[], locale: string): LocaleFilesResult {
-  return rewriteFolders(folders, (folder) => folder.seedLocale(locale));
+export function seedLocaleFiles(
+  folders: readonly ResourceFolder[],
+  locale: string,
+  onSave?: () => void,
+): LocaleFilesResult {
+  return rewriteFolders(folders, (folder) => folder.seedLocale(locale), onSave);
 }
 
 /** Drops `locale` from the folders (from {@link openLocaleFolders}). Touches only the translation files. */
-export function dropLocaleFiles(folders: readonly ResourceFolder[], locale: string): LocaleFilesResult {
-  return rewriteFolders(folders, (folder) => folder.dropLocale(locale));
+export function dropLocaleFiles(
+  folders: readonly ResourceFolder[],
+  locale: string,
+  onSave?: () => void,
+): LocaleFilesResult {
+  return rewriteFolders(folders, (folder) => folder.dropLocale(locale), onSave);
 }
 
 /** Applies `change` to every folder and saves the ones it changed. */
 function rewriteFolders(
   folders: readonly ResourceFolder[],
   change: (folder: ResourceFolder) => number,
+  onSave?: () => void,
 ): LocaleFilesResult {
   let entries = 0;
   let filesUpdated = 0;
@@ -49,7 +58,11 @@ function rewriteFolders(
   for (const folder of folders) {
     const changed = change(folder);
     if (changed > 0) {
-      folder.save();
+      try {
+        folder.save();
+      } finally {
+        onSave?.();
+      }
       entries += changed;
       filesUpdated++;
     }

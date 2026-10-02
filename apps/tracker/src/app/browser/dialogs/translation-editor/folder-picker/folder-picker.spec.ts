@@ -6,8 +6,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { NotificationService } from '../../../../shared/notification';
 import { BrowserStore } from '../../../store/browser.store';
+import { decideCreateFolder } from '../../../store/folder-write-feedback';
 import { FolderPicker } from './folder-picker';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toApiError } from '../../../../shared/api-error/api-error';
 
@@ -181,13 +182,15 @@ describe('FolderPicker', () => {
   });
 
   describe('Folder Creation', () => {
-    it('uses the shared create method with an explicit parent and selects the result', () => {
+    it('uses the shared create method with an explicit parent and selects the result without a toast', () => {
       const response = {
         folderPath: 'common.new',
         created: true,
         folder: { name: 'new', fullPath: 'common.new', loaded: false },
       };
-      mockStore.createFolder.mockReturnValue(of({ kind: 'created', folder: response.folder, created: true }));
+      mockStore.createFolder.mockReturnValue(
+        of(decideCreateFolder({ kind: 'created', folder: response.folder, created: true })),
+      );
       const created = vi.fn();
       component.folderCreated.subscribe(created);
       component.onAddFolder('common');
@@ -198,28 +201,96 @@ describe('FolderPicker', () => {
       expect(created).toHaveBeenCalledWith(response.folder);
       expect(component.selectedPath()).toBe('common.new');
       expect(component.isCreatingFolder()).toBe(false);
+      expect(spectator.inject(NotificationService).success).not.toHaveBeenCalled();
     });
 
-    it('shows one failure toast without reporting an error to the store', () => {
+    it('toasts an existing folder as info and still selects it', () => {
+      const folder = { name: 'new', fullPath: 'common.new', loaded: false };
+      mockStore.createFolder.mockReturnValue(of(decideCreateFolder({ kind: 'created', folder, created: false })));
+      component.onAddFolder('common');
+
+      component.onFolderNameConfirmed('new');
+
+      expect(spectator.inject(NotificationService).info).toHaveBeenCalledWith('Folder already exists');
+      expect(component.selectedPath()).toBe('common.new');
+    });
+
+    it('keeps the draft open on a refusal and shows it under the input instead of as a toast', () => {
       const error = toApiError(
         new HttpErrorResponse({
           status: 409,
           error: { message: 'Already exists' },
         }),
       );
-      mockStore.createFolder.mockReturnValue(of({ kind: 'refused', error }));
+      mockStore.createFolder.mockReturnValue(of(decideCreateFolder({ kind: 'refused', error })));
       const notifications = spectator.inject(NotificationService);
+      component.toggleExpanded();
       component.onAddFolder('common');
 
       component.onFolderNameConfirmed('new');
+      fixture.detectChanges();
 
-      expect(notifications.error).toHaveBeenCalledOnce();
-      expect(notifications.error).toHaveBeenCalledWith('Already exists');
+      expect(component.createError()).toBe('Already exists');
+      expect(spectator.query('app-inline-folder-input .error-message')?.textContent).toContain('Already exists');
+      expect(notifications.error).not.toHaveBeenCalled();
+      expect(component.isAddingFolder()).toBe(true);
+      expect(component.addFolderParentPath()).toBe('common');
+    });
+
+    it('clears the inline refusal when the name is edited or the draft is cancelled', () => {
+      const error = toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Already exists' } }));
+      mockStore.createFolder.mockReturnValue(of(decideCreateFolder({ kind: 'refused', error })));
+      component.onAddFolder('common');
+      component.onFolderNameConfirmed('new');
+      expect(component.createError()).toBe('Already exists');
+
+      component.onFolderNameEdited();
+      expect(component.createError()).toBeNull();
+
+      component.onFolderNameConfirmed('new');
+      component.onFolderNameCancelled();
+      expect(component.createError()).toBeNull();
       expect(component.isAddingFolder()).toBe(false);
     });
 
+    it.each([
+      ['cancelled', (): void => component.onFolderNameCancelled(), false],
+      ['replaced by a new draft', (): void => component.onAddFolder('errors'), true],
+    ])('ignores a late refusal for a draft that was %s', (_, change, stillOpen) => {
+      const late = new Subject<ReturnType<typeof decideCreateFolder>>();
+      mockStore.createFolder.mockReturnValue(late);
+      component.onAddFolder('common');
+      component.onFolderNameConfirmed('new');
+      change();
+
+      const error = toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Already exists' } }));
+      late.next(decideCreateFolder({ kind: 'refused', error }));
+
+      expect(component.createError()).toBeNull();
+      expect(component.isAddingFolder()).toBe(stillOpen);
+    });
+
+    it('does not close a replacement draft when a late create succeeds', () => {
+      const late = new Subject<ReturnType<typeof decideCreateFolder>>();
+      mockStore.createFolder.mockReturnValue(late);
+      component.onAddFolder('common');
+      component.onFolderNameConfirmed('new');
+      component.onAddFolder('errors');
+
+      late.next(
+        decideCreateFolder({
+          kind: 'created',
+          folder: { name: 'new', fullPath: 'common.new', loaded: false },
+          created: true,
+        }),
+      );
+
+      expect(component.isAddingFolder()).toBe(true);
+      expect(component.addFolderParentPath()).toBe('errors');
+    });
+
     it('closes the inline input without a toast when no collection is open', () => {
-      mockStore.createFolder.mockReturnValue(of({ kind: 'no-collection' }));
+      mockStore.createFolder.mockReturnValue(of(decideCreateFolder({ kind: 'no-collection' })));
       const notifications = spectator.inject(NotificationService);
       const created = vi.fn();
       component.folderCreated.subscribe(created);

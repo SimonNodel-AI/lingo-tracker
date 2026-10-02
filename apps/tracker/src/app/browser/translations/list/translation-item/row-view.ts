@@ -1,6 +1,11 @@
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
-import { countByStatus, STATUS_PRECEDENCE, type StatusCounts, summaryTarget } from '@simoncodes-ca/domain';
-import { displayStatus } from '../../../../shared/translation-status/display-status';
+import {
+  countByStatus,
+  displayStatus,
+  STATUS_PRECEDENCE,
+  type StatusCounts,
+  summaryTarget,
+} from '@simoncodes-ca/domain';
 
 /*
  * Row View: what one translation row shows, as plain data and functions.

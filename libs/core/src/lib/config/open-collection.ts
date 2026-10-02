@@ -38,11 +38,14 @@ export interface Collection {
   readonly config: LingoTrackerCollection;
 }
 
-/** An opened collection also carries the config snapshot and root used to resolve it. */
-export interface OpenedCollection extends Collection {
+/** A project opened from its config, carrying the read version used to guard every config write. */
+export interface OpenedProject {
   readonly sourceConfig: LingoTrackerConfig;
   readonly projectRoot: string;
 }
+
+/** An opened collection is an opened project plus the resolved collection. */
+export interface OpenedCollection extends Collection, OpenedProject {}
 
 /** The term files in force for a collection (see `readProjectTerms`). */
 export interface TermFiles {
@@ -62,6 +65,11 @@ export interface OpenCollectionOptions {
   readonly cwd?: string;
   /** Refuse a read-only collection. Set this for operations that change resources. */
   readonly writable?: boolean;
+  /**
+   * Open a collection for deletion only. A missing or non-string `translationsFolder` becomes
+   * an empty path; other malformed fields are still resolved normally and may fail.
+   */
+  readonly forDeletion?: boolean;
 }
 
 /**
@@ -96,7 +104,8 @@ export function openCollection(
     name,
     sourceConfig: config,
     projectRoot: cwd,
-    translationsFolder: resolve(cwd, raw.translationsFolder),
+    translationsFolder:
+      options.forDeletion && typeof raw.translationsFolder !== 'string' ? '' : resolve(cwd, raw.translationsFolder),
     baseLocale,
     locales,
     targetLocales: locales.filter((locale) => locale !== baseLocale),

@@ -41,19 +41,6 @@ export function constantNameToTypeName(constantName: string): string {
 }
 
 /**
- * Converts a bundle key to a valid TypeScript constant name.
- * Format: SCREAMING_SNAKE_CASE + _TOKENS suffix
- *
- * Examples:
- * - "common" -> "COMMON_TOKENS"
- * - "core-ui" -> "CORE_UI_TOKENS"
- */
-export function bundleKeyToConstantName(bundleKey: string): string {
-  const upperSnakeCase = bundleKey.replace(/-/g, '_').toUpperCase();
-  return `${upperSnakeCase}_TOKENS`;
-}
-
-/**
  * Converts a translation key segment to a valid TypeScript property name.
  *
  * When casing is 'upperCase' (default):

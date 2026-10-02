@@ -51,13 +51,13 @@ export class InvalidImportLocaleError extends LingoTrackerError {
   }
 }
 
-/** A glossary cannot combine source text from different base locales. */
-export class GlossaryBaseLocaleMismatchError extends LingoTrackerError {
-  readonly kind = 'internal' as const;
+/** A whole-collection run requiring one source language found different base locales. */
+export class CollectionBaseLocaleMismatchError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
   readonly collections: readonly { name: string; baseLocale: string }[];
 
   constructor(collections: readonly { name: string; baseLocale: string }[]) {
-    super(ErrorMessages.glossaryBaseLocaleMismatch(collections), 'GLOSSARY_BASE_LOCALE_MISMATCH');
+    super(ErrorMessages.collectionBaseLocaleMismatch(collections), 'COLLECTION_BASE_LOCALE_MISMATCH');
     this.collections = collections;
   }
 }
@@ -142,12 +142,25 @@ export class ProtectedTermsFileError extends LingoTrackerError {
   }
 }
 
+export type ProjectTermsEditProblem =
+  | 'protected-conflict'
+  | 'protected-missing'
+  | 'protected-file-path'
+  | 'preferred-missing'
+  | 'preferred-conflict'
+  | 'preferred-remove-shape'
+  | 'preferred-replacement-shape'
+  | 'preferred-upsert-shape'
+  | 'protected-replacement-conflict';
+
 /** A Project Terms edit has missing or conflicting options. */
 export class InvalidProjectTermsEditError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
+  readonly problem: ProjectTermsEditProblem;
 
-  constructor(message: string) {
+  constructor(message: string, problem: ProjectTermsEditProblem) {
     super(message, 'INVALID_PROJECT_TERMS_EDIT');
+    this.problem = problem;
   }
 }
 
@@ -158,8 +171,13 @@ export class CollectionNotFoundError extends LingoTrackerError {
   readonly kind = 'not-found' as const;
   readonly collectionName: string;
 
-  constructor(collectionName: string) {
-    super(ErrorMessages.collectionNotFound(collectionName), 'COLLECTION_NOT_FOUND');
+  constructor(collectionName: string, role: 'source' | 'destination' = 'source') {
+    super(
+      role === 'destination'
+        ? `Destination collection "${collectionName}" not found`
+        : ErrorMessages.collectionNotFound(collectionName),
+      'COLLECTION_NOT_FOUND',
+    );
     this.collectionName = collectionName;
   }
 }
@@ -217,14 +235,18 @@ export class ReadOnlyCollectionError extends LingoTrackerError {
   }
 }
 
+export type CollectionTagEditProblem = 'tag-conflict' | 'tag-missing';
+
 /** A collection record cannot be stored as given (for example a blank `translationsFolder`). */
 export class InvalidCollectionError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
   /** Set for a field-shape error whose API message includes the `collection.` prefix. */
   readonly field?: string;
-  constructor(message: string, options?: { readonly field?: string }) {
+  readonly problem?: CollectionTagEditProblem;
+  constructor(message: string, options?: { readonly field?: string; readonly problem?: CollectionTagEditProblem }) {
     super(message, 'INVALID_COLLECTION');
     this.field = options?.field;
+    this.problem = options?.problem;
   }
 }
 

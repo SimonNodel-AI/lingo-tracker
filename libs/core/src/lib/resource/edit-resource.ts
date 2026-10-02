@@ -21,7 +21,7 @@ import { planMove } from './move-plan';
 import { relocateEntries } from './relocate-entries';
 import { resolveResourcePaths, validateAndResolvePaths } from './resource-file-paths';
 import { openResourceFolder } from './resource-folder';
-import { type ResourceMutation, upsertMutation } from './resource-mutation';
+import { type MutationSink, type MutationSinkOptions, saveReporting, upsertMutation } from './resource-mutation';
 import { assertTranslationStatus } from './translation-status-input';
 
 /** What to change on an entry. `undefined` leaves a field alone. */
@@ -40,6 +40,8 @@ export interface EditResourceChanges {
   readonly moveTo?: string;
 }
 
+export interface EditResourceOptions extends OpenTranslatorOptions, MutationSinkOptions {}
+
 export interface EditResourceResult {
   /** The entry's key after the edit: the destination key when it moved. */
   readonly resolvedKey: string;
@@ -48,8 +50,6 @@ export interface EditResourceResult {
   readonly entry?: ResourceTreeEntry;
   /** Locales the Translator skipped (see {@link seedLocales}). Present only when auto-translation ran. */
   readonly skippedLocales?: string[];
-  /** What changed on disk (empty when nothing was updated). */
-  readonly mutations: ResourceMutation[];
   /**
    * Advisory: discouraged terms in the base value, any rule-file problem that limited the check,
    * and, when auto-translation ran, a named protected-terms file that does not exist. Present
@@ -89,7 +89,7 @@ export async function editResource(
   collection: Collection,
   key: string,
   changes: EditResourceChanges,
-  options: OpenTranslatorOptions = {},
+  options: EditResourceOptions = {},
 ): Promise<EditResourceResult> {
   const { baseLocale, translationsFolder } = collection;
   const paths = validateAndResolvePaths({ key, translationsFolder });
@@ -133,9 +133,8 @@ export async function editResource(
   }
 
   for (const [locale, { value, status }] of translations) {
-    const normalized = translocoToICU(value);
-    if (normalized !== entry[locale]) {
-      folder.setTranslation(entryKey, locale, normalized, status);
+    if (translocoToICU(value) !== entry[locale]) {
+      folder.setTranslation(entryKey, locale, value, status);
       hasChanges = true;
     } else {
       const localeMeta = folder.get(entryKey)?.meta?.[locale];
@@ -147,12 +146,14 @@ export async function editResource(
   }
 
   if (!hasChanges && !destination) {
-    return { resolvedKey: paths.resolvedKey, updated: false, message: 'No changes detected', mutations: [] };
+    return { resolvedKey: paths.resolvedKey, updated: false, message: 'No changes detected' };
   }
 
   // Two-phase write: the edit is saved before auto-translation, so it is kept if the provider fails.
   if (hasChanges) {
-    folder.save();
+    saveReporting(folder, translationsFolder, options.onMutation, () => [
+      upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(entryKey)),
+    ]);
   }
 
   let skippedLocales: string[] | undefined;
@@ -176,7 +177,9 @@ export async function editResource(
       folder.setTranslation(entryKey, translation.locale, translation.value, translation.status);
     }
     if (seeding.translations.length > 0) {
-      folder.save();
+      saveReporting(folder, translationsFolder, options.onMutation, () => [
+        upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(entryKey)),
+      ]);
     }
     if (seeding.skippedLocales && seeding.skippedLocales.length > 0) {
       skippedLocales = seeding.skippedLocales;
@@ -184,7 +187,7 @@ export async function editResource(
     translatorProblems = seeding.problems;
   }
 
-  const moved = destination ? moveEntry(collection, paths.resolvedKey, destination) : undefined;
+  const moved = destination ? moveEntry(collection, paths.resolvedKey, destination, options.onMutation) : undefined;
   const resolvedKey = moved?.resolvedKey ?? paths.resolvedKey;
   const updatedEntry = moved?.entry ?? folder.treeEntry(entryKey);
   if (!updatedEntry) {
@@ -195,7 +198,6 @@ export async function editResource(
     resolvedKey,
     updated: true,
     entry: updatedEntry,
-    mutations: moved?.mutations ?? [upsertMutation(translationsFolder, resolvedKey, updatedEntry)],
     ...(skippedLocales !== undefined && { skippedLocales }),
     ...(baseValue !== undefined && {
       terminology: withTranslatorProblems(
@@ -237,16 +239,16 @@ function resolveDestination(
  * Moves the entry, as saved, to the destination through the Entry Relocation (`relocateEntries`),
  * which reads both folders from disk again, so writes made to the destination meanwhile are kept
  * and a new collision is caught. The destination is written before the source entry is removed.
- * A failed write throws, and the relocation's `reindex` mutations are dropped with it: the API's
- * index finds the change by fingerprint revalidation (see api.md, "Writes: Resource Mutations").
+ * A failed write throws after the relocation reports a `reindex`.
  * @throws {ResourceAlreadyExistsError} The destination has the entry key now.
  */
 function moveEntry(
   collection: Collection,
   sourceKey: string,
   destinationKey: string,
-): { resolvedKey: string; entry: ResourceTreeEntry; mutations: ResourceMutation[] } {
-  const relocation = relocateEntries(collection, collection, [{ from: sourceKey, to: destinationKey }]);
+  onMutation?: MutationSink,
+): { resolvedKey: string; entry: ResourceTreeEntry } {
+  const relocation = relocateEntries(collection, collection, [{ from: sourceKey, to: destinationKey }], { onMutation });
   if (relocation.collisions.length > 0) {
     throw new ResourceAlreadyExistsError(destinationKey);
   }
@@ -254,5 +256,5 @@ function moveEntry(
   if (!moved) {
     throw new CoreOperationError(relocation.errors.join('; ') || `Resource ${sourceKey} was not moved`);
   }
-  return { resolvedKey: moved.to, entry: moved.entry, mutations: relocation.mutations };
+  return { resolvedKey: moved.to, entry: moved.entry };
 }

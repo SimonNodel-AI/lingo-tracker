@@ -29,7 +29,7 @@ describe('ResourceFolder', () => {
 
   describe('open', () => {
     it('treats missing files as an empty folder', () => {
-      const folder = openResourceFolder(join(dir, 'missing'));
+      const folder = openResourceFolder(join(dir, 'missing'), { baseLocale: 'en' });
       expect(folder.isEmpty()).toBe(true);
       expect(folder.keys()).toEqual([]);
       expect(folder.get('ok')).toBeUndefined();
@@ -37,25 +37,35 @@ describe('ResourceFolder', () => {
 
     it('loads both files', () => {
       writePair({ ok: { source: 'OK', fr: 'Oui' } }, { ok: { en: { checksum: md5('OK') } } });
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       expect(folder.keys()).toEqual(['ok']);
       expect(folder.get('ok')).toEqual({ entry: { source: 'OK', fr: 'Oui' }, meta: { en: { checksum: md5('OK') } } });
     });
 
     it('throws on malformed JSON', () => {
       writeFileSync(join(folderPath, 'resource_entries.json'), '{ not json');
-      expect(() => openResourceFolder(folderPath)).toThrow();
+      expect(() => openResourceFolder(folderPath, { baseLocale: 'en' })).toThrow();
     });
 
     it('does not treat prototype properties as keys', () => {
       writePair({}, {});
-      expect(openResourceFolder(folderPath).has('constructor')).toBe(false);
+      expect(openResourceFolder(folderPath, { baseLocale: 'en' }).has('constructor')).toBe(false);
     });
   });
 
   describe('setBase', () => {
+    it('normalizes a Transloco base value before calculating its checksum', () => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'fr' });
+      folder.setBase('hello', 'Bonjour {{ name }}');
+
+      expect(folder.get('hello')).toEqual({
+        entry: { source: 'Bonjour {name}' },
+        meta: { fr: { checksum: md5('Bonjour {name}') } },
+      });
+    });
+
     it('creates a new entry with its base checksum', () => {
-      const folder = openResourceFolder(join(dir, 'a', 'b'));
+      const folder = openResourceFolder(join(dir, 'a', 'b'), { baseLocale: 'en' });
       expect(folder.setBase('ok', 'OK')).toBe(true);
       folder.save();
 
@@ -66,7 +76,7 @@ describe('ResourceFolder', () => {
 
     it('returns false when nothing changed', () => {
       writePair({ ok: { source: 'OK' } }, { ok: { en: { checksum: md5('OK') } } });
-      expect(openResourceFolder(folderPath).setBase('ok', 'OK')).toBe(false);
+      expect(openResourceFolder(folderPath, { baseLocale: 'en' }).setBase('ok', 'OK')).toBe(false);
     });
 
     it('applies the staleness rule when the base value changes', () => {
@@ -81,7 +91,7 @@ describe('ResourceFolder', () => {
         },
       );
 
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'Okay');
 
       expect(folder.get('ok')?.meta).toEqual({
@@ -103,7 +113,7 @@ describe('ResourceFolder', () => {
         },
       );
 
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       expect(folder.setBase('ok', 'Edited by hand')).toBe(true);
       expect(folder.get('ok')?.meta?.['fr'].status).toBe('stale');
     });
@@ -114,7 +124,7 @@ describe('ResourceFolder', () => {
         { ok: { fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'verified' } } },
       );
 
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
       expect(folder.get('ok')?.meta).toEqual({
         fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'verified' },
@@ -130,8 +140,23 @@ describe('ResourceFolder', () => {
   });
 
   describe('setTranslation / setStatus', () => {
+    it('normalizes a translation and keeps an already-ICU base checksum stable', () => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'fr' });
+      folder.setBase('hello', 'Bonjour {name}');
+      folder.setTranslation('hello', 'en', 'Hello {{ name }}', 'verified');
+      expect(folder.setBase('hello', 'Bonjour {name}')).toBe(false);
+
+      expect(folder.get('hello')).toEqual({
+        entry: { source: 'Bonjour {name}', en: 'Hello {name}' },
+        meta: {
+          fr: { checksum: md5('Bonjour {name}') },
+          en: { checksum: md5('Hello {name}'), baseChecksum: md5('Bonjour {name}'), status: 'verified' },
+        },
+      });
+    });
+
     it('records checksum, current base checksum, and status', () => {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
       folder.setTranslation('ok', 'fr', 'Oui', 'verified');
 
@@ -144,7 +169,7 @@ describe('ResourceFolder', () => {
     });
 
     it('defaults status to translated', () => {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
       folder.setTranslation('ok', 'fr', 'Oui');
       expect(folder.get('ok')?.meta?.['fr'].status).toBe('translated');
@@ -152,20 +177,20 @@ describe('ResourceFolder', () => {
 
     it('falls back to the checksum of the source when base metadata is missing', () => {
       writePair({ ok: { source: 'OK' } }, {});
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setTranslation('ok', 'fr', 'Oui');
       expect(folder.get('ok')?.meta?.['fr'].baseChecksum).toBe(md5('OK'));
     });
 
     it('rejects unknown keys and the base locale', () => {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       expect(() => folder.setTranslation('missing', 'fr', 'Oui')).toThrow('Resource entry not found');
       folder.setBase('ok', 'OK');
       expect(() => folder.setTranslation('ok', 'en', 'OK')).toThrow('base locale');
     });
 
     it('setStatus changes only the status', () => {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
       folder.setTranslation('ok', 'fr', 'Oui');
       folder.setStatus('ok', 'fr', 'verified');
@@ -186,7 +211,7 @@ describe('ResourceFolder', () => {
           },
         },
       );
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setStatus('ok', 'fr', 'translated', { refreshBaseChecksum: true });
       expect(folder.get('ok')?.meta?.['fr']).toEqual({
         checksum: 'kept',
@@ -198,7 +223,7 @@ describe('ResourceFolder', () => {
 
   describe('setDetails', () => {
     it('sets, keeps, and removes comment and tags', () => {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
 
       expect(folder.setDetails('ok', { comment: 'Button', tags: ['ui'] })).toBe(true);
@@ -212,9 +237,29 @@ describe('ResourceFolder', () => {
   });
 
   describe('setEntry', () => {
+    it('normalizes all locale values and updates checksums for converted values', () => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'fr' });
+      folder.setEntry(
+        'hello',
+        { source: 'Bonjour {{ name }}', en: 'Hello {{ name }}' },
+        {
+          fr: { checksum: md5('Bonjour {{ name }}') },
+          en: { checksum: md5('Hello {{ name }}'), baseChecksum: md5('Bonjour {{ name }}'), status: 'verified' },
+        },
+      );
+
+      expect(folder.get('hello')).toEqual({
+        entry: { source: 'Bonjour {name}', en: 'Hello {name}' },
+        meta: {
+          fr: { checksum: md5('Bonjour {name}') },
+          en: { checksum: md5('Hello {name}'), baseChecksum: md5('Bonjour {name}'), status: 'verified' },
+        },
+      });
+    });
+
     it('stores entry and metadata losslessly, keeping key position', () => {
       writePair({ a: { source: 'A' }, b: { source: 'B' } }, {});
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       const meta = {
         en: { checksum: md5('A2') },
         fr: { checksum: md5('Un'), baseChecksum: md5('A1'), status: 'verified' as const },
@@ -233,7 +278,7 @@ describe('ResourceFolder', () => {
         { ok: { source: 'OK' }, no: { source: 'No', de: 'Nein' } },
         { ok: { en: { checksum: md5('OK') } }, no: { en: { checksum: md5('No') } } },
       );
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
 
       expect(folder.seedLocale('de')).toBe(1);
       expect(folder.get('ok')?.entry['de']).toBe('OK');
@@ -247,7 +292,7 @@ describe('ResourceFolder', () => {
   });
 
   it('infers status only when a translation write omits it', () => {
-    const folder = openResourceFolder(folderPath);
+    const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
     folder.setBase('ok', 'OK');
     folder.setTranslation('ok', 'fr', 'OK');
     expect(folder.get('ok')?.meta?.['fr']?.status).toBe('new');
@@ -257,7 +302,7 @@ describe('ResourceFolder', () => {
 
   describe('normalizeEntry', () => {
     it('preserves an explicit translated status on an identical copy', () => {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
       folder.setTranslation('ok', 'fr', 'OK', 'translated');
 
@@ -276,7 +321,7 @@ describe('ResourceFolder', () => {
           },
         },
       );
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
 
       const report = folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui', de: 'OK' }, ['fr', 'de', 'es']);
 
@@ -304,7 +349,7 @@ describe('ResourceFolder', () => {
           },
         },
       );
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
 
       expect(folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui', es: 'Vale', de: 'Ja' }, ['fr'])).toEqual({
         localesAdded: 0,
@@ -313,6 +358,30 @@ describe('ResourceFolder', () => {
       expect(folder.get('ok')?.entry).toEqual({ source: 'OK', fr: 'Oui', es: 'Vale', de: 'Ja' });
       expect(folder.get('ok')?.meta?.['es']).toEqual(esMeta);
       expect(folder.get('ok')?.meta?.['de']).toBeUndefined();
+    });
+
+    it('converts a legacy value in a non-target locale and recomputes its checksum', () => {
+      const source = 'Hello {name}';
+      const legacy = 'Hola {{ name }}';
+      writePair(
+        { ok: { source, fr: 'Bonjour {name}', es: legacy } },
+        {
+          ok: {
+            en: { checksum: md5(source) },
+            fr: { checksum: md5('Bonjour {name}'), baseChecksum: md5(source), status: 'translated' },
+            es: { checksum: md5(legacy), baseChecksum: md5(source), status: 'verified' },
+          },
+        },
+      );
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+
+      expect(folder.normalizeEntry('ok', { source, fr: 'Bonjour {name}', es: legacy }, ['fr']).changed).toBe(true);
+      expect(folder.get('ok')?.entry['es']).toBe('Hola {name}');
+      expect(folder.get('ok')?.meta?.['es']).toEqual({
+        checksum: md5('Hola {name}'),
+        baseChecksum: md5(source),
+        status: 'verified',
+      });
     });
 
     describe('a translation made from an older base (stored baseChecksum differs from the base checksum)', () => {
@@ -326,7 +395,7 @@ describe('ResourceFolder', () => {
             },
           },
         );
-        return openResourceFolder(folderPath);
+        return openResourceFolder(folderPath, { baseLocale: 'en' });
       };
 
       it.each(['verified', 'translated'])('%s becomes stale with the current baseChecksum', (status) => {
@@ -380,7 +449,7 @@ describe('ResourceFolder', () => {
           },
         },
       );
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
 
       expect(folder.normalizeEntry('ok', { source: 'OK', fr: 'Oui' }, ['fr']).changed).toBe(false);
       expect(folder.get('ok')?.meta?.['fr']?.status).toBe('verified');
@@ -397,7 +466,7 @@ describe('ResourceFolder', () => {
           },
         },
       );
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
 
       folder.normalizeEntry('save', { source: 'Save changes', fr: 'Enregistrer', es: 'Save changes' }, ['fr', 'es']);
 
@@ -418,7 +487,7 @@ describe('ResourceFolder', () => {
           },
         },
       );
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
 
       expect(folder.normalizeEntry('ok', { source: 'OK', en: 'OK', fr: 'Oui', tags: ['ui'] }, ['fr'])).toEqual({
         localesAdded: 0,
@@ -433,16 +502,16 @@ describe('ResourceFolder', () => {
 
     it('rejects an unknown key', () => {
       writePair({}, {});
-      expect(() => openResourceFolder(folderPath).normalizeEntry('nope', { source: 'x' }, [])).toThrow(
-        'Resource entry not found: nope',
-      );
+      expect(() =>
+        openResourceFolder(folderPath, { baseLocale: 'en' }).normalizeEntry('nope', { source: 'x' }, []),
+      ).toThrow('Resource entry not found: nope');
     });
   });
 
   describe('treeEntry / translationLocales', () => {
     it('builds the tree entry and lists translation locales', () => {
       writePair({ ok: { source: 'OK', comment: 'c', tags: [], fr: 'Oui' } }, { ok: { en: { checksum: md5('OK') } } });
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       const stored = folder.get('ok');
       expect(stored).toBeDefined();
       expect(translationLocales(stored?.entry ?? { source: '' })).toEqual(['fr']);
@@ -457,7 +526,7 @@ describe('ResourceFolder', () => {
 
     it('returns the entry with empty metadata when its metadata record is missing', () => {
       writePair({ ok: { source: 'OK', fr: 'Bien' } }, {});
-      expect(openResourceFolder(folderPath).treeEntry('ok')).toEqual({
+      expect(openResourceFolder(folderPath, { baseLocale: 'en' }).treeEntry('ok')).toEqual({
         key: 'ok',
         source: 'OK',
         translations: { fr: 'Bien' },
@@ -467,14 +536,14 @@ describe('ResourceFolder', () => {
 
     it('returns undefined when the entry is missing', () => {
       writePair({ ok: { source: 'OK' } }, {});
-      expect(openResourceFolder(folderPath).treeEntry('missing')).toBeUndefined();
+      expect(openResourceFolder(folderPath, { baseLocale: 'en' }).treeEntry('missing')).toBeUndefined();
     });
   });
 
   describe('save', () => {
     it('writes both files and reports which were created', () => {
       const target = join(dir, 'nested');
-      const folder = openResourceFolder(target);
+      const folder = openResourceFolder(target, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
 
       const first = folder.save();
@@ -487,7 +556,7 @@ describe('ResourceFolder', () => {
 
     it('dryRun reports without writing', () => {
       const target = join(dir, 'dry');
-      const folder = openResourceFolder(target);
+      const folder = openResourceFolder(target, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
 
       const result = folder.save({ dryRun: true });
@@ -497,7 +566,7 @@ describe('ResourceFolder', () => {
 
     it('removes both files when the folder becomes empty', () => {
       writePair({ ok: { source: 'OK' } }, { ok: { en: { checksum: md5('OK') } } });
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       expect(folder.remove('ok')).toBe(true);
       expect(folder.remove('ok')).toBe(false);
 
@@ -508,12 +577,12 @@ describe('ResourceFolder', () => {
     });
 
     it('round-trips through disk', () => {
-      const folder = openResourceFolder(folderPath);
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
       folder.setBase('ok', 'OK');
       folder.setTranslation('ok', 'fr', 'Oui');
       folder.save();
 
-      const reopened = openResourceFolder(folderPath);
+      const reopened = openResourceFolder(folderPath, { baseLocale: 'en' });
       expect(reopened.get('ok')).toEqual(folder.get('ok'));
     });
   });

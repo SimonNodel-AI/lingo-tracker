@@ -4,7 +4,7 @@ import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { validateAndResolvePaths } from '../resource/resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import { type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
+import { type MutationSinkOptions, saveReporting, upsertMutation } from '../resource/resource-mutation';
 import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
 
 export interface TranslateExistingResourceResult {
@@ -12,8 +12,6 @@ export interface TranslateExistingResourceResult {
   /** Locales the Translator skipped (complex ICU, a lost placeholder, or a dropped protected term). */
   readonly skippedLocales: string[];
   readonly entry: ResourceTreeEntry;
-  /** What changed on disk (empty when nothing was translated). */
-  readonly mutations: ResourceMutation[];
   /** Problems that did not stop the Translator (a named protected-terms file that does not exist). */
   readonly warnings: string[];
 }
@@ -35,10 +33,12 @@ export interface TranslateExistingResourceResult {
  * @throws {TranslationError} Some locale needs work and the API key is not set, or the provider failed.
  * @throws {ProtectedTermsFileError} Some locale needs work and a protected-terms file is malformed.
  */
+export interface TranslateExistingResourceOptions extends OpenTranslatorOptions, MutationSinkOptions {}
+
 export async function translateExistingResource(
   collection: Collection,
   key: string,
-  options: OpenTranslatorOptions = {},
+  options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
   const { baseLocale, translationsFolder } = collection;
   assertAutoTranslationEnabled(collection);
@@ -60,7 +60,6 @@ export async function translateExistingResource(
       translatedCount: 0,
       skippedLocales: [],
       entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
-      mutations: [],
       warnings: [],
     };
   }
@@ -76,7 +75,13 @@ export async function translateExistingResource(
   }
 
   if (values.length > 0) {
-    folder.save();
+    saveReporting(folder, translationsFolder, options.onMutation, () => [
+      upsertMutation(
+        translationsFolder,
+        paths.resolvedKey,
+        requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
+      ),
+    ]);
   }
 
   const updatedEntry = requireTreeEntry(folder, paths.entryKey, paths.resolvedKey);
@@ -85,7 +90,6 @@ export async function translateExistingResource(
     translatedCount: values.length,
     skippedLocales: skipped.map(({ locale }) => locale),
     entry: updatedEntry,
-    mutations: values.length > 0 ? [upsertMutation(translationsFolder, paths.resolvedKey, updatedEntry)] : [],
     warnings: [...translator.problems],
   };
 }

@@ -109,6 +109,10 @@ describe('needsTranslation', () => {
     expect(needsTranslation(undefined)).toBe(true);
   });
 
+  it('is false when metadata exists without a status', () => {
+    expect(needsTranslation({ checksum: 'x' })).toBe(false);
+  });
+
   it.each(['new', 'stale'] as const)('is true for %s', (status) => {
     expect(needsTranslation({ checksum: 'x', status })).toBe(true);
   });

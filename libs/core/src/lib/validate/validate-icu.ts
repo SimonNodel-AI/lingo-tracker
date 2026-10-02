@@ -1,5 +1,5 @@
 import { findIcuCompileError, findUnportablePluralCases, isIcuLocaleSupported } from '@simoncodes-ca/domain';
-import type { LoadedResource } from '../export/export-common';
+import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { IcuValidationOptions, IcuValidationDetail, IcuValidationResult } from './types';
 
 /** {@link IcuValidationOptions} for one collection. */
@@ -32,7 +32,7 @@ export interface IcuPassOptions extends IcuValidationOptions {
  * @returns Compile failures, portability warnings, and locales that could not be checked.
  */
 export function validateIcuValues(
-  resources: readonly LoadedResource[],
+  resources: readonly CollectionSetResource[],
   targetLocales: readonly string[],
   options: IcuPassOptions,
 ): IcuValidationResult {
@@ -86,7 +86,11 @@ export function validateIcuValues(
  *
  * @internal
  */
-function valueForLocale(resource: LoadedResource, locale: string, baseLocale: string | undefined): string | undefined {
+function valueForLocale(
+  resource: CollectionSetResource,
+  locale: string,
+  baseLocale: string | undefined,
+): string | undefined {
   const translation = resource.translations[locale];
   if (translation !== undefined) return translation;
 
@@ -101,7 +105,7 @@ function valueForLocale(resource: LoadedResource, locale: string, baseLocale: st
  *
  * @internal
  */
-function baseValueOf(resource: LoadedResource, baseLocale: string): string | undefined {
+function baseValueOf(resource: CollectionSetResource, baseLocale: string): string | undefined {
   return valueForLocale(resource, baseLocale, baseLocale);
 }
 
@@ -115,7 +119,7 @@ function baseValueOf(resource: LoadedResource, baseLocale: string): string | und
  * @internal
  */
 function collectPortabilityWarnings(
-  resource: LoadedResource,
+  resource: CollectionSetResource,
   baseLocale: string,
   warnings: IcuValidationDetail[],
 ): void {

@@ -67,6 +67,7 @@ describe('bundle.mapper', () => {
 
   describe('mapGenerateBundleResultToJobResult', () => {
     const result: GenerateBundleResult = {
+      outcome: 'succeeded',
       bundleKey: 'main',
       filesGenerated: 2,
       writtenFiles: ['dist/i18n/main.en.json', 'dist/i18n/main.fr.json', 'dist/types/main.ts'],
@@ -112,6 +113,7 @@ describe('bundle.mapper', () => {
     it('restores the previous Tracker warning for a failed type file', () => {
       const dto = mapGenerateBundleResultToJobResult({
         ...result,
+        outcome: 'failed',
         writtenFiles: result.writtenFiles.slice(0, 2),
         typeOutcome: { status: 'failed', reason: 'disk full' },
       });

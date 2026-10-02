@@ -1,7 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { walkCollectionFolders } from '../resource/collection-folders';
-import { openResourceFolder } from '../resource/resource-folder';
+import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import { readResourceEntries, readTrackerMetadata } from '../file-io/json-file-operations';
 
 /**
  * Returns the collection folders under `rootPath` (the collection-folder policy: hidden folders
@@ -53,9 +54,12 @@ export function isFolderEmpty(folderPath: string): boolean {
     return false;
   }
 
-  // Empty unless resource_entries.json has entries (a missing file counts as empty)
+  // Raw reads avoid a Resource Folder open without a base locale; malformed metadata keeps the folder non-empty.
   try {
-    return openResourceFolder(folderPath).isEmpty();
+    const entriesPath = path.join(folderPath, RESOURCE_ENTRIES_FILENAME);
+    const metaPath = path.join(folderPath, TRACKER_META_FILENAME);
+    if (fs.existsSync(metaPath)) readTrackerMetadata(metaPath);
+    return !fs.existsSync(entriesPath) || Object.keys(readResourceEntries(entriesPath)).length === 0;
   } catch {
     // If we can't parse the file, consider it NOT empty to prevent deletion
     // This preserves corrupted files so they can be manually fixed

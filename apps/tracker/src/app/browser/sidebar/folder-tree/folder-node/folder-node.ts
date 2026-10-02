@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { TranslocoModule } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
+import { injectFeedback } from '../../../feedback';
 import { BrowserStore } from '../../../store/browser.store';
 import { folderDrop } from '../../../store/folder-drop';
 import type { DragData } from '../../../types/drag-data';
@@ -119,6 +120,14 @@ export class FolderNode {
 
   /** Signal exposing the path of the newly created folder */
   readonly newlyCreatedFolderPath = this.store.newlyCreatedFolderPath;
+
+  readonly #feedback = injectFeedback();
+
+  /** The refusal of the last create typed into this tree, as the store decided it. */
+  readonly createError = computed(() => {
+    const feedback = this.store.folderCreateError();
+    return feedback ? this.#feedback.text(feedback) : null;
+  });
 
   /** Whether the inline input should be shown for this folder */
   readonly shouldShowInlineInput = computed(() => {
