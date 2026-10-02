@@ -357,6 +357,16 @@ describe('toHttpException', () => {
     expect(http.getResponse()).toEqual(response);
   });
 
+  it('maps a missing move destination with its destination-specific message', () => {
+    const http = toHttpException(new CollectionNotFoundError('app', 'destination'));
+    expect(http.getStatus()).toBe(404);
+    expect(http.getResponse()).toEqual({
+      statusCode: 404,
+      message: 'Destination collection "app" not found',
+      error: 'Not Found',
+    });
+  });
+
   it('pins every public and internal core error subclass', () => {
     const errorExports = [...Object.entries(core), ...Object.entries(internalErrors)];
     const exported = [

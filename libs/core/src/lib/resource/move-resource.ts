@@ -1,10 +1,10 @@
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
+import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from './move-destination';
 import { sweepKeys } from './collection-sweep';
 import { folderAddressExists } from './folder-address';
 import { planMove } from './move-plan';
 import { type Relocation, type RelocationResult, relocateEntries } from './relocate-entries';
-import type { MutationSinkOptions } from './resource-mutation';
 
 export interface MoveResourceParams {
   /** Full source key, or a prefix pattern ending with `*` (`common.buttons.*`). */
@@ -13,8 +13,8 @@ export interface MoveResourceParams {
   readonly destination: string;
   /** Replace an existing destination entry. Default: false (the key is skipped with a warning). */
   readonly override?: boolean;
-  /** Destination collection for a cross-collection move. Default: the source collection. */
-  readonly destinationCollection?: Collection;
+  /** Plain destination collection name. Default: the source collection. */
+  readonly toCollection?: string;
 }
 
 export interface MoveResourceResult {
@@ -29,12 +29,23 @@ export interface MoveResourceResult {
  * destination collection). Supports single key move and wildcard pattern move (ending with *).
  * Per-key failures are reported in the result, not thrown.
  */
+export function moveResource(
+  collection: Collection,
+  params: MoveResourceParams,
+  options: MoveOptionsWithConfig,
+): Promise<MoveResourceResult>;
+export function moveResource(
+  collection: Collection,
+  params: MoveResourceParams & { readonly toCollection?: undefined },
+  options?: MoveOptions,
+): Promise<MoveResourceResult>;
 export async function moveResource(
   collection: Collection,
   params: MoveResourceParams,
-  options: MutationSinkOptions = {},
+  options: MoveOptions = {},
 ): Promise<MoveResourceResult> {
-  const { source, destination, override = false, destinationCollection = collection } = params;
+  const { source, destination, override = false } = params;
+  const destinationCollection = resolveMoveDestination(collection, params.toCollection, options);
   const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [] };
 
   let relocations: Relocation[];

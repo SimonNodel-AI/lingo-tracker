@@ -116,7 +116,7 @@ describe('FoldersController', () => {
           destinationFolderPath: 'apps.shared',
           override: undefined,
           nestUnderDestination: undefined,
-          destinationCollection: undefined,
+          toCollection: undefined,
         },
         expect.objectContaining({ onMutation: mockIndex.sink }),
       );
@@ -157,7 +157,7 @@ describe('FoldersController', () => {
           destinationFolderPath: 'apps.actions',
           override: true,
           nestUnderDestination: undefined,
-          destinationCollection: undefined,
+          toCollection: undefined,
         },
         expect.objectContaining({ onMutation: mockIndex.sink }),
       );
@@ -194,38 +194,42 @@ describe('FoldersController', () => {
           destinationFolderPath: 'shared.buttons',
           override: undefined,
           nestUnderDestination: undefined,
-          destinationCollection: expect.objectContaining({
-            name: 'another-collection',
-            translationsFolder: resolve('./translations/another'),
-          }),
+          toCollection: 'another-collection',
         },
-        expect.objectContaining({ onMutation: mockIndex.sink }),
+        expect.objectContaining({ onMutation: mockIndex.sink, config: mockConfig }),
       );
 
       expect(result.movedCount).toBe(2);
     });
 
-    it('should throw NotFoundException when source collection not found', async () => {
+    it('should map a missing source collection to 404', async () => {
       expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
+      expect(toHttpException(new core.CollectionNotFoundError('nonexistent-collection')).getStatus()).toBe(404);
 
       expect(core.moveFolder).not.toHaveBeenCalled();
     });
 
-    it('should throw NotFoundException when destination collection not found', async () => {
+    it('should map a missing destination collection to 404', async () => {
       const moveFolderDto = {
         sourceFolderPath: 'apps.buttons',
         destinationFolderPath: 'apps.actions',
         toCollection: 'nonexistent-collection',
       };
 
-      await expect(foldersController.move(collectionFor('test-collection'), moveFolderDto)).rejects.toThrow(
-        NotFoundException,
+      (core.moveFolder as jest.Mock).mockRejectedValue(
+        new core.CollectionNotFoundError('nonexistent-collection', 'destination'),
       );
-
-      expect(core.moveFolder).not.toHaveBeenCalled();
+      const http = await httpErrorOf(foldersController.move(collectionFor('test-collection'), moveFolderDto));
+      expect(http.getStatus()).toBe(404);
+      expect(http.getResponse()).toEqual({
+        statusCode: 404,
+        message: 'Destination collection "nonexistent-collection" not found',
+        error: 'Not Found',
+      });
+      expect(core.moveFolder).toHaveBeenCalled();
     });
 
-    it('should throw ForbiddenException when destination collection is read-only', async () => {
+    it('should map a read-only destination collection to 403', async () => {
       jest.spyOn(_configService, 'getConfig').mockReturnValue({
         ...mockConfig,
         collections: {
@@ -239,11 +243,15 @@ describe('FoldersController', () => {
         toCollection: 'vendor',
       };
 
-      const move = foldersController.move(collectionFor('test-collection'), moveFolderDto);
-      await expect(move).rejects.toThrow(ForbiddenException);
-      await expect(move).rejects.toThrow('Collection "vendor" is read-only. Its resources cannot be modified.');
-
-      expect(core.moveFolder).not.toHaveBeenCalled();
+      (core.moveFolder as jest.Mock).mockRejectedValue(new core.ReadOnlyCollectionError('vendor'));
+      const http = await httpErrorOf(foldersController.move(collectionFor('test-collection'), moveFolderDto));
+      expect(http.getStatus()).toBe(403);
+      expect(http.getResponse()).toEqual({
+        statusCode: 403,
+        message: 'Collection "vendor" is read-only. Its resources cannot be modified.',
+        error: 'Forbidden',
+      });
+      expect(core.moveFolder).toHaveBeenCalled();
     });
 
     it('should throw HttpException for validation errors (missing fields)', async () => {

@@ -1,8 +1,7 @@
-import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { type Collection, openCollection } from '../config/open-collection';
+import type { Collection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
+import type { MoveOptionsWithConfig } from './move-destination';
 import { type MoveResourceResult, moveResource } from './move-resource';
-import type { MutationSinkOptions } from './resource-mutation';
 
 export interface MoveResourcesOperation {
   readonly source: string;
@@ -20,41 +19,22 @@ export interface MoveResourcesOperation {
 export async function moveResources(
   collection: Collection,
   ops: readonly MoveResourcesOperation[],
-  options: { readonly config: LingoTrackerConfig } & MutationSinkOptions,
+  options: MoveOptionsWithConfig,
 ): Promise<MoveResourceResult> {
   const result: MoveResourceResult = { movedCount: 0, warnings: [], errors: [] };
   for (const op of ops) {
-    let destinationCollection: Collection | undefined;
-    if (op.toCollection) {
-      const name = op.toCollection;
-      try {
-        destinationCollection = openCollection(options.config, name, { writable: true });
-      } catch (error) {
-        if (error instanceof CollectionNotFoundError) {
-          result.errors.push(`Destination collection "${name}" not found`);
-          continue;
-        }
-        if (error instanceof ReadOnlyCollectionError) {
-          result.errors.push(error.message);
-          continue;
-        }
-        throw error;
+    try {
+      const moved = await moveResource(collection, op, options);
+      result.movedCount += moved.movedCount;
+      result.warnings.push(...moved.warnings);
+      result.errors.push(...moved.errors);
+    } catch (error) {
+      if (error instanceof CollectionNotFoundError || error instanceof ReadOnlyCollectionError) {
+        result.errors.push(error.message);
+        continue;
       }
+      throw error;
     }
-
-    const moved = await moveResource(
-      collection,
-      {
-        source: op.source,
-        destination: op.destination,
-        override: op.override,
-        destinationCollection,
-      },
-      { onMutation: options.onMutation },
-    );
-    result.movedCount += moved.movedCount;
-    result.warnings.push(...moved.warnings);
-    result.errors.push(...moved.errors);
   }
   return result;
 }

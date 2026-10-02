@@ -5,9 +5,10 @@ import { FolderMoveIntoDescendantError, FolderNotFoundError } from '../errors/li
 import { sweepKeys } from '../resource/collection-sweep';
 import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { planMove } from '../resource/move-plan';
+import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from '../resource/move-destination';
 import { mergeRelocation } from '../resource/move-resource';
 import { relocateEntries } from '../resource/relocate-entries';
-import { folderMutation, type MutationSink, type MutationSinkOptions } from '../resource/resource-mutation';
+import { folderMutation, type MutationSink } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -16,8 +17,8 @@ export interface MoveFolderParams {
   readonly destinationFolderPath: string;
   /** If true, override existing resources at destination */
   readonly override?: boolean;
-  /** Destination collection for a cross-collection move. Default: the source collection. */
-  readonly destinationCollection?: Collection;
+  /** Plain destination collection name. Default: the source collection. */
+  readonly toCollection?: string;
   /**
    * When true, the source folder is nested under the destination as a child folder.
    * When false, uses depth-based rename/nest heuristic (legacy behavior).
@@ -69,13 +70,23 @@ export interface MoveFolderResult {
  * // Resources like 'apps.common.buttons.ok' become 'apps.shared.buttons.ok'
  * ```
  */
+export function moveFolder(
+  collection: Collection,
+  params: MoveFolderParams,
+  options: MoveOptionsWithConfig,
+): Promise<MoveFolderResult>;
+export function moveFolder(
+  collection: Collection,
+  params: MoveFolderParams & { readonly toCollection?: undefined },
+  options?: MoveOptions,
+): Promise<MoveFolderResult>;
 export async function moveFolder(
   collection: Collection,
   params: MoveFolderParams,
-  options: MutationSinkOptions = {},
+  options: MoveOptions = {},
 ): Promise<MoveFolderResult> {
   const { sourceFolderPath, destinationFolderPath, override = false, nestUnderDestination = true } = params;
-  const destinationCollection = params.destinationCollection ?? collection;
+  const destinationCollection = resolveMoveDestination(collection, params.toCollection, options);
   const sameCollection = resolve(destinationCollection.translationsFolder) === resolve(collection.translationsFolder);
 
   const result: MoveFolderResult = {

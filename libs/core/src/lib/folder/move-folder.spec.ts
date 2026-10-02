@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
@@ -27,6 +28,14 @@ function collection(translationsFolder: string, name = 'main'): Collection {
     config: { translationsFolder },
   };
 }
+
+const moveConfig = (name: string, translationsFolder: string): LingoTrackerConfig => ({
+  exportFolder: 'dist',
+  importFolder: 'import',
+  baseLocale: 'en',
+  locales: ['en', 'fr'],
+  collections: { [name]: { translationsFolder } },
+});
 
 // Mock node:fs
 vi.mock('node:fs', () => {
@@ -415,11 +424,15 @@ describe('Move Folder', () => {
       mockDirectories.add(join(testDir, 'apps'));
       mockDirectories.add(buttonsFolder);
 
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.buttons',
-        destinationCollection: collection(testDir, 'alias'),
-      });
+      const result = await moveFolder(
+        collection(testDir),
+        {
+          sourceFolderPath: 'apps.buttons',
+          destinationFolderPath: 'apps.buttons',
+          toCollection: 'alias',
+        },
+        { config: moveConfig('alias', testDir) },
+      );
 
       expect(result.movedCount).toBe(0);
       expect(result.foldersDeleted).toBe(0);
@@ -493,12 +506,16 @@ describe('Move Folder', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       mockDirectories.add(collectionBFolder);
 
-      const result = await moveFolder(collection(collectionAFolder, 'collectionA'), {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'shared.buttons',
-        nestUnderDestination: false,
-        destinationCollection: collection(collectionBFolder, 'collectionB'),
-      });
+      const result = await moveFolder(
+        collection(collectionAFolder, 'collectionA'),
+        {
+          sourceFolderPath: 'apps.buttons',
+          destinationFolderPath: 'shared.buttons',
+          nestUnderDestination: false,
+          toCollection: 'collectionB',
+        },
+        { config: moveConfig('collectionB', collectionBFolder) },
+      );
 
       expect(result.movedCount).toBe(1);
       expect(result.foldersDeleted).toBe(1);
@@ -545,12 +562,16 @@ describe('Move Folder', () => {
       mockDirectories.add(collectionBFolder);
 
       // Same path but different collection should work
-      const result = await moveFolder(collection(collectionAFolder, 'collectionA'), {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.buttons',
-        nestUnderDestination: false,
-        destinationCollection: collection(collectionBFolder, 'collectionB'),
-      });
+      const result = await moveFolder(
+        collection(collectionAFolder, 'collectionA'),
+        {
+          sourceFolderPath: 'apps.buttons',
+          destinationFolderPath: 'apps.buttons',
+          nestUnderDestination: false,
+          toCollection: 'collectionB',
+        },
+        { config: moveConfig('collectionB', collectionBFolder) },
+      );
 
       expect(result.movedCount).toBe(1);
       expect(result.foldersDeleted).toBe(1);

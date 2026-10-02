@@ -194,9 +194,9 @@ describe('CollectionIndex', () => {
         {
           source: 'common.ok',
           destination: 'imported.ok',
-          destinationCollection: other,
+          toCollection: 'other',
         },
-        { onMutation: index.sink },
+        { onMutation: index.sink, config: config('other'), cwd: root },
       );
 
       expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);

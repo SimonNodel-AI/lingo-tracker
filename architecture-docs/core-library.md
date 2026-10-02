@@ -365,17 +365,17 @@ addResource(collection, { key, baseValue, comment?, tags?, targetFolder?, transl
 addResources(collection, items, { provider?, protectedTerms?, onMutation? }?)
 editResource(collection, key, { baseValue?, comment?, tags?, translations?, moveTo? }, { onMutation? }?)
 deleteResource(collection, { keys }, { onMutation? }?)
-moveResource(collection, { source, destination, override?, destinationCollection? }, { onMutation? }?)
-moveResources(collection, ops, { config, onMutation? })
+moveResource(collection, { source, destination, override?, toCollection? }, { config?, cwd?, onMutation? }?)
+moveResources(collection, ops, { config, cwd?, onMutation? })
 translateExistingResource(collection, key, { provider?, protectedTerms?, onMutation? }?)
 assertCanTranslateLocale(collection, locale)
 translateLocale(collection, { targetLocale, onProgress?, provider?, protectedTerms?, onMutation? })
 createFolder(collection, { folderName, parentPath? }, { onMutation? }?)
 deleteFolder(collection, { folderPath }, { onMutation? }?)
-moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nestUnderDestination?, destinationCollection? }, { onMutation? }?)
+moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nestUnderDestination?, toCollection? }, { config?, cwd?, onMutation? }?)
 ```
 
-`addResource`, `addResources` and `editResource` take the same optional `{ provider?, protectedTerms? }` as a last parameter, for [locale seeding](#locale-seeding). The base locale, the target locales, the translation config and the term files come only from the `Collection`; there is no `'en'` fallback and no `cwd` (the `translationsFolder` is absolute). All three check stored base values against the [Project Terms](#project-terms) and return advisory `terminology` (`editResource` does so when the edit supplied a base value and updated the entry). A single cross-collection move takes the destination as a second `Collection`; `moveResources` opens each named destination from its config.
+`addResource`, `addResources` and `editResource` take the same optional `{ provider?, protectedTerms? }` as a last parameter, for [locale seeding](#locale-seeding). The base locale, the target locales, the translation config and the term files come only from the `Collection`; there is no `'en'` fallback. All three check stored base values against the [Project Terms](#project-terms) and return advisory `terminology` (`editResource` does so when the edit supplied a base value and updated the entry). A cross-collection move takes a plain `toCollection` name. Its `config` is required by the move function's type signature; core opens the destination writable using that config and optional `cwd` from the last options argument. A single move throws typed `CollectionNotFoundError` or `ReadOnlyCollectionError` before writing; a batch records their messages and continues.
 
 **Key placement.** `addResource` stores `targetFolder.key` (`resolveResourceKey`, applied by `validateAndResolvePaths`). `editResource` takes the entry's full, existing key. Its `moveTo` is a destination folder (`''` is the collection root): the entry keeps its entry key (the last segment) and moves there through the [Entry Relocation](#entry-relocation), after the edit is saved. The destination must not already have that entry key (`ResourceAlreadyExistsError`). This is checked before anything is written, and again by the relocation, which reads both folders fresh just before the move, because auto-translation may run in between; a collision found then throws with the edit already saved in the source folder. The destination is written before the source entry is removed.
 
@@ -406,11 +406,11 @@ Steps:
 
 ### Resource Batches
 
-**Entry points:** `addResources(collection, items, options?)` and `moveResources(collection, ops, { config, onMutation? })`.
+**Entry points:** `addResources(collection, items, options?)` and `moveResources(collection, ops, { config, cwd?, onMutation? })`.
 
 `addResources` resolves and prepares every item before writing. It rejects malformed keys, unknown locales, duplicate or existing keys, unreadable folder JSON, and translation failures before any write. It saves each item in input order, returning counts, skipped locales, and terminology findings. Earlier items are delivered through `onMutation` as they are saved. A later disk failure leaves those entries on disk; if the failing folder save started, `saveReporting` delivers `reindex`. There is no rollback.
 
-`moveResources` runs each operation through `moveResource`, resolving writable destination collections from `config`. A missing or read-only destination adds an error and later operations continue. It combines counts, warnings, and errors. If operation N throws, earlier completed operations remain on disk and their mutations have already reached the sink.
+`moveResources` runs each operation through `moveResource`, resolving writable destination collections from `config` and optional `cwd`. A missing or read-only destination adds an error and later operations continue. It combines counts, warnings, and errors. If operation N throws, earlier completed operations remain on disk and their mutations have already reached the sink.
 
 ### edit-resource
 
@@ -441,7 +441,7 @@ Steps:
 
 ### move-resource
 
-**Entry point:** `moveResource(collection, { source, destination, override, destinationCollection })`
+**Entry point:** `moveResource(collection, { source, destination, override?, toCollection? }, { config?, cwd?, onMutation? }?)`
 
 Two modes, one move: both get a list of `{ from, to }` keys from the [Move Plan](#move-plan) and hand it to the [Entry Relocation](#entry-relocation) in one call. A collision becomes a warning (`Destination key already exists: <key>. Use override option to force move.`); a failed relocation is an error.
 

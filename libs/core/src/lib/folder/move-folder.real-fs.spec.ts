@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
+import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { addResource } from '../resource/add-resource';
 import { openResourceFolder } from '../resource/resource-folder';
 import { moveFolder } from './move-folder';
@@ -57,6 +58,40 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('refuses a missing destination before a folder move writes', async () => {
+    writeFolder('{}', 'apps');
+    const config = { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} };
+    await expect(
+      moveFolder(
+        collection(root),
+        { sourceFolderPath: 'apps', destinationFolderPath: 'shared', toCollection: 'missing' },
+        { config, onMutation },
+      ),
+    ).rejects.toThrow(CollectionNotFoundError);
+    expect(collected).toEqual([]);
+    expect(existsSync(join(root, 'apps', 'resource_entries.json'))).toBe(true);
+  });
+
+  it('refuses a read-only destination before a folder move writes', async () => {
+    writeFolder('{}', 'apps');
+    const config = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en'],
+      collections: { vendor: { translationsFolder: 'vendor', readOnly: true } },
+    };
+    await expect(
+      moveFolder(
+        collection(root),
+        { sourceFolderPath: 'apps', destinationFolderPath: 'shared', toCollection: 'vendor' },
+        { config, cwd: root, onMutation },
+      ),
+    ).rejects.toThrow(ReadOnlyCollectionError);
+    expect(collected).toEqual([]);
+    expect(existsSync(join(root, 'apps', 'resource_entries.json'))).toBe(true);
   });
 
   it('reports an error and moves or deletes nothing when one child folder has malformed metadata', async () => {
@@ -322,9 +357,18 @@ describe('moveFolder across collections and around content outside the collectio
       {
         sourceFolderPath: 'apps',
         destinationFolderPath: '',
-        destinationCollection: target,
+        toCollection: 'other',
       },
-      { onMutation },
+      {
+        onMutation,
+        config: {
+          exportFolder: 'dist',
+          importFolder: 'import',
+          baseLocale: target.baseLocale,
+          locales: [...target.locales],
+          collections: { other: { translationsFolder: target.translationsFolder } },
+        },
+      },
     );
 
     expect(result.movedCount).toBe(1);

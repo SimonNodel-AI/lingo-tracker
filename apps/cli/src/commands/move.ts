@@ -1,4 +1,4 @@
-import { type Collection, moveResource, openCollection } from '@simoncodes-ca/core';
+import { moveResource } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -39,16 +39,10 @@ export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
   ],
   required: ['source', 'dest'],
   run: async ({ collection, config, cwd, answers }) => {
-    const destinationCollection: Collection | undefined = answers.destCollection
-      ? openCollection(config, answers.destCollection, { cwd, writable: true })
-      : undefined;
-
-    const result = await moveResource(collection, {
-      source: answers.source,
-      destination: answers.dest,
-      override: answers.override,
-      destinationCollection,
-    });
+    const params = { source: answers.source, destination: answers.dest, override: answers.override };
+    const result = answers.destCollection
+      ? await moveResource(collection, { ...params, toCollection: answers.destCollection }, { config, cwd })
+      : await moveResource(collection, params);
 
     if (result.movedCount > 0) {
       ConsoleFormatter.success(`Moved ${result.movedCount} resource(s)`);

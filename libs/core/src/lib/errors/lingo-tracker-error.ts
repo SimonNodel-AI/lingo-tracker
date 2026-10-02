@@ -171,8 +171,13 @@ export class CollectionNotFoundError extends LingoTrackerError {
   readonly kind = 'not-found' as const;
   readonly collectionName: string;
 
-  constructor(collectionName: string) {
-    super(ErrorMessages.collectionNotFound(collectionName), 'COLLECTION_NOT_FOUND');
+  constructor(collectionName: string, role: 'source' | 'destination' = 'source') {
+    super(
+      role === 'destination'
+        ? `Destination collection "${collectionName}" not found`
+        : ErrorMessages.collectionNotFound(collectionName),
+      'COLLECTION_NOT_FOUND',
+    );
     this.collectionName = collectionName;
   }
 }

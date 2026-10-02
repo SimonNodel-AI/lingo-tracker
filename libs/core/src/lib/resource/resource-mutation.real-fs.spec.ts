@@ -166,9 +166,18 @@ describe('mutations delivered by core writes (real fs)', () => {
         {
           source: 'common.ok',
           destination: 'imported.ok',
-          destinationCollection: collection(other, 'other'),
+          toCollection: 'other',
         },
-        { onMutation },
+        {
+          onMutation,
+          config: {
+            exportFolder: 'dist',
+            importFolder: 'import',
+            baseLocale: 'en',
+            locales: ['en', 'fr'],
+            collections: { other: { translationsFolder: other } },
+          },
+        },
       );
 
       expect(collected).toEqual([
