@@ -1,8 +1,7 @@
-import type { StatusCounts, TranslationStatus } from '@simoncodes-ca/domain';
-import { STATUS_DISPLAY_ORDER } from '../../../../shared/translation-status/translation-status-presentation';
+import { STATUS_PRECEDENCE, type StatusCounts, type TranslationStatus } from '@simoncodes-ca/domain';
 
-/** The ring draws its arcs in the reverse of the display order, starting at 12 o'clock. */
-const RING_ORDER: readonly TranslationStatus[] = [...STATUS_DISPLAY_ORDER].reverse();
+/** The ring draws its arcs in the reverse of the status precedence, starting at 12 o'clock. */
+const RING_ORDER: readonly TranslationStatus[] = [...STATUS_PRECEDENCE].reverse();
 
 /** Arcs shorter than this (in SVG user units) are not drawn: they would be a speck. */
 const MIN_ARC_LENGTH = 0.5;
@@ -43,12 +42,11 @@ export function ringSegments(counts: StatusCounts, total: number, radius: number
   return segments;
 }
 
-/** Tooltip rows run in status display order, then by locale code. */
+/** Tooltip rows run in status precedence order (most urgent first), then by locale code. */
 export function sortLocaleRows<T extends { readonly code: string; readonly status: TranslationStatus }>(
   rows: readonly T[],
 ): T[] {
   return [...rows].sort(
-    (a, b) =>
-      STATUS_DISPLAY_ORDER.indexOf(a.status) - STATUS_DISPLAY_ORDER.indexOf(b.status) || a.code.localeCompare(b.code),
+    (a, b) => STATUS_PRECEDENCE.indexOf(a.status) - STATUS_PRECEDENCE.indexOf(b.status) || a.code.localeCompare(b.code),
   );
 }

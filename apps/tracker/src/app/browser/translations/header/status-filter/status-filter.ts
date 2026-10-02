@@ -1,13 +1,15 @@
 import { Component, ChangeDetectionStrategy, computed, inject } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
-import { isNeedsWorkStatusSelection, NEEDS_WORK_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
+import {
+  isNeedsWorkStatusSelection,
+  NEEDS_WORK_STATUSES,
+  STATUS_PRECEDENCE,
+  type TranslationStatus,
+} from '@simoncodes-ca/domain';
 import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import {
-  STATUS_DISPLAY_ORDER,
-  STATUS_PRESENTATION,
-} from '../../../../shared/translation-status/translation-status-presentation';
+import { STATUS_PRESENTATION } from '../../../../shared/translation-status/translation-status-presentation';
 
 /** One toggle in the rail. `statuses` is what it selects, not what it is called. */
 interface StatusToggle {
@@ -69,7 +71,7 @@ export class StatusFilter {
         selected: this.isNeedsWorkSelected(),
       },
       // The shared status labels, so a status reads the same here as on the rows it filters.
-      ...STATUS_DISPLAY_ORDER.map((status) => ({
+      ...STATUS_PRECEDENCE.map((status) => ({
         id: status,
         label: STATUS_PRESENTATION[status].labelToken,
         statuses: [status] as const,
