@@ -57,13 +57,22 @@ describe('resolveCollectionSettings', () => {
     expect(resolveCollectionSettings(bare, 'app')).toMatchObject({ baseLocale: 'en', locales: [] });
   });
 
-  it('treats an empty collection base locale as absent but an empty locale list as its own', () => {
+  it('inherits an empty collection base locale and an empty collection locale list', () => {
     const settings = resolveCollectionSettings(
       config({ collections: { app: { translationsFolder: 'src/i18n', baseLocale: '', locales: [] } } }),
       'app',
     );
 
     expect(settings.baseLocale).toBe('en');
+    expect(settings.locales).toEqual(['en', 'fr']);
+  });
+
+  it('keeps no locales when both collection and global locale lists are empty', () => {
+    const settings = resolveCollectionSettings(
+      config({ locales: [], collections: { app: { translationsFolder: 'src/i18n', locales: [] } } }),
+      'app',
+    );
+
     expect(settings.locales).toEqual([]);
   });
 
@@ -92,6 +101,7 @@ describe('resolveCollectionSettings', () => {
 
   it('reads own keys only, so a prototype member name is not a collection', () => {
     expect(resolveCollectionSettings(config(), 'constructor').translationsFolder).toBe('');
+    expect(resolveCollectionSettings(config(), '__proto__').translationsFolder).toBe('');
   });
 });
 

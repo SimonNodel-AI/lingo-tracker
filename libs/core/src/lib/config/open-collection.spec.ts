@@ -85,8 +85,15 @@ describe('openCollection', () => {
     expect(openCollection(config, 'inherits', { cwd: dir }).targetLocales).not.toContain('en');
   });
 
-  it('keeps an explicitly empty locale list instead of inheriting', () => {
+  it('inherits the global locale list when the collection list is explicitly empty', () => {
     const collection = openCollection(config, 'emptyLocales', { cwd: dir });
+
+    expect(collection.locales).toEqual(['en', 'fr', 'de']);
+    expect(collection.targetLocales).toEqual(['fr', 'de']);
+  });
+
+  it('keeps no locales when both collection and global locale lists are empty', () => {
+    const collection = openCollection({ ...config, locales: [] }, 'emptyLocales', { cwd: dir });
 
     expect(collection.locales).toEqual([]);
     expect(collection.targetLocales).toEqual([]);
@@ -176,6 +183,7 @@ describe('openCollection', () => {
 
   it('does not treat inherited object properties as collections', () => {
     expect(() => openCollection(config, 'constructor')).toThrow(CollectionNotFoundError);
+    expect(() => openCollection(config, '__proto__')).toThrow(CollectionNotFoundError);
     expect(() => openCollection(config, 'toString')).toThrow(CollectionNotFoundError);
   });
 

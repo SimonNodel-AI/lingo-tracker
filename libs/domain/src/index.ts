@@ -20,6 +20,8 @@ export {
   validateBundleDefinition,
   validateBundleKey,
 } from './lib/bundle-definition';
+// Collection settings: shared inheritance and base-locale default
+export { DEFAULT_BASE_LOCALE, findCollectionEntry, inheritCollectionSettings } from './lib/collection-settings';
 // Tags
 export { effectiveTags } from './lib/effective-tags';
 // Utilities
@@ -43,10 +45,10 @@ export {
   DEFAULT_IMPORT_STRATEGY,
   honouredImportSourceStatus,
   IMPORT_STRATEGIES,
-  importStrategyPolicy,
-  isImportStrategy,
   type ImportStrategy,
   type ImportStrategyPolicy,
+  importStrategyPolicy,
+  isImportStrategy,
   type ResolveImportStatusParams,
   resolveImportStatus,
 } from './lib/import-strategy-policy';

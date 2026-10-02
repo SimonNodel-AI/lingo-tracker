@@ -1,4 +1,6 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: Expected
+import { DEFAULT_BASE_LOCALE } from '@simoncodes-ca/domain';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type SafeAny = any;
 
@@ -13,7 +15,7 @@ export const CONFIG_FILENAME = '.lingo-tracker.json';
 export const DEFAULT_CONFIG = {
   exportFolder: 'dist/lingo-export',
   importFolder: 'dist/lingo-import',
-  baseLocale: 'en',
+  baseLocale: DEFAULT_BASE_LOCALE,
   locales: [] as string[],
 } as const;
 
