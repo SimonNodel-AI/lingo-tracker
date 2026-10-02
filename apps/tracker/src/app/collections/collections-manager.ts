@@ -21,7 +21,7 @@ import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
 import type { Observable } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../shared/api-error/api-error';
-import { injectConfirm } from '../shared/confirm';
+import { injectConfirm, type ConfirmationText } from '../shared/confirm';
 import { NotificationService } from '../shared/notification';
 import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData } from './bundle-form-dialog/bundle-form-dialog-data';
@@ -249,7 +249,7 @@ export class CollectionsManager {
   openDeleteBundleDialog(name: string): void {
     this.#confirmThenDelete({
       title: TRACKER_TOKENS.BUNDLES.DELETECONFIRMTITLE,
-      message: () => this.#transloco.translate(TRACKER_TOKENS.BUNDLES.DELETECONFIRMMESSAGEX, { name }),
+      message: { token: TRACKER_TOKENS.BUNDLES.DELETECONFIRMMESSAGEX, params: { name } },
       success: TRACKER_TOKENS.BUNDLES.TOAST.DELETED,
       failure: TRACKER_TOKENS.BUNDLES.TOAST.DELETEFAILED,
       delete: () => this.store.deleteBundle(name),
@@ -333,7 +333,7 @@ export class CollectionsManager {
   openDeleteDialog(name: string): void {
     this.#confirmThenDelete({
       title: TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.TITLE,
-      message: () => this.#transloco.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.MESSAGE, { name }),
+      message: { token: TRACKER_TOKENS.COLLECTIONS.DIALOG.DELETE.MESSAGE, params: { name } },
       success: TRACKER_TOKENS.COLLECTIONS.TOAST.DELETED,
       failure: TRACKER_TOKENS.COLLECTIONS.TOAST.DELETEFAILED,
       delete: () => this.store.deleteCollection(name),
@@ -342,17 +342,17 @@ export class CollectionsManager {
 
   #confirmThenDelete(options: {
     title: string;
-    message: () => string;
+    message: ConfirmationText;
     success: string;
     failure: string;
     delete: () => Observable<unknown>;
   }): void {
     this.#confirm(
       {
-        title: this.#transloco.translate(options.title),
-        message: options.message(),
-        confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-        cancelButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
+        title: options.title,
+        message: options.message,
+        confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.DELETE,
+        cancelButtonText: TRACKER_TOKENS.COMMON.ACTIONS.CANCEL,
         actionType: 'destructive',
       },
       { width: '400px' },

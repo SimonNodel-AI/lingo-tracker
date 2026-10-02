@@ -34,12 +34,11 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { CollectionsStore } from '../../../collections/store/collections.store';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
-import type { ConfirmationDialogData } from '../../../shared/components/confirmation-dialog/confirmation-dialog-data';
 import { injectConfirm } from '../../../shared/confirm';
 import { NotificationService } from '../../../shared/notification';
 import { hasSearchLength } from '../../../shared/search/search-minimum';
 import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
+import { injectFeedback } from '../../feedback';
 import { FolderPeek } from '../../services/folder-peek';
 import { SimilarValues } from '../../services/similar-values';
 import { BrowserStore } from '../../store/browser.store';
@@ -111,6 +110,7 @@ export type { EditorOutcome } from './editor-submit';
 export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit {
   private readonly dialogRef = inject<MatDialogRef<TranslationEditorDialog, EditorOutcome>>(MatDialogRef);
   private readonly confirm = injectConfirm();
+  private readonly feedback = injectFeedback();
   private readonly folderPeek = inject(FolderPeek).openFolderPeek();
   private readonly similarValues = inject(SimilarValues);
   private readonly browserStore = inject(BrowserStore);
@@ -663,14 +663,14 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   }
 
   #confirmDiscard(): Promise<boolean> {
-    const dialogData: ConfirmationDialogData = {
-      title: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.TITLE),
-      message: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.MESSAGE),
-      confirmButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.DISCARD),
-      cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.KEEPEDITING),
+    const spec = {
+      title: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.TITLE,
+      message: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.MESSAGE,
+      confirmButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.DISCARD,
+      cancelButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.KEEPEDITING,
     };
 
-    return this.confirm(dialogData, { width: '440px', disableClose: true });
+    return this.confirm(spec, { width: '440px', disableClose: true });
   }
 
   /** The picker inside the popover stages a folder; the popover's button commits it. */
@@ -825,41 +825,34 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       return;
     }
 
-    const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
-    const token = {
-      'missing-resource': tokens.MISSINGRESOURCE,
-      'not-found': tokens.NOTFOUND,
-      'invalid-request': tokens.INVALIDREQUEST,
-      'create-failed': tokens.CREATEFAILED,
-      'update-failed': tokens.UPDATEFAILED,
-      unexpected: tokens.UNEXPECTED,
-    }[decision.message];
-    const fallback = this.transloco.translate(token);
-    this.errorMessage.set(decision.error ? apiErrorMessage(decision.error, fallback) : fallback);
+    this.errorMessage.set(this.feedback.text(decision.feedback));
   }
 
   #showKeyConflictDialog(existingKey: string): Promise<boolean> {
-    const dialogData: ConfirmationDialogData = {
-      title: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.TITLE),
-      message: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.MESSAGEX, {
-        key: existingKey,
-      }),
-      confirmButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.EDITEXISTING),
-      cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.CHOOSEDIFFERENTKEY),
+    const spec = {
+      title: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.TITLE,
+      message: {
+        token: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.MESSAGEX,
+        params: {
+          key: existingKey,
+        },
+      },
+      confirmButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.EDITEXISTING,
+      cancelButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.CHOOSEDIFFERENTKEY,
     };
 
-    return this.confirm(dialogData, { width: '500px' });
+    return this.confirm(spec, { width: '500px' });
   }
 
   #showCommentConfirmation(): Promise<boolean> {
-    const confirmationDialogData: ConfirmationDialogData = {
-      title: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.TITLE),
-      message: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.MESSAGE),
-      confirmButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.SAVEANYWAY),
-      cancelButtonText: this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.ADDCOMMENT),
+    const spec = {
+      title: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.TITLE,
+      message: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.MESSAGE,
+      confirmButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.SAVEANYWAY,
+      cancelButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.ADDCOMMENT,
     };
 
-    return this.confirm(confirmationDialogData, { width: '400px', disableClose: true });
+    return this.confirm(spec, { width: '400px', disableClose: true });
   }
 
   /**
