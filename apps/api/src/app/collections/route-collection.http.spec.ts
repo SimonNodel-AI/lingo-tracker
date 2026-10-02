@@ -91,6 +91,19 @@ describe('RouteCollection over HTTP', () => {
     });
   });
 
+  it('answers 400 with an exact shape error for a malformed resource key', async () => {
+    await expect(
+      request('/collections/a%25b/resources', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{"key":5}',
+      }),
+    ).resolves.toEqual({
+      status: 400,
+      body: { statusCode: 400, message: 'key must be a string', error: 'Bad Request' },
+    });
+  });
+
   it('rejects malformed percent encoding before the handler', async () => {
     const response = await request('/collections/%ZZ/resources/cache/status');
     expect(response.status).toBe(400);

@@ -40,8 +40,11 @@ import { mapResourceEntryToSummary, mapResourceTreeToDto } from '../../mappers/r
 import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import { RouteCollection } from '../route-collection';
-import { searchQuery, treeQuery, type SearchQuery, type TreeQuery } from '../../validation/dto-schemas';
 import {
+  searchQuery,
+  treeQuery,
+  type SearchQuery,
+  type TreeQuery,
   translateResourceBody,
   createResourcesBody,
   deleteResourcesBody,

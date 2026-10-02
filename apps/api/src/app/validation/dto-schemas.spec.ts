@@ -1,6 +1,20 @@
-import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
+import {
+  Body,
+  Controller,
+  type DynamicModule,
+  forwardRef,
+  type ForwardReference,
+  Module,
+  Post,
+  Query,
+  type Type,
+} from '@nestjs/common';
+import { MODULE_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum';
 import { Test } from '@nestjs/testing';
+import { AppController } from '../app.controller';
+import { AppModule } from '../app.module';
+import { AppService } from '../app.service';
 import { BundleJobService } from '../bundles/bundle-job.service';
 import { BundlesController } from '../bundles/bundles.controller';
 import { CollectionIndex } from '../cache/collection-index.service';
@@ -15,6 +29,7 @@ import { TranslationJobService } from '../translation-job/translation-job.servic
 import * as schemas from './dto-schemas';
 import type { Schema } from './schema';
 import { SchemaPipe } from './valid-body';
+import { exactMessage } from './exact-message.test-support';
 
 const collection = {
   translationsFolder: './translations',
@@ -367,6 +382,12 @@ const additionalRejected: Array<{ name: string; schema: Schema<unknown>; payload
     payload: { maxResults: 'abc' },
     message: 'maxResults must be a positive integer',
   },
+  ...['0', ''].map((maxResults) => ({
+    name: 'search non-positive limit',
+    schema: schemas.searchQuery,
+    payload: { maxResults },
+    message: 'maxResults must be a positive integer',
+  })),
   {
     name: 'search repeated limit',
     schema: schemas.searchQuery,
@@ -388,7 +409,7 @@ describe('DTO shape schemas', () => {
 
   it.each([...rejected, ...additionalRejected])('rejects $name: $message', ({ name, schema, payload, message }) => {
     const root = name.startsWith('search') || name.startsWith('tree') ? 'query' : 'request body';
-    expect(() => new SchemaPipe(schema, root).transform(payload)).toThrow(message);
+    expect(() => new SchemaPipe(schema, root).transform(payload)).toThrow(exactMessage(message));
   });
 });
 
@@ -396,14 +417,64 @@ interface RouteArgMetadata {
   index: number;
   pipes?: unknown[];
 }
-const controllers = [
-  ConfigController,
-  CollectionsController,
-  BundlesController,
-  LocalesController,
-  FoldersController,
-  ResourcesController,
-];
+type ModuleReference = Type<unknown> | DynamicModule | ForwardReference<() => ModuleReference> | Promise<DynamicModule>;
+
+/** Read module metadata without instantiating production providers or opening sockets. */
+async function moduleControllers(root: ModuleReference): Promise<Set<Type<unknown>>> {
+  const controllers = new Set<Type<unknown>>();
+  const visited = new Set<ModuleReference>();
+
+  async function walk(reference: ModuleReference): Promise<void> {
+    const module = await reference;
+    if (visited.has(module)) return;
+    visited.add(module);
+
+    if (typeof module === 'object' && 'forwardRef' in module) {
+      await walk(module.forwardRef());
+      return;
+    }
+
+    if (typeof module === 'function') {
+      const declared: Type<unknown>[] = Reflect.getMetadata(MODULE_METADATA.CONTROLLERS, module) ?? [];
+      const imports: ModuleReference[] = Reflect.getMetadata(MODULE_METADATA.IMPORTS, module) ?? [];
+      for (const controller of declared) controllers.add(controller);
+      for (const imported of imports) await walk(imported);
+      return;
+    }
+
+    await walk(module.module);
+    for (const controller of module.controllers ?? []) controllers.add(controller);
+    for (const imported of module.imports ?? []) await walk(imported as ModuleReference);
+  }
+
+  await walk(root);
+  return controllers;
+}
+
+function expectSchemaPipes(controllers: Iterable<Type<unknown>>): void {
+  for (const controller of controllers) {
+    const methods = new Set<string>();
+    let prototype: object | null = controller.prototype;
+    while (prototype !== null && prototype !== Object.prototype) {
+      for (const method of Object.getOwnPropertyNames(prototype)) methods.add(method);
+      prototype = Object.getPrototypeOf(prototype) as object | null;
+    }
+    for (const method of methods) {
+      const args: Record<string, RouteArgMetadata> = Reflect.getMetadata(ROUTE_ARGS_METADATA, controller, method) ?? {};
+      for (const [key, arg] of Object.entries(args)) {
+        if (key === `${RouteParamtypes.BODY}:${arg.index}` || key === `${RouteParamtypes.QUERY}:${arg.index}`) {
+          expect({ controller: controller.name, method, key, pipe: arg.pipes?.[0] }).toEqual({
+            controller: controller.name,
+            method,
+            key,
+            pipe: expect.any(SchemaPipe),
+          });
+        }
+      }
+    }
+  }
+}
+
 const wiring = [
   [ConfigController, 'updateConfig', RouteParamtypes.BODY, schemas.updateConfigBody],
   [CollectionsController, 'createCollection', RouteParamtypes.BODY, schemas.createCollectionBody],
@@ -427,11 +498,13 @@ const wiring = [
 ] as const;
 
 describe('HTTP schema wiring', () => {
-  it('constructs all six controllers without opening a port', async () => {
+  it('constructs all application controllers without opening a port', async () => {
+    const controllers = [...(await moduleControllers(AppModule))];
     const module = await Test.createTestingModule({
       controllers,
       providers: [
         RouteCollectionPipe,
+        { provide: AppService, useValue: {} },
         { provide: ConfigService, useValue: { getConfig: jest.fn() } },
         { provide: CollectionIndex, useValue: {} },
         { provide: TranslationJobService, useValue: {} },
@@ -451,27 +524,53 @@ describe('HTTP schema wiring', () => {
     if (pipe instanceof SchemaPipe) expect(pipe.schema).toBe(schema);
   });
 
-  it('leaves no body or query argument without a SchemaPipe', () => {
-    for (const controller of controllers) {
-      for (const method of Object.getOwnPropertyNames(controller.prototype)) {
-        const args: Record<string, RouteArgMetadata> =
-          Reflect.getMetadata(ROUTE_ARGS_METADATA, controller, method) ?? {};
-        for (const [key, arg] of Object.entries(args)) {
-          if (key === `${RouteParamtypes.BODY}:${arg.index}` || key === `${RouteParamtypes.QUERY}:${arg.index}`) {
-            expect({ controller: controller.name, method, key, pipe: arg.pipes?.[0] }).toEqual({
-              controller: controller.name,
-              method,
-              key,
-              pipe: expect.any(SchemaPipe),
-            });
-            expect(
-              wiring.some(
-                ([target, name, type]) => target === controller && name === method && key === `${type}:${arg.index}`,
-              ),
-            ).toBe(true);
-          }
-        }
+  it('leaves no body or query argument without a SchemaPipe', async () => {
+    const controllers = await moduleControllers(AppModule);
+    expect(controllers.has(AppController)).toBe(true);
+    expectSchemaPipes(controllers);
+  });
+
+  it('walks imported, forward-referenced and dynamic modules without repeating cycles', async () => {
+    @Controller('root')
+    class RootController {}
+    @Controller('leaf')
+    class LeafController {}
+    @Controller('dynamic')
+    class DynamicController {}
+
+    @Module({ controllers: [LeafController], imports: [forwardRef(() => RootModule)] })
+    class LeafModule {}
+    @Module({
+      controllers: [RootController],
+      imports: [
+        LeafModule,
+        forwardRef(() => LeafModule),
+        Promise.resolve({ module: LeafModule, controllers: [DynamicController], imports: [LeafModule] }),
+      ],
+    })
+    class RootModule {}
+
+    expect(await moduleControllers(RootModule)).toEqual(new Set([RootController, LeafController, DynamicController]));
+  });
+
+  it.each([
+    ['body', Body],
+    ['query', Query],
+  ] as const)('rejects a bare %s argument on a controller outside the identity table', async (_label, decorate) => {
+    @Controller('unlisted')
+    class UnlistedController {
+      @Post()
+      route(@decorate() value: unknown): void {
+        void value;
       }
     }
+    @Module({ controllers: [UnlistedController] })
+    class ImportedModule {}
+    @Module({ imports: [ImportedModule] })
+    class RootModule {}
+
+    const controllers = await moduleControllers(RootModule);
+    expect(controllers.has(UnlistedController)).toBe(true);
+    expect(() => expectSchemaPipes(controllers)).toThrow();
   });
 });

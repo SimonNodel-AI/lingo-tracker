@@ -88,13 +88,11 @@ describe('integer', () => {
 
 describe('integerString', () => {
   const schema = integerString();
-  it.each([
-    ['seven', '7'],
-    ['zero', '0'],
-  ])('accepts %s unchanged', (_label, value) => {
+  it.each([['seven', '7']])('accepts %s unchanged', (_label, value) => {
     expect(schema(value, '')).toBe(value);
   });
   it.each([
+    ['zero', '0', 'be a positive integer'],
     ['letters', 'abc', 'be a positive integer'],
     ['number', 7, 'be a positive integer'],
     ['negative', '-1', 'be a positive integer'],
@@ -138,6 +136,9 @@ describe('anyObject', () => {
 });
 
 describe('optional', () => {
+  it.each([undefined, null, 'a'])('delegates %p to the wrapped unknown schema', (value) => {
+    expect(optional(unknown())(value, '')).toBe(value);
+  });
   const schema = optional(string());
   it.each([
     ['missing', undefined],
@@ -243,7 +244,7 @@ describe('paths and declaration order', () => {
   });
 
   it.each([
-    ['optional unknown null', optional(unknown()), null, '<root> must not be null'],
+    ['optional non-nullable value', optional(string()), null, '<root> must not be null'],
     ['first declared field', object({ b: string(), a: string() }), { a: 1, b: 2 }, 'b must be a string'],
     [
       'nested',

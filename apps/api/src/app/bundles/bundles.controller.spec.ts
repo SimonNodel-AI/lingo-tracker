@@ -11,6 +11,7 @@ import { BundleJobService } from './bundle-job.service';
 import { BundlesController } from './bundles.controller';
 import { bundleDryRunBody, createBundleBody, updateBundleBody } from '../validation/dto-schemas';
 import { SchemaPipe } from '../validation/valid-body';
+import { exactMessage } from '../validation/exact-message.test-support';
 
 jest.mock('@simoncodes-ca/core', () => ({
   ...jest.requireActual('@simoncodes-ca/core'),
@@ -126,9 +127,8 @@ describe('BundlesController', () => {
 
     it('rejects a missing name before core is called', () => {
       expect(() => new SchemaPipe(createBundleBody, 'request body').transform({ bundle: requestDefinition })).toThrow(
-        'name must be a string',
+        exactMessage('name must be a string'),
       );
-      expect(core.addBundleDefinition).not.toHaveBeenCalled();
     });
 
     it('returns 400 with every message when core rejects the definition', () => {
@@ -154,7 +154,6 @@ describe('BundlesController', () => {
         status: HttpStatus.BAD_REQUEST,
         body: { message: 'bundle must be an object' },
       });
-      expect(core.addBundleDefinition).not.toHaveBeenCalled();
     });
 
     it('returns 409 when core reports the bundle already exists', () => {
@@ -222,7 +221,6 @@ describe('BundlesController', () => {
         status: HttpStatus.BAD_REQUEST,
         body: { message: 'bundle must be an object' },
       });
-      expect(core.updateBundleDefinition).not.toHaveBeenCalled();
     });
 
     it('passes a body.name equal to the current name as newKey', () => {
@@ -365,7 +363,6 @@ describe('BundlesController', () => {
           body: { message },
         });
       }
-      expect(core.planBundle).not.toHaveBeenCalled();
     });
 
     it('returns 400 for a locale outside the project locales', () => {

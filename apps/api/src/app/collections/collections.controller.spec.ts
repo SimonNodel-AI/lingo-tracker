@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
 import {
@@ -16,6 +15,7 @@ import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { CollectionsController } from './collections.controller';
 import { createCollectionBody, updateCollectionBody } from '../validation/dto-schemas';
 import { SchemaPipe } from '../validation/valid-body';
+import { exactMessage } from '../validation/exact-message.test-support';
 
 // Mock the core writes; keep the real config resolution and mutation helpers
 jest.mock('@simoncodes-ca/core', () => {
@@ -152,7 +152,7 @@ describe('CollectionsController', () => {
       });
 
       await expect(collectionsController.deleteCollection('test-collection')).rejects.toThrow(
-        'Failed to delete collection',
+        exactMessage('Failed to delete collection'),
       );
     });
 
@@ -219,9 +219,9 @@ describe('CollectionsController', () => {
       ['no collection', { name: 'new' }, 'collection must be an object'],
       ['an array collection', { name: 'new', collection: [] }, 'collection must be an object'],
     ])('answers 400 for %s, before core is called', async (_label, body, message) => {
-      expect(() => new SchemaPipe(createCollectionBody, 'request body').transform(body)).toThrow(BadRequestException);
-      expect(() => new SchemaPipe(createCollectionBody, 'request body').transform(body)).toThrow(String(message));
-      expect(core.addCollection).not.toHaveBeenCalled();
+      expect(() => new SchemaPipe(createCollectionBody, 'request body').transform(body)).toThrow(
+        exactMessage(String(message)),
+      );
     });
 
     it.each([
@@ -356,9 +356,9 @@ describe('CollectionsController', () => {
       ['a non-string name', { name: 1, collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
       ['no collection', {}, 'collection must be an object'],
     ])('answers 400 for %s, before core is called', async (_label, body, message) => {
-      expect(() => new SchemaPipe(updateCollectionBody, 'request body').transform(body)).toThrow(BadRequestException);
-      expect(() => new SchemaPipe(updateCollectionBody, 'request body').transform(body)).toThrow(String(message));
-      expect(core.updateCollection).not.toHaveBeenCalled();
+      expect(() => new SchemaPipe(updateCollectionBody, 'request body').transform(body)).toThrow(
+        exactMessage(String(message)),
+      );
     });
 
     it.each([

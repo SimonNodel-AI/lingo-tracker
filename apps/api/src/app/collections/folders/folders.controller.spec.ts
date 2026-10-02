@@ -9,6 +9,7 @@ import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import { FoldersController } from './folders.controller';
 import { moveFolderBody } from '../../validation/dto-schemas';
 import { SchemaPipe } from '../../validation/valid-body';
+import { exactMessage } from '../../validation/exact-message.test-support';
 
 const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
   promise.then(() => {
@@ -259,9 +260,8 @@ describe('FoldersController', () => {
     it('should throw HttpException for validation errors (missing fields)', () => {
       const pipe = new SchemaPipe(moveFolderBody, 'request body');
       expect(() => pipe.transform({ sourceFolderPath: '', destinationFolderPath: 'apps.actions' })).toThrow(
-        'sourceFolderPath must be a non-empty string',
+        exactMessage('sourceFolderPath must be a non-empty string'),
       );
-      expect(core.moveFolder).not.toHaveBeenCalled();
     });
 
     it.each([

@@ -61,7 +61,7 @@ export function integer(): Schema<number> {
 export function integerString(): Schema<string> {
   return (value, path) => {
     notNull(value, path);
-    if (typeof value !== 'string' || !/^\d+$/.test(value)) fail(path, 'be a positive integer');
+    if (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) fail(path, 'be a positive integer');
     return value;
   };
 }
@@ -73,7 +73,7 @@ export function unknown(): Schema<unknown> {
 export function anyObject(): Schema<Record<string, unknown>> {
   return (value, path) => {
     notNull(value, path);
-    if (typeof value !== 'object' || Array.isArray(value) || value === undefined) fail(path, 'be an object');
+    if (typeof value !== 'object' || Array.isArray(value)) fail(path, 'be an object');
     const prototype: unknown = Object.getPrototypeOf(value);
     if (prototype !== Object.prototype && prototype !== null) fail(path, 'be an object');
     return value as Record<string, unknown>;
@@ -83,7 +83,6 @@ export function anyObject(): Schema<Record<string, unknown>> {
 export function optional<T>(schema: Schema<T>): Schema<T | undefined> {
   return (value, path) => {
     if (value === undefined) return undefined;
-    notNull(value, path);
     return schema(value, path);
   };
 }

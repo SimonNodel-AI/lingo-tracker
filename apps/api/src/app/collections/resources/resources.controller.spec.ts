@@ -19,6 +19,7 @@ import { RouteCollectionPipe } from '../route-collection';
 import { ResourcesController } from './resources.controller';
 import { createResourcesBody, deleteResourcesBody, moveResourcesBody, searchQuery } from '../../validation/dto-schemas';
 import { SchemaPipe } from '../../validation/valid-body';
+import { exactMessage } from '../../validation/exact-message.test-support';
 
 /** What the handler rejects with, as the HTTP exception the global exception filter answers with. */
 const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
@@ -188,8 +189,7 @@ describe('ResourcesController', () => {
 
     it('should throw HttpException when empty array is provided', () => {
       const pipe = new SchemaPipe(createResourcesBody, 'request body');
-      expect(() => pipe.transform([])).toThrow('request body must be a non-empty array');
-      expect(batch()).not.toHaveBeenCalled();
+      expect(() => pipe.transform([])).toThrow(exactMessage('request body must be a non-empty array'));
     });
 
     it('should answer 400 for invalid key validation', async () => {
@@ -239,7 +239,7 @@ describe('ResourcesController', () => {
     it('should answer a generic 500 that hides the message for unexpected errors', async () => {
       batch().mockRejectedValue(new Error('Unexpected file system error'));
       await expect(resourcesController.createResources(collectionFor('test-collection'), dto)).rejects.toThrow(
-        'Unexpected file system error',
+        exactMessage('Unexpected file system error'),
       );
       const error = await httpErrorOf(resourcesController.createResources(collectionFor('test-collection'), dto));
       expect(error.getStatus()).toBe(500);
@@ -388,14 +388,12 @@ describe('ResourcesController', () => {
 
     it('should throw HttpException (400) for empty keys array', () => {
       const pipe = new SchemaPipe(deleteResourcesBody, 'request body');
-      expect(() => pipe.transform({ keys: [] })).toThrow('keys must be a non-empty array');
-      expect(core.deleteResource).not.toHaveBeenCalled();
+      expect(() => pipe.transform({ keys: [] })).toThrow(exactMessage('keys must be a non-empty array'));
     });
 
     it('should throw HttpException (400) for missing keys array', () => {
       const pipe = new SchemaPipe(deleteResourcesBody, 'request body');
-      expect(() => pipe.transform({})).toThrow('keys must be a non-empty array');
-      expect(core.deleteResource).not.toHaveBeenCalled();
+      expect(() => pipe.transform({})).toThrow(exactMessage('keys must be a non-empty array'));
     });
 
     it('should answer 500 for unexpected errors', async () => {
@@ -479,14 +477,12 @@ describe('ResourcesController', () => {
 
     it('should throw BadRequest if moves array is empty', () => {
       const pipe = new SchemaPipe(moveResourcesBody, 'request body');
-      expect(() => pipe.transform({ moves: [] })).toThrow('moves must be a non-empty array');
-      expect(moves()).not.toHaveBeenCalled();
+      expect(() => pipe.transform({ moves: [] })).toThrow(exactMessage('moves must be a non-empty array'));
     });
 
     it('should throw BadRequest if moves is missing', () => {
       const pipe = new SchemaPipe(moveResourcesBody, 'request body');
-      expect(() => pipe.transform({})).toThrow('moves must be a non-empty array');
-      expect(moves()).not.toHaveBeenCalled();
+      expect(() => pipe.transform({})).toThrow(exactMessage('moves must be a non-empty array'));
     });
 
     it('should handle cross-collection move', async () => {
@@ -1065,9 +1061,8 @@ describe('ResourcesController', () => {
     it('should reject an invalid query-string maxResults with 400', () => {
       const pipe = new SchemaPipe(searchQuery, 'query');
       expect(() => pipe.transform({ query: 'save', maxResults: 'abc' })).toThrow(
-        'maxResults must be a positive integer',
+        exactMessage('maxResults must be a positive integer'),
       );
-      expect(mockIndex.searchPage).not.toHaveBeenCalled();
     });
 
     it('should run a text search for an unknown mode', async () => {
