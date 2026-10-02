@@ -127,6 +127,23 @@ describe('normalizeCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it('keeps normalize all-answer precedence over a collection flag', async () => {
+    const options = { collection: 'Lib', collectionOrAll: '__ALL__' };
+    await normalizeCommand(options);
+    expect(normalize).toHaveBeenCalledTimes(1);
+    expect(normalize).toHaveBeenCalledWith(expect.objectContaining({ name: 'App' }), { dryRun: false });
+    expect(errored()).toContain('⚠️  Skipping read-only collection: Lib');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('keeps the missing-selection error when an empty collection flag overrides a name answer', async () => {
+    const options = { collection: '', collectionOrAll: 'App' };
+    await normalizeCommand(options);
+    expect(normalize).not.toHaveBeenCalled();
+    expect(errored()).toContain('❌ Missing required option in non-interactive mode: --collection or --all');
+    expect(process.exitCode).toBe(1);
+  });
+
   it('exits 1 for an unknown collection', async () => {
     await normalizeCommand({ collection: 'Nope' });
 

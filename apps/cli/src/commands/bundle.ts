@@ -9,7 +9,7 @@ import {
 } from '@simoncodes-ca/core';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
-import { ALL_ITEMS_SENTINEL, parseCommaSeparatedList, ConsoleFormatter } from '../utils';
+import { ConsoleFormatter, parseListSelection, parseNameSelection, selectionNames, selectionPrompt } from '../utils';
 
 export interface BundleOptions {
   name?: string;
@@ -54,15 +54,13 @@ export const bundleCommand = defineCommand<BundleOptions>()({
       return [];
     }
     return [
-      {
-        type: 'select',
+      selectionPrompt({
+        mode: 'single',
         name: 'bundleOrAll',
         message: 'Select bundle to generate',
-        choices: [
-          ...bundleKeys.map((key) => ({ title: key, value: key })),
-          { title: 'All bundles', value: ALL_ITEMS_SENTINEL },
-        ],
-      },
+        choices: bundleKeys,
+        allTitle: 'All bundles',
+      }),
     ];
   },
   run: ({ config, cwd, answers }) => run(config, cwd, answers),
@@ -77,14 +75,13 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
     return { exitCode: 1 };
   }
 
-  const picked = typeof options.bundleOrAll === 'string' ? options.bundleOrAll : undefined;
-  const names = options.name ? parseCommaSeparatedList(options.name) : undefined;
-  const selectedNames =
-    names && names.length > 0 ? names : picked && picked !== ALL_ITEMS_SENTINEL ? [picked] : undefined;
+  // An empty bundle flag falls back to the single-name prompt answer.
+  const selectedNames = selectionNames(
+    parseListSelection(options.name) ?? parseNameSelection(undefined, options.bundleOrAll),
+  );
 
   // Parse locale filter if provided
-  const locales = parseCommaSeparatedList(options.locale);
-  const localeFilter = locales && locales.length > 0 ? locales : undefined;
+  const localeFilter = selectionNames(parseListSelection(options.locale));
 
   const debugKeysLocale = options.debugKeys === true ? DEFAULT_DEBUG_KEYS_LOCALE : options.debugKeys || undefined;
 

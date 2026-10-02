@@ -1,53 +1,70 @@
-/**
- * Sentinel value used to represent "all items" in multiselect prompts
- */
-export const ALL_ITEMS_SENTINEL = '__ALL__';
+import type prompts from 'prompts';
+import { parseCommaSeparatedList } from './string-parsers';
 
-/**
- * Processes multiselect prompt results that may include an "All" option.
- *
- * @param selectedValues - Array of selected values from prompt (may include __ALL__)
- * @returns Array of items to process, or undefined if "All" was selected
- *
- * @example
- * // User selected specific items
- * processMultiselectWithAll(["en", "fr"])
- * // → ["en", "fr"]
- *
- * // User selected "All"
- * processMultiselectWithAll(["__ALL__"])
- * // → undefined (meaning process all)
- *
- * // User selected "All" plus other items (All takes precedence)
- * processMultiselectWithAll(["__ALL__", "en"])
- * // → undefined (meaning process all)
- */
-export function processMultiselectWithAll(selectedValues: string[] | undefined): string[] | undefined {
-  if (!selectedValues || selectedValues.length === 0) {
-    return undefined;
-  }
+/** The CLI choice of one, several, or all named items. */
+export type Selection = { readonly kind: 'all' } | { readonly kind: 'some'; readonly names: string[] };
 
-  // If __ALL__ is selected, return undefined to signal "process all"
-  if (selectedValues.includes(ALL_ITEMS_SENTINEL)) {
-    return undefined;
-  }
+/** Private prompt value; flags can still name an item with this spelling. */
+const ALL_ITEMS_SENTINEL = '__ALL__';
 
-  // Return selected items
-  return selectedValues;
+interface SelectionPromptOptions {
+  readonly name: string;
+  readonly message: string;
+  readonly choices: readonly string[];
+  /** Omit this title for a prompt without an all choice. */
+  readonly allTitle?: string;
+  readonly mode: 'single' | 'multiple';
 }
 
-/**
- * Converts undefined (all) or array result into comma-separated string or undefined.
- * Useful for storing multiselect results in command options.
- *
- * @example
- * multiselectResultToString(undefined) → undefined
- * multiselectResultToString(["en", "fr"]) → "en,fr"
- * multiselectResultToString([]) → undefined
- */
-export function multiselectResultToString(items: string[] | undefined): string | undefined {
-  if (!items || items.length === 0) {
-    return undefined;
+/** Builds the CLI's single or multiple selection prompt, with its existing all-choice order and defaults. */
+export function selectionPrompt(options: SelectionPromptOptions): prompts.PromptObject {
+  const choices: prompts.Choice[] = options.choices.map((name) => ({ title: name, value: name }));
+  if (options.allTitle) {
+    const all = { title: options.allTitle, value: ALL_ITEMS_SENTINEL };
+    if (options.mode === 'multiple') choices.unshift({ ...all, selected: true });
+    else choices.push(all);
   }
-  return items.join(',');
+  return options.mode === 'multiple'
+    ? {
+        type: 'multiselect',
+        name: options.name,
+        message: options.message,
+        choices,
+        min: 1,
+        hint: 'Space to select. Return to submit',
+        instructions: false,
+      }
+    : { type: 'select', name: options.name, message: options.message, choices };
+}
+
+/** Resolves a literal single-name flag or prompt answer. A supplied flag takes precedence, including an empty flag. */
+export function parseNameSelection(flagValue: string | undefined, answerValue?: unknown): Selection | undefined {
+  if (flagValue !== undefined) return namedSelection(flagValue ? [flagValue] : undefined);
+  return parsePromptSelection(answerValue);
+}
+
+/** Resolves a comma-list flag or prompt answer. A supplied flag takes precedence, including an empty flag. */
+export function parseListSelection(flagValue: string | undefined, answerValue?: unknown): Selection | undefined {
+  if (flagValue !== undefined) return namedSelection(parseCommaSeparatedList(flagValue));
+  return parsePromptSelection(answerValue);
+}
+
+/** Decodes the private all choice; multiple answers retain the existing comma-list parsing. */
+function parsePromptSelection(answerValue: unknown): Selection | undefined {
+  if (answerValue === ALL_ITEMS_SENTINEL) return { kind: 'all' };
+  if (typeof answerValue === 'string') return namedSelection(answerValue ? [answerValue] : undefined);
+  if (!Array.isArray(answerValue)) return undefined;
+  const names = answerValue.filter((item): item is string => typeof item === 'string');
+  if (names.includes(ALL_ITEMS_SENTINEL)) return { kind: 'all' };
+  return namedSelection(names.flatMap((name) => parseCommaSeparatedList(name) ?? []));
+}
+
+/** Empty input has no selection; the command decides whether it defaults to all or fails. */
+function namedSelection(names: string[] | undefined): Selection | undefined {
+  return names && names.length > 0 ? { kind: 'some', names } : undefined;
+}
+
+/** Maps a Selection to core's optional name filter: undefined means all. */
+export function selectionNames(selection: Selection | undefined): string[] | undefined {
+  return selection?.kind === 'some' ? selection.names : undefined;
 }

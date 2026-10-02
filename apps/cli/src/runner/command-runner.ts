@@ -12,6 +12,7 @@ import {
 import * as path from 'path';
 import prompts from 'prompts';
 import { ConsoleFormatter } from '../utils/console-formatter';
+import { type Selection, selectionPrompt } from '../utils/prompt-utils';
 import { isInteractiveTerminal } from './terminal';
 
 /**
@@ -75,13 +76,20 @@ type Resources<Need extends CollectionNeed, WithConfig extends boolean> = (WithC
 export type PromptContext<Need extends CollectionNeed, WithConfig extends boolean = true> = BaseContext &
   Resources<Need, WithConfig>;
 
+/** Only many-collection commands receive a resolved Selection. */
+type SelectionResources<Need extends CollectionNeed> = Need extends 'many'
+  ? { readonly selection: Selection }
+  : Readonly<Record<never, never>>;
+
 /** What `run` receives. */
 export type CommandContext<
   Options,
   Need extends CollectionNeed,
   WithConfig extends boolean = true,
   Required extends keyof Options = never,
-> = PromptContext<Need, WithConfig> & { readonly answers: CheckedAnswers<Options, Required> };
+> = PromptContext<Need, WithConfig> & {
+  readonly answers: CheckedAnswers<Options, Required>;
+} & SelectionResources<Need>;
 
 export interface CommandSpec<
   Options extends object,
@@ -100,7 +108,7 @@ export interface CommandSpec<
         readonly select?: (
           answers: Answers<Options>,
           ctx: PromptContext<Need, WithConfig>,
-        ) => 'all' | readonly string[] | Promise<'all' | readonly string[]>;
+        ) => Selection | Promise<Selection>;
       }
     : never;
   /**
@@ -247,12 +255,14 @@ async function execute<
     // requireOptions has just checked what CheckedAnswers claims; the type cannot follow it.
     const answers = merged as CheckedAnswers<Options, Required>;
 
+    let selection: Selection | undefined;
     if (spec.collection === 'many') {
       const config = resources.config;
       if (!config) throw new Error('Configuration was not loaded.');
-      const selected =
-        (await spec.many?.select?.(answers, promptContext as PromptContext<'many', WithConfig>)) ?? 'all';
-      const names = selected === 'all' ? Object.keys(config.collections ?? {}) : selected;
+      const selected = (await spec.many?.select?.(answers, promptContext as PromptContext<'many', WithConfig>)) ?? {
+        kind: 'all',
+      };
+      const names = selected.kind === 'all' ? Object.keys(config.collections ?? {}) : selected.names;
       const collections: Collection[] = [];
       for (const name of new Set(names)) {
         const collection =
@@ -260,10 +270,13 @@ async function execute<
         collections.push(collection);
       }
       resources = { ...resources, collections };
+      selection = selected.kind === 'all' ? selected : { kind: 'some', names: collections.map((item) => item.name) };
     }
 
     duringRun = true;
-    const result = await spec.run({ ...promptContext, ...resources, answers });
+    // The many branch supplies Selection; TypeScript cannot narrow the generic Need here.
+    const selectionResources = (spec.collection === 'many' ? { selection } : {}) as SelectionResources<Need>;
+    const result = await spec.run({ ...promptContext, ...resources, answers, ...selectionResources });
     return result ? result.exitCode : 0;
   } catch (error) {
     return report(error, spec.name, spec.formatError?.(error, duringRun));
@@ -295,12 +308,9 @@ async function selectCollection(config: LingoTrackerConfig, interactive: boolean
   if (!interactive) {
     throw new Error(`Missing required option: ${toFlag(flag)}`);
   }
-  const { collection } = await ask({
-    type: 'select',
-    name: 'collection',
-    message: 'Select collection',
-    choices: names.map((name) => ({ title: name, value: name })),
-  });
+  const { collection } = await ask(
+    selectionPrompt({ mode: 'single', name: 'collection', message: 'Select collection', choices: names }),
+  );
   if (typeof collection !== 'string') {
     throw new CommandCancelledError();
   }
