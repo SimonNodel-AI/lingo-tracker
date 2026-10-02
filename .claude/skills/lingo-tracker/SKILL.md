@@ -139,7 +139,8 @@ npx lingo-tracker delete-resource \
 ### Other useful commands
 ```bash
 npx lingo-tracker normalize --collection trackerResources
-npx lingo-tracker validate --collection trackerResources
+# validate checks every collection; strict by default (all translations must be verified)
+npx lingo-tracker validate --allow-translated
 ```
 
 ### Extract a help-translation glossary
