@@ -76,6 +76,12 @@ type Resources<Need extends CollectionNeed, WithConfig extends boolean> = (WithC
 export type PromptContext<Need extends CollectionNeed, WithConfig extends boolean = true> = BaseContext &
   Resources<Need, WithConfig>;
 
+/** What `preflight` receives: opened resources and flags, before prompt answers exist. */
+export type PreflightContext<Options, Need extends CollectionNeed, WithConfig extends boolean = true> = PromptContext<
+  Need,
+  WithConfig
+> & { readonly options: Options };
+
 /** Only many-collection commands receive a resolved Selection. */
 type SelectionResources<Need extends CollectionNeed> = Need extends 'many'
   ? { readonly selection: Selection }
@@ -117,9 +123,15 @@ export interface CommandSpec<
    */
   readonly config?: WithConfig;
   /**
-   * Questions for missing values. Called in both modes, before `required` is checked, so
-   * it may throw to fail early (for example "nothing to choose from"). The questions are
-   * asked only when interactive.
+   * Checks command preconditions after resources open and before questions are built,
+   * in both modes. Throw to fail through the runner's normal error reporting.
+   */
+  readonly preflight?: (ctx: PreflightContext<Options, Need, WithConfig>) => void | Promise<void>;
+  /**
+   * Questions for missing values. Called in both modes, after `preflight` and before
+   * `required` is checked. Existing builders may throw to fail early (for example
+   * "nothing to choose from"); command preconditions belong in `preflight`.
+   * The questions are asked only when interactive.
    */
   readonly prompts?: (
     options: Options,
@@ -188,8 +200,8 @@ function getCwd(): string {
  * ```
  *
  * The runner owns, in order: the project root and the interactive rule; loading the
- * config; resolving and opening the collection; asking the questions; checking the
- * required options; cancellation; and turning a thrown error into `❌ <message>` (plus its `cause`'s
+ * config; resolving and opening the collection; preflight; asking the questions;
+ * checking the required options; cancellation; and turning a thrown error into `❌ <message>` (plus its `cause`'s
  * message when that is an Error) and exit code 1. It sets `process.exitCode` and returns; it never calls `process.exit()`.
  */
 export function defineCommand<Options extends object>() {
@@ -249,6 +261,7 @@ async function execute<
     // `resources` holds exactly what Need and WithConfig promise; the type cannot follow the branches above.
     const promptContext = { cwd, interactive, ask, ...resources } as PromptContext<Need, WithConfig>;
 
+    await spec.preflight?.({ ...promptContext, options });
     const questions = spec.prompts ? await spec.prompts(options, promptContext) : [];
     const merged: Options = interactive && questions.length > 0 ? { ...options, ...(await ask(questions)) } : options;
     requireOptions(merged, spec.required ?? [], interactive);

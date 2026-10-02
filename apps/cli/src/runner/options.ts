@@ -122,9 +122,3 @@ export function parseValidateOptions(options: {
     requirePortablePlurals: options.requirePortablePlurals,
   };
 }
-
-export function parseFindSimilarOptions<Options extends { maxResults: string }>(
-  options: Options,
-): Omit<Options, 'maxResults'> & { maxResults: number } {
-  return { ...options, maxResults: parseInt(options.maxResults, 10) };
-}
