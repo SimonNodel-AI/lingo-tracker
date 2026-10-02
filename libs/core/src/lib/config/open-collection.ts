@@ -1,9 +1,8 @@
 import { resolve } from 'node:path';
-import { normalizeTags } from '@simoncodes-ca/domain';
+import { findCollectionEntry, inheritCollectionSettings, normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { TranslationConfig } from '../../config/translation-config';
-import { DEFAULT_CONFIG } from '../../constants';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { resolvePreferredTerminologyFile } from './preferred-terminology-file';
 import { resolveCollectionProtectedTermsFilePath, resolveGlobalProtectedTermsFile } from './protected-terms-file';
@@ -12,15 +11,15 @@ import type { TermFile } from './term-file';
 /**
  * A collection with every setting resolved: the collection's own value where it has one,
  * otherwise the global value, otherwise the default. Get one from {@link openCollection};
- * nothing else applies the fallback rules.
+ * shared inheritance comes from domain's {@link inheritCollectionSettings}.
  */
 export interface Collection {
   readonly name: string;
   /** Absolute path of the collection's translations folder. */
   readonly translationsFolder: string;
-  /** Collection `baseLocale`, else global `baseLocale`, else `'en'`. */
+  /** Non-empty collection `baseLocale`, else global `baseLocale`, else `'en'`. */
   readonly baseLocale: string;
-  /** Collection `locales`, else global `locales`, else `[]`. May include the base locale. */
+  /** Non-empty collection `locales`, else global `locales`, else `[]`. May include the base locale. */
   readonly locales: readonly string[];
   /** {@link locales} without the base locale. */
   readonly targetLocales: readonly string[];
@@ -83,21 +82,17 @@ export function openCollection(
   name: string,
   options: OpenCollectionOptions = {},
 ): OpenedCollection {
-  const collections = config.collections ?? {};
-  // Own keys only: a name like 'constructor' must not resolve to an Object.prototype member.
-  const raw = Object.keys(collections).includes(name) ? collections[name] : undefined;
+  const raw = findCollectionEntry(config.collections, name);
   if (!raw) {
     throw new CollectionNotFoundError(name);
   }
 
-  const readOnly = raw.readOnly === true;
+  const { baseLocale, locales, translation, readOnly } = inheritCollectionSettings(raw, config);
   if (options.writable && readOnly) {
     throw new ReadOnlyCollectionError(name);
   }
 
   const cwd = options.cwd ?? process.cwd();
-  const baseLocale = raw.baseLocale || config.baseLocale || DEFAULT_CONFIG.baseLocale;
-  const locales = raw.locales ?? config.locales ?? [];
   const collectionTermsPath = resolveCollectionProtectedTermsFilePath(raw, cwd);
 
   return {
@@ -109,7 +104,7 @@ export function openCollection(
     baseLocale,
     locales,
     targetLocales: locales.filter((locale) => locale !== baseLocale),
-    translationConfig: raw.translation ?? config.translation,
+    translationConfig: translation,
     tags: normalizeTags(raw.tags ?? []),
     termFiles: {
       protectedTerms: resolveGlobalProtectedTermsFile(config, cwd),

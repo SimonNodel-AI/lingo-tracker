@@ -6,6 +6,7 @@ import * as domain from './index';
 describe('domain public surface', () => {
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(domain).sort()).toEqual([
+      'DEFAULT_BASE_LOCALE',
       'DEFAULT_IMPORT_STRATEGY',
       'DEFAULT_MISSING_METADATA_STATUS',
       'IMPORT_STRATEGIES',
@@ -32,6 +33,7 @@ describe('domain public surface', () => {
       'effectiveTags',
       'escapeRegExp',
       'findBundleDefinition',
+      'findCollectionEntry',
       'findIcuCompileError',
       'findPreferredTermFindings',
       'findProtectedTermViolations',
@@ -48,6 +50,7 @@ describe('domain public surface', () => {
       'icuToTransloco',
       'importStrategyPolicy',
       'importableLocales',
+      'inheritCollectionSettings',
       'isEmptyValue',
       'isIcuLocaleSupported',
       'isImportStrategy',
