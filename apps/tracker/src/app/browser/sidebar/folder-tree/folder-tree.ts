@@ -17,7 +17,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import { TranslocoPipe } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
@@ -73,7 +73,6 @@ export class FolderTree {
   readonly store = inject(BrowserStore);
   readonly #confirm = injectConfirm();
   readonly TOKENS = TRACKER_TOKENS;
-  readonly #transloco = inject(TranslocoService);
   readonly #feedback = injectFeedback();
 
   /** Name of the collection to browse */
@@ -298,11 +297,9 @@ export class FolderTree {
       .requestFolderDelete(folderPath, (inSession) =>
         this.#confirm(
           {
-            title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
-            message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, {
-              name: folderName,
-            }),
-            confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
+            title: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE,
+            message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, params: { name: folderName } },
+            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.DELETE,
             actionType: 'destructive',
           },
           { width: '400px', canOpen: inSession },
@@ -317,12 +314,15 @@ export class FolderTree {
       .requestFolderMove({ sourceFolderPath, destinationFolderPath }, (inSession) =>
         this.#confirm(
           {
-            title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
-            message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
-              name: extractFolderNameFromPath(sourceFolderPath),
-              dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-            }),
-            confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
+            title: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE,
+            message: {
+              token: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX,
+              params: {
+                name: extractFolderNameFromPath(sourceFolderPath),
+                dest: destinationFolderPath || { token: TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL },
+              },
+            },
+            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.MOVE,
             actionType: 'standard',
           },
           { width: '400px', canOpen: inSession },

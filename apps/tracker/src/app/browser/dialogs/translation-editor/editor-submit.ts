@@ -8,6 +8,9 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { resolveResourceKey } from '@simoncodes-ca/domain';
 import { catchError, firstValueFrom, map, type Observable, of } from 'rxjs';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import type { Feedback } from '../../feedback';
+import { refusedFeedback } from '../../store/write-refusal';
 import { ApiError } from '../../../shared/api-error/api-error';
 import { doesUpdateMoveEntry } from '../../store/does-update-move-entry';
 import { type ResourceEntryDraft, resolveDraftKey, toCreateDto, toUpdateDto } from './resource-entry-draft';
@@ -131,11 +134,7 @@ export type EditorSubmitDecision =
   | { kind: 'ignored' }
   | { kind: 'invalid' }
   | { kind: 'focus-comment' }
-  | {
-      kind: 'message';
-      message: 'missing-resource' | 'not-found' | 'invalid-request' | 'create-failed' | 'update-failed' | 'unexpected';
-      error?: ApiError;
-    }
+  | { kind: 'message'; feedback: Feedback }
   | { kind: 'outcome'; outcome: EditorOutcome };
 
 export interface EditorSubmitSessionOptions {
@@ -191,7 +190,7 @@ export class EditorSubmitSession {
       this.phase.set('done');
       return { kind: 'outcome', outcome: result };
     } catch {
-      return { kind: 'message', message: 'unexpected' };
+      return messageDecision(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.UNEXPECTED);
     } finally {
       if (this.phase() !== 'done') this.phase.set('idle');
     }
@@ -205,20 +204,25 @@ export class EditorSubmitSession {
   }
 }
 
-/** Refusals become presentation instructions; the dialog supplies localized text. */
+function messageDecision(token: string, error?: ApiError): Extract<EditorSubmitDecision, { kind: 'message' }> {
+  return { kind: 'message', feedback: refusedFeedback(error, token, 'inline') };
+}
+
+/** Refusals carry their wording and tone; the dialog only renders the feedback. */
 export function refusalDecision(refusal: Exclude<EditorRefusal, { kind: 'conflict' }>): EditorSubmitDecision {
+  const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
   switch (refusal.kind) {
     case 'missing-original':
-      return { kind: 'message', message: 'missing-resource' };
+      return messageDecision(tokens.MISSINGRESOURCE);
     case 'not-found':
-      return { kind: 'message', message: 'not-found' };
+      return messageDecision(tokens.NOTFOUND);
     case 'invalid':
-      return { kind: 'message', message: 'invalid-request', error: refusal.error };
+      return messageDecision(tokens.INVALIDREQUEST, refusal.error);
     case 'create-failed':
-      return { kind: 'message', message: 'create-failed', error: refusal.error };
+      return messageDecision(tokens.CREATEFAILED, refusal.error);
     case 'update-failed':
-      return { kind: 'message', message: 'update-failed', error: refusal.error };
+      return messageDecision(tokens.UPDATEFAILED, refusal.error);
     case 'unexpected':
-      return { kind: 'message', message: 'unexpected' };
+      return messageDecision(tokens.UNEXPECTED);
   }
 }

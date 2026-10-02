@@ -8,8 +8,7 @@ import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectFeedback } from '../../../feedback';
 import { firstValueFrom, tap } from 'rxjs';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
-import { injectConfirm } from '../../../../shared/confirm';
-import type { ConfirmationDialogData } from '../../../../shared/components/confirmation-dialog/confirmation-dialog-data';
+import { injectConfirm, type ConfirmationSpec } from '../../../../shared/confirm';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 
 export function withItemActions() {
@@ -53,18 +52,18 @@ export function withItemActions() {
         async deleteTranslation(translation: ResourceSummaryDto): Promise<void> {
           const { fullKey } = translation;
 
-          const dialogData: ConfirmationDialogData = {
-            title: transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETERESOURCE.TITLE),
-            message: transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETERESOURCE.MESSAGEX, { key: fullKey }),
-            confirmButtonText: transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
-            cancelButtonText: transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.CANCEL),
+          const spec: ConfirmationSpec = {
+            title: TRACKER_TOKENS.BROWSER.DIALOG.DELETERESOURCE.TITLE,
+            message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETERESOURCE.MESSAGEX, params: { key: fullKey } },
+            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.DELETE,
+            cancelButtonText: TRACKER_TOKENS.COMMON.ACTIONS.CANCEL,
             actionType: 'destructive',
           };
 
           await firstValueFrom(
             browserStore
               .requestEntryDelete(fullKey, (inSession) =>
-                confirm(dialogData, { canOpen: () => inSession() && !destroyRef.destroyed }).then(
+                confirm(spec, { canOpen: () => inSession() && !destroyRef.destroyed }).then(
                   (yes) => yes && !destroyRef.destroyed,
                 ),
               )
