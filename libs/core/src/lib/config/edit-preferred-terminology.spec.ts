@@ -2,7 +2,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { editPreferredTerminology, PreferredTerminologyValidationError } from './preferred-terminology-file';
+import { editPreferredTerminology } from './preferred-terminology-file';
+import { PreferredTerminologyValidationError } from '../errors/lingo-tracker-error';
 
 const config = {};
 

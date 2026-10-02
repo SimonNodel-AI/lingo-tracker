@@ -24,9 +24,9 @@ import { classifyICUContent, findProtectedTermViolations, translocoToICU } from 
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { protectedTermsWarnings, readProjectTerms, requireProtectedTerms } from '../config/project-terms';
-import { AutoTranslationDisabledError } from '../errors/lingo-tracker-error';
+import { AutoTranslationDisabledError, TranslationError } from '../errors/lingo-tracker-error';
 import { type ExtractedPlaceholder, protectPlaceholders, restorePlaceholders } from './placeholder-protector';
-import { TranslationError, type TranslationProvider } from './translation-provider';
+import type { TranslationProvider } from './translation-provider';
 import { createTranslationProvider } from './translation-provider-factory';
 
 /** One text to translate. `key` is the caller's identifier (for example the full resource key). */

@@ -10,9 +10,9 @@ import {
   InvalidCollectionError,
   InvalidProjectTermsEditError,
   ParentDirectoryMissingError,
+  PreferredTerminologyValidationError,
 } from '../errors/lingo-tracker-error';
 import { loadConfig } from './load-config';
-import { PreferredTerminologyValidationError } from './preferred-terminology-file';
 import { type ProjectTermsUpdate, planProjectTermsUpdate, updateProjectTerms } from './update-project-terms';
 
 const actualWrite = vi.hoisted(() => ({ file: undefined as typeof import('node:fs').writeFileSync | undefined }));

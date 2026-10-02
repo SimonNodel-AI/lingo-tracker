@@ -10,6 +10,7 @@ import {
   CollectionNotFoundError,
   ConfigChangedError,
   InvalidProjectTermsEditError,
+  PreferredTerminologyValidationError,
 } from '../errors/lingo-tracker-error';
 import { patchCollectionEntry } from './collection-entry';
 import { guardedConfigWrite, updateConfig } from './config-file-operations';
@@ -21,7 +22,6 @@ import {
   loadPreferredTerminology,
   type PreferredTerminologyEdit,
   type PreferredTerminologyEditResult,
-  PreferredTerminologyValidationError,
   resolvePreferredTerminologyFilePath,
 } from './preferred-terminology-file';
 import {

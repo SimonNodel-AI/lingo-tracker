@@ -1,5 +1,5 @@
 import type { TranslationProvider } from './translation-provider';
-import { TranslationError } from './translation-provider';
+import { TranslationError } from '../errors/lingo-tracker-error';
 import { GoogleTranslateV2Provider } from './google-translate-v2.provider';
 
 /**

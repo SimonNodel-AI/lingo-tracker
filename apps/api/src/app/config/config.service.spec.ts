@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { ConfigNotFoundError, ConfigParseError, InvalidConfigError } from '@simoncodes-ca/core';
+import { InvalidConfigError } from '@simoncodes-ca/core';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { ConfigService } from './config.service';
 
@@ -69,7 +70,7 @@ describe('ConfigService', () => {
     });
 
     it('should throw NotFoundException when file does not exist', () => {
-      expect(() => service.getConfig()).toThrow(ConfigNotFoundError);
+      expect(() => service.getConfig()).toThrow(NotFoundException);
       expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
         statusCode: 404,
         message: 'Configuration file not found',
@@ -90,7 +91,7 @@ describe('ConfigService', () => {
     it('should throw InternalServerErrorException when file contains invalid JSON', () => {
       writeConfig('invalid json content {');
 
-      expect(() => service.getConfig()).toThrow(ConfigParseError);
+      expect(() => service.getConfig()).toThrow(InternalServerErrorException);
       expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
         statusCode: 500,
         message: 'Invalid configuration file format',
@@ -100,7 +101,7 @@ describe('ConfigService', () => {
     it('should throw InternalServerErrorException when file is empty', () => {
       writeConfig('');
 
-      expect(() => service.getConfig()).toThrow(ConfigParseError);
+      expect(() => service.getConfig()).toThrow(InternalServerErrorException);
       expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
         statusCode: 500,
         message: 'Invalid configuration file format',
@@ -110,7 +111,7 @@ describe('ConfigService', () => {
     it('should throw InternalServerErrorException when file contains non-JSON content', () => {
       writeConfig('This is not JSON at all');
 
-      expect(() => service.getConfig()).toThrow(ConfigParseError);
+      expect(() => service.getConfig()).toThrow(InternalServerErrorException);
       expect(toHttpException(catchConfigError()).getResponse()).toMatchObject({
         statusCode: 500,
         message: 'Invalid configuration file format',

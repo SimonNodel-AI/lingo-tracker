@@ -1,4 +1,4 @@
-// Typed core errors. Callers map them by class (the API's exception filter, the CLI's reporter).
+// Core errors declare domain kinds and details; adapters own presentation.
 
 export type { FolderPathPart } from './error-messages';
 export type { CollectionTagEditProblem, ErrorKind, ProjectTermsEditProblem } from './lingo-tracker-error';
@@ -16,9 +16,11 @@ export {
   ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
+  CoreOperationError,
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   GlossaryExtractorError,
+  GlossaryNoCollectionsError,
   ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
@@ -36,10 +38,12 @@ export {
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
   ParentDirectoryMissingError,
+  PreferredTerminologyValidationError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
+  TranslationError,
   TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
