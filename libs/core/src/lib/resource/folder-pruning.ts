@@ -53,7 +53,7 @@ export function pruneEmptyFolders(collection: Collection, options: PruneOptions 
         return result;
       }
     } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return result;
+      if (isMissingPathError(error)) return result;
       const message = error instanceof Error ? error.message : String(error);
       result.problems.push({ folderPath, absolutePath, message });
       result.kept.push({ folderPath, reason: 'problem' });
@@ -218,9 +218,14 @@ function readCollectionFileEntryCount(filePath: string, allowMissing = false): n
     }
     return Object.keys(value).length;
   } catch (error) {
-    if (allowMissing && error instanceof Error && 'code' in error && error.code === 'ENOENT') return 0;
+    if (allowMissing && isMissingPathError(error)) return 0;
     throw new Error(`Cannot read ${filePath}: ${errorMessage(error)}`);
   }
+}
+
+/** Native filesystem errors can come from another VM realm, so instanceof Error is not reliable. */
+function isMissingPathError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }
 
 function errorMessage(error: unknown): string {
