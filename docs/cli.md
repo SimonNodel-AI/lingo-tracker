@@ -845,17 +845,19 @@ lingo-tracker normalize [options]
    - `translated` / `verified` - Preserved when base value unchanged
 4. **Normalizes tags**: Coerces all tag values to lowercase, hyphenated form (`[a-z0-9-]`, max 50 chars). For example `"Common UI"` → `"common-ui"`. Deduplicates tags within each resource. This is the recommended way to clean up legacy tag data that pre-dates strict validation.
 5. **Creates missing files**: Ensures `resource_entries.json` and `tracker_meta.json` exist at every folder level
-6. **Cleans up empty folders**: Removes folders with no entries (bottom-up recursive cleanup)
+6. **Cleans up empty folders**: Removes folders that hold no entries and no other files (bottom-up recursive cleanup)
 
 **Folder Cleanup Behavior:**
 
 Normalization automatically removes empty folders to keep the translations directory clean:
 
-- Folders are considered **empty** if they contain:
-  - No `resource_entries.json` file, OR
-  - An empty `resource_entries.json` (no entries or `{}`), AND
-  - No subfolders
-- Folders containing only `tracker_meta.json` or hidden files (`.gitkeep`, `.DS_Store`) are removed
+- After its subfolders are cleaned up, a folder is considered **empty** if it contains nothing but:
+  - An empty `resource_entries.json` (no entries or `{}`), optional
+  - A `tracker_meta.json`, optional (its checksums and statuses describe entries the folder no longer has)
+  - The OS files `.DS_Store`, `Thumbs.db` and `desktop.ini`
+- Empty folders are removed together with those files
+- Any other file (for example `.gitkeep`, `notes.md` or a README), a hidden directory, a symlink, resource entries, or an unreadable JSON file keeps the folder and its parent folders
+- If some files are removed but the folder cannot be removed, normalize reports a folder problem and keeps the folder
 - Cleanup uses bottom-up traversal (deepest folders first) to handle recursive removal
 - The root translations folder is **never removed**, even if empty
 
