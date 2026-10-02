@@ -37,6 +37,18 @@ describe('planBundle (real fs)', () => {
     };
   }
 
+  it('trims a supplied key in the plan and generated token path', () => {
+    const common = seed('common', { 'buttons.ok': { source: 'OK' } });
+    const plan = planBundle({
+      bundleKey: ' main ',
+      bundleDefinition: { ...definition, typeDistFile: 'types.ts' },
+      config: config({ common }),
+      cwd: root(),
+    });
+    expect(plan.bundleKey).toBe('main');
+    expect(plan.exampleKey?.tokenPath).toBe('MAIN_TOKENS.BUTTONS.OK');
+  });
+
   it('lists one bundle file per locale with configured and resolved paths and exists flags', () => {
     const common = seed('common', {
       'buttons.ok': { source: 'OK', translations: { fr: "D'accord" } },

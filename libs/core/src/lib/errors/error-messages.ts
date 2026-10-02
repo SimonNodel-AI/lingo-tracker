@@ -29,6 +29,8 @@ export const ErrorMessages = {
 
   autoTranslationDisabled: (collection: string) => `Auto-translation is not enabled for collection "${collection}"`,
 
+  nameRequired: () => 'name must be a non-empty string',
+
   collectionNotFound: (name: string) => `Collection "${name}" not found`,
 
   collectionReadOnly: (name: string) => `Collection "${name}" is read-only. Its resources cannot be modified.`,

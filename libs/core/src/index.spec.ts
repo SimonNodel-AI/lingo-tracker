@@ -31,6 +31,7 @@ describe('core public surface', () => {
       'InvalidConfigError',
       'InvalidFolderPathError',
       'InvalidLocaleError',
+      'InvalidNameError',
       'InvalidProjectTermsEditError',
       'InvalidResourceKeyError',
       'InvalidTranslationStatusError',

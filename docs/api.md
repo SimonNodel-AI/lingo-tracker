@@ -199,6 +199,14 @@ Response:
 
 Updates or renames an existing collection.
 
+If `name` is present but blank (`""` or whitespace), the API returns 400. The body is `{"message":"name must be a non-empty string","error":"Bad Request","statusCode":400}`. Core trims a supplied name. An omitted name or a trimmed name equal to the current name keeps the collection name. A non-string update `name` returns 400 with `name must be a string`.
+
+PUT checks shape → fields (including protected-terms shape) → collection lookup (404) → core protected terms → blank name (400) → conflicts (409).
+
+A field that fails an earlier check reports its message even if the rename name is blank. A missing collection with a blank name returns 404.
+
+**Breaking change:** Collection rename names now trim whitespace: `" other "` becomes `other`. If `b` exists, a rename to `" b "` now returns 409.
+
 Renaming updates every explicit bundle reference to the new name in the same config write, preserving prefixes, selection rules and order. If an explicit bundle already references the new name, the API returns 409 Conflict with the affected bundle names and changes no files. Bundles configured with `collections: "All"` are unchanged.
 
 **Endpoint**: `PUT /api/collections/:collectionName`
@@ -378,6 +386,14 @@ curl -X DELETE http://localhost:3030/api/collections/main/locales/de
 - Cannot remove the base locale
 
 ---
+
+## Bundles API
+
+`PUT /api/bundles/:name` replaces a bundle definition and optionally renames it through the body’s `name` field. If `name` is present but blank (`""` or whitespace), the API returns 400. The body is `{"message":"name must be a non-empty string","error":"Bad Request","statusCode":400}`. **Breaking change:** The API previously treated a blank name as an omitted rename. A legacy stored key that fails the name pattern now accepts a rename to itself as a plain update. This returns 200 instead of 400. For `PUT /api/bundles/legacy%20key`, send `name: "legacy key"` with a valid bundle definition.
+
+Core trims create and rename names. An omitted name or a trimmed name equal to the current name remains a plain update. A blank create name still returns 400 with `errors: ["Bundle name is required."]`. A missing saved bundle returns 404 before rename validation. Invalid rename targets or definitions return 400 before a name collision returns 409.
+
+`POST /api/bundles/dry-run` plans a supplied definition. Core trims the supplied name. Dry runs and generation jobs resolve paths against the opened project’s root. Saved generation route names remain unchanged, so a padded route name such as `" tracker "` returns 404.
 
 ## Resources API
 

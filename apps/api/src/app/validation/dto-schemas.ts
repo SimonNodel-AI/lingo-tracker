@@ -79,7 +79,7 @@ export const createCollectionBody: Schema<CreateCollectionDto> = object<CreateCo
   collection: collectionConfig,
 });
 export const updateCollectionBody: Schema<UpdateCollectionDto> = object<UpdateCollectionDto>({
-  name: optional(nonEmptyString()),
+  name: optional(string()),
   collection: collectionConfig,
 });
 export const bundleDryRunBody: Schema<BundleDryRunRequestDto> = object<BundleDryRunRequestDto>({

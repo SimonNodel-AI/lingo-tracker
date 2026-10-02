@@ -9,7 +9,7 @@ import { ConfigService } from '../config/config.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { BundleJobService } from './bundle-job.service';
 import { BundlesController } from './bundles.controller';
-import { bundleDryRunBody, createBundleBody, updateBundleBody } from '../validation/dto-schemas';
+import { bundleDryRunBody, createBundleBody, createCollectionBody, updateBundleBody } from '../validation/dto-schemas';
 import { SchemaPipe } from '../validation/valid-body';
 import { exactMessage } from '../validation/exact-message.test-support';
 
@@ -88,7 +88,7 @@ describe('BundlesController', () => {
 
   const configService = {
     getConfig: jest.fn(),
-    openProject: jest.fn(() => ({ projectRoot: process.cwd(), sourceConfig: config })),
+    openProject: jest.fn(() => ({ projectRoot: '/opened/project', sourceConfig: config })),
   };
   const jobService = { startJob: jest.fn(), getJob: jest.fn() };
 
@@ -107,11 +107,12 @@ describe('BundlesController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     configService.getConfig.mockReturnValue(config);
+    configService.openProject.mockReturnValue({ projectRoot: '/opened/project', sourceConfig: config });
     (core.planBundle as jest.Mock).mockImplementation(jest.requireActual('@simoncodes-ca/core').planBundle);
   });
 
   describe('POST /bundles', () => {
-    it('hands the trimmed name and the body definition to core, which normalises and validates', () => {
+    it('hands the verbatim name and the body definition to core, which normalises and validates', () => {
       (core.addBundleDefinition as jest.Mock).mockReturnValue({ message: 'Bundle "main" added successfully' });
       const bundle = { ...requestDefinition, dist: ' ./dist/i18n ' };
 
@@ -120,7 +121,7 @@ describe('BundlesController', () => {
       expect(result).toEqual({ message: 'Bundle "main" added successfully' });
       expect(core.addBundleDefinition).toHaveBeenCalledWith(
         expect.objectContaining({ sourceConfig: config }),
-        'main',
+        ' main ',
         bundle,
       );
     });
@@ -190,6 +191,40 @@ describe('BundlesController', () => {
         requestDefinition,
         {},
       );
+    });
+
+    it('forwards a blank rename target to core', () => {
+      (core.updateBundleDefinition as jest.Mock).mockReturnValue({ message: 'updated' });
+      controller.updateBundle('tracker', { name: '', bundle: requestDefinition });
+      expect(core.updateBundleDefinition).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceConfig: config }),
+        'tracker',
+        requestDefinition,
+        { newKey: '' },
+      );
+    });
+
+    it('answers the exact 400 body when real core rejects a blank rename', () => {
+      (core.updateBundleDefinition as jest.Mock).mockImplementation(
+        jest.requireActual<typeof core>('@simoncodes-ca/core').updateBundleDefinition,
+      );
+      for (const name of ['', ' ']) {
+        const answer = answerOf(() => controller.updateBundle('tracker', { name, bundle: requestDefinition }));
+        expect(answer.status).toBe(400);
+        expect(answer.body).toEqual({
+          statusCode: 400,
+          message: 'name must be a non-empty string',
+          error: 'Bad Request',
+        });
+        const existingCollectionAnswer = answerOf(() =>
+          new SchemaPipe(createCollectionBody, 'request body').transform({
+            name,
+            collection: { translationsFolder: './i18n' },
+          }),
+        );
+        expect(JSON.stringify(answer.body)).toBe(JSON.stringify(existingCollectionAnswer.body));
+      }
+      expect(config.bundles?.['tracker']).toEqual(existingDefinition);
     });
 
     it('returns 404 when core reports the bundle missing', () => {
@@ -307,12 +342,14 @@ describe('BundlesController', () => {
       });
 
       expect(core.planBundle).toHaveBeenCalledWith({
-        bundleKey: 'preview',
+        bundleKey: ' preview ',
         bundleDefinition: { ...requestDefinition, dist: ' ./dist/i18n ', typeDistFile: '' },
         config,
-        cwd: process.cwd(),
+        cwd: '/opened/project',
         locales: ['en'],
       });
+      expect(configService.openProject).toHaveBeenCalledTimes(1);
+      expect(configService.getConfig).not.toHaveBeenCalled();
       expect(result.name).toBe('preview');
       expect(result.files).toEqual([
         { path: 'dist/i18n/main.en.json', kind: 'bundle', locale: 'en', exists: false, keysCount: 2 },
@@ -375,20 +412,26 @@ describe('BundlesController', () => {
 
   describe('POST /bundles/:name/generate', () => {
     it('answers 202 for a saved bundle whose collection was deleted', () => {
-      const withDeletedCollection = {
+      const withDeletedCollection: LingoTrackerConfig = {
         ...config,
         bundles: {
           tracker: { ...existingDefinition, collections: [{ name: 'deleted', entriesSelectionRules: 'All' }] },
         },
       };
-      configService.getConfig.mockReturnValue(withDeletedCollection);
+      configService.openProject.mockReturnValue({
+        projectRoot: '/opened/project',
+        sourceConfig: withDeletedCollection,
+      });
       jobService.startJob.mockReturnValue('job-1');
       jobService.getJob.mockReturnValue({ jobId: 'job-1', status: 'pending' });
       const { response, status } = makeResponse();
 
       controller.generateBundle('tracker', {}, response);
 
-      expect(jobService.startJob).toHaveBeenCalledWith({ bundleName: 'tracker', config: withDeletedCollection });
+      expect(jobService.startJob).toHaveBeenCalledWith({
+        bundleName: 'tracker',
+        project: { projectRoot: '/opened/project', sourceConfig: withDeletedCollection },
+      });
       expect(status).toHaveBeenCalledWith(HttpStatus.ACCEPTED);
     });
 
@@ -402,7 +445,7 @@ describe('BundlesController', () => {
 
       expect(jobService.startJob).toHaveBeenCalledWith({
         bundleName: 'tracker',
-        config,
+        project: { projectRoot: '/opened/project', sourceConfig: config },
         locales: ['fr-ca'],
       });
       expect(status).toHaveBeenCalledWith(HttpStatus.ACCEPTED);
@@ -418,7 +461,7 @@ describe('BundlesController', () => {
 
       expect(jobService.startJob).toHaveBeenCalledWith({
         bundleName: 'tracker',
-        config,
+        project: { projectRoot: '/opened/project', sourceConfig: config },
       });
       expect(status).toHaveBeenCalledWith(HttpStatus.ACCEPTED);
     });

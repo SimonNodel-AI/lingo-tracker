@@ -78,7 +78,7 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ### Bundle Run Preparation
 
-The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, typeWarning, tokenConstantNameOverride }`. The key is the caller's key for a supplied definition and the saved name for a saved definition. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `selectPreparedBundleLocale` selects one locale and adds the empty-bundle warning in one place. A prepared `typeWarning` still reaches the CLI event or API log if generation throws.
+The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, typeWarning, tokenConstantNameOverride }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `selectPreparedBundleLocale` selects one locale and adds the empty-bundle warning in one place. A prepared `typeWarning` still reaches the CLI event or API log if generation throws.
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md#where-bundle-generation-lives), [`api.md`](api.md#bundles)
 
@@ -624,6 +624,14 @@ Explained in context: [`monorepo-structure.md`](monorepo-structure.md#public-sur
 ---
 
 ## R
+
+### Rename Target
+
+The name that a collection or bundle update uses. The shared core rule `resolveRenameTarget(current, requested)` resolves it. An omitted name keeps the current name. The rule trims a supplied name and throws `InvalidNameError` if the result is blank. It returns `{ target, isRename }`. `isRename` is true only when the target differs from the current name.
+
+Explained in context: [`core-library.md`](core-library.md#bundle-definition)
+
+---
 
 ### Resolved Key
 

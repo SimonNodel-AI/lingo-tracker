@@ -251,6 +251,14 @@ export class InvalidCollectionError extends LingoTrackerError {
   }
 }
 
+/** A supplied rename target is blank after trimming. */
+export class InvalidNameError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor() {
+    super(ErrorMessages.nameRequired(), 'INVALID_NAME');
+  }
+}
+
 /** Terms were given for a collection that has no `protectedTermsFile` pointer to write them to. */
 export class ProtectedTermsFileNotSetError extends LingoTrackerError {
   readonly kind = 'invalid' as const;

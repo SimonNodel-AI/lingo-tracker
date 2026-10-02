@@ -114,6 +114,7 @@ export {
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
+  InvalidNameError,
   InvalidProjectTermsEditError,
   type ProjectTermsEditProblem,
   InvalidResourceKeyError,

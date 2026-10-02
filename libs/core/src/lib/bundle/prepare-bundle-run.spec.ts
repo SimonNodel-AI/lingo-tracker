@@ -61,6 +61,23 @@ describe('prepareBundleRun', () => {
     ).toThrow(message);
   });
 
+  it('trims supplied keys before validation and settings resolution', () => {
+    const prepared = prepareBundleRun({
+      source: 'supplied',
+      bundleKey: ' main ',
+      bundleDefinition: definition,
+      config,
+    });
+    expect(prepared.bundleKey).toBe('main');
+    expect(prepared.settings.tokenConstantName).toBe('MAIN_TOKENS');
+  });
+
+  it('keeps saved route keys verbatim', () => {
+    expect(() => prepareBundleRun({ source: 'saved', bundleKey: ' main ', config })).toThrow(
+      'Bundle " main " not found',
+    );
+  });
+
   it('normalizes an unsaved definition once', () => {
     const prepared = prepareBundleRun({
       source: 'supplied',

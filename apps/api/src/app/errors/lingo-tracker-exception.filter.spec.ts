@@ -25,6 +25,7 @@ import {
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
+  InvalidNameError,
   InvalidProjectTermsEditError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
@@ -48,6 +49,11 @@ import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-ex
 
 describe('toHttpException', () => {
   const cases = [
+    [
+      new InvalidNameError(),
+      400,
+      { message: 'name must be a non-empty string', error: 'Bad Request', statusCode: 400 },
+    ],
     [
       new CollectionNotFoundError('app'),
       404,
