@@ -311,6 +311,18 @@ Explained in context: [`core-library.md`](core-library.md#entry-relocation)
 
 ---
 
+### Entry Writes
+
+The Tracker UI's store feature for resource creation, updates, deletion and auto-translation. `withEntryWritesFeature` in `apps/tracker/src/app/browser/store/features/with-entry-writes.feature.ts` is a sibling of [Folder Writes](#folder-writes). Both features share the `Refusal` type and `refused()` normalizer in `store/write-refusal.ts`. Entry Writes blocks read-only delete and translate writes before HTTP.
+
+Delete and translate return cold `Observable` outcomes with decided [Outcome Feedback](#outcome-feedback). These outcomes include `read-only`, `no-collection`, `stale-session` and `refused` with an `ApiError`. `requestEntryDelete(fullKey, confirm)` captures the [Browser Session](#browser-session), gives its guard to the caller's confirmation callback, and checks the session after confirmation.
+
+The feature updates the folder list and search results only in the session where the write began. A stale delete or translate response gives no feedback. The list actions supply the existing dialog and show the decided feedback. They own the translating keys and row flash. Editor create/update retain API responses and raw errors for [Editor Submit](#editor-submit), including the 409 key-conflict flow. Editor Submit enforces read-only before these pass-through store methods.
+
+Explained in context: [`frontend.md`](frontend.md#writing-a-resource-entry)
+
+---
+
 ### Existence Policy
 
 `addResource` and `addResources` refuse an existing resolved key by default with `ResourceAlreadyExistsError`. Pass `onExisting: 'replace'` to replace its translations and metadata. The check happens before locale seeding or any write. A batch checks every item before translating any of them; duplicate resolved keys within a batch are always refused. The API uses `fail`; the CLI uses `fail` unless `--override` is passed or an interactive user confirms replacement.
@@ -378,18 +390,6 @@ Explained in context: [`core-library.md`](core-library.md#folder-pruning)
 The Tracker UI's one store feature for creating, deleting and moving folders, and for dropping a resource into a folder. `withFolderWritesFeature` in `apps/tracker/src/app/browser/store/features/with-folder-writes.feature.ts` returns a cold `Observable` of a typed outcome from each write. Its `requestFolderMove` entry point checks the drop, captures the [Browser Session](#browser-session), asks the caller to present confirmation when needed, and then moves the folder. `folder-drop.ts` is the pure rule shared by the sidebar drop targets and the write feature: it returns `canLand` for the CDK target and a separate no-op reason for a folder or resource dragged onto a folder path or the collection root. A folder can land on its current parent; Folder Writes then returns `already-at-location` so the sidebar shows its existing info toast. A resource at the collection root has `folderPath: ''` and can be dropped into a folder. The feature refuses every write in a read-only collection before HTTP and updates cached tree and rows only in the session where the write began. The [Folder Move Plan](#folder-move-plan) decides the tree, expansion, reload, navigation, and rollback effects of folder moves. A failed optimistic move restores only the moved item against current state when its parent is loaded; an unloaded parent gets its children on its next load, so a newer tree load survives. Deletion shows the parent only if the current folder is the deleted folder or one of its descendants. Every outcome carries the [Outcome Feedback](#outcome-feedback) it decided, so a caller renders it and decides nothing; folder writes do not set the shared load `error`. A create refusal reads inline, under the still-open input, in both the sidebar and the picker; a new folder is silent and an existing one toasts info. The sidebar's draft lives in this feature: `confirmFolderDraft` creates from it and closes it when the create ends (created, read-only, no collection). A refusal keeps it open and sits in the `folderCreateError` signal until the name is edited, the draft is cancelled or restarted, a create succeeds, or a [Browser Session](#browser-session) opens. The picker keeps an independent draft, because its modal dialog would otherwise open a second input in the sidebar behind it, and holds its own refusal; its `createFolder` never touches the store's draft. Both drafts use `folder-draft.ts` for their transitions. `requestFolderDelete` mirrors `requestFolderMove`: it asks the caller to confirm inside the session guard.
 
 Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollback)
-
----
-
-### Entry Writes
-
-The Tracker UI's store feature for resource creation, updates, deletion and auto-translation. `withEntryWritesFeature` in `apps/tracker/src/app/browser/store/features/with-entry-writes.feature.ts` is a sibling of [Folder Writes](#folder-writes). Both features share the `Refusal` type and `refused()` normalizer in `store/write-refusal.ts`. Entry Writes blocks read-only delete and translate writes before HTTP.
-
-Delete and translate return cold `Observable` outcomes with decided [Outcome Feedback](#outcome-feedback). These outcomes include `read-only`, `no-collection`, `stale-session` and `refused` with an `ApiError`. `requestEntryDelete(fullKey, confirm)` captures the [Browser Session](#browser-session), gives its guard to the caller's confirmation callback, and checks the session after confirmation.
-
-The feature updates the folder list and search results only in the session where the write began. A stale delete or translate response gives no feedback. The list actions supply the existing dialog and show the decided feedback. They own the translating keys and row flash. Editor create/update retain API responses and raw errors for [Editor Submit](#editor-submit), including the 409 key-conflict flow. Editor Submit enforces read-only before these pass-through store methods.
-
-Explained in context: [`frontend.md`](frontend.md#writing-a-resource-entry)
 
 ---
 
