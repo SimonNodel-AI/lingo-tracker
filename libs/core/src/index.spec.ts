@@ -22,6 +22,7 @@ describe('core public surface', () => {
       'DEFAULT_CONFIG',
       'FolderMoveIntoDescendantError',
       'FolderNotFoundError',
+      'GlossaryExtractorError',
       'ImportSourceError',
       'InvalidBundleDefinitionError',
       'InvalidBundleLocalesError',

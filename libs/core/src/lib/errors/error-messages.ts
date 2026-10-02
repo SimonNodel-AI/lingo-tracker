@@ -85,7 +85,7 @@ export const ErrorMessages = {
 
   glossaryExtractorUnavailable: (mode: string) =>
     mode === 'ai'
-      ? 'The "ai" extractor is not yet implemented. Use --extractor ngram (the default).'
+      ? 'The "ai" extractor is not yet implemented; use the "ngram" extractor (the default).'
       : `Unknown extractor "${mode}". Supported: ngram.`,
 } as const;
 
