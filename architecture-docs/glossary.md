@@ -84,6 +84,16 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#where-bundle
 
 ---
 
+### Bundle Runs
+
+The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. `withBundlesFeature` stores those names in `bundleBatch` and exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
+
+The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The store owns API calls, polling, and session storage. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-runs)
+
+---
+
 ### Bundle Selection
 
 What a [bundle](#bundle) holds for one locale: each final key, its value, and the resource the value came from. In code, `libs/core/src/lib/bundle/bundle-selection.ts` has two functions. `resolveBundleCollections(definition, config, { cwd })` opens each [collection](#collection) the definition reads once per run (`'All'` means every collection, with every entry and no prefix). For saved generation it warns once about an unknown collection; a supplied dry-run definition is rejected before selection. `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` reads each collection for the locale through the [Collection Reader](#collection-reader), keeps the entries that match a rule (key pattern and [tags](#tags)), prepends `bundledKeyPrefix`, converts [ICU](#icu-format) to [Transloco](#transloco) when asked, and merges: the first value of a key wins, unless a later collection's `mergeStrategy` is `'override'`. It returns `{ entries, conflicts, warnings }`; each entry has a `value` and an `origin` (`collectionName`, `sourceKey`). Each collection's base value comes from its own [base locale](#base-locale); `COLLECTION_BASE_LOCALE` asks for every collection's base value. `generateBundle` writes the JSON files from it, `planBundle` counts keys and reports conflicts from it, and the type file takes its keys from it. None of them selects entries itself.

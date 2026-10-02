@@ -18,7 +18,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
 import type { Observable } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../shared/api-error/api-error';
@@ -28,14 +27,8 @@ import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData } from './bundle-form-dialog/bundle-form-dialog-data';
 import type { CollectionFormDialogData } from './collection-form-dialog/collection-form-dialog-data';
 import { type BundleLink, type BundlePort, collectionLinks, type LinkRect } from './collection-links';
+import { bundleCards, collectionCards } from './collection-cards';
 import { CollectionsStore } from './store/collections.store';
-import type { BundleEntry } from './store/features/with-bundles.feature';
-
-/**
- * Total locale chips a card shows, overflow chip included. Capped so every card keeps a
- * single chip row and rows of cards stay flush with each other.
- */
-const MAX_LOCALE_CHIPS = 4;
 
 /** Below this many collections the name filter is more clutter than help. */
 const FILTER_THRESHOLD = 6;
@@ -44,23 +37,6 @@ const loadBundleDialog = () =>
   import('./bundle-form-dialog/bundle-form-dialog').then((module) => module.BundleFormDialog);
 const loadCollectionDialog = () =>
   import('./collection-form-dialog/collection-form-dialog').then((module) => module.CollectionFormDialog);
-
-/** A collection prepared for display: chips resolved, overflow already split off. */
-export interface CollectionCardView {
-  readonly name: string;
-  readonly translationsFolder: string;
-  readonly readOnly: boolean;
-  readonly baseLocale: string | undefined;
-  readonly visibleLocales: readonly string[];
-  readonly overflowLocales: readonly string[];
-}
-
-/** A bundle prepared for its card: consumed collections resolved, locale count computed. */
-export interface BundleCardView {
-  readonly entry: BundleEntry;
-  readonly collectionNames: readonly string[];
-  readonly localeCount: number;
-}
 
 /**
  * Collections Manager component for viewing and managing translation collections.
@@ -112,20 +88,7 @@ export class CollectionsManager {
   readonly filter = signal('');
 
   /** Collections sorted by name and prepared for the card template. */
-  readonly cards = computed<readonly CollectionCardView[]>(() => {
-    const query = this.filter().trim().toLowerCase();
-
-    return this.store
-      .collectionEntriesWithLocales()
-      .filter(
-        (item) =>
-          query.length === 0 ||
-          item.name.toLowerCase().includes(query) ||
-          item.config.translationsFolder.toLowerCase().includes(query),
-      )
-      .map((item) => this.#toCardView(item))
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  });
+  readonly cards = computed(() => collectionCards(this.store.collectionEntriesWithLocales(), this.filter()));
 
   readonly showFilter = computed(() => this.store.collectionEntriesWithLocales().length > FILTER_THRESHOLD);
   readonly isFiltering = computed(() => this.filter().trim().length > 0);
@@ -138,16 +101,13 @@ export class CollectionsManager {
   readonly hoveredBundle = signal<string | null>(null);
 
   /** Bundles prepared for the card template, in store (name) order. */
-  readonly bundleCards = computed<readonly BundleCardView[]>(() => {
-    const allCollections = this.store.collectionEntries().map((item) => item.name);
-    const globalLocales = this.store.config()?.locales ?? [];
-
-    return this.store.bundleEntries().map((entry) => ({
-      entry,
-      collectionNames: this.#resolveCollectionNames(entry.definition, allCollections),
-      localeCount: globalLocales.length,
-    }));
-  });
+  readonly bundleCards = computed(() =>
+    bundleCards(
+      this.store.bundleEntries(),
+      this.store.collectionEntries().map((item) => item.name),
+      this.store.config()?.locales ?? [],
+    ),
+  );
 
   /** Collections consumed by the hovered bundle; empty when nothing is hovered. */
   readonly linkedCollections = computed<ReadonlySet<string>>(() => {
@@ -163,27 +123,8 @@ export class CollectionsManager {
   /** Convergence point of the current connector lines; null when none are drawn. */
   readonly bundlePort = signal<BundlePort | null>(null);
 
-  /** Bundle names started by the last "Generate all" click; null until it is used. */
-  readonly #generateAllBatch = signal<readonly string[] | null>(null);
-
-  /** True while any bundle from the current "Generate all" batch is still running. */
-  readonly isGeneratingAll = computed(() => {
-    const batch = this.#generateAllBatch();
-    if (!batch) return false;
-    const runs = this.store.bundleRuns();
-    return batch.some((name) => runs[name]?.status === 'running');
-  });
-
-  /** 1-based position shown on the busy "Generate all" button, e.g. "1 of 2…". */
-  readonly generateAllPosition = computed(() => {
-    const batch = this.#generateAllBatch() ?? [];
-    const runs = this.store.bundleRuns();
-    const finished = batch.filter((name) => {
-      const status = runs[name]?.status;
-      return status === 'completed' || status === 'failed';
-    }).length;
-    return Math.min(Math.max(batch.length, 1), finished + 1);
-  });
+  readonly isGeneratingAll = this.store.isBatchRunning;
+  readonly generateAllPosition = this.store.batchPosition;
 
   constructor() {
     // Re-measure whenever the hover changes or the cards behind it do. Measuring on the
@@ -269,35 +210,6 @@ export class CollectionsManager {
     if (this.bundlePort() !== null) this.bundlePort.set(null);
   }
 
-  /**
-   * Orders a collection's locales with the base locale first, then splits off the tail beyond
-   * MAX_LOCALE_CHIPS so the chip row never wraps and cards in a row share a height.
-   */
-  #toCardView(item: {
-    name: string;
-    config: { translationsFolder: string; readOnly?: boolean };
-    locales: readonly string[];
-    baseLocale: string;
-  }): CollectionCardView {
-    const locales = item.locales;
-    const base = item.baseLocale;
-    const ordered = locales.includes(base) ? [base, ...locales.filter((l) => l !== base)] : [...locales];
-
-    return {
-      name: item.name,
-      translationsFolder: item.config.translationsFolder,
-      readOnly: item.config.readOnly === true,
-      baseLocale: base,
-      visibleLocales: ordered.length > MAX_LOCALE_CHIPS ? ordered.slice(0, MAX_LOCALE_CHIPS - 1) : ordered,
-      overflowLocales: ordered.length > MAX_LOCALE_CHIPS ? ordered.slice(MAX_LOCALE_CHIPS - 1) : [],
-    };
-  }
-
-  #resolveCollectionNames(definition: BundleDefinitionDto, allCollections: readonly string[]): readonly string[] {
-    if (definition.collections === 'All') return allCollections;
-    return definition.collections.map((collection) => collection.name);
-  }
-
   clearFilter(): void {
     this.filter.set('');
   }
@@ -359,7 +271,6 @@ export class CollectionsManager {
    */
   generateAllBundles(): void {
     if (this.store.isAnyBundleRunning()) return;
-    this.#generateAllBatch.set(this.store.bundleEntries().map((entry) => entry.name));
     this.store.generateAllBundles();
   }
 

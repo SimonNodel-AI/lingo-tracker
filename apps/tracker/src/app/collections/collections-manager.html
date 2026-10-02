@@ -263,7 +263,7 @@
               @if (isGeneratingAll()) {
                 <span class="spinner" aria-hidden="true"></span>
                 <span class="num">
-                  {{ TOKENS.BUNDLES.GENERATINGPROGRESSX | transloco: { current: generateAllPosition(), total: store.bundleCount() } }}
+                  {{ TOKENS.BUNDLES.GENERATINGPROGRESSX | transloco: { current: generateAllPosition(), total: store.batchTotal() } }}
                 </span>
               } @else {
                 <mat-icon aria-hidden="true">play_arrow</mat-icon>
