@@ -5,6 +5,7 @@
 export {
   type BundleDefinition,
   type BundleDefinitionCheck,
+  bundleKeyToConstantName,
   bundleOutputFile,
   type CollectionBundleDefinition,
   checkBundleDefinition,

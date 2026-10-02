@@ -1,7 +1,7 @@
 import { computed, signal } from '@angular/core';
 import type { LingoTrackerConfigDto, PreferredTermRuleErrorDto } from '@simoncodes-ca/data-transfer';
 import { catchError, defer, map, type Observable, of } from 'rxjs';
-import { classifyConfigRefusal } from '../collections/store/dialog-config-submit';
+import { classifyConfigRefusal } from '../collections/store/config-write';
 import { ProtectedTermsDraft } from '../shared/protected-terms/protected-terms-draft';
 import { PreferredTerminologyDraft, type RuleField } from './preferred-terminology-draft';
 

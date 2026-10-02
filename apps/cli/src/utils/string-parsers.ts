@@ -18,15 +18,3 @@ export function parseCommaSeparatedList(input: string | undefined): string[] | u
 
   return result.length > 0 ? result : undefined;
 }
-
-/**
- * Same as parseCommaSeparatedList but throws if result is empty.
- * Use when at least one value is required.
- */
-export function parseCommaSeparatedListRequired(input: string | undefined, fieldName = 'value'): string[] {
-  const result = parseCommaSeparatedList(input);
-  if (!result || result.length === 0) {
-    throw new Error(`At least one ${fieldName} is required`);
-  }
-  return result;
-}

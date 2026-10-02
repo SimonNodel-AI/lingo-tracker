@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   type BundleDefinition,
+  bundleKeyToConstantName,
   bundleOutputFile,
   checkBundleDefinition,
   findBundleDefinition,
@@ -532,5 +533,19 @@ describe('findBundleDefinition', () => {
     expect(findBundleDefinition(bundles, '__proto__')).toBeUndefined();
     expect(findBundleDefinition(bundles, 'toString')).toBeUndefined();
     expect(findBundleDefinition(undefined, 'main')).toBeUndefined();
+  });
+});
+
+describe('bundleKeyToConstantName', () => {
+  it('should convert simple bundle key to constant name', () => {
+    expect(bundleKeyToConstantName('common')).toBe('COMMON_TOKENS');
+  });
+
+  it('should convert hyphenated bundle key to constant name', () => {
+    expect(bundleKeyToConstantName('core-ui')).toBe('CORE_UI_TOKENS');
+  });
+
+  it('should handle mixed case bundle keys', () => {
+    expect(bundleKeyToConstantName('adminPanel')).toBe('ADMINPANEL_TOKENS');
   });
 });

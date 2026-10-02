@@ -16,21 +16,18 @@ import { Overlay, OverlayModule, type OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal, PortalModule } from '@angular/cdk/portal';
 import { ViewContainerRef, type TemplateRef } from '@angular/core';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
-import { countByStatus, type TranslationStatus } from '@simoncodes-ca/domain';
+import { countByStatus } from '@simoncodes-ca/domain';
 import type { RollupLocale } from './row-view';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectActiveLang, injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
 import {
   rollupCenter,
-  STATUS_DISPLAY_ORDER,
   STATUS_PRESENTATION,
 } from '../../../../shared/translation-status/translation-status-presentation';
+import { ringSegments, sortLocaleRows } from './rollup-geometry';
 
 /** Close delay in ms */
 const CLOSE_DELAY = 120;
-
-/** The ring draws its arcs in the reverse of the display order, starting at 12 o'clock. */
-const RING_ORDER: readonly TranslationStatus[] = [...STATUS_DISPLAY_ORDER].reverse();
 
 /**
  * Displays a visual rollup of translation statuses across locales.
@@ -338,9 +335,6 @@ export class TranslationRollup implements OnDestroy {
 
   /** SVG ring geometry */
   readonly radius = 14;
-  private get circumference(): number {
-    return 2 * Math.PI * this.radius;
-  }
 
   ngOnDestroy(): void {
     this.close();
@@ -387,48 +381,19 @@ export class TranslationRollup implements OnDestroy {
   });
 
   /** Ring segments for SVG */
-  readonly ringSegments = computed(() => {
-    const t = this.total() || 1;
-    const c = this.counts();
-    const circ = this.circumference;
-
-    let acc = 0;
-    return RING_ORDER.map((st) => {
-      const count = c[st] || 0;
-      const frac = count / t;
-      const len = frac * circ;
-      const gap = circ - len;
-      const seg = {
-        status: st,
-        dashArray: `${len} ${gap}`,
-        dashOffset: -acc,
-      };
-      acc += len;
-      return seg;
-    }).filter((s) => {
-      if (this.total() === 0) return false;
-      const len = parseFloat(s.dashArray.split(' ')[0]);
-      return len > 0.5;
-    });
-  });
+  readonly ringSegments = computed(() => ringSegments(this.counts(), this.total(), this.radius));
 
   /** Tooltip rows - one row per locale, in display order then by locale code */
-  readonly tooltipLocaleRows = computed(() => {
-    const orderIndex = (s: TranslationStatus) => STATUS_DISPLAY_ORDER.indexOf(s);
-
-    return this.locales()
-      .map((l) => ({
+  readonly tooltipLocaleRows = computed(() =>
+    sortLocaleRows(
+      this.locales().map((l) => ({
         code: l.code,
         status: l.status,
         labelToken: STATUS_PRESENTATION[l.status].labelToken,
         icon: STATUS_PRESENTATION[l.status].icon,
-      }))
-      .sort((a, b) => {
-        const orderDiff = orderIndex(a.status) - orderIndex(b.status);
-        if (orderDiff !== 0) return orderDiff;
-        return a.code.localeCompare(b.code);
-      });
-  });
+      })),
+    ),
+  );
 
   /** Whether overlay is open */
   readonly isOpen = signal(false);

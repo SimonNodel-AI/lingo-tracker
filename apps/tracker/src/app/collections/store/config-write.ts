@@ -4,7 +4,7 @@ import { patchState, type WritableStateSource } from '@ngrx/signals';
 import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { catchError, type Observable, of, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { apiErrorMessage } from '../../shared/api-error/api-error';
+import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import { CollectionsApiService } from '../services/collections-api.service';
 
 /** The store state a Config Write lands in. */
@@ -16,6 +16,23 @@ export interface ConfigWriteState {
 
 /** One Config Write: see {@link injectConfigWrite}. */
 export type ConfigWrite = (write: Observable<unknown>) => Observable<LingoTrackerConfigDto | null>;
+
+/** The part of a refused Config Write a form needs to render. */
+export interface ConfigRefusal {
+  kind: 'conflict' | 'invalid' | 'other';
+  /** API details survive every refusal kind; a caller decides which ones to show. */
+  details: readonly unknown[];
+  error: unknown;
+}
+
+export function classifyConfigRefusal(error: unknown): ConfigRefusal {
+  if (error instanceof ApiError) {
+    if (error.kind === 'conflict') return { kind: 'conflict', details: error.details, error };
+    if (error.kind === 'invalid') return { kind: 'invalid', details: error.details, error };
+    return { kind: 'other', details: error.details, error };
+  }
+  return { kind: 'other', details: [], error };
+}
 
 /** The store's `error` for a config load that failed: the server's message, else the localized fallback. */
 export function configLoadError(error: unknown, transloco: TranslocoService): string {
