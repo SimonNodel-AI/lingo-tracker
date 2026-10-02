@@ -66,7 +66,7 @@ describe('RouteCollection over HTTP', () => {
       request('/collections/vendor/resources', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '[]',
+        body: '{"key":"a","baseValue":"b"}',
       }),
     ).resolves.toEqual({
       status: 403,
@@ -83,7 +83,7 @@ describe('RouteCollection over HTTP', () => {
       request('/collections/missing/resources', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '[]',
+        body: '{"key":"a","baseValue":"b"}',
       }),
     ).resolves.toEqual({
       status: 404,

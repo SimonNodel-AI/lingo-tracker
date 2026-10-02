@@ -1,3 +1,17 @@
+import { ROUTE_ARGS_METADATA } from '@nestjs/common/constants';
+import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum';
+import { Test } from '@nestjs/testing';
+import { BundleJobService } from '../bundles/bundle-job.service';
+import { BundlesController } from '../bundles/bundles.controller';
+import { CollectionIndex } from '../cache/collection-index.service';
+import { CollectionsController } from '../collections/collections.controller';
+import { FoldersController } from '../collections/folders/folders.controller';
+import { LocalesController } from '../collections/locales/locales.controller';
+import { ResourcesController } from '../collections/resources/resources.controller';
+import { RouteCollectionPipe } from '../collections/route-collection';
+import { ConfigController } from '../config/config.controller';
+import { ConfigService } from '../config/config.service';
+import { TranslationJobService } from '../translation-job/translation-job.service';
 import * as schemas from './dto-schemas';
 import type { Schema } from './schema';
 import { SchemaPipe } from './valid-body';
@@ -270,6 +284,24 @@ const rejected = endpoints.flatMap(({ name, schema, invalid, message, optionalBo
 
 const additionalRejected: Array<{ name: string; schema: Schema<unknown>; payload: unknown; message: string }> = [
   {
+    name: 'collection name type',
+    schema: schemas.createCollectionBody,
+    payload: { name: 5, collection },
+    message: 'name must be a non-empty string',
+  },
+  {
+    name: 'delete keys type',
+    schema: schemas.deleteResourcesBody,
+    payload: { keys: 'a' },
+    message: 'keys must be a non-empty array',
+  },
+  {
+    name: 'folder source type',
+    schema: schemas.moveFolderBody,
+    payload: { sourceFolderPath: 5, destinationFolderPath: '' },
+    message: 'sourceFolderPath must be a non-empty string',
+  },
+  {
     name: 'collection locale',
     schema: schemas.createCollectionBody,
     payload: { name: 'a', collection: { translationsFolder: '', locales: [5] } },
@@ -357,5 +389,89 @@ describe('DTO shape schemas', () => {
   it.each([...rejected, ...additionalRejected])('rejects $name: $message', ({ name, schema, payload, message }) => {
     const root = name.startsWith('search') || name.startsWith('tree') ? 'query' : 'request body';
     expect(() => new SchemaPipe(schema, root).transform(payload)).toThrow(message);
+  });
+});
+
+interface RouteArgMetadata {
+  index: number;
+  pipes?: unknown[];
+}
+const controllers = [
+  ConfigController,
+  CollectionsController,
+  BundlesController,
+  LocalesController,
+  FoldersController,
+  ResourcesController,
+];
+const wiring = [
+  [ConfigController, 'updateConfig', RouteParamtypes.BODY, schemas.updateConfigBody],
+  [CollectionsController, 'createCollection', RouteParamtypes.BODY, schemas.createCollectionBody],
+  [CollectionsController, 'updateCollectionByName', RouteParamtypes.BODY, schemas.updateCollectionBody],
+  [BundlesController, 'dryRun', RouteParamtypes.BODY, schemas.bundleDryRunBody],
+  [BundlesController, 'createBundle', RouteParamtypes.BODY, schemas.createBundleBody],
+  [BundlesController, 'updateBundle', RouteParamtypes.BODY, schemas.updateBundleBody],
+  [BundlesController, 'generateBundle', RouteParamtypes.BODY, schemas.generateBundleBody],
+  [LocalesController, 'addLocale', RouteParamtypes.BODY, schemas.addLocaleBody],
+  [FoldersController, 'create', RouteParamtypes.BODY, schemas.createFolderBody],
+  [FoldersController, 'delete', RouteParamtypes.BODY, schemas.deleteFolderBody],
+  [FoldersController, 'move', RouteParamtypes.BODY, schemas.moveFolderBody],
+  [ResourcesController, 'translateResource', RouteParamtypes.BODY, schemas.translateResourceBody],
+  [ResourcesController, 'createResources', RouteParamtypes.BODY, schemas.createResourcesBody],
+  [ResourcesController, 'delete', RouteParamtypes.BODY, schemas.deleteResourcesBody],
+  [ResourcesController, 'move', RouteParamtypes.BODY, schemas.moveResourcesBody],
+  [ResourcesController, 'update', RouteParamtypes.BODY, schemas.updateResourceBody],
+  [ResourcesController, 'translateLocale', RouteParamtypes.BODY, schemas.translateLocaleBody],
+  [ResourcesController, 'getTree', RouteParamtypes.QUERY, schemas.treeQuery],
+  [ResourcesController, 'search', RouteParamtypes.QUERY, schemas.searchQuery],
+] as const;
+
+describe('HTTP schema wiring', () => {
+  it('constructs all six controllers without opening a port', async () => {
+    const module = await Test.createTestingModule({
+      controllers,
+      providers: [
+        RouteCollectionPipe,
+        { provide: ConfigService, useValue: { getConfig: jest.fn() } },
+        { provide: CollectionIndex, useValue: {} },
+        { provide: TranslationJobService, useValue: {} },
+        { provide: BundleJobService, useValue: {} },
+      ],
+    }).compile();
+    for (const controller of controllers) expect(module.get(controller)).toBeDefined();
+    await module.close();
+  });
+
+  it.each(wiring)('attaches the declared schema to %p.%s', (controller, method, type, schema) => {
+    const args: Record<string, RouteArgMetadata> = Reflect.getMetadata(ROUTE_ARGS_METADATA, controller, method) ?? {};
+    const matching = Object.entries(args).filter(([key, arg]) => key === `${type}:${arg.index}`);
+    expect(matching).toHaveLength(1);
+    const pipe = matching[0]?.[1].pipes?.[0];
+    expect(pipe).toBeInstanceOf(SchemaPipe);
+    if (pipe instanceof SchemaPipe) expect(pipe.schema).toBe(schema);
+  });
+
+  it('leaves no body or query argument without a SchemaPipe', () => {
+    for (const controller of controllers) {
+      for (const method of Object.getOwnPropertyNames(controller.prototype)) {
+        const args: Record<string, RouteArgMetadata> =
+          Reflect.getMetadata(ROUTE_ARGS_METADATA, controller, method) ?? {};
+        for (const [key, arg] of Object.entries(args)) {
+          if (key === `${RouteParamtypes.BODY}:${arg.index}` || key === `${RouteParamtypes.QUERY}:${arg.index}`) {
+            expect({ controller: controller.name, method, key, pipe: arg.pipes?.[0] }).toEqual({
+              controller: controller.name,
+              method,
+              key,
+              pipe: expect.any(SchemaPipe),
+            });
+            expect(
+              wiring.some(
+                ([target, name, type]) => target === controller && name === method && key === `${type}:${arg.index}`,
+              ),
+            ).toBe(true);
+          }
+        }
+      }
+    }
   });
 });

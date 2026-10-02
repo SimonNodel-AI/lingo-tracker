@@ -8,7 +8,7 @@ import {
   TranslationError,
   TranslationLocaleNotConfiguredError,
 } from '@simoncodes-ca/core';
-import type { ResourceTreeDto, SearchTranslationsDto } from '@simoncodes-ca/data-transfer';
+import type { ResourceTreeDto } from '@simoncodes-ca/data-transfer';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
@@ -17,6 +17,8 @@ import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import { RouteCollectionPipe } from '../route-collection';
 import { ResourcesController } from './resources.controller';
+import { createResourcesBody, deleteResourcesBody, moveResourcesBody, searchQuery } from '../../validation/dto-schemas';
+import { SchemaPipe } from '../../validation/valid-body';
 
 /** What the handler rejects with, as the HTTP exception the global exception filter answers with. */
 const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
@@ -184,10 +186,9 @@ describe('ResourcesController', () => {
       expect(() => collectionFor('non-existent')).toThrow(NotFoundException);
     });
 
-    it('should throw HttpException when empty array is provided', async () => {
-      await expect(resourcesController.createResources(collectionFor('test-collection'), [])).rejects.toThrow(
-        HttpException,
-      );
+    it('should throw HttpException when empty array is provided', () => {
+      const pipe = new SchemaPipe(createResourcesBody, 'request body');
+      expect(() => pipe.transform([])).toThrow('request body must be a non-empty array');
       expect(batch()).not.toHaveBeenCalled();
     });
 
@@ -385,31 +386,16 @@ describe('ResourcesController', () => {
       expect(() => collectionFor('non-existent')).toThrow(NotFoundException);
     });
 
-    it('should throw HttpException (400) for empty keys array', async () => {
-      const dto = {
-        keys: [],
-      };
-
-      await expect(resourcesController.delete(collectionFor('test-collection'), dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.delete(collectionFor('test-collection'), dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-        expect(error.message).toContain('keys array is required');
-      }
+    it('should throw HttpException (400) for empty keys array', () => {
+      const pipe = new SchemaPipe(deleteResourcesBody, 'request body');
+      expect(() => pipe.transform({ keys: [] })).toThrow('keys must be a non-empty array');
+      expect(core.deleteResource).not.toHaveBeenCalled();
     });
 
-    it('should throw HttpException (400) for missing keys array', async () => {
-      const dto = {} as any;
-
-      await expect(resourcesController.delete(collectionFor('test-collection'), dto)).rejects.toThrow(HttpException);
-
-      try {
-        await resourcesController.delete(collectionFor('test-collection'), dto);
-      } catch (error: any) {
-        expect(error.status).toBe(400);
-      }
+    it('should throw HttpException (400) for missing keys array', () => {
+      const pipe = new SchemaPipe(deleteResourcesBody, 'request body');
+      expect(() => pipe.transform({})).toThrow('keys must be a non-empty array');
+      expect(core.deleteResource).not.toHaveBeenCalled();
     });
 
     it('should answer 500 for unexpected errors', async () => {
@@ -491,16 +477,15 @@ describe('ResourcesController', () => {
       expect(moves().mock.calls[0][1]).toEqual(operations.map((operation) => ({ ...operation, override: undefined })));
     });
 
-    it('should throw BadRequest if moves array is empty', async () => {
-      await expect(resourcesController.move(collectionFor('test-collection'), { moves: [] })).rejects.toThrow(
-        HttpException,
-      );
+    it('should throw BadRequest if moves array is empty', () => {
+      const pipe = new SchemaPipe(moveResourcesBody, 'request body');
+      expect(() => pipe.transform({ moves: [] })).toThrow('moves must be a non-empty array');
       expect(moves()).not.toHaveBeenCalled();
     });
 
-    it('should throw BadRequest if moves is missing', async () => {
-      const missing = {} as Parameters<ResourcesController['move']>[1];
-      await expect(resourcesController.move(collectionFor('test-collection'), missing)).rejects.toThrow(HttpException);
+    it('should throw BadRequest if moves is missing', () => {
+      const pipe = new SchemaPipe(moveResourcesBody, 'request body');
+      expect(() => pipe.transform({})).toThrow('moves must be a non-empty array');
       expect(moves()).not.toHaveBeenCalled();
     });
 
@@ -794,9 +779,8 @@ describe('ResourcesController', () => {
 
       const tree = (await resourcesController.getTree(
         collectionFor('test-collection'),
-        undefined,
-        undefined,
-        response as any,
+        { path: undefined, includeNested: undefined },
+        response as unknown as Response,
       )) as ResourceTreeDto;
 
       expect(tree.path).toBe('');
@@ -823,9 +807,8 @@ describe('ResourcesController', () => {
 
       const tree = (await resourcesController.getTree(
         collectionFor('test-collection'),
-        'apps',
-        undefined,
-        mockResponse() as any,
+        { path: 'apps', includeNested: undefined },
+        mockResponse() as unknown as Response,
       )) as ResourceTreeDto;
 
       expect(tree.path).toBe('apps');
@@ -853,9 +836,8 @@ describe('ResourcesController', () => {
 
       const tree = (await resourcesController.getTree(
         collectionFor('test-collection'),
-        '',
-        'true',
-        mockResponse() as any,
+        { path: '', includeNested: 'true' },
+        mockResponse() as unknown as Response,
       )) as ResourceTreeDto;
 
       expect(extractResourcesRecursively).toHaveBeenCalledWith(mockTreeNode);
@@ -873,8 +855,7 @@ describe('ResourcesController', () => {
 
       const tree = (await resourcesController.getTree(
         collectionFor('test-collection'),
-        'apps',
-        'true',
+        { path: 'apps', includeNested: 'true' },
         mockResponse() as unknown as Response,
       )) as ResourceTreeDto;
 
@@ -894,9 +875,8 @@ describe('ResourcesController', () => {
 
       const result = await resourcesController.getTree(
         collectionFor('test-collection'),
-        '',
-        undefined,
-        response as any,
+        { path: '', includeNested: undefined },
+        response as unknown as Response,
       );
 
       expect(response.status).toHaveBeenCalledWith(202);
@@ -909,9 +889,8 @@ describe('ResourcesController', () => {
       await expect(
         resourcesController.getTree(
           collectionFor('test-collection'),
-          'nonexistent.path',
-          undefined,
-          mockResponse() as any,
+          { path: 'nonexistent.path', includeNested: undefined },
+          mockResponse() as unknown as Response,
         ),
       ).rejects.toThrow(NotFoundException);
     });
@@ -928,7 +907,11 @@ describe('ResourcesController', () => {
       });
 
       const error = await httpErrorOf(
-        resourcesController.getTree(collectionFor('test-collection'), '', undefined, mockResponse() as any),
+        resourcesController.getTree(
+          collectionFor('test-collection'),
+          { path: '', includeNested: undefined },
+          mockResponse() as unknown as Response,
+        ),
       );
       expect(error.getStatus()).toBe(500);
       expect(error.getResponse()).toEqual({ statusCode: 500, error: 'Internal Server Error' });
@@ -1016,7 +999,7 @@ describe('ResourcesController', () => {
 
       const result = await resourcesController.search(collectionFor('test-collection'), {
         query: 'test',
-        maxResults: 1,
+        maxResults: '1',
       });
 
       expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.anything(), {
@@ -1050,7 +1033,7 @@ describe('ResourcesController', () => {
 
       const result = await resourcesController.search(collectionFor('test-collection'), {
         query: 'Save draft',
-        maxResults: 11,
+        maxResults: '11',
         mode: 'similar',
       });
 
@@ -1067,7 +1050,7 @@ describe('ResourcesController', () => {
 
     it('should read maxResults from its query-string form', async () => {
       mockIndex.searchPage.mockReturnValue({ results: [], totalFound: 0, limited: false, limit: 7 });
-      const dto = { query: 'save', maxResults: '7' } as unknown as SearchTranslationsDto;
+      const dto = { query: 'save', maxResults: '7' };
 
       await resourcesController.search(collectionFor('test-collection'), dto);
 
@@ -1079,23 +1062,17 @@ describe('ResourcesController', () => {
       });
     });
 
-    it('should default an invalid query-string maxResults to 100', async () => {
-      mockIndex.searchPage.mockReturnValue({ results: [], totalFound: 0, limited: false, limit: 100 });
-      const dto = { query: 'save', maxResults: 'abc' } as unknown as SearchTranslationsDto;
-
-      await resourcesController.search(collectionFor('test-collection'), dto);
-
-      expect(mockIndex.searchPage).toHaveBeenCalledWith(expect.anything(), {
-        kind: 'search',
-        query: 'save',
-        mode: 'text',
-        limit: 100,
-      });
+    it('should reject an invalid query-string maxResults with 400', () => {
+      const pipe = new SchemaPipe(searchQuery, 'query');
+      expect(() => pipe.transform({ query: 'save', maxResults: 'abc' })).toThrow(
+        'maxResults must be a positive integer',
+      );
+      expect(mockIndex.searchPage).not.toHaveBeenCalled();
     });
 
     it('should run a text search for an unknown mode', async () => {
       mockIndex.searchPage.mockReturnValue({ results: [], totalFound: 0, limited: false, limit: 100 });
-      const dto = { query: 'save', mode: 'fuzzy' } as unknown as SearchTranslationsDto;
+      const dto = { query: 'save', mode: 'fuzzy' };
 
       await resourcesController.search(collectionFor('test-collection'), dto);
 

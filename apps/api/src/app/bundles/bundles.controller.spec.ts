@@ -9,6 +9,8 @@ import { ConfigService } from '../config/config.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { BundleJobService } from './bundle-job.service';
 import { BundlesController } from './bundles.controller';
+import { bundleDryRunBody, createBundleBody, updateBundleBody } from '../validation/dto-schemas';
+import { SchemaPipe } from '../validation/valid-body';
 
 jest.mock('@simoncodes-ca/core', () => ({
   ...jest.requireActual('@simoncodes-ca/core'),
@@ -122,14 +124,11 @@ describe('BundlesController', () => {
       );
     });
 
-    it('passes a missing name as empty so the key rule reports it', () => {
-      controller.createBundle({ bundle: requestDefinition } as never);
-
-      expect(core.addBundleDefinition).toHaveBeenCalledWith(
-        expect.objectContaining({ sourceConfig: config }),
-        '',
-        requestDefinition,
+    it('rejects a missing name before core is called', () => {
+      expect(() => new SchemaPipe(createBundleBody, 'request body').transform({ bundle: requestDefinition })).toThrow(
+        'name must be a string',
       );
+      expect(core.addBundleDefinition).not.toHaveBeenCalled();
     });
 
     it('returns 400 with every message when core rejects the definition', () => {
@@ -149,9 +148,11 @@ describe('BundlesController', () => {
     });
 
     it('returns 400 when the body carries no definition, without calling core', () => {
-      expect(answerOf(() => controller.createBundle({ name: 'main' } as never))).toMatchObject({
+      expect(
+        answerOf(() => new SchemaPipe(createBundleBody, 'request body').transform({ name: 'main' })),
+      ).toMatchObject({
         status: HttpStatus.BAD_REQUEST,
-        body: { errors: ['bundle definition is required.'] },
+        body: { message: 'bundle must be an object' },
       });
       expect(core.addBundleDefinition).not.toHaveBeenCalled();
     });
@@ -217,9 +218,9 @@ describe('BundlesController', () => {
     });
 
     it('returns 400 for a missing bundle when the body has no definition', () => {
-      expect(answerOf(() => controller.updateBundle('missing', {} as never))).toMatchObject({
+      expect(answerOf(() => new SchemaPipe(updateBundleBody, 'request body').transform({}))).toMatchObject({
         status: HttpStatus.BAD_REQUEST,
-        body: { errors: ['bundle definition is required.'] },
+        body: { message: 'bundle must be an object' },
       });
       expect(core.updateBundleDefinition).not.toHaveBeenCalled();
     });
@@ -352,20 +353,19 @@ describe('BundlesController', () => {
     });
 
     it('returns 400 when the name or the definition is missing', () => {
-      expect(answerOf(() => controller.dryRun({ bundle: requestDefinition } as never))).toMatchObject({
-        status: HttpStatus.BAD_REQUEST,
-        body: { errors: ['Bundle name is required.'] },
-      });
-      expect(statusOf(() => controller.dryRun({ name: 'preview' } as never))).toBe(HttpStatus.BAD_REQUEST);
-      expect(answerOf(() => controller.dryRun({ name: 'preview', bundle: null } as never))).toMatchObject({
-        status: HttpStatus.BAD_REQUEST,
-        body: { errors: ['bundle definition is required.'] },
-      });
-      expect(answerOf(() => controller.dryRun(null as never))).toMatchObject({
-        status: HttpStatus.BAD_REQUEST,
-        body: { errors: ['bundle definition is required.'] },
-      });
-      expect(core.planBundle).toHaveBeenCalledTimes(4);
+      const pipe = new SchemaPipe(bundleDryRunBody, 'request body');
+      for (const [body, message] of [
+        [{ bundle: requestDefinition }, 'name must be a string'],
+        [{ name: 'preview' }, 'bundle must be an object'],
+        [{ name: 'preview', bundle: null }, 'bundle must not be null'],
+        [null, 'request body must not be null'],
+      ] as const) {
+        expect(answerOf(() => pipe.transform(body))).toMatchObject({
+          status: HttpStatus.BAD_REQUEST,
+          body: { message },
+        });
+      }
+      expect(core.planBundle).not.toHaveBeenCalled();
     });
 
     it('returns 400 for a locale outside the project locales', () => {

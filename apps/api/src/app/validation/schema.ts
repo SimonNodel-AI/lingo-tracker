@@ -81,7 +81,11 @@ export function anyObject(): Schema<Record<string, unknown>> {
 }
 
 export function optional<T>(schema: Schema<T>): Schema<T | undefined> {
-  return (value, path) => (value === undefined ? undefined : schema(value, path));
+  return (value, path) => {
+    if (value === undefined) return undefined;
+    notNull(value, path);
+    return schema(value, path);
+  };
 }
 
 export function array<T>(item: Schema<T>): Schema<T[]> {

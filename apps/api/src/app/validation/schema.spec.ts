@@ -243,6 +243,7 @@ describe('paths and declaration order', () => {
   });
 
   it.each([
+    ['optional unknown null', optional(unknown()), null, '<root> must not be null'],
     ['first declared field', object({ b: string(), a: string() }), { a: 1, b: 2 }, 'b must be a string'],
     [
       'nested',

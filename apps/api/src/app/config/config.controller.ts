@@ -1,9 +1,11 @@
 import { basename } from 'node:path';
-import { Body, Controller, Get, Put } from '@nestjs/common';
+import { Controller, Get, Put } from '@nestjs/common';
 import { loadPreferredTerminology, resolveProtectedTermsForConfig, updateProjectTerms } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
 import { mapConfigToDto, mapDtoToConfigUpdate } from '../mappers/config.mapper';
 import { ConfigService } from './config.service';
+import { updateConfigBody } from '../validation/dto-schemas';
+import { ValidBody } from '../validation/valid-body';
 
 @Controller('config')
 export class ConfigController {
@@ -34,7 +36,7 @@ export class ConfigController {
    * filter too.
    */
   @Put()
-  updateConfig(@Body() dto: UpdateConfigDto): { message: string } {
+  updateConfig(@ValidBody(updateConfigBody) dto: UpdateConfigDto | undefined): { message: string } {
     const update = mapDtoToConfigUpdate(dto ?? {});
     if (update.protectedTerms === undefined && update.preferredTerminology === undefined) {
       return { message: 'Configuration updated successfully' };

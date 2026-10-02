@@ -14,6 +14,8 @@ import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { CollectionsController } from './collections.controller';
+import { createCollectionBody, updateCollectionBody } from '../validation/dto-schemas';
+import { SchemaPipe } from '../validation/valid-body';
 
 // Mock the core writes; keep the real config resolution and mutation helpers
 jest.mock('@simoncodes-ca/core', () => {
@@ -217,12 +219,8 @@ describe('CollectionsController', () => {
       ['no collection', { name: 'new' }, 'collection must be an object'],
       ['an array collection', { name: 'new', collection: [] }, 'collection must be an object'],
     ])('answers 400 for %s, before core is called', async (_label, body, message) => {
-      const error = await collectionsController
-        .createCollection(body as unknown as CreateCollectionDto)
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(BadRequestException);
-      expect((error as BadRequestException).message).toBe(message);
+      expect(() => new SchemaPipe(createCollectionBody, 'request body').transform(body)).toThrow(BadRequestException);
+      expect(() => new SchemaPipe(createCollectionBody, 'request body').transform(body)).toThrow(String(message));
       expect(core.addCollection).not.toHaveBeenCalled();
     });
 
@@ -358,12 +356,8 @@ describe('CollectionsController', () => {
       ['a non-string name', { name: 1, collection: { translationsFolder: './x' } }, 'name must be a non-empty string'],
       ['no collection', {}, 'collection must be an object'],
     ])('answers 400 for %s, before core is called', async (_label, body, message) => {
-      const error = await collectionsController
-        .updateCollectionByName('old-name', body as unknown as UpdateCollectionDto)
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(BadRequestException);
-      expect((error as BadRequestException).message).toBe(message);
+      expect(() => new SchemaPipe(updateCollectionBody, 'request body').transform(body)).toThrow(BadRequestException);
+      expect(() => new SchemaPipe(updateCollectionBody, 'request body').transform(body)).toThrow(String(message));
       expect(core.updateCollection).not.toHaveBeenCalled();
     });
 

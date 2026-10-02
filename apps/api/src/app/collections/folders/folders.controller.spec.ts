@@ -7,6 +7,8 @@ import { CollectionIndex } from '../../cache/collection-index.service';
 import { ConfigService } from '../../config/config.service';
 import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
 import { FoldersController } from './folders.controller';
+import { moveFolderBody } from '../../validation/dto-schemas';
+import { SchemaPipe } from '../../validation/valid-body';
 
 const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
   promise.then(() => {
@@ -254,16 +256,11 @@ describe('FoldersController', () => {
       expect(core.moveFolder).toHaveBeenCalled();
     });
 
-    it('should throw HttpException for validation errors (missing fields)', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: '',
-        destinationFolderPath: 'apps.actions',
-      };
-
-      await expect(foldersController.move(collectionFor('test-collection'), moveFolderDto)).rejects.toThrow(
-        HttpException,
+    it('should throw HttpException for validation errors (missing fields)', () => {
+      const pipe = new SchemaPipe(moveFolderBody, 'request body');
+      expect(() => pipe.transform({ sourceFolderPath: '', destinationFolderPath: 'apps.actions' })).toThrow(
+        'sourceFolderPath must be a non-empty string',
       );
-
       expect(core.moveFolder).not.toHaveBeenCalled();
     });
 
