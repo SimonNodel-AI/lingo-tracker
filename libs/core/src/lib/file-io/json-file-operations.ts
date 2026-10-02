@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import type { ResourceEntries } from '../resource/resource-entry';
 import type { TrackerMetadata } from '../resource/tracker-metadata';
 import { ErrorMessages } from '../errors/error-messages';
+import { hasFsErrorCode } from './fs-error';
 
 export interface JsonFileReadOptions<T> {
   /** Path to the JSON file */
@@ -101,7 +102,7 @@ export function writeJsonFile(options: JsonFileWriteOptions): void {
     const content = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
     writeFileSync(filePath, content, createOnly ? { encoding: 'utf8', flag: 'wx' } : 'utf8');
   } catch (error) {
-    if (createOnly && error instanceof Error && (error as NodeJS.ErrnoException).code === 'EEXIST') {
+    if (createOnly && hasFsErrorCode(error, 'EEXIST')) {
       throw error;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);

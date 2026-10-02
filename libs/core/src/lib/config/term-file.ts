@@ -17,6 +17,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { ParentDirectoryMissingError } from '../errors/lingo-tracker-error';
+import { hasFsErrorCode } from '../file-io/fs-error';
 
 /** A term file's resolved location, and whether the config names it. */
 export interface TermFile {
@@ -79,7 +80,7 @@ export function readTermFile<T>(kind: TermFileKind<T>, file: TermFile): TermFile
   try {
     contents = readFileSync(filePath, 'utf8');
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (hasFsErrorCode(error, 'ENOENT')) {
       return file.explicit
         ? { value: [], filePath, warning: `${kind.label} not found: ${filePath}. Treating as an empty list.` }
         : { value: [], filePath };

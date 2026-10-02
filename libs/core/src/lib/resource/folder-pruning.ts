@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
+import { hasFsErrorCode } from '../file-io/fs-error';
 import { type CollectionFolderProblem, type CollectionFolderVisit, walkCollectionFolders } from './collection-folders';
 import { validateFolderAddress } from './folder-address';
 import { folderMutation, type MutationSinkOptions } from './resource-mutation';
@@ -193,14 +194,9 @@ function readCollectionFileEntryCount(filePath: string, allowMissing = false): n
     }
     return Object.keys(value).length;
   } catch (error) {
-    if (allowMissing && isMissingPathError(error)) return 0;
+    if (allowMissing && hasFsErrorCode(error, 'ENOENT')) return 0;
     throw new Error(`Cannot read ${filePath}: ${errorMessage(error)}`);
   }
-}
-
-/** Native filesystem errors can come from another VM realm, so instanceof Error is not reliable. */
-function isMissingPathError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 }
 
 function errorMessage(error: unknown): string {
