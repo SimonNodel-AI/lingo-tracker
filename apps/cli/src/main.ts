@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import type { EditCollectionOptions } from './commands/edit-collection';
-import type { findSimilarCommand } from './commands/find-similar';
 import {
   EXPORT_DEFAULTS,
   IMPORT_DEFAULTS,
@@ -14,7 +13,6 @@ import {
   collectionOption,
   collectionSetupOptions,
   option,
-  parseFindSimilarOptions,
   parseValidateOptions,
   repeatableListOption,
   resourceFieldOptions,
@@ -370,15 +368,18 @@ registerCommand(program, {
     option({
       flags: '--max-results <n>',
       description: 'Maximum number of results to return (default: 5)',
-      defaultValue: '5',
+      helpDefault: '5',
+      parse: (value) => {
+        const maxResults = parseInt(value, 10);
+        if (Number.isNaN(maxResults)) {
+          throw new Error(`--max-results must be a number, got "${value}"`);
+        }
+        return maxResults;
+      },
     }),
   ],
   load: () => import('./commands/find-similar').then((module) => module.findSimilarCommand),
-  mapOptions: (raw) =>
-    parseFindSimilarOptions({
-      ...raw,
-      maxResults: raw.maxResults as string,
-    } satisfies Omit<Parameters<typeof findSimilarCommand>[0], 'maxResults'> & { maxResults: string }),
+  mapOptions: (raw) => ({ ...raw, maxResults: (raw.maxResults as number | undefined) ?? 5 }),
 });
 
 registerCommand(program, {

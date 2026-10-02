@@ -18,7 +18,7 @@ export const findSimilarCommand = defineCommand<FindSimilarOptions>()({
   name: 'Find similar',
   collection: 'read',
   prompts: (options) =>
-    normalizeSearchRequest({ query: options.value ?? '', mode: 'similar-value' }, 5).kind === 'blank'
+    (options.value ?? '').trim().length === 0
       ? [{ type: 'text', name: 'value', message: 'Base locale text to search for' }]
       : [],
   run: ({ collection, answers, interactive }) => {
