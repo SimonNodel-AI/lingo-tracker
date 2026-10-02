@@ -336,6 +336,51 @@ describe('moveFolder across collections and around content outside the collectio
     expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
   });
 
+  it('delivers resource mutations before every bottom-up folder removal, including the source', async () => {
+    const source = collection(join(root, 'main'));
+    await addResource(source, { key: 'common.ok', baseValue: 'OK' });
+    await addResource(source, { key: 'common.cancel', baseValue: 'Cancel' });
+    await addResource(source, { key: 'common.nested.yes', baseValue: 'Yes' });
+    await addResource(source, { key: 'apps.title', baseValue: 'Title' });
+    mkdirSync(join(source.translationsFolder, 'common', 'empty'));
+    mkdirSync(join(source.translationsFolder, 'apps', 'empty'));
+    collected.length = 0;
+
+    const result = await moveFolder(
+      source,
+      { sourceFolderPath: 'common', destinationFolderPath: 'apps' },
+      {
+        onMutation: (mutation) => {
+          onMutation(mutation);
+          if (mutation.kind === 'remove-folder') {
+            expect(existsSync(join(source.translationsFolder, ...mutation.path.split('.')))).toBe(false);
+          }
+        },
+      },
+    );
+
+    expect(result).toEqual({ movedCount: 3, foldersDeleted: 1, warnings: [], errors: [] });
+    expect(
+      collected.map((mutation) => [
+        mutation.kind,
+        'key' in mutation ? mutation.key : 'path' in mutation ? mutation.path : '',
+        mutation.translationsFolder,
+      ]),
+    ).toEqual([
+      ['remove', 'common.ok', source.translationsFolder],
+      ['remove', 'common.cancel', source.translationsFolder],
+      ['remove', 'common.nested.yes', source.translationsFolder],
+      ['upsert', 'apps.common.ok', source.translationsFolder],
+      ['upsert', 'apps.common.cancel', source.translationsFolder],
+      ['upsert', 'apps.common.nested.yes', source.translationsFolder],
+      ['remove-folder', 'common.empty', source.translationsFolder],
+      ['remove-folder', 'common.nested', source.translationsFolder],
+      ['remove-folder', 'common', source.translationsFolder],
+    ]);
+    expect(existsSync(join(source.translationsFolder, 'common'))).toBe(false);
+    expect(existsSync(join(source.translationsFolder, 'apps', 'empty'))).toBe(true);
+  });
+
   it('removes a moved-away source tree holding only OS junk and counts the source once', async () => {
     const source = collection(join(root, 'main'));
     await addResource(source, { key: 'apps.deep.one', baseValue: 'One' });

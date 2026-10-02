@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { PRUNABLE_OS_JUNK_FILES, pruneEmptyFolders } from './folder-pruning';
@@ -71,6 +72,32 @@ describe('Folder Pruning (real fs)', () => {
   });
 
   it('treats a missing start folder as nothing to prune', () => {
+    expect(pruneEmptyFolders(collection(), { startPath: 'missing' })).toEqual({ removed: [], kept: [], problems: [] });
+  });
+
+  it('removes an empty folder when the missing entries error comes from another VM realm', () => {
+    const empty = folder('empty');
+    const error: unknown = runInNewContext("Object.assign(new Error('Missing entries'), { code: 'ENOENT' })");
+    expect(error).not.toBeInstanceOf(Error);
+    const readFile = fs.readFileSync;
+    vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
+      if (args[0] === join(empty, 'resource_entries.json')) throw error;
+      return Reflect.apply(readFile, fs, args);
+    });
+    const mutations: ResourceMutation[] = [];
+    const result = pruneEmptyFolders(collection(), { onMutation: (mutation) => mutations.push(mutation) });
+    expect(result.removed).toEqual(['empty']);
+    expect(result.problems).toEqual([]);
+    expect(fs.existsSync(empty)).toBe(false);
+    expect(mutations).toEqual([{ kind: 'remove-folder', translationsFolder: root(), path: 'empty' }]);
+  });
+
+  it('treats a missing start as empty when lstat throws an error from another VM realm', () => {
+    const error: unknown = runInNewContext("Object.assign(new Error('Missing start'), { code: 'ENOENT' })");
+    expect(error).not.toBeInstanceOf(Error);
+    vi.spyOn(fs, 'lstatSync').mockImplementation(() => {
+      throw error;
+    });
     expect(pruneEmptyFolders(collection(), { startPath: 'missing' })).toEqual({ removed: [], kept: [], problems: [] });
   });
 
