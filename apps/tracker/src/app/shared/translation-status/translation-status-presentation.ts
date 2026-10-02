@@ -4,7 +4,7 @@ import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 /**
  * How the Tracker shows a translation status. The counting and the worst-status
  * rule live in `@simoncodes-ca/domain` (translation-status-summary); this module
- * only holds what is presentational: glyphs, label tokens and list order. Colour
+ * only holds what is presentational: glyphs and label tokens. Every status ranking uses `STATUS_PRECEDENCE`. Colour
  * lives in CSS (`--color-status-*`) so both themes can move it.
  */
 interface StatusPresentation {
