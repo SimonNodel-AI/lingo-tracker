@@ -1,5 +1,4 @@
-import { readdirSync, rmdirSync } from 'node:fs';
-import { join, relative, resolve, sep } from 'node:path';
+import { resolve } from 'node:path';
 import type { Collection } from '../config/open-collection';
 import { FolderMoveIntoDescendantError, FolderNotFoundError } from '../errors/lingo-tracker-error';
 import { sweepKeys } from '../resource/collection-sweep';
@@ -8,7 +7,8 @@ import { planMove } from '../resource/move-plan';
 import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from '../resource/move-destination';
 import { mergeRelocation } from '../resource/move-resource';
 import { relocateEntries } from '../resource/relocate-entries';
-import { folderMutation, type MutationSink } from '../resource/resource-mutation';
+import { pruneEmptyFolders } from '../resource/folder-pruning';
+import type { MutationSink } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -114,10 +114,7 @@ export async function moveFolder(
     return result;
   }
 
-  const { absolutePath: absoluteSourcePath, isDirectory } = inspectFolderAddress(
-    collection.translationsFolder,
-    sourceFolderPath,
-  );
+  const { isDirectory } = inspectFolderAddress(collection.translationsFolder, sourceFolderPath);
   if (!isDirectory) {
     throw new FolderNotFoundError(sourceFolderPath);
   }
@@ -138,7 +135,7 @@ export async function moveFolder(
     result.warnings.push('No resources found in source folder. Nothing to move.');
     // Still remove the empty folder
     try {
-      removeEmptySource(collection, absoluteSourcePath, result, options.onMutation);
+      pruneSource(collection, sourceFolderPath, result, options.onMutation);
     } catch (error) {
       result.errors.push(`Failed to delete empty source folder: ${errorMessage(error)}`);
     }
@@ -165,7 +162,7 @@ export async function moveFolder(
   // Only remove the source folder when every resource in it was moved
   if (keptKeys.length === 0 && result.errors.length === 0) {
     try {
-      removeEmptySource(collection, absoluteSourcePath, result, options.onMutation);
+      pruneSource(collection, sourceFolderPath, result, options.onMutation);
     } catch (error) {
       result.warnings.push(`Resources moved but failed to delete source folder: ${errorMessage(error)}`);
     }
@@ -174,45 +171,34 @@ export async function moveFolder(
   return result;
 }
 
-/**
- * Removes the source folder tree, deepest first, where it is empty now: the relocation's saves
- * already deleted the resource files of every emptied folder. Anything else (a hidden folder, a
- * stray file) is not part of the collection and is never deleted; the folders that hold it are
- * kept with a warning. Each removed folder is reported immediately after its removal.
- */
-function removeEmptySource(
+/** Adapts shared pruning to the folder move's source count and warning format. */
+function pruneSource(
   collection: Collection,
-  absoluteSourcePath: string,
+  sourceFolderPath: string,
   result: MoveFolderResult,
   onMutation?: MutationSink,
 ): void {
-  const { translationsFolder } = collection;
-  const leftovers: string[] = [];
-  const prune = (folder: string): boolean => {
-    let empty = true;
-    for (const entry of readdirSync(folder, { withFileTypes: true })) {
-      const child = join(folder, entry.name);
-      if (entry.isDirectory() && !entry.name.startsWith('.')) {
-        if (!prune(child)) empty = false;
-      } else {
-        leftovers.push(relative(translationsFolder, child));
-        empty = false;
-      }
-    }
-    if (empty) {
-      rmdirSync(folder);
-      const path = relative(translationsFolder, folder).split(sep).join('.');
-      onMutation?.(folderMutation('remove-folder', translationsFolder, path));
-    }
-    return empty;
-  };
-
-  if (prune(absoluteSourcePath)) {
+  const pruning = pruneEmptyFolders(collection, { startPath: sourceFolderPath, onMutation });
+  if (pruning.removed.includes(sourceFolderPath)) {
     result.foldersDeleted++;
   } else {
-    result.warnings.push(
-      `Source folder kept: holds content that is not part of the collection: ${leftovers.join(', ')}`,
-    );
+    const resources = pruning.kept
+      .filter((folder) => folder.reason === 'entries')
+      .flatMap((folder) => folder.entries ?? []);
+    if (resources.length > 0) {
+      result.warnings.push(`Source folder kept: it has resources again: ${resources.join(', ')}`);
+    }
+    if (pruning.problems.length > 0) {
+      throw new Error(pruning.problems.map((problem) => problem.message).join(', '));
+    }
+    const leftovers = pruning.kept
+      .filter((folder) => folder.reason === 'content')
+      .flatMap((folder) => folder.entries ?? []);
+    if (leftovers.length > 0) {
+      result.warnings.push(
+        `Source folder kept: holds content that is not part of the collection: ${leftovers.join(', ')}`,
+      );
+    }
   }
 }
 

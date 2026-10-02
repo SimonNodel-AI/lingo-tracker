@@ -73,7 +73,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
             case 'result': {
               const item = event.result;
               for (const problem of item.problems) {
-                ConsoleFormatter.warning(`Skipped unreadable folder: ${problem.message}`);
+                ConsoleFormatter.warning(`Folder problem: ${problem.message}`);
               }
               if (!answers.json) {
                 ConsoleFormatter.indent(`✅ Entries processed: ${item.entriesProcessed}`);

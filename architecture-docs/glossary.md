@@ -193,7 +193,7 @@ Explained in context: [`core-library.md`](core-library.md#collection-set)
 
 ### Collection Sweep
 
-The write side of the [Resource Folder](#resource-folder), the twin of the [Collection Reader](#collection-reader): the one walk that writes over many folders of a [collection](#collection). In code, `sweepCollection(collection, { startPath? })` in `libs/core/src/lib/resource/collection-sweep.ts` yields each collection folder under `startPath` (default: the root) opened with the collection's [base locale](#base-locale), or a problem for a folder it cannot read (invalid JSON, or not listable). The caller changes and saves each folder, and decides what a problem means. `sweepKeys` is the same sweep reduced to the full keys and the problems. It visits the same folders as the reader: hidden folders and everything below them are not part of the collection. The shared locale-change path for add-locale, remove-locale and edit-collection reads every folder before writing; normalize, folder delete (its entry count), folder move and the wildcard resource move go through it.
+The write side of the [Resource Folder](#resource-folder), the twin of the [Collection Reader](#collection-reader): the one walk that writes over many folders of a [collection](#collection). In code, `sweepCollection(collection, { startPath? })` in `libs/core/src/lib/resource/collection-sweep.ts` yields each collection folder under `startPath` (default: the root) opened with the collection's [base locale](#base-locale), or a problem for a folder it cannot read (invalid JSON, or not listable). The caller changes and saves each folder, and decides what a problem means. `sweepKeys` is the same sweep reduced to the full keys and the problems. It visits the same folders as the reader: hidden folders and everything below them are not part of the collection. The shared locale-change path for add-locale, remove-locale and edit-collection reads every folder before writing; normalize, folder delete (its entry count), folder move and the wildcard resource move go through it. Normalize and folder move then remove empty folders through [Folder Pruning](#folder-pruning).
 
 Explained in context: [`core-library.md`](core-library.md#collection-sweep)
 
@@ -341,6 +341,26 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ---
 
+### Folder Pruning
+
+The one empty-folder removal rule, in `libs/core/src/lib/resource/folder-pruning.ts`: `pruneEmptyFolders(collection, { startPath?, dryRun?, onMutation? })`. It processes collection folders deepest first and never removes the translations root. A folder qualifies only after its subfolders disappear and only these files remain:
+
+- `resource_entries.json` with zero entries (`{}`)
+- Valid `tracker_meta.json`, only with absent or empty entries
+- OS junk from `PRUNABLE_OS_JUNK_FILES`: `.DS_Store`, `Thumbs.db`, `desktop.ini`.
+
+Other files, hidden directories, resource entries, and unreadable or malformed collection files protect the folder and its ancestors. Unlistable folders also stay.
+
+The result reports removed addresses, kept folders with reasons, and problems. Removal rechecks entries before deletes and unlinks `resource_entries.json` last, immediately before `rmdir`. Partial-removal problems name the deleted files. With a sink, each removal immediately emits a [Resource Mutation](#resource-mutation) (`remove-folder`). A dry run reports the same planned removals without writes or mutations.
+
+Without locks, pruning can delete another writer's fresh `tracker_meta.json` before the entries recheck keeps the folder and reports a problem. The next normalize recomputes the metadata, so a `verified` status is not restored and becomes the recomputed status.
+
+A supplied `startPath` includes the start folder and excludes its ancestors. Normalize uses the whole collection without a mutation sink. Folder move uses its source subtree and reports removals to its sink.
+
+Explained in context: [`core-library.md`](core-library.md#folder-pruning)
+
+---
+
 ### Folder Writes
 
 The Tracker UI's one store feature for creating, deleting and moving folders, and for dropping a resource into a folder. `withFolderWritesFeature` in `apps/tracker/src/app/browser/store/features/with-folder-writes.feature.ts` returns a cold `Observable` of a typed outcome from each write. Its `requestFolderMove` entry point checks the drop, captures the [Browser Session](#browser-session), asks the caller to present confirmation when needed, and then moves the folder. `folder-drop.ts` is the pure rule shared by the sidebar drop targets and the write feature: it returns `canLand` for the CDK target and a separate no-op reason for a folder or resource dragged onto a folder path or the collection root. A folder can land on its current parent; Folder Writes then returns `already-at-location` so the sidebar shows its existing info toast. A resource at the collection root has `folderPath: ''` and can be dropped into a folder. The feature refuses every write in a read-only collection before HTTP and updates cached tree and rows only in the session where the write began. The [Folder Move Plan](#folder-move-plan) decides the tree, expansion, reload, navigation, and rollback effects of folder moves. A failed optimistic move restores only the moved item against current state when its parent is loaded; an unloaded parent gets its children on its next load, so a newer tree load survives. Deletion shows the parent only if the current folder is the deleted folder or one of its descendants. Every outcome carries the [Outcome Feedback](#outcome-feedback) it decided, so a caller renders it and decides nothing; folder writes do not set the shared load `error`. A create refusal reads inline, under the still-open input, in both the sidebar and the picker; a new folder is silent and an existing one toasts info. The sidebar's draft lives in this feature: `confirmFolderDraft` creates from it and closes it when the create ends (created, read-only, no collection). A refusal keeps it open and sits in the `folderCreateError` signal until the name is edited, the draft is cancelled or restarted, a create succeeds, or a [Browser Session](#browser-session) opens. The picker keeps an independent draft, because its modal dialog would otherwise open a second input in the sidebar behind it, and holds its own refusal; its `createFolder` never touches the store's draft. Both drafts use `folder-draft.ts` for their transitions. `requestFolderDelete` mirrors `requestFolderMove`: it asks the caller to confirm inside the session guard.
@@ -433,7 +453,7 @@ Explained in context: [`core-library.md`](core-library.md#move-plan)
 
 ### Mutation Sink
 
-`MutationSink` and `MutationSinkOptions` in `libs/core/src/lib/resource/resource-mutation.ts` define the synchronous `onMutation` callback. It is in the last object argument of each core write. The API passes `CollectionIndex.sink`, which applies each mutation and never throws into the write.
+`MutationSink` and `MutationSinkOptions` in `libs/core/src/lib/resource/resource-mutation.ts` define the synchronous `onMutation` callback. Core writes with mutation consumers accept it in their last object argument. The API passes `CollectionIndex.sink`, which applies each mutation and never throws into the write.
 
 ---
 
@@ -629,7 +649,7 @@ Explained in context: [`libs-domain.md`](libs-domain.md)
 
 ### Resource Mutation
 
-One change that a core write made to a translations folder: `upsert` (key and stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (a broad or uncertain change). Each carries the absolute `translationsFolder` it applies to. Writes deliver mutations synchronously through `onMutation` as the disk changes; no write returns `mutations`. `saveReporting` sends the saved mutation after a successful Resource Folder save and a `reindex` if the save throws after it may have written one JSON file. `translateLocale` sends a `reindex` after every folder save attempt. The API passes `CollectionIndex.sink` as the callback. The type and helper are in `libs/core/src/lib/resource/resource-mutation.ts`.
+One change that a core write made to a translations folder: `upsert` (key and stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (a broad or uncertain change). Each carries the absolute `translationsFolder` it applies to. Writes deliver mutations synchronously through `onMutation` as the disk changes; no write returns `mutations`. `saveReporting` sends the saved mutation after a successful Resource Folder save and a `reindex` if the save throws after it may have written one JSON file. `translateLocale` sends a `reindex` after every folder save attempt. With a sink, [Folder Pruning](#folder-pruning) sends `remove-folder` immediately after each removal. Folder move supplies a sink for the API Collection Index. Normalize has no mutation sink. Dry runs send no mutations. The API passes `CollectionIndex.sink` as the callback. The type and helper are in `libs/core/src/lib/resource/resource-mutation.ts`.
 
 Explained in context: [`api.md`](api.md#writes-resource-mutations)
 

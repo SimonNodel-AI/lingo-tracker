@@ -186,7 +186,7 @@ describe('normalizeCommand', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it('warns on stderr about each folder normalize could not read, and still succeeds', async () => {
+  it('warns on stderr about each folder problem normalize reports, and still succeeds', async () => {
     vi.mocked(normalize).mockResolvedValueOnce({
       ...NORMALIZE_RESULT,
       problems: [
@@ -196,7 +196,7 @@ describe('normalizeCommand', () => {
 
     await normalizeCommand({ collection: 'App', json: true });
 
-    expect(errored()).toContain('⚠️  Skipped unreadable folder: Unexpected token in resource_entries.json');
+    expect(errored()).toContain('⚠️  Folder problem: Unexpected token in resource_entries.json');
     expect(JSON.parse(logged()[0]).collections[0].problems).toEqual([
       { folderPath: 'bad', absolutePath: '/p/path/App/bad', message: 'Unexpected token in resource_entries.json' },
     ]);

@@ -119,8 +119,7 @@ libs/core/src/
     ├── normalize/                # Normalization pipeline
     │   ├── normalize.ts          # normalize(collection): main entry point
     │   ├── normalize-entry.ts    # normalizeEntryValues(): Transloco → ICU and tag cleanup (pure)
-    │   ├── cleanup-empty-folders.ts # cleanupEmptyFolders(): removes empty directories
-    │   └── folder-utils.ts       # Bottom-up folder list and the empty-folder rule for cleanup
+    │   └── normalize-collections.ts # normalizeCollections(): selected collections, events and totals
     │
     ├── translation/              # Machine translation: the Translator and the operations that use it
     │   ├── translator.ts                 # openTranslator(): setup, ICU skip, placeholder + protected-term guards, ICU normalisation
@@ -146,6 +145,7 @@ libs/core/src/
     │   ├── collection-folders.ts # walkCollectionFolders(): which folders belong to a collection (reader and sweep)
     │   ├── read-collection.ts    # readCollection(), readCollectionFolders(): the Collection Reader
     │   ├── collection-sweep.ts   # sweepCollection(), sweepKeys(): the Collection Sweep (write side)
+    │   ├── folder-pruning.ts     # pruneEmptyFolders(): safe removal of empty folders
     │   ├── load-resource-tree.ts # loadResourceTree(): the API's resource tree (built on readCollectionFolders)
     │   ├── search.ts             # searchResources(), treeResources(): Resource Search over the reader or an index tree
     │   ├── resource-mutation.ts  # ResourceMutation: what a write changed
@@ -448,7 +448,9 @@ Two modes, one move: both get a list of `{ from, to }` keys from the [Move Plan]
 - **Single key move** — one relocation, `source` to `destination`.
 - **Wildcard pattern move** — a pattern ending with `*` is expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to every key under the prefix, each moved under `destination`. A folder the sweep cannot read is one error in the result; the other keys still move.
 
-`moveFolder()` works the same way: it lists the source tree's keys with `sweepKeys()`, maps each to its destination key (`nestUnderDestination`; a move to the root always nests), moves them as one relocation, and then, only when every key moved and nothing failed, removes the source folder tree where it is empty. The relocation's saves have already deleted the resource files of every emptied folder, so a folder that is still not empty holds content that is not part of the collection (a hidden folder, a stray file). That content is never deleted: the folders that hold it are kept, and the result warns `Source folder kept: holds content that is not part of the collection: <paths>`. A `remove-folder` is returned for the source folder when it is gone, else for each removed subfolder whose parent is kept. A source tree with no entries is handled the same way. `deleteFolder` is different: it deletes the whole tree.
+`moveFolder()` lists the source keys with `sweepKeys()`, maps their destinations, and moves them as one relocation. After every key moves without errors, [Folder Pruning](#folder-pruning) removes empty folders under the source address, including the source itself. Stray files and hidden directories protect their folders. OS junk does not prevent removal.
+
+The result retains the warning `Source folder kept: holds content that is not part of the collection: <paths>`. New collection entries produce `Source folder kept: it has resources again: <paths>`. `foldersDeleted` counts the source folder only. Each removed folder, including the source, emits a `remove-folder` mutation. A source tree without entries uses the same pruning rule. `deleteFolder` still deletes the whole tree intentionally.
 
 ### Move Plan
 
@@ -565,6 +567,20 @@ Before the sweep, each of these walked the folders with `walkFolders` itself: ad
 
 ---
 
+## Folder Pruning
+
+**Entry point:** `pruneEmptyFolders(collection, { startPath?, dryRun?, onMutation? })` in `lib/resource/folder-pruning.ts` (internal)
+
+[Folder Pruning](glossary.md#folder-pruning) uses the shared collection-folder walk and inspects all remaining contents deepest first. A prunable folder contains only empty `resource_entries.json`, valid metadata with absent or empty entries, and the three known OS junk files. Other files, hidden directories, resource entries, and unreadable or malformed collection files protect the folder and its ancestors. Unlistable folders stay and produce problems.
+
+Classification reads contents without writes. Removal rechecks entries before deletes and again immediately before it unlinks `resource_entries.json` last. Then it calls `rmdir`. Partial-removal problems name the deleted files. It never removes the translations root or recursively deletes contents.
+
+Without locks, pruning can delete another writer's fresh `tracker_meta.json` before the entries recheck keeps the folder and reports a problem. The next normalize recomputes the metadata, so a `verified` status is not restored and becomes the recomputed status.
+
+The result contains `removed` (dot-delimited addresses, deepest first), `kept` (addresses, reasons, and blocking paths), and `problems` (`CollectionFolderProblem`). A supplied `startPath` includes the start folder and excludes its ancestors. Dry runs simulate child removals, so they report the same planned parent removals without writes. With an `onMutation` sink, each actual removal immediately emits `remove-folder`. Folder move supplies its sink. Normalize does not report mutations.
+
+---
+
 ## Normalization Pipeline
 
 **Entry points:** `normalize(collection, { dryRun? })` and `normalizeCollections(collections, { dryRun?, all?, onEvent? })` in `lib/normalize/`
@@ -580,7 +596,11 @@ Steps:
    - `ResourceFolder.normalizeEntry(key, values, collection.targetLocales)` converts every locale value to ICU and applies the folder's own rules: it drops a stray base-locale property, re-records every target-locale translation with a current checksum and its stored status (no metadata counts as `new`; a translation whose stored `baseChecksum` differs from the base checksum was made from an older base, so it becomes `stale`, or `new` when its value is a copy of the base or it was `new`, and gets the current `baseChecksum`), puts the base through `setBase` (the [staleness rule](glossary.md#staleness-rule) when the stored checksum disagrees with the value; a missing checksum is just recorded), and seeds each missing target locale with `seedLocale`'s rule (`localesAdded`). It reports whether the entry or its metadata changed. A locale that is not a target locale of the collection (for example one removed from the config) keeps its value and status; ICU conversion updates its checksum if needed.
 4. **Persist changes** — a folder is saved when any entry changed, or when one of its two files is missing (normalize guarantees the pair exists wherever there are entries).
 5. **Dry-run mode** — `save({ dryRun: true })` reports the files without writing; counters still reflect what *would* change.
-6. **Cleanup empty folders** — `cleanupEmptyFolders()` removes collection folders with no entries and no subfolders, deepest first. It walks by the same collection-folder policy, so it never removes anything inside a hidden folder, and a folder that holds a hidden subfolder is kept.
+6. **Prune empty folders** — [Folder Pruning](#folder-pruning) removes only folders with empty collection files and known OS junk. Stray files and hidden directories protect their folders and ancestors. `foldersRemoved` counts actual removals, or planned removals in a dry run.
+
+Normalize reports pruning problems through `problems`, without duplicate sweep problems for the same folder. Kept content produces no errors or warnings because `NormalizeResult` has no warnings channel. Normalize calls pruning without a mutation sink and reports no mutations.
+
+The CLI calls normalize through `normalizeCollections`. The API has no normalize endpoint.
 
 Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `tagsNormalized`, `filesCreated`, `filesUpdated`, `foldersRemoved`, `dryRun`, and `problems` (the folders it could not read).
 

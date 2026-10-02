@@ -8,6 +8,7 @@ import type { Collection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { addResource } from '../resource/add-resource';
 import { openResourceFolder } from '../resource/resource-folder';
+import { PRUNABLE_OS_JUNK_FILES } from '../resource/folder-pruning';
 import { moveFolder } from './move-folder';
 
 const collected: ResourceMutation[] = [];
@@ -333,6 +334,55 @@ describe('moveFolder across collections and around content outside the collectio
       { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps' },
     ]);
     expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
+  });
+
+  it('removes a moved-away source tree holding only OS junk and counts the source once', async () => {
+    const source = collection(join(root, 'main'));
+    await addResource(source, { key: 'apps.deep.one', baseValue: 'One' });
+    for (const name of PRUNABLE_OS_JUNK_FILES) {
+      writeFileSync(join(source.translationsFolder, 'apps', 'deep', name), 'junk');
+    }
+    collected.length = 0;
+    const result = await moveFolder(
+      source,
+      { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
+      { onMutation },
+    );
+    expect(result).toEqual({ movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] });
+    expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
+    expect(collected.filter((mutation) => mutation.kind === 'remove-folder')).toEqual([
+      { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps.deep' },
+      { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps' },
+    ]);
+  });
+
+  it('warns about collection resources added again before source pruning', async () => {
+    const source = collection(join(root, 'main'));
+    await addResource(source, { key: 'apps.one', baseValue: 'One' });
+    collected.length = 0;
+    const result = await moveFolder(
+      source,
+      { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
+      {
+        onMutation: (mutation) => {
+          onMutation(mutation);
+          // Relocation saved the emptied source; simulate another writer before pruning begins.
+          if (mutation.kind === 'remove' && mutation.key === 'apps.one') {
+            const folder = openResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' });
+            folder.setBase('fresh', 'Added during the move');
+            folder.save();
+          }
+        },
+      },
+    );
+    expect(result).toEqual({
+      movedCount: 1,
+      foldersDeleted: 0,
+      warnings: [`Source folder kept: it has resources again: ${join('apps', 'resource_entries.json')}`],
+      errors: [],
+    });
+    expect(openResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' }).keys()).toEqual(['fresh']);
+    expect(collected.some((mutation) => mutation.kind === 'remove-folder')).toBe(false);
   });
 
   it('fits entries moved into another collection to its locales', async () => {

@@ -48,6 +48,7 @@ vi.mock('node:fs', () => {
     rmdirSync: vi.fn(),
     readdirSync: vi.fn(),
     statSync: vi.fn(),
+    lstatSync: vi.fn(),
     unlinkSync: vi.fn(),
   };
 });
@@ -71,7 +72,7 @@ describe('Move Folder', () => {
       if (mockFileSystem.has(path)) {
         return mockFileSystem.get(path);
       }
-      throw new Error(`ENOENT: no such file or directory, open '${path}'`);
+      throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), { code: 'ENOENT' });
     });
 
     (fs.writeFileSync as Mock).mockImplementation((path: string, data: string) => {
@@ -161,6 +162,8 @@ describe('Move Folder', () => {
         isFile: () => mockFileSystem.has(path),
       };
     });
+
+    (fs.lstatSync as Mock).mockImplementation(() => ({ isSymbolicLink: () => false }));
 
     mockDirectories.add(testDir);
   });
