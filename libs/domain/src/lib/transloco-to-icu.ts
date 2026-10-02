@@ -42,7 +42,7 @@ import { convertTranslocoPlaceholders } from './transloco-brace-scan';
  *
  * Placeholder names may be dotted (`{{ a.b }}` → `{a.b}`). This is wider than
  * the plain-identifier form the function accepted previously, and matches what
- * `normalizeTranslocoSyntax` accepts on the import path.
+ * `translocoToICU` accepts on the import path.
  *
  * @param value - The translation string, potentially using Transloco syntax
  * @returns The string with all `{{ varName }}` placeholders replaced by `{varName}`

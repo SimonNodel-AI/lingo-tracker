@@ -64,7 +64,6 @@ describe('domain public surface', () => {
       'normalizeProtectedTerms',
       'normalizeTag',
       'normalizeTags',
-      'normalizeTranslocoSyntax',
       'normalizedLevenshtein',
       'recordTranslation',
       'resolveAllReferences',

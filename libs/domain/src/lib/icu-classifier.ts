@@ -1,4 +1,4 @@
-import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
+import { translocoToICU } from './transloco-to-icu';
 
 /**
  * ICU Message Format Classification
@@ -61,7 +61,7 @@ export type ICUClassification = 'plain' | 'simple-placeholders' | 'complex-icu';
 export function classifyICUContent(value: string): ICUClassification {
   // Normalize Transloco double-brace syntax {{ name }} → {name} before
   // analysis. The surrounding spaces are optional in the Transloco format.
-  const normalized = normalizeTranslocoSyntax(value);
+  const normalized = translocoToICU(value);
 
   let foundSimple = false;
   let foundComplex = false;

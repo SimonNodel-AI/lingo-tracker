@@ -141,10 +141,7 @@ export async function prepareResourceAdd(
   const baseValue = translocoToICU(params.baseValue);
   // Resolve every value before touching the disk, so a provider failure writes nothing.
   const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) }, options);
-  const translations: ResourceTranslationInput[] = [
-    ...supplied.map(({ locale, value, status }) => ({ locale, value: translocoToICU(value), status })),
-    ...seeding.translations,
-  ];
+  const translations: ResourceTranslationInput[] = [...supplied, ...seeding.translations];
 
   return {
     params,
@@ -206,7 +203,9 @@ export function writePreparedResourceAdd(
   const storedTranslations: ResourceTranslation[] = translations.map((translation) => {
     const status = stored?.meta?.[translation.locale]?.status;
     if (status === undefined) throw new Error(`Missing status for locale "${translation.locale}"`);
-    return { ...translation, status };
+    const value = stored?.entry[translation.locale];
+    if (typeof value !== 'string') throw new Error(`Missing value for locale "${translation.locale}"`);
+    return { locale: translation.locale, value, status };
   });
   saveReporting(folder, translationsFolder, onMutation, () => [
     upsertMutation(translationsFolder, paths.resolvedKey, folder.treeEntry(paths.entryKey)),

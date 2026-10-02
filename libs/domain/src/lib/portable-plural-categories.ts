@@ -1,5 +1,5 @@
 import { parse, type Token } from '@messageformat/parser';
-import { normalizeTranslocoSyntax } from './normalize-transloco-syntax';
+import { translocoToICU } from './transloco-to-icu';
 
 /**
  * Base-locale plural portability.
@@ -62,7 +62,7 @@ export interface UnportablePluralCase {
 export function findUnportablePluralCases(value: string): readonly UnportablePluralCase[] {
   let tokens: Token[];
   try {
-    tokens = parse(normalizeTranslocoSyntax(value));
+    tokens = parse(translocoToICU(value));
   } catch {
     return [];
   }

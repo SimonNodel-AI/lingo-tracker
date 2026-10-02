@@ -71,7 +71,7 @@ describe('mutations delivered by core writes (real fs)', () => {
         kind: 'upsert',
         translationsFolder: root,
         key: 'apps.greeting',
-        entry: openResourceFolder(join(root, 'apps')).treeEntry('greeting'),
+        entry: openResourceFolder(join(root, 'apps'), { baseLocale: 'en' }).treeEntry('greeting'),
       },
     ]);
     // The entry holds the stored (ICU) form, not the Transloco input.
@@ -93,7 +93,7 @@ describe('mutations delivered by core writes (real fs)', () => {
         kind: 'upsert',
         translationsFolder: root,
         key: 'common.ok',
-        entry: openResourceFolder(join(root, 'common')).treeEntry('ok'),
+        entry: openResourceFolder(join(root, 'common'), { baseLocale: 'en' }).treeEntry('ok'),
       },
     ]);
     expect(collected[0]).toMatchObject({ entry: { source: 'Okay' } });

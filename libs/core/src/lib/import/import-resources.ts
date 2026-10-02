@@ -51,7 +51,7 @@ export function importResources(
   prepared = normalizeTranslocoSyntaxInResources(prepared);
 
   if (verbose) onProgress?.('Checking for ICU placeholder issues...');
-  const baseValues = loadBaseLocaleValues(prepared, translationsFolder);
+  const baseValues = loadBaseLocaleValues(prepared, translationsFolder, collection.baseLocale);
   const autoFix = applyICUAutoFixToResources({
     resources: prepared,
     getBaseValue: (key) => baseValues.get(key),

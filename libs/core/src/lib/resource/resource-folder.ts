@@ -1,6 +1,12 @@
 import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { applyBaseChange, isUntranslatedCopy, recordTranslation, type TranslationStatus } from '@simoncodes-ca/domain';
+import {
+  applyBaseChange,
+  isUntranslatedCopy,
+  recordTranslation,
+  translocoToICU,
+  type TranslationStatus,
+} from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from './checksum';
@@ -67,7 +73,7 @@ export interface ResourceFolder {
     options?: { readonly refreshBaseChecksum?: boolean },
   ): void;
   /**
-   * Stores an entry and its metadata exactly as given (lossless copy/replace: move, rename, add-resource reset).
+   * Stores an entry and its metadata, normalizing locale values to ICU (move, rename, add-resource reset).
    * With `targetLocales` (an entry moved into another collection), the entry is fitted to them: values
    * and metadata of other locales are dropped (the base locale's metadata is kept), and each missing
    * one is seeded as a `new` copy of the base, the rule `seedLocale` applies.
@@ -140,8 +146,8 @@ export interface ResourceFolderSaveResult {
 }
 
 export interface OpenResourceFolderOptions {
-  /** Base locale of the collection (default: `en`). Needed to find the base checksum in metadata. */
-  readonly baseLocale?: string;
+  /** Base locale of the collection. Needed to find the base checksum in metadata. */
+  readonly baseLocale: string;
 }
 
 const NON_LOCALE_PROPS: ReadonlySet<string> = new Set(['source', 'comment', 'tags']);
@@ -158,8 +164,8 @@ export function translationLocales(entry: Readonly<ResourceEntry>): string[] {
  * Opens the resource folder at `folderPath`. Missing files are treated as empty.
  * @throws Error when a file exists but is not valid JSON
  */
-export function openResourceFolder(folderPath: string, options: OpenResourceFolderOptions = {}): ResourceFolder {
-  return new FileResourceFolder(folderPath, options.baseLocale ?? 'en');
+export function openResourceFolder(folderPath: string, options: OpenResourceFolderOptions): ResourceFolder {
+  return new FileResourceFolder(folderPath, options.baseLocale);
 }
 
 /** Own-property check, so keys like "constructor" are not mistaken for entries (lib es2020 has no Object.hasOwn). */
@@ -226,6 +232,7 @@ class FileResourceFolder implements ResourceFolder {
   }
 
   setBase(key: string, value: string): boolean {
+    value = translocoToICU(value);
     const checksum = calculateChecksum(value);
     const entry = this.has(key) ? this.entries[key] : undefined;
     const entryMeta = this.metaOf(key);
@@ -282,6 +289,7 @@ class FileResourceFolder implements ResourceFolder {
       throw new Error(`Cannot set a translation for the base locale "${locale}"; use setBase`);
     }
     const entry = this.requireEntry(key);
+    value = translocoToICU(value);
     entry[locale] = value;
 
     const entryMeta = this.metaOf(key);
@@ -315,9 +323,34 @@ class FileResourceFolder implements ResourceFolder {
     options: { readonly targetLocales?: readonly string[] } = {},
   ): void {
     const stored: ResourceEntry = { ...entry };
-    const storedMeta: ResourceEntryMetadata = { ...meta };
+    const storedMeta: ResourceEntryMetadata = Object.fromEntries(
+      Object.entries(meta).map(([locale, localeMeta]) => [locale, { ...localeMeta }]),
+    );
     this.entries[key] = stored;
     this.meta[key] = storedMeta;
+
+    // Conversion changes syntax, not meaning. Keep a copied status and update only the
+    // checksums that referred to a converted value.
+    const normalizedBase = translocoToICU(entry.source);
+    if (normalizedBase !== entry.source) {
+      stored.source = normalizedBase;
+      const baseMeta = storedMeta[this.baseLocale];
+      if (baseMeta) baseMeta.checksum = calculateChecksum(normalizedBase);
+      const oldChecksum = calculateChecksum(entry.source);
+      for (const locale of translationLocales(stored)) {
+        const localeMeta = storedMeta[locale];
+        if (localeMeta?.baseChecksum === oldChecksum) localeMeta.baseChecksum = calculateChecksum(normalizedBase);
+      }
+    }
+    for (const locale of translationLocales(stored)) {
+      const value = stored[locale];
+      if (typeof value !== 'string') continue;
+      const normalized = translocoToICU(value);
+      if (normalized === value) continue;
+      stored[locale] = normalized;
+      const localeMeta = locale === this.baseLocale ? undefined : storedMeta[locale];
+      if (localeMeta) localeMeta.checksum = calculateChecksum(normalized);
+    }
 
     const { targetLocales } = options;
     if (!targetLocales) return;
@@ -336,9 +369,13 @@ class FileResourceFolder implements ResourceFolder {
     this.requireEntry(key);
     const before = JSON.stringify(this.get(key));
     const previousMeta = this.metaOf(key);
-    const baseChecksum = previousMeta[this.baseLocale]?.checksum ?? calculateChecksum(values.source);
+    const baseChecksum = previousMeta[this.baseLocale]?.checksum ?? calculateChecksum(translocoToICU(values.source));
 
-    const entry: ResourceEntry = { ...values };
+    const entry: ResourceEntry = { ...values, source: translocoToICU(values.source) };
+    for (const locale of translationLocales(entry)) {
+      const value = entry[locale];
+      if (typeof value === 'string') entry[locale] = translocoToICU(value);
+    }
     if (this.baseLocale !== 'source') delete entry[this.baseLocale];
     this.entries[key] = entry;
 
@@ -354,6 +391,15 @@ class FileResourceFolder implements ResourceFolder {
       this.setTranslation(key, locale, value, madeFromOlderBase ? driftedStatus : status);
     }
     this.setBase(key, entry.source);
+    for (const locale of translationLocales(entry)) {
+      if (targetLocales.includes(locale)) continue;
+      const raw = values[locale];
+      const normalized = entry[locale];
+      const localeMeta = this.metaOf(key)[locale];
+      if (typeof raw === 'string' && typeof normalized === 'string' && raw !== normalized && localeMeta) {
+        localeMeta.checksum = calculateChecksum(normalized);
+      }
+    }
 
     let localesAdded = 0;
     for (const locale of targetLocales) {

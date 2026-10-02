@@ -200,6 +200,22 @@ describe('editResource (real fs)', () => {
   });
 
   describe('details and translations', () => {
+    it('stores a Transloco translation as ICU with its normalized checksum', async () => {
+      await editResource(
+        collection(),
+        'common.save',
+        { translations: { fr: { value: 'Bonjour {{ name }}', status: 'verified' } } },
+        { onMutation },
+      );
+
+      expect(read('resource_entries.json', 'common').save.fr).toBe('Bonjour {name}');
+      expect(read('tracker_meta.json', 'common').save.fr).toEqual({
+        checksum: md5('Bonjour {name}'),
+        baseChecksum: md5('Save'),
+        status: 'verified',
+      });
+    });
+
     it('does nothing when the value is unchanged and no status is requested', async () => {
       expect(
         (

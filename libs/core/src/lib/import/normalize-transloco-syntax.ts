@@ -1,6 +1,5 @@
 import type { ImportedResource } from './types';
-import { normalizeTranslocoSyntax } from '@simoncodes-ca/domain';
-export { normalizeTranslocoSyntax } from '@simoncodes-ca/domain';
+import { translocoToICU } from '@simoncodes-ca/domain';
 
 /**
  * Applies Transloco-to-ICU syntax normalization to every resource in the array.
@@ -13,7 +12,7 @@ export { normalizeTranslocoSyntax } from '@simoncodes-ca/domain';
  */
 export function normalizeTranslocoSyntaxInResources(resources: ImportedResource[]): ImportedResource[] {
   return resources.map((resource) => {
-    const normalizedValue = normalizeTranslocoSyntax(resource.value);
+    const normalizedValue = translocoToICU(resource.value);
 
     if (normalizedValue === resource.value) {
       return resource;
