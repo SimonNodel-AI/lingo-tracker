@@ -80,7 +80,7 @@ export interface TranslationEditorDialogData {
 
 /**
  * How the editor closed: the one result its launcher (`TranslationEditorLauncher`) reads.
- * `skippedLocales` are the locales auto-translation skipped (ICU format), possibly none.
+ * `skippedLocales` are the locales auto-translation skipped (for any reason, not only ICU format), possibly none.
  */
 export type { EditorOutcome } from './editor-submit';
 
