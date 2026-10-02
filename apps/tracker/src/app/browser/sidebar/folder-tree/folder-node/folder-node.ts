@@ -162,8 +162,6 @@ export class FolderNode {
    * is the chevron's job.
    */
   onFolderClick(): void {
-    if (this.disabled()) return;
-
     this.folderClick.emit(this.folder());
 
     if (this.hasChildren() && !this.isExpanded()) {
@@ -177,20 +175,19 @@ export class FolderNode {
    */
   onToggleExpandedClick(event: Event): void {
     event.stopPropagation();
-    if (this.disabled()) return;
     this.toggleExpanded.emit(this.folder().fullPath);
   }
 
   /** ArrowRight opens a shut folder; on an open one it does nothing. */
   onExpandKeydown(event: Event): void {
-    if (this.disabled() || !this.hasChildren() || this.isExpanded()) return;
+    if (!this.hasChildren() || this.isExpanded()) return;
     event.preventDefault();
     this.expandRequested.emit(this.folder().fullPath);
   }
 
   /** ArrowLeft shuts an open folder; on a shut one it does nothing. */
   onCollapseKeydown(event: Event): void {
-    if (this.disabled() || !this.isExpanded()) return;
+    if (!this.isExpanded()) return;
     event.preventDefault();
     this.toggleExpanded.emit(this.folder().fullPath);
   }
