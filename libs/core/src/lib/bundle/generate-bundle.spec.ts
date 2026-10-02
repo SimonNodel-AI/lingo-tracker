@@ -9,11 +9,40 @@ import type { Collection } from '../config/open-collection';
 import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors';
 import {
   type BundleProgressEvent,
+  type BundleTypeOutcome,
   type GenerateBundleParams,
+  bundleTypeOutcomeDetail,
   generateBundle as generateBundleByName,
   generatePreparedBundle,
 } from './generate-bundle';
 import { prepareBundleRun, validateBundleLocales } from './prepare-bundle-run';
+
+describe('bundleTypeOutcomeDetail', () => {
+  it('returns details for every status without status words, framing or deprecated-setting warnings', () => {
+    const cases: ReadonlyArray<{ outcome: BundleTypeOutcome; detail: string }> = [
+      {
+        outcome: { status: 'written', path: 'types/main.ts', keysCount: 2, warning: 'legacy setting' },
+        detail: 'types/main.ts (2 keys)',
+      },
+      {
+        outcome: { status: 'skipped', reason: 'empty-bundle', warning: 'legacy setting' },
+        detail: 'bundle is empty',
+      },
+      {
+        outcome: { status: 'not-configured', warning: 'legacy setting' },
+        detail: 'no typeDistFile configured',
+      },
+      {
+        outcome: { status: 'failed', reason: 'disk full', warning: 'legacy setting' },
+        detail: 'disk full',
+      },
+    ];
+
+    for (const { outcome, detail } of cases) {
+      expect(bundleTypeOutcomeDetail(outcome)).toBe(detail);
+    }
+  });
+});
 
 async function generateBundle(params: GenerateBundleParams & { bundleDefinition: BundleDefinition }) {
   const { bundleDefinition, ...request } = params;
@@ -464,8 +493,8 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'bundle has no keys' });
-      expect(result.warnings).not.toContain("Type generation skipped for 'main': Bundle is empty");
+      expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
+      expect(result.warnings).not.toContain("Type generation skipped for 'main': bundle is empty");
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(false);
     });
 

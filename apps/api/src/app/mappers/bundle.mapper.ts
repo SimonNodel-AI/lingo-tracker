@@ -1,4 +1,4 @@
-import type { BundlePlan, GenerateBundleResult } from '@simoncodes-ca/core';
+import { type BundlePlan, type GenerateBundleResult, bundleTypeOutcomeDetail } from '@simoncodes-ca/core';
 import type { BundleDryRunResultDto, BundleGenerateJobResultDto } from '@simoncodes-ca/data-transfer';
 
 /** Upper bound on conflict keys returned by a dry run so huge bundles stay cheap to serialise. */
@@ -33,11 +33,8 @@ export function mapGenerateBundleResultToJobResult(result: GenerateBundleResult)
   const types = result.typeOutcome;
   const typeDistFile = types.status === 'written' ? types.path : undefined;
   const warnings = [...result.warnings];
-  if (types.status === 'failed') {
-    warnings.push(`Type generation failed for '${result.bundleKey}': ${types.reason}`);
-  } else if (types.status === 'skipped') {
-    const reason = types.reason === 'bundle has no keys' ? 'Bundle is empty' : types.reason;
-    warnings.push(`Type generation skipped for '${result.bundleKey}': ${reason}`);
+  if (types.status === 'failed' || types.status === 'skipped') {
+    warnings.push(`Type generation ${types.status} for '${result.bundleKey}': ${bundleTypeOutcomeDetail(types)}`);
   }
 
   return {

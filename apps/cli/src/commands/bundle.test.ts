@@ -524,12 +524,12 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en'],
-        typeOutcome: { status: 'skipped', reason: 'bundle has no keys' },
+        typeOutcome: { status: 'skipped', reason: 'empty-bundle' },
       });
 
       await bundleCommand({ name: 'core' });
 
-      expect(console.log).toHaveBeenCalledWith('  └─ Types: Skipped (bundle has no keys)');
+      expect(console.log).toHaveBeenCalledWith('  └─ Types: Skipped (bundle is empty)');
     });
 
     it('should display type generation skipped (not-configured reason from result)', async () => {

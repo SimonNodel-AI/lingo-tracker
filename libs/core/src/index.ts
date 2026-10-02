@@ -43,6 +43,7 @@ export type {
 export {
   addBundleDefinition,
   deleteBundleDefinition,
+  bundleTypeOutcomeDetail,
   generateBundles,
   generatePreparedBundle,
   type PrepareBundleRunParams,
