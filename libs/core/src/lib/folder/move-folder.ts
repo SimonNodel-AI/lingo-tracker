@@ -1,8 +1,13 @@
 import { resolve } from 'node:path';
 import type { Collection } from '../config/open-collection';
-import { FolderMoveIntoDescendantError, FolderNotFoundError } from '../errors/lingo-tracker-error';
+import {
+  FolderMoveIntoDescendantError,
+  FolderNotFoundError,
+  InvalidCollectionFolderError,
+} from '../errors/lingo-tracker-error';
+import { describeFolderProblem } from '../resource/collection-folders';
 import { sweepKeys } from '../resource/collection-sweep';
-import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
+import { inspectFolderAddress, resolveFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { planMove } from '../resource/move-plan';
 import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from '../resource/move-destination';
 import { mergeRelocation } from '../resource/move-resource';
@@ -114,7 +119,16 @@ export async function moveFolder(
     return result;
   }
 
-  const { isDirectory } = inspectFolderAddress(collection.translationsFolder, sourceFolderPath);
+  let isDirectory: boolean;
+  try {
+    isDirectory = inspectFolderAddress(collection.translationsFolder, sourceFolderPath).isDirectory;
+    resolveFolderAddress(destinationCollection.translationsFolder, destinationFolderPath);
+  } catch (error) {
+    if (error instanceof InvalidCollectionFolderError) {
+      throw new InvalidCollectionFolderError(error.problem, 'move', sourceFolderPath);
+    }
+    throw error;
+  }
   if (!isDirectory) {
     throw new FolderNotFoundError(sourceFolderPath);
   }
@@ -122,7 +136,7 @@ export async function moveFolder(
   // Extract all resource keys from the source folder tree
   const { keys: resourceKeys, problems } = sweepKeys(collection, { startPath: sourceFolderPath });
   const enumerationErrors = problems.map(
-    (problem) => `Failed to read resources in "${problem.folderPath || '.'}": ${problem.message}`,
+    (problem) => new InvalidCollectionFolderError(problem, 'move', sourceFolderPath).message,
   );
 
   // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
@@ -189,7 +203,7 @@ function pruneSource(
       result.warnings.push(`Source folder kept: it has resources again: ${resources.join(', ')}`);
     }
     if (pruning.problems.length > 0) {
-      throw new Error(pruning.problems.map((problem) => problem.message).join(', '));
+      throw new Error(pruning.problems.map((problem) => describeFolderProblem(problem)).join(', '));
     }
     const leftovers = pruning.kept
       .filter((folder) => folder.reason === 'content')

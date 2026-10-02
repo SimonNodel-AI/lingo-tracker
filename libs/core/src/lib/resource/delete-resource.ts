@@ -1,4 +1,9 @@
-import { CoreOperationError, FolderNotFoundError, ResourceNotFoundError } from '../errors/lingo-tracker-error';
+import {
+  CoreOperationError,
+  InvalidCollectionFolderError,
+  FolderNotFoundError,
+  ResourceNotFoundError,
+} from '../errors/lingo-tracker-error';
 import { existsSync } from 'node:fs';
 import { resolveResourcePaths } from './resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from './resource-folder';
@@ -18,7 +23,7 @@ export interface DeleteResourceResult {
   }>;
 }
 
-/** Deletes entries from a collection. Per-key failures are reported in the result, not thrown. */
+/** Deletes entries after checking every key's folder. Folder-policy refusals throw; other per-key failures are reported. */
 export function deleteResource(
   collection: Collection,
   params: DeleteResourceParams,
@@ -28,6 +33,17 @@ export function deleteResource(
   let entriesDeleted = 0;
   const errors: Array<{ key: string; error: string }> = [];
 
+  // Refuse the whole request before writes or mutations if any key targets an inaccessible folder.
+  for (const key of params.keys) {
+    try {
+      validateKey(key);
+      resolveResourcePaths({ key, translationsFolder });
+    } catch (error) {
+      if (error instanceof InvalidCollectionFolderError) throw error;
+      // Ordinary key errors are collected by the delete loop below.
+    }
+  }
+
   for (const key of params.keys) {
     try {
       const deletionSucceeded = deleteSingleResource(translationsFolder, baseLocale, key, options.onMutation);
@@ -35,6 +51,7 @@ export function deleteResource(
         entriesDeleted++;
       }
     } catch (caughtError) {
+      if (caughtError instanceof InvalidCollectionFolderError) throw caughtError;
       const message = (caughtError as { message?: string })?.message || 'Unknown error occurred';
       errors.push({
         key,
@@ -72,8 +89,9 @@ function deleteSingleResource(
 
   let folder: ResourceFolder;
   try {
-    folder = openResourceFolder(paths.folderPath, { baseLocale });
+    folder = openResourceFolder(paths.folderPath, { baseLocale, translationsFolder });
   } catch (caughtError) {
+    if (caughtError instanceof InvalidCollectionFolderError) throw caughtError;
     throw new CoreOperationError(
       `Failed to delete resource ${paths.resolvedKey}: folder ${folderAddress} has unreadable resource files`,
       { cause: caughtError },
@@ -84,6 +102,7 @@ function deleteSingleResource(
   try {
     removed = folder.remove(paths.entryKey);
   } catch (caughtError) {
+    if (caughtError instanceof InvalidCollectionFolderError) throw caughtError;
     throw new CoreOperationError(
       `Failed to delete resource ${paths.resolvedKey}: could not update folder ${folderAddress}`,
       {
@@ -99,6 +118,7 @@ function deleteSingleResource(
     // Removes both files when this was the folder's last entry.
     saveReporting(folder, translationsFolder, onMutation, () => [removeMutation(translationsFolder, key)]);
   } catch (caughtError) {
+    if (caughtError instanceof InvalidCollectionFolderError) throw caughtError;
     throw new CoreOperationError(
       `Failed to delete resource ${paths.resolvedKey}: could not write folder ${folderAddress}`,
       {

@@ -214,11 +214,13 @@ describe('glossaryCommand', () => {
   it('reports an unreadable folder on stderr and keeps JSON clean', async () => {
     vi.mocked(buildGlossary).mockReturnValue({
       ...RESULT,
-      readProblems: [{ collectionName: 'app', message: 'Failed to parse JSON file x' }],
+      readProblems: [
+        { kind: 'unreadable', folderPath: 'bad', collectionName: 'app', message: 'Failed to parse JSON file x' },
+      ],
     });
     await glossaryCommand({ text: 'Save', stdout: true });
     expect(console.error).toHaveBeenCalledWith(
-      "⚠️  Collection 'app': skipped unreadable folder: Failed to parse JSON file x",
+      "⚠️  Collection 'app': Skipped unreadable folder 'bad': Failed to parse JSON file x",
     );
     expect(console.log).not.toHaveBeenCalled();
     expect(JSON.parse(vi.mocked(process.stdout.write).mock.calls[0][0] as string)).not.toHaveProperty('readProblems');

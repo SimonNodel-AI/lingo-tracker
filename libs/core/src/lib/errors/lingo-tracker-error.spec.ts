@@ -26,6 +26,7 @@ import {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidCollectionFolderError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidImportLocaleError,
@@ -171,6 +172,17 @@ describe('LingoTrackerError subclasses', () => {
       name: 'ResourceAlreadyExistsError',
       code: 'RESOURCE_ALREADY_EXISTS',
       message: ErrorMessages.resourceAlreadyExists('common.ok'),
+    },
+    {
+      error: new InvalidCollectionFolderError({
+        kind: 'unreadable',
+        folderPath: 'link',
+        absolutePath: '/translations/link',
+        message: 'This folder is a symbolic link and is not part of the collection',
+      }),
+      name: 'InvalidCollectionFolderError',
+      code: 'INVALID_COLLECTION_FOLDER',
+      message: "Cannot access folder 'link': This folder is a symbolic link and is not part of the collection",
     },
     {
       error: new FolderNotFoundError('apps.common'),

@@ -1,5 +1,14 @@
 import type { ResourceMutation } from '../resource/resource-mutation';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  lstatSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -59,6 +68,21 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('stops a symlinked source or ancestor before any write', async () => {
+    writeFolder('{}', 'target', 'nested');
+    symlinkSync(join(root, 'target'), join(root, 'linked'));
+    for (const sourceFolderPath of ['linked', 'linked.nested']) {
+      await expect(
+        moveFolder(collection(root), { sourceFolderPath, destinationFolderPath: 'shared' }, { onMutation }),
+      ).rejects.toThrow(`Cannot move folder '${sourceFolderPath}':`);
+      expect(collected).toEqual([]);
+      expect(existsSync(join(root, 'shared'))).toBe(false);
+      expect(readFileSync(join(root, 'target', 'nested', 'resource_entries.json'), 'utf8')).toBe(entries);
+      expect(readFileSync(join(root, 'target', 'nested', 'tracker_meta.json'), 'utf8')).toBe('{}');
+      expect(lstatSync(join(root, 'linked')).isSymbolicLink()).toBe(true);
+    }
   });
 
   it('refuses a missing destination before a folder move writes', async () => {

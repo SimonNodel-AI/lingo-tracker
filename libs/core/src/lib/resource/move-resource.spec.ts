@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
-import { join, resolve } from 'node:path';
-import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
@@ -32,121 +33,25 @@ const moveConfig = (name: string, translationsFolder: string): LingoTrackerConfi
   collections: { [name]: { translationsFolder } },
 });
 
-// Mock node:fs
-vi.mock('node:fs', () => {
-  return {
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-    writeFileSync: vi.fn(),
-    mkdirSync: vi.fn(),
-    rmSync: vi.fn(),
-    readdirSync: vi.fn(),
-    statSync: vi.fn(),
-    unlinkSync: vi.fn(),
-  };
-});
+// Keep real filesystem operations; a mutable copy permits the validation-order spy below.
+vi.mock('node:fs', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:fs')>()) }));
 
-describe('Move Resource', () => {
-  const testDir = resolve('/tmp/test-move-unified');
-  // In-memory file system: path -> content (string)
-  let mockFileSystem: Map<string, string>;
-  // In-memory directories: Set<path>
-  let mockDirectories: Set<string>;
+describe('Move Resource (real fs)', () => {
+  const root = useTempDir('move-resource-unified-');
+  let testDir: string;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockFileSystem = new Map();
-    mockDirectories = new Set();
-
-    // Setup default mocks
-    (fs.existsSync as Mock).mockImplementation((path: string) => {
-      return mockFileSystem.has(path) || mockDirectories.has(path);
-    });
-
-    (fs.readFileSync as Mock).mockImplementation((path: string) => {
-      if (mockFileSystem.has(path)) {
-        return mockFileSystem.get(path);
-      }
-      throw new Error(`ENOENT: no such file or directory, open '${path}'`);
-    });
-
-    (fs.writeFileSync as Mock).mockImplementation((path: string, data: string) => {
-      mockFileSystem.set(path, data);
-    });
-
-    (fs.mkdirSync as Mock).mockImplementation((path: string) => {
-      mockDirectories.add(path);
-    });
-
-    (fs.rmSync as Mock).mockImplementation((path: string) => {
-      mockFileSystem.delete(path);
-      mockDirectories.delete(path);
-      // Also remove children
-      for (const key of mockFileSystem.keys()) {
-        if (key.startsWith(path)) {
-          mockFileSystem.delete(key);
-        }
-      }
-      for (const dir of mockDirectories) {
-        if (dir.startsWith(path)) {
-          mockDirectories.delete(dir);
-        }
-      }
-    });
-
-    (fs.unlinkSync as Mock).mockImplementation((path: string) => {
-      if (mockFileSystem.has(path)) {
-        mockFileSystem.delete(path);
-      } else {
-        throw new Error(`ENOENT: no such file or directory, unlink '${path}'`);
-      }
-    });
-
-    (fs.readdirSync as Mock).mockImplementation((dirPath: string) => {
-      // Find direct children
-      const children = new Set<string>();
-      // Check files
-      for (const file of mockFileSystem.keys()) {
-        if (file.startsWith(dirPath) && file !== dirPath) {
-          const relative = file.slice(dirPath.length + 1); // +1 for separator
-          const firstPart = relative.split('/')[0]; // Assumes / separator in mock
-          if (firstPart) children.add(firstPart);
-        }
-      }
-      // Check dirs
-      for (const dir of mockDirectories) {
-        if (dir.startsWith(dirPath) && dir !== dirPath) {
-          const relative = dir.slice(dirPath.length + 1);
-          const firstPart = relative.split('/')[0];
-          if (firstPart) children.add(firstPart);
-        }
-      }
-      // Return Dirent-like objects so walkFolders (withFileTypes: true) works correctly
-      return Array.from(children).map((name) => ({
-        name,
-        isDirectory: () => mockDirectories.has(join(dirPath, name)),
-        isFile: () => mockFileSystem.has(join(dirPath, name)),
-      }));
-    });
-
-    (fs.statSync as Mock).mockImplementation((path: string) => {
-      return {
-        isDirectory: () => mockDirectories.has(path),
-        isFile: () => mockFileSystem.has(path),
-      };
-    });
-
-    // Ensure testDir exists
-    mockDirectories.add(testDir);
+    testDir = root();
   });
+  afterEach(() => vi.restoreAllMocks());
 
   describe('Single Resource Move', () => {
     it('should move a single resource successfully', async () => {
       // Setup source
       const sourceFolder = join(testDir, 'common', 'buttons');
-      mockDirectories.add(sourceFolder);
+      fs.mkdirSync(sourceFolder, { recursive: true });
       const sourceFile = join(sourceFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         sourceFile,
         JSON.stringify({
           ok: { source: 'OK', comment: 'OK button' },
@@ -163,16 +68,16 @@ describe('Move Resource', () => {
 
       // Verify source gone
       // In this case, since 'ok' was the only key, the file should be deleted by deleteResource -> unlinkSync
-      expect(mockFileSystem.has(sourceFile)).toBe(false);
+      expect(fs.existsSync(sourceFile)).toBe(false);
 
       // Verify dest exists
       const destFolder = join(testDir, 'common', 'actions');
       const destFile = join(destFolder, RESOURCE_ENTRIES_FILENAME);
-      expect(mockFileSystem.has(destFile)).toBe(true);
+      expect(fs.existsSync(destFile)).toBe(true);
 
-      const destFileContent = mockFileSystem.get(destFile);
+      const destFileContent = fs.readFileSync(destFile, 'utf8');
       expect(destFileContent).toBeDefined();
-      const destContent = JSON.parse(destFileContent as string);
+      const destContent = JSON.parse(destFileContent);
       expect(destContent.ok).toBeDefined();
       expect(destContent.ok.source).toBe('OK');
     });
@@ -180,9 +85,9 @@ describe('Move Resource', () => {
     it('should warn and skip if destination exists and override is false', async () => {
       // Setup source
       const sourceFolder = join(testDir, 'a');
-      mockDirectories.add(sourceFolder);
+      fs.mkdirSync(sourceFolder, { recursive: true });
       const sourceFile = join(sourceFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         sourceFile,
         JSON.stringify({
           key: { source: 'Source' },
@@ -191,9 +96,9 @@ describe('Move Resource', () => {
 
       // Setup dest
       const destFolder = join(testDir, 'b');
-      mockDirectories.add(destFolder);
+      fs.mkdirSync(destFolder, { recursive: true });
       const destFile = join(destFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         destFile,
         JSON.stringify({
           key: { source: 'Dest' },
@@ -211,18 +116,18 @@ describe('Move Resource', () => {
       expect(result.warnings[0]).toContain('already exists');
 
       // Verify no change
-      const sourceFileContent = mockFileSystem.get(sourceFile);
+      const sourceFileContent = fs.readFileSync(sourceFile, 'utf8');
       expect(sourceFileContent).toBeDefined();
-      const sourceContent = JSON.parse(sourceFileContent as string);
+      const sourceContent = JSON.parse(sourceFileContent);
       expect(sourceContent.key).toBeDefined();
     });
 
     it('should override if destination exists and override is true', async () => {
       // Setup source
       const sourceFolder = join(testDir, 'a');
-      mockDirectories.add(sourceFolder);
+      fs.mkdirSync(sourceFolder, { recursive: true });
       const sourceFile = join(sourceFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         sourceFile,
         JSON.stringify({
           key: { source: 'Source' },
@@ -231,9 +136,9 @@ describe('Move Resource', () => {
 
       // Setup dest
       const destFolder = join(testDir, 'b');
-      mockDirectories.add(destFolder);
+      fs.mkdirSync(destFolder, { recursive: true });
       const destFile = join(destFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         destFile,
         JSON.stringify({
           key: { source: 'Dest' },
@@ -249,9 +154,9 @@ describe('Move Resource', () => {
       expect(result.movedCount).toBe(1);
 
       // Verify dest updated
-      const destFileContent = mockFileSystem.get(destFile);
+      const destFileContent = fs.readFileSync(destFile, 'utf8');
       expect(destFileContent).toBeDefined();
-      const destContent = JSON.parse(destFileContent as string);
+      const destContent = JSON.parse(destFileContent);
       expect(destContent.key.source).toBe('Source');
     });
   });
@@ -260,9 +165,9 @@ describe('Move Resource', () => {
     it('should move multiple resources matching pattern', async () => {
       // Setup: common.buttons.ok, common.buttons.cancel
       const sourceFolder = join(testDir, 'common', 'buttons');
-      mockDirectories.add(sourceFolder);
+      fs.mkdirSync(sourceFolder, { recursive: true });
       const sourceFile = join(sourceFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         sourceFile,
         JSON.stringify({
           ok: { source: 'OK' },
@@ -281,11 +186,11 @@ describe('Move Resource', () => {
       // Verify dest
       const destFolder = join(testDir, 'common', 'actions');
       const destFile = join(destFolder, RESOURCE_ENTRIES_FILENAME);
-      expect(mockFileSystem.has(destFile)).toBe(true);
+      expect(fs.existsSync(destFile)).toBe(true);
 
-      const destFileContent = mockFileSystem.get(destFile);
+      const destFileContent = fs.readFileSync(destFile, 'utf8');
       expect(destFileContent).toBeDefined();
-      const destContent = JSON.parse(destFileContent as string);
+      const destContent = JSON.parse(destFileContent);
       expect(destContent.ok).toBeDefined();
       expect(destContent.cancel).toBeDefined();
     });
@@ -293,9 +198,9 @@ describe('Move Resource', () => {
     it('should handle nested resources in wildcard', async () => {
       // Setup: common.buttons.ok, common.buttons.sub.item
       const buttonsFolder = join(testDir, 'common', 'buttons');
-      mockDirectories.add(buttonsFolder);
+      fs.mkdirSync(buttonsFolder, { recursive: true });
       const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         buttonsFile,
         JSON.stringify({
           ok: { source: 'OK' },
@@ -303,9 +208,9 @@ describe('Move Resource', () => {
       );
 
       const subFolder = join(buttonsFolder, 'sub');
-      mockDirectories.add(subFolder);
+      fs.mkdirSync(subFolder, { recursive: true });
       const subFile = join(subFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         subFile,
         JSON.stringify({
           item: { source: 'Item' },
@@ -322,16 +227,16 @@ describe('Move Resource', () => {
       // Verify dest
       const actionsFolder = join(testDir, 'common', 'actions');
       const actionsFile = join(actionsFolder, RESOURCE_ENTRIES_FILENAME);
-      const actionsFileContent = mockFileSystem.get(actionsFile);
+      const actionsFileContent = fs.readFileSync(actionsFile, 'utf8');
       expect(actionsFileContent).toBeDefined();
-      const actionsContent = JSON.parse(actionsFileContent as string);
+      const actionsContent = JSON.parse(actionsFileContent);
       expect(actionsContent.ok).toBeDefined();
 
       const subActionsFolder = join(actionsFolder, 'sub');
       const subActionsFile = join(subActionsFolder, RESOURCE_ENTRIES_FILENAME);
-      const subActionsFileContent = mockFileSystem.get(subActionsFile);
+      const subActionsFileContent = fs.readFileSync(subActionsFile, 'utf8');
       expect(subActionsFileContent).toBeDefined();
-      const subActionsContent = JSON.parse(subActionsFileContent as string);
+      const subActionsContent = JSON.parse(subActionsFileContent);
       expect(subActionsContent.item).toBeDefined();
     });
   });
@@ -340,10 +245,10 @@ describe('Move Resource', () => {
       // Setup source in collection A
       const collectionAFolder = join(testDir, 'collectionA');
       const sourceFolder = join(collectionAFolder, 'common', 'buttons');
-      mockDirectories.add(collectionAFolder);
-      mockDirectories.add(sourceFolder);
+      fs.mkdirSync(collectionAFolder, { recursive: true });
+      fs.mkdirSync(sourceFolder, { recursive: true });
       const sourceFile = join(sourceFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         sourceFile,
         JSON.stringify({
           ok: { source: 'OK' },
@@ -352,7 +257,7 @@ describe('Move Resource', () => {
 
       // Setup dest in collection B
       const collectionBFolder = join(testDir, 'collectionB');
-      mockDirectories.add(collectionBFolder);
+      fs.mkdirSync(collectionBFolder, { recursive: true });
 
       const result = await moveResource(
         collection(collectionAFolder, 'collectionA'),
@@ -368,16 +273,16 @@ describe('Move Resource', () => {
       expect(result.errors).toHaveLength(0);
 
       // Verify source gone from A
-      expect(mockFileSystem.has(sourceFile)).toBe(false);
+      expect(fs.existsSync(sourceFile)).toBe(false);
 
       // Verify dest exists in B
       const destFolder = join(collectionBFolder, 'common', 'actions');
       const destFile = join(destFolder, RESOURCE_ENTRIES_FILENAME);
-      expect(mockFileSystem.has(destFile)).toBe(true);
+      expect(fs.existsSync(destFile)).toBe(true);
 
-      const destFileContent = mockFileSystem.get(destFile);
+      const destFileContent = fs.readFileSync(destFile, 'utf8');
       expect(destFileContent).toBeDefined();
-      const destContent = JSON.parse(destFileContent as string);
+      const destContent = JSON.parse(destFileContent);
       expect(destContent.ok).toBeDefined();
       expect(destContent.ok.source).toBe('OK');
     });
@@ -386,10 +291,10 @@ describe('Move Resource', () => {
       // Setup source in collection A
       const collectionAFolder = join(testDir, 'collectionA');
       const sourceFolder = join(collectionAFolder, 'common', 'buttons');
-      mockDirectories.add(collectionAFolder);
-      mockDirectories.add(sourceFolder);
+      fs.mkdirSync(collectionAFolder, { recursive: true });
+      fs.mkdirSync(sourceFolder, { recursive: true });
       const sourceFile = join(sourceFolder, RESOURCE_ENTRIES_FILENAME);
-      mockFileSystem.set(
+      fs.writeFileSync(
         sourceFile,
         JSON.stringify({
           ok: { source: 'OK' },
@@ -399,7 +304,7 @@ describe('Move Resource', () => {
 
       // Setup dest in collection B
       const collectionBFolder = join(testDir, 'collectionB');
-      mockDirectories.add(collectionBFolder);
+      fs.mkdirSync(collectionBFolder, { recursive: true });
 
       const result = await moveResource(
         collection(collectionAFolder, 'collectionA'),
@@ -416,11 +321,11 @@ describe('Move Resource', () => {
       // Verify dest in B
       const destFolder = join(collectionBFolder, 'common', 'actions');
       const destFile = join(destFolder, RESOURCE_ENTRIES_FILENAME);
-      expect(mockFileSystem.has(destFile)).toBe(true);
+      expect(fs.existsSync(destFile)).toBe(true);
 
-      const destFileContent = mockFileSystem.get(destFile);
+      const destFileContent = fs.readFileSync(destFile, 'utf8');
       expect(destFileContent).toBeDefined();
-      const destContent = JSON.parse(destFileContent as string);
+      const destContent = JSON.parse(destFileContent);
       expect(destContent.ok).toBeDefined();
       expect(destContent.cancel).toBeDefined();
     });
@@ -431,6 +336,7 @@ describe('Move Resource', () => {
       // Test with invalid characters that shouldn't be allowed in keys
       const invalidPattern = 'invalid@char*';
       const invalidPath = join(testDir, 'invalid@char');
+      const exists = vi.spyOn(fs, 'existsSync');
 
       const result = await moveResource(collection(testDir), {
         source: invalidPattern,
@@ -438,7 +344,7 @@ describe('Move Resource', () => {
       });
 
       // It should NOT try to check if the folder exists because validation should fail first
-      expect(fs.existsSync).not.toHaveBeenCalledWith(invalidPath);
+      expect(exists).not.toHaveBeenCalledWith(invalidPath);
 
       // It should return error
       expect(result.errors.length).toBeGreaterThan(0);

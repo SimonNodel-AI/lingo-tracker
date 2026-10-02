@@ -21,6 +21,7 @@ import {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidCollectionFolderError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -209,6 +210,20 @@ describe('toHttpException', () => {
         error: 'Bad Request',
         statusCode: 400,
         errors: [{ index: 0, field: 'preferred', code: 'empty', message: 'empty' }],
+      },
+    ],
+    [
+      new InvalidCollectionFolderError({
+        kind: 'unreadable',
+        folderPath: 'link',
+        absolutePath: '/translations/link',
+        message: 'This folder is a symbolic link and is not part of the collection',
+      }),
+      400,
+      {
+        message: "Cannot access folder 'link': This folder is a symbolic link and is not part of the collection",
+        error: 'Bad Request',
+        statusCode: 400,
       },
     ],
     [

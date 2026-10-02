@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, lstatSync, type Stats } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Collection } from '../config/open-collection';
@@ -29,6 +29,7 @@ vi.mock('../file-io/directory-operations');
 describe('createFolder', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(lstatSync).mockReturnValue({ isSymbolicLink: () => false } as Stats);
   });
 
   afterEach(() => {

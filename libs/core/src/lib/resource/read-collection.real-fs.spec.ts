@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
@@ -100,6 +100,23 @@ describe('readCollection (real fs)', () => {
     expect(readCollection(collection).resources.map((resource) => resource.fullKey)).toEqual(['visible.ok']);
   });
 
+  it('reports a startPath through a symbolic link without reading its resources', () => {
+    const collection = testCollection(root());
+    seedResources(collection, { 'target.nested.ok': { source: 'OK' } });
+    symlinkSync(join(root(), 'target'), join(root(), 'linked'));
+
+    const result = readCollection(collection, { startPath: 'linked.nested' });
+
+    expect(result.resources).toEqual([]);
+    expect(result.problems).toEqual([
+      expect.objectContaining({
+        kind: 'unreadable',
+        folderPath: 'linked',
+        message: expect.stringContaining('symbolic link'),
+      }),
+    ]);
+  });
+
   it('reads a missing translations folder as an empty collection without problems', () => {
     expect(readCollection(testCollection(join(root(), 'missing')))).toEqual({ resources: [], problems: [] });
   });
@@ -113,7 +130,8 @@ describe('readCollection (real fs)', () => {
     expect(resources).toEqual([]);
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ folderPath: '', absolutePath: file });
-    expect(problems[0]?.message).toContain('Cannot list folder');
+    expect(problems[0]?.kind).toBe('unreadable');
+    expect(problems[0]?.message).toContain('ENOTDIR');
   });
 
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
@@ -130,7 +148,8 @@ describe('readCollection (real fs)', () => {
         expect(resources.map((resource) => resource.fullKey)).toEqual(['public.ok']);
         expect(problems).toHaveLength(1);
         expect(problems[0]).toMatchObject({ folderPath: 'private', absolutePath: privateFolder });
-        expect(problems[0]?.message).toContain('Cannot list folder');
+        expect(problems[0]?.kind).toBe('unreadable');
+        expect(problems[0]?.message).toContain('EACCES');
       } finally {
         chmodSync(privateFolder, 0o700);
       }

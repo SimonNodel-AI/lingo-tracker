@@ -1,6 +1,7 @@
 import { rmSync } from 'node:fs';
 import type { Collection } from '../config/open-collection';
-import { FolderNotFoundError } from '../errors/lingo-tracker-error';
+import { InvalidCollectionFolderError, FolderNotFoundError } from '../errors/lingo-tracker-error';
+import { walkCollectionFolders } from '../resource/collection-folders';
 import { sweepCollection } from '../resource/collection-sweep';
 import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { folderMutation, reindexMutation, type MutationSinkOptions } from '../resource/resource-mutation';
@@ -23,7 +24,7 @@ export interface DeleteFolderResult {
  * This function:
  * 1. Validates the folder path segments
  * 2. Converts dot-delimited path to filesystem path
- * 3. Counts the resource entries in the folder tree (its Collection Sweep: hidden folders and
+ * 3. Refuses a symbolic link in the start address, then counts the resource entries in the folder tree (its Collection Sweep: hidden folders and
  *    unreadable folders are not counted, though they are deleted with the rest)
  * 4. Recursively deletes the folder and all its contents
  *
@@ -49,9 +50,21 @@ export function deleteFolder(
 
   validateFolderAddress(folderPath, 'folder path', false);
 
-  const { absolutePath: absoluteFolderPath, isDirectory } = inspectFolderAddress(translationsFolder, folderPath);
+  let address: ReturnType<typeof inspectFolderAddress>;
+  try {
+    address = inspectFolderAddress(translationsFolder, folderPath);
+  } catch (error) {
+    if (error instanceof InvalidCollectionFolderError)
+      throw new InvalidCollectionFolderError(error.problem, 'delete', folderPath);
+    throw error;
+  }
+  const { absolutePath: absoluteFolderPath, isDirectory } = address;
   if (!isDirectory) {
     throw new FolderNotFoundError(folderPath);
+  }
+
+  for (const visit of walkCollectionFolders(translationsFolder, { startPath: folderPath, maxDepth: 0 })) {
+    if (visit.problem) throw new InvalidCollectionFolderError(visit.problem, 'delete', folderPath);
   }
 
   const resourcesDeleted = countResources(collection, folderPath);

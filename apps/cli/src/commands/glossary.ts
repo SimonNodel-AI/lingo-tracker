@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGlossary, type Collection, GlossaryExtractorError } from '@simoncodes-ca/core';
+import { buildGlossary, type Collection, describeFolderProblem, GlossaryExtractorError } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { hasPipedStdin } from '../runner/terminal';
 import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
@@ -95,7 +95,7 @@ function runGlossary(options: GlossaryCommandOptions, cwd: string, collections: 
   const { readProblems, ...glossary } = buildWithFlagWording(collections, block, options);
 
   for (const problem of readProblems) {
-    ConsoleFormatter.warning(`Collection '${problem.collectionName}': skipped unreadable folder: ${problem.message}`);
+    ConsoleFormatter.warning(describeFolderProblem(problem, { collectionName: problem.collectionName }));
   }
 
   if (glossary.locales.length === 0) {

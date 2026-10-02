@@ -123,7 +123,7 @@ export function resolveResourceAdd(
   for (const translation of params.translations ?? []) {
     if (translation.status !== undefined) assertTranslationStatus(translation.status);
   }
-  const existed = openResourceFolder(paths.folderPath, { baseLocale }).has(paths.entryKey);
+  const existed = openResourceFolder(paths.folderPath, { baseLocale, translationsFolder }).has(paths.entryKey);
   if (existed && onExisting === 'fail') throw new ResourceAlreadyExistsError(paths.resolvedKey);
   return { params, paths };
 }
@@ -172,7 +172,10 @@ export function assertPreparedResourceCanWrite(
   prepared: PreparedResourceAdd,
   onExisting: ExistingResourcePolicy,
 ): void {
-  const folder = openResourceFolder(prepared.paths.folderPath, { baseLocale: collection.baseLocale });
+  const folder = openResourceFolder(prepared.paths.folderPath, {
+    baseLocale: collection.baseLocale,
+    translationsFolder: collection.translationsFolder,
+  });
   checkWriteConflict(folder, prepared.paths, onExisting);
 }
 
@@ -185,7 +188,7 @@ export function writePreparedResourceAdd(
 ): AddResourceResult {
   const { paths, params, baseValue, translations } = prepared;
   const { translationsFolder, baseLocale } = collection;
-  const folder = openResourceFolder(paths.folderPath, { baseLocale });
+  const folder = openResourceFolder(paths.folderPath, { baseLocale, translationsFolder });
   const created = checkWriteConflict(folder, paths, onExisting);
   ensureDirectoryExists({ directoryPath: paths.folderPath, errorContext: 'Creating resource folder' });
 

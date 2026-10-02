@@ -1,6 +1,7 @@
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from './move-destination';
+import { describeFolderProblem } from './collection-folders';
 import { sweepKeys } from './collection-sweep';
 import { folderAddressExists } from './folder-address';
 import { planMove } from './move-plan';
@@ -104,7 +105,7 @@ function expandPattern(
   }
 
   const { keys, problems } = sweepKeys(collection, { startPath: cleanPrefix });
-  result.errors.push(...problems.map((problem) => problem.message));
+  result.errors.push(...problems.map((problem) => describeFolderProblem(problem)));
 
   return [...planMove({ kind: 'pattern', prefix: cleanPrefix, keys }, destinationKey).relocations];
 }

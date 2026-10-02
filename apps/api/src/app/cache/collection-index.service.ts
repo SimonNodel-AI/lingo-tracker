@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   type Collection,
   computeTreeFingerprint,
+  describeFolderProblem,
   extractSubtree,
   loadResourceTree,
   type MutationSink,
@@ -127,11 +128,8 @@ export class CollectionIndex {
     if (entry?.status === 'ready' && entry.tree) return treeResources(entry.tree);
 
     const { resources, problems } = readCollection(collection);
-    if (problems.length > 0) {
-      this.#logger.warn(
-        `Search skipped ${problems.length} unreadable folder(s) in collection ${collection.name}: ` +
-          problems.map((problem) => problem.message).join('; '),
-      );
+    for (const problem of problems) {
+      this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name }));
     }
     return resources;
   }
@@ -260,6 +258,7 @@ export class CollectionIndex {
         baseLocale: collection.baseLocale,
         path: '',
         depth: Number.POSITIVE_INFINITY,
+        onProblem: (problem) => this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name })),
       });
       entry.status = 'ready';
       entry.indexedAt = new Date();

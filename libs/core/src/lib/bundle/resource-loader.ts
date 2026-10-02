@@ -3,6 +3,7 @@
  * Collection Reader.
  */
 
+import { describeFolderProblem } from '../resource/collection-folders';
 import type { Collection } from '../config/open-collection';
 import { type CollectionRead, readCollection } from '../resource/read-collection';
 
@@ -34,25 +35,20 @@ export type CollectionReadCache = Map<string, CollectionRead>;
  * An entry with no value for `locale` is left out.
  *
  * Folders the reader could not read are reported once per collection and run: pushed to
- * `warnings` when given, otherwise logged.
+ * the required `warnings` channel. Core does not log them.
  */
 export function loadCollectionResources(
   collection: Collection,
   locale: BundleLocale,
-  cache?: CollectionReadCache,
-  warnings?: string[],
+  cache: CollectionReadCache | undefined,
+  warnings: string[],
 ): FlatResource[] {
   let read = cache?.get(collection.name);
   if (!read) {
     read = readCollection(collection);
     cache?.set(collection.name, read);
     for (const problem of read.problems) {
-      const message = `Collection '${collection.name}': skipped unreadable folder: ${problem.message}`;
-      if (warnings) {
-        warnings.push(message);
-      } else {
-        console.warn(`⚠️  ${message}`);
-      }
+      warnings.push(describeFolderProblem(problem, { collectionName: collection.name }));
     }
   }
 

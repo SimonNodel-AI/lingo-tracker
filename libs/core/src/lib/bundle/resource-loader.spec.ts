@@ -11,7 +11,7 @@ describe('loadCollectionResources (real fs)', () => {
   });
 
   it('returns an empty list when the translations folder does not exist', () => {
-    expect(loadCollectionResources(testCollection(join(root(), 'missing')), 'en')).toEqual([]);
+    expect(loadCollectionResources(testCollection(join(root(), 'missing')), 'en', undefined, [])).toEqual([]);
   });
 
   it('reads the base value for the base locale and the translation for other locales, with full keys', () => {
@@ -21,11 +21,11 @@ describe('loadCollectionResources (real fs)', () => {
       'apps.common.buttons.ok': { source: 'OK', translations: { fr: "D'accord" } },
     });
 
-    expect(loadCollectionResources(collection, 'en')).toEqual([
+    expect(loadCollectionResources(collection, 'en', undefined, [])).toEqual([
       { key: 'welcome', value: 'Welcome', tags: [] },
       { key: 'apps.common.buttons.ok', value: 'OK', tags: [] },
     ]);
-    expect(loadCollectionResources(collection, 'fr')).toEqual([
+    expect(loadCollectionResources(collection, 'fr', undefined, [])).toEqual([
       { key: 'apps.common.buttons.ok', value: "D'accord", tags: [] },
     ]);
   });
@@ -34,15 +34,17 @@ describe('loadCollectionResources (real fs)', () => {
     const collection = testCollection(root(), { baseLocale: 'fr', locales: ['fr', 'en'] });
     seedResources(collection, { ok: { source: 'Bien', translations: { en: 'OK' } } });
 
-    expect(loadCollectionResources(collection, 'fr').map((resource) => resource.value)).toEqual(['Bien']);
-    expect(loadCollectionResources(collection, 'en').map((resource) => resource.value)).toEqual(['OK']);
+    expect(loadCollectionResources(collection, 'fr', undefined, []).map((resource) => resource.value)).toEqual([
+      'Bien',
+    ]);
+    expect(loadCollectionResources(collection, 'en', undefined, []).map((resource) => resource.value)).toEqual(['OK']);
   });
 
   it('carries the effective tags: the collection tags united with the entry tags', () => {
     const collection = testCollection(root(), { tags: ['shared'] });
     seedResources(collection, { ok: { source: 'OK', tags: ['ui', 'buttons'] } });
 
-    expect(loadCollectionResources(collection, 'en')).toEqual([
+    expect(loadCollectionResources(collection, 'en', undefined, [])).toEqual([
       { key: 'ok', value: 'OK', tags: ['shared', 'ui', 'buttons'] },
     ]);
   });
@@ -50,7 +52,7 @@ describe('loadCollectionResources (real fs)', () => {
   it('includes entries without metadata', () => {
     writeFolderFiles(root(), 'common', { entries: { ok: { source: 'OK', fr: 'Bien' } } });
 
-    expect(loadCollectionResources(testCollection(root()), 'fr')).toEqual([
+    expect(loadCollectionResources(testCollection(root()), 'fr', undefined, [])).toEqual([
       { key: 'common.ok', value: 'Bien', tags: [] },
     ]);
   });
@@ -68,16 +70,18 @@ describe('loadCollectionResources (real fs)', () => {
     loadCollectionResources(collection, 'fr', cache, warnings);
 
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("Collection 'main': skipped unreadable folder");
+    expect(warnings[0]).toContain("Collection 'main': Skipped unreadable folder");
     expect(warnings[0]).toContain('resource_entries.json');
   });
 
-  it('logs an unreadable folder when no warnings list is given', () => {
+  it('reports an unreadable folder through warnings without logging', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     writeFolderFiles(root(), 'bad', { entries: '{ invalid json }' });
 
-    expect(loadCollectionResources(testCollection(root()), 'en')).toEqual([]);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('skipped unreadable folder'));
+    const warnings: string[] = [];
+    expect(loadCollectionResources(testCollection(root()), 'en', undefined, warnings)).toEqual([]);
+    expect(warnings).toEqual([expect.stringContaining("Skipped unreadable folder 'bad'")]);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it('reads the disk once per collection for a shared cache', () => {
@@ -85,9 +89,9 @@ describe('loadCollectionResources (real fs)', () => {
     seedResources(collection, { ok: { source: 'OK' } });
     const cache: CollectionReadCache = new Map();
 
-    loadCollectionResources(collection, 'en', cache);
+    loadCollectionResources(collection, 'en', cache, []);
     seedResources(collection, { later: { source: 'Later' } });
 
-    expect(loadCollectionResources(collection, 'en', cache).map((resource) => resource.key)).toEqual(['ok']);
+    expect(loadCollectionResources(collection, 'en', cache, []).map((resource) => resource.key)).toEqual(['ok']);
   });
 });

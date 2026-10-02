@@ -23,6 +23,7 @@ export {
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidCollectionFolderError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidImportLocaleError,

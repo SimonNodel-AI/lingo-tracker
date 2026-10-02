@@ -1236,7 +1236,7 @@ No similar values found for "Save draft".
 **Notes:**
 - Only the base locale value is compared (not translations or keys)
 - A whole-word containment match is shown with its real similarity, which can be between 40% and 80% (`Save draft` for `Save` is 40%; `Save and Close` at 29% is not shown)
-- Folders that cannot be read are reported as `⚠️  Skipped unreadable folder: …` lines; the rest of the collection is still searched
+- Folders that cannot be read are reported as `⚠️  Skipped unreadable folder '<path or (root)>': …` lines; the rest of the collection is still searched
 - The same rule backs the Tracker's "Similar values" list and `GET /api/collections/:name/resources/search?mode=similar`
 - Non-interactive only; does not prompt for missing options
 
