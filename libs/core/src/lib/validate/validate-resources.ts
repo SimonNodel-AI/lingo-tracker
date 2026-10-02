@@ -96,7 +96,11 @@ export function validateResources(
     const resources = set.resources.filter((resource) => resource.collection === collection.name);
     const targetLocales = collection.targetLocales.filter((locale) => !skipped.has(locale));
     for (const locale of targetLocales) validatedLocales.add(locale);
-    unreadableFolders.push(...set.readProblems.filter((problem) => problem.collection === collection.name));
+    unreadableFolders.push(
+      ...set.readProblems
+        .filter((problem) => problem.collection === collection.name)
+        .map(({ collection, folderPath, message }) => ({ collection, folderPath, message })),
+    );
 
     // Validate each resource for each of the collection's target locales
     for (const resource of resources) {

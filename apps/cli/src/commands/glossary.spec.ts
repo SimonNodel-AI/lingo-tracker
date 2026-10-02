@@ -17,7 +17,13 @@ vi.mock('fs', async (importOriginal) => {
 });
 
 import * as fs from 'fs';
-import { buildGlossary, ConfigNotFoundError, type LingoTrackerConfig, loadConfig } from '@simoncodes-ca/core';
+import {
+  buildGlossary,
+  ConfigNotFoundError,
+  GlossaryExtractorError,
+  type LingoTrackerConfig,
+  loadConfig,
+} from '@simoncodes-ca/core';
 import { hasPipedStdin } from '../runner/terminal';
 import { glossaryCommand } from './glossary';
 
@@ -208,11 +214,13 @@ describe('glossaryCommand', () => {
   it('reports an unreadable folder on stderr and keeps JSON clean', async () => {
     vi.mocked(buildGlossary).mockReturnValue({
       ...RESULT,
-      readProblems: [{ collectionName: 'app', message: 'Failed to parse JSON file x' }],
+      readProblems: [
+        { kind: 'unreadable', folderPath: 'bad', collectionName: 'app', message: 'Failed to parse JSON file x' },
+      ],
     });
     await glossaryCommand({ text: 'Save', stdout: true });
     expect(console.error).toHaveBeenCalledWith(
-      "⚠️  Collection 'app': skipped unreadable folder: Failed to parse JSON file x",
+      "⚠️  Collection 'app': Skipped unreadable folder 'bad': Failed to parse JSON file x",
     );
     expect(console.log).not.toHaveBeenCalled();
     expect(JSON.parse(vi.mocked(process.stdout.write).mock.calls[0][0] as string)).not.toHaveProperty('readProblems');
@@ -225,11 +233,13 @@ describe('glossaryCommand', () => {
 
   it('exits 1 with a clear error for the unimplemented ai extractor', async () => {
     vi.mocked(buildGlossary).mockImplementation(() => {
-      throw new Error('The "ai" extractor is not yet implemented. Use --extractor ngram (the default).');
+      throw new GlossaryExtractorError('ai');
     });
     await glossaryCommand({ text: 'Save', extractor: 'ai' });
     expect(buildGlossary).toHaveBeenCalledWith(expect.any(Array), 'Save', expect.objectContaining({ extractor: 'ai' }));
-    expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/^❌ .*ai/i));
+    expect(console.error).toHaveBeenCalledWith(
+      '❌ The "ai" extractor is not yet implemented. Use --extractor ngram (the default).',
+    );
     expect(fs.writeFileSync).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });

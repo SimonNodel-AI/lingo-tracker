@@ -104,6 +104,28 @@ describe('CollectionIndex', () => {
   });
 
   describe('reading', () => {
+    it('logs disk-search and tree-load problems through Nest with the shared wording', () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const target = collection();
+        fs.mkdirSync(path.join(target.translationsFolder, 'broken'));
+        fs.writeFileSync(path.join(target.translationsFolder, 'broken', 'resource_entries.json'), '{ bad JSON');
+        const result = index.searchPage(target, { kind: 'search', query: 'OK', mode: 'text', limit: 10 });
+        expect(result.results).toHaveLength(1);
+        expect(warn).toHaveBeenCalledTimes(1);
+        const diagnostic = warn.mock.calls[0]?.[0];
+        expect(diagnostic).toEqual(expect.stringContaining("Collection 'main': Skipped unreadable folder 'broken': "));
+        expect(diagnostic).toEqual(expect.stringContaining('resource_entries.json'));
+
+        warn.mockClear();
+        expect(readyTree(target)).toBeDefined();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(diagnostic);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it('starts indexing on the first read and serves the tree after that', () => {
       expect(index.tree(collection())).toEqual({ status: 'not-started' });
 

@@ -1,3 +1,4 @@
+import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { resolve } from 'node:path';
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
@@ -96,7 +97,10 @@ export function relocateEntries(
     const paths = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
     let folder = folders.get(paths.folderPath);
     if (!folder) {
-      folder = openResourceFolder(paths.folderPath, { baseLocale: collection.baseLocale });
+      folder = openResourceFolder(paths.folderPath, {
+        baseLocale: collection.baseLocale,
+        translationsFolder: collection.translationsFolder,
+      });
       folders.set(paths.folderPath, folder);
     }
     return { folder, entryKey: paths.entryKey, id: `${paths.folderPath}\u0000${paths.entryKey}` };
@@ -223,6 +227,7 @@ function plan(
   try {
     fromSlot = slot(source, from);
   } catch (error) {
+    if (error instanceof InvalidCollectionFolderError) throw error;
     return `Failed to read source file for key: ${from}: ${error instanceof Error ? error.message : String(error)}`;
   }
   const stored = fromSlot.folder.get(fromSlot.entryKey);
@@ -234,6 +239,7 @@ function plan(
   try {
     toSlot = slot(destination, to);
   } catch (error) {
+    if (error instanceof InvalidCollectionFolderError) throw error;
     return `Failed to read destination file for key: ${to}: ${error instanceof Error ? error.message : String(error)}`;
   }
   if (toSlot.id === fromSlot.id) {

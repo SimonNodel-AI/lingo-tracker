@@ -1,4 +1,10 @@
-import { type Collection, normalizeSearchRequest, readCollection, searchResources } from '@simoncodes-ca/core';
+import {
+  type Collection,
+  describeFolderProblem,
+  normalizeSearchRequest,
+  readCollection,
+  searchResources,
+} from '@simoncodes-ca/core';
 import { defineCommand, requireOptions } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -32,7 +38,7 @@ export const findSimilarCommand = defineCommand<FindSimilarOptions>()({
 function reportSimilar(collection: Collection, query: string, limit: number): void {
   const { resources, problems } = readCollection(collection);
   for (const problem of problems) {
-    ConsoleFormatter.warning(`Skipped unreadable folder: ${problem.message}`);
+    ConsoleFormatter.warning(describeFolderProblem(problem));
   }
 
   const matches = searchResources(resources, collection, query, { mode: 'similar-value', limit });

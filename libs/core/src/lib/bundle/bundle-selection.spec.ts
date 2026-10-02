@@ -255,7 +255,7 @@ describe('Bundle Selection (real fs)', () => {
       const fr = selectBundleEntries([bundled(common)], 'fr', { ...noTransform, cache });
 
       expect(en.warnings).toHaveLength(1);
-      expect(en.warnings[0]).toContain("Collection 'common': skipped unreadable folder");
+      expect(en.warnings[0]).toContain("Collection 'common': Skipped unreadable folder");
       expect(fr.warnings).toEqual([]);
     });
   });

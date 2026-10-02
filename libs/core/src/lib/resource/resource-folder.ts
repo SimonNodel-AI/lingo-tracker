@@ -9,6 +9,7 @@ import {
 } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
+import { assertCollectionFolderPath } from './folder-address';
 import { calculateChecksum } from './checksum';
 import type { ResourceTreeEntry } from './load-resource-tree';
 import type { ResourceEntries, ResourceEntry } from './resource-entry';
@@ -146,6 +147,8 @@ export interface ResourceFolderSaveResult {
 }
 
 export interface OpenResourceFolderOptions {
+  /** Collection root for guarded reads and saves; omit only for standalone folder fixtures. */
+  readonly translationsFolder?: string;
   /** Base locale of the collection. Needed to find the base checksum in metadata. */
   readonly baseLocale: string;
 }
@@ -165,7 +168,8 @@ export function translationLocales(entry: Readonly<ResourceEntry>): string[] {
  * @throws Error when a file exists but is not valid JSON
  */
 export function openResourceFolder(folderPath: string, options: OpenResourceFolderOptions): ResourceFolder {
-  return new FileResourceFolder(folderPath, options.baseLocale);
+  if (options.translationsFolder !== undefined) assertCollectionFolderPath(options.translationsFolder, folderPath);
+  return new FileResourceFolder(folderPath, options.baseLocale, options.translationsFolder);
 }
 
 /** Own-property check, so keys like "constructor" are not mistaken for entries (lib es2020 has no Object.hasOwn). */
@@ -184,6 +188,7 @@ class FileResourceFolder implements ResourceFolder {
   constructor(
     readonly folderPath: string,
     private readonly baseLocale: string,
+    private readonly translationsFolder?: string,
   ) {
     this.entriesPath = join(folderPath, RESOURCE_ENTRIES_FILENAME);
     this.metaPath = join(folderPath, TRACKER_META_FILENAME);
@@ -447,6 +452,7 @@ class FileResourceFolder implements ResourceFolder {
 
   save(options: { readonly dryRun?: boolean } = {}): ResourceFolderSaveResult {
     const dryRun = options.dryRun ?? false;
+    if (this.translationsFolder !== undefined) assertCollectionFolderPath(this.translationsFolder, this.folderPath);
 
     if (this.isEmpty()) {
       const removed = [...(this.entriesExist ? [this.entriesPath] : []), ...(this.metaExists ? [this.metaPath] : [])];

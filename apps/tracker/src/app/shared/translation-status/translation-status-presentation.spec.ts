@@ -1,23 +1,15 @@
-import { STATUS_PRECEDENCE, type StatusCounts, type TranslationStatus } from '@simoncodes-ca/domain';
+import type { StatusCounts, TranslationStatus } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import {
   type RollupCenterState,
   rollupCenter,
-  STATUS_DISPLAY_ORDER,
   STATUS_PRESENTATION,
   statusIconFor,
   statusLabelTokenFor,
 } from './translation-status-presentation';
 
 const ZERO: StatusCounts = { stale: 0, new: 0, translated: 0, verified: 0 };
-
-describe('STATUS_DISPLAY_ORDER', () => {
-  it('lists every status once, new first', () => {
-    expect(STATUS_DISPLAY_ORDER).toEqual(['new', 'stale', 'translated', 'verified']);
-    expect([...STATUS_DISPLAY_ORDER].sort()).toEqual([...STATUS_PRECEDENCE].sort());
-  });
-});
 
 describe('statusIconFor / statusLabelTokenFor', () => {
   it.each<[TranslationStatus, string, string]>([

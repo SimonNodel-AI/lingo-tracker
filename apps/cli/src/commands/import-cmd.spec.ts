@@ -31,7 +31,6 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
     CONFIG_FILENAME: '.lingo-tracker.json',
     runImport: vi.fn(),
     detectImportFormat: actual.detectImportFormat,
-    getStrategyDefaults: actual.getStrategyDefaults,
     ImportSourceError: actual.ImportSourceError,
   };
 });
@@ -220,7 +219,7 @@ describe('import-cmd', () => {
       await importCommand({ source: '/test/import.json', locale: 'es', format: 'json' });
 
       expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Import completed successfully!'));
-      expect(console.error).toHaveBeenCalledWith('⚠️  Failed to write summary file: summary failed');
+      expect(console.error).toHaveBeenCalledWith('⚠️  Failed to write import summary file: summary failed');
       expect(fs.writeFileSync).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });
@@ -484,6 +483,35 @@ describe('import-cmd', () => {
 
       expect(runImport).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);
+    });
+  });
+
+  describe('Invalid strategy', () => {
+    it('rejects --strategy foo from CLI arguments with the valid choices and exit 1', async () => {
+      const originalArgv = process.argv;
+      try {
+        process.argv = [
+          'node',
+          'lingo-tracker',
+          'import',
+          '--source',
+          '/test/import.json',
+          '--locale',
+          'en',
+          '--strategy',
+          'foo',
+        ];
+        await import('../main');
+        await vi.waitFor(() => expect(process.exitCode).toBe(1));
+        expect(console.error).toHaveBeenCalledWith(
+          '❌ Invalid --strategy "foo". Valid strategies: translation-service, verification, migration, update.',
+        );
+        expect(runImport).not.toHaveBeenCalled();
+        expect(prompts).not.toHaveBeenCalled();
+        expect(fs.writeFileSync).not.toHaveBeenCalled();
+      } finally {
+        process.argv = originalArgv;
+      }
     });
   });
 

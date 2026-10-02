@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { hasFsErrorCode } from '@simoncodes-ca/core';
 import { type Ask, defineCommand } from '../runner/command-runner';
 
 export interface CollectionSpec {
@@ -191,7 +192,7 @@ export async function generateSkillMd(collections: CollectionSpec[], tokenCasing
     const template = await fs.promises.readFile(filePath, 'utf-8');
     return substituteSkillTemplate(template, collections, tokenCasing);
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (hasFsErrorCode(err, 'ENOENT')) {
       throw new Error(
         `Template file not found: ${filePath}. Make sure the CLI was built with pnpm run build:cli before running.`,
       );
@@ -206,7 +207,7 @@ export async function readPatternsMdTemplate(): Promise<string> {
   try {
     return await fs.promises.readFile(filePath, 'utf-8');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+    if (hasFsErrorCode(err, 'ENOENT')) {
       throw new Error(
         `Template file not found: ${filePath}. Make sure the CLI was built with pnpm run build:cli before running.`,
       );

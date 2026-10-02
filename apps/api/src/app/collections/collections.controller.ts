@@ -1,38 +1,11 @@
-import { BadRequestException, Body, Controller, Delete, Param, Post, Put } from '@nestjs/common';
+import { Controller, Delete, Param, Post, Put } from '@nestjs/common';
 import { addCollection, deleteCollection, openCollection, updateCollection } from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
 import { mapDtoToCollection } from '../mappers/collection.mapper';
-
-/** True for a plain object (not `null`, not an array). */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim() !== '';
-}
-
-/**
- * The HTTP envelope checks: the body and `collection` must be objects, and `name` must be
- * non-empty (required on create, optional on update). Core validates collection fields.
- */
-function assertCollectionBody(
-  body: unknown,
-  nameIs: 'required' | 'optional',
-): asserts body is { name?: string; collection: Record<string, unknown> } {
-  if (!isRecord(body)) {
-    throw new BadRequestException('request body must be an object');
-  }
-  if ((nameIs === 'required' || body.name !== undefined) && !isNonEmptyString(body.name)) {
-    throw new BadRequestException('name must be a non-empty string');
-  }
-  const { collection } = body;
-  if (!isRecord(collection)) {
-    throw new BadRequestException('collection must be an object');
-  }
-}
+import { createCollectionBody, updateCollectionBody } from '../validation/dto-schemas';
+import { ValidBody } from '../validation/valid-body';
 
 @Controller('collections')
 export class CollectionsController {
@@ -58,8 +31,7 @@ export class CollectionsController {
    * `mapDtoToCollection` calls core field validation before addCollection reads config.
    */
   @Post()
-  async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
-    assertCollectionBody(body, 'required');
+  async createCollection(@ValidBody(createCollectionBody) body: CreateCollectionDto): Promise<{ message: string }> {
     const { name, collection } = body;
     const mapped = mapDtoToCollection(collection);
     const result = addCollection(this.#configService.openProject(), name, mapped, {
@@ -78,9 +50,8 @@ export class CollectionsController {
   @Put(':collectionName')
   async updateCollectionByName(
     @Param('collectionName') collectionName: string,
-    @Body() body: UpdateCollectionDto,
+    @ValidBody(updateCollectionBody) body: UpdateCollectionDto,
   ): Promise<{ message: string }> {
-    assertCollectionBody(body, 'optional');
     const { name, collection } = body;
     const patch = mapDtoToCollection(collection);
     const current = openCollection(this.#configService.getConfig(), collectionName);

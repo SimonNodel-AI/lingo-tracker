@@ -82,6 +82,7 @@ interface TranslationSnapshot {
  * Values whose entry, base value, or target locale changed during translation are not written.
  */
 function writeTranslatedValues(
+  translationsFolder: string,
   folderPath: string,
   values: readonly {
     readonly entryKey: string;
@@ -91,7 +92,7 @@ function writeTranslatedValues(
   baseLocale: string,
   onSave: () => void,
 ): { writtenKeys: string[]; skippedKeys: string[] } {
-  const folder = openResourceFolder(folderPath, { baseLocale });
+  const folder = openResourceFolder(folderPath, { baseLocale, translationsFolder });
   const writtenKeys: string[] = [];
   const skippedKeys: string[] = [];
 
@@ -249,7 +250,7 @@ export async function translateLocale(
       }
 
       for (const [folderPath, folderValues] of byFolder) {
-        const written = writeTranslatedValues(folderPath, folderValues, baseLocale, reportWrite);
+        const written = writeTranslatedValues(translationsFolder, folderPath, folderValues, baseLocale, reportWrite);
         translatedCount += written.writtenKeys.length;
         skippedCount += written.skippedKeys.length;
         skippedKeys.push(...written.skippedKeys);

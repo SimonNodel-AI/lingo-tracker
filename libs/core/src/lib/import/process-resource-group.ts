@@ -1,9 +1,14 @@
 import { dirname } from 'node:path';
-import { findProtectedTermViolations, resolveImportStatus, type TranslationStatus } from '@simoncodes-ca/domain';
+import {
+  findProtectedTermViolations,
+  honouredImportSourceStatus,
+  importStrategyPolicy,
+  resolveImportStatus,
+  type TranslationStatus,
+} from '@simoncodes-ca/domain';
 import { calculateChecksum } from '../resource/checksum';
 import type { ProjectTerms } from '../config/project-terms';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import { determineNewResourceStatus, honouredSourceStatus } from './determine-status';
 import type { ImportSession, ResolvedImportOptions } from './import-session';
 import type { ResourceGroup } from './resource-grouping';
 import type { ImportChange, ImportedResource } from './types';
@@ -82,7 +87,8 @@ function handleNewResource(
     };
   }
 
-  const createdStatus = determineNewResourceStatus(options, resource);
+  const createdStatus =
+    honouredImportSourceStatus(options.strategy, options.preserveStatus, resource.status) ?? 'translated';
 
   folder.setBase(entryKey, resource.baseValue);
   folder.setTranslation(entryKey, locale, resource.value, createdStatus);
@@ -138,7 +144,7 @@ function handleTargetLocaleUpdate(ctx: GroupContext, resource: ImportedResource,
   const newStatus = resolveImportStatus({
     strategy: options.strategy,
     oldStatus,
-    incomingStatus: honouredSourceStatus(options, resource),
+    incomingStatus: honouredImportSourceStatus(options.strategy, options.preserveStatus, resource.status),
     valueChanged: true,
     baseChecksumChanged: false,
   });
@@ -167,7 +173,7 @@ function handleUnchangedTargetLocaleValue(
 ): ImportChange {
   const { locale, baseLocale, options, folder } = ctx;
 
-  if (options.strategy === 'update') {
+  if (importStrategyPolicy(options.strategy).statusOnUnchanged === 'untouched') {
     return {
       key: resource.key,
       type: 'updated',
@@ -184,13 +190,13 @@ function handleUnchangedTargetLocaleValue(
   // current base locale metadata during re-confirmation.
   const stored = folder.get(entryKey);
   const entryMeta = stored?.meta;
-  const shouldRefreshBaseChecksum = options.strategy === 'translation-service' || options.strategy === 'verification';
+  const shouldRefreshBaseChecksum = importStrategyPolicy(options.strategy).reconfirmsUnchanged;
   const currentBaseChecksum = entryMeta?.[baseLocale]?.checksum ?? calculateChecksum(stored?.entry.source ?? '');
   const baseChecksumChanged = shouldRefreshBaseChecksum && entryMeta?.[locale]?.baseChecksum !== currentBaseChecksum;
   const resolvedStatus = resolveImportStatus({
     strategy: options.strategy,
     oldStatus,
-    incomingStatus: honouredSourceStatus(options, resource),
+    incomingStatus: honouredImportSourceStatus(options.strategy, options.preserveStatus, resource.status),
     valueChanged: false,
     baseChecksumChanged,
   });
@@ -258,7 +264,10 @@ export function processResourceGroup(session: ImportSession, group: ResourceGrou
 
   let folder: ResourceFolder;
   try {
-    folder = openResourceFolder(dirname(group.entryResourcePath), { baseLocale });
+    folder = openResourceFolder(dirname(group.entryResourcePath), {
+      baseLocale,
+      translationsFolder: session.collection.translationsFolder,
+    });
   } catch (error) {
     for (const { resource } of group.resources) {
       changes.push({ key: resource.key, type: 'failed', reason: `Failed to read resource files: ${error}` });

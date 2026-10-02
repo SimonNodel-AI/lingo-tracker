@@ -5,6 +5,7 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { ErrorMessages } from '../errors/error-messages';
 import { ConfigChangedError, InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
+import { hasFsErrorCode } from '../file-io/fs-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import type { OpenedProject } from './open-collection';
 import { configContentHash, configReadVersion, loadConfig } from './load-config';
@@ -53,7 +54,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
     try {
       currentContent = readFileSync(configPath, 'utf8');
     } catch (error) {
-      if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (hasFsErrorCode(error, 'ENOENT')) {
         throw new ConfigChangedError();
       }
       throw new InvalidConfigError(`Could not read ${CONFIG_FILENAME}`, { cause: error });
@@ -67,7 +68,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
     try {
       writeJsonFile({ filePath: configPath, data: config, pretty: true, createOnly });
     } catch (error) {
-      if (createOnly && error instanceof Error && (error as NodeJS.ErrnoException).code === 'EEXIST') {
+      if (createOnly && hasFsErrorCode(error, 'EEXIST')) {
         throw new InvalidConfigError(ErrorMessages.configAlreadyExists());
       }
       throw new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: error });

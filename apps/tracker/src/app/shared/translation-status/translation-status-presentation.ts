@@ -4,7 +4,7 @@ import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 /**
  * How the Tracker shows a translation status. The counting and the worst-status
  * rule live in `@simoncodes-ca/domain` (translation-status-summary); this module
- * only holds what is presentational: glyphs, label tokens and list order. Colour
+ * only holds what is presentational: glyphs and label tokens. Every status ranking uses `STATUS_PRECEDENCE`. Colour
  * lives in CSS (`--color-status-*`) so both themes can move it.
  */
 interface StatusPresentation {
@@ -44,15 +44,6 @@ export const STATUS_PRESENTATION: Readonly<Record<TranslationStatus, StatusPrese
     countToken: TRACKER_TOKENS.BROWSER.STATUS.VERIFIEDCOUNTX,
   },
 };
-
-/**
- * The order statuses are listed in: the status filter rail, the rollup tooltip
- * rows, and sort by status. The rollup ring draws its arcs in the reverse order.
- *
- * UI order starts with `new`; roll-up `STATUS_PRECEDENCE` starts with `stale`
- * because it ranks changed published work as worse.
- */
-export const STATUS_DISPLAY_ORDER: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
 
 /** Presentation for a status, or `undefined` for no status or a value that is not a known status. */
 function presentationOf(status: TranslationStatus | undefined): StatusPresentation | undefined {

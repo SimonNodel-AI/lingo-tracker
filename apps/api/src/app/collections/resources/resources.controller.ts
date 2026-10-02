@@ -1,17 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  HttpException,
-  HttpStatus,
-  NotFoundException,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Res,
-} from '@nestjs/common';
+import { Controller, Delete, Get, HttpStatus, NotFoundException, Param, Patch, Post, Res } from '@nestjs/common';
 import {
   addResources,
   assertCanTranslateLocale,
@@ -36,7 +23,6 @@ import type {
   ResourceSummaryDto,
   ResourceTreeDto,
   SearchResultsDto,
-  SearchTranslationsDto,
   TerminologyFindingsDto,
   TranslateLocaleJobDto,
   TranslateLocaleRequestDto,
@@ -54,6 +40,19 @@ import { mapResourceEntryToSummary, mapResourceTreeToDto } from '../../mappers/r
 import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import { RouteCollection } from '../route-collection';
+import {
+  searchQuery,
+  treeQuery,
+  type SearchQuery,
+  type TreeQuery,
+  translateResourceBody,
+  createResourcesBody,
+  deleteResourcesBody,
+  moveResourcesBody,
+  updateResourceBody,
+  translateLocaleBody,
+} from '../../validation/dto-schemas';
+import { ValidBody, ValidQuery } from '../../validation/valid-body';
 
 @Controller('collections/:collectionName/resources')
 export class ResourcesController {
@@ -70,7 +69,7 @@ export class ResourcesController {
   @Post('translate')
   async translateResource(
     @RouteCollection() collection: Collection,
-    @Body() dto: TranslateResourceDto,
+    @ValidBody(translateResourceBody) dto: TranslateResourceDto,
   ): Promise<TranslateResourceResponseDto> {
     const result = await translateExistingResource(collection, dto.key, { onMutation: this.#index.sink });
 
@@ -85,14 +84,10 @@ export class ResourcesController {
   @Post()
   async createResources(
     @RouteCollection() collection: Collection,
-    @Body() body: CreateResourceDto | CreateResourceDto[],
+    @ValidBody(createResourcesBody) body: CreateResourceDto | CreateResourceDto[],
   ): Promise<CreateResourceResponseDto> {
     // Normalize to array
     const resources = Array.isArray(body) ? body : [body];
-
-    if (resources.length === 0) {
-      throw new HttpException('At least one resource is required', HttpStatus.BAD_REQUEST);
-    }
 
     const result = await addResources(
       collection,
@@ -119,12 +114,8 @@ export class ResourcesController {
   @Delete()
   async delete(
     @RouteCollection() collection: Collection,
-    @Body() dto: DeleteResourceDto,
+    @ValidBody(deleteResourcesBody) dto: DeleteResourceDto,
   ): Promise<DeleteResourceResponseDto> {
-    if (!dto.keys || !Array.isArray(dto.keys) || dto.keys.length === 0) {
-      throw new HttpException('Invalid request: keys array is required and must not be empty', HttpStatus.BAD_REQUEST);
-    }
-
     const result = deleteResource(collection, { keys: dto.keys }, { onMutation: this.#index.sink });
 
     return {
@@ -136,14 +127,10 @@ export class ResourcesController {
   @Post('move')
   async move(
     @RouteCollection() collection: Collection,
-    @Body() dto: MoveResourceDto,
+    @ValidBody(moveResourcesBody) dto: MoveResourceDto,
   ): Promise<MoveResourceResponseDto> {
     // Cross-collection moves need the config to resolve destination collections.
     const config = this.#configService.getConfig();
-
-    if (!dto.moves || !Array.isArray(dto.moves) || dto.moves.length === 0) {
-      throw new HttpException('Invalid request: moves array is required and must not be empty', HttpStatus.BAD_REQUEST);
-    }
 
     const moves: MoveResourcesOperation[] = dto.moves.map((op) => ({
       source: op.source,
@@ -158,7 +145,7 @@ export class ResourcesController {
   @Patch()
   async update(
     @RouteCollection() collection: Collection,
-    @Body() dto: UpdateResourceDto,
+    @ValidBody(updateResourceBody) dto: UpdateResourceDto,
   ): Promise<UpdateResourceResponseDto> {
     const result = await editResource(
       collection,
@@ -189,10 +176,10 @@ export class ResourcesController {
   @Get('tree')
   async getTree(
     @RouteCollection() collection: Collection,
-    @Query('path') path: string | undefined,
-    @Query('includeNested') includeNested: string | undefined,
+    @ValidQuery(treeQuery) query: TreeQuery,
     @Res({ passthrough: true }) response: Response,
   ): Promise<ResourceTreeDto | TreeStatusResponseDto> {
+    const { path, includeNested } = query;
     const read = this.#index.tree(collection, path ?? '');
 
     if (read.status !== 'ready') {
@@ -235,7 +222,7 @@ export class ResourcesController {
   @Get('search')
   async search(
     @RouteCollection() collection: Collection,
-    @Query() dto: SearchTranslationsDto,
+    @ValidQuery(searchQuery) dto: SearchQuery,
   ): Promise<SearchResultsDto> {
     const request = normalizeSearchRequest(
       {
@@ -256,7 +243,7 @@ export class ResourcesController {
 
     const page = this.#index.searchPage(collection, request);
     return {
-      query: dto.query,
+      query: dto.query ?? '',
       results: mapSearchResultsToDto(page.results, collection),
       totalFound: page.totalFound,
       limited: page.limited,
@@ -266,7 +253,7 @@ export class ResourcesController {
   @Post('translate-locale')
   async translateLocale(
     @RouteCollection() collection: Collection,
-    @Body() dto: TranslateLocaleRequestDto,
+    @ValidBody(translateLocaleBody) dto: TranslateLocaleRequestDto,
     @Res() response: Response,
   ): Promise<void> {
     assertCanTranslateLocale(collection, dto.locale);

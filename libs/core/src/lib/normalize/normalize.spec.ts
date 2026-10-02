@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { normalize } from './normalize';
 import { calculateChecksum } from '../resource/checksum';
@@ -265,5 +265,15 @@ describe('normalize', () => {
     expect(entries(hiddenFolder).ok).toEqual({ source: 'Hi {{ name }}' });
     expect(existsSync(join(hiddenFolder, 'tracker_meta.json'))).toBe(false);
     expect(existsSync(join(hiddenFolder, 'empty'))).toBe(true);
+  });
+
+  it('keeps stray files and their ancestors without reporting errors', async () => {
+    const folder = writeFolderFiles(dir(), 'apps.common', { entries: {}, meta: {} });
+    writeFileSync(join(folder, 'notes.md'), 'my notes');
+    const result = await normalize(collection());
+    expect(result.foldersRemoved).toBe(0);
+    expect(result.problems).toEqual([]);
+    expect(readFileSync(join(folder, 'notes.md'), 'utf8')).toBe('my notes');
+    expect(existsSync(join(dir(), 'apps'))).toBe(true);
   });
 });

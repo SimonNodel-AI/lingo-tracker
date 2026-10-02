@@ -15,7 +15,7 @@ import {
   multiselectResultToString,
   parseCommaSeparatedList,
   processMultiselectWithAll,
-  writeRunSummary,
+  reportRunSummary,
 } from '../utils';
 import { EXPORT_DEFAULTS } from './run-option-defaults';
 
@@ -101,13 +101,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
 
     displayResults(result);
 
-    if (!options.dryRun) {
-      const summaryPath = writeRunSummary('export', result.summary);
-      console.log(`\n📄 Summary written to: ${summaryPath}`);
-    } else {
-      console.log('\n📄 Summary (Dry Run):');
-      console.log(result.summary);
-    }
+    reportRunSummary('export', result.summary, { dryRun: Boolean(options.dryRun), previewOnDryRun: true });
     return exitForRunOutcome(result.outcome);
   },
 });

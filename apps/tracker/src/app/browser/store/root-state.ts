@@ -11,7 +11,10 @@ import type { CollectionSettings } from '../../collections/store/collection-sett
  *   a response that arrives after another collection was opened
  * - currentFolderPath: the folder the list shows, or returns to after a search; written only by the
  *   List Scope (`with-list-scope.feature.ts`)
- * - densityMode and related: read by withFilterFeature (compact-mode locale tracking) and written by withViewPreferencesFeature
+ * - densityMode, compactLocale, compactLocaleManuallyChanged, nonCompactSelectedLocales:
+ *   together with the filter's selectedLocales, the pure Locale Selection (`locale-selection.ts`).
+ *   withFilterFeature reads its projections and writes locale transitions;
+ *   withViewPreferencesFeature writes density/restoration transitions and persists preferences.
  */
 export interface RootState {
   sessionId: number;

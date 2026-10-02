@@ -423,6 +423,7 @@ describe('find-similar', () => {
     it('warns about each folder it could not read and still reports the others', async () => {
       vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
       const problem: CollectionReadProblem = {
+        kind: 'unreadable',
         folderPath: 'broken',
         absolutePath: '/project/src/assets/i18n/broken',
         message: 'Unexpected token in resource_entries.json',
@@ -432,7 +433,7 @@ describe('find-similar', () => {
       await findSimilarCommand({ collection: 'tracker', value: 'OK' });
 
       expect(console.error).toHaveBeenCalledWith(
-        '⚠️  Skipped unreadable folder: Unexpected token in resource_entries.json',
+        "⚠️  Skipped unreadable folder 'broken': Unexpected token in resource_entries.json",
       );
       expect(console.log).toHaveBeenCalledWith('  common.ok → "OK" (similarity: 100%)');
       expect(process.exitCode).toBe(0);

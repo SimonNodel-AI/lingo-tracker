@@ -3,8 +3,8 @@ import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import type { CollectionFolderProblem } from '../resource/collection-folders';
 import { sweepCollection } from '../resource/collection-sweep';
+import { pruneEmptyFolders } from '../resource/folder-pruning';
 import type { ResourceFolder } from '../resource/resource-folder';
-import { cleanupEmptyFolders } from './cleanup-empty-folders';
 import { normalizeEntryValues } from './normalize-entry';
 
 export interface NormalizeOptions {
@@ -21,7 +21,7 @@ export interface NormalizeResult {
   readonly filesUpdated: number;
   readonly foldersRemoved: number;
   readonly dryRun: boolean;
-  /** Folders that could not be read (invalid JSON, or not listable); they were left as they are. */
+  /** Folders that could not be read or pruned; they were kept. */
   readonly problems: CollectionFolderProblem[];
 }
 
@@ -71,7 +71,11 @@ export async function normalize(collection: Collection, options: NormalizeOption
     }
   }
 
-  const { foldersRemoved } = cleanupEmptyFolders(collection.translationsFolder, dryRun);
+  const pruning = pruneEmptyFolders(collection, { dryRun });
+  for (const problem of pruning.problems) {
+    if (!problems.some((existing) => existing.absolutePath === problem.absolutePath)) problems.push(problem);
+  }
+  const foldersRemoved = pruning.removed.length;
   return { ...counters, foldersRemoved, dryRun, problems };
 }
 

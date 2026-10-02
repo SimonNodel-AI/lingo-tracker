@@ -1,3 +1,4 @@
+import { describeFolderProblem } from '../lib/resource/collection-folders';
 import { CoreOperationError } from '../lib/errors/lingo-tracker-error';
 import { type CollectionSweepTarget, sweepCollection } from '../lib/resource/collection-sweep';
 import type { ResourceFolder } from '../lib/resource/resource-folder';
@@ -18,7 +19,7 @@ export function openLocaleFolders(collection: CollectionSweepTarget): ResourceFo
   const folders: ResourceFolder[] = [];
   for (const { folder, problem } of sweepCollection(collection)) {
     if (problem) {
-      throw new CoreOperationError(problem.message);
+      throw new CoreOperationError(describeFolderProblem(problem));
     }
     folders.push(folder);
   }

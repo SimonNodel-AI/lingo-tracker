@@ -80,9 +80,36 @@ export interface GenerateBundleResult {
 
 export type BundleTypeOutcome =
   | { readonly status: 'written'; readonly path: string; readonly keysCount: number; readonly warning?: string }
-  | { readonly status: 'skipped'; readonly reason: string; readonly warning?: string }
+  | { readonly status: 'skipped'; readonly reason: 'empty-bundle'; readonly warning?: string }
   | { readonly status: 'failed'; readonly reason: string; readonly warning?: string }
   | { readonly status: 'not-configured'; readonly warning?: string };
+
+/** Returns the outcome detail without status words, bundle key or output framing. */
+export function bundleTypeOutcomeDetail(outcome: BundleTypeOutcome): string {
+  switch (outcome.status) {
+    case 'written':
+      return `${outcome.path} (${outcome.keysCount} keys)`;
+    case 'skipped': {
+      const { reason } = outcome;
+      switch (reason) {
+        case 'empty-bundle':
+          return 'bundle is empty';
+        default: {
+          const unhandledReason: never = reason;
+          throw new Error(`Unknown bundle type skip reason: ${unhandledReason}`);
+        }
+      }
+    }
+    case 'not-configured':
+      return 'no typeDistFile configured';
+    case 'failed':
+      return outcome.reason;
+    default: {
+      const unhandled: never = outcome;
+      throw new Error(`Unknown bundle type outcome: ${unhandled}`);
+    }
+  }
+}
 
 /**
  * Generates a bundle's files: one JSON file per locale (a locale with no entries is skipped with a
@@ -213,7 +240,7 @@ function typeOutcomeFromResult(result: GenerateTypesResult, cwd: string): Bundle
   }
   if (result.errorReason) return { status: 'failed', reason: result.errorReason, warning: result.warning };
   if (result.skippedReason === 'empty-bundle')
-    return { status: 'skipped', reason: 'bundle has no keys', warning: result.warning };
+    return { status: 'skipped', reason: 'empty-bundle', warning: result.warning };
   return { status: 'not-configured', warning: result.warning };
 }
 

@@ -1,4 +1,5 @@
 import { readCollectionSet } from '../collection-set/collection-set';
+import type { CollectionFolderProblem } from '../resource/collection-folders';
 import type { Collection } from '../config/open-collection';
 import { GlossaryNoCollectionsError } from '../errors/lingo-tracker-error';
 import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
@@ -23,6 +24,8 @@ export interface Glossary {
 }
 
 export interface GlossaryReadProblem {
+  kind: CollectionFolderProblem['kind'];
+  folderPath: string;
   collectionName: string;
   message: string;
 }
@@ -65,6 +68,8 @@ export function buildGlossary(
     };
   });
   const readProblems = set.readProblems.map((problem) => ({
+    kind: problem.kind,
+    folderPath: problem.folderPath,
     collectionName: problem.collection,
     message: problem.message,
   }));

@@ -1578,6 +1578,7 @@ describe('BrowserStore', () => {
       // No locales selected initially
       expect(store.selectedLocales()).toEqual([]);
 
+      store.setDensityMode('full');
       store.setDensityMode('compact');
 
       // Should select base locale
@@ -1631,6 +1632,7 @@ describe('BrowserStore', () => {
 
       expect(store.selectedLocales()).toEqual([]);
 
+      store.setDensityMode('full');
       store.setDensityMode('compact');
 
       // Should fallback to first available locale
@@ -1791,6 +1793,31 @@ describe('BrowserStore', () => {
     });
 
     describe('Computed: filteredLocales', () => {
+      it('keeps projection references when only compact memory changes', () => {
+        store.setSelectedLocales(['es', 'fr']);
+        const filtered = store.filteredLocales();
+        const label = store.localeFilterLabel();
+        const filterable = store.filterableLocales();
+
+        patchState(unprotected(store), { compactLocale: 'de' });
+        expect(store.filteredLocales()).toBe(filtered);
+        expect(store.localeFilterLabel()).toBe(label);
+        expect(store.filterableLocales()).toBe(filterable);
+
+        patchState(unprotected(store), { nonCompactSelectedLocales: ['de'] });
+        expect(store.filteredLocales()).toBe(filtered);
+        expect(store.localeFilterLabel()).toBe(label);
+
+        patchState(unprotected(store), { compactLocaleManuallyChanged: true });
+        expect(store.filteredLocales()).toBe(filtered);
+        expect(store.localeFilterLabel()).toBe(label);
+
+        store.setSelectedLocales(['de']);
+        expect(store.filteredLocales()).not.toBe(filtered);
+        expect(store.filteredLocales()).toEqual(['en', 'de']);
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'de' });
+      });
+
       it('should always include base locale when no locales selected', () => {
         const filtered = store.filteredLocales();
         expect(filtered[0]).toBe('en');
@@ -2016,6 +2043,30 @@ describe('BrowserStore', () => {
     it('should not collapse other counts when one status is selected', () => {
       store.setSelectedStatuses(['new']);
       expect(store.statusCounts()).toEqual({ new: 2, stale: 1, translated: 1, verified: 2 });
+    });
+
+    it('should preserve the counts reference when only sort or selected statuses changes', () => {
+      const counts = store.statusCounts();
+      const needsWorkCount = store.needsWorkCount();
+
+      store.toggleSortDirection();
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['gamma', 'beta', 'alpha']);
+      expect(store.statusCounts()).toBe(counts);
+      expect(store.needsWorkCount()).toBe(needsWorkCount);
+
+      store.setSelectedStatuses(['new']);
+      expect(store.sortedTranslations().map((item) => item.fullKey)).toEqual(['beta', 'alpha']);
+      expect(store.statusCounts()).toBe(counts);
+      expect(store.needsWorkCount()).toBe(needsWorkCount);
+
+      store.setSortField('status');
+      expect(store.statusCounts()).toBe(counts);
+      expect(store.needsWorkCount()).toBe(needsWorkCount);
+
+      store.setSelectedLocales(['de']);
+      expect(store.statusCounts()).not.toBe(counts);
+      expect(store.statusCounts()).toEqual({ new: 0, stale: 0, translated: 1, verified: 2 });
+      expect(store.needsWorkCount()).toBe(0);
     });
 
     it('should narrow counts to the selected locales', () => {

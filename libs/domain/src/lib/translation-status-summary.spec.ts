@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { buildResourceSummary } from './resource-summary';
 import type { TranslationStatus } from './translation-status';
-import { countByStatus, STATUS_PRECEDENCE, type StatusCounts, worstStatus } from './translation-status-summary';
+import {
+  countByStatus,
+  STATUS_PRECEDENCE,
+  type StatusCounts,
+  statusCountsOver,
+  worstStatus,
+} from './translation-status-summary';
 
 const ZERO: StatusCounts = { stale: 0, new: 0, translated: 0, verified: 0 };
 
@@ -32,6 +39,48 @@ describe('countByStatus', () => {
       fr: 'verified',
     };
     expect(countByStatus(Object.values(statusByLocale))).toEqual({ ...ZERO, translated: 1, verified: 1 });
+  });
+});
+
+describe('statusCountsOver', () => {
+  const summary = buildResourceSummary(
+    'save',
+    {
+      source: 'Save',
+      translations: { es: 'Guardar', fr: 'Enregistrer' },
+      metadata: {
+        en: { checksum: 'base' },
+        es: { checksum: 'es', status: 'verified' },
+        fr: { checksum: 'fr', status: 'stale' },
+      },
+    },
+    { baseLocale: 'en', targetLocales: ['es', 'fr', 'de'], tags: [] },
+  );
+
+  it('counts a target with no metadata as new', () => {
+    expect(statusCountsOver(summary, ['de'])).toEqual({ ...ZERO, new: 1 });
+  });
+
+  it('ignores the base locale', () => {
+    expect(statusCountsOver(summary, ['en'])).toEqual(ZERO);
+  });
+
+  it('ignores an unknown locale', () => {
+    expect(statusCountsOver(summary, ['it'])).toEqual(ZERO);
+  });
+
+  it('returns zero counts for empty locales', () => {
+    expect(statusCountsOver(summary, [])).toEqual(ZERO);
+  });
+
+  it('counts only the supplied targets, using display statuses', () => {
+    expect(statusCountsOver(summary, ['en', 'es', 'fr', 'de', 'it'])).toEqual({
+      ...ZERO,
+      new: 1,
+      stale: 1,
+      verified: 1,
+    });
+    expect(statusCountsOver(summary, ['es', 'de'])).toEqual({ ...ZERO, new: 1, verified: 1 });
   });
 });
 

@@ -1,4 +1,5 @@
 import { join, relative, sep } from 'node:path';
+import { checkCollectionFolderPath } from './folder-address';
 import { walkFolders } from './iterative-folder-walker';
 
 /**
@@ -7,19 +8,34 @@ import { walkFolders } from './iterative-folder-walker';
  *
  * - Every folder under the translations folder is a collection folder, except hidden ones (the
  *   name starts with `.`) and everything below them: a key segment cannot start with `.`.
+ * - Symbolic links are not collection folders, including any segment of a supplied start path.
  * - A missing translations (or start) folder is an empty collection, not a problem.
  * - A folder that exists but cannot be listed (permission denied, or a file where a folder is
  *   expected) is a {@link CollectionFolderProblem}; the walk continues with the other folders.
  */
 
-/** A collection folder that could not be read. Its entries are missing from the walk's result. */
+/** A collection folder that could not be read or removed. */
 export interface CollectionFolderProblem {
+  readonly kind: 'unreadable' | 'not-removed';
   /** Dot-delimited folder path relative to the translations folder; `''` for the root. */
   readonly folderPath: string;
   /** Absolute path of the folder. */
   readonly absolutePath: string;
-  /** Why the folder could not be read; names the file. */
+  /** The underlying cause; read failures name the file. */
   readonly message: string;
+}
+
+/** The shared wording for folder diagnostics; adapters choose where to report it. */
+export function describeFolderProblem(
+  problem: Pick<CollectionFolderProblem, 'kind' | 'folderPath' | 'message'>,
+  options: { readonly collectionName?: string } = {},
+): string {
+  const prefix = options.collectionName === undefined ? '' : `Collection '${options.collectionName}': `;
+  const description =
+    problem.kind === 'unreadable'
+      ? `Skipped unreadable folder '${problem.folderPath || '(root)'}'`
+      : `Could not remove folder '${problem.folderPath}'`;
+  return `${prefix}${description}: ${problem.message}`;
 }
 
 /** A collection folder's address. */
@@ -37,7 +53,7 @@ export interface CollectionFolderAddress {
 export interface CollectionFolderVisit extends CollectionFolderAddress {
   /** Subfolders (hidden ones excluded), whether or not the walk descends into them. */
   readonly subfolderNames: readonly string[];
-  /** Set when the folder cannot be listed; `subfolderNames` is then empty. */
+  /** Set when the folder cannot be listed or is a symbolic link; `subfolderNames` is then empty. */
   readonly problem?: CollectionFolderProblem;
 }
 
@@ -59,7 +75,13 @@ export function* walkCollectionFolders(
   const startSegments = (options.startPath ?? '').split('.').filter((segment) => segment.length > 0);
   const addressOf = (absolutePath: string): CollectionFolderAddress => {
     const segments = segmentsOf(translationsFolder, absolutePath);
-    return { segments, folderPath: segments.join('.'), absolutePath, depth: segments.length - startSegments.length };
+    return {
+      segments,
+      folderPath: segments.join('.'),
+      absolutePath,
+      // A rejected start-path ancestor (symlink or lstat failure) is the sole visit, at depth 0.
+      depth: Math.max(0, segments.length - startSegments.length),
+    };
   };
 
   // The walker skips a folder it cannot list (the start folder included); each one becomes a
@@ -72,12 +94,19 @@ export function* walkCollectionFolders(
       ...address,
       subfolderNames: [],
       problem: {
+        kind: 'unreadable',
         folderPath: address.folderPath,
         absolutePath,
-        message: `Cannot list folder ${absolutePath}: ${message}`,
+        message,
       },
     });
   };
+
+  const startProblem = checkCollectionFolderPath(translationsFolder, join(translationsFolder, ...startSegments));
+  if (startProblem) {
+    yield { ...addressOf(startProblem.absolutePath), subfolderNames: [], problem: startProblem };
+    return;
+  }
 
   const walk = walkFolders(join(translationsFolder, ...startSegments), { maxDepth: options.maxDepth, onUnlistable });
   for (const visit of walk) {

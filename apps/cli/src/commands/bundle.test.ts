@@ -524,12 +524,12 @@ describe('bundleCommand', () => {
         filesGenerated: 3,
         warnings: [],
         localesProcessed: ['en'],
-        typeOutcome: { status: 'skipped', reason: 'bundle has no keys' },
+        typeOutcome: { status: 'skipped', reason: 'empty-bundle' },
       });
 
       await bundleCommand({ name: 'core' });
 
-      expect(console.log).toHaveBeenCalledWith('  └─ Types: Skipped (bundle has no keys)');
+      expect(console.log).toHaveBeenCalledWith('  └─ Types: Skipped (bundle is empty)');
     });
 
     it('should display type generation skipped (not-configured reason from result)', async () => {
@@ -579,9 +579,8 @@ describe('bundleCommand', () => {
       await bundleCommand({ name: 'core,admin', tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
+        '❌ Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
       );
-      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundles).toHaveBeenCalledWith(
         mockConfig,
         expect.objectContaining({ names: ['core', 'admin'] }),
@@ -595,9 +594,8 @@ describe('bundleCommand', () => {
       await bundleCommand({ tokenConstantName: 'MY_CUSTOM_TOKENS' });
 
       expect(console.error).toHaveBeenCalledWith(
-        expect.stringContaining('Cannot use --token-constant-name with multiple bundles'),
+        '❌ Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
       );
-      expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Please target a single bundle'));
       expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: undefined }));
     });
 

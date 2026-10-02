@@ -1,4 +1,5 @@
 import type { TranslationStatus } from '@simoncodes-ca/domain';
+import type { CollectionFolderProblem } from '../resource/collection-folders';
 import type { Collection } from '../config/open-collection';
 import { CollectionBaseLocaleMismatchError } from '../errors/lingo-tracker-error';
 import { readCollection } from '../resource/read-collection';
@@ -18,6 +19,7 @@ export interface CollectionSetResource {
 }
 
 export interface CollectionSetReadProblem {
+  kind: CollectionFolderProblem['kind'];
   collection: string;
   folderPath: string;
   message: string;
@@ -81,6 +83,7 @@ export function readCollectionSet(
     const read = readCollection(collection);
     readProblems.push(
       ...read.problems.map((problem) => ({
+        kind: problem.kind,
         collection: collection.name,
         folderPath: problem.folderPath,
         message: problem.message,

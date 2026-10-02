@@ -286,7 +286,7 @@ When you add a new locale to your configuration (e.g., adding `de` to your local
 External translation tools or services may provide translations without proper metadata. Normalization ensures all entries have correct checksums and statuses.
 
 **Periodic Maintenance**
-Running normalize periodically helps maintain consistency and cleans up your folder structure by removing empty directories.
+Running normalize periodically helps maintain consistency and cleans up your folder structure by removing empty directories (folders that hold no translation entries).
 
 **When Statuses Seem Wrong**
 If translation statuses don't match reality (e.g., translations marked as `stale` when they shouldn't be), normalization corrects these based on actual checksums.
@@ -302,26 +302,27 @@ The `normalize` command performs these operations:
    - `stale` - Base value changed since the translation was last updated
    - `translated` / `verified` - Preserved when base value hasn't changed
 4. **Creates Missing Files**: Ensures both `resource_entries.json` and `tracker_meta.json` exist at every folder level
-5. **Cleans Up Empty Folders**: Removes directories that no longer contain translation entries
+5. **Cleans Up Empty Folders**: Removes directories that hold no translation entries and no other files you may care about
 
 #### Folder Cleanup Details
 
 Normalization automatically removes empty folders to keep your translations directory clean and organized:
 
-- **Empty Folder Definition**: A folder is considered empty if it has:
-  - No `resource_entries.json` file, OR
-  - An empty `resource_entries.json` (no entries or `{}`), AND
-  - No subfolders containing entries
+- **Empty Folder Definition**: After its subfolders are cleaned up, a folder counts as empty when it holds nothing but:
+  - An empty `resource_entries.json` (no entries or `{}`), which is optional
+  - A `tracker_meta.json`, which is optional (its checksums and statuses describe entries the folder no longer has)
+  - The OS files `.DS_Store`, `Thumbs.db` and `desktop.ini`
 
 - **What Gets Removed**:
-  - Folders with only `tracker_meta.json` (metadata without entries)
-  - Folders with only hidden files like `.gitkeep` or `.DS_Store`
+  - Empty folders. Normalize deletes `resource_entries.json`, `tracker_meta.json` and the OS files above together with the folder
   - Parent folders that become empty after their children are removed
 
-- **What's Protected**:
+- **What's Kept**:
   - The root translations folder is never removed, even if empty
-  - Any folder containing `resource_entries.json` with actual entries
-  - Any folder with subfolders that contain entries
+  - Any folder with translation entries
+  - Any folder with any other file, such as `.gitkeep`, `notes.md` or a README. The folder and its parent folders stay
+  - Any folder with a hidden directory, a symlink, or a `resource_entries.json` or `tracker_meta.json` that cannot be read
+  - If normalize removes some files but cannot remove the folder, it reports a problem and keeps the folder
 
 - **Bottom-Up Cleanup**: The cleanup process starts with the deepest folders and works up to the root, allowing recursive removal of entire empty folder trees
 

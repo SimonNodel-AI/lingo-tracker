@@ -43,6 +43,7 @@ export type {
 export {
   addBundleDefinition,
   deleteBundleDefinition,
+  bundleTypeOutcomeDetail,
   generateBundles,
   generatePreparedBundle,
   type PrepareBundleRunParams,
@@ -104,10 +105,12 @@ export {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,
   type FolderPathPart,
+  GlossaryExtractorError,
   ImportSourceError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
+  InvalidCollectionFolderError,
   InvalidConfigError,
   InvalidFolderPathError,
   InvalidLocaleError,
@@ -127,6 +130,7 @@ export {
   ResourceNotFoundError,
   TranslationLocaleNotConfiguredError,
 } from './lib/errors';
+export { hasFsErrorCode } from './lib/file-io/fs-error';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 // Operations: export
 export { exportTargetLocales, runExport } from './lib/export/run-export';
@@ -154,7 +158,6 @@ export type {
 // Operations: import
 export {
   detectImportFormat,
-  getStrategyDefaults,
   runImport,
 } from './lib/import';
 export type {
@@ -193,11 +196,13 @@ export type {
 export {
   addResource,
   addResources,
+  type CollectionFolderProblem,
   type CollectionRead,
   type CollectionReadProblem,
   type CollectionReadTarget,
   computeTreeFingerprint,
   deleteResource,
+  describeFolderProblem,
   type EntryDetails,
   editResource,
   extractResourcesRecursively,

@@ -1,13 +1,6 @@
-import { Body, Controller, Delete, Get, HttpStatus, NotFoundException, Param, Post, Put, Res } from '@nestjs/common';
-import {
-  addBundleDefinition,
-  deleteBundleDefinition,
-  InvalidBundleDefinitionError,
-  planBundle,
-  updateBundleDefinition,
-} from '@simoncodes-ca/core';
+import { Controller, Delete, Get, HttpStatus, NotFoundException, Param, Post, Put, Res } from '@nestjs/common';
+import { addBundleDefinition, deleteBundleDefinition, planBundle, updateBundleDefinition } from '@simoncodes-ca/core';
 import type {
-  BundleDefinitionDto,
   BundleDryRunRequestDto,
   BundleDryRunResultDto,
   BundleGenerateJobDto,
@@ -15,11 +8,12 @@ import type {
   GenerateBundleRequestDto,
   UpdateBundleDto,
 } from '@simoncodes-ca/data-transfer';
-import type { BundleDefinition } from '@simoncodes-ca/domain';
 import type { Response } from 'express';
 import { ConfigService } from '../config/config.service';
 import { mapBundlePlanToDto } from '../mappers/bundle.mapper';
 import { BundleJobService } from './bundle-job.service';
+import { bundleDryRunBody, createBundleBody, updateBundleBody, generateBundleBody } from '../validation/dto-schemas';
+import { ValidBody } from '../validation/valid-body';
 
 /**
  * Bundle definitions are checked by the domain Bundle Definition rules: core's add/update
@@ -39,12 +33,12 @@ export class BundlesController {
 
   /** Plans a bundle from the request body. The definition need not be saved. */
   @Post('dry-run')
-  dryRun(@Body() body: BundleDryRunRequestDto): BundleDryRunResultDto {
+  dryRun(@ValidBody(bundleDryRunBody) body: BundleDryRunRequestDto): BundleDryRunResultDto {
     const plan = planBundle({
-      bundleKey: nameOf(body?.name),
-      bundleDefinition: body?.bundle,
+      bundleKey: body.name.trim(),
+      bundleDefinition: body.bundle,
       config: this.#configService.getConfig(),
-      ...(body?.locales !== undefined && { locales: body.locales }),
+      ...(body.locales !== undefined && { locales: body.locales }),
       cwd: process.cwd(),
     });
     return mapBundlePlanToDto(plan);
@@ -62,16 +56,16 @@ export class BundlesController {
   }
 
   @Post()
-  createBundle(@Body() body: CreateBundleDto): { message: string } {
-    const definition = requireDefinition(body?.bundle);
-    return addBundleDefinition(this.#configService.openProject(), nameOf(body?.name), definition);
+  createBundle(@ValidBody(createBundleBody) body: CreateBundleDto): { message: string } {
+    const definition = body.bundle;
+    return addBundleDefinition(this.#configService.openProject(), body.name.trim(), definition);
   }
 
   @Put(':name')
-  updateBundle(@Param('name') name: string, @Body() body: UpdateBundleDto): { message: string } {
-    const newName = typeof body?.name === 'string' && body.name.trim().length > 0 ? body.name : undefined;
+  updateBundle(@Param('name') name: string, @ValidBody(updateBundleBody) body: UpdateBundleDto): { message: string } {
+    const newName = typeof body.name === 'string' && body.name.trim().length > 0 ? body.name : undefined;
 
-    const definition = requireDefinition(body?.bundle);
+    const definition = body.bundle;
     return updateBundleDefinition(
       this.#configService.openProject(),
       name,
@@ -87,7 +81,11 @@ export class BundlesController {
 
   /** Starts a generation job for a saved bundle and answers 202 with the job snapshot. */
   @Post(':name/generate')
-  generateBundle(@Param('name') name: string, @Body() body: GenerateBundleRequestDto, @Res() response: Response): void {
+  generateBundle(
+    @Param('name') name: string,
+    @ValidBody(generateBundleBody) body: GenerateBundleRequestDto | undefined,
+    @Res() response: Response,
+  ): void {
     const config = this.#configService.getConfig();
 
     const jobId = this.#jobService.startJob({
@@ -99,16 +97,4 @@ export class BundlesController {
     const job = this.#jobService.getJob(jobId);
     response.status(HttpStatus.ACCEPTED).json(job);
   }
-}
-
-/** The trimmed name, or `''` (which the key rule reports as required) when it is not a string. */
-function nameOf(name: unknown): string {
-  return typeof name === 'string' ? name.trim() : '';
-}
-
-function requireDefinition(dto: BundleDefinitionDto | undefined): BundleDefinition {
-  if (!dto || typeof dto !== 'object') {
-    throw new InvalidBundleDefinitionError(['bundle definition is required.']);
-  }
-  return dto;
 }

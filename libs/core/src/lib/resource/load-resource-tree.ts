@@ -2,7 +2,8 @@ import { CoreOperationError } from '../errors/lingo-tracker-error';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
-import { resolveFolderAddress } from './folder-address';
+import { checkCollectionFolderPath } from './folder-address';
+import type { CollectionFolderProblem } from './collection-folders';
 import { readCollectionFolders } from './read-collection';
 
 export interface ResourceTreeNode {
@@ -33,6 +34,9 @@ export interface FolderChild {
 }
 
 export interface LoadResourceTreeOptions {
+  /** Receives unreadable folder problems; core never logs them. */
+  onProblem?: (problem: CollectionFolderProblem) => void;
+
   /** Root translations folder path */
   translationsFolder: string;
 
@@ -53,7 +57,7 @@ export interface LoadResourceTreeOptions {
  * Loads the resource tree of a translations folder (or of the subfolder at `path`), `depth` levels
  * deep; deeper folders are listed as not loaded. Folders are read through the Collection Reader,
  * so its rules apply: an entry without metadata has `metadata: {}`, and a folder that cannot be
- * read has no resources (the problem is logged).
+ * read has no resources (the problem is passed to `onProblem`).
  *
  * @throws Error when `path` names a folder that does not exist, or the start folder is not a folder.
  *   A missing translations folder is an empty tree.
@@ -62,7 +66,12 @@ export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTree
   const { baseLocale, path: folderPath = '', depth = 2, cwd = process.cwd() } = options;
   const translationsFolder = path.resolve(cwd, options.translationsFolder);
   const pathSegments = folderPath ? folderPath.split('.').filter(Boolean) : [];
-  const absoluteFolderPath = resolveFolderAddress(translationsFolder, pathSegments.join('.'));
+  const absoluteFolderPath = path.resolve(translationsFolder, ...pathSegments);
+  const startProblem = checkCollectionFolderPath(translationsFolder, absoluteFolderPath);
+  if (startProblem) {
+    options.onProblem?.(startProblem);
+    return { folderPathSegments: pathSegments, resources: [], children: [] };
+  }
 
   if (!fs.existsSync(absoluteFolderPath)) {
     if (pathSegments.length === 0) {
@@ -86,7 +95,9 @@ export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTree
   // Parents are visited before their children, and siblings in directory order.
   for (const folder of folders) {
     if (folder.problem) {
-      console.warn(`Error loading resources from ${folder.absolutePath}: ${folder.problem.message}`);
+      options.onProblem?.(folder.problem);
+      // A rejected ancestor is outside the requested subtree; leave that subtree empty.
+      if (folder.segments.length < pathSegments.length) continue;
     }
 
     const segments = [...folder.segments];

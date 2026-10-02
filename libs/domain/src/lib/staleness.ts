@@ -15,9 +15,6 @@ import { isNeedsWorkStatus, type TranslationStatus } from './translation-status'
 /** Metadata for one resource entry, keyed by locale (base locale included). */
 export type EntryLocaleMetadata = Readonly<Record<string, LocaleMetadata>>;
 
-/** Import strategies. Each strategy implies a different status outcome. */
-export type ImportStrategy = 'translation-service' | 'verification' | 'migration' | 'update';
-
 /**
  * Returns true when a translation is an untranslated copy of the base value.
  *
@@ -97,45 +94,4 @@ function translationWriteStatus(checksum: string, baseChecksum: string, status?:
 export function needsTranslation(localeMeta: LocaleMetadata | undefined): boolean {
   if (!localeMeta) return true;
   return localeMeta.status !== undefined && isNeedsWorkStatus(localeMeta.status);
-}
-
-export interface ResolveImportStatusParams {
-  /** `undefined` gets no strategy-specific handling (rules 2, 3, and 5 do not apply). */
-  readonly strategy: ImportStrategy | undefined;
-  /** Status before the import, if the locale had metadata. */
-  readonly oldStatus: TranslationStatus | undefined;
-  /**
-   * Status carried by the imported file, only when the caller has decided to honour it
-   * (for example `preserveStatus`). `undefined` means "use the strategy".
-   */
-  readonly incomingStatus: TranslationStatus | undefined;
-  /** True when the imported value differs from the stored value (or the locale had no value). */
-  readonly valueChanged: boolean;
-  /**
-   * True when the locale's stored `baseChecksum` no longer matches the current base checksum.
-   * Only relevant when the value is unchanged.
-   */
-  readonly baseChecksumChanged: boolean;
-}
-
-/**
- * Resolves the status of a target-locale value written (or re-confirmed) by an import.
- *
- * 1. An honoured incoming status always wins.
- * 2. `verification` → `verified`.
- * 3. `update` → keeps the previous status (`translated` if none).
- * 4. A changed value (`translation-service`, `migration`) → `translated`.
- * 5. An unchanged value re-confirmed by `translation-service` → `translated` when it was
- *    `stale` or its base checksum moved; otherwise the previous status is kept.
- * 6. Otherwise the previous status is kept (`translated` if none).
- */
-export function resolveImportStatus(params: ResolveImportStatusParams): TranslationStatus {
-  const { strategy, oldStatus, incomingStatus, valueChanged, baseChecksumChanged } = params;
-
-  if (incomingStatus) return incomingStatus;
-  if (strategy === 'verification') return 'verified';
-  if (strategy === 'update') return oldStatus ?? 'translated';
-  if (valueChanged) return 'translated';
-  if (strategy === 'translation-service' && (oldStatus === 'stale' || baseChecksumChanged)) return 'translated';
-  return oldStatus ?? 'translated';
 }

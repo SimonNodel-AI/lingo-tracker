@@ -145,11 +145,13 @@ describe('buildGlossary', () => {
   it('returns unreadable folders as problems while keeping readable entries', () => {
     vi.mocked(readCollection).mockReturnValue({
       resources: [stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'verified' })],
-      problems: [{ folderPath: 'bad', absolutePath: '/project/app/bad', message: 'bad JSON' }],
+      problems: [{ kind: 'unreadable', folderPath: 'bad', absolutePath: '/project/app/bad', message: 'bad JSON' }],
     });
     const result = buildGlossary([open('app')], 'Save');
     expect(result.matchCount).toBe(1);
-    expect(result.readProblems).toEqual([{ collectionName: 'app', message: 'bad JSON' }]);
+    expect(result.readProblems).toEqual([
+      { kind: 'unreadable', folderPath: 'bad', collectionName: 'app', message: 'bad JSON' },
+    ]);
   });
 
   it('filters new and stale translations unless includeAll is set', () => {

@@ -93,7 +93,7 @@ export async function editResource(
 ): Promise<EditResourceResult> {
   const { baseLocale, translationsFolder } = collection;
   const paths = validateAndResolvePaths({ key, translationsFolder });
-  const folder = openResourceFolder(paths.folderPath, { baseLocale });
+  const folder = openResourceFolder(paths.folderPath, { baseLocale, translationsFolder });
   const current = folder.get(paths.entryKey);
   if (!current?.meta) {
     throw new ResourceNotFoundError(paths.resolvedKey);
@@ -229,7 +229,12 @@ function resolveDestination(
   }
 
   const paths = resolveResourcePaths({ key: relocation.to, translationsFolder: collection.translationsFolder });
-  if (openResourceFolder(paths.folderPath, { baseLocale: collection.baseLocale }).has(paths.entryKey)) {
+  if (
+    openResourceFolder(paths.folderPath, {
+      baseLocale: collection.baseLocale,
+      translationsFolder: collection.translationsFolder,
+    }).has(paths.entryKey)
+  ) {
     throw new ResourceAlreadyExistsError(relocation.to);
   }
   return relocation.to;

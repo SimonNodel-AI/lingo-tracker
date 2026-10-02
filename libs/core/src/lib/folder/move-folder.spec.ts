@@ -1,5 +1,5 @@
 import * as fs from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
@@ -48,6 +48,7 @@ vi.mock('node:fs', () => {
     rmdirSync: vi.fn(),
     readdirSync: vi.fn(),
     statSync: vi.fn(),
+    lstatSync: vi.fn(),
     unlinkSync: vi.fn(),
   };
 });
@@ -56,6 +57,12 @@ describe('Move Folder', () => {
   const testDir = resolve('/tmp/test-move-folder');
   let mockFileSystem: Map<string, string>;
   let mockDirectories: Set<string>;
+
+  function addDirectory(directory: string): void {
+    for (let current = directory; current.startsWith(testDir); current = dirname(current)) {
+      mockDirectories.add(current);
+    }
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -71,7 +78,7 @@ describe('Move Folder', () => {
       if (mockFileSystem.has(path)) {
         return mockFileSystem.get(path);
       }
-      throw new Error(`ENOENT: no such file or directory, open '${path}'`);
+      throw Object.assign(new Error(`ENOENT: no such file or directory, open '${path}'`), { code: 'ENOENT' });
     });
 
     (fs.writeFileSync as Mock).mockImplementation((path: string, data: string) => {
@@ -79,7 +86,7 @@ describe('Move Folder', () => {
     });
 
     (fs.mkdirSync as Mock).mockImplementation((path: string) => {
-      mockDirectories.add(path);
+      addDirectory(path);
     });
 
     (fs.rmSync as Mock).mockImplementation((path: string) => {
@@ -162,16 +169,45 @@ describe('Move Folder', () => {
       };
     });
 
-    mockDirectories.add(testDir);
+    (fs.lstatSync as Mock).mockImplementation((path: string) => {
+      if (!mockDirectories.has(path) && !mockFileSystem.has(path)) {
+        throw Object.assign(new Error(`ENOENT: no such file or directory, lstat '${path}'`), { code: 'ENOENT' });
+      }
+      return {
+        isSymbolicLink: () => false,
+        isDirectory: () => mockDirectories.has(path),
+        isFile: () => mockFileSystem.has(path),
+      };
+    });
+
+    addDirectory(testDir);
+  });
+
+  it('stops before writes when the first start-path ancestor is a symbolic link', async () => {
+    addDirectory(join(testDir, 'apps', 'common', 'buttons'));
+    mockFileSystem.set(join(testDir, 'apps', 'common', 'buttons', RESOURCE_ENTRIES_FILENAME), '{"ok":{"source":"OK"}}');
+    (fs.lstatSync as Mock).mockImplementationOnce(() => ({ isSymbolicLink: () => true }));
+
+    await expect(
+      moveFolder(collection(testDir), {
+        sourceFolderPath: 'apps.common.buttons',
+        destinationFolderPath: 'shared',
+      }),
+    ).rejects.toThrow("Cannot move folder 'apps.common.buttons': Folder 'apps': This folder is a symbolic link");
+    expect(fs.lstatSync).toHaveBeenCalledTimes(1);
+    expect(fs.lstatSync).toHaveBeenCalledWith(join(testDir, 'apps'));
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(fs.unlinkSync).not.toHaveBeenCalled();
+    expect(fs.rmdirSync).not.toHaveBeenCalled();
   });
 
   describe('Basic Folder Move', () => {
     it('should move a folder with a single resource', async () => {
       // Setup source folder: apps.common.buttons.ok
       const buttonsFolder = join(testDir, 'apps', 'common', 'buttons');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(join(testDir, 'apps', 'common'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(join(testDir, 'apps', 'common'));
+      addDirectory(buttonsFolder);
 
       const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
@@ -215,9 +251,9 @@ describe('Move Folder', () => {
     it('should move a folder with nested subfolders and multiple resources', async () => {
       // Setup: apps.common.buttons (ok, cancel) and apps.common.buttons.sub (item)
       const buttonsFolder = join(testDir, 'apps', 'common', 'buttons');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(join(testDir, 'apps', 'common'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(join(testDir, 'apps', 'common'));
+      addDirectory(buttonsFolder);
 
       const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
@@ -238,7 +274,7 @@ describe('Move Folder', () => {
       );
 
       const subFolder = join(buttonsFolder, 'sub');
-      mockDirectories.add(subFolder);
+      addDirectory(subFolder);
       const subFile = join(subFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
         subFile,
@@ -285,8 +321,8 @@ describe('Move Folder', () => {
   describe('Edge Cases', () => {
     it('should handle empty folder (no resources)', async () => {
       const emptyFolder = join(testDir, 'apps', 'empty');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(emptyFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(emptyFolder);
 
       const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.empty',
@@ -312,7 +348,7 @@ describe('Move Folder', () => {
     it('should throw when source is not a directory', async () => {
       // Create a file instead of directory
       const filePath = join(testDir, 'apps', 'notadir');
-      mockDirectories.add(join(testDir, 'apps'));
+      addDirectory(join(testDir, 'apps'));
       mockFileSystem.set(filePath, 'some content');
 
       await expect(
@@ -328,11 +364,11 @@ describe('Move Folder', () => {
   describe('Circular Dependency Prevention', () => {
     it('should prevent moving folder into its own descendant', async () => {
       const commonFolder = join(testDir, 'apps', 'common');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(commonFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(commonFolder);
 
       const buttonsFolder = join(commonFolder, 'buttons');
-      mockDirectories.add(buttonsFolder);
+      addDirectory(buttonsFolder);
 
       await expect(
         moveFolder(collection(testDir), {
@@ -345,8 +381,8 @@ describe('Move Folder', () => {
 
     it('should prevent moving folder into deeply nested descendant', async () => {
       const commonFolder = join(testDir, 'apps', 'common');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(commonFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(commonFolder);
 
       await expect(
         moveFolder(collection(testDir), {
@@ -360,8 +396,8 @@ describe('Move Folder', () => {
     it('should allow moving to sibling folder', async () => {
       // Setup apps.buttons with one resource
       const buttonsFolder = join(testDir, 'apps', 'buttons');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(buttonsFolder);
 
       const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
@@ -404,9 +440,9 @@ describe('Move Folder', () => {
   describe('Same-Folder Move', () => {
     it('should detect and skip same-folder move', async () => {
       const buttonsFolder = join(testDir, 'apps', 'common', 'buttons');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(join(testDir, 'apps', 'common'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(join(testDir, 'apps', 'common'));
+      addDirectory(buttonsFolder);
 
       const result = await moveFolder(collection(testDir), {
         sourceFolderPath: 'apps.common.buttons',
@@ -421,8 +457,8 @@ describe('Move Folder', () => {
 
     it('should treat a destination collection with the same translations folder as the same collection', async () => {
       const buttonsFolder = join(testDir, 'apps', 'buttons');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(buttonsFolder);
 
       const result = await moveFolder(
         collection(testDir),
@@ -443,9 +479,9 @@ describe('Move Folder', () => {
     it('should return warning when moving folder to its own parent with nestUnderDestination', async () => {
       // Setup source folder: apps.common.buttons with one resource
       const buttonsFolder = join(testDir, 'apps', 'common', 'buttons');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(join(testDir, 'apps', 'common'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(join(testDir, 'apps', 'common'));
+      addDirectory(buttonsFolder);
 
       const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
@@ -482,9 +518,9 @@ describe('Move Folder', () => {
       // Setup source in collection A
       const collectionAFolder = join(testDir, 'collectionA');
       const buttonsFolder = join(collectionAFolder, 'apps', 'buttons');
-      mockDirectories.add(collectionAFolder);
-      mockDirectories.add(join(collectionAFolder, 'apps'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(collectionAFolder);
+      addDirectory(join(collectionAFolder, 'apps'));
+      addDirectory(buttonsFolder);
 
       const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
@@ -504,7 +540,7 @@ describe('Move Folder', () => {
 
       // Setup collection B
       const collectionBFolder = join(testDir, 'collectionB');
-      mockDirectories.add(collectionBFolder);
+      addDirectory(collectionBFolder);
 
       const result = await moveFolder(
         collection(collectionAFolder, 'collectionA'),
@@ -537,9 +573,9 @@ describe('Move Folder', () => {
       // Setup source in collection A
       const collectionAFolder = join(testDir, 'collectionA');
       const buttonsFolder = join(collectionAFolder, 'apps', 'buttons');
-      mockDirectories.add(collectionAFolder);
-      mockDirectories.add(join(collectionAFolder, 'apps'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(collectionAFolder);
+      addDirectory(join(collectionAFolder, 'apps'));
+      addDirectory(buttonsFolder);
 
       const buttonsFile = join(buttonsFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
@@ -559,7 +595,7 @@ describe('Move Folder', () => {
 
       // Setup collection B
       const collectionBFolder = join(testDir, 'collectionB');
-      mockDirectories.add(collectionBFolder);
+      addDirectory(collectionBFolder);
 
       // Same path but different collection should work
       const result = await moveFolder(
@@ -596,8 +632,8 @@ describe('Move Folder', () => {
 
     it('should reject invalid destination folder path segments', async () => {
       const buttonsFolder = join(testDir, 'apps', 'buttons');
-      mockDirectories.add(join(testDir, 'apps'));
-      mockDirectories.add(buttonsFolder);
+      addDirectory(join(testDir, 'apps'));
+      addDirectory(buttonsFolder);
 
       await expect(
         moveFolder(collection(testDir), {
@@ -611,7 +647,7 @@ describe('Move Folder', () => {
     it('should merge contents when destination already has subfolder with same name', async () => {
       // Setup source folder: testdata with resource (testdata.bar)
       const sourceTestdataFolder = join(testDir, 'testdata');
-      mockDirectories.add(sourceTestdataFolder);
+      addDirectory(sourceTestdataFolder);
 
       const sourceFile = join(sourceTestdataFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(
@@ -632,8 +668,8 @@ describe('Move Folder', () => {
       // Setup destination: common.testdata already exists with resource (common.testdata.foo)
       const commonFolder = join(testDir, 'common');
       const destTestdataFolder = join(commonFolder, 'testdata');
-      mockDirectories.add(commonFolder);
-      mockDirectories.add(destTestdataFolder);
+      addDirectory(commonFolder);
+      addDirectory(destTestdataFolder);
 
       const destFile = join(destTestdataFolder, RESOURCE_ENTRIES_FILENAME);
       mockFileSystem.set(

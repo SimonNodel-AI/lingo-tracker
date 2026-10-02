@@ -45,7 +45,7 @@ export async function translateExistingResource(
 
   const paths = validateAndResolvePaths({ key, translationsFolder });
 
-  const folder = openResourceFolder(paths.folderPath, { baseLocale });
+  const folder = openResourceFolder(paths.folderPath, { baseLocale, translationsFolder });
   const current = folder.get(paths.entryKey);
 
   if (!current?.meta) {

@@ -171,6 +171,7 @@ export class ExampleComponent implements OnInit {
 - **Domain Logic** (`@simoncodes-ca/domain`): Pure business logic with **zero Node.js dependencies** — importable by all apps including the browser-based Tracker UI. This is where platform-agnostic logic belongs: key validation/parsing, translation status helpers, ICU↔Transloco format conversion, validation utilities (locale, key length, duplicates, hierarchical conflicts), and shared types (`TranslationStatus`, `LocaleMetadata`).
 - **Core Logic** (`@simoncodes-ca/core`): Node.js-dependent business logic — file I/O, checksums (crypto), directory traversal, bundle generation, import/export. Core depends on domain; **domain must never depend on core**.
 - **DTOs** (`@simoncodes-ca/data-transfer`): API contracts shared between API/CLI/UI
+- **Validation**: Request shape is checked at the edge in `apps/api/src/app/validation/`; rules live in domain/core.
 - **Mappers**: Convert between domain models and DTOs in API layer
 
 #### What goes in domain vs core
@@ -217,7 +218,7 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 @Controller('collections')
 export class CollectionsController {
   @Post()
-  async createCollection(@Body() body: CreateCollectionDto): Promise<{ message: string }> {
+  async createCollection(@ValidBody(createCollectionBody) body: CreateCollectionDto): Promise<{ message: string }> {
     const mapped = mapDtoToCollection(body.collection); // DTO → core shape (apps/api/src/app/mappers/)
     const result = addCollection(body.name, mapped); // synchronous core call
     return { message: result.message };

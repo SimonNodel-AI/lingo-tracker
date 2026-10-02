@@ -1,3 +1,4 @@
+import { displayStatus, type ResourceSummary, summaryTarget } from './resource-summary';
 import type { TranslationStatus } from './translation-status';
 
 /**
@@ -36,6 +37,14 @@ export function countByStatus(statuses: Iterable<TranslationStatus | undefined>)
     if (status !== undefined && STATUS_PRECEDENCE.includes(status)) counts[status] += 1;
   }
   return counts;
+}
+
+/**
+ * Counts one resource's display statuses over the supplied locales. A target
+ * with no metadata counts as `new`; locales that are not targets contribute nothing.
+ */
+export function statusCountsOver(summary: ResourceSummary, locales: readonly string[]): StatusCounts {
+  return countByStatus(locales.map((locale) => displayStatus(summaryTarget(summary, locale))));
 }
 
 /** The worst status with at least one locale, by {@link STATUS_PRECEDENCE}; `undefined` when every count is zero. */
