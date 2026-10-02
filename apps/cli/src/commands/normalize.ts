@@ -6,7 +6,7 @@ import {
   ReadOnlyCollectionError,
 } from '@simoncodes-ca/core';
 import { CommandCancelledError, defineCommand } from '../runner/command-runner';
-import { ALL_ITEMS_SENTINEL, ConsoleFormatter } from '../utils';
+import { ConsoleFormatter, parseNameSelection, selectionPrompt } from '../utils';
 
 export interface NormalizeOptions {
   collection?: string;
@@ -20,19 +20,20 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
   collection: 'many',
   many: {
     select: async (answers, { interactive, ask }) => {
-      const selected = typeof answers.collectionOrAll === 'string' ? answers.collectionOrAll : undefined;
-      const all = answers.all === true || selected === ALL_ITEMS_SENTINEL;
-      const collectionName = answers.collection ?? (selected !== ALL_ITEMS_SENTINEL ? selected : undefined);
-      if (!all) {
-        if (!collectionName) throw new Error('Missing required option in non-interactive mode: --collection or --all');
-        return [collectionName];
-      }
-      if (all && interactive) {
+      const answerSelection = parseNameSelection(undefined, answers.collectionOrAll);
+      // An explicit all answer takes precedence over --collection.
+      const selection =
+        answers.all === true || answerSelection?.kind === 'all'
+          ? { kind: 'all' as const }
+          : parseNameSelection(answers.collection, answers.collectionOrAll);
+      // Normalize requires a name or an explicit all choice.
+      if (!selection) throw new Error('Missing required option in non-interactive mode: --collection or --all');
+      if (selection.kind === 'all' && interactive) {
         ConsoleFormatter.warning('This will normalize ALL collections in your project.');
         const confirmed = await ask({ type: 'confirm', name: 'confirmed', message: 'Are you sure?', initial: false });
         if (confirmed.confirmed !== true) throw new CommandCancelledError();
       }
-      return 'all';
+      return selection;
     },
   },
   prompts: (options, { config }) => {
@@ -41,19 +42,17 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       return [];
     }
     return [
-      {
-        type: 'select',
+      selectionPrompt({
+        mode: 'single',
         name: 'collectionOrAll',
         message: 'Select collection to normalize',
-        choices: [
-          ...collections.map((c) => ({ title: c, value: c })),
-          { title: 'All collections', value: ALL_ITEMS_SENTINEL },
-        ],
-      },
+        choices: collections,
+        allTitle: 'All collections',
+      }),
     ];
   },
-  run: async ({ config, collections, answers }) => {
-    const all = answers.all === true || answers.collectionOrAll === ALL_ITEMS_SENTINEL;
+  run: async ({ collections, selection, answers }) => {
+    const all = selection.kind === 'all';
     let result: NormalizeCollectionsResult;
     try {
       result = await normalizeCollections(collections, {
@@ -102,7 +101,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       printSummary(result, 0, answers);
       return { exitCode: 1 };
     }
-    printSummary(result, all ? Object.keys(config.collections ?? {}).length : collections.length, answers);
+    printSummary(result, collections.length, answers);
     return result.errors.length > 0 ? { exitCode: 1 } : undefined;
   },
 });

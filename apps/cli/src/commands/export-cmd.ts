@@ -12,9 +12,11 @@ import { type Answers, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import {
   ConsoleFormatter,
-  multiselectResultToString,
   parseCommaSeparatedList,
-  processMultiselectWithAll,
+  parseListSelection,
+  selectionNames,
+  selectionPrompt,
+  type Selection,
   reportRunSummary,
 } from '../utils';
 import { EXPORT_DEFAULTS } from './run-option-defaults';
@@ -43,7 +45,16 @@ export interface ExportCommandOptions {
 export const exportCommand = defineCommand<ExportCommandOptions>()({
   name: 'Export',
   collection: 'many',
-  many: { select: (answers) => parseCommaSeparatedList(resolveAnswers(answers).collection) ?? 'all' },
+  many: {
+    select: (answers) => {
+      const collections = stringList(answers.collections);
+      // Export refuses empty multiselect answers even when a flag is supplied.
+      if (collections?.length === 0) throw new Error('Select at least one collection.');
+      // Validate the remaining answers before the runner resolves collection names.
+      resolveAnswers(answers);
+      return parseListSelection(answers.collection, collections) ?? { kind: 'all' };
+    },
+  },
   // The locale choices need the opened collections; only build them when they will be asked.
   prompts: (options, { config, collections, interactive }) =>
     interactive ? buildQuestions(options, config, exportTargetLocales(collections)) : [],
@@ -69,7 +80,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       outputDirectory: options.output,
       exportFolder: config.exportFolder,
       cwd,
-      locales: parseCommaSeparatedList(options.locale),
+      locales: selectionNames(options.localeSelection),
       status: statuses,
       tags: parseCommaSeparatedList(options.tags),
       filenamePattern: options.filename,
@@ -162,34 +173,28 @@ function buildQuestions(
 
   // Collection selection
   if (!options.collection) {
-    questions.push({
-      type: 'multiselect',
-      name: 'collections',
-      message: 'Select collections to export',
-      choices: [
-        { title: 'All Collections', value: '__ALL__', selected: true },
-        ...collectionNames.map((name) => ({ title: name, value: name })),
-      ],
-      min: 1,
-      hint: 'Space to select. Return to submit',
-      instructions: false,
-    });
+    questions.push(
+      selectionPrompt({
+        name: 'collections',
+        message: 'Select collections to export',
+        choices: collectionNames,
+        allTitle: 'All Collections',
+        mode: 'multiple',
+      }),
+    );
   }
 
   // Locale selection
   if (!options.locale) {
-    questions.push({
-      type: 'multiselect',
-      name: 'locales',
-      message: 'Select target locales to export',
-      choices: [
-        { title: 'All Target Locales', value: '__ALL__', selected: true },
-        ...targetLocales.map((l: string) => ({ title: l, value: l })),
-      ],
-      min: 1,
-      hint: 'Space to select. Return to submit',
-      instructions: false,
-    });
+    questions.push(
+      selectionPrompt({
+        name: 'locales',
+        message: 'Select target locales to export',
+        choices: targetLocales,
+        allTitle: 'All Target Locales',
+        mode: 'multiple',
+      }),
+    );
   }
 
   // Status filter
@@ -374,21 +379,21 @@ function buildQuestions(
 }
 
 /**
- * Flags win over prompt answers; the multiselect answers (`collections`, `locales`,
- * `statusFilter`) become the comma-separated options; unset options get their defaults.
+ * Flags win over prompt answers; locale answers become a Selection.
+ * Status answers become a comma-separated option; unset options get their defaults.
  */
-function resolveAnswers(answers: Answers<ExportCommandOptions>): ExportCommandOptions {
-  const collections = stringList(answers.collections);
+function resolveAnswers(
+  answers: Answers<ExportCommandOptions>,
+): ExportCommandOptions & { localeSelection: Selection | undefined } {
   const locales = stringList(answers.locales);
-  const statusFilter = stringList(answers.statusFilter);
-  if (collections?.length === 0) throw new Error('Select at least one collection.');
+  // Export refuses empty multiselect answers even when a flag is supplied.
   if (locales?.length === 0) throw new Error('Select at least one target locale.');
+  const localeSelection = parseListSelection(answers.locale, locales);
+  const statusFilter = stringList(answers.statusFilter);
   if (statusFilter?.length === 0) throw new Error('Select at least one translation status.');
   return {
     ...answers,
-    collection:
-      answers.collection ?? (collections && multiselectResultToString(processMultiselectWithAll(collections))),
-    locale: answers.locale ?? (locales && multiselectResultToString(processMultiselectWithAll(locales))),
+    localeSelection,
     status: answers.status ?? statusFilter?.join(',') ?? EXPORT_DEFAULTS.status,
     tags: answers.tags || undefined,
     output: answers.output || undefined,

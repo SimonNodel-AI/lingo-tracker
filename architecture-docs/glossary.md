@@ -727,6 +727,16 @@ Explained in context: [`cli.md`](cli.md#shared-utilities), [`core-library.md`](c
 
 ## S
 
+### Selection
+
+The CLI choice of one, several, or all named items. `Selection` in `apps/cli/src/utils/prompt-utils.ts` has `kind: 'all'` or `kind: 'some'` with `names`. `selectionPrompt` builds the question with an explicit single or multiple mode. `parseNameSelection` retains literal flags, while `parseListSelection` parses comma-separated flags. Both functions resolve prompt answers, give flags precedence, and return `undefined` for empty input.
+
+Commands apply their own defaults and errors. The prompt sentinel stays private to this module. For many collections, the [Command Runner](#command-runner) passes the resolved Selection and opened collections to `run`.
+
+Explained in context: [`cli.md`](cli.md#selection-prompt-utilsts)
+
+---
+
 ### Settings Draft
 
 `SettingsDraft` in `apps/tracker/src/app/settings/settings-draft.ts` composes the protected-terms and preferred-terminology drafts. It owns the combined change count, save gate, revert, reseeding, and one [Config Write](#config-write) through a write function supplied by the page. `save(write)` records submitted rule rows when it builds the payload and emits `saved`, `blocked`, `refused`, or `unchanged`; a refusal maps valid rule errors onto the submitted rows. The page owns focus, the banner, and the toast. Both child drafts remain free of API dependencies.

@@ -376,10 +376,39 @@ describe('exportCommand', () => {
     });
   });
 
+  it('keeps export empty-answer errors even when a flag exists', async () => {
+    const options = { format: 'json' as const, collection: 'common', collections: [] };
+    await exportCommand(options);
+    expect(mockRunExport).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenCalledWith('❌ Select at least one collection.');
+    expect(process.exitCode).toBe(1);
+  });
+
   describe('interactive mode', () => {
     // The real status multiselect requires at least one selection; prompt mocks must do the same.
     beforeEach(() => {
       vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+    });
+
+    for (const { collections, locales, message } of [
+      { collections: [], locales: ['fr'], message: 'Select at least one collection.' },
+      { collections: ['common'], locales: [], message: 'Select at least one target locale.' },
+    ]) {
+      it(`refuses empty prompt selection: ${message}`, async () => {
+        vi.mocked(prompts).mockResolvedValue({ collections, locales });
+        await exportCommand({ format: 'json', status: 'new' });
+        expect(mockRunExport).not.toHaveBeenCalled();
+        expect(console.error).toHaveBeenCalledWith(`❌ ${message}`);
+        expect(process.exitCode).toBe(1);
+      });
+    }
+
+    it('keeps all precedence within collection and locale multiselect answers', async () => {
+      vi.mocked(prompts).mockResolvedValue({ collections: ['common', '__ALL__'], locales: ['fr', '__ALL__'] });
+      await exportCommand({ format: 'json', status: 'new' });
+      expect(exportedCollections()).toEqual(['common', 'admin']);
+      expect(mockRunExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining({ locales: undefined }));
+      expect(process.exitCode).toBe(0);
     });
 
     it('should prompt for format when not provided', async () => {

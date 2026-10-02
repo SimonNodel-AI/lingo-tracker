@@ -12,6 +12,7 @@ import {
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type CollectionNeed, CommandCancelledError, type CommandSpec, defineCommand } from './command-runner';
+import { parseListSelection } from '../utils/prompt-utils';
 import { isInteractiveTerminal } from './terminal';
 
 vi.mock('prompts');
@@ -205,19 +206,21 @@ describe('defineCommand', () => {
         'main',
         'vendor',
       ]);
+      expect(run.mock.calls[0]?.[0].selection).toEqual({ kind: 'all' });
       expect(process.exitCode).toBe(0);
     });
 
     it('selects a list after prompts and deduplicates names in order', async () => {
       const { invoke, run } = command({
         collection: 'many',
-        many: { select: (answers) => answers.collection?.split(',') ?? 'all' },
+        many: { select: (answers) => parseListSelection(answers.collection) ?? { kind: 'all' } },
       });
       await invoke({ collection: 'vendor,main,vendor' });
       expect(run.mock.calls[0]?.[0].collections.map((collection: { name: string }) => collection.name)).toEqual([
         'vendor',
         'main',
       ]);
+      expect(run.mock.calls[0]?.[0].selection).toEqual({ kind: 'some', names: ['vendor', 'main'] });
     });
 
     it('fails many mode before prompts when config has no collections', async () => {
@@ -230,7 +233,10 @@ describe('defineCommand', () => {
     });
 
     it('reports an unknown name from a many list', async () => {
-      const { invoke, run } = command({ collection: 'many', many: { select: () => ['main', 'missing'] } });
+      const { invoke, run } = command({
+        collection: 'many',
+        many: { select: () => ({ kind: 'some', names: ['main', 'missing'] }) },
+      });
       await invoke({});
       expect(run).not.toHaveBeenCalled();
       expect(console.error).toHaveBeenCalledWith('❌ Collection "missing" not found');
