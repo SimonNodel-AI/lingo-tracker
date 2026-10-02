@@ -1578,6 +1578,7 @@ describe('BrowserStore', () => {
       // No locales selected initially
       expect(store.selectedLocales()).toEqual([]);
 
+      store.setDensityMode('full');
       store.setDensityMode('compact');
 
       // Should select base locale
@@ -1631,6 +1632,7 @@ describe('BrowserStore', () => {
 
       expect(store.selectedLocales()).toEqual([]);
 
+      store.setDensityMode('full');
       store.setDensityMode('compact');
 
       // Should fallback to first available locale
@@ -1791,6 +1793,31 @@ describe('BrowserStore', () => {
     });
 
     describe('Computed: filteredLocales', () => {
+      it('keeps projection references when only compact memory changes', () => {
+        store.setSelectedLocales(['es', 'fr']);
+        const filtered = store.filteredLocales();
+        const label = store.localeFilterLabel();
+        const filterable = store.filterableLocales();
+
+        patchState(unprotected(store), { compactLocale: 'de' });
+        expect(store.filteredLocales()).toBe(filtered);
+        expect(store.localeFilterLabel()).toBe(label);
+        expect(store.filterableLocales()).toBe(filterable);
+
+        patchState(unprotected(store), { nonCompactSelectedLocales: ['de'] });
+        expect(store.filteredLocales()).toBe(filtered);
+        expect(store.localeFilterLabel()).toBe(label);
+
+        patchState(unprotected(store), { compactLocaleManuallyChanged: true });
+        expect(store.filteredLocales()).toBe(filtered);
+        expect(store.localeFilterLabel()).toBe(label);
+
+        store.setSelectedLocales(['de']);
+        expect(store.filteredLocales()).not.toBe(filtered);
+        expect(store.filteredLocales()).toEqual(['en', 'de']);
+        expect(store.localeFilterLabel()).toEqual({ kind: 'locale', locale: 'de' });
+      });
+
       it('should always include base locale when no locales selected', () => {
         const filtered = store.filteredLocales();
         expect(filtered[0]).toBe('en');
