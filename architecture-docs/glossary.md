@@ -119,6 +119,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### Chip Input
+
+`ChipInput` in `apps/tracker/src/app/shared/chip-input/chip-input.ts` is a directive for an `<input>` that adds and removes chips: `[appChipInput]="chips()"` takes the list now shown. Enter or comma emits `chipAdd` with the typed text (even blank, so the host resets its own input state; the host's rule ignores a blank) and clears the field, and Backspace in an empty field emits `chipRemove` with the last chip. `commitOnBlur` makes leaving the field commit typed text; the translation editor leaves it off so a click on an autocomplete option is not preempted. The directive does not interpret text: the translation editor, the collection dialog and the bundle dialog each pass `chipAdd` to their own rule (a tag by [Tag List Edit](#tag-list-edit), a protected term by the [Protected Term Add](#protected-term-add) rule).
+
+Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
+
+---
+
 ### CLI Help Text
 
 The long examples appended to `import`, `validate`, and `preferred-terminology` help. `apps/cli/src/runner/help-text.ts` holds these strings so the [Command Registration](#command-registration) list stays short. Registration passes each string to Commander's `addHelpText('after', ...)` unchanged.
@@ -151,7 +159,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Collection Draft
 
-The Tracker collection form's plain values and rules in `apps/tracker/src/app/collections/collection-form-dialog/collection-draft.ts`. It seeds create or edit values, normalizes and changes locale choices, keeps the base locale fixed in edit mode (including an inherited base), reports removed original locales for confirmation, defaults read-only from a `node_modules` folder until the user chooses it, and builds the collection write payload. It has no Angular dependency. `collection-form-dialog.ts` owns the FormGroup, chip controls, confirmation, and store write.
+The Tracker collection form's plain values and rules in `apps/tracker/src/app/collections/collection-form-dialog/collection-draft.ts`. It seeds create or edit values, normalizes and changes locale choices, keeps the base locale fixed in edit mode (including an inherited base), reports removed original locales for confirmation, defaults read-only from a `node_modules` folder until the user chooses it, and builds the collection write payload. It has no Angular dependency. It also adds and removes tags and protected terms. [Collection Form](#collection-form) holds the draft; `collection-form-dialog.ts` owns the confirmation and store write.
 
 Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
@@ -174,6 +182,14 @@ Explained in context: [`core-library.md`](core-library.md#config-and-collection-
 The write side of a [collection's](#collection) record in `.lingo-tracker.json`: the one place that decides what the stored entry contains. In code, `libs/core/src/lib/config/collection-entry.ts` holds three pure functions over the in-memory config: `toCollectionEntry(config, collection)` builds the record (`translationsFolder`, trimmed, plus only the settings that differ from the global config, so a collection inherits by omission; `translation` is kept verbatim; `readOnly` only when true; tags normalized), `addCollectionEntry` registers it (a folder under `node_modules` is read-only unless the caller decides) and `patchCollectionEntry` changes it, with an optional rename in place. Patch semantics: a field the patch sets replaces the stored value (a setting is cleared, so the collection inherits, with its empty value: `tags: []`, `readOnly: false`, `locales: []`, and `''` for `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`; `translation` has no empty value and cannot be cleared by a patch, only replaced), a field set to `null` is `InvalidCollectionError`, and a field left out or `undefined` keeps its stored value, so a client that never sends `translation`, `exportFolder` or `importFolder` cannot lose them; the merged record is then re-minimized. An empty `locales` list means inherit, never "no locales". The rule for every field is listed once, keyed by the `LingoTrackerCollection` type, so a new field does not compile until its rule is written. `addCollection`, `editCollectionTags` and project-term pointer changes write through it. `assertCollectionFields` rejects null fields and a non-string `translationsFolder` before DTO-only fields are removed by the API mapper. The mapper also requires a string `translationsFolder` on collection request bodies, including updates. `updateCollection`, `addLocaleToCollection` and `removeLocaleFromCollection` share one locale-change path: validate, read every folder, seed added locales, purge removed locales, then write the minimized record once through `patchCollectionEntry`. A changed record delivers reindex mutations for the old and new translations folders. The errors are typed: `CollectionNotFoundError`, `CollectionAlreadyExistsError`, `InvalidCollectionError`.
 
 Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
+
+---
+
+### Collection Form
+
+The Tracker collection dialog's form model, `CollectionForm`, in `apps/tracker/src/app/collections/collection-form-dialog/collection-form.ts`. A signal holds the [Collection Draft](#collection-draft); the typed FormGroup holds only the name and folder text inputs and feeds each change into the draft. It owns locale, base-locale, read-only, tag and protected-term edits through the draft's rules, the add-locale input and its errors, display state (displayed base locale, hints, disclosure), validation of an attempted submit, and the refusal message cleared on the next edit. `destroy()` releases its subscriptions. The dialog keeps DOM handling, the removal confirmation, and the write through [Dialog Config Submit](#dialog-config-submit). It is the collection counterpart of [Bundle Form](#bundle-form).
+
+Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
 ---
 
@@ -618,14 +634,6 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#prot
 ### Protected Term Add
 
 `prepareProtectedTermAdd(existing, input)` in `apps/tracker/src/app/shared/protected-terms/protected-term-add.ts` normalizes a newly entered term with the domain rule and checks exact, case-sensitive duplicates. It returns `blank`, `duplicate`, or `added` with the normalized term. The settings draft and collection chips use this one add rule.
-
-Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
-
----
-
-### Protected Terms Chips
-
-`ProtectedTermsChips` in `apps/tracker/src/app/shared/protected-terms/protected-terms-chips.ts` holds the collection dialog's list. `seedRaw(values)` preserves stored values, order, and duplicates exactly. `add(value)` uses the [Protected Term Add](#protected-term-add) rule; `remove(value)` drops matching chips. It has no staged row or error state.
 
 Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
