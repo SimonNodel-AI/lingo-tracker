@@ -17,7 +17,7 @@ import type { Collection } from '../config/open-collection';
 import { CannotTranslateBaseLocaleError, TranslationLocaleNotConfiguredError } from '../errors/lingo-tracker-error';
 import { groupByFolder } from '../resource/folder-batch';
 import { readCollection } from '../resource/read-collection';
-import { type MutationSinkOptions, reindexMutation } from '../resource/resource-mutation';
+import { type MutationSinkOptions, resolveMutationSink, reindexMutation } from '../resource/resource-mutation';
 import type { RunOutcome } from '../run-outcome';
 import {
   type PendingTranslation,
@@ -115,7 +115,7 @@ export async function translateLocale(
   collection: Collection,
   params: TranslateLocaleParams,
 ): Promise<TranslateLocaleResult> {
-  const { targetLocale, onProgress, onMutation } = params;
+  const { targetLocale, onProgress } = params;
   const { translationsFolder } = collection;
   assertCanTranslateLocale(collection, targetLocale);
 
@@ -187,7 +187,7 @@ export async function translateLocale(
           pending.push({ entryKey, locale: value.locale, value: value.value, snapshot });
         }
         const writeBack = writeBackTranslations(collection, folderPath, pending, {
-          onMutation,
+          onMutation: resolveMutationSink(collection, params),
           saved: () => [reindexMutation(translationsFolder)],
         });
         translatedCount += writeBack.written.length;

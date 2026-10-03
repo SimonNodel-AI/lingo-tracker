@@ -9,7 +9,7 @@ import {
 import { openResourceEntry } from './resource-entry';
 import { resolveResourcePaths } from './resource-file-paths';
 import { resourceFolderPresence } from './resource-folder';
-import type { MutationSink, MutationSinkOptions } from './resource-mutation';
+import { resolveMutationSink, type MutationSink, type MutationSinkOptions } from './resource-mutation';
 
 export interface DeleteResourceParams {
   keys: string[];
@@ -46,7 +46,7 @@ export function deleteResource(
 
   for (const key of params.keys) {
     try {
-      deleteSingleResource(collection, key, options.onMutation);
+      deleteSingleResource(collection, key, resolveMutationSink(collection, options));
       entriesDeleted++;
     } catch (caughtError) {
       if (caughtError instanceof InvalidCollectionFolderError) throw caughtError;

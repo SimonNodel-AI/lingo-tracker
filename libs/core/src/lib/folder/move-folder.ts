@@ -15,7 +15,7 @@ import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } 
 import { mergeRelocation } from '../resource/move-resource';
 import { relocateEntries } from '../resource/relocate-entries';
 import { pruneEmptyFolders } from '../resource/folder-pruning';
-import type { MutationSink } from '../resource/resource-mutation';
+import { resolveMutationSink, type MutationSink } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -152,7 +152,7 @@ export async function moveFolder(
     result.warnings.push('No resources found in source folder. Nothing to move.');
     // Still remove the empty folder
     try {
-      pruneSource(collection, sourceFolderPath, result, options.onMutation);
+      pruneSource(collection, sourceFolderPath, result, resolveMutationSink(collection, options));
     } catch (error) {
       result.errors.push(`Failed to delete empty source folder: ${errorMessage(error)}`);
     }
@@ -164,7 +164,7 @@ export async function moveFolder(
   // One Entry Relocation for the whole tree: each folder is read and written once.
   const relocation = relocateEntries(collection, destinationCollection, relocations, {
     override,
-    onMutation: options.onMutation,
+    onMutation: resolveMutationSink(collection, options),
   });
   mergeRelocation(result, relocation);
 
@@ -179,7 +179,7 @@ export async function moveFolder(
   // Only remove the source folder when every resource in it was moved
   if (keptKeys.length === 0 && result.errors.length === 0) {
     try {
-      pruneSource(collection, sourceFolderPath, result, options.onMutation);
+      pruneSource(collection, sourceFolderPath, result, resolveMutationSink(collection, options));
     } catch (error) {
       result.warnings.push(`Resources moved but failed to delete source folder: ${errorMessage(error)}`);
     }

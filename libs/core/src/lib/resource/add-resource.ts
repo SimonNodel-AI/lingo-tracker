@@ -12,7 +12,7 @@ import {
 } from './locale-seeding';
 import { type OpenedResourceEntry, openResourceEntry } from './resource-entry';
 import { type ResolvedResourcePaths, validateAndResolvePaths } from './resource-file-paths';
-import type { MutationSink, MutationSinkOptions } from './resource-mutation';
+import { resolveMutationSink, type MutationSink, type MutationSinkOptions } from './resource-mutation';
 import { assertTranslationStatus } from './translation-status-input';
 
 type ResourceTranslationInput = Pick<ResourceTranslation, 'locale' | 'value'> & { readonly status?: TranslationStatus };
@@ -104,7 +104,7 @@ export async function addResource(
     collection,
     await prepareResourceAdd(collection, resolved, options),
     onExisting,
-    options.onMutation,
+    resolveMutationSink(collection, options),
   );
 }
 
