@@ -261,7 +261,7 @@ describe('addResourceCommand', () => {
     vi.mocked(core.loadConfig).mockReturnValue(existingConfig());
     vi.mocked(core.addResource).mockRejectedValueOnce(new core.ResourceAlreadyExistsError('buttons.ok'));
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
-    vi.mocked(prompts).mockResolvedValueOnce({}).mockResolvedValueOnce({ value: false });
+    vi.mocked(prompts).mockResolvedValueOnce({}).mockResolvedValueOnce({ confirmed: false });
 
     await addResourceCommand({
       collection: 'TestCollection',
@@ -272,6 +272,7 @@ describe('addResourceCommand', () => {
     expect(prompts).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'confirm',
+        name: 'confirmed',
         message: expect.stringContaining('already exists'),
       }),
       expect.anything(),
@@ -286,13 +287,14 @@ describe('addResourceCommand', () => {
     vi.mocked(core.loadConfig).mockReturnValue(existingConfig());
     vi.mocked(core.addResource).mockRejectedValueOnce(new core.ResourceAlreadyExistsError('buttons.ok'));
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
-    vi.mocked(prompts).mockResolvedValueOnce({}).mockResolvedValueOnce({ value: true });
+    vi.mocked(prompts).mockResolvedValueOnce({}).mockResolvedValueOnce({ confirmed: true });
 
     await addResourceCommand({ collection: 'TestCollection', key: 'buttons.ok', value: 'OK' });
 
     expect(prompts).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'confirm',
+        name: 'confirmed',
         message: 'Resource "buttons.ok" already exists. Override?',
         initial: false,
       }),

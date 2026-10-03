@@ -23,6 +23,7 @@ Return to [architecture README](README.md).
 - [Testing Commands](#testing-commands)
 - [Shared Utilities](#shared-utilities)
   - [Selection (`prompt-utils.ts`)](#selection-prompt-utilsts)
+  - [Prompt helpers](#prompt-helpers)
   - [Output Formatting (`console-formatter.ts`)](#output-formatting-console-formatterts)
   - [String Parsers (`string-parsers.ts`)](#string-parsers-string-parsersts)
 
@@ -416,6 +417,14 @@ The Command Runner and the interactive rule live in `apps/cli/src/runner/` ([Com
 [Selection](glossary.md#selection) represents one, several, or all named items. `selectionPrompt` requires `mode: 'single' | 'multiple'` and keeps the existing all-choice order and defaults. `parseNameSelection` retains a literal single-name flag. `parseListSelection` parses comma-separated flags and multiple prompt answers. Both functions give flags precedence and decode the private all sentinel. Empty input returns `undefined` for command defaults and errors, while `selectionNames` maps all to `undefined` for core filters.
 
 Normalize and glossary retain literal single-name flags. Bundle and export parse comma-separated flags. Export refuses empty multiselect answers, while bundle treats empty input as all. Normalize requires a collection or an explicit all choice and confirms all interactively. Export passes selected locale arrays directly to core.
+
+### Prompt helpers
+
+`missingTextQuestions(options, fields)` builds text questions for missing flags, including empty strings. Each field specifies its name, message, optional initial value, and validator. Required text fields use `requiredText` unless a custom validator is supplied. The runner still checks each command's `required` list.
+
+`collectionSetupQuestions` supplies the six shared collection questions for `init` and `add-collection`. It preserves their messages and initial values, including the `Main` name for `init` only.
+
+`confirmOrCancel` asks a confirmation with an initial value of false. It skips the question and its explanation for `--yes` or non-interactive mode. A decline throws `CommandCancelledError`, which the runner reports with exit code 0. Confirms that select configuration values remain in their commands. Normalize has no `--yes` flag, so its all-collections confirmation always appears in an interactive terminal.
 
 ### Output Formatting (`console-formatter.ts`)
 
