@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./commands/validate', () => ({ validateCommand: vi.fn() }));
 vi.mock('./add-resource/add-resource', () => ({ addResourceCommand: vi.fn() }));
 vi.mock('./delete-collection/delete-collection', () => ({ deleteCollectionCommand: vi.fn() }));
+vi.mock('./commands/normalize', () => ({ normalizeCommand: vi.fn() }));
 vi.mock('./commands/move', () => ({ moveResourceCommand: vi.fn() }));
 vi.mock('./commands/find-similar', () => ({ findSimilarCommand: vi.fn() }));
 vi.mock('./commands/import-cmd', () => ({ importCommand: vi.fn() }));
@@ -13,6 +14,7 @@ import { addResourceCommand } from './add-resource/add-resource';
 import { findSimilarCommand } from './commands/find-similar';
 import { importCommand } from './commands/import-cmd';
 import { moveResourceCommand } from './commands/move';
+import { normalizeCommand } from './commands/normalize';
 import { validateCommand } from './commands/validate';
 import { deleteCollectionCommand } from './delete-collection/delete-collection';
 
@@ -29,6 +31,7 @@ async function runCli(...args: string[]): Promise<void> {
       addResourceCommand,
       deleteCollectionCommand,
       moveResourceCommand,
+      normalizeCommand,
       findSimilarCommand,
       importCommand,
     ].map((command) => vi.mocked(command).mock.calls.length);
@@ -72,6 +75,12 @@ describe('main.ts flag wiring', () => {
     await runCli('delete-collection', '--collection-name', 'app', '--yes');
 
     expect(deleteCollectionCommand).toHaveBeenCalledWith({ collectionName: 'app', yes: true });
+  });
+
+  it('passes --yes to normalize', async () => {
+    await runCli('normalize', '--all', '--yes');
+
+    expect(normalizeCommand).toHaveBeenCalledWith({ all: true, yes: true });
   });
 
   it('passes --dest-collection to move', async () => {
