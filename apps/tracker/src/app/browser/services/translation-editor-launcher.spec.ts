@@ -132,7 +132,7 @@ describe('TranslationEditorLauncher', () => {
 
       expect(outcome).toEqual({ kind: 'saved', fullKey: resource.fullKey, skippedLocales: ['fr'] });
       expect(notifications.success).toHaveBeenCalledWith('Translation updated successfully');
-      expect(notifications.warning).toHaveBeenCalledWith('Skipped locales (ICU format): fr');
+      expect(notifications.warning).toHaveBeenCalledWith('Auto-translation skipped for fr');
     });
 
     it('should say where a moved entry went', async () => {
@@ -153,9 +153,7 @@ describe('TranslationEditorLauncher', () => {
       expect(notifications.success).toHaveBeenCalledWith('Resource created successfully');
       expect(notifications.warning).not.toHaveBeenCalled();
       vi.advanceTimersByTime(CREATE_WARNING_DELAY_MS);
-      expect(notifications.warning).toHaveBeenCalledWith(
-        'Auto-translation skipped for fr, de (ICU format not supported)',
-      );
+      expect(notifications.warning).toHaveBeenCalledWith('Auto-translation skipped for fr, de');
     });
 
     it('should say nothing for a cancel, or a dialog closed without a result', async () => {

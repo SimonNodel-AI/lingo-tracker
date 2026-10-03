@@ -329,6 +329,25 @@ describe('CollectionsManager', () => {
     expect(button?.disabled).toBe(true);
   });
 
+  it('shows store batch progress when one configured bundle was already running', () => {
+    const running = (bundleName: string): BundleGenerateJobDto => ({
+      jobId: `job-${bundleName}`,
+      bundleName,
+      status: 'running',
+      progress: { current: 0, total: 2 },
+    });
+    api.generateBundle.mockImplementation((name: string) => of(running(name)));
+    api.getBundleJob.mockReturnValue(of(running('tracker')));
+    store.generateBundle('tracker');
+    store.generateAllBundles();
+    fixture.detectChanges();
+
+    expect(component.isGeneratingAll()).toBe(true);
+    expect(component.generateAllPosition()).toBe(1);
+    expect(text(fixture)).toContain('1 of 1…');
+    expect(store.bundleCount()).toBe(2);
+  });
+
   describe('config write outcomes', () => {
     const rejection = (status: number, message: string) =>
       throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, message } })));

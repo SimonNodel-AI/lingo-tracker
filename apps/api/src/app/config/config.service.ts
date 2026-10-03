@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import {
   ConfigNotFoundError,
   ConfigParseError,
@@ -7,7 +7,6 @@ import {
   type OpenedProject,
   loadConfig,
 } from '@simoncodes-ca/core';
-import { ConfigReadNotFoundError, ConfigReadParseError } from '../errors/config-read.errors';
 
 @Injectable()
 export class ConfigService {
@@ -15,13 +14,14 @@ export class ConfigService {
     return { projectRoot: process.cwd(), sourceConfig: this.getConfig() };
   }
 
-  /** Reads `.lingo-tracker.json` once per call; the exception filter maps typed failures. */
+  /** Reads once per call; read routes own their HTTP responses, including without a global filter. */
   getConfig(): LingoTrackerConfig {
     try {
       return loadConfig({ cwd: process.cwd() });
     } catch (error) {
-      if (error instanceof ConfigNotFoundError) throw new ConfigReadNotFoundError(error);
-      if (error instanceof ConfigParseError) throw new ConfigReadParseError(error);
+      if (error instanceof ConfigNotFoundError) throw new NotFoundException('Configuration file not found');
+      if (error instanceof ConfigParseError)
+        throw new InternalServerErrorException('Invalid configuration file format');
       throw new InvalidConfigError('Failed to read configuration file', { cause: error });
     }
   }

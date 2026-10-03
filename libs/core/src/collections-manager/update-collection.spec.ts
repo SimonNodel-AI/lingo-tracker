@@ -15,6 +15,7 @@ import {
   CollectionRequiredByBundleError,
   ConfigChangedError,
   InvalidLocaleError,
+  InvalidNameError,
   ReadOnlyCollectionError,
 } from '../lib/errors/lingo-tracker-error';
 import type { ResourceEntries } from '../lib/resource/resource-entry';
@@ -221,6 +222,25 @@ describe('updateCollection', () => {
     expect(readFolder('apps').entries['ok']?.['de']).toBe('OK');
   });
 
+  it('rejects blank and whitespace renames before config or locale files change', async () => {
+    const configBefore = readFileSync(join(cwd(), CONFIG_FILENAME), 'utf8');
+    const entriesBefore = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME), 'utf8');
+    const metaBefore = readFileSync(join(i18n(), 'apps', TRACKER_META_FILENAME), 'utf8');
+    for (const name of ['', '   ']) {
+      await expect(update('myApp', name, { locales: ['en', 'de'] })).rejects.toThrow(InvalidNameError);
+      expect(readFileSync(join(cwd(), CONFIG_FILENAME), 'utf8')).toBe(configBefore);
+      expect(readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME), 'utf8')).toBe(entriesBefore);
+      expect(readFileSync(join(i18n(), 'apps', TRACKER_META_FILENAME), 'utf8')).toBe(metaBefore);
+      expect(collected).toEqual([]);
+    }
+  });
+
+  it('trims the new collection name and reports the trimmed rename', async () => {
+    const result = await update('myApp', ' renamed ', {});
+    expect(result.message).toBe('Collection "myApp" renamed to "renamed" and updated successfully');
+    expect(Object.keys(readConfig().collections)).toEqual(['renamed', 'other']);
+  });
+
   it('renames the collection', async () => {
     const result = await update('myApp', 'renamed', { translationsFolder: './i18n' }, {});
 
@@ -245,7 +265,7 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    await update('myApp', 'renamed', {}, {});
+    await update('myApp', ' renamed ', {}, {});
 
     expect(readConfig().bundles).toEqual({
       main: {
@@ -307,7 +327,7 @@ describe('updateCollection', () => {
     };
     writeConfig({ ...config(), bundles: malformed as unknown as LingoTrackerConfig['bundles'] });
 
-    await update('myApp', 'renamed', {}, {});
+    await update('myApp', ' renamed ', {}, {});
 
     expect(readConfig().bundles).toEqual({
       ...malformed,

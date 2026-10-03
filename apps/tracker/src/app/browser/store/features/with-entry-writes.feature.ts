@@ -8,40 +8,36 @@ import type {
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
-import { catchError, map, type Observable, of, tap } from 'rxjs';
+import { catchError, defer, from, map, type Observable, of, switchMap, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { captureSession } from '../session-guard';
 import { doesUpdateMoveEntry } from '../does-update-move-entry';
 import {
   type DeleteResourceOutcome,
   deleteOutcome,
+  decideDeleteResource,
+  decideTranslateResource,
+  deleteRefusal,
+  translateRefusal,
+  type RequestedEntryDeleteOutcome,
   type TranslateResourceOutcome,
   translateOutcome,
 } from '../resource-write-outcome';
 
 /**
- * How a Resource entry is written from the UI.
- *
- * Every method takes the entry's full dot-delimited key (or a DTO carrying it).
- * `createResource` and `updateResource` return the API call, so the caller owns its
- * own error handling (the editor's 409 conflict dialog). `deleteResource` and
- * `translateResource` return an outcome (`resource-write-outcome.ts`) that never
- * errors; the row actions decide its toast. On success the store brings
- * its caches in line before the caller hears back, but only in the Browser
- * Session (`sessionId`) that was open when the call was made: a write whose
- * response arrives after another collection has opened (the translation editor
- * dialog's `updateResource` subscription can outlive the browser) still resolves
- * for the caller, but does not patch or drop a row in the session that replaced
- * it.
- *
- * Both caches (the folder list and the search results) are keyed by each
- * entry's full key, so an entry is found the same way in either.
+ * Entry Writes owns the read-only rule, session validity and decided feedback for delete/translate.
+ * Calls are cold. Create/update are pass-through for the editor's API response and error contract,
+ * including 409 conflicts; Editor Submit enforces read-only for those writes.
+ * They only update caches in their original Browser Session.
+ * Both the folder list and search results are addressed by the entry's full key.
  */
 export function withEntryWritesFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{
         sessionId: number;
+        selectedCollection: string | null;
+        isReadOnly: boolean;
         translations: ResourceSummaryDto[];
         searchResults: SearchResultDto[];
       }>(),
@@ -73,12 +69,32 @@ export function withEntryWritesFeature<_>() {
         });
       }
 
+      function deleteResource(fullKey: string): Observable<DeleteResourceOutcome> {
+        return defer(() => {
+          if (store.isReadOnly()) return of(decideDeleteResource({ kind: 'read-only' }));
+          const collection = store.selectedCollection();
+          if (!collection) return of(decideDeleteResource({ kind: 'no-collection' }));
+          const inSession = captureSession(store);
+          return api.deleteResource(collection, [fullKey]).pipe(
+            map((response) => {
+              if (!inSession()) return decideDeleteResource({ kind: 'stale-session' });
+              if (response.entriesDeleted > 0) dropEntry(fullKey);
+              return decideDeleteResource(deleteOutcome(response));
+            }),
+            catchError((error: unknown) =>
+              of(inSession() ? deleteRefusal(error) : decideDeleteResource({ kind: 'stale-session' })),
+            ),
+          );
+        });
+      }
+
       return {
         /** Creates an entry, then reloads the List Scope so the list shows it in place. */
         createResource(collectionName: string, dto: CreateResourceDto): Observable<CreateResourceResponseDto> {
-          const inSession = captureSession(store);
-          // The caller still gets its response; only the store write is session-guarded.
-          return api.createResource(collectionName, dto).pipe(tap(() => inSession() && store.reloadList()));
+          return defer(() => {
+            const inSession = captureSession(store);
+            return api.createResource(collectionName, dto).pipe(tap(() => inSession() && store.reloadList()));
+          });
         },
 
         /**
@@ -87,50 +103,61 @@ export function withEntryWritesFeature<_>() {
          * one is patched in place.
          */
         updateResource(collectionName: string, dto: UpdateResourceDto): Observable<UpdateResourceResponseDto> {
-          const inSession = captureSession(store);
-          // The caller still gets its response; only the store write is session-guarded.
-          return api.updateResource(collectionName, dto).pipe(
-            tap((response) => {
-              if (!inSession()) return;
-              if (doesUpdateMoveEntry(dto)) {
-                dropEntry(dto.key);
-              } else if (response.resource) {
-                patchEntry(dto.key, response.resource);
-              }
-            }),
-          );
+          return defer(() => {
+            const inSession = captureSession(store);
+            return api.updateResource(collectionName, dto).pipe(
+              tap((response) => {
+                if (!inSession()) return;
+                if (doesUpdateMoveEntry(dto)) {
+                  dropEntry(dto.key);
+                } else if (response.resource) {
+                  patchEntry(dto.key, response.resource);
+                }
+              }),
+            );
+          });
         },
 
-        /**
-         * Deletes one entry and drops it from the caches once the server confirms it. Never errors:
-         * a failed request is the `refused` outcome.
-         */
-        deleteResource(collectionName: string, fullKey: string): Observable<DeleteResourceOutcome> {
-          const inSession = captureSession(store);
-          // The caller still gets its outcome; only the store write is session-guarded.
-          return api.deleteResource(collectionName, [fullKey]).pipe(
-            tap((response) => {
-              if (inSession() && response.entriesDeleted > 0) {
-                dropEntry(fullKey);
-              }
-            }),
-            map(deleteOutcome),
-            catchError((error: unknown) => of<DeleteResourceOutcome>({ kind: 'refused', error })),
-          );
+        /** Deletes one entry and returns its decided feedback, without an error channel. */
+        deleteResource,
+
+        /** The caller presents confirmation; the store owns guards and the eventual write. */
+        requestEntryDelete(
+          fullKey: string,
+          confirm: (inSession: () => boolean) => Promise<boolean>,
+        ): Observable<RequestedEntryDeleteOutcome> {
+          return defer(() => {
+            if (store.isReadOnly()) return of(decideDeleteResource({ kind: 'read-only' }));
+            if (!store.selectedCollection()) return of(decideDeleteResource({ kind: 'no-collection' }));
+            const inSession = captureSession(store);
+            return from(confirm(inSession)).pipe(
+              switchMap((yes) => {
+                if (!inSession()) return of(decideDeleteResource({ kind: 'stale-session' }));
+                if (!yes) return of({ kind: 'cancelled', feedback: null } as const);
+                return deleteResource(fullKey);
+              }),
+            );
+          });
         },
 
-        /**
-         * Auto-translates one entry and patches the caches with the result. Never errors: a failed
-         * request is the `refused` outcome.
-         */
-        translateResource(collectionName: string, fullKey: string): Observable<TranslateResourceOutcome> {
-          const inSession = captureSession(store);
-          // The caller still gets its outcome; only the store write is session-guarded.
-          return api.translateResource(collectionName, fullKey).pipe(
-            tap((response) => inSession() && patchEntry(fullKey, response.resource)),
-            map(translateOutcome),
-            catchError((error: unknown) => of<TranslateResourceOutcome>({ kind: 'refused', error })),
-          );
+        /** Auto-translates one entry and returns the decided toasts in their existing order. */
+        translateResource(fullKey: string): Observable<TranslateResourceOutcome> {
+          return defer(() => {
+            if (store.isReadOnly()) return of(decideTranslateResource({ kind: 'read-only' }));
+            const collection = store.selectedCollection();
+            if (!collection) return of(decideTranslateResource({ kind: 'no-collection' }));
+            const inSession = captureSession(store);
+            return api.translateResource(collection, fullKey).pipe(
+              map((response) => {
+                if (!inSession()) return decideTranslateResource({ kind: 'stale-session' });
+                patchEntry(fullKey, response.resource);
+                return decideTranslateResource(translateOutcome(response));
+              }),
+              catchError((error: unknown) =>
+                of(inSession() ? translateRefusal(error) : decideTranslateResource({ kind: 'stale-session' })),
+              ),
+            );
+          });
         },
       };
     }),

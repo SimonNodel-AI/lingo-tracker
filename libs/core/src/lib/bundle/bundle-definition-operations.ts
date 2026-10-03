@@ -6,7 +6,8 @@
  * and write see the same state. Key order in `config.bundles` is preserved.
  *
  * Failure order: a missing bundle (`BundleNotFoundError`), then every key and
- * definition problem at once (`InvalidBundleDefinitionError`), then a key
+ * definition problem (`InvalidNameError` for a blank rename target, otherwise
+ * `InvalidBundleDefinitionError` with every definition problem), then a key
  * collision (`BundleAlreadyExistsError`).
  *
  * Existence is an own-property check (`findBundleDefinition`), so a key such as
@@ -16,6 +17,7 @@
 import { type BundleDefinition, checkBundleDefinition, findBundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { guardedConfigWrite } from '../config/config-file-operations';
+import { resolveRenameTarget } from '../config/entry-name';
 import type { OpenedProject } from '../config/open-collection';
 import {
   BundleAlreadyExistsError,
@@ -62,20 +64,18 @@ export function updateBundleDefinition(
   options: UpdateBundleDefinitionOptions = {},
 ): { message: string } {
   const bundleKey = key.trim();
-  const newKey = options.newKey?.trim();
-  const targetKey = newKey ?? bundleKey;
-  const isRename = targetKey !== bundleKey;
 
   const configWrite = guardedConfigWrite(project);
   const config = project.sourceConfig;
-  const next = (() => {
+  const { next, targetKey, isRename } = (() => {
     const bundles = config.bundles ?? {};
 
     if (!findBundleDefinition(bundles, bundleKey)) {
       throw new BundleNotFoundError(bundleKey);
     }
 
-    const cleaned = assertValid(definition, config, newKey);
+    const { target: targetKey, isRename } = resolveRenameTarget(bundleKey, options.newKey);
+    const cleaned = assertValid(definition, config, isRename ? targetKey : undefined);
 
     if (isRename && findBundleDefinition(bundles, targetKey)) {
       throw new BundleAlreadyExistsError(targetKey);
@@ -88,7 +88,7 @@ export function updateBundleDefinition(
       ),
     );
 
-    return { ...config, bundles: nextBundles };
+    return { next: { ...config, bundles: nextBundles }, targetKey, isRename };
   })();
   configWrite.write(next);
 

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { deleteOutcome, translateOutcome } from '../../../store/resource-write-outcome';
-import { deleteFeedback, translateFeedback } from './resource-action-feedback';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import {
+  deleteFeedback,
+  deleteOutcome,
+  deleteRefusal,
+  translateFeedback,
+  translateOutcome,
+  translateRefusal,
+} from './resource-write-outcome';
 
 const { TOAST } = TRACKER_TOKENS.BROWSER;
 const toast = (tone: 'success' | 'info' | 'warning' | 'error', token: string, rest = {}) => ({
@@ -40,10 +46,10 @@ describe('resource action feedback', () => {
     });
 
     it('shows the message of a refusal, else the failure wording', () => {
-      expect(translateFeedback({ kind: 'refused', error: new Error('Quota') })).toEqual([
+      expect(translateRefusal(new Error('Quota')).feedback).toEqual([
         toast('error', TOAST.TRANSLATEFAILED, { detail: 'Quota' }),
       ]);
-      expect(translateFeedback({ kind: 'refused', error: 'boom' })).toEqual([toast('error', TOAST.TRANSLATEFAILED)]);
+      expect(translateRefusal('boom').feedback).toEqual([toast('error', TOAST.TRANSLATEFAILED)]);
     });
 
     it('classifies a response by its counts', () => {
@@ -58,9 +64,7 @@ describe('resource action feedback', () => {
     it('toasts a success, a nothing-deleted failure and a refusal', () => {
       expect(deleteFeedback(deleteOutcome({ entriesDeleted: 1 }))).toEqual(toast('success', TOAST.RESOURCEDELETED));
       expect(deleteFeedback(deleteOutcome({ entriesDeleted: 0 }))).toEqual(toast('error', TOAST.DELETEFAILED));
-      expect(deleteFeedback({ kind: 'refused', error: new Error('Gone') })).toEqual(
-        toast('error', TOAST.DELETEFAILED, { detail: 'Gone' }),
-      );
+      expect(deleteRefusal(new Error('Gone')).feedback).toEqual(toast('error', TOAST.DELETEFAILED, { detail: 'Gone' }));
     });
   });
 });

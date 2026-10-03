@@ -5,11 +5,8 @@ import {
   type Collection,
   deleteResource,
   editResource,
-  extractResourcesRecursively,
   type MoveResourcesOperation,
   moveResources,
-  normalizeSearchRequest,
-  type TerminologyFindings,
   translateExistingResource,
 } from '@simoncodes-ca/core';
 import type {
@@ -20,10 +17,8 @@ import type {
   DeleteResourceResponseDto,
   MoveResourceDto,
   MoveResourceResponseDto,
-  ResourceSummaryDto,
   ResourceTreeDto,
   SearchResultsDto,
-  TerminologyFindingsDto,
   TranslateLocaleJobDto,
   TranslateLocaleRequestDto,
   TranslateResourceDto,
@@ -32,12 +27,19 @@ import type {
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
-import { buildResourceSummary } from '@simoncodes-ca/domain';
 import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { ConfigService } from '../../config/config.service';
-import { mapResourceEntryToSummary, mapResourceTreeToDto } from '../../mappers/resource-tree.mapper';
-import { mapSearchResultsToDto } from '../../mappers/search-result.mapper';
+import { describeIndexStatus } from '../../mappers/index-status.mapper';
+import {
+  mapCreateResourcesResultToDto,
+  mapDeleteResourceResultToDto,
+  mapMoveResourcesResultToDto,
+  mapTranslateResourceResultToDto,
+  mapUpdateResourceResultToDto,
+} from '../../mappers/resource-response.mapper';
+import { mapGetTreeResultToDto } from '../../mappers/resource-tree.mapper';
+import { blankSearchResults, mapSearchPageToDto, searchRequestFromQuery } from '../../mappers/search-result.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import { RouteCollection } from '../route-collection';
 import {
@@ -73,12 +75,7 @@ export class ResourcesController {
   ): Promise<TranslateResourceResponseDto> {
     const result = await translateExistingResource(collection, dto.key, { onMutation: this.#index.sink });
 
-    return {
-      resource: buildResourceSummary(dto.key, result.entry, collection),
-      skippedLocales: result.skippedLocales,
-      translatedCount: result.translatedCount,
-      ...(result.warnings.length > 0 && { warnings: result.warnings }),
-    };
+    return mapTranslateResourceResultToDto(result, dto.key, collection);
   }
 
   @Post()
@@ -101,14 +98,7 @@ export class ResourcesController {
       })),
       { onExisting: 'fail', onMutation: this.#index.sink },
     );
-    const terminology = toTerminologyDto(result.terminology);
-
-    return {
-      entriesCreated: result.entriesCreated,
-      created: result.created,
-      ...(result.skippedLocales.length > 0 && { skippedLocales: result.skippedLocales }),
-      ...(terminology && { terminology }),
-    };
+    return mapCreateResourcesResultToDto(result);
   }
 
   @Delete()
@@ -118,10 +108,7 @@ export class ResourcesController {
   ): Promise<DeleteResourceResponseDto> {
     const result = deleteResource(collection, { keys: dto.keys }, { onMutation: this.#index.sink });
 
-    return {
-      entriesDeleted: result.entriesDeleted,
-      errors: result.errors,
-    };
+    return mapDeleteResourceResultToDto(result);
   }
 
   @Post('move')
@@ -139,7 +126,7 @@ export class ResourcesController {
       ...(op.toCollection && { toCollection: op.toCollection }),
     }));
     const result = await moveResources(collection, moves, { config, onMutation: this.#index.sink });
-    return { movedCount: result.movedCount, warnings: result.warnings, errors: result.errors };
+    return mapMoveResourcesResultToDto(result);
   }
 
   @Patch()
@@ -159,18 +146,7 @@ export class ResourcesController {
       },
       { onMutation: this.#index.sink },
     );
-    const resourceDto: ResourceSummaryDto | undefined =
-      result.updated && result.entry ? buildResourceSummary(result.resolvedKey, result.entry, collection) : undefined;
-    const terminology = result.terminology && toTerminologyDto(result.terminology);
-
-    return {
-      resolvedKey: result.resolvedKey,
-      updated: result.updated,
-      message: result.message,
-      resource: resourceDto,
-      skippedLocales: result.skippedLocales,
-      ...(terminology && { terminology }),
-    };
+    return mapUpdateResourceResultToDto(result, collection);
   }
 
   @Get('tree')
@@ -184,34 +160,14 @@ export class ResourcesController {
 
     if (read.status !== 'ready') {
       response.status(HttpStatus.ACCEPTED);
-      return read.status === 'indexing'
-        ? { status: 'indexing', message: 'Collection is currently being indexed. Please try again shortly.' }
-        : {
-            status: 'not-ready',
-            message:
-              read.status === 'error'
-                ? 'Cache indexing failed, re-indexing collection. Please try again shortly.'
-                : 'Collection indexing started. Please try again shortly.',
-          };
+      return describeIndexStatus(read.status);
     }
 
     if (!read.tree) {
       throw new NotFoundException(`Path "${path}" not found in collection tree`);
     }
 
-    // An empty path addresses the collection root, which the artificial root node in the
-    // Tracker sidebar selects. It is a folder like any other here, so it honours
-    // includeNested too and can list every resource in the collection.
-    const treeDto = mapResourceTreeToDto(read.tree, collection);
-
-    if (includeNested === 'true') {
-      // Nested entries carry keys relative to the requested folder, so they resolve against it.
-      treeDto.resources = extractResourcesRecursively(read.tree).map((res) =>
-        mapResourceEntryToSummary(res, treeDto.path, collection),
-      );
-    }
-
-    return treeDto;
+    return mapGetTreeResultToDto(read.tree, collection, includeNested);
   }
 
   @Get('cache/status')
@@ -224,30 +180,13 @@ export class ResourcesController {
     @RouteCollection() collection: Collection,
     @ValidQuery(searchQuery) dto: SearchQuery,
   ): Promise<SearchResultsDto> {
-    const request = normalizeSearchRequest(
-      {
-        query: dto.query ?? '',
-        mode: dto.mode === 'similar' ? 'similar-value' : 'text',
-        limit: dto.maxResults === undefined ? undefined : Number(dto.maxResults),
-      },
-      100,
-    );
+    const request = searchRequestFromQuery(dto);
     if (request.kind === 'blank') {
-      return {
-        query: dto.query || '',
-        results: [],
-        totalFound: 0,
-        limited: false,
-      };
+      return blankSearchResults(dto.query);
     }
 
     const page = this.#index.searchPage(collection, request);
-    return {
-      query: dto.query ?? '',
-      results: mapSearchResultsToDto(page.results, collection),
-      totalFound: page.totalFound,
-      limited: page.limited,
-    };
+    return mapSearchPageToDto(dto.query, page, collection);
   }
 
   @Post('translate-locale')
@@ -261,7 +200,7 @@ export class ResourcesController {
     const jobId = this.#translationJobService.startJob(collection, dto.locale);
 
     const job = this.#translationJobService.getJob(jobId);
-    (response as unknown as import('express').Response).status(HttpStatus.ACCEPTED).json(job);
+    response.status(HttpStatus.ACCEPTED).json(job);
   }
 
   @Get('translate-locale/:jobId')
@@ -281,10 +220,4 @@ export class ResourcesController {
 
     return job;
   }
-}
-
-/** The advisory findings as the response carries them; `undefined` when there is nothing to report. */
-function toTerminologyDto(terminology: TerminologyFindings): TerminologyFindingsDto | undefined {
-  if (terminology.findings.length === 0 && terminology.problems.length === 0) return undefined;
-  return { findings: terminology.findings.map((finding) => ({ ...finding })), problems: [...terminology.problems] };
 }

@@ -2,16 +2,16 @@ import { relative, resolve } from 'node:path';
 import {
   normalizePreferredTermRules,
   type PreferredTermRule,
-  type PreferredTermRuleError,
   sortPreferredTermRules,
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
+import { formatRuleErrors } from '../errors/format-rule-errors';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   CoreOperationError,
   InvalidConfigError,
   InvalidProjectTermsEditError,
-  LingoTrackerError,
+  PreferredTerminologyValidationError,
 } from '../errors/lingo-tracker-error';
 import {
   readTermFile,
@@ -40,19 +40,6 @@ export interface LoadPreferredTerminologyResult {
   error?: string;
   /** Set when an explicitly configured file does not exist. */
   warning?: string;
-}
-
-/** Thrown by `writePreferredTerminology` when the rule list fails validation. The file is left untouched. */
-export class PreferredTerminologyValidationError extends LingoTrackerError {
-  readonly kind = 'invalid' as const;
-  readonly errors: PreferredTermRuleError[];
-  readonly submittedRules?: readonly PreferredTermRule[];
-
-  constructor(errors: PreferredTermRuleError[], submittedRules?: readonly PreferredTermRule[]) {
-    super(`Invalid preferred terminology rules: ${formatRuleErrors(errors)}`, 'INVALID_PREFERRED_TERMINOLOGY');
-    this.errors = errors;
-    this.submittedRules = submittedRules;
-  }
 }
 
 /** The preferred-terminology file: a bare JSON array of `{ discouraged, preferred, reason? }` rules, in file order. */
@@ -262,9 +249,4 @@ function invalidPointerError(config: Pick<LingoTrackerConfig, 'preferredTerminol
   }
   const type = Array.isArray(pointer) ? 'array' : typeof pointer;
   return `"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got ${type})`;
-}
-
-/** One `row N field: message` entry per error, rows 1-based, joined into a single line. */
-function formatRuleErrors(errors: readonly PreferredTermRuleError[]): string {
-  return errors.map((error) => `row ${error.index + 1} ${error.field}: ${error.message}`).join('; ');
 }

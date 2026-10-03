@@ -1,6 +1,34 @@
 import type { FolderNodeDto, ResourceSummaryDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
-import type { Collection, FolderChild, ResourceTreeEntry, ResourceTreeNode } from '@simoncodes-ca/core';
+import {
+  type Collection,
+  type FolderChild,
+  type ResourceTreeEntry,
+  type ResourceTreeNode,
+  extractResourcesRecursively,
+} from '@simoncodes-ca/core';
 import { buildResourceSummary, resolveResourceKey } from '@simoncodes-ca/domain';
+
+/**
+ * Maps the tree endpoint result, including nested entries only for the literal query value 'true'.
+ *
+ * An empty path addresses the collection root, which the artificial root node in the
+ * Tracker sidebar selects. It is a folder like any other here, so it honours
+ * includeNested too and can list every resource in the collection.
+ * Nested entries carry keys relative to the requested folder, so they resolve against it.
+ */
+export function mapGetTreeResultToDto(
+  node: ResourceTreeNode,
+  collection: Collection,
+  includeNested: string | undefined,
+): ResourceTreeDto {
+  const dto = mapResourceTreeToDto(node, collection);
+  if (includeNested === 'true') {
+    dto.resources = extractResourcesRecursively(node).map((entry) =>
+      mapResourceEntryToSummary(entry, dto.path, collection),
+    );
+  }
+  return dto;
+}
 
 /** Maps a tree node to its DTO. Every resource becomes a Resource Summary of `collection`. */
 export function mapResourceTreeToDto(node: ResourceTreeNode, collection: Collection): ResourceTreeDto {

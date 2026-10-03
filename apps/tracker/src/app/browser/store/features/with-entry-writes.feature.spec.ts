@@ -4,6 +4,8 @@ import { patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { firstValueFrom, throwError } from 'rxjs';
+import { BrowserApiService } from '../../services/browser-api.service';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { ApiError, provideTrackerHttpClient } from '../../../shared/api-error/api-error';
 import { BrowserStore } from '../browser.store';
@@ -225,7 +227,7 @@ describe('BrowserStore entry writes', () => {
 
   describe('deleteResource', () => {
     const remove = (fullKey: string, entriesDeleted: number): void => {
-      store.deleteResource('my-collection', fullKey).subscribe();
+      store.deleteResource(fullKey).subscribe();
       const request = http.expectOne({ method: 'DELETE', url: RESOURCES_URL });
       expect(request.request.body).toEqual({ keys: [fullKey] });
       request.flush({ entriesDeleted });
@@ -267,7 +269,7 @@ describe('BrowserStore entry writes', () => {
 
   describe('translateResource', () => {
     const translate = (fullKey: string, resource: ResourceSummaryDto): void => {
-      store.translateResource('my-collection', fullKey).subscribe();
+      store.translateResource(fullKey).subscribe();
       const request = http.expectOne({ method: 'POST', url: `${RESOURCES_URL}/translate` });
       expect(request.request.body).toEqual({ key: fullKey });
       request.flush({ resource, translatedCount: 1, skippedLocales: [] });
@@ -299,6 +301,224 @@ describe('BrowserStore entry writes', () => {
           .find((item) => item.fullKey === 'common.save')
           ?.targets.find((target) => target.locale === 'fr')?.value,
       ).toBe('Enregistrer');
+    });
+  });
+
+  describe('write guards and outcomes', () => {
+    it('returns read-only for delete without an HTTP call or cache changes', () => {
+      searchMode();
+      patchState(unprotected(store), { isReadOnly: true });
+      const rows = store.translations();
+      const results = store.searchResults();
+      const next = vi.fn();
+
+      store.deleteResource('common.save').subscribe(next);
+
+      expect(next).toHaveBeenCalledWith({ kind: 'read-only', feedback: null });
+      http.expectNone(() => true);
+      expect(store.translations()).toBe(rows);
+      expect(store.searchResults()).toBe(results);
+    });
+
+    it('returns read-only for translate without an HTTP call or cache changes', () => {
+      searchMode();
+      patchState(unprotected(store), { isReadOnly: true });
+      const rows = store.translations();
+      const results = store.searchResults();
+      const next = vi.fn();
+
+      store.translateResource('common.save').subscribe(next);
+
+      expect(next).toHaveBeenCalledWith({ kind: 'read-only', feedback: [] });
+      http.expectNone(() => true);
+      expect(store.translations()).toBe(rows);
+      expect(store.searchResults()).toBe(results);
+    });
+
+    it('returns no-collection for delete and translate without HTTP', () => {
+      const deleted = vi.fn();
+      const translated = vi.fn();
+
+      store.deleteResource('common.save').subscribe(deleted);
+      store.translateResource('common.save').subscribe(translated);
+
+      expect(deleted).toHaveBeenCalledWith({ kind: 'no-collection', feedback: null });
+      expect(translated).toHaveBeenCalledWith({ kind: 'no-collection', feedback: [] });
+      http.expectNone(() => true);
+    });
+
+    it('checks the current read-only rule when subscribed, rather than when constructed', () => {
+      folderMode();
+      const deletion = store.deleteResource('common.save');
+      const translation = store.translateResource('common.save');
+      http.expectNone(() => true);
+      patchState(unprotected(store), { isReadOnly: true });
+      const deleted = vi.fn();
+      const translated = vi.fn();
+
+      deletion.subscribe(deleted);
+      translation.subscribe(translated);
+
+      expect(deleted).toHaveBeenCalledWith({ kind: 'read-only', feedback: null });
+      expect(translated).toHaveBeenCalledWith({ kind: 'read-only', feedback: [] });
+      http.expectNone(() => true);
+    });
+
+    it('normalises delete and translate refusals as ApiError while preserving unexpected error feedback', () => {
+      folderMode();
+      const api = TestBed.inject(BrowserApiService);
+      vi.spyOn(api, 'deleteResource').mockReturnValue(throwError(() => new Error('Gone')));
+      vi.spyOn(api, 'translateResource').mockReturnValue(throwError(() => 'boom'));
+      const deleted = vi.fn();
+      const translated = vi.fn();
+
+      store.deleteResource('common.save').subscribe(deleted);
+      store.translateResource('common.save').subscribe(translated);
+
+      expect(deleted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'refused',
+          error: expect.any(ApiError),
+          feedback: expect.objectContaining({ detail: 'Gone' }),
+        }),
+      );
+      expect(translated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'refused',
+          error: expect.any(ApiError),
+          feedback: [expect.objectContaining({ tone: 'error' })],
+        }),
+      );
+      expect(store.translations()).toHaveLength(2);
+    });
+
+    it('preserves the API refusal and its message for both entry actions', () => {
+      folderMode();
+      const deleted = vi.fn();
+      const translated = vi.fn();
+      store.deleteResource('common.save').subscribe(deleted);
+      store.translateResource('common.save').subscribe(translated);
+
+      http
+        .expectOne({ method: 'DELETE', url: RESOURCES_URL })
+        .flush({ message: 'Gone' }, { status: 404, statusText: 'Not Found' });
+      http
+        .expectOne({ method: 'POST', url: `${RESOURCES_URL}/translate` })
+        .flush({ message: 'Quota' }, { status: 429, statusText: 'Too Many Requests' });
+
+      expect(deleted).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'refused',
+          error: expect.objectContaining({ kind: 'not-found', status: 404 }),
+          feedback: expect.objectContaining({ detail: 'Gone' }),
+        }),
+      );
+      expect(translated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: 'refused',
+          error: expect.objectContaining({ status: 429 }),
+          feedback: [expect.objectContaining({ detail: 'Quota' })],
+        }),
+      );
+    });
+
+    it('passes editor writes to their supplied collection regardless of the browser read-only state', () => {
+      folderMode();
+      patchState(unprotected(store), { isReadOnly: true });
+      const api = TestBed.inject(BrowserApiService);
+      const error = new Error('API refusal');
+      const create = vi.spyOn(api, 'createResource').mockReturnValue(throwError(() => error));
+      const update = vi.spyOn(api, 'updateResource').mockReturnValue(throwError(() => error));
+      const dto = { key: 'common.save', baseValue: 'Save' };
+      const created = vi.fn();
+      const updated = vi.fn();
+
+      store.createResource('editor-collection', dto).subscribe({ error: created });
+      store.updateResource('editor-collection', dto).subscribe({ error: updated });
+
+      expect(create).toHaveBeenCalledWith('editor-collection', dto);
+      expect(update).toHaveBeenCalledWith('editor-collection', dto);
+      expect(created.mock.calls[0]?.[0]).toBe(error);
+      expect(updated.mock.calls[0]?.[0]).toBe(error);
+      http.expectNone(() => true);
+    });
+
+    it('passes editor 409 errors through unchanged', () => {
+      folderMode();
+      const api = TestBed.inject(BrowserApiService);
+      const conflict = new ApiError({ kind: 'conflict', status: 409, serverMessage: 'Key exists' });
+      vi.spyOn(api, 'createResource').mockReturnValue(throwError(() => conflict));
+      vi.spyOn(api, 'updateResource').mockReturnValue(throwError(() => conflict));
+      const created = vi.fn();
+      const updated = vi.fn();
+
+      store.createResource('my-collection', { key: 'common.save', baseValue: 'Save' }).subscribe({ error: created });
+      store.updateResource('my-collection', { key: 'common.save', baseValue: 'Save' }).subscribe({ error: updated });
+
+      expect(created).toHaveBeenCalledWith(conflict);
+      expect(updated).toHaveBeenCalledWith(conflict);
+    });
+  });
+
+  describe('requestEntryDelete', () => {
+    it('does not ask for confirmation in read-only mode or without a collection', async () => {
+      const confirm = vi.fn().mockResolvedValue(true);
+      expect(await firstValueFrom(store.requestEntryDelete('common.save', confirm))).toEqual({
+        kind: 'no-collection',
+        feedback: null,
+      });
+      folderMode();
+      patchState(unprotected(store), { isReadOnly: true });
+
+      expect(await firstValueFrom(store.requestEntryDelete('common.save', confirm))).toEqual({
+        kind: 'read-only',
+        feedback: null,
+      });
+      expect(confirm).not.toHaveBeenCalled();
+      http.expectNone(() => true);
+    });
+
+    it('deletes only after confirmation and returns a silent cancellation otherwise', async () => {
+      folderMode();
+      expect(await firstValueFrom(store.requestEntryDelete('common.save', () => Promise.resolve(false)))).toEqual({
+        kind: 'cancelled',
+        feedback: null,
+      });
+      http.expectNone(() => true);
+      const result = firstValueFrom(store.requestEntryDelete('common.save', () => Promise.resolve(true)));
+      await Promise.resolve();
+      http.expectOne({ method: 'DELETE', url: RESOURCES_URL }).flush({ entriesDeleted: 1 });
+
+      expect(await result).toMatchObject({ kind: 'deleted', feedback: { tone: 'success' } });
+      expect(store.translations().map((item) => item.fullKey)).toEqual(['common.dialog.title']);
+    });
+
+    it('checks the session again after confirmation, including a reopen of the same collection', async () => {
+      folderMode();
+      const outcome = await firstValueFrom(
+        store.requestEntryDelete('common.save', (inSession) => {
+          expect(inSession()).toBe(true);
+          patchState(unprotected(store), { sessionId: store.sessionId() + 1 });
+          expect(inSession()).toBe(false);
+          return Promise.resolve(true);
+        }),
+      );
+
+      expect(outcome).toEqual({ kind: 'stale-session', feedback: null });
+      http.expectNone(() => true);
+    });
+
+    it('rechecks read-only after confirmation when settings change in place', async () => {
+      folderMode();
+      const result = await firstValueFrom(
+        store.requestEntryDelete('common.save', () => {
+          patchState(unprotected(store), { isReadOnly: true });
+          return Promise.resolve(true);
+        }),
+      );
+
+      expect(result).toEqual({ kind: 'read-only', feedback: null });
+      http.expectNone(() => true);
     });
   });
 
@@ -339,12 +559,14 @@ describe('BrowserStore entry writes', () => {
     it('should not drop an entry deleted in a closed session', () => {
       folderMode();
 
-      store.deleteResource('my-collection', 'common.save').subscribe();
+      const next = vi.fn();
+      store.deleteResource('common.save').subscribe(next);
       closeSession();
 
       http.expectOne({ method: 'DELETE', url: RESOURCES_URL }).flush({ entriesDeleted: 1 });
 
       expect(store.translations().map((item) => item.fullKey)).toEqual(['common.save', 'common.dialog.title']);
+      expect(next).toHaveBeenCalledWith({ kind: 'stale-session', feedback: null });
     });
 
     it('should not reload the folder for a create whose session has closed', () => {
@@ -361,7 +583,8 @@ describe('BrowserStore entry writes', () => {
     it('should not patch a translation result from a closed session', () => {
       folderMode();
 
-      store.translateResource('my-collection', 'common.save').subscribe();
+      const next = vi.fn();
+      store.translateResource('common.save').subscribe(next);
       closeSession();
 
       http.expectOne({ method: 'POST', url: `${RESOURCES_URL}/translate` }).flush({
@@ -376,6 +599,28 @@ describe('BrowserStore entry writes', () => {
           .find((item) => item.fullKey === 'common.save')
           ?.targets.find((target) => target.locale === 'fr'),
       ).toBeUndefined();
+      expect(next).toHaveBeenCalledWith({ kind: 'stale-session', feedback: [] });
+    });
+
+    it('returns silent stale-session outcomes for failed delete and translate responses', () => {
+      searchMode();
+      const deleted = vi.fn();
+      const translated = vi.fn();
+      store.deleteResource('common.save').subscribe(deleted);
+      store.translateResource('common.save').subscribe(translated);
+      closeSession();
+
+      http
+        .expectOne({ method: 'DELETE', url: RESOURCES_URL })
+        .flush({ message: 'Gone' }, { status: 404, statusText: 'Not Found' });
+      http
+        .expectOne({ method: 'POST', url: `${RESOURCES_URL}/translate` })
+        .flush({ message: 'Quota' }, { status: 429, statusText: 'Too Many Requests' });
+
+      expect(deleted).toHaveBeenCalledWith({ kind: 'stale-session', feedback: null });
+      expect(translated).toHaveBeenCalledWith({ kind: 'stale-session', feedback: [] });
+      expect(store.translations()).toHaveLength(2);
+      expect(store.searchResults()).toHaveLength(2);
     });
   });
 });

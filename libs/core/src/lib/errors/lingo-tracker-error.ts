@@ -1,6 +1,7 @@
 import type { CollectionFolderProblem } from '../resource/collection-folders';
-import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import { type PreferredTermRule, type PreferredTermRuleError, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import { ErrorMessages, type FolderPathPart } from './error-messages';
+import { formatRuleErrors } from './format-rule-errors';
 
 export type ErrorKind = 'not-found' | 'conflict' | 'invalid' | 'forbidden' | 'unavailable' | 'upstream' | 'internal';
 
@@ -17,6 +18,9 @@ export abstract class LingoTrackerError extends Error {
   readonly code: string;
   /** The underlying error, when this one wraps it. Not part of the message, so it never reaches a client. */
   readonly cause?: unknown;
+
+  /** Additional domain validation problems, when the error has a list. */
+  readonly details?: readonly unknown[];
 
   constructor(message: string, code: string, options?: { readonly cause?: unknown }) {
     super(message);
@@ -241,13 +245,22 @@ export type CollectionTagEditProblem = 'tag-conflict' | 'tag-missing';
 /** A collection record cannot be stored as given (for example a blank `translationsFolder`). */
 export class InvalidCollectionError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
-  /** Set for a field-shape error whose API message includes the `collection.` prefix. */
+  /** The field with a shape error, when validation identifies one. */
   readonly field?: string;
   readonly problem?: CollectionTagEditProblem;
+
   constructor(message: string, options?: { readonly field?: string; readonly problem?: CollectionTagEditProblem }) {
     super(message, 'INVALID_COLLECTION');
     this.field = options?.field;
     this.problem = options?.problem;
+  }
+}
+
+/** A supplied rename target is blank after trimming. */
+export class InvalidNameError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor() {
+    super(ErrorMessages.nameRequired(), 'INVALID_NAME');
   }
 }
 
@@ -428,6 +441,23 @@ export class InvalidFolderPathError extends LingoTrackerError {
 
 // --- Translation -------------------------------------------------------------
 
+/**
+ * A provider failure. `retryable` indicates whether retrying can help.
+ * The provider code taxonomy remains independent of the adapter-facing kind.
+ */
+export class TranslationError extends LingoTrackerError {
+  readonly kind = 'upstream' as const;
+  readonly retryable: boolean;
+  readonly providerErrorCode: string | undefined;
+
+  /** `code` names the failure kind, e.g. `MISSING_API_KEY`, `RATE_LIMIT`, `INVALID_REQUEST`. */
+  constructor(message: string, code: string, retryable: boolean, providerErrorCode?: string) {
+    super(message, code);
+    this.retryable = retryable;
+    this.providerErrorCode = providerErrorCode;
+  }
+}
+
 /** An auto-translate operation was asked of a collection whose translation config is missing or disabled. */
 export class AutoTranslationDisabledError extends LingoTrackerError {
   readonly kind = 'unavailable' as const;
@@ -506,11 +536,28 @@ export class BundleAlreadyExistsError extends LingoTrackerError {
 /** A bundle key or definition failed validation. `errors` holds every problem found. */
 export class InvalidBundleDefinitionError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
+  override readonly details: readonly string[];
   readonly errors: readonly string[];
 
   constructor(errors: readonly string[]) {
     super(ErrorMessages.invalidBundleDefinition(errors), 'INVALID_BUNDLE_DEFINITION');
     this.errors = errors;
+    this.details = errors;
+  }
+}
+
+/** Invalid preferred-terminology rules. Validation leaves the file untouched. */
+export class PreferredTerminologyValidationError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  override readonly details: readonly PreferredTermRuleError[];
+  readonly errors: PreferredTermRuleError[];
+  readonly submittedRules?: readonly PreferredTermRule[];
+
+  constructor(errors: PreferredTermRuleError[], submittedRules?: readonly PreferredTermRule[]) {
+    super(`Invalid preferred terminology rules: ${formatRuleErrors(errors)}`, 'INVALID_PREFERRED_TERMINOLOGY');
+    this.errors = errors;
+    this.details = errors;
+    this.submittedRules = submittedRules;
   }
 }
 

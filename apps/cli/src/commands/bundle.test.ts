@@ -150,6 +150,13 @@ describe('bundleCommand', () => {
     process.exitCode = undefined;
   });
 
+  it('keeps bundle fallback for empty name flags', async () => {
+    const options = { name: ' , ', bundleOrAll: 'core' };
+    await bundleCommand(options);
+    expect(mockGenerateBundles).toHaveBeenCalledWith(mockConfig, expect.objectContaining({ names: ['core'] }));
+    expect(process.exitCode).toBe(0);
+  });
+
   describe('configuration validation', () => {
     it('should error when config file is missing', async () => {
       vi.mocked(core.loadConfig).mockImplementation(() => {

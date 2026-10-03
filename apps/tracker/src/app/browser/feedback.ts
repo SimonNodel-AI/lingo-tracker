@@ -1,6 +1,7 @@
 import { inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../shared/notification';
+import { translateToken, type TranslationParam, type TokenTranslator } from '../shared/translate-token';
 
 /**
  * The feedback a write has decided for its outcome: how it reads (`tone`), where it shows
@@ -18,18 +19,12 @@ export interface Feedback {
 }
 
 /** A parameter value; `{ token }` is itself translated (for example the root folder's label). */
-export type FeedbackParam = string | number | { readonly token: string };
-
-type Translate = (token: string, params?: Record<string, string | number>) => string;
+export type FeedbackParam = TranslationParam;
 
 /** The text to show for a feedback: its `detail` when it has one, else its token's wording. */
-export function feedbackText(feedback: Feedback, translate: Translate): string {
+export function feedbackText(feedback: Feedback, translate: TokenTranslator): string {
   if (feedback.detail) return feedback.detail;
-  const params: Record<string, string | number> = {};
-  for (const [name, value] of Object.entries(feedback.params ?? {})) {
-    params[name] = typeof value === 'object' ? translate(value.token) : value;
-  }
-  return translate(feedback.token, params);
+  return translateToken(feedback.token, feedback.params, translate);
 }
 
 /** Renders feedback from a component or store feature; call it in an injection context. */

@@ -8,6 +8,7 @@ import type { Collection } from '../config/open-collection';
 import {
   AutoTranslationDisabledError,
   CannotTranslateBaseLocaleError,
+  TranslationError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
@@ -15,7 +16,6 @@ import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
 import { assertCanTranslateLocale, type TranslateLocaleProgress, translateLocale } from './translate-locale';
-import { TranslationError } from './translation-provider';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {
@@ -421,6 +421,25 @@ describe('translateLocale', () => {
       expect(result).toMatchObject({ translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
       expect(read(RESOURCE_ENTRIES_FILENAME).ok.fr).toBe('Humain');
       expect(read(TRACKER_META_FILENAME).ok.fr.status).toBe('translated');
+    });
+
+    it('preserves a sibling entry written during the provider call', async () => {
+      const target = collection();
+      seedResources(target, { 'common.ok': { source: 'OK' } });
+      const provider = new InMemoryTranslationProvider(() => {
+        const folder = openResourceFolder(join(dir(), 'common'), target);
+        folder.setBase('cancel', 'Cancel');
+        folder.setTranslation('cancel', 'fr', 'Annuler', 'verified');
+        folder.save();
+        return 'Bien';
+      });
+
+      const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+
+      expect(result).toMatchObject({ translatedCount: 1, skippedCount: 0 });
+      expect(read(RESOURCE_ENTRIES_FILENAME, 'common').cancel).toEqual({ source: 'Cancel', fr: 'Annuler' });
+      expect(read(TRACKER_META_FILENAME, 'common').cancel.fr.status).toBe('verified');
+      expect(collected).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
     });
 
     it('preserves a target marked verified during the provider call', async () => {

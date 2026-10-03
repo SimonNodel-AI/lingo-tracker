@@ -1,6 +1,6 @@
 # CLI (`apps/cli`)
 
-The LingoTracker CLI is a Node.js command-line binary built with [Commander](https://github.com/tj/commander.js). It provides every day-to-day translation management operation — from project initialization and resource CRUD through bundle generation, import/export, and CI/CD validation — as a single `lingo-tracker` executable. Each command is a prompt schema plus a call to `@simoncodes-ca/core`, run by one [Command Runner](glossary.md#command-runner). The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes. The command owns its questions, its core call and its output formatting. Resource files are read and written only through core. The CLI itself writes a few files of its own: `init` calls core `initConfig` for `.lingo-tracker.json`, `export` and `import` write their summary files, `glossary` writes its JSON output, and `install-skill` writes the skill templates.
+The LingoTracker CLI is a Node.js command-line binary built with [Commander](https://github.com/tj/commander.js). It provides every day-to-day translation management operation — from project initialization and resource CRUD through bundle generation, import/export, and CI/CD validation — as a single `lingo-tracker` executable. Each command is a prompt schema plus a call to `@simoncodes-ca/core`, run by one [Command Runner](glossary.md#command-runner). The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes. The command owns its preconditions, its questions, its core call and its output formatting. Resource files are read and written only through core. The CLI itself writes a few files of its own: `init` calls core `initConfig` for `.lingo-tracker.json`, `export` and `import` write their summary files, `glossary` writes its JSON output, and `install-skill` writes the skill templates.
 
 Return to [architecture README](README.md).
 
@@ -22,7 +22,7 @@ Return to [architecture README](README.md).
   - [Resolution Flowchart](#resolution-flowchart)
 - [Testing Commands](#testing-commands)
 - [Shared Utilities](#shared-utilities)
-  - [Multiselect Helpers (`prompt-utils.ts`)](#multiselect-helpers-prompt-utilsts)
+  - [Selection (`prompt-utils.ts`)](#selection-prompt-utilsts)
   - [Output Formatting (`console-formatter.ts`)](#output-formatting-console-formatterts)
   - [String Parsers (`string-parsers.ts`)](#string-parsers-string-parsersts)
 
@@ -91,9 +91,15 @@ The `bundle` command maps flags to core `generateBundles`, prints each outcome a
 
 The command resolves input (`--text` → `--input` → stdin), selects one or all opened collections through the runner, maps flags to `buildGlossary(collections, text, options)`, and writes the returned JSON payload to a file or stdout. Core owns extraction, matching, the [Collection Set](glossary.md#collection-set) read, and each collection's effective base and target locales. Without `--locales`, it uses each opened collection's targets; an explicit `--locales` list can include stored translations outside those targets and removes only the base locale. Reader problems return separately from the payload; the command prints them as warnings on stderr, so `--stdout` stays valid JSON. With different base locales, core raises a typed error and the runner exits 1. See [Term Glossary](glossary.md#term-glossary) for the matching and locale rules.
 
+`find-similar` builds a text question when the supplied value is absent, empty, or whitespace. After answers are merged, it normalizes the search request once, with a default limit of 5 and core's cap of 500. Missing or empty values keep the runner's required-option message; whitespace-only values report `--value must not be blank`. The `--max-results` option parses with `parseInt(value, 10)` before the command loads. A value that produces `NaN` now fails with `--max-results must be a number, got "<value>"`; accepted values keep their existing conversion.
+
 For the full description of what each core function does internally, see [core-library.md](core-library.md).
 
-`export` maps flags and prompt answers to `runExport`. `apps/cli/src/main.ts` leaves promptable export values unset; `apps/cli/src/commands/run-option-defaults.ts` holds the values that `apps/cli/src/commands/export-cmd.ts` uses for prompt preselection and answer resolution. The default status filter is `new,stale`; JSON structure is hierarchical and metadata switches are off. Empty collection, locale, and status selections are refused instead of selecting all. `export-cmd.ts` splits `--status` and rejects an explicitly empty result with its existing flag message. Core validates unknown statuses with `InvalidTranslationStatusError` and rejects an empty status list supplied by another caller; it then validates the base property name and output directory, resolves the output folder, and returns an empty `locales` list when no target remains. The command prints the plan from `onStart`, then renders the result and writes the summary. Its prompt uses `DEFAULT_CONFIG.exportFolder` when the config has no export folder. `import` uses domain's default strategy and importable-locale rule for prompt choices; `apps/cli/src/commands/import-cmd.ts` leaves unset comment, tag, and create-missing switches undefined for the import session's strategy defaults. `--no-validate-base` disables the base-value warning; without it, validation stays on. Import also resolves an omitted `--preserve-status` to false before calling core, including for migration. The import session enforces the same locale rule.
+`export` and `import` each use a pure [Run Options Resolution](glossary.md#run-options-resolution): `apps/cli/src/commands/export-options.ts` and `import-options.ts`. Each module builds questions from flags and resolves the runner's merged answers to core options. Export also returns advisories. `main.ts` leaves promptable values unset. `run-option-defaults.ts` holds export defaults and import's CLI defaults, and exposes the Import Strategy Policy defaults for help labels and migration prompt initials. Export prints advisories on stderr. Both commands call core, render results, and report the summary.
+
+Export's JSON option table shares visibility rules: format selects JSON questions, rich JSON enables metadata questions, and `includeBase` enables the base property question. The last condition deliberately does not require rich JSON. The default status filter is `new,stale`; JSON structure is hierarchical and metadata switches are off. Empty collection, locale and status prompt selections fail in that order, before collection lookup, even when flags exist. Empty collection or locale flags still select all. The resolution module splits status strings and rejects an empty list with the existing `Invalid --status` diagnostic before core is called or an advisory is printed. Unknown statuses pass through to core's `InvalidTranslationStatusError`. Core checks the base property name before its status validation, then the output directory. Errors raised while opening collections or building questions retain their original messages, even when the status flag is empty. The output prompt uses the configured folder or `DEFAULT_CONFIG.exportFolder`. An omitted base property name stays undefined in non-interactive mode; its prompt initial is `baseValue`.
+
+Import's strategy drives locale choices through domain's importable-locale rule, and enables the migration switch prompts. The locale select and strategy-bound text questions are mutually exclusive, so a validator needs no mutable state from an earlier callback. Source existence is supplied by the command as context. Format detection determines prompt visibility; an inferred format stays unset in the core options, so `runImport` still detects it and owns source errors. Unset comment, tag and create-missing switches stay undefined for core's strategy defaults. `--no-validate-base` disables the base-value warning; without it validation stays on. An omitted `--preserve-status` resolves to false, including for migration. This overrides migration's policy default to honour source status. A small catch around `runImport` reports its failures on stderr and returns exit code 1. Format-stage `ImportSourceError` failures print their message without wrapping or repeating the cause; other failures print `Import failed: <message>`. Errors from rendering, summary reporting or outcome handling reach the runner unchanged.
 
 For the import and export sequence diagrams showing the full end-to-end flow, see [user-flows.md](user-flows.md).
 
@@ -101,15 +107,16 @@ For the import and export sequence diagrams showing the full end-to-end flow, se
 
 ## Command Runner
 
-`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate`, `find-similar`, and the positional `edit-collection` command. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. For config edits, it passes the opened collection or `ctx.project` to core. That function does the same steps for every command, in this order:
+`apps/cli/src/runner/command-runner.ts` runs each command. `main.ts` lists command registrations: name, description, ordered option definitions, optional argument and help text, and a lazy `load` function. `registerCommand<Options>(program, registration)` in `runner/register-command.ts` applies those definitions to Commander before parsing, then loads and invokes the handler when the action runs. `mapOptions(raw, args)` is an optional conversion at that boundary for `validate` and the positional `edit-collection` command, and supplies the default limit for `find-similar`. Shared definitions and flag value conversions live in `runner/options.ts`: the collection flag, token casing choices, repeatable list accumulator, `--yes`, resource fields, and the six flags common to `init` and `add-collection`. The long import, validate, and preferred-terminology help examples live in `runner/help-text.ts`. Each registration creates a fresh Commander option, so parsing one command does not change another command's defaults. The loaded handler calls the function returned by `defineCommand`. For config edits, it passes the opened collection or `ctx.project` to core. That function does the same steps for every command, in this order:
 
 1. Finds the project root: `INIT_CWD` (set by pnpm to the directory where the command was typed), else `process.cwd()`.
 2. Reads the [interactive rule](#the-interactive-rule) once.
 3. Loads `.lingo-tracker.json` with core `loadConfig({ cwd })`, unless the command sets `config: false`.
 4. Resolves and opens one collection, or prepares all configured collections for a `many` command's questions ([Collection Resolution](#collection-resolution)). This runs before a command's own option checks: for example, `export` on an empty config reports no collections before a missing `--format`.
-5. Builds the command's questions (in both modes; the builder may throw to fail early) and asks them when interactive.
-6. Checks the `required` options against the flags merged with the answers. `undefined`, `null` and `''` count as missing, so an empty interactive answer fails the same way as an absent flag.
-7. For `many`, selects the final ordered collection list and applies its read or writable policy. Calls `run`, and turns the result or the thrown error into output and an exit code ([Errors and Exit Codes](#errors-and-exit-codes)).
+5. Awaits optional `preflight(ctx)` in both modes, with opened resources and the supplied flags in `ctx.options`. A thrown error uses the normal report path before any command questions are built.
+6. Builds the command's questions (in both modes; existing builders can still throw) and asks them when interactive.
+7. Checks the `required` options against the flags merged with the answers. `undefined`, `null` and `''` count as missing, so an empty interactive answer fails the same way as an absent flag.
+8. For `many`, selects the final ordered collection list and applies its read or writable policy. Calls `run`, and turns the result or the thrown error into output and an exit code ([Errors and Exit Codes](#errors-and-exit-codes)).
 
 The runner sets `process.exitCode` and returns. No CLI code calls `process.exit()`, so Commander finishes normally.
 
@@ -140,15 +147,16 @@ Command modules retain their explicit `Options` interfaces. Those interfaces als
 |---|---|
 | `name` | Operation name for the cancel line. |
 | `collection` | `'writable'` opens one collection with `writable: true`. `'read'` opens one for reading. `'deletable'` opens one with `forDeletion: true`, tolerating a missing or non-string `translationsFolder`. `'many'` opens several. `'none'` opens no collection. |
-| `many` | For `'many'`, `select(answers, ctx)` chooses `'all'` or an explicit list after prompts; the default is all. The runner opens these collections for reading. |
+| `many` | For `'many'`, `select(answers, ctx)` returns a `Selection` after prompts. The default is `{ kind: 'all' }`. The runner opens these collections for reading. |
 | `collectionOption` | The option that holds the collection name. Default `collection`. `delete-collection` uses `collectionName`; `edit-collection` uses its positional `<name>`. |
 | `config` | `false` skips loading the config. Only `init` and `install-skill` set it. It is only allowed with `collection: 'none'`. |
-| `prompts(options, ctx)` | Returns the questions for the values the flags left out. It receives the same context as `run`, without the answers, so it can use the opened collection (for example the locale choices). It is called in both modes, before `required` is checked, so it can throw a better reason than "missing flag": `remove-locale` reports `No removable locales in collection "x".` and `translate-locale` calls core's `assertAutoTranslationEnabled` here (so a collection with auto-translation off is refused, with a configuration hint, before any locale is asked for) and then reports a collection with no target locale the same way. `init` returns `[]` in an initialized folder. |
+| `preflight(ctx)` | Optional synchronous or asynchronous precondition check, awaited after resources open and before questions are built in both modes. `PreflightContext` supplies the prompt context plus `options`, the supplied flags without prompt answers. `translate-locale` checks that auto-translation is enabled, target locales exist, and a supplied locale can be translated here. Errors keep the same configuration hint and locale messages. |
+| `prompts(options, ctx)` | Returns the questions for the values the flags left out. It receives the opened resources without answers, so it can use the collection for locale choices. It is called in both modes, after `preflight` and before `required` is checked. Existing builders can still throw: `remove-locale` reports `No removable locales in collection "x".` before a missing-flag error. `init` returns `[]` in an initialized folder. |
 | `required` | Options that must have a value before `run`: checked after the questions when interactive, against the flags when not. `undefined`, `null` and `''` count as missing. `run` sees these options typed as present. `init` declares none: it needs `--collection-name` and `--translations-folder` only when there is a config to write, and checks them itself with the same `requireOptions` helper. |
-| `formatError(error, duringRun)` | Optionally chooses the printed message. `duringRun` is true only after `run` starts. The runner keeps the original error and still prints its `Error` cause below that message. `translate-locale` uses this for its configuration hint and run prefix. |
+| `formatError(error, duringRun)` | Optionally chooses the printed message. `duringRun` is false for preflight and question-building errors, and true only after `run` starts. The runner keeps the original error and still prints its `Error` cause below that message. `translate-locale` uses this for its configuration hint and run prefix. |
 | `run(ctx)` | The core call(s) and the output. It returns nothing, or `{ exitCode: 1 }` for a failure it has already reported. It throws to fail with `❌ <message>`. |
 
-The context (`CommandContext`) has `cwd`, `interactive`, `ask`, and `answers` (the flags merged with the prompt answers). It has `config`, `project` (the [Opened Project](glossary.md#opened-project) for guarded config writes), and `configPath` unless `config: false`. It has `collection` (the core `OpenedCollection`) for `'writable'`, `'read'`, or `'deletable'`, and `collections` (`Collection[]`) for `'many'`. Prompt builders for `'many'` receive all configured collections; `run` receives the final selection. The type follows the spec, so a `'none'` command cannot read either resource.
+The context (`CommandContext`) has `cwd`, `interactive`, `ask`, and `answers` (the flags merged with the prompt answers). It has `config`, `project` (the [Opened Project](glossary.md#opened-project) for guarded config writes), and `configPath` unless `config: false`. It has `collection` (the core `OpenedCollection`) for `'writable'`, `'read'`, or `'deletable'`, and `collections` (`Collection[]`) for `'many'`. Prompt builders for `'many'` receive all configured collections; `run` receives the final collections and `selection` (`Selection`). For `kind: 'some'`, the runner deduplicates `names` in order. The type follows the spec, so a `'none'` command cannot read either resource.
 
 `ask(questions)` runs follow-up prompts inside `run`: confirmations (`delete-resource`, `delete-collection`, `normalize --all`, the `add-resource` override), the `add-resource` translations loop, the `add-collection` read-only question, and the `install-skill` loop. A cancel in `ask` is the same cancel as in the declared questions. A command throws `CommandCancelledError` when the user declines a confirmation.
 
@@ -201,12 +209,12 @@ flowchart TD
     START([Command invoked\ne.g. lingo-tracker add-resource]) --> ROOT["cwd = INIT_CWD or process.cwd()\ninteractive = stdin.isTTY && stdout.isTTY"]
 
     ROOT --> NEEDS_CONFIG{"config: false?"}
-    NEEDS_CONFIG -- Yes --> QUESTIONS
+    NEEDS_CONFIG -- Yes --> PREFLIGHT
     NEEDS_CONFIG -- No --> LOAD_CONFIG["core loadConfig({ cwd })"]
     LOAD_CONFIG --> CONFIG_OK{"Found and valid?"}
     CONFIG_OK -- No --> EXIT_CONFIG(["Exit 1\n❌ Configuration file ... not found\n/ ❌ Failed to parse ..."])
     CONFIG_OK -- Yes --> NEEDS_COLLECTION{"collection:\n'writable' / 'read' / 'deletable'?"}
-    NEEDS_COLLECTION -- "'none'" --> QUESTIONS
+    NEEDS_COLLECTION -- "'none'" --> PREFLIGHT
 
     NEEDS_COLLECTION -- Yes --> HAS_COLLECTION{"Collection flag\ngiven?"}
     HAS_COLLECTION -- Yes --> OPEN
@@ -223,7 +231,12 @@ flowchart TD
     OPEN --> OPEN_OK{"Opened?"}
     OPEN_OK -- "Not found" --> EXIT_RESOLVE(["Exit 1\n❌ Collection 'x' not found"])
     OPEN_OK -- "Read-only, 'writable'" --> EXIT_RO(["Exit 1\n❌ Collection 'x' is read-only..."])
-    OPEN_OK -- Yes --> QUESTIONS
+    OPEN_OK -- Yes --> PREFLIGHT
+
+    PREFLIGHT["await preflight({ ...ctx, options })\noptional preconditions in both modes"]
+    PREFLIGHT -- "passes or absent" --> QUESTIONS
+    PREFLIGHT -- "throws Error" --> EXIT_THROW
+    PREFLIGHT -- "throws CommandCancelledError" --> EXIT_CANCEL
 
     QUESTIONS["prompts(options, ctx)\nquestions for missing values\n(may throw a reason)"]
     QUESTIONS --> ANY{"interactive and\nany questions?"}
@@ -296,7 +309,9 @@ Exit codes:
 | Missing or conflicting flags in `edit-collection`, `find-similar`, `protected-terms`, `preferred-terminology` | 1 |
 | Core error in any command (for example in `add-collection`, `delete-collection`, `add-resource`, `edit-resource`, `delete-resource`, `move`, `add-locale`, `remove-locale`) | 1 |
 | Partial failure: `delete-resource` or `move` reports per-key errors; `normalize` fails on a collection; `bundle` fails on a bundle or type generation, names an unknown bundle, or finds no bundles | 1 |
-| Completed `validate`, `translate-locale`, `export`, or `import` run with a `failed` [Run Outcome](glossary.md#run-outcome); export errors and conflicts are exempt in `--dry-run`, while import errors and failed resources still fail in dry runs | 1 |
+| Completed `move`, `normalize`, `bundle`, `validate`, `translate-locale`, `export`, or `import` run with a `failed` [Run Outcome](glossary.md#run-outcome); export errors and conflicts are exempt in `--dry-run`, while import errors and failed resources still fail in dry runs | 1 |
+
+`move` and `normalize` return `exitForRunOutcome(result.outcome)`. Core decides whether a completed run fails: move counts result errors, and normalize counts collection errors, including in dry runs. Normalize folder problems remain warnings.
 
 `normalize --all` skips a read-only collection with a stderr warning and does not fail. A collection that fails, or a read-only `--collection`, prints `❌ Failed to normalize collection "x": <message>` or `❌ Collection "x" is read-only. …` on stderr, also with `--json`.
 
@@ -354,7 +369,7 @@ For a command with `collection: 'writable'`, `'read'`, or `'deletable'`, the run
 
 It then opens the name with core `openCollection(config, name, { cwd, writable, forDeletion })`, where `writable` is `true` for `'writable'` and `forDeletion` is `true` for `'deletable'`. The result, `ctx.collection`, is the core `Collection`: the absolute `translationsFolder` and the effective `baseLocale`, `locales`, `targetLocales`, and `translationConfig`. For `'deletable'`, a missing or non-string `translationsFolder` yields an empty path; only `delete-collection` uses that result. Commands read the other fields; none of them applies the collection-then-global fallback itself.
 
-**Many-collection resolution.** The runner first opens every configured collection for prompt choices and fails immediately when the config is empty. After prompts, `many.select` chooses `'all'` or an explicit name list. The runner deduplicates names in order and opens the selected set. `validate` reads all; `export` parses its comma-separated `--collection` choice; `glossary` reads all or one; `normalize` selects one or all and confirms all interactively. An unknown name raises core's `CollectionNotFoundError` and exits 1.
+**Many-collection resolution.** The runner first opens every configured collection for prompt choices and fails immediately when the config is empty. After prompts, `many.select` returns a [Selection](glossary.md#selection). The runner passes this Selection to `run` with the opened collections. The runner deduplicates names in order and opens the selected set. `validate` reads all; `export` resolves collection flags and prompt answers with `parseListSelection`; `glossary` resolves its literal collection name with `parseNameSelection`; `normalize` selects one or all and confirms all interactively. An unknown name raises core's `CollectionNotFoundError` and exits 1.
 
 **Read-only enforcement.** `collection: 'writable'` is the CLI choke-point for one read-only collection: core throws `ReadOnlyCollectionError`, and the runner prints `❌ Collection "name" is read-only. Its resources cannot be modified.` and exits 1. The many-collection mode opens for reading; [core normalizeCollections applies the read-only rule](#normalize-collection-selection). `move` still opens its destination with core's `writable: true`.
 
@@ -384,7 +399,7 @@ A command spec gives flags in and checks the core call and the exit code:
 - Mock `prompts` for answers. A cancel is `onCancel` called by the mock.
 - Reset `process.exitCode` before and after each test, and assert it. Nothing calls `process.exit`, so no spec mocks it.
 
-`runner/command-runner.spec.ts` covers the runner itself: the interactive rule, config errors (mocked, and through the real `loadConfig`: invalid JSON, `EISDIR`), the `process.cwd()` fallback, the collection branches (including `--collection ''` and a cancelled select), required options (non-interactive, after prompting, `''`), cancel, thrown errors and `{ exitCode: 1 }`. `main.spec.ts` covers the flag wiring in `main.ts`, which the runner cannot see.
+`runner/command-runner.spec.ts` covers the runner itself: the interactive rule, config errors (mocked, and through the real `loadConfig`: invalid JSON, `EISDIR`), the `process.cwd()` fallback, the collection branches (including `--collection ''` and a cancelled select), required options (non-interactive, after prompting, `''`), cancel, thrown errors and `{ exitCode: 1 }`. `main.spec.ts` covers the flag wiring in `main.ts`, which the runner cannot see. `export-options.spec.ts` and `import-options.spec.ts` cover Run Options Resolution and prompt visibility as tables; command specs retain output, exit codes, and core-call behavior.
 
 ---
 
@@ -396,13 +411,11 @@ All shared utilities live in `apps/cli/src/utils/` and are re-exported from `app
 
 The Command Runner and the interactive rule live in `apps/cli/src/runner/` ([Command Runner](#command-runner)); commands import them from `'../runner/command-runner'`.
 
-### Multiselect Helpers (`prompt-utils.ts`)
+### Selection (`prompt-utils.ts`)
 
-Prompting itself is done by the runner (`prompts` in the spec, `ctx.ask` in `run`). This file keeps two helpers for the `export` multiselect questions.
+[Selection](glossary.md#selection) represents one, several, or all named items. `selectionPrompt` requires `mode: 'single' | 'multiple'` and keeps the existing all-choice order and defaults. `parseNameSelection` retains a literal single-name flag. `parseListSelection` parses comma-separated flags and multiple prompt answers. Both functions give flags precedence and decode the private all sentinel. Empty input returns `undefined` for command defaults and errors, while `selectionNames` maps all to `undefined` for core filters.
 
-`processMultiselectWithAll(selectedValues)` handles multiselect prompts that include an "All" option. If the sentinel `__ALL__` is among the selected values, it returns `undefined` (meaning "process everything"), otherwise returns the selected subset.
-
-`multiselectResultToString(items)` converts `string[] | undefined` to a comma-separated string or `undefined`, which is the format expected by `--collection` and `--locale` on the export command.
+Normalize and glossary retain literal single-name flags. Bundle and export parse comma-separated flags. Export refuses empty multiselect answers, while bundle treats empty input as all. Normalize requires a collection or an explicit all choice and confirms all interactively. Export passes selected locale arrays directly to core.
 
 ### Output Formatting (`console-formatter.ts`)
 

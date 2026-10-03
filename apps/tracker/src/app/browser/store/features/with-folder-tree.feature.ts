@@ -12,7 +12,6 @@ import {
   collectAncestorPaths,
   collectExpandablePaths,
   filterFolderTree,
-  toggleExpandedPath,
   updateFolderInTree,
 } from '../folder-tree.utils';
 import { handleLoadFailure } from '../load-failure';
@@ -57,7 +56,6 @@ export function withFolderTreeFeature<_>() {
       }>(),
       // Provided by withListScopeFeature, which composes before this feature.
       props: type<{ isTranslationsLoading: Signal<boolean> }>(),
-      methods: type<{ showFolder(path: string): void }>(),
     },
     withState(initialFolderTreeState),
     withComputed(
@@ -115,61 +113,6 @@ export function withFolderTreeFeature<_>() {
       }
 
       return {
-        /**
-         * Applies the folder filter and takes expansion with it: a filter that hid its own
-         * matches inside collapsed parents would be useless, so matching branches open
-         * automatically. The pre-filter expansion is stashed and restored on clear, which
-         * keeps chevrons working normally while a filter is active.
-         */
-        setFolderTreeFilter(filter: string): void {
-          const wasFiltering = store.folderTreeFilter().trim().length > 0;
-          const isFiltering = filter.trim().length > 0;
-
-          if (isFiltering) {
-            patchState(store, {
-              folderTreeFilter: filter,
-              preFilterExpandedFolders: wasFiltering ? store.preFilterExpandedFolders() : store.expandedFolders(),
-            });
-            patchState(store, { expandedFolders: new Set(collectExpandablePaths(store.filteredFolders())) });
-            return;
-          }
-
-          patchState(store, {
-            folderTreeFilter: filter,
-            expandedFolders: store.preFilterExpandedFolders() ?? store.expandedFolders(),
-            preFilterExpandedFolders: null,
-          });
-        },
-
-        toggleFolderExpanded(path: string): void {
-          patchState(store, { expandedFolders: toggleExpandedPath(store.expandedFolders(), path) });
-        },
-
-        /** Opens a folder without closing it if it is already open — used when selecting a row. */
-        expandFolder(path: string): void {
-          if (!path || store.expandedFolders().has(path)) return;
-          patchState(store, { expandedFolders: new Set(store.expandedFolders()).add(path) });
-        },
-
-        toggleRootExpanded(): void {
-          patchState(store, { isRootExpanded: !store.isRootExpanded() });
-        },
-
-        /**
-         * Opens every folder in view. Scoped to the filtered subtree when a filter is active,
-         * so it never expands branches the user has just filtered away.
-         */
-        expandAllFolders(): void {
-          const expanded = new Set(store.expandedFolders());
-          for (const path of collectExpandablePaths(store.filteredFolders())) expanded.add(path);
-          patchState(store, { expandedFolders: expanded, isRootExpanded: true });
-        },
-
-        /** Closes every folder but leaves the root open, so the top level stays reachable. */
-        collapseAllFolders(): void {
-          patchState(store, { expandedFolders: new Set<string>(), isRootExpanded: true });
-        },
-
         loadRootFolders: rxMethod<void>(
           pipe(
             tap(() => patchState(store, { isFolderTreeLoading: true, error: null })),

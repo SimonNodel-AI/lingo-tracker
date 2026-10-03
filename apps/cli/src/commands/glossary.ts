@@ -3,7 +3,7 @@ import * as path from 'path';
 import { buildGlossary, type Collection, describeFolderProblem, GlossaryExtractorError } from '@simoncodes-ca/core';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { hasPipedStdin } from '../runner/terminal';
-import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
+import { ConsoleFormatter, parseCommaSeparatedList, parseNameSelection } from '../utils';
 
 export interface GlossaryCommandOptions {
   /** Inline text snippet to extract from. */
@@ -82,7 +82,7 @@ function buildWithFlagWording(collections: Collection[], block: string, options:
 export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
   name: 'Glossary',
   collection: 'many',
-  many: { select: (answers) => (answers.collection ? [answers.collection] : 'all') },
+  many: { select: (answers) => parseNameSelection(answers.collection) ?? { kind: 'all' } },
   run: ({ cwd, collections, answers }) => runGlossary(answers, cwd, collections),
 });
 

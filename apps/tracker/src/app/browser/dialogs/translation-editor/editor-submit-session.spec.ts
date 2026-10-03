@@ -1,8 +1,12 @@
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { EMPTY, of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { ApiError } from '../../../shared/api-error/api-error';
 import { EditorSubmitSession, type EditorSubmitTrigger } from './editor-submit';
+
+const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
+const message = (token: string) => ({ kind: 'message', feedback: { tone: 'error', placement: 'inline', token } });
 
 const input: EditorSubmitTrigger = {
   mode: 'create',
@@ -92,7 +96,7 @@ describe('EditorSubmitSession', () => {
     const harness = session({ writes: { create, update: vi.fn() } });
     const withoutComment = { ...input, draft: { ...input.draft, comment: '' } };
 
-    expect(await harness.submit.trigger(withoutComment)).toMatchObject({ kind: 'message', message: 'create-failed' });
+    expect(await harness.submit.trigger(withoutComment)).toMatchObject(message(tokens.CREATEFAILED));
     expect(await harness.submit.trigger(withoutComment)).toMatchObject({ kind: 'outcome' });
     expect(harness.confirmMissingComment).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledTimes(2);
@@ -145,7 +149,7 @@ describe('EditorSubmitSession', () => {
   it('shows an unexpected message and returns to idle when a write completes empty', async () => {
     const harness = session({ writes: { create: vi.fn(() => EMPTY), update: vi.fn() } });
 
-    expect(await harness.submit.trigger(input)).toEqual({ kind: 'message', message: 'unexpected' });
+    expect(await harness.submit.trigger(input)).toEqual(message(tokens.UNEXPECTED));
     expect(harness.submit.phase()).toBe('idle');
     expect(harness.submit.isSubmitting()).toBe(false);
   });
@@ -156,10 +160,9 @@ describe('EditorSubmitSession', () => {
     });
     const harness = session({ confirmMissingComment });
 
-    expect(await harness.submit.trigger({ ...input, draft: { ...input.draft, comment: '' } })).toEqual({
-      kind: 'message',
-      message: 'unexpected',
-    });
+    expect(await harness.submit.trigger({ ...input, draft: { ...input.draft, comment: '' } })).toEqual(
+      message(tokens.UNEXPECTED),
+    );
     expect(harness.submit.phase()).toBe('idle');
     expect(harness.submit.isSubmitting()).toBe(false);
     expect(harness.create).not.toHaveBeenCalled();
@@ -171,43 +174,35 @@ describe('EditorSubmitSession', () => {
     });
     const harness = session({ chooseConflict });
 
-    expect(await harness.submit.trigger({ ...input, collision: true })).toEqual({
-      kind: 'message',
-      message: 'unexpected',
-    });
+    expect(await harness.submit.trigger({ ...input, collision: true })).toEqual(message(tokens.UNEXPECTED));
     expect(harness.submit.phase()).toBe('idle');
     expect(harness.submit.isSubmitting()).toBe(false);
   });
 
   it('maps each refusal to the dialog decision', async () => {
     const cases = [
-      { mode: 'create', error: 'invalid', message: 'invalid-request' },
-      { mode: 'create', error: 'not-found', message: 'create-failed' },
-      { mode: 'create', error: 'other', message: 'create-failed' },
-      { mode: 'edit', error: 'not-found', message: 'not-found' },
-      { mode: 'edit', error: 'invalid', message: 'invalid-request' },
-      { mode: 'edit', error: 'conflict', message: 'update-failed' },
-      { mode: 'edit', error: 'other', message: 'update-failed' },
+      { mode: 'create', error: 'invalid', token: tokens.INVALIDREQUEST },
+      { mode: 'create', error: 'not-found', token: tokens.CREATEFAILED },
+      { mode: 'create', error: 'other', token: tokens.CREATEFAILED },
+      { mode: 'edit', error: 'not-found', token: tokens.NOTFOUND },
+      { mode: 'edit', error: 'invalid', token: tokens.INVALIDREQUEST },
+      { mode: 'edit', error: 'conflict', token: tokens.UPDATEFAILED },
+      { mode: 'edit', error: 'other', token: tokens.UPDATEFAILED },
     ] as const;
 
     for (const testCase of cases) {
       const failure = new ApiError({ kind: testCase.error, status: 400 });
       const writes = { create: vi.fn(() => throwError(() => failure)), update: vi.fn(() => throwError(() => failure)) };
       const harness = session({ writes });
-      expect(await harness.submit.trigger({ ...input, mode: testCase.mode, original })).toEqual({
-        kind: 'message',
-        message: testCase.message,
-        ...(testCase.message === 'not-found' ? {} : { error: failure }),
-      });
+      expect(await harness.submit.trigger({ ...input, mode: testCase.mode, original })).toEqual(
+        message(testCase.token),
+      );
     }
 
     const unexpected = new Error('offline');
     const harness = session({ writes: { create: vi.fn(() => throwError(() => unexpected)), update: vi.fn() } });
-    expect(await harness.submit.trigger(input)).toEqual({ kind: 'message', message: 'unexpected' });
-    expect(await session().submit.trigger({ ...input, mode: 'edit' })).toEqual({
-      kind: 'message',
-      message: 'missing-resource',
-    });
+    expect(await harness.submit.trigger(input)).toEqual(message(tokens.UNEXPECTED));
+    expect(await session().submit.trigger({ ...input, mode: 'edit' })).toEqual(message(tokens.MISSINGRESOURCE));
   });
 
   it('returns validation focus before prompts or writes', async () => {

@@ -38,7 +38,7 @@ describe('moveResourceCommand', () => {
     process.exitCode = undefined;
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
     vi.mocked(loadConfig).mockReturnValue(CONFIG);
-    vi.mocked(moveResource).mockResolvedValue({ movedCount: 1, warnings: [], errors: [] });
+    vi.mocked(moveResource).mockResolvedValue({ outcome: 'succeeded', movedCount: 1, warnings: [], errors: [] });
   });
 
   afterEach(() => {
@@ -91,6 +91,7 @@ describe('moveResourceCommand', () => {
 
   it('exits 1 when the move reports errors', async () => {
     vi.mocked(moveResource).mockResolvedValue({
+      outcome: 'failed',
       movedCount: 0,
       warnings: [],
       errors: ['b.ok already exists'],
@@ -110,6 +111,33 @@ describe('moveResourceCommand', () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });
 
     expect(console.error).toHaveBeenCalledWith('❌ Resource not found: a.ok');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('prints moved resources and errors for a partial failure', async () => {
+    vi.mocked(moveResource).mockResolvedValue({
+      outcome: 'failed',
+      movedCount: 1,
+      warnings: ['Destination already exists'],
+      errors: ['Source could not be read'],
+    });
+
+    await moveResourceCommand({ collection: 'main', source: 'a.*', dest: 'b' });
+
+    expect(console.log).toHaveBeenCalledWith('✅ Moved 1 resource(s)');
+    expect(console.error).toHaveBeenCalledWith('⚠️  Warnings:');
+    expect(console.error).toHaveBeenCalledWith('  - Destination already exists');
+    expect(console.error).toHaveBeenCalledWith('❌ Errors:');
+    expect(console.error).toHaveBeenCalledWith('  - Source could not be read');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('uses the core outcome for the exit code', async () => {
+    vi.mocked(moveResource).mockResolvedValue({ outcome: 'failed', movedCount: 0, warnings: [], errors: [] });
+
+    await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });
+
+    expect(console.error).toHaveBeenCalledWith('⚠️  No resources were moved.');
     expect(process.exitCode).toBe(1);
   });
 

@@ -1,8 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ConfigNotFoundError, ConfigParseError, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { ConfigController } from './config.controller';
 import { ConfigService } from './config.service';
@@ -115,7 +116,7 @@ describe('ConfigController preferred terminology (real core)', () => {
     } catch (error) {
       thrown = error;
     }
-    expect(thrown).toBeInstanceOf(ConfigNotFoundError);
+    expect(thrown).toBeInstanceOf(NotFoundException);
     expect(toHttpException(thrown).getStatus()).toBe(404);
   });
 
@@ -127,7 +128,7 @@ describe('ConfigController preferred terminology (real core)', () => {
     } catch (error) {
       thrown = error;
     }
-    expect(thrown).toBeInstanceOf(ConfigParseError);
+    expect(thrown).toBeInstanceOf(InternalServerErrorException);
     const http = toHttpException(thrown);
     expect(http.getStatus()).toBe(500);
     expect(http.getResponse()).toEqual(

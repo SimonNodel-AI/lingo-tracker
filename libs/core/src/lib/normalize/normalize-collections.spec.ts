@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
-import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { ReadOnlyCollectionError } from '../errors';
 import { normalizeCollections } from './normalize-collections';
 import * as normalizeModule from './normalize';
@@ -53,6 +53,7 @@ describe('normalizeCollections', () => {
       foldersRemoved: 0,
     });
     expect(result.errors).toEqual([]);
+    expect(result.outcome).toBe('succeeded');
   });
 
   it('continues after a collection fails and reports events in order', async () => {
@@ -69,6 +70,7 @@ describe('normalizeCollections', () => {
     });
 
     expect(result.errors).toHaveLength(1);
+    expect(result.outcome).toBe('failed');
     expect(result.errors[0]?.name).toBe('Broken');
     expect(result.collections.map(({ collectionName }) => collectionName)).toEqual(['Next']);
     expect(events).toEqual(['start:Broken', 'error:Broken', 'start:Next', 'result:Next']);
@@ -83,5 +85,29 @@ describe('normalizeCollections', () => {
         },
       }),
     ).rejects.toThrow('printer failed');
+  });
+
+  it('fails when every collection fails, including in a dry run', async () => {
+    vi.spyOn(normalizeModule, 'normalize').mockRejectedValue(new Error('disk full'));
+    for (const dryRun of [false, true]) {
+      const result = await normalizeCollections([testCollection(root())], { dryRun });
+      expect(result.outcome).toBe('failed');
+      expect(result.errors).toHaveLength(1);
+      expect(result.collections).toEqual([]);
+      expect(result.totals.collectionsProcessed).toBe(0);
+    }
+  });
+
+  it('succeeds with only read-only skips or folder problems', async () => {
+    const skipped = await normalizeCollections([testCollection(root(), { readOnly: true })], { all: true });
+    expect(skipped.outcome).toBe('succeeded');
+    expect(skipped.collections).toEqual([]);
+    expect(skipped.errors).toEqual([]);
+
+    writeFolderFiles(root(), 'broken', { entries: '{ invalid json' });
+    const warned = await normalizeCollections([testCollection(root())]);
+    expect(warned.collections[0]?.problems).toHaveLength(1);
+    expect(warned.errors).toEqual([]);
+    expect(warned.outcome).toBe('succeeded');
   });
 });

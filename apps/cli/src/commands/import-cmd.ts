@@ -1,63 +1,30 @@
-import {
-  detectImportFormat,
-  type ImportFormat,
-  type ImportResult,
-  type ImportRunOptions,
-  ImportSourceError,
-  runImport,
-} from '@simoncodes-ca/core';
-import {
-  canImportLocale,
-  type ImportStrategy,
-  IMPORT_STRATEGIES,
-  importableLocales,
-  importStrategyPolicy,
-  isImportStrategy,
-} from '@simoncodes-ca/domain';
+import { type ImportResult, type ImportRunOptions, ImportSourceError, runImport } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
-import type prompts from 'prompts';
 import { defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter, reportRunSummary } from '../utils';
-import { IMPORT_DEFAULTS } from './run-option-defaults';
+import { type ImportCommandOptions, importQuestions, resolveImportOptions } from './import-options';
 
-export interface ImportCommandOptions {
-  format?: ImportFormat;
-  source?: string;
-  locale?: string;
-  collection?: string;
-  strategy?: ImportStrategy;
-  updateComments?: boolean;
-  updateTags?: boolean;
-  preserveStatus?: boolean;
-  createMissing?: boolean;
-  validateBase?: boolean;
-  dryRun?: boolean;
-  verbose?: boolean;
-}
+export type { ImportCommandOptions } from './import-options';
 
 export const importCommand = defineCommand<ImportCommandOptions>()({
   name: 'Import',
   collection: 'writable',
-  prompts: (options, { collection, cwd }) => buildQuestions(options, collection.locales, collection.baseLocale, cwd),
+  prompts: (options, { collection, cwd }) =>
+    importQuestions(options, {
+      configuredLocales: collection.locales,
+      baseLocale: collection.baseLocale,
+      sourceExists: (source) => fs.existsSync(path.resolve(cwd, source)),
+    }),
   required: ['source', 'locale'],
   run: async ({ cwd, collection, answers }) => {
-    const { source } = answers;
-
-    // The collection carries the base locale and the Project Terms (protected terms, preferred
-    // terminology); a rule-file problem comes back in the result's warnings.
+    const options = resolveImportOptions(answers);
+    const { source, locale } = answers;
     const runOptions: ImportRunOptions = {
-      locale: answers.locale,
-      strategy: resolveStrategy(answers.strategy),
-      updateComments: answers.updateComments,
-      updateTags: answers.updateTags,
-      preserveStatus: answers.preserveStatus ?? IMPORT_DEFAULTS.preserveStatus,
-      createMissing: answers.createMissing,
-      validateBase: answers.validateBase ?? IMPORT_DEFAULTS.validateBase,
-      dryRun: answers.dryRun,
-      verbose: answers.verbose,
-      onProgress: answers.verbose ? (msg: string) => console.log(`  ${msg}`) : undefined,
+      ...options,
+      locale,
+      onProgress: options.verbose ? (msg: string) => console.log(`  ${msg}`) : undefined,
     };
 
     let startTime = 0;
@@ -67,7 +34,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
         ...runOptions,
         source,
         cwd,
-        format: answers.format,
+        format: options.format,
         onWarning: ({ message, details }) => ConsoleFormatter.warning(message, details),
         onStart: (format) => {
           if (!answers.format && runOptions.verbose) console.log(`Detected format: ${format}`);
@@ -85,10 +52,13 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
         },
       });
     } catch (error) {
-      // The runner prints an Error's cause as another line. Format detection already
-      // has the complete user-facing message, so pass it through without its cause.
-      if (error instanceof ImportSourceError && error.stage === 'format') throw new Error(error.message);
-      throw new Error(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
+      // Report only runImport failures here, without replacing a typed source error
+      // or exposing the duplicate cause line that the runner would print.
+      const message = error instanceof Error ? error.message : String(error);
+      ConsoleFormatter.error(
+        error instanceof ImportSourceError && error.stage === 'format' ? message : `Import failed: ${message}`,
+      );
+      return { exitCode: 1 };
     }
     const { result } = run;
 
@@ -109,137 +79,6 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     return exitForRunOutcome(run.outcome);
   },
 });
-
-/** Validate Commander flags and prompt answers before reading the strategy policy. */
-function resolveStrategy(value: unknown): ImportStrategy {
-  if (value === undefined) return IMPORT_DEFAULTS.strategy;
-  if (isImportStrategy(value)) return value;
-  throw new Error(`Invalid --strategy "${String(value)}". Valid strategies: ${IMPORT_STRATEGIES.join(', ')}.`);
-}
-
-/**
- * The questions for what the flags left out. Later questions depend on earlier answers
- * (the format is only asked when the source's extension does not tell it; the locale
- * choices and the migration flags depend on the strategy), through prompts' function-valued
- * `type` and `choices`.
- */
-function buildQuestions(
-  options: ImportCommandOptions,
-  configuredLocales: readonly string[],
-  baseLocale: string,
-  cwd: string,
-): prompts.PromptObject[] {
-  const requestedStrategy = resolveStrategy(options.strategy);
-  const questions: prompts.PromptObject[] = [];
-  const strategyOf = (values: Record<string, unknown>): ImportStrategy =>
-    resolveStrategy(options.strategy ?? values.strategy);
-  const localesFor = (strategy: ImportStrategy): readonly string[] =>
-    importableLocales(configuredLocales, baseLocale, strategy);
-
-  if (!options.source) {
-    questions.push({
-      type: 'text',
-      name: 'source',
-      message: 'Enter path to import file:',
-      validate: (value: string) => {
-        if (!value || value.trim() === '') {
-          return 'Source file is required';
-        }
-        if (!fs.existsSync(path.resolve(cwd, value))) {
-          return `File not found: ${value}`;
-        }
-        return true;
-      },
-    });
-  }
-
-  if (!options.format) {
-    questions.push({
-      // Skipped when the source's extension gives the format; `run` detects it again.
-      type: (_prev: unknown, values: Record<string, unknown>) => {
-        const source = options.source ?? (typeof values.source === 'string' ? values.source : '');
-        try {
-          detectImportFormat(source);
-          return null;
-        } catch {
-          return 'select';
-        }
-      },
-      name: 'format',
-      message: 'Select import format:',
-      choices: [
-        { title: 'JSON', value: 'json', description: 'JSON format (flat or hierarchical)' },
-        { title: 'XLIFF 1.2', value: 'xliff', description: 'XLIFF format for professional translation services' },
-      ],
-    });
-  }
-
-  if (!options.strategy) {
-    questions.push({
-      type: 'select',
-      name: 'strategy',
-      message: 'Select import strategy:',
-      choices: [
-        {
-          title: 'Translation Service',
-          value: IMPORT_DEFAULTS.strategy,
-          description: 'Import from professional translation services (default)',
-        },
-        { title: 'Verification', value: 'verification', description: 'Language expert verification workflow' },
-        { title: 'Migration', value: 'migration', description: 'Migrate from another translation system' },
-        { title: 'Update', value: 'update', description: 'Bulk update existing translations' },
-      ],
-    });
-  }
-
-  if (!options.locale) {
-    // `validate` is not given the earlier answers, so the `type` callback records the strategy for it.
-    let strategy: ImportStrategy = requestedStrategy;
-    questions.push({
-      type: (_prev: unknown, values: Record<string, unknown>) => {
-        strategy = strategyOf(values);
-        return localesFor(strategy).length > 0 ? 'select' : 'text';
-      },
-      name: 'locale',
-      message: 'Select target locale for import:',
-      choices: (_prev: unknown, values: Record<string, unknown>) =>
-        localesFor(strategyOf(values)).map((loc) => ({
-          title: loc === baseLocale ? `${loc} (base locale)` : loc,
-          value: loc,
-        })),
-      validate: (value: string) => {
-        if (localesFor(strategy).length > 0) {
-          return true;
-        }
-        if (!value || value.trim() === '') {
-          return 'Locale is required';
-        }
-        if (!canImportLocale(value, baseLocale, strategy)) {
-          return `Cannot import into base locale "${baseLocale}" with strategy "${strategy}"`;
-        }
-        return true;
-      },
-    });
-  }
-
-  const migrationFlag = (name: 'updateComments' | 'updateTags' | 'createMissing', message: string) => {
-    if (options[name] === undefined) {
-      questions.push({
-        // Migration-only flag prompts are CLI UX, not a strategy rule.
-        type: (_prev: unknown, values: Record<string, unknown>) =>
-          strategyOf(values) === 'migration' ? 'confirm' : null,
-        name,
-        message,
-        initial: importStrategyPolicy('migration').defaults[name],
-      });
-    }
-  };
-  migrationFlag('updateComments', 'Update comments from import data?');
-  migrationFlag('updateTags', 'Update tags from import data?');
-  migrationFlag('createMissing', 'Create missing resources?');
-
-  return questions;
-}
 
 function displayResults(result: ImportResult, options: ImportRunOptions): void {
   ConsoleFormatter.section('Import Results');

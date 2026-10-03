@@ -17,7 +17,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import { TranslocoPipe } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
@@ -73,7 +73,6 @@ export class FolderTree {
   readonly store = inject(BrowserStore);
   readonly #confirm = injectConfirm();
   readonly TOKENS = TRACKER_TOKENS;
-  readonly #transloco = inject(TranslocoService);
   readonly #feedback = injectFeedback();
 
   /** Name of the collection to browse */
@@ -107,9 +106,9 @@ export class FolderTree {
   });
 
   /** Root accepts folders only: a resource is moved between folders, never onto the collection. */
-  readonly isValidRootDropTarget = computed(() => {
-    return folderDrop(this.activeDragData(), '', this.store.isReadOnly()).canLand;
-  });
+  readonly #rootDropDecision = computed(() => folderDrop(this.activeDragData(), '', this.store.effectiveDisabled()));
+
+  readonly isValidRootDropTarget = computed(() => this.#rootDropDecision().canLand);
 
   /** Drives the icon flip animation — true for one animation frame when toggled */
   readonly isNestedToggleFlipping = signal(false);
@@ -165,15 +164,12 @@ export class FolderTree {
    * Single click selects the folder and shows its translations.
    */
   onFolderClick(folder: FolderNodeDto): void {
-    this.store.showFolder(folder.fullPath);
-    this.folderSelected.emit(folder.fullPath);
+    if (this.store.selectFolder(folder.fullPath)) this.folderSelected.emit(folder.fullPath);
   }
 
   /** Selects the collection root, whose resource list spans every folder. */
   onRootClick(): void {
-    if (this.store.isDisabled()) return;
-    this.store.showFolder('');
-    this.folderSelected.emit('');
+    if (this.store.selectFolder('')) this.folderSelected.emit('');
   }
 
   /** Flips one folder open or shut from its chevron. */
@@ -189,22 +185,17 @@ export class FolderTree {
   /** Flips the root row itself, hiding or revealing the whole tree. */
   onToggleRootExpanded(event: Event): void {
     event.stopPropagation();
-    if (this.store.isDisabled()) return;
-    this.store.toggleRootExpanded();
+    this.store.setRootExpanded();
   }
 
   /** ArrowRight on the root row opens it. */
   onRootExpandKeydown(event: Event): void {
-    if (this.store.isDisabled() || this.store.isRootExpanded()) return;
-    event.preventDefault();
-    this.store.toggleRootExpanded();
+    if (this.store.setRootExpanded(true)) event.preventDefault();
   }
 
   /** ArrowLeft on the root row shuts it. */
   onRootCollapseKeydown(event: Event): void {
-    if (this.store.isDisabled() || !this.store.isRootExpanded()) return;
-    event.preventDefault();
-    this.store.toggleRootExpanded();
+    if (this.store.setRootExpanded(false)) event.preventDefault();
   }
 
   /**
@@ -213,15 +204,12 @@ export class FolderTree {
    */
   onToggleExpandAll(event: Event): void {
     event.stopPropagation();
-    if (this.store.isDisabled()) return;
-
-    if (this.store.areAllFoldersExpanded()) this.store.collapseAllFolders();
-    else this.store.expandAllFolders();
+    this.store.toggleAllFoldersExpanded();
   }
 
   /** Predicate for the root drop list: folders only, and only ones not already at root. */
   canDropOnRoot = (drag: CdkDrag<DragData>): boolean => {
-    return folderDrop(drag.data, '', this.store.isReadOnly()).canLand;
+    return this.#rootDropDecisionFor(drag.data).canLand;
   };
 
   /** Moves a folder dropped on the root row out to the top level. */
@@ -229,10 +217,17 @@ export class FolderTree {
     this.isRootHoveredDuringDrag.set(false);
 
     const dragData = event.item.data as DragData;
-    if (!folderDrop(dragData, '', this.store.isReadOnly()).canLand) return;
+    const decision = this.#rootDropDecisionFor(dragData);
+    if (!decision.canLand) return;
     if (dragData.type !== 'folder' || !dragData.path) return;
 
     this.confirmMoveFolder(dragData.path, '');
+  }
+
+  #rootDropDecisionFor(dragData: DragData) {
+    return dragData === this.activeDragData()
+      ? this.#rootDropDecision()
+      : folderDrop(dragData, '', this.store.effectiveDisabled());
   }
 
   /**
@@ -302,11 +297,9 @@ export class FolderTree {
       .requestFolderDelete(folderPath, (inSession) =>
         this.#confirm(
           {
-            title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE),
-            message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, {
-              name: folderName,
-            }),
-            confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.DELETE),
+            title: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE,
+            message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, params: { name: folderName } },
+            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.DELETE,
             actionType: 'destructive',
           },
           { width: '400px', canOpen: inSession },
@@ -321,12 +314,15 @@ export class FolderTree {
       .requestFolderMove({ sourceFolderPath, destinationFolderPath }, (inSession) =>
         this.#confirm(
           {
-            title: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE),
-            message: this.#transloco.translate(TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX, {
-              name: extractFolderNameFromPath(sourceFolderPath),
-              dest: destinationFolderPath || this.#transloco.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-            }),
-            confirmButtonText: this.#transloco.translate(TRACKER_TOKENS.COMMON.ACTIONS.MOVE),
+            title: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE,
+            message: {
+              token: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX,
+              params: {
+                name: extractFolderNameFromPath(sourceFolderPath),
+                dest: destinationFolderPath || { token: TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL },
+              },
+            },
+            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.MOVE,
             actionType: 'standard',
           },
           { width: '400px', canOpen: inSession },

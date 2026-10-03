@@ -1,8 +1,10 @@
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { feedbackText } from '../../feedback';
 import { ApiError, type ApiErrorKind } from '../../../shared/api-error/api-error';
-import { type EditorWrites, submitEditor, submitGate } from './editor-submit';
+import { type EditorRefusal, type EditorWrites, refusalDecision, submitEditor, submitGate } from './editor-submit';
 import type { ResourceEntryDraft } from './resource-entry-draft';
 
 const draft: ResourceEntryDraft = {
@@ -209,4 +211,46 @@ describe('submitGate', () => {
         needsCommentConfirmation: false,
       }),
     ).toBeNull());
+});
+
+describe('editor submit decision feedback', () => {
+  const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR;
+  const failure = error('other');
+  const cases: { refusal: Exclude<EditorRefusal, { kind: 'conflict' }>; token: string; detail?: string }[] = [
+    { refusal: { kind: 'missing-original' }, token: tokens.MISSINGRESOURCE },
+    { refusal: { kind: 'not-found', error: failure }, token: tokens.NOTFOUND },
+    {
+      refusal: { kind: 'invalid', message: failure.serverMessage, error: failure },
+      token: tokens.INVALIDREQUEST,
+      detail: 'Server message',
+    },
+    { refusal: { kind: 'create-failed', error: failure }, token: tokens.CREATEFAILED, detail: 'Server message' },
+    { refusal: { kind: 'update-failed', error: failure }, token: tokens.UPDATEFAILED, detail: 'Server message' },
+    { refusal: { kind: 'unexpected', error: new Error('Technical detail') }, token: tokens.UNEXPECTED },
+  ];
+
+  it('carries the existing token, detail, tone and placement for every message decision', () => {
+    for (const { refusal, token, detail } of cases) {
+      expect(refusalDecision(refusal)).toEqual({
+        kind: 'message',
+        feedback: { tone: 'error', placement: 'inline', token, ...(detail ? { detail } : {}) },
+      });
+    }
+  });
+
+  it('uses the existing fallback when invalid, create and update failures have no server message', () => {
+    const failure = new ApiError({ kind: 'other', status: 500, message: 'Technical error' });
+    const cases: { refusal: Exclude<EditorRefusal, { kind: 'conflict' }>; token: string }[] = [
+      { refusal: { kind: 'invalid', message: undefined, error: failure }, token: tokens.INVALIDREQUEST },
+      { refusal: { kind: 'create-failed', error: failure }, token: tokens.CREATEFAILED },
+      { refusal: { kind: 'update-failed', error: failure }, token: tokens.UPDATEFAILED },
+    ];
+    for (const { refusal, token } of cases) {
+      const decision = refusalDecision(refusal);
+      expect(decision).toEqual({ kind: 'message', feedback: { tone: 'error', placement: 'inline', token } });
+      if (decision.kind === 'message') {
+        expect(feedbackText(decision.feedback, (value) => `Translated ${value}`)).toBe(`Translated ${token}`);
+      }
+    }
+  });
 });

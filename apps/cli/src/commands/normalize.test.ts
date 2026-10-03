@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import prompts from 'prompts';
 import { normalizeCommand } from './normalize';
-import { type LingoTrackerConfig, loadConfig, type NormalizeResult, normalize } from '@simoncodes-ca/core';
+import {
+  type LingoTrackerConfig,
+  loadConfig,
+  type NormalizeResult,
+  normalize,
+  normalizeCollections,
+} from '@simoncodes-ca/core';
 import { isInteractiveTerminal } from '../runner/terminal';
 
 vi.mock('prompts', () => ({
@@ -56,7 +62,12 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
             totals[field] += result[field];
           }
         }
-        return { collections: results, totals, errors };
+        return {
+          outcome: errors.length > 0 ? ('failed' as const) : ('succeeded' as const),
+          collections: results,
+          totals,
+          errors,
+        };
       },
     ),
   };
@@ -122,6 +133,23 @@ describe('normalizeCommand', () => {
   it('exits 1 without --collection or --all in non-interactive mode', async () => {
     await normalizeCommand({});
 
+    expect(normalize).not.toHaveBeenCalled();
+    expect(errored()).toContain('❌ Missing required option in non-interactive mode: --collection or --all');
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('keeps normalize all-answer precedence over a collection flag', async () => {
+    const options = { collection: 'Lib', collectionOrAll: '__ALL__' };
+    await normalizeCommand(options);
+    expect(normalize).toHaveBeenCalledTimes(1);
+    expect(normalize).toHaveBeenCalledWith(expect.objectContaining({ name: 'App' }), { dryRun: false });
+    expect(errored()).toContain('⚠️  Skipping read-only collection: Lib');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('keeps the missing-selection error when an empty collection flag overrides a name answer', async () => {
+    const options = { collection: '', collectionOrAll: 'App' };
+    await normalizeCommand(options);
     expect(normalize).not.toHaveBeenCalled();
     expect(errored()).toContain('❌ Missing required option in non-interactive mode: --collection or --all');
     expect(process.exitCode).toBe(1);
@@ -234,6 +262,62 @@ describe('normalizeCommand', () => {
       collections: [{ collectionName: 'App' }],
       totals: { collectionsProcessed: 1 },
     });
+  });
+
+  it('fails on collection errors in a dry run and keeps JSON output unchanged', async () => {
+    vi.mocked(normalize).mockRejectedValue(new Error('disk full'));
+
+    await normalizeCommand({ collection: 'App', dryRun: true, json: true });
+
+    expect(errored()).toEqual(['❌ Failed to normalize collection "App": disk full']);
+    const payload = JSON.parse(logged()[0]);
+    expect(Object.keys(payload)).toEqual(['collections', 'totals']);
+    expect(payload.collections).toEqual([]);
+    expect(payload.totals.collectionsProcessed).toBe(0);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('keeps successful collection results when another collection fails', async () => {
+    vi.mocked(loadConfig).mockReturnValue({
+      ...CONFIG,
+      collections: { ...CONFIG.collections, Other: { translationsFolder: 'path/Other' } },
+    });
+    vi.mocked(normalize).mockRejectedValueOnce(new Error('disk full'));
+
+    await normalizeCommand({ all: true, json: true });
+
+    const payload = JSON.parse(logged()[0]);
+    expect(Object.keys(payload)).toEqual(['collections', 'totals']);
+    expect(payload.collections.map((item: { collectionName: string }) => item.collectionName)).toEqual(['Other']);
+    expect(payload.totals.collectionsProcessed).toBe(1);
+    expect(errored()).toEqual([
+      '❌ Failed to normalize collection "App": disk full',
+      '⚠️  Skipping read-only collection: Lib',
+    ]);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it('uses the core outcome for the exit code', async () => {
+    vi.mocked(normalizeCollections).mockResolvedValueOnce({
+      outcome: 'failed',
+      collections: [],
+      totals: {
+        entriesProcessed: 0,
+        localesAdded: 0,
+        valuesConverted: 0,
+        tagsNormalized: 0,
+        filesCreated: 0,
+        filesUpdated: 0,
+        foldersRemoved: 0,
+        collectionsProcessed: 0,
+      },
+      errors: [],
+    });
+
+    await normalizeCommand({ collection: 'App', json: true });
+
+    expect(Object.keys(JSON.parse(logged()[0]))).toEqual(['collections', 'totals']);
+    expect(process.exitCode).toBe(1);
   });
 
   describe('read-only collections', () => {

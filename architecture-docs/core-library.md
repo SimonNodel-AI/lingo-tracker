@@ -122,7 +122,7 @@ libs/core/src/
     │
     ├── translation/              # Machine translation: the Translator and the operations that use it
     │   ├── translator.ts                 # openTranslator(): setup, ICU skip, placeholder + protected-term guards, ICU normalisation
-    │   ├── translation-provider.ts       # TranslationProvider interface (the seam), TranslationError
+    │   ├── translation-provider.ts       # TranslationProvider interface (the seam)
     │   ├── translation-provider-factory.ts # createTranslationProvider(): the Google adapter's constructor site
     │   ├── google-translate-v2.provider.ts # GoogleTranslateV2Provider adapter
     │   ├── in-memory-translation-provider.ts # InMemoryTranslationProvider adapter (internal; core specs, no network)
@@ -161,7 +161,9 @@ libs/core/src/
     │
     └── errors/                   # Error messages and typed errors
         ├── error-messages.ts     # ErrorMessages: static error string builders (internal)
-        └── lingo-tracker-error.ts # LingoTrackerError and its typed subclasses (see Error Model)
+        ├── format-rule-errors.ts # Shared preferred-terminology row formatter (internal)
+        ├── lingo-tracker-error.ts # All core errors and domain details (see Error Model)
+        └── index.ts             # Complete internal error barrel
 ```
 
 <!-- Module relationship graph within @simoncodes-ca/core -->
@@ -298,7 +300,13 @@ Collection rename and delete also update [Bundle Collection References](glossary
 
 ## Error Model
 
-Core raises a [typed error](glossary.md#typed-errors) for operational failures that reach an adapter. Each subclass of the abstract `LingoTrackerError` (`lib/errors/lingo-tracker-error.ts`) must declare an `ErrorKind` and has a stable `code`; payload fields remain typed. The API maps kinds to HTTP statuses (see [api.md — Error Mapping](api.md#error-mapping)). `CoreOperationError` carries former plain-error messages to the CLI while telling the API to retain the generic 500 body without a message. Its `name` is `Error`, so `String(error)` keeps its earlier text. Most other message text comes from `ErrorMessages` (`lib/errors/error-messages.ts`). Neither adapter matches message text to decide what happened.
+Core raises a [typed error](glossary.md#typed-errors) for operational failures that reach an adapter. All core error classes live in `lib/errors/lingo-tracker-error.ts`, including `TranslationError` and `PreferredTerminologyValidationError`. Each subclass declares an `ErrorKind`, a stable `code`, and typed payload fields.
+
+Core errors expose domain facts: `code`, the affected `field` when available, and optional `details: readonly unknown[]`. Bundle and preferred-terminology validation errors expose their existing `errors` arrays through `details`. Core declares no HTTP statuses or presentation rules. The API maps `kind` to a default HTTP status and owns message transforms and status overrides. The [API Error Mapping](api.md#error-mapping) section describes these rules.
+
+The CLI continues to use the original `message` and typed payload fields. The error constructor and terminology-file reader share `formatRuleErrors` for their row messages. `CoreOperationError` sets `exposeMessage` to false, so the API returns its generic 500 body without a message. Its `name` is `Error`, so `String(error)` keeps its earlier text. Most other message text comes from `ErrorMessages` (`lib/errors/error-messages.ts`). Neither adapter matches message text to decide what happened.
+
+The internal `lib/errors/index.ts` barrel exports every error subclass. Its completeness spec discovers all modules in `errors/` and checks each subclass against the barrel. A source guard also rejects core error subclasses outside `errors/`, including subclasses through imported aliases. The core error spec reserves kind `upstream` for `TranslationError`, including unknown provider codes. The core public index exports only errors with consumers outside core. `src/index.spec.ts` pins that smaller public surface, and the completeness spec checks that public errors use the same constructors.
 
 | Class | `code` | Payload | Thrown by |
 |---|---|---|---|
@@ -313,6 +321,7 @@ Core raises a [typed error](glossary.md#typed-errors) for operational failures t
 | `CollectionRequiredByBundleError` | `COLLECTION_REQUIRED_BY_BUNDLE` | `collectionName`, `bundleNames` | `deleteCollection` when an explicit bundle would become empty |
 | `CollectionRenameBundleConflictError` | `COLLECTION_RENAME_BUNDLE_CONFLICT` | `collectionName`, `newCollectionName`, `bundleNames` | `updateCollection` when a bundle already references the rename target |
 | `CollectionAlreadyExistsError` | `COLLECTION_ALREADY_EXISTS` | `collectionName` | `addCollection`, `updateCollection` (rename), through the Collection Entry |
+| `InvalidNameError` | `INVALID_NAME` | — | `resolveRenameTarget` for a supplied collection or bundle rename target that is blank after trimming |
 | `InvalidCollectionError` | `INVALID_COLLECTION` | `field` when a supplied field is null or `translationsFolder` has the wrong type | the Collection Entry (so `addCollection`, `updateCollection`, `planProjectTermsUpdate`) for a missing or blank `translationsFolder`, or a field set to `null` |
 | `ReadOnlyCollectionError` | `COLLECTION_READ_ONLY` | `collectionName` | `openCollection` with `{ writable: true }`; `updateCollection` when the locales change |
 | `ProtectedTermsFileNotSetError` | `PROTECTED_TERMS_FILE_NOT_SET` | `collectionName` | collection lifecycle or `planProjectTermsUpdate` when the resulting collection has no `protectedTermsFile` pointer |
@@ -606,7 +615,7 @@ The CLI calls normalize through `normalizeCollections`. The API has no normalize
 
 Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `tagsNormalized`, `filesCreated`, `filesUpdated`, `foldersRemoved`, `dryRun`, and `problems` (the folders it could not read).
 
-`normalizeCollections` runs the selected opened collections, refuses any read-only collection in a named selection with `ReadOnlyCollectionError`, and skips read-only collections in all mode. It returns per-collection results, errors, and totals computed from one list of the seven numeric fields. The CLI prints its events and the returned JSON shape; an event callback error propagates instead of becoming a normalization failure.
+`normalizeCollections` runs the selected opened collections, refuses any read-only collection in a named selection with `ReadOnlyCollectionError`, and skips read-only collections in all mode. It returns a Run Outcome, per-collection results, errors, and totals computed from one list of the seven numeric fields. The CLI prints its events and the returned JSON shape; an event callback error propagates instead of becoming a normalization failure.
 
 `filesUpdated` can be higher than with earlier versions on the first run. A folder is now rewritten when its only drift is a stray base-locale property, the key order of its metadata, or a translation made from an older base. This is a one-time rewrite; the next run reports 0 for those folders.
 
@@ -621,7 +630,7 @@ The [Translator](glossary.md#translator) is the only way core machine-translates
 | Caller | Entries → locales | Stores |
 |---|---|---|
 | [Locale seeding](#locale-seeding) (`addResource`, `editResource` on a base value change) | the base value → the target locales that need work and were not supplied | values as `translated`; a skipped locale gets a copy of the base as `new`, except on edit where it holds a real translation (kept, `stale`) |
-| `translateExistingResource(collection, key)` | the entry → its target locales with `needsTranslation` | values as `translated`; skipped locales stay as they are |
+| `translateExistingResource(collection, key)` | the entry → its target locales with `needsTranslation` | values as `translated` through Translation Write-back; skipped locales stay as they are; count and entry reflect fresh disk state |
 | `translateLocale(collection, { targetLocale })` | every entry with `needsTranslation` for the locale (read with the [Collection Reader](#collection-reader)), in batches of `batchSize` with `delayMs` between them → `[targetLocale]` | values as `translated`, one save per folder per batch; skipped keys in `skippedKeys`; folders the reader could not read in `warnings` |
 
 <!-- Auto-translation pipeline flowchart -->
@@ -663,7 +672,15 @@ flowchart TD
 
 **What the Translator owns.** Setup (the enabled check, the API key, the provider), the ICU skip, the placeholder guard, the protected-term guard, and normalisation. Each happens in one place, for every caller. There is one code path: a single text is a batch of one. A provider failure (`TranslationError`) propagates; locale seeding passes it on, and `translateLocale` marks the batch as failed and goes on with the next one, including after a `TIMEOUT`.
 
-The Google Translate v2 provider bounds each HTTP request to 30 seconds. A timeout aborts the request and raises a retryable `TranslationError` with code `TIMEOUT`; `translateLocale` records the affected batch in `failures`, then continues with later batches. The provider rejects an invalid timeout option at construction with `INVALID_REQUEST_TIMEOUT`. When `translateLocale` reopens each Resource Folder to write, it compares the current base checksum and the target locale's checksum and status with those read before the provider call. If the entry was removed, either locale changed, or the target no longer needs translation, it leaves that entry untouched and includes its key in `skippedKeys`.
+The Google Translate v2 provider bounds each HTTP request to 30 seconds. A timeout aborts the request and raises a retryable `TranslationError` with code `TIMEOUT`; `translateLocale` records the affected batch in `failures`, then continues with later batches. The provider rejects an invalid timeout option at construction with `INVALID_REQUEST_TIMEOUT`.
+
+**Translation Write-back.** `translateLocale`, `translateExistingResource`, and phase 2 of `editResource` share [Translation Write-back](glossary.md#translation-write-back). The internal `translation-write-back.ts` module snapshots the stored ICU base checksum and target checksum and status before translation. For edit, the snapshot represents the saved phase-1 state. After the await, write-back reopens each Resource Folder from disk. It skips missing entries, changed base checksums, changed target checksums or statuses, and targets that no longer need translation. This preserves sibling entries and concurrent edits, including deletion.
+
+Write-back normalizes values through `setTranslation` and saves once per folder, only if it wrote a value. The default status is `translated`, while edit passes `new` for seeded copies. Each caller supplies its saved mutations, and edit supplies one `upsert` with the fresh entry. `translateExistingResource` sends one `upsert` with the fresh entry and counts only written locales. `translateLocale` supplies a `reindex` after success, and `saveReporting` sends `reindex` before a failed save throws. Thus bulk translation retains one `reindex` per save attempt and its existing batch failure handling.
+
+Callers append write-back skips to `skippedLocales` or `skippedKeys`. Edit reports `skippedLocales` only when auto-translation ran. If an entry disappears during translation, single-entry callers throw `ResourceNotFoundError` without restoring it. Edit keeps its saved phase-1 changes if the provider fails. A synchronous TOCTOU gap remains between reopening and saving, and the two-file save is not atomic.
+
+Reopening can throw if another writer leaves invalid JSON after the provider call. Add operations retain their existing fresh-folder write path and conflict rule.
 
 **Skip reasons.** `SkippedTranslation.reason` is `complex-icu`, `placeholder-mismatch` or `protected-term` (with the dropped `terms`). A translation that drops a protected term would be rejected by import, so it is not stored. The callers report skipped locales (`skippedLocales`) or keys (`skippedKeys`) without the reason.
 
@@ -803,7 +820,7 @@ The [Term List Edit](glossary.md#term-list-edit) uses the stored list, not the u
 
 Key steps:
 
-1. **Prepare the run** — `prepareBundleRun` checks a supplied dry-run definition with the full domain rules. For a saved generation run, it checks only the definition lookup and requested locales, preserving generation of older saved definitions. Both modes resolve token casing, constant name and ICU transformation, and return the bundle key, absolute project root and collections that open on first use. `planBundle`, `generateBundle` and `generateBundles` use this step. The API job service calls it synchronously before queueing and passes the result to `generatePreparedBundle` with only progress options. Settings follow a priority chain: CLI override → bundle config → global config → default. The prepared `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API `process.cwd()`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
+1. **Prepare the run** — `prepareBundleRun` checks a supplied dry-run definition with the full domain rules. For a saved generation run, it checks only the definition lookup and requested locales, preserving generation of older saved definitions. Both modes resolve token casing, constant name and ICU transformation, and return the bundle key, absolute project root and collections that open on first use. `planBundle`, `generateBundle` and `generateBundles` use this step. The API job service calls it synchronously before queueing and passes the result to `generatePreparedBundle` with only progress options. Settings follow a priority chain: CLI override → bundle config → global config → default. The prepared `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API passes the Opened Project’s `projectRoot`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
 2. **Resolve the collections** — `resolveBundleCollections(definition, config, { cwd })` opens each collection the definition reads once per run, with `openCollection(config, name, { cwd })`. See [Bundle Selection](#bundle-selection).
 3. **Select, per locale** — `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` returns the locale's final keys with their values and origins. It reads, filters, prefixes, converts ICU and merges.
 4. **Build hierarchy** — `buildHierarchy()` converts the flat `{dotKey: value}` map into a nested object matching the Angular Transloco expected structure.
@@ -832,8 +849,14 @@ The ICU conversion is inside the selection because the bundle and the plan repor
 The [Bundle Definition](glossary.md#bundle-definition) type and its rules are in `@simoncodes-ca/domain` (`libs/domain/src/lib/bundle-definition.ts`), because the API dry run and the Tracker bundle form apply the same rules. The operations only add the file I/O. Against the opened project’s config, each operation does these steps and then writes through `guardedConfigWrite`:
 
 1. `updateBundleDefinition` and `deleteBundleDefinition` throw `BundleNotFoundError` for an unknown key.
-2. `add` and `update` run the domain `checkBundleDefinition(definition, Object.keys(config.collections), key)`. It normalizes the definition (trimmed strings, no empty or undefined optionals, a legacy `typeDist` moved to `typeDistFile`) and validates the key (the new key; for `update`, only when `newKey` is given) and the definition. The operations throw one `InvalidBundleDefinitionError` with every message, and otherwise store the normalized definition.
+2. `add` and `update` run the domain `checkBundleDefinition(definition, Object.keys(config.collections), key)`. It normalizes the definition (trimmed strings, no empty or undefined optionals, a legacy `typeDist` moved to `typeDistFile`) and validates the key (the new key; for `update`, only when the trimmed target differs from the current key) and the definition. The operations throw one `InvalidBundleDefinitionError` with every message, and otherwise store the normalized definition.
 3. `add` and a renaming `update` throw `BundleAlreadyExistsError` when the key is taken.
+
+Core uses one [Rename Target](glossary.md#rename-target) rule for bundle and collection updates. It is `resolveRenameTarget(current, requested)` in `lib/config/entry-name.ts`. An omitted name keeps the current name. The rule trims a supplied name and throws `InvalidNameError` for an empty result. A target equal to the current name remains a plain update. Bundle updates check existence first, then the rename target and definition, then collisions. A stored key that fails the key rule can still receive a plain update. Collection updates use the trimmed target for the config entry, bundle references, and success message.
+
+**Breaking changes for core consumers:** An empty or whitespace-only collection name (for example `updateCollection(current, '', …)` or `updateCollection(current, '   ', …)`) now throws `InvalidNameError`. An empty name previously meant no rename, and a whitespace name was stored as the new key. `updateBundleDefinition(project, key, definition, { newKey: '' })` now throws `InvalidNameError` instead of `InvalidBundleDefinitionError`. Pass `undefined` as the collection rename target, or omit the bundle’s `newKey`, for a plain update.
+
+The collection lifecycle passes the trimmed name to `patchCollectionEntry` only for a rename. `patchCollectionEntry` validates string rename targets for all callers.
 
 Existence checks use the domain `findBundleDefinition`, which reads own properties only. So `constructor` or `__proto__` is an ordinary bundle name and never finds something on `Object.prototype`. The records are rebuilt with `Object.fromEntries`, which stores such a key as a normal property. A rename keeps the bundle's position in `config.bundles`. When the last bundle is deleted, the `bundles` key is removed.
 
@@ -868,7 +891,11 @@ The function never stops at the first failure — it validates all resources and
 
 `generateValidationSummary()` in `generate-validation-summary.ts` converts this result into a human-readable string for CLI output.
 
-Core returns a [Run Outcome](glossary.md#run-outcome) with each completed export, import, translate-locale, validate, and bundle run; bundle runs also report it per bundle. `succeeded` exits 0 in the CLI, while `failed` exits 1, even when some output was produced. Export ignores errors and hierarchical conflicts in a dry run; import still fails for errors or failed resources in a dry run. A failed bundle type generation now gives the CLI exit code 1. Validate retains its `status` field for in-band precondition failures and uses `outcome` for the final success decision. The `--allow-translated` flag maps directly to `options.allowTranslated`.
+Core returns a [Run Outcome](glossary.md#run-outcome) with each completed export, import, translate-locale, validate, bundle, move, and normalize run. Bundle runs also report it per bundle. `succeeded` exits 0 in the CLI, while `failed` exits 1, even when some output was produced.
+
+`moveResource`, `moveResources`, and `moveFolder` fail when their result contains errors. `normalizeCollections` fails when a collection raises an error, including in dry runs. Normalize folder problems and read-only skips in all mode do not fail the run. API move responses omit the outcome through explicit field mapping.
+
+Export ignores errors and hierarchical conflicts in a dry run; import still fails for errors or failed resources in a dry run. A failed bundle type generation now gives the CLI exit code 1. Validate retains its `status` field for in-band precondition failures and uses `outcome` for the final success decision. The `--allow-translated` flag maps directly to `options.allowTranslated`.
 
 `ValidationOptions.skippedLocales` removes locales from every collection's target locales. `generateValidationSummary()` also prints them as a `Skipped Locales: <list> (<count>)` line between "Locales Validated" and "Collections Validated". The other options are `icu` (`{ compileValues, requirePortablePlurals }`), `placeholders` (a boolean) and `terminology` (`{ rules, loadError }`). None of them names a locale: the locales come from the collections.
 

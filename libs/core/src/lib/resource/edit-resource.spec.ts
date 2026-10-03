@@ -14,10 +14,10 @@ import {
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
+  TranslationError,
 } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
-import { TranslationError } from '../translation/translation-provider';
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
 import { openResourceFolder } from './resource-folder';
@@ -355,6 +355,17 @@ describe('editResource (real fs)', () => {
     });
   });
 
+  it('still writes new copies when auto-translation is disabled, using the stored ICU snapshot', async () => {
+    const result = await editResource(collection(), 'common.save', { baseValue: 'Save {{ name }}' }, { onMutation });
+
+    expect(result.entry?.source).toBe('Save {name}');
+    expect(result.entry?.translations).toMatchObject({ fr: 'Enregistrer', de: 'Save {name}', es: 'Save {name}' });
+    expect(result.entry?.metadata['de']?.status).toBe('new');
+    expect(result.entry?.metadata['es']?.status).toBe('new');
+    expect(result.skippedLocales).toBeUndefined();
+    expect(collected).toHaveLength(2);
+  });
+
   describe('moveTo', () => {
     it('delivers the saved edit and a reindex when the move write fails', async () => {
       const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
@@ -480,6 +491,146 @@ describe('editResource (real fs)', () => {
         other.setBase(key, value);
         other.save();
       }
+
+      it('preserves a sibling written to the same folder during phase 2', async () => {
+        const provider = holdProvider();
+        const editing = editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue: 'Save all' },
+          { onMutation, provider: provider.provider },
+        );
+        await provider.called;
+        const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        folder.setBase('cancel', 'Cancel');
+        folder.setTranslation('cancel', 'fr', 'Annuler', 'verified');
+        folder.save();
+        provider.release();
+        const result = await editing;
+
+        expect(result.entry?.translations['fr']).toBe('[fr] Save all');
+        expect(read('resource_entries.json', 'common').cancel).toEqual({ source: 'Cancel', fr: 'Annuler' });
+        expect(read('tracker_meta.json', 'common').cancel.fr.status).toBe('verified');
+        expect(collected).toHaveLength(2);
+        expect(collected[1]).toEqual({
+          kind: 'upsert',
+          translationsFolder: collection().translationsFolder,
+          key: 'common.save',
+          entry: result.entry,
+        });
+      });
+
+      it('keeps a manual fr translation and reports it as skipped', async () => {
+        const provider = holdProvider();
+        const editing = editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue: 'Save all' },
+          { onMutation, provider: provider.provider },
+        );
+        await provider.called;
+        const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        folder.setTranslation('save', 'fr', 'Humain', 'translated');
+        folder.save();
+        provider.release();
+        const result = await editing;
+
+        expect(result.skippedLocales).toEqual(['fr']);
+        expect(result.entry?.translations['fr']).toBe('Humain');
+        expect(result.entry?.translations['de']).toBe('[de] Save all');
+        expect(read('resource_entries.json', 'common').save.fr).toBe('Humain');
+        expect(read('tracker_meta.json', 'common').save.fr.status).toBe('translated');
+      });
+
+      it('throws ResourceNotFoundError after deletion without resurrecting the entry', async () => {
+        const provider = holdProvider();
+        const editing = editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue: 'Save all' },
+          { onMutation, provider: provider.provider },
+        );
+        await provider.called;
+        const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        expect(folder.get('save')?.entry.source).toBe('Save all');
+        folder.remove('save');
+        folder.save();
+        provider.release();
+
+        await expect(editing).rejects.toThrow(ResourceNotFoundError);
+        expect(openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' }).has('save')).toBe(false);
+        expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.save' })]);
+      });
+
+      it('throws ResourceNotFoundError for the source deleted during translation before a move', async () => {
+        const target = collection(AUTO);
+        const provider = new InMemoryTranslationProvider(({ text, targetLocale }) => {
+          const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+          if (folder.has('save')) {
+            expect(folder.get('save')?.entry.source).toBe('Save all');
+            folder.remove('save');
+            folder.save();
+          }
+          return `[${targetLocale}] ${text}`;
+        });
+
+        const editing = editResource(
+          target,
+          'common.save',
+          { baseValue: 'Save all', moveTo: 'dialogs' },
+          { onMutation, provider },
+        );
+
+        await expect(editing).rejects.toThrow(ResourceNotFoundError);
+        await expect(editing).rejects.toThrow('common.save');
+        expect(openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' }).has('save')).toBe(false);
+        expect(openResourceFolder(join(root, 'translations', 'dialogs'), { baseLocale: 'en' }).has('save')).toBe(false);
+        expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.save' })]);
+      });
+
+      it('deduplicates translator and write-back skips in first-seen order', async () => {
+        const provider = new InMemoryTranslationProvider(({ text, targetLocale }) => {
+          const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+          folder.setTranslation('save', 'fr', 'Humain', 'translated');
+          folder.setTranslation('save', 'de', 'Manuell', 'translated');
+          folder.save();
+          // Dropping the protected term skips de in the Translator, then seeding queues a new copy.
+          return targetLocale === 'de' ? 'Speichern' : `[${targetLocale}] ${text}`;
+        });
+
+        const result = await editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue: 'Save all' },
+          { onMutation, provider, protectedTerms: ['all'] },
+        );
+
+        expect(result.skippedLocales).toEqual(['de', 'fr']);
+        expect(result.entry?.translations).toEqual({ fr: 'Humain', de: 'Manuell', es: '[es] Save all' });
+        expect(result.entry?.metadata['de']?.status).toBe('translated');
+        expect(read('resource_entries.json', 'common').save.de).toBe('Manuell');
+        expect(collected).toHaveLength(2);
+      });
+
+      it('skips phase 2 after another base edit and returns fresh disk state', async () => {
+        const provider = holdProvider();
+        const editing = editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue: 'Save all' },
+          { onMutation, provider: provider.provider },
+        );
+        await provider.called;
+        const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        folder.setBase('save', 'Save some');
+        folder.save();
+        provider.release();
+        const result = await editing;
+
+        expect(result.entry?.source).toBe('Save some');
+        expect(result.skippedLocales).toEqual(['fr', 'de', 'es']);
+        expect(collected).toHaveLength(1);
+      });
 
       it('keeps an entry written to the destination folder meanwhile, and still moves the edited entry', async () => {
         const provider = holdProvider();

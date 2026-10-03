@@ -1,12 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import prompts from 'prompts';
+import { isInteractiveTerminal } from '../runner/terminal';
 import { findSimilarCommand } from './find-similar';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   // Collection resolution and Resource Search run for real; only the config and the disk read are mocked.
-  return { ...actual, loadConfig: vi.fn(), readCollection: vi.fn() };
+  return {
+    ...actual,
+    loadConfig: vi.fn(),
+    readCollection: vi.fn(),
+    normalizeSearchRequest: vi.fn(actual.normalizeSearchRequest),
+  };
 });
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
+vi.mock('prompts');
 
 vi.mock('path', async (importOriginal) => {
   const actual = await importOriginal<typeof import('path')>();
@@ -21,7 +29,7 @@ vi.mock('path', async (importOriginal) => {
 });
 
 import type { CollectionReadProblem, LingoTrackerConfig, StoredResource } from '@simoncodes-ca/core';
-import { ConfigNotFoundError, loadConfig, readCollection } from '@simoncodes-ca/core';
+import { ConfigNotFoundError, loadConfig, normalizeSearchRequest, readCollection } from '@simoncodes-ca/core';
 
 /** A fully typed stored resource, so shape drift in the Collection Reader fails to compile. */
 function stored(fullKey: string, baseValue: string): StoredResource {
@@ -64,6 +72,7 @@ describe('find-similar', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     process.env.INIT_CWD = '/project';
     process.exitCode = undefined;
+    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -189,6 +198,74 @@ describe('find-similar', () => {
       expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
       expect(process.exitCode).toBe(1);
     });
+  });
+
+  describe('interactive values', () => {
+    beforeEach(() => {
+      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+      vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+    });
+
+    it.each([undefined, '', '   '])('asks for a blank flag %j and resolves the submitted value once', async (value) => {
+      vi.mocked(prompts).mockResolvedValueOnce({ value: '  Hello  ' });
+      collectionHolds(stored('labels.hello', 'Hello'));
+
+      await findSimilarCommand({ collection: 'tracker', value, maxResults: 3 });
+
+      expect(prompts).toHaveBeenCalledWith(
+        [{ type: 'text', name: 'value', message: 'Base locale text to search for' }],
+        expect.anything(),
+      );
+      expect(normalizeSearchRequest).toHaveBeenCalledExactlyOnceWith(
+        { query: '  Hello  ', mode: 'similar-value', limit: 3 },
+        5,
+      );
+      expect(console.log).toHaveBeenCalledWith('Similar values found for "Hello":');
+      expect(process.exitCode).toBe(0);
+    });
+
+    it.each([
+      [undefined, '❌ Missing required options: --value'],
+      ['', '❌ Missing required options: --value'],
+      ['   ', '❌ --value must not be blank'],
+    ])('keeps the error for a blank interactive answer %j', async (value, message) => {
+      vi.mocked(prompts).mockResolvedValueOnce({ value });
+
+      await findSimilarCommand({ collection: 'tracker' });
+
+      expect(console.error).toHaveBeenCalledWith(message);
+      expect(readCollection).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('keeps cancellation output and exits 0', async () => {
+      vi.mocked(prompts).mockImplementationOnce(async (_questions, options) => {
+        options?.onCancel?.({ type: 'text', name: 'value', message: 'Base locale text to search for' }, {});
+        return {};
+      });
+
+      await findSimilarCommand({ collection: 'tracker' });
+
+      expect(console.error).toHaveBeenCalledWith('❌ Find similar cancelled.');
+      expect(readCollection).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
+    });
+  });
+
+  it.each([false, true])('resolves a supplied value once without prompting (interactive: %s)', async (interactive) => {
+    vi.mocked(isInteractiveTerminal).mockReturnValue(interactive);
+    vi.mocked(loadConfig).mockReturnValue(BASE_CONFIG);
+    collectionHolds(stored('labels.hello', 'Hello'));
+
+    await findSimilarCommand({ collection: 'tracker', value: '  Hello  ' });
+
+    expect(prompts).not.toHaveBeenCalled();
+    expect(normalizeSearchRequest).toHaveBeenCalledExactlyOnceWith(
+      { query: '  Hello  ', mode: 'similar-value', limit: undefined },
+      5,
+    );
+    expect(console.log).toHaveBeenCalledWith('Similar values found for "Hello":');
+    expect(process.exitCode).toBe(0);
   });
 
   // ---------------------------------------------------------------------------

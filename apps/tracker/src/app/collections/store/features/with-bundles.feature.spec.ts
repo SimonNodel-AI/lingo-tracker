@@ -96,6 +96,7 @@ describe('withBundlesFeature', () => {
 
   afterEach(() => {
     reloadInjector?.destroy();
+    reloadInjector = undefined;
     vi.useRealTimers();
   });
 
@@ -313,6 +314,125 @@ describe('withBundlesFeature', () => {
       expect(store.bundleRuns()['tracker']?.jobId).toBe('job-tracker');
     });
 
+    it('counts only started bundles and finishes the batch while a skipped run is still running', () => {
+      vi.useFakeTimers();
+      api.getConfig.mockReturnValue(of(config));
+      store.loadCollections();
+      api.generateBundle.mockImplementation((name: string) =>
+        of({ ...runningJob, jobId: `job-${name}`, bundleName: name }),
+      );
+      api.getBundleJob.mockImplementation((jobId: string) =>
+        of(jobId === 'job-main' ? { ...completedJob, jobId, bundleName: 'main' } : runningJob),
+      );
+      store.generateBundle('tracker');
+
+      store.generateAllBundles();
+
+      expect(api.generateBundle).toHaveBeenCalledTimes(2);
+      expect(store.bundleBatch()).toEqual(['main']);
+      expect(store.batchTotal()).toBe(1);
+      expect(store.batchPosition()).toBe(1);
+      expect(store.isBatchRunning()).toBe(true);
+
+      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+
+      expect(store.batchPosition()).toBe(1);
+      expect(store.isBatchRunning()).toBe(false);
+      expect(store.bundleRuns()['main']?.status).toBe('completed');
+      expect(store.bundleRuns()['tracker']?.status).toBe('running');
+      expect(store.isAnyBundleRunning()).toBe(true);
+    });
+
+    it('advances batch progress for completed and failed runs and caps the final position', () => {
+      vi.useFakeTimers();
+      api.getConfig.mockReturnValue(of(config));
+      store.loadCollections();
+      api.generateBundle.mockImplementation((name: string) =>
+        of({ ...runningJob, jobId: `job-${name}`, bundleName: name }),
+      );
+      api.getBundleJob.mockImplementation((jobId: string) =>
+        of(jobId === 'job-main' ? { ...completedJob, jobId } : runningJob),
+      );
+
+      store.generateAllBundles();
+      expect(store.batchTotal()).toBe(2);
+      expect(store.batchPosition()).toBe(1);
+      store.generateAllBundles();
+      expect(api.generateBundle).toHaveBeenCalledTimes(2);
+      expect(store.bundleBatch()).toEqual(['main', 'tracker']);
+      expect(store.batchTotal()).toBe(2);
+      expect(store.isBatchRunning()).toBe(true);
+
+      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      expect(store.batchPosition()).toBe(2);
+      expect(store.isBatchRunning()).toBe(true);
+      store.generateAllBundles();
+      expect(api.generateBundle).toHaveBeenCalledTimes(2);
+      expect(store.bundleBatch()).toEqual(['main', 'tracker']);
+      expect(store.batchTotal()).toBe(2);
+      expect(store.batchPosition()).toBe(2);
+      expect(store.isBatchRunning()).toBe(true);
+
+      api.getBundleJob.mockReturnValue(of({ ...runningJob, status: 'failed', error: 'Failed' }));
+      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      expect(store.batchPosition()).toBe(2);
+      expect(store.isBatchRunning()).toBe(false);
+    });
+
+    it('records synchronous failures, replaces a finished batch and preserves a running batch', () => {
+      api.getConfig.mockReturnValue(of(config));
+      store.loadCollections();
+      api.generateBundle.mockReturnValue(throwError(() => toApiError(new HttpErrorResponse({ status: 500 }))));
+      store.generateAllBundles();
+      expect(store.bundleBatch()).toEqual(['main', 'tracker']);
+      expect(store.batchTotal()).toBe(2);
+      expect(store.batchPosition()).toBe(2);
+      expect(store.isBatchRunning()).toBe(false);
+
+      api.getConfig.mockReturnValue(of({ ...config, bundles: { main: mainBundle } }));
+      store.loadCollections();
+      api.generateBundle.mockReturnValue(of(completedJob));
+      store.generateAllBundles();
+      expect(store.bundleBatch()).toEqual(['main']);
+      expect(store.batchTotal()).toBe(1);
+
+      api.generateBundle.mockReturnValue(of(runningJob));
+      api.getBundleJob.mockReturnValue(of(runningJob));
+      store.generateAllBundles();
+      expect(store.isBatchRunning()).toBe(true);
+      const batch = store.bundleBatch();
+
+      // A new configured bundle must not replace the batch that is still in flight.
+      api.getConfig.mockReturnValue(of(config));
+      store.loadCollections();
+      store.generateAllBundles();
+      expect(api.generateBundle).toHaveBeenCalledTimes(4);
+      expect(store.bundleBatch()).toBe(batch);
+      expect(store.bundleBatch()).toEqual(['main']);
+      expect(store.batchTotal()).toBe(1);
+      expect(store.batchPosition()).toBe(1);
+      expect(store.isBatchRunning()).toBe(true);
+      expect(store.bundleRuns()['tracker']?.status).toBe('failed');
+    });
+
+    it('has an empty batch when all configured bundles are already running or none are configured', () => {
+      expect(store.batchTotal()).toBe(0);
+      expect(store.isBatchRunning()).toBe(false);
+      store.generateAllBundles();
+      expect(store.bundleBatch()).toEqual([]);
+
+      api.getConfig.mockReturnValue(of(config));
+      store.loadCollections();
+      api.generateBundle.mockReturnValue(of(runningJob));
+      store.generateBundle('main');
+      store.generateBundle('tracker');
+      store.generateAllBundles();
+      expect(api.generateBundle).toHaveBeenCalledTimes(2);
+      expect(store.bundleBatch()).toEqual([]);
+      expect(store.batchTotal()).toBe(0);
+      expect(store.isBatchRunning()).toBe(false);
+    });
+
     it('clearBundleRun removes only the named run', () => {
       api.generateBundle.mockReturnValue(of(completedJob));
       store.generateBundle('tracker');
@@ -370,6 +490,30 @@ describe('withBundlesFeature', () => {
       expect(store.bundleRuns()['tracker']).toBeUndefined();
     });
 
+    for (const message of ['Job evicted', 'Job missing after API restart']) {
+      it(`drops and persists removal of a restored job: ${message}`, () => {
+        createStoreInstance();
+        sessionStorage.setItem(
+          BUNDLE_RUNS_STORAGE_KEY,
+          JSON.stringify({
+            tracker: { status: 'running', jobId: 'missing-job' },
+            main: { status: 'completed', result: completedJob.result },
+          }),
+        );
+        api.getBundleJob.mockReturnValue(
+          throwError(() => toApiError(new HttpErrorResponse({ status: 404, error: { message } }))),
+        );
+
+        reloadStore();
+
+        expect(store.bundleRuns()['tracker']).toBeUndefined();
+        expect(store.bundleRuns()['main']?.status).toBe('completed');
+        expect(JSON.parse(sessionStorage.getItem(BUNDLE_RUNS_STORAGE_KEY) ?? '{}')).toEqual(store.bundleRuns());
+        expect(store.batchTotal()).toBe(0);
+        expect(store.isBatchRunning()).toBe(false);
+      });
+    }
+
     it('dismissing a run keeps it dismissed across a reload', async () => {
       createStoreInstance();
       api.generateBundle.mockReturnValue(of(completedJob));
@@ -379,6 +523,24 @@ describe('withBundlesFeature', () => {
       reloadStore();
 
       expect(store.bundleRuns()['tracker']).toBeUndefined();
+    });
+
+    it('ignores unavailable session storage without clearing existing runs', () => {
+      createStoreInstance();
+      api.generateBundle.mockReturnValue(of(completedJob));
+      store.generateBundle('tracker');
+      const runs = store.bundleRuns();
+      const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('Storage unavailable');
+      });
+
+      try {
+        expect(() => store.restoreBundleRuns()).not.toThrow();
+        expect(store.bundleRuns()).toBe(runs);
+        expect(api.getBundleJob).not.toHaveBeenCalled();
+      } finally {
+        read.mockRestore();
+      }
     });
 
     it('ignores corrupt persisted state', async () => {

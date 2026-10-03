@@ -334,11 +334,14 @@ export class CollectionFormDialog implements OnInit {
 
       if (removed.length > 0) {
         const confirmed = await this.#confirm({
-          title: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE),
-          message: this.#translocoService.translate(TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY, {
-            locales: removed.join(', '),
-          }),
-          confirmButtonText: this.#translocoService.translate(TRACKER_TOKENS.COMMON.ACTIONS.SAVE),
+          title: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE,
+          message: {
+            token: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY,
+            params: {
+              locales: removed.join(', '),
+            },
+          },
+          confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.SAVE,
           actionType: 'destructive',
         });
         if (confirmed) this.#save();

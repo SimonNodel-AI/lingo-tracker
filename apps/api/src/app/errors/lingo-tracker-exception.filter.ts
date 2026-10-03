@@ -13,25 +13,14 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
-import {
-  ConfigNotFoundError,
-  ConfigParseError,
-  type ErrorKind,
-  FolderMoveIntoDescendantError,
-  InvalidBundleDefinitionError,
-  InvalidCollectionError,
-  InvalidFolderPathError,
-  LingoTrackerError,
-  PreferredTerminologyValidationError,
-  TranslationError,
-} from '@simoncodes-ca/core';
-import { ConfigReadNotFoundError, ConfigReadParseError } from './config-read.errors';
+import { type ErrorKind, LingoTrackerError } from '@simoncodes-ca/core';
 
 /**
  * The HTTP answer for a typed core error. This is the only place the API maps a core
  * error to a status; controllers let core errors propagate.
  *
- * Locale conflicts and missing locales declare `invalid`, retaining their 400 answers.
+ * Kind selects the default status. The API owns code-based presentation rules and
+ * reads only domain facts (`code`, `field`, `details`), without subclass checks.
  *
  * Every mapped answer has the same `{ statusCode, message, error }` body. An invalid bundle
  * definition also carries `errors`, every problem the domain rules found, under the fixed
@@ -40,7 +29,9 @@ import { ConfigReadNotFoundError, ConfigReadParseError } from './config-read.err
  * is a 500 that keeps its message. An `InvalidConfigError`
  * (a `.lingo-tracker.json` the server cannot use), for example, says what to fix in the file.
  */
-const HTTP_BY_KIND: Record<ErrorKind, (message: string) => HttpException> = {
+type HttpFactory = (message: string) => HttpException;
+
+const HTTP_BY_KIND: Record<ErrorKind, HttpFactory> = {
   'not-found': (message) => new NotFoundException(message),
   conflict: (message) => new ConflictException(message),
   invalid: (message) => new BadRequestException(message),
@@ -50,71 +41,65 @@ const HTTP_BY_KIND: Record<ErrorKind, (message: string) => HttpException> = {
   internal: (message) => new InternalServerErrorException(message),
 };
 
+interface HttpRule {
+  readonly kind: ErrorKind;
+  readonly message?: (error: LingoTrackerError) => string;
+  readonly status?: HttpFactory;
+  readonly includeDetails?: boolean;
+}
+
+/** HTTP presentation belongs to the API; the core error keeps its original message and code. */
+const HTTP_BY_CODE: Readonly<Record<string, HttpRule | undefined>> = {
+  INVALID_COLLECTION: {
+    kind: 'invalid',
+    message: (error) => ('field' in error && error.field !== undefined ? `collection.${error.message}` : error.message),
+  },
+  INVALID_BUNDLE_DEFINITION: { kind: 'invalid', message: () => 'Invalid bundle definition', includeDetails: true },
+  INVALID_PREFERRED_TERMINOLOGY: {
+    kind: 'invalid',
+    message: () => 'Invalid preferred terminology rules',
+    includeDetails: true,
+  },
+  INVALID_FOLDER_PATH: { kind: 'invalid', message: (error) => `Validation error: ${error.message}` },
+  FOLDER_MOVE_INTO_DESCENDANT: { kind: 'invalid', message: (error) => `Validation error: ${error.message}` },
+  INVALID_REQUEST: { kind: 'upstream', status: HTTP_BY_KIND.invalid },
+  MISSING_API_KEY: { kind: 'upstream', status: HTTP_BY_KIND.internal },
+  UNKNOWN_PROVIDER: { kind: 'upstream', status: HTTP_BY_KIND.internal },
+  AUTH_ERROR: { kind: 'upstream', status: HTTP_BY_KIND.internal },
+  RATE_LIMIT: {
+    kind: 'upstream',
+    status: (message) =>
+      new HttpException(
+        HttpException.createBody(message, 'Too Many Requests', HttpStatus.TOO_MANY_REQUESTS),
+        HttpStatus.TOO_MANY_REQUESTS,
+      ),
+  },
+};
+
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
-  if (error instanceof ConfigNotFoundError) {
-    return error instanceof ConfigReadNotFoundError
-      ? new NotFoundException('Configuration file not found')
-      : new InternalServerErrorException(error.message);
-  }
-  if (error instanceof ConfigParseError) {
-    return new InternalServerErrorException(
-      error instanceof ConfigReadParseError ? 'Invalid configuration file format' : error.message,
-    );
-  }
   if (!error.exposeMessage) {
     return new InternalServerErrorException({ statusCode: 500, error: 'Internal Server Error' });
   }
-  if (error instanceof InvalidCollectionError && error.field !== undefined) {
-    return new BadRequestException(`collection.${error.message}`);
-  }
-  if (error instanceof InvalidBundleDefinitionError) {
-    return invalidBundleDefinitionToHttp(error);
-  }
-  if (error instanceof PreferredTerminologyValidationError) {
-    return withErrors('Invalid preferred terminology rules', error.errors);
-  }
-  if (error instanceof InvalidFolderPathError || error instanceof FolderMoveIntoDescendantError) {
-    return HTTP_BY_KIND.invalid(`Validation error: ${error.message}`);
-  }
-  if (error instanceof TranslationError) {
-    return translationErrorToHttp(error);
-  }
+  const candidate = HTTP_BY_CODE[error.code];
+  const rule = candidate?.kind === error.kind ? candidate : undefined;
+  // TranslationError is the only core subclass with kind 'upstream'. Core's error
+  // spec reserves that kind for it, so unknown provider codes keep the prefix and
+  // default 502 without changing the existing open provider-code taxonomy.
+  const message =
+    error.kind === 'upstream'
+      ? `Translation provider error: ${error.message}`
+      : (rule?.message?.(error) ?? error.message);
   // A runtime subclass with an unrecognised kind retains the old typed 500 response.
-  const mapper = HTTP_BY_KIND[error.kind];
-  return mapper ? mapper(error.message) : new InternalServerErrorException(error.message);
-}
-
-function invalidBundleDefinitionToHttp(error: InvalidBundleDefinitionError): HttpException {
-  return withErrors('Invalid bundle definition', error.errors);
-}
-
-/** A 400 whose body also lists every problem found. */
-function withErrors(message: string, errors: readonly unknown[]): HttpException {
-  const status = HttpStatus.BAD_REQUEST;
-  return new BadRequestException({ ...HttpException.createBody(message, 'Bad Request', status), errors: [...errors] });
-}
-
-/** Translation codes that mean the server's translation setup is wrong, not the request. */
-const TRANSLATION_CONFIGURATION_CODES: ReadonlySet<string> = new Set([
-  'MISSING_API_KEY',
-  'UNKNOWN_PROVIDER',
-  'AUTH_ERROR',
-]);
-
-function translationErrorToHttp(error: TranslationError): HttpException {
-  const message = `Translation provider error: ${error.message}`;
-
-  if (error.code === 'INVALID_REQUEST') {
-    return new BadRequestException(message);
+  const mapper = rule?.status ?? HTTP_BY_KIND[error.kind] ?? HTTP_BY_KIND.internal;
+  const http = mapper(message);
+  if (!rule?.includeDetails || error.details === undefined) {
+    return http;
   }
-  if (TRANSLATION_CONFIGURATION_CODES.has(error.code)) {
-    return new InternalServerErrorException(message);
-  }
-  if (error.code === 'RATE_LIMIT') {
-    const status = HttpStatus.TOO_MANY_REQUESTS;
-    return new HttpException(HttpException.createBody(message, 'Too Many Requests', status), status);
-  }
-  return new BadGatewayException(message);
+  const body = http.getResponse();
+  return new HttpException(
+    { ...(typeof body === 'string' ? { message: body } : body), errors: [...error.details] },
+    http.getStatus(),
+  );
 }
 
 /**

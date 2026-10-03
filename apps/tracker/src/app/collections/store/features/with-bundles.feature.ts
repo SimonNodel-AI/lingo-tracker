@@ -10,28 +10,19 @@ import type {
   BundleDefinitionDto,
   BundleDryRunRequestDto,
   BundleDryRunResultDto,
-  BundleGenerateJobDto,
-  BundleGenerateJobProgressDto,
-  BundleGenerateJobResultDto,
   CreateBundleDto,
   LingoTrackerConfigDto,
   UpdateBundleDto,
 } from '@simoncodes-ca/data-transfer';
-import { ApiError, apiErrorMessage } from '../../../shared/api-error/api-error';
+import {
+  isJobFinished,
+  mapJobToRun,
+  readPersistedRuns,
+  toBundleErrorMessage,
+  type BundleRunState,
+} from '../bundle-runs';
 
-/** Client-side lifecycle of a bundle generation run. */
-export type BundleRunStatus = 'idle' | 'running' | 'completed' | 'failed';
-
-export interface BundleRunState {
-  status: BundleRunStatus;
-  /** Server job id, present once the job has been accepted. */
-  jobId?: string;
-  progress?: BundleGenerateJobProgressDto;
-  result?: BundleGenerateJobResultDto;
-  error?: string;
-  /** ISO timestamp of completion or failure. */
-  finishedAt?: string;
-}
+export type { BundleRunState, BundleRunStatus } from '../bundle-runs';
 
 export interface BundleEntry {
   name: string;
@@ -41,10 +32,13 @@ export interface BundleEntry {
 interface BundlesState {
   /** Generation run state keyed by bundle name. */
   bundleRuns: Record<string, BundleRunState>;
+  /** Names actually started by the last Generate all request; not persisted. */
+  bundleBatch: readonly string[];
 }
 
 const initialBundlesState: BundlesState = {
   bundleRuns: {},
+  bundleBatch: [],
 };
 
 /** Polling interval for bundle generation jobs, in milliseconds. */
@@ -60,27 +54,12 @@ export const BUNDLE_JOB_POLL_INTERVAL_MS = 500;
  */
 export const BUNDLE_RUNS_STORAGE_KEY = 'lingo-tracker.bundleRuns';
 
-const RUN_STATUSES: readonly BundleRunStatus[] = ['idle', 'running', 'completed', 'failed'];
-
-function isBundleRunState(value: unknown): value is BundleRunState {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'status' in value &&
-    RUN_STATUSES.includes((value as BundleRunState).status)
-  );
-}
-
-/** Reads persisted runs, tolerating absent, unavailable or corrupt storage. */
-function readPersistedRuns(): Record<string, BundleRunState> {
+/** Reads the raw storage value; unavailable storage behaves like an absent value. */
+function readStoredBundleRuns(): string | null {
   try {
-    const raw = globalThis.sessionStorage?.getItem(BUNDLE_RUNS_STORAGE_KEY);
-    if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== 'object' || parsed === null) return {};
-    return Object.fromEntries(Object.entries(parsed).filter(([, run]) => isBundleRunState(run)));
+    return globalThis.sessionStorage?.getItem(BUNDLE_RUNS_STORAGE_KEY) ?? null;
   } catch {
-    return {};
+    return null;
   }
 }
 
@@ -92,52 +71,6 @@ function persistRuns(runs: Record<string, BundleRunState>): void {
     // Private mode, a full quota or no storage at all: the strip simply will not
     // survive a reload, which is the behaviour we had before.
   }
-}
-
-/**
- * The message for a failed bundle run. An invalid bundle definition carries every rule
- * message as `details`; they are appended (`Invalid bundle definition: a; b`) so the
- * reason is readable.
- */
-function toBundleErrorMessage(error: unknown, fallback: string): string {
-  const message = apiErrorMessage(error, fallback);
-  const details =
-    error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
-  return details.length > 0 ? `${message}: ${details.join('; ')}` : message;
-}
-
-function isJobFinished(job: BundleGenerateJobDto): boolean {
-  return job.status === 'completed' || job.status === 'failed';
-}
-
-function toRunStatus(status: BundleGenerateJobDto['status']): BundleRunStatus {
-  switch (status) {
-    case 'completed':
-      return 'completed';
-    case 'failed':
-      return 'failed';
-    default:
-      return 'running';
-  }
-}
-
-function mapJobToRun(job: BundleGenerateJobDto, previous: BundleRunState | undefined): BundleRunState {
-  const finished = isJobFinished(job);
-  // A freshly queued job reports {current: 0, total: 0} until its first progress
-  // event lands. Keep the total we seeded from the locale list so the card shows
-  // "0 of 6 locales" and a sized bar from the first frame instead of a bare strip.
-  const progress =
-    job.progress.total > 0 || !previous?.progress?.total
-      ? job.progress
-      : { ...job.progress, total: previous.progress.total };
-  return {
-    status: toRunStatus(job.status),
-    jobId: job.jobId,
-    progress,
-    result: job.status === 'completed' ? job.result : previous?.result,
-    error: job.status === 'failed' ? job.error : undefined,
-    finishedAt: finished ? (job.completedAt ?? new Date().toISOString()) : undefined,
-  };
 }
 
 /**
@@ -153,7 +86,7 @@ export function withBundlesFeature<_>() {
       state: type<{ config: LingoTrackerConfigDto | null; error: string | null }>(),
     },
     withState(initialBundlesState),
-    withComputed(({ config, bundleRuns }) => {
+    withComputed(({ config, bundleRuns, bundleBatch }) => {
       const bundleEntries = computed<BundleEntry[]>(() => {
         const bundles = config()?.bundles;
         if (!bundles) return [];
@@ -173,6 +106,18 @@ export function withBundlesFeature<_>() {
         bundleCount: computed(() => bundleEntries().length),
         /** Project name reported by the API (basename of its working directory). */
         projectName: computed(() => config()?.projectName ?? null),
+        batchTotal: computed(() => bundleBatch().length),
+        isBatchRunning: computed(() => bundleBatch().some((name) => bundleRuns()[name]?.status === 'running')),
+        /** 1-based position for the busy button, capped at the number of started bundles. */
+        batchPosition: computed(() => {
+          const batch = bundleBatch();
+          const runs = bundleRuns();
+          const finished = batch.filter((name) => {
+            const status = runs[name]?.status;
+            return status === 'completed' || status === 'failed';
+          }).length;
+          return Math.min(Math.max(batch.length, 1), finished + 1);
+        }),
         runningBundleCount,
         isAnyBundleRunning: computed(() => runningBundleCount() > 0),
       };
@@ -200,7 +145,7 @@ export function withBundlesFeature<_>() {
       const pollJob = (name: string, jobId: string) =>
         timer(BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_JOB_POLL_INTERVAL_MS).pipe(
           switchMap(() => api.getBundleJob(jobId)),
-          tap((snapshot) => setRun(name, mapJobToRun(snapshot, store.bundleRuns()[name]))),
+          tap((snapshot) => setRun(name, mapJobToRun(snapshot, store.bundleRuns()[name], new Date().toISOString()))),
           takeWhile((snapshot) => !isJobFinished(snapshot), true),
         );
 
@@ -213,7 +158,7 @@ export function withBundlesFeature<_>() {
         pipe(
           mergeMap(({ name, jobId }) =>
             api.getBundleJob(jobId).pipe(
-              tap((job) => setRun(name, mapJobToRun(job, store.bundleRuns()[name]))),
+              tap((job) => setRun(name, mapJobToRun(job, store.bundleRuns()[name], new Date().toISOString()))),
               switchMap((job) => (isJobFinished(job) ? of(job) : pollJob(name, jobId))),
               catchError(() => {
                 clearRun(name);
@@ -240,7 +185,7 @@ export function withBundlesFeature<_>() {
           // mergeMap so several bundles can run and poll concurrently (Generate all).
           mergeMap(({ name, locales }) =>
             api.generateBundle(name, locales ? { locales } : {}).pipe(
-              tap((job) => setRun(name, mapJobToRun(job, store.bundleRuns()[name]))),
+              tap((job) => setRun(name, mapJobToRun(job, store.bundleRuns()[name], new Date().toISOString()))),
               switchMap((job) => (isJobFinished(job) ? of(job) : pollJob(name, job.jobId))),
               catchError((error: unknown) => {
                 setRun(name, {
@@ -256,9 +201,14 @@ export function withBundlesFeature<_>() {
         ),
       );
 
-      const generateBundle = (name: string, locales?: readonly string[]): void => {
-        if (store.bundleRuns()[name]?.status === 'running') return;
+      const tryStartGeneration = (name: string, locales?: readonly string[]): boolean => {
+        if (store.bundleRuns()[name]?.status === 'running') return false;
         startGeneration({ name, locales });
+        return true;
+      };
+
+      const generateBundle = (name: string, locales?: readonly string[]): void => {
+        tryStartGeneration(name, locales);
       };
 
       return {
@@ -295,12 +245,17 @@ export function withBundlesFeature<_>() {
         },
 
         /**
-         * Starts generation for every configured bundle. Jobs poll independently.
+         * Starts every configured bundle that is not running and records only those starts.
+         * Jobs poll independently; an immediate request failure still counts as a started run.
+         * Ignored while the current batch is still running.
          */
         generateAllBundles(): void {
+          if (store.isBatchRunning()) return;
+          const started: string[] = [];
           for (const { name } of store.bundleEntries()) {
-            generateBundle(name);
+            if (tryStartGeneration(name)) started.push(name);
           }
+          patchState(store, { bundleBatch: started });
         },
 
         /**
@@ -315,7 +270,7 @@ export function withBundlesFeature<_>() {
          * in flight when the page reloaded.
          */
         restoreBundleRuns(): void {
-          const restored = readPersistedRuns();
+          const restored = readPersistedRuns(readStoredBundleRuns());
           if (Object.keys(restored).length === 0) return;
           patchState(store, { bundleRuns: restored });
           for (const [name, run] of Object.entries(restored)) {

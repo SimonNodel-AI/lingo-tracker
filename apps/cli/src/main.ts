@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-import { importStrategyPolicy } from '@simoncodes-ca/domain';
 import { Command } from 'commander';
 import type { EditCollectionOptions } from './commands/edit-collection';
-import type { findSimilarCommand } from './commands/find-similar';
-import { EXPORT_DEFAULTS, IMPORT_DEFAULTS } from './commands/run-option-defaults';
+import {
+  EXPORT_DEFAULTS,
+  IMPORT_DEFAULTS,
+  IMPORT_STRATEGY_DEFAULTS as importStrategyDefaults,
+  IMPORT_MIGRATION_DEFAULTS as migrationDefaults,
+} from './commands/run-option-defaults';
 import { importHelpText, preferredTerminologyHelpText, validateHelpText } from './runner/help-text';
 import {
   choiceOption,
   collectionOption,
   collectionSetupOptions,
   option,
-  parseFindSimilarOptions,
   parseValidateOptions,
   repeatableListOption,
   resourceFieldOptions,
@@ -21,8 +23,6 @@ import {
 import { registerCommand } from './runner/register-command';
 
 const program = new Command();
-const importStrategyDefaults = importStrategyPolicy(IMPORT_DEFAULTS.strategy).defaults;
-const migrationDefaults = importStrategyPolicy('migration').defaults;
 
 program
   .name('lingo-tracker')
@@ -368,15 +368,18 @@ registerCommand(program, {
     option({
       flags: '--max-results <n>',
       description: 'Maximum number of results to return (default: 5)',
-      defaultValue: '5',
+      helpDefault: '5',
+      parse: (value) => {
+        const maxResults = parseInt(value, 10);
+        if (Number.isNaN(maxResults)) {
+          throw new Error(`--max-results must be a number, got "${value}"`);
+        }
+        return maxResults;
+      },
     }),
   ],
   load: () => import('./commands/find-similar').then((module) => module.findSimilarCommand),
-  mapOptions: (raw) =>
-    parseFindSimilarOptions({
-      ...raw,
-      maxResults: raw.maxResults as string,
-    } satisfies Omit<Parameters<typeof findSimilarCommand>[0], 'maxResults'> & { maxResults: string }),
+  mapOptions: (raw) => ({ ...raw, maxResults: (raw.maxResults as number | undefined) ?? 5 }),
 });
 
 registerCommand(program, {

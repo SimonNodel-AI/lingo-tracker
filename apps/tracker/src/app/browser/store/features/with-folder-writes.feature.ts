@@ -3,7 +3,6 @@ import { patchState, signalStoreFeature, type, withComputed, withMethods, withSt
 import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { splitResolvedKey } from '@simoncodes-ca/domain';
 import { catchError, defer, finalize, from, map, type Observable, of, switchMap, tap } from 'rxjs';
-import { ApiError } from '../../../shared/api-error/api-error';
 import type { Feedback } from '../../feedback';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
@@ -22,7 +21,6 @@ import {
   type MoveFolderResult,
   type MoveResourceOutcome,
   type MoveResourceResult,
-  type Refusal,
   type RequestedFolderDeleteOutcome,
   type RequestedFolderMoveOutcome,
 } from '../folder-write-feedback';
@@ -35,6 +33,7 @@ import {
   removeFolderFromTree,
 } from '../folder-tree.utils';
 import { captureSession } from '../session-guard';
+import { refused } from '../write-refusal';
 
 export interface FolderWritesState {
   isAddingFolder: boolean;
@@ -73,20 +72,6 @@ export type {
   RequestedFolderDeleteOutcome,
   RequestedFolderMoveOutcome,
 };
-
-function refused(error: unknown): Refusal {
-  return {
-    kind: 'refused',
-    error:
-      error instanceof ApiError
-        ? error
-        : new ApiError({
-            kind: 'other',
-            status: 0,
-            message: error instanceof Error ? error.message : undefined,
-          }),
-  };
-}
 
 /** All folder mutations, including a resource dropped onto a folder. Calls are cold. */
 export function withFolderWritesFeature<_>() {

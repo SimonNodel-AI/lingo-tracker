@@ -91,6 +91,26 @@ describe('main.ts flag wiring', () => {
     expect(findSimilarCommand).toHaveBeenCalledWith({ collection: 'main', value: 'Hello', maxResults: 8 });
   });
 
+  it('keeps the default --max-results value passed to find-similar', async () => {
+    await runCli('find-similar', '--value', 'Hello');
+
+    expect(findSimilarCommand).toHaveBeenCalledWith({ value: 'Hello', maxResults: 5 });
+  });
+
+  it.each(['8.9', '8suffix', ' 8 '])('keeps parseInt conversion for --max-results %j', async (value) => {
+    await runCli('find-similar', '--value', 'Hello', '--max-results', value);
+
+    expect(findSimilarCommand).toHaveBeenCalledWith({ value: 'Hello', maxResults: 8 });
+  });
+
+  it.each(['invalid', '', 'NaN'])('rejects non-numeric --max-results %j before calling find-similar', async (value) => {
+    await expect(runCli('find-similar', '--value', 'Hello', '--max-results', value)).rejects.toThrow(
+      `--max-results must be a number, got "${value}"`,
+    );
+
+    expect(findSimilarCommand).not.toHaveBeenCalled();
+  });
+
   it('leaves the import strategy and migration flags unset for command resolution', async () => {
     await runCli('import', '--source', 'file.json', '--locale', 'fr');
 

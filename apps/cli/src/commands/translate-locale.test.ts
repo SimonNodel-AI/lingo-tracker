@@ -214,11 +214,68 @@ describe('translateLocaleCommand', () => {
       expect(translateLocale).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ targetLocale: 'de' }));
     });
 
+    it('offers only collection target locales and passes the prompted choice to core', async () => {
+      vi.mocked(loadConfig).mockReturnValue({
+        ...CONFIG,
+        collections: {
+          main: { translationsFolder: 'src/i18n', baseLocale: 'fr', locales: ['fr', 'de'] },
+        },
+      });
+      vi.mocked(prompts).mockResolvedValueOnce({ locale: 'de' });
+
+      await translateLocaleCommand({});
+
+      // The collection's base locale (fr) and unconfigured locales (including global en) are excluded.
+      expect(prompts).toHaveBeenCalledExactlyOnceWith(
+        [
+          expect.objectContaining({
+            type: 'select',
+            name: 'locale',
+            choices: [{ title: 'de', value: 'de' }],
+          }),
+        ],
+        expect.anything(),
+      );
+      expect(translateLocale).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ name: 'main', baseLocale: 'fr', locales: ['fr', 'de'], targetLocales: ['de'] }),
+        { targetLocale: 'de', onProgress: undefined },
+      );
+      expect(process.exitCode).toBe(0);
+    });
+
     it('refuses a collection with auto-translation disabled before asking for a locale', async () => {
       vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, translation: undefined });
 
       await translateLocaleCommand({});
 
+      expect(prompts).not.toHaveBeenCalled();
+      expect(console.error).toHaveBeenCalledWith(
+        '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
+      );
+      expect(translateLocale).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it('refuses a collection with no target locales before asking for a locale', async () => {
+      vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, locales: ['en'] });
+
+      await translateLocaleCommand({});
+
+      expect(console.error).toHaveBeenCalledWith(
+        '❌ No target locales configured. Add locales other than the base locale "en".',
+      );
+      expect(prompts).not.toHaveBeenCalled();
+      expect(translateLocale).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+
+    it.each([
+      ['en', '❌ Cannot translate to the base locale "en".'],
+      ['ja', '❌ Locale "ja" is not configured. Available locales: en, fr, de'],
+    ])('refuses an invalid locale flag %s before prompting or running', async (locale, message) => {
+      await translateLocaleCommand({ locale });
+
+      expect(console.error).toHaveBeenCalledWith(message);
       expect(prompts).not.toHaveBeenCalled();
       expect(translateLocale).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(1);

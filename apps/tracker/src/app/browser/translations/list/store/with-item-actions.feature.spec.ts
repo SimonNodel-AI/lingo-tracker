@@ -176,7 +176,7 @@ describe('TranslationListStore item actions', () => {
     actions.translateResource(entry);
 
     expect(notifications.success).toHaveBeenCalledWith('2 locales translated successfully');
-    expect(notifications.warning).toHaveBeenCalledWith('Skipped locales (ICU format): de, ja');
+    expect(notifications.warning).toHaveBeenCalledWith('Auto-translation skipped for de, ja');
     expect(actions.isRecentlyUpdated(entry.fullKey)).toBe(true);
   });
 
@@ -216,6 +216,8 @@ describe('TranslationListStore item actions', () => {
 
     expect(api.translateResource).not.toHaveBeenCalled();
     expect(actions.isTranslating(entry.fullKey)).toBe(false);
+    expect(actions.isRecentlyUpdated(entry.fullKey)).toBe(false);
+    expectNoNotifications();
   });
 
   it('does not translate a read-only collection', () => {
@@ -225,6 +227,40 @@ describe('TranslationListStore item actions', () => {
 
     expect(api.translateResource).not.toHaveBeenCalled();
     expect(actions.isTranslating(entry.fullKey)).toBe(false);
+    expect(actions.isRecentlyUpdated(entry.fullKey)).toBe(false);
+    expectNoNotifications();
+  });
+
+  it('does not delete when the collection changes while confirmation is open', async () => {
+    openCollection();
+    const closed = new Subject<boolean>();
+    dialog.open.mockReturnValue({ afterClosed: () => closed.asObservable() });
+    const deletion = actions.deleteTranslation(entry);
+    await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledOnce());
+
+    browser.openCollection(collectionSettings({ name: 'another-collection' }));
+    closed.next(true);
+    closed.complete();
+    await deletion;
+
+    expect(api.deleteResource).not.toHaveBeenCalled();
+    expectNoNotifications();
+  });
+
+  it('clears pending translation without flashing or toasting a stale response', () => {
+    openCollection();
+    const response = new Subject<{ resource: ResourceSummaryDto; translatedCount: number; skippedLocales: string[] }>();
+    api.translateResource.mockReturnValue(response.asObservable());
+    actions.translateResource(entry);
+    expect(actions.isTranslating(entry.fullKey)).toBe(true);
+
+    browser.openCollection(collectionSettings({ name: 'another-collection' }));
+    response.next({ resource: entry, translatedCount: 1, skippedLocales: [] });
+    response.complete();
+
+    expect(actions.isTranslating(entry.fullKey)).toBe(false);
+    expect(actions.isRecentlyUpdated(entry.fullKey)).toBe(false);
+    expectNoNotifications();
   });
 
   it('copies the entry key and reports success', async () => {

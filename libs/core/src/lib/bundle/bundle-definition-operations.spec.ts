@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
-import { InvalidBundleDefinitionError, ConfigChangedError } from '../errors/lingo-tracker-error';
+import { InvalidBundleDefinitionError, InvalidNameError, ConfigChangedError } from '../errors/lingo-tracker-error';
 import { loadConfig } from '../config/load-config';
 import { addBundleDefinition, deleteBundleDefinition, updateBundleDefinition } from './bundle-definition-operations';
 
@@ -152,6 +152,17 @@ describe('bundle-definition-operations', () => {
       expect(bundles['constructor']).toEqual(validDefinition());
     });
 
+    it('keeps the create-time blank key error without writing', () => {
+      writeConfig(baseConfig());
+      const before = readFileSync(join(cwd, CONFIG_FILENAME), 'utf8');
+      for (const key of ['', '   ']) {
+        expect(() => addBundleDefinition(project(), key, validDefinition())).toThrow(
+          new InvalidBundleDefinitionError(['Bundle name is required.']),
+        );
+        expect(readFileSync(join(cwd, CONFIG_FILENAME), 'utf8')).toBe(before);
+      }
+    });
+
     it('rejects an invalid key without writing', () => {
       const config = baseConfig();
       writeConfig(config);
@@ -181,6 +192,43 @@ describe('bundle-definition-operations', () => {
   });
 
   describe('updateBundleDefinition', () => {
+    it('rejects empty and whitespace rename targets without writing', () => {
+      writeConfig(baseConfig({ bundles: { main: validDefinition() } }));
+      const before = readFileSync(join(cwd, CONFIG_FILENAME), 'utf8');
+      for (const newKey of ['', '   ']) {
+        expect(() => updateBundleDefinition(project(), 'main', validDefinition(), { newKey })).toThrow(
+          InvalidNameError,
+        );
+        expect(readFileSync(join(cwd, CONFIG_FILENAME), 'utf8')).toBe(before);
+      }
+      expect(new InvalidNameError().message).toBe('name must be a non-empty string');
+      expect(new InvalidNameError().kind).toBe('invalid');
+      expect(new InvalidNameError().code).toBe('INVALID_NAME');
+    });
+
+    it('reports a missing bundle before a blank rename target', () => {
+      writeConfig(baseConfig());
+      expect(() => updateBundleDefinition(project(), 'ghost', validDefinition(), { newKey: '' })).toThrow(
+        'Bundle "ghost" not found',
+      );
+    });
+
+    it('trims a padded rename target', () => {
+      writeConfig(baseConfig({ bundles: { main: validDefinition() } }));
+      const result = updateBundleDefinition(project(), 'main', validDefinition(), { newKey: ' renamed ' });
+      expect(result.message).toBe('Bundle "main" renamed to "renamed" and updated successfully');
+      expect(Object.keys(readConfig().bundles ?? {})).toEqual(['renamed']);
+    });
+
+    it('treats a padded legacy key renamed to itself as a plain update', () => {
+      writeConfig(baseConfig({ bundles: { 'legacy key': validDefinition() } }));
+      const result = updateBundleDefinition(project(), 'legacy key', validDefinition({ dist: './x' }), {
+        newKey: ' legacy key ',
+      });
+      expect(result.message).toBe('Bundle "legacy key" updated successfully');
+      expect(readConfig().bundles?.['legacy key']?.dist).toBe('./x');
+    });
+
     it('replaces the definition in place and keeps key order', () => {
       writeConfig(
         baseConfig({

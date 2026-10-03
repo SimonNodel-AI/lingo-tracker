@@ -1,5 +1,11 @@
 import { Logger } from '@nestjs/common';
-import type { BundleProgressEvent, GenerateBundleParams, GenerateBundleResult } from '@simoncodes-ca/core';
+import type {
+  BundleProgressEvent,
+  GenerateBundleParams,
+  GenerateBundleResult,
+  LingoTrackerConfig,
+  OpenedProject,
+} from '@simoncodes-ca/core';
 import { BundleJobService, JOB_RETENTION_MS, MAX_RETAINED_JOBS } from './bundle-job.service';
 
 const mockGenerateBundle = jest.fn();
@@ -44,10 +50,15 @@ const makeResult = (overrides: Partial<GenerateBundleResult> = {}): GenerateBund
   ...overrides,
 });
 
+const project = (sourceConfig: LingoTrackerConfig = config): OpenedProject => ({
+  projectRoot: '/opened/project',
+  sourceConfig,
+});
 const makeParams = (bundleName = 'main') => ({
   bundleName,
-  config:
+  project: project(
     bundleName === 'main' ? config : { ...config, bundles: { ...config.bundles, [bundleName]: bundleDefinition } },
+  ),
 });
 
 describe('BundleJobService', () => {
@@ -61,7 +72,14 @@ describe('BundleJobService', () => {
   });
 
   it('rejects an unknown name before adding a job', () => {
-    expect(() => service.startJob({ bundleName: 'constructor', config })).toThrow('Bundle "constructor" not found');
+    expect(() => service.startJob({ bundleName: 'constructor', project: project() })).toThrow(
+      'Bundle "constructor" not found',
+    );
+    expect(mockGenerateBundle).not.toHaveBeenCalled();
+  });
+
+  it('keeps padded saved names as unknown routes', () => {
+    expect(() => service.startJob({ bundleName: ' main ', project: project() })).toThrow('Bundle " main " not found');
     expect(mockGenerateBundle).not.toHaveBeenCalled();
   });
 
@@ -76,7 +94,7 @@ describe('BundleJobService', () => {
     mockGenerateBundle.mockResolvedValue(makeResult());
     const jobId = service.startJob({
       bundleName: 'main',
-      config: { ...config, bundles: { main: { ...bundleDefinition, bundleName: 'fixed' } } },
+      project: project({ ...config, bundles: { main: { ...bundleDefinition, bundleName: 'fixed' } } }),
     });
     expect(service.getJob(jobId)?.status).toBe('pending');
   });
@@ -85,10 +103,10 @@ describe('BundleJobService', () => {
     mockGenerateBundle.mockResolvedValue(makeResult({ warnings: ["Collection 'deleted' not found in config"] }));
     const jobId = service.startJob({
       bundleName: 'main',
-      config: {
+      project: project({
         ...config,
         bundles: { main: { ...bundleDefinition, collections: [{ name: 'deleted', entriesSelectionRules: 'All' }] } },
-      },
+      }),
     });
     await flush();
     expect(service.getJob(jobId)?.status).toBe('completed');
@@ -123,7 +141,7 @@ describe('BundleJobService', () => {
     const options = mockGenerateBundle.mock.calls[0][1] as Pick<GenerateBundleParams, 'onProgress'>;
     expect(prepared).toMatchObject({
       bundleKey: 'main',
-      cwd: process.cwd(),
+      cwd: '/opened/project',
       definition: bundleDefinition,
       locales: ['fr'],
     });
@@ -165,7 +183,7 @@ describe('BundleJobService', () => {
       typeDist: 'types/legacy.ts',
     };
 
-    const jobId = service.startJob({ bundleName: 'main', config: { ...config, bundles: { main: legacy } } });
+    const jobId = service.startJob({ bundleName: 'main', project: project({ ...config, bundles: { main: legacy } }) });
     await flush();
 
     expect(service.getJob(jobId)?.status).toBe('failed');

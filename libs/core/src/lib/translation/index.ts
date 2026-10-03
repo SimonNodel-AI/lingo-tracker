@@ -17,12 +17,11 @@ export {
   type TranslateLocaleResult,
   translateLocale,
 } from './translate-locale';
-export {
-  type ProviderCapabilities,
-  type TranslateRequest,
-  type TranslateResult,
-  TranslationError,
-  type TranslationProvider,
+export type {
+  ProviderCapabilities,
+  TranslateRequest,
+  TranslateResult,
+  TranslationProvider,
 } from './translation-provider';
 export {
   assertAutoTranslationEnabled,

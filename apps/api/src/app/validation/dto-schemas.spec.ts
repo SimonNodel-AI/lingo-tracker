@@ -56,6 +56,26 @@ const resource = {
   translations: [{ locale: 'fr', value: 'Oui', status: 'new' }],
 };
 
+describe('collection rename name shape', () => {
+  it('accepts blank update names while create still rejects them', () => {
+    for (const name of ['', ' ']) {
+      expect(new SchemaPipe(schemas.updateCollectionBody, 'request body').transform({ name, collection })).toEqual({
+        name,
+        collection,
+      });
+      expect(() =>
+        new SchemaPipe(schemas.createCollectionBody, 'request body').transform({ name, collection }),
+      ).toThrow(exactMessage('name must be a non-empty string'));
+    }
+  });
+
+  it('rejects a non-string update name with the string shape message', () => {
+    expect(() =>
+      new SchemaPipe(schemas.updateCollectionBody, 'request body').transform({ name: 42, collection }),
+    ).toThrow(exactMessage('name must be a string'));
+  });
+});
+
 interface EndpointCase {
   name: string;
   schema: Schema<unknown>;
@@ -115,6 +135,8 @@ const endpoints: EndpointCase[] = [
     accepted: [
       { name: undefined, collection },
       { name: 'renamed', collection },
+      { name: ' ', collection },
+      { name: '', collection },
     ],
     invalid: { collection: [] },
     message: 'collection must be an object',

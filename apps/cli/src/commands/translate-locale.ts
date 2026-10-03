@@ -32,8 +32,7 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
     }
     return duringRun ? `Translation failed: ${message}` : undefined;
   },
-  // Core's precondition runs before the locale prompt, so a disabled collection is refused before any question.
-  prompts: (options, { collection }) => {
+  preflight: ({ options, collection }) => {
     assertAutoTranslationEnabled(collection);
     if (collection.targetLocales.length === 0) {
       throw new Error(
@@ -43,6 +42,8 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
     if (options.locale) {
       assertCanTranslateLocale(collection, options.locale);
     }
+  },
+  prompts: (options, { collection }) => {
     return options.locale
       ? []
       : [
