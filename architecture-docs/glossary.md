@@ -157,6 +157,18 @@ Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
 ---
 
+### Collection Change
+
+The shared change engine for an existing [Collection Entry](#collection-entry). `changeCollection` in `libs/core/src/collections-manager/collection-change.ts` serves update, add-locale, and remove-locale.
+
+All preconditions precede writes. Locale sugar refuses read-only before its locale-specific checks and the stale snapshot. Update patches check terms, rename, entry, bundle references, terms destination, and stale snapshot before read-only and added-locale validation. The engine reads every affected folder before writes. It seeds added locales, purges removed locales, writes config, then writes optional terms.
+
+The planning step resolves the next config, effective collection, locale differences, folders, and terms destination before writes. The write phase writes config before optional terms. A failed terms write leaves config written and throws the original error. Public result shapes remain unchanged. Locale or config failures also throw directly. One reporting step delivers deduplicated [reindex mutations](#resource-mutation) after attempted locale saves or a changed record's config write, including failures. Structural equality ignores object key order and preserves array order.
+
+Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
+
+---
+
 ### Collection Entry
 
 The write side of a [collection's](#collection) record in `.lingo-tracker.json`: the one place that decides what the stored entry contains. In code, `libs/core/src/lib/config/collection-entry.ts` holds three pure functions over the in-memory config: `toCollectionEntry(config, collection)` builds the record (`translationsFolder`, trimmed, plus only the settings that differ from the global config, so a collection inherits by omission; `translation` is kept verbatim; `readOnly` only when true; tags normalized), `addCollectionEntry` registers it (a folder under `node_modules` is read-only unless the caller decides) and `patchCollectionEntry` changes it, with an optional rename in place. Patch semantics: a field the patch sets replaces the stored value (a setting is cleared, so the collection inherits, with its empty value: `tags: []`, `readOnly: false`, `locales: []`, and `''` for `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`; `translation` has no empty value and cannot be cleared by a patch, only replaced), a field set to `null` is `InvalidCollectionError`, and a field left out or `undefined` keeps its stored value, so a client that never sends `translation`, `exportFolder` or `importFolder` cannot lose them; the merged record is then re-minimized. An empty `locales` list means inherit, never "no locales". The rule for every field is listed once, keyed by the `LingoTrackerCollection` type, so a new field does not compile until its rule is written. `addCollection`, `editCollectionTags` and project-term pointer changes write through it. `assertCollectionFields` rejects null fields and a non-string `translationsFolder` before DTO-only fields are removed by the API mapper. The mapper also requires a string `translationsFolder` on collection request bodies, including updates. `updateCollection`, `addLocaleToCollection` and `removeLocaleFromCollection` share one locale-change path: validate, read every folder, seed added locales, purge removed locales, then write the minimized record once through `patchCollectionEntry`. A changed record delivers reindex mutations for the old and new translations folders. The errors are typed: `CollectionNotFoundError`, `CollectionAlreadyExistsError`, `InvalidCollectionError`.
@@ -175,7 +187,7 @@ Explained in context: [`api.md`](api.md#collection-index)
 
 ### Collection Lifecycle
 
-The core operation that registers or changes a [Collection Entry](#collection-entry) together with its optional protected terms.
+The core operation that registers or changes a [Collection Entry](#collection-entry) together with its optional protected terms. Changes to existing collections use [Collection Change](#collection-change).
 
 Collection rename and delete check bundle references before writing. Rename changes the collection registration and every explicit bundle reference in one config write, unless a bundle already references the new name. Delete removes the registration and its explicit references in one config write, unless an affected bundle would become empty. Either conflict leaves config and translation files untouched.
 
