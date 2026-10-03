@@ -20,17 +20,20 @@ export class TranslationJobService {
   readonly #jobs = new JobRegistry<
     TranslationState,
     Omit<TranslateLocaleJobDto, 'jobId' | 'startedAt' | 'completedAt' | 'error'>
-  >((state, status) => ({
-    collectionName: state.collectionName,
-    targetLocale: state.targetLocale,
-    status,
-    totalResources: state.totalResources,
-    translatedCount: state.translatedCount,
-    failedCount: state.failedCount,
-    skippedCount: state.skippedCount,
-    ...(state.failures.length > 0 && { failures: [...state.failures] }),
-    ...(state.skippedKeys.length > 0 && { skippedKeys: [...state.skippedKeys] }),
-  }));
+  >(
+    (state, status) => ({
+      collectionName: state.collectionName,
+      targetLocale: state.targetLocale,
+      status,
+      totalResources: state.totalResources,
+      translatedCount: state.translatedCount,
+      failedCount: state.failedCount,
+      skippedCount: state.skippedCount,
+      ...(state.failures.length > 0 && { failures: [...state.failures] }),
+      ...(state.skippedKeys.length > 0 && { skippedKeys: [...state.skippedKeys] }),
+    }),
+    { jobName: 'Translation' },
+  );
 
   constructor(logger: Logger, index: CollectionIndex) {
     this.#logger = logger;
@@ -38,7 +41,7 @@ export class TranslationJobService {
   }
 
   /** Queues a bulk translation for a collection the controller has already validated. */
-  startJob(collection: Collection, targetLocale: string): string {
+  startJob(collection: Collection, targetLocale: string): TranslateLocaleJobDto {
     return this.#jobs.start({
       initial: {
         collectionName: collection.name,
@@ -82,7 +85,9 @@ export class TranslationJobService {
     });
   }
 
-  getJob(jobId: string): TranslateLocaleJobDto | undefined {
-    return this.#jobs.get(jobId);
+  getJob(jobId: string, collectionName: string): TranslateLocaleJobDto {
+    return this.#jobs.get(jobId, {
+      owner: (state) => state.collectionName === collectionName,
+    });
   }
 }
