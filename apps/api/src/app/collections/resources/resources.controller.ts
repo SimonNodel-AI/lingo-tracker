@@ -1,4 +1,15 @@
-import { Controller, Delete, Get, HttpStatus, NotFoundException, Param, Patch, Post, Res } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Res,
+} from '@nestjs/common';
 import {
   addResources,
   assertCanTranslateLocale,
@@ -41,20 +52,20 @@ import {
 import { mapGetTreeResultToDto } from '../../mappers/resource-tree.mapper';
 import { blankSearchResults, mapSearchPageToDto, searchRequestFromQuery } from '../../mappers/search-result.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
-import { RouteCollection } from '../route-collection';
 import {
-  searchQuery,
-  treeQuery,
-  type SearchQuery,
-  type TreeQuery,
-  translateResourceBody,
   createResourcesBody,
   deleteResourcesBody,
   moveResourcesBody,
-  updateResourceBody,
+  type SearchQuery,
+  searchQuery,
+  type TreeQuery,
   translateLocaleBody,
+  translateResourceBody,
+  treeQuery,
+  updateResourceBody,
 } from '../../validation/dto-schemas';
 import { ValidBody, ValidQuery } from '../../validation/valid-body';
+import { RouteCollection } from '../route-collection';
 
 @Controller('collections/:collectionName/resources')
 export class ResourcesController {
@@ -190,17 +201,14 @@ export class ResourcesController {
   }
 
   @Post('translate-locale')
+  @HttpCode(HttpStatus.ACCEPTED)
   async translateLocale(
     @RouteCollection() collection: Collection,
     @ValidBody(translateLocaleBody) dto: TranslateLocaleRequestDto,
-    @Res() response: Response,
-  ): Promise<void> {
+  ): Promise<TranslateLocaleJobDto> {
     assertCanTranslateLocale(collection, dto.locale);
 
-    const jobId = this.#translationJobService.startJob(collection, dto.locale);
-
-    const job = this.#translationJobService.getJob(jobId);
-    response.status(HttpStatus.ACCEPTED).json(job);
+    return this.#translationJobService.startJob(collection, dto.locale);
   }
 
   @Get('translate-locale/:jobId')
@@ -208,16 +216,6 @@ export class ResourcesController {
     @Param('collectionName') collectionName: string,
     @Param('jobId') jobId: string,
   ): Promise<TranslateLocaleJobDto> {
-    const job = this.#translationJobService.getJob(jobId);
-
-    if (job === undefined) {
-      throw new NotFoundException(`Translation job "${jobId}" not found`);
-    }
-
-    if (job.collectionName !== collectionName) {
-      throw new NotFoundException(`Translation job "${jobId}" not found`);
-    }
-
-    return job;
+    return this.#translationJobService.getJob(jobId, collectionName);
   }
 }

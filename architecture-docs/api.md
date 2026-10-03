@@ -381,14 +381,14 @@ sequenceDiagram
     UI->>RC: POST /translate-locale { locale: "fr" }
     RC->>JS: startJob(collection, locale)
     JS->>JS: Job Registry creates UUID and queues job (status: "pending")
-    JS-->>RC: jobId
+    JS-->>RC: pending TranslateLocaleJobDto
     RC-->>UI: 202 Accepted TranslateLocaleJobDto\n{ jobId, status: "pending", ... }
 
     JS->>Core: translateLocale(collection, { targetLocale, onProgress }) [when earlier translations settle]
 
     loop Poll until status is "completed" or "failed"
         UI->>RC: GET /translate-locale/{jobId}
-        RC->>JS: getJob(jobId)
+        RC->>JS: getJob(jobId, collectionName)
         JS-->>RC: TranslateLocaleJobDto
         RC-->>UI: 200 OK\n{ status: "running", translatedCount: N, ... }
     end
@@ -401,6 +401,8 @@ sequenceDiagram
 ```
 
 **Starting a job.** The handler receives the collection from `@RouteCollection()`, then calls core `assertCanTranslateLocale(collection, locale)` synchronously before `startJob(collection, locale)`. The precondition raises typed errors for disabled auto-translation (422), the base locale (400), or a locale outside the collection's configured locales (400). The job calls `translateLocale(collection, { targetLocale, onProgress, onMutation: index.sink })`. Core delivers a `reindex` after every folder save attempt, including a partial failure, before the job is marked completed or failed. A run with no saved folder delivers none.
+
+**Start and lookup protocol.** Registry `start` returns the initial pending DTO snapshot directly. The services return it to controllers, which use `@HttpCode(202)` and Nest's return handling. Registry `get` returns a fresh snapshot or raises API-local `JobNotFoundError` (kind `not-found`). Translation lookup supplies the route collection as an owner check; a wrong owner has the same 404 as an unknown or evicted ID. The filter maps kind `not-found` to Nest's `NotFoundException`, preserving `{ statusCode: 404, message, error: "Not Found" }` and the existing bundle/translation job messages. Bundle preparation stays in the bundle service; translation preconditions stay in the controller.
 
 **Job lifecycle states:** `pending` → `running` → `completed` | `failed`. The [Job Registry](glossary.md#job-registry) owns the map, queue, timestamps, error text, and DTO snapshots for both services. Each service has one registry instance: translations run serially with translations, and bundles run serially with bundles. A bundle and a translation may run concurrently. Bundle generation reads resource folders and writes its configured `dist` and optional type output; translation writes resource folders. Their usual output paths do not overlap, so this avoids two jobs writing the same files. Output paths are configurable and are not checked for overlap; a bundle may also read resources while translation writes them. Finished jobs older than 30 minutes are evicted on the next start; when the count would exceed 100, the oldest finished jobs are evicted first. Queued and running jobs are never evicted. If the process restarts, all jobs are lost and the UI must re-issue any in-progress operations.
 
