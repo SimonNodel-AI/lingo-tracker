@@ -930,6 +930,14 @@ Explained in context: [`core-library.md`](core-library.md#auto-translation-pipel
 
 ---
 
+### Translation Batch
+
+The shared translate-and-store operation beneath [Translate Locale](#translate-locale) and `translateExistingResource`. `translationBatch` in `libs/core/src/lib/translation/translation-batch.ts` takes full keys, source values, per-locale snapshots, target locales, an opened [Translator](#translator), and [Mutation Sink](#mutation-sink) options. It calls the Translator once, groups translated values by folder with `groupByFolder`, and stores each folder through [Translation Write-back](#translation-write-back). It returns one outcome per key and locale: `written`, `skipped` (provider or stale write-back), or `failed` with a `provider` or `write` stage and error message. A provider failure fails the entire batch; a write failure fails only that folder's translated values. Earlier writes and provider skips keep their outcomes. The original error is retained so the single-resource caller can rethrow it.
+
+Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline)
+
+---
+
 ### Translation List View
 
 The Tracker's status filter, sort, per-status counts and needs-work count for a set of [Resource Summaries](#resource-summary). The pure module is `apps/tracker/src/app/browser/translations/utils/translation-list-view.ts`. `resourceStatusScope(items, locales)` returns per-item counts, status counts and a needs-work count. `translationListRows(scope, selection)` filters the scope and delegates sort to `sortTranslationRecords`, which reuses those per-item counts. Status and sort changes preserve the scope and its counts reference.

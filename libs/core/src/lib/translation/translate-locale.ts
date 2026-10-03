@@ -15,16 +15,12 @@
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { CannotTranslateBaseLocaleError, TranslationLocaleNotConfiguredError } from '../errors/lingo-tracker-error';
-import { groupByFolder } from '../resource/folder-batch';
 import { readCollection } from '../resource/read-collection';
-import { type MutationSinkOptions, reindexMutation } from '../resource/resource-mutation';
+import { reindexMutation } from '../resource/resource-mutation';
+import type { MutationSinkOptions } from '../resource/resource-mutation';
 import type { RunOutcome } from '../run-outcome';
-import {
-  type PendingTranslation,
-  snapshotTranslation,
-  type TranslationSnapshot,
-  writeBackTranslations,
-} from './translation-write-back';
+import { translationBatch } from './translation-batch';
+import { snapshotTranslation } from './translation-write-back';
 import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
 
 // ---------------------------------------------------------------------------
@@ -116,7 +112,6 @@ export async function translateLocale(
   params: TranslateLocaleParams,
 ): Promise<TranslateLocaleResult> {
   const { targetLocale, onProgress, onMutation } = params;
-  const { translationsFolder } = collection;
   assertCanTranslateLocale(collection, targetLocale);
 
   const { resources, problems } = readCollection(collection);
@@ -156,53 +151,43 @@ export async function translateLocale(
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
     const batchStart = batchIndex * batchSize;
     const batch = resourcesToTranslate.slice(batchStart, batchStart + batchSize);
-    const snapshots = new Map<string, TranslationSnapshot>(
-      batch.map((resource) => [
-        resource.fullKey,
-        snapshotTranslation(resource.entry.source, resource.entry.metadata[targetLocale]),
-      ]),
+    const reportedFolders = new Set<string>();
+    const outcomes = await translationBatch(
+      collection,
+      batch.map((resource) => ({
+        key: resource.fullKey,
+        source: resource.entry.source,
+        snapshots: {
+          [targetLocale]: snapshotTranslation(resource.entry.source, resource.entry.metadata[targetLocale]),
+        },
+      })),
+      [targetLocale],
+      translator,
+      {
+        onMutation: onMutation
+          ? (mutation) => {
+              if (mutation.kind === 'upsert') {
+                const folderKey = mutation.key.split('.').slice(0, -1).join('.');
+                if (reportedFolders.has(folderKey)) return;
+                reportedFolders.add(folderKey);
+              }
+              onMutation(reindexMutation(collection.translationsFolder));
+            }
+          : undefined,
+      },
     );
-
-    try {
-      const { values, skipped } = await translator.translate(
-        batch.map((resource) => ({ key: resource.fullKey, source: resource.entry.source })),
-        [targetLocale],
-      );
-
-      for (const { key } of skipped) {
-        skippedKeys.push(key);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'written') {
+        translatedCount++;
+      } else if (outcome.status === 'skipped') {
         skippedCount++;
-      }
-
-      // Group by folder so each folder's files are read and written only once per batch.
-      for (const { folderPath, members } of groupByFolder(collection, values, (value) => value.key)) {
-        const pending: PendingTranslation[] = [];
-        for (const { entryKey, item: value, key } of members) {
-          const snapshot = snapshots.get(key);
-          if (!snapshot) {
-            skippedKeys.push(value.key);
-            skippedCount++;
-            continue;
-          }
-          pending.push({ entryKey, locale: value.locale, value: value.value, snapshot });
-        }
-        const writeBack = writeBackTranslations(collection, folderPath, pending, {
-          onMutation,
-          saved: () => [reindexMutation(translationsFolder)],
-        });
-        translatedCount += writeBack.written.length;
-        skippedCount += writeBack.skipped.length;
-        skippedKeys.push(
-          ...writeBack.skipped.map(
-            ({ entryKey }) => members.find((member) => member.entryKey === entryKey)?.key ?? entryKey,
-          ),
-        );
-      }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      for (const resource of batch) {
-        failures.push({ key: resource.fullKey, error: errorMessage });
+        skippedKeys.push(outcome.key);
+      } else {
         failedCount++;
+        failures.push({
+          key: outcome.key,
+          error: outcome.error instanceof Error ? outcome.error.message : String(outcome.error),
+        });
       }
     }
 
