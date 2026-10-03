@@ -136,7 +136,7 @@ libs/core/src/
     │   ├── edit-resource.ts      # editResource()
     │   ├── delete-resource.ts    # deleteResource()
     │   ├── move-resource.ts      # moveResource()
-    │   ├── move-plan.ts          # planMove(): pure source-to-destination key calculation
+    │   ├── move-plan.ts          # planMove(): pure move refusals, collection identity, and destination keys
     │   ├── relocate-entries.ts   # Entry Relocation used by moves
     │   ├── checksum.ts           # MD5 checksums
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
@@ -461,26 +461,32 @@ Steps:
 
 **Entry point:** `moveResource(collection, { source, destination, override?, toCollection? }, { config?, cwd?, onMutation? }?)`
 
-Two modes, one move: both get a list of `{ from, to }` keys from the [Move Plan](#move-plan) and hand it to the [Entry Relocation](#entry-relocation) in one call. A collision becomes a warning (`Destination key already exists: <key>. Use override option to force move.`); a failed relocation is an error.
+Two modes, one move: both get relocations and `sameCollection` from the [Move Plan](#move-plan) and hand them to the [Entry Relocation](#entry-relocation) in one call. A collision becomes a warning (`Destination key already exists: <key>. Use override option to force move.`); a failed relocation is an error.
 
 - **Single key move** — one relocation, `source` to `destination`.
 - **Wildcard pattern move** — a pattern ending with `*` is expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to every key under the prefix, each moved under `destination`. A folder the sweep cannot read is one error in the result; the other keys still move.
 
-`moveFolder()` lists the source keys with `sweepKeys()`, maps their destinations, and moves them as one relocation. After every key moves without errors, [Folder Pruning](#folder-pruning) removes empty folders under the source address, including the source itself. Stray files and hidden directories protect their folders. OS junk does not prevent removal.
+`moveFolder()` gets one Move Plan before filesystem reads. After the plan permits the move, `sweepKeys()` lists the source keys. The same plan maps their destinations and supplies `sameCollection` to Entry Relocation. After every key moves without errors, [Folder Pruning](#folder-pruning) removes empty folders under the source address, including the source itself. Stray files and hidden directories protect their folders. OS junk does not prevent removal.
 
 The result retains the warning `Source folder kept: holds content that is not part of the collection: <paths>`. New collection entries produce `Source folder kept: it has resources again: <paths>`. `foldersDeleted` counts the source folder only. Each removed folder, including the source, emits a `remove-folder` mutation. A source tree without entries uses the same pruning rule. `deleteFolder` still deletes the whole tree intentionally.
 
 ### Move Plan
 
-**Entry point:** `planMove(selection, destination)` in `lib/resource/move-plan.ts` (internal)
+**Entry point:** `planMove({ source, destination, selection, destinationPath })` in `lib/resource/move-plan.ts` (internal)
 
-The planner has no filesystem calls. A single key keeps its explicit destination. A wildcard prefix maps every swept key under the destination prefix, including the collection root. An edited entry keeps its last key segment when it moves to a destination folder; an empty or whitespace-only folder names the collection root. A folder move appends the source folder's last segment by default or when moving to the root. With `nestUnderDestination: false`, equal source and destination depths replace the source folder path, and unequal depths append that last segment. The planner also supplies the same-folder and current-parent warnings. `moveFolder` still validates folder addresses and lists keys before relocation; `moveResource` still validates and sweeps patterns; `editResource` still checks the destination collision before saving.
+The planner has no filesystem calls. Its one argument supplies the opened source and destination collections, the selection, and the destination path. A resource selection returns an `entries` plan with both collections, relocations, and `sameCollection`. A folder selection returns a `folder` plan with only `forKeys(keys)`, or a typed refusal.
+
+The refusal reasons are `descendant`, `same-location`, and `already-there`. These folder refusals apply only within the same collection. Each refusal supplies `warning()`, which returns the existing warning or throws `FolderMoveIntoDescendantError`. `moveFolder` calls this method before source inspection and enumeration, preserving refusal behavior for missing sources. The error constructor supplies the descendant message once. The browser-safe domain predicate `isDescendantFolderPath` supplies the descendant rule for both the planner and the Tracker folder-drop rule.
+
+A single key keeps its explicit destination. A wildcard prefix maps every swept key under the destination prefix, including the collection root. An edited entry keeps its last key segment, and an empty or whitespace-only destination folder names the collection root. A folder move appends the last source segment by default or for a root destination. With `nestUnderDestination: false`, equal depths replace the source folder path, and unequal depths append that last segment.
+
+A folder selection does not include keys. Its plan supplies `forKeys(keys)` for keys that the caller enumerates after the move decision. This method returns an `entries` plan bound to the collections and `sameCollection` fact already decided. `moveResource` validates and sweeps patterns, and `moveResources` calls it for each operation. `editResource` checks the destination collision before saving. Entry Relocation takes only the bound plan and options, so separate collection arguments cannot disagree with the plan.
 
 ### Entry Relocation
 
-**Entry point:** `relocateEntries(source, destination, relocations, { override? })` in `lib/resource/relocate-entries.ts` (internal)
+**Entry point:** `relocateEntries(plan, { override?, onMutation? })` in `lib/resource/relocate-entries.ts` (internal)
 
-The [Entry Relocation](glossary.md#entry-relocation) is the one move primitive. It takes a source and a destination `Collection` (the same one for a move inside a collection) and a list of `{ from, to }` full keys, and returns `{ moved, collisions, errors }`. `moved` holds each moved entry as stored at its destination (`ResourceTreeEntry`). It never throws for one relocation.
+The [Entry Relocation](glossary.md#entry-relocation) is the one move primitive. It takes an `entries` plan from Move Plan, with source and destination collections, relocations, and `sameCollection`. It returns `{ moved, collisions, errors }`. `moved` holds each moved entry as stored at its destination (`ResourceTreeEntry`). It never throws for one relocation.
 
 | Rule | What it does |
 |---|---|

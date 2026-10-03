@@ -237,7 +237,12 @@ function resolveDestination(
   } catch (error) {
     throw new InvalidResourceKeyError(source.entryKey, error instanceof Error ? error.message : String(error));
   }
-  const [relocation] = planMove({ kind: 'entry', key: source.resolvedKey }, moveTo).relocations;
+  const [relocation] = planMove({
+    source: collection,
+    destination: collection,
+    selection: { kind: 'entry', key: source.resolvedKey },
+    destinationPath: moveTo,
+  }).relocations;
   if (!relocation || relocation.to === source.resolvedKey) {
     return undefined;
   }
@@ -261,7 +266,13 @@ function moveEntry(
   destinationKey: string,
   onMutation?: MutationSink,
 ): { resolvedKey: string; entry: ResourceTreeEntry } {
-  const relocation = relocateEntries(collection, collection, [{ from: sourceKey, to: destinationKey }], { onMutation });
+  const plan = planMove({
+    source: collection,
+    destination: collection,
+    selection: { kind: 'key', key: sourceKey },
+    destinationPath: destinationKey,
+  });
+  const relocation = relocateEntries(plan, { onMutation });
   if (relocation.collisions.length > 0) {
     throw new ResourceAlreadyExistsError(destinationKey);
   }
