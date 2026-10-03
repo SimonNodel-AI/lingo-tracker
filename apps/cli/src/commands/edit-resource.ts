@@ -1,6 +1,6 @@
 import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, missingTextQuestions, parseCommaSeparatedList, printTerminologyFindings } from '../utils';
+import { ConsoleFormatter, missingTextQuestions, printTerminologyFindings } from '../utils';
 
 export interface EditResourceOptions {
   collection?: string;
@@ -8,7 +8,7 @@ export interface EditResourceOptions {
   targetFolder?: string;
   baseValue?: string;
   comment?: string;
-  tags?: string; // Comma separated
+  tags?: string[];
   locale?: string;
   localeValue?: string;
 }
@@ -32,7 +32,7 @@ export const editResourceCommand = defineCommand<EditResourceOptions>()({
     const changes: EditResourceChanges = {
       baseValue: answers.baseValue || undefined,
       comment: answers.comment || undefined,
-      tags: answers.tags ? parseCommaSeparatedList(answers.tags) : undefined,
+      tags: answers.tags?.length ? answers.tags : undefined,
       translations,
       // `--target-folder` names the folder the entry moves to ('' for the collection root).
       moveTo: answers.targetFolder,

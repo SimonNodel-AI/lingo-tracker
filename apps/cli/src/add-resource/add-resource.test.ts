@@ -45,6 +45,22 @@ describe('addResourceCommand', () => {
     process.exitCode = undefined;
   });
 
+  it('trims comma-string tags from an interactive answer', async () => {
+    vi.mocked(core.loadConfig).mockReturnValue({
+      ...configDefaults,
+      collections: { TestCollection: { translationsFolder: 'translations' } },
+    });
+    vi.mocked(isInteractiveTerminal).mockReturnValue(true);
+    vi.mocked(prompts).mockResolvedValue({ tags: ' a, , b, ' });
+    await addResourceCommand({ collection: 'TestCollection', key: 'buttons.ok', value: 'OK' });
+    expect(core.addResource).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'TestCollection' }),
+      expect.objectContaining({ tags: ['a', 'b'] }),
+      { onExisting: 'fail' },
+    );
+    expect(process.exitCode).toBe(0);
+  });
+
   it('should show error and exit 1 when config file does not exist', async () => {
     await addResourceCommand({
       collection: 'test-collection',
@@ -141,7 +157,7 @@ describe('addResourceCommand', () => {
       key: 'buttons.ok',
       value: 'OK',
       comment: 'Primary confirmation action',
-      tags: 'ui, buttons',
+      tags: ['ui', 'buttons'],
       targetFolder: 'common',
       translations: JSON.stringify([
         { locale: 'fr-ca', value: "D'accord", status: 'translated' },

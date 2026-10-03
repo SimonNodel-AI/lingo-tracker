@@ -48,8 +48,13 @@ export function parseNameSelection(flagValue: string | undefined, answerValue?: 
 }
 
 /** Resolves a comma-list flag or prompt answer. A supplied flag takes precedence, including an empty flag. */
-export function parseListSelection(flagValue: string | undefined, answerValue?: unknown): Selection | undefined {
-  if (flagValue !== undefined) return namedSelection(parseCommaSeparatedList(flagValue));
+export function parseListSelection(
+  flagValue: string[] | string | undefined,
+  answerValue?: unknown,
+): Selection | undefined {
+  if (flagValue !== undefined) {
+    return namedSelection(typeof flagValue === 'string' ? parseCommaSeparatedList(flagValue) : flagValue);
+  }
   return parsePromptSelection(answerValue);
 }
 
