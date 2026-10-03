@@ -410,6 +410,7 @@ Options:
   --all                Normalize all collections
   --dry-run            Preview changes without applying them
   --json               Output results as JSON
+  --yes                Skip confirmation prompt
   -h, --help           display help for command
 ",
     "options": {

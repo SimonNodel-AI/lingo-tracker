@@ -166,6 +166,7 @@ registerCommand(program, {
     option({ flags: '--all', description: 'Normalize all collections' }),
     option({ flags: '--dry-run', description: 'Preview changes without applying them' }),
     option({ flags: '--json', description: 'Output results as JSON' }),
+    yesOption,
   ],
   load: () => import('./commands/normalize').then((module) => module.normalizeCommand),
 });

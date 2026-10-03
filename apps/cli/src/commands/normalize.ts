@@ -14,6 +14,7 @@ export interface NormalizeOptions {
   all?: boolean;
   dryRun?: boolean;
   json?: boolean;
+  yes?: boolean;
 }
 
 export const normalizeCommand = defineCommand<NormalizeOptions>()({
@@ -33,6 +34,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
         await confirmOrCancel({
           ask,
           interactive,
+          yes: answers.yes,
           message: 'Are you sure?',
           beforeAsk: () => ConsoleFormatter.warning('This will normalize ALL collections in your project.'),
         });
