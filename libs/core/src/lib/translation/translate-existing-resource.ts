@@ -1,9 +1,9 @@
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
-import { validateAndResolvePaths } from '../resource/resource-file-paths';
-import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
+import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import { openResourceEntry } from '../resource/resource-entry';
+import type { ResourceFolder } from '../resource/resource-folder';
 import { type MutationSinkOptions, upsertMutation } from '../resource/resource-mutation';
 import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
 import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
@@ -41,16 +41,15 @@ export async function translateExistingResource(
   key: string,
   options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const { baseLocale, translationsFolder } = collection;
+  const { translationsFolder } = collection;
   assertAutoTranslationEnabled(collection);
 
-  const paths = validateAndResolvePaths({ key, translationsFolder });
-
-  const folder = openResourceFolder(paths.folderPath, { baseLocale, translationsFolder });
-  const current = folder.get(paths.entryKey);
+  const resource = openResourceEntry(collection, key);
+  const { folder } = resource;
+  const current = resource.get();
 
   if (!current?.meta) {
-    throw new ResourceNotFoundError(paths.resolvedKey);
+    throw new ResourceNotFoundError(resource.resolvedKey);
   }
 
   const { entry, meta } = current;
@@ -60,7 +59,7 @@ export async function translateExistingResource(
     return {
       translatedCount: 0,
       skippedLocales: [],
-      entry: requireTreeEntry(folder, paths.entryKey, paths.resolvedKey),
+      entry: requireTreeEntry(folder, resource.entryKey, resource.resolvedKey),
       warnings: [],
     };
   }
@@ -68,25 +67,25 @@ export async function translateExistingResource(
   const snapshots = new Map(targetLocales.map((locale) => [locale, snapshotTranslation(entry.source, meta[locale])]));
   const translator = openTranslator(collection, options);
   const { values, skipped } = await translator.translate(
-    [{ key: paths.resolvedKey, source: entry.source }],
+    [{ key: resource.resolvedKey, source: entry.source }],
     targetLocales,
   );
 
   const pending = values.flatMap(({ locale, value }) => {
     const snapshot = snapshots.get(locale);
-    return snapshot ? [{ entryKey: paths.entryKey, locale, value, snapshot }] : [];
+    return snapshot ? [{ entryKey: resource.entryKey, locale, value, snapshot }] : [];
   });
-  const writeBack = writeBackTranslations(collection, paths.folderPath, pending, {
+  const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
     onMutation: options.onMutation,
     saved: (freshFolder) => [
       upsertMutation(
         translationsFolder,
-        paths.resolvedKey,
-        requireTreeEntry(freshFolder, paths.entryKey, paths.resolvedKey),
+        resource.resolvedKey,
+        requireTreeEntry(freshFolder, resource.entryKey, resource.resolvedKey),
       ),
     ],
   });
-  const updatedEntry = requireTreeEntry(writeBack.folder, paths.entryKey, paths.resolvedKey);
+  const updatedEntry = requireTreeEntry(writeBack.folder, resource.entryKey, resource.resolvedKey);
 
   return {
     translatedCount: writeBack.written.length,

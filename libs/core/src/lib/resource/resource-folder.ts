@@ -4,13 +4,13 @@ import {
   applyBaseChange,
   isUntranslatedCopy,
   recordTranslation,
-  translocoToICU,
   type TranslationStatus,
+  translocoToICU,
 } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
-import { assertCollectionFolderPath } from './folder-address';
 import { calculateChecksum } from './checksum';
+import { assertCollectionFolderPath } from './folder-address';
 import type { ResourceTreeEntry } from './load-resource-tree';
 import type { ResourceEntries, ResourceEntry } from './resource-entry';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
@@ -170,6 +170,12 @@ export function translationLocales(entry: Readonly<ResourceEntry>): string[] {
 export function openResourceFolder(folderPath: string, options: OpenResourceFolderOptions): ResourceFolder {
   if (options.translationsFolder !== undefined) assertCollectionFolderPath(options.translationsFolder, folderPath);
   return new FileResourceFolder(folderPath, options.baseLocale, options.translationsFolder);
+}
+
+/** Checks presence without reading either file, for operations that require existing storage. */
+export function resourceFolderPresence(folderPath: string): { folder: boolean; entries: boolean } {
+  const folder = existsSync(folderPath);
+  return { folder, entries: folder && existsSync(join(folderPath, RESOURCE_ENTRIES_FILENAME)) };
 }
 
 /** Own-property check, so keys like "constructor" are not mistaken for entries (lib es2020 has no Object.hasOwn). */
