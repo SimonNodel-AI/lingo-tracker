@@ -1552,7 +1552,7 @@ describe('TranslationEditorDialog', () => {
 
     it('should copy the full key and confirm it', async () => {
       spectator.click('[data-testid="footer-key"]');
-      await Promise.resolve();
+      await vi.waitFor(() => expect(mockNotifications.success).toHaveBeenCalledWith('Copied to clipboard'));
       spectator.detectChanges();
 
       expect(mockClipboard.writeText).toHaveBeenCalledWith('common.buttons.ok');
@@ -1565,7 +1565,7 @@ describe('TranslationEditorDialog', () => {
       mockClipboard.writeText = vi.fn(() => Promise.reject(new Error('denied')));
 
       spectator.click('[data-testid="footer-key"]');
-      await Promise.resolve();
+      await vi.waitFor(() => expect(mockNotifications.error).toHaveBeenCalledWith('Failed to copy'));
       spectator.detectChanges();
 
       expect(mockNotifications.error).toHaveBeenCalledWith('Failed to copy');

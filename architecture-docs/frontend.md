@@ -331,6 +331,12 @@ Consumers use two things. `apiErrorMessage(error, fallback)` is the text to show
 
 ## Key UI Patterns
 
+### Timed UI Transients and Clipboard
+
+`shared/timed-transients.ts` provides injection-context helpers with `DestroyRef` cleanup. `injectFlash(durationMs)` exposes a readonly `active` signal and a restartable `trigger()`. `injectMidpointFlip(durationMs)` keeps the animation active for a full cycle and runs the caller's store write at the midpoint (125 ms into the folder and density toggles' 250 ms cycle). `injectRestartableDelay(durationMs)` shares the timeout handling for the editor's 900 ms location flash, the list's keyed 1500 ms row flash, and the launcher's 3200 ms delayed warning. The location flash retains its animation-frame class reset; hover delays remain in their components.
+
+`shared/clipboard.ts` returns `copied` or `failed`, including when the clipboard API is unavailable. The editor and list actions choose their existing success and failure tokens and render their own feedback.
+
 ### Virtual Scrolling
 
 The translation list can contain thousands of entries. `TranslationList` wraps items in a `CdkVirtualScrollViewport` (`@angular/cdk/scrolling`).
