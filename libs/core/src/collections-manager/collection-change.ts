@@ -6,7 +6,7 @@ import { resolveRenameTarget } from '../lib/config/entry-name';
 import { type Collection, type OpenedCollection, openCollection } from '../lib/config/open-collection';
 import { assertProtectedTerms } from '../lib/config/set-protected-terms';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
-import { type MutationSinkOptions, reindexMutation } from '../lib/resource/resource-mutation';
+import { resolveMutationSink, type MutationSinkOptions, reindexMutation } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';
 import { renameBundleCollectionReferences } from './bundle-collection-references';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
@@ -81,7 +81,7 @@ export async function changeCollection(
       const key = resolve(folder);
       if (reported.has(key)) continue;
       reported.add(key);
-      options.onMutation?.(reindexMutation(folder));
+      resolveMutationSink(current, options)?.(reindexMutation(folder));
     }
   }
 

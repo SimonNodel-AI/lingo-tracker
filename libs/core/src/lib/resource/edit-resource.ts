@@ -21,7 +21,7 @@ import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './
 import { planMove } from './move-plan';
 import { relocateEntries } from './relocate-entries';
 import { openResourceEntry } from './resource-entry';
-import { type MutationSink, type MutationSinkOptions, upsertMutation } from './resource-mutation';
+import { resolveMutationSink, type MutationSink, type MutationSinkOptions, upsertMutation } from './resource-mutation';
 import { assertTranslationStatus } from './translation-status-input';
 
 /** What to change on an entry. `undefined` leaves a field alone. */
@@ -155,7 +155,7 @@ export async function editResource(
 
   // Two-phase write: the edit is saved before auto-translation, so it is kept if the provider fails.
   if (hasChanges) {
-    resource.save(options.onMutation);
+    resource.save(resolveMutationSink(collection, options));
   }
 
   let updatedFolder = folder;
@@ -187,7 +187,7 @@ export async function editResource(
       return snapshot ? [{ entryKey, ...translation, snapshot }] : [];
     });
     const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
-      onMutation: options.onMutation,
+      onMutation: resolveMutationSink(collection, options),
       saved: (folder) => [upsertMutation(translationsFolder, resource.resolvedKey, folder.treeEntry(entryKey))],
     });
     updatedFolder = writeBack.folder;
@@ -201,7 +201,9 @@ export async function editResource(
     translatorProblems = seeding.problems;
   }
 
-  const moved = destination ? moveEntry(collection, resource.resolvedKey, destination, options.onMutation) : undefined;
+  const moved = destination
+    ? moveEntry(collection, resource.resolvedKey, destination, resolveMutationSink(collection, options))
+    : undefined;
   const resolvedKey = moved?.resolvedKey ?? resource.resolvedKey;
   const updatedEntry = moved?.entry ?? updatedFolder.treeEntry(entryKey);
   if (!updatedEntry) {

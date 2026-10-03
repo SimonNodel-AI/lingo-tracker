@@ -4,7 +4,7 @@ import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { openResourceEntry } from '../resource/resource-entry';
 import type { ResourceFolder } from '../resource/resource-folder';
-import type { MutationSinkOptions } from '../resource/resource-mutation';
+import { resolveMutationSink, type MutationSinkOptions } from '../resource/resource-mutation';
 import { translationBatch } from './translation-batch';
 import { snapshotTranslation } from './translation-write-back';
 import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
@@ -73,7 +73,7 @@ export async function translateExistingResource(
     [{ key: resource.resolvedKey, source: entry.source, snapshots }],
     targetLocales,
     translator,
-    options,
+    { onMutation: resolveMutationSink(collection, options) },
   );
   let updatedEntry: ResourceTreeEntry | undefined;
   for (const outcome of outcomes) {

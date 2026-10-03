@@ -1,7 +1,13 @@
 import type { Collection } from '../config/open-collection';
 import { validateAndResolvePaths } from './resource-file-paths';
 import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
-import { type MutationSink, removeMutation, saveReporting, upsertMutation } from './resource-mutation';
+import {
+  type MutationSink,
+  removeMutation,
+  saveReporting,
+  resolveMutationSink,
+  upsertMutation,
+} from './resource-mutation';
 
 export interface OpenedResourceEntry {
   readonly resolvedKey: string;
@@ -30,7 +36,7 @@ export function openResourceEntry(
     exists: () => folder.has(entryKey),
     get: () => folder.get(entryKey),
     save: (onMutation) =>
-      saveReporting(folder, translationsFolder, onMutation, () => [
+      saveReporting(folder, translationsFolder, resolveMutationSink(collection, { onMutation }), () => [
         folder.has(entryKey)
           ? upsertMutation(translationsFolder, resolvedKey, folder.treeEntry(entryKey))
           : removeMutation(translationsFolder, resolvedKey),

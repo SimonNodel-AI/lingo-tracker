@@ -5,7 +5,13 @@ import { openFolders } from './folder-batch';
 import type { ResourceTreeEntry } from './load-resource-tree';
 import type { MovePlan } from './move-plan';
 import type { ResourceFolder, ResourceFolderEntry } from './resource-folder';
-import { type MutationSinkOptions, reindexMutation, removeMutation, upsertMutation } from './resource-mutation';
+import {
+  resolveMutationSink,
+  type MutationSinkOptions,
+  reindexMutation,
+  removeMutation,
+  upsertMutation,
+} from './resource-mutation';
 
 /**
  * Entry Relocation — the one way entries move between keys, within a collection or into another.
@@ -152,8 +158,8 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
   } catch (error) {
     errors.push(`Failed to write the move: ${error instanceof Error ? error.message : String(error)}`);
     // Some folders may be written: the index reads both collections again.
-    options.onMutation?.(reindexMutation(destination.translationsFolder));
-    if (!sameCollection) options.onMutation?.(reindexMutation(source.translationsFolder));
+    resolveMutationSink(source, options)?.(reindexMutation(destination.translationsFolder));
+    if (!sameCollection) resolveMutationSink(source, options)?.(reindexMutation(source.translationsFolder));
     return { moved: [], collisions, errors };
   }
 
@@ -163,8 +169,9 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
     if (entry) moved.push({ from: relocation.from, to: relocation.to, entry });
   }
 
-  for (const { from } of moved) options.onMutation?.(removeMutation(source.translationsFolder, from));
-  for (const { to, entry } of moved) options.onMutation?.(upsertMutation(destination.translationsFolder, to, entry));
+  for (const { from } of moved) resolveMutationSink(source, options)?.(removeMutation(source.translationsFolder, from));
+  for (const { to, entry } of moved)
+    resolveMutationSink(source, options)?.(upsertMutation(destination.translationsFolder, to, entry));
   return { moved, collisions, errors };
 }
 

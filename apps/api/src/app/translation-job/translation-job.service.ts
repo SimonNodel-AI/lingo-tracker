@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { Collection, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
 import { translateLocale } from '@simoncodes-ca/core';
 import type { TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
-import { CollectionIndex } from '../cache/collection-index.service';
 import { JobRegistry } from '../jobs/job-registry';
 
 interface TranslationState
@@ -16,7 +15,6 @@ interface TranslationState
 @Injectable()
 export class TranslationJobService {
   readonly #logger: Logger;
-  readonly #index: CollectionIndex;
   readonly #jobs = new JobRegistry<
     TranslationState,
     Omit<TranslateLocaleJobDto, 'jobId' | 'startedAt' | 'completedAt' | 'error'>
@@ -35,9 +33,8 @@ export class TranslationJobService {
     { jobName: 'Translation' },
   );
 
-  constructor(logger: Logger, index: CollectionIndex) {
+  constructor(logger: Logger) {
     this.#logger = logger;
-    this.#index = index;
   }
 
   /** Queues a bulk translation for a collection the controller has already validated. */
@@ -65,7 +62,6 @@ export class TranslationJobService {
         const result = await translateLocale(collection, {
           targetLocale,
           onProgress,
-          onMutation: this.#index.sink,
         });
         for (const warning of result.warnings) {
           this.#logger.warn(`Translation job ${jobId}: ${warning}`);

@@ -1,7 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { Collection, ResourceMutation, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
 import { TranslationError } from '@simoncodes-ca/core';
-import type { CollectionIndex } from '../cache/collection-index.service';
 import { JobNotFoundError } from '../jobs/job-not-found.error';
 import { TranslationJobService } from './translation-job.service';
 
@@ -27,7 +26,9 @@ const makeSuccessResult = (overrides: Partial<TranslateLocaleResult> = {}): Tran
   ...overrides,
 });
 
+const sink = jest.fn();
 const collection: Collection = {
+  onMutation: sink,
   name: 'my-collection',
   translationsFolder: '/path/to/translations',
   baseLocale: 'en',
@@ -49,12 +50,12 @@ const flush = async (): Promise<void> => new Promise<void>((resolve) => setImmed
 describe('TranslationJobService', () => {
   let service: TranslationJobService;
   let mockLogger: jest.Mocked<Pick<Logger, 'error' | 'log' | 'warn'>>;
-  const mockIndex = { sink: jest.fn() };
+  const mockIndex = { sink };
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockLogger = { error: jest.fn(), log: jest.fn(), warn: jest.fn() };
-    service = new TranslationJobService(mockLogger as unknown as Logger, mockIndex as unknown as CollectionIndex);
+    service = new TranslationJobService(mockLogger as unknown as Logger);
   });
 
   it('runs translateLocale on the opened collection for the target locale', async () => {
@@ -190,22 +191,18 @@ describe('TranslationJobService', () => {
     ]);
   });
 
-  it.each(['completes', 'fails'])('passes the sink through when the job %s', async (outcome) => {
+  it.each(['completes', 'fails'])('preserves the collection sink when the job %s', async (outcome) => {
     const mutation: ResourceMutation = { kind: 'reindex', translationsFolder: collection.translationsFolder };
     if (outcome === 'completes') {
-      mockTranslateLocale.mockImplementationOnce(
-        (_collection: Collection, params: { onMutation?: (mutation: ResourceMutation) => void }) => {
-          params.onMutation?.(mutation);
-          return Promise.resolve(makeSuccessResult());
-        },
-      );
+      mockTranslateLocale.mockImplementationOnce((opened: Collection) => {
+        opened.onMutation?.(mutation);
+        return Promise.resolve(makeSuccessResult());
+      });
     } else {
-      mockTranslateLocale.mockImplementationOnce(
-        (_collection: Collection, params: { onMutation?: (mutation: ResourceMutation) => void }) => {
-          params.onMutation?.(mutation);
-          return Promise.reject(new Error('later failure'));
-        },
-      );
+      mockTranslateLocale.mockImplementationOnce((opened: Collection) => {
+        opened.onMutation?.(mutation);
+        return Promise.reject(new Error('later failure'));
+      });
     }
 
     const jobId = startJob(service);
@@ -214,8 +211,9 @@ describe('TranslationJobService', () => {
     expect(service.getJob(jobId, collection.name)?.status).toBe(outcome === 'completes' ? 'completed' : 'failed');
     expect(mockTranslateLocale).toHaveBeenCalledWith(
       collection,
-      expect.objectContaining({ onMutation: mockIndex.sink }),
+      expect.objectContaining({ targetLocale: 'fr', onProgress: expect.any(Function) }),
     );
+    expect(mockTranslateLocale.mock.calls[0]?.[1]).not.toHaveProperty('onMutation');
     expect(mockIndex.sink).toHaveBeenCalledWith(mutation);
   });
 

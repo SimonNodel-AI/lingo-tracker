@@ -16,8 +16,7 @@ import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { CannotTranslateBaseLocaleError, TranslationLocaleNotConfiguredError } from '../errors/lingo-tracker-error';
 import { readCollection } from '../resource/read-collection';
-import { reindexMutation } from '../resource/resource-mutation';
-import type { MutationSinkOptions } from '../resource/resource-mutation';
+import { resolveMutationSink, reindexMutation, type MutationSinkOptions } from '../resource/resource-mutation';
 import type { RunOutcome } from '../run-outcome';
 import { translationBatch } from './translation-batch';
 import { snapshotTranslation } from './translation-write-back';
@@ -111,7 +110,8 @@ export async function translateLocale(
   collection: Collection,
   params: TranslateLocaleParams,
 ): Promise<TranslateLocaleResult> {
-  const { targetLocale, onProgress, onMutation } = params;
+  const { targetLocale, onProgress } = params;
+  const onMutation = resolveMutationSink(collection, params);
   assertCanTranslateLocale(collection, targetLocale);
 
   const { resources, problems } = readCollection(collection);

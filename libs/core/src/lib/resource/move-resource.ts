@@ -1,3 +1,4 @@
+import { resolveMutationSink } from './resource-mutation';
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import type { RunOutcome } from '../run-outcome';
@@ -69,7 +70,7 @@ export async function moveResource(
   });
   const relocation = relocateEntries(plan, {
     override,
-    onMutation: options.onMutation,
+    onMutation: resolveMutationSink(collection, options),
   });
   return withMoveOutcome(mergeRelocation(result, relocation));
 }

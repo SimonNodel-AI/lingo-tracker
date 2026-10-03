@@ -1,7 +1,7 @@
 import type { Collection } from '../config/open-collection';
 import { groupByFolder } from '../resource/folder-batch';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
-import { type MutationSinkOptions, upsertMutation } from '../resource/resource-mutation';
+import { resolveMutationSink, type MutationSinkOptions, upsertMutation } from '../resource/resource-mutation';
 import { type TranslationSnapshot, writeBackTranslations } from './translation-write-back';
 import type { Translator, TranslationOutcome } from './translator';
 
@@ -77,7 +77,7 @@ export async function translationBatch(
     );
     try {
       const result = writeBackTranslations(collection, folderPath, pending, {
-        onMutation: options.onMutation,
+        onMutation: resolveMutationSink(collection, options),
         saved: (folder, written) => {
           const writtenKeys = new Set(written.map(({ entryKey }) => entryKey));
           return members
