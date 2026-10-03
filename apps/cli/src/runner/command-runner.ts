@@ -13,7 +13,10 @@ import * as path from 'path';
 import prompts from 'prompts';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { type Selection, selectionPrompt } from '../utils/prompt-utils';
+import { CommandCancelledError } from './command-cancelled-error';
 import { isInteractiveTerminal } from './terminal';
+
+export { CommandCancelledError } from './command-cancelled-error';
 
 /**
  * What a command needs opened before it runs.
@@ -149,18 +152,6 @@ export interface CommandSpec<
   readonly run: (
     ctx: CommandContext<Options, Need, WithConfig, Required>,
   ) => Promise<CommandResult> | Promise<void> | CommandResult | void;
-}
-
-/**
- * Thrown to end a command as cancelled: the runner prints `❌ <name> cancelled.` and
- * exits 0. The runner throws it when a prompt is cancelled; a command throws it when the
- * user declines a confirmation.
- */
-export class CommandCancelledError extends Error {
-  constructor() {
-    super('Cancelled');
-    this.name = 'CommandCancelledError';
-  }
 }
 
 /**

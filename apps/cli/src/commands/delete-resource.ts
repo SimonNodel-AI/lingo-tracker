@@ -1,6 +1,6 @@
 import { deleteResource } from '@simoncodes-ca/core';
-import { type Ask, CommandCancelledError, defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, parseCommaSeparatedList } from '../utils';
+import { defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, parseCommaSeparatedList } from '../utils';
 
 export interface DeleteResourceOptions {
   collection?: string;
@@ -12,16 +12,9 @@ export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
   name: 'Delete resource',
   collection: 'writable',
   prompts: (options) =>
-    options.key
-      ? []
-      : [
-          {
-            type: 'text',
-            name: 'key',
-            message: 'Resource key(s) (single key or comma-separated)',
-            validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
-          },
-        ],
+    missingTextQuestions(options, [
+      { name: 'key', message: 'Resource key(s) (single key or comma-separated)', required: true },
+    ]),
   required: ['key'],
   run: async ({ collection, answers, interactive, ask }) => {
     const keys = parseCommaSeparatedList(answers.key) ?? [];
@@ -29,10 +22,13 @@ export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
       throw new Error('No valid keys provided.');
     }
 
-    // Confirm unless --yes, or non-interactive (nobody to ask).
-    if (!answers.yes && interactive && !(await confirmDeletion(keys, ask))) {
-      throw new CommandCancelledError();
-    }
+    await confirmOrCancel({
+      ask,
+      interactive,
+      yes: answers.yes,
+      message: 'Are you sure?',
+      beforeAsk: () => describeDeletion(keys),
+    });
 
     const result = deleteResource(collection, { keys });
 
@@ -52,7 +48,7 @@ export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
   },
 });
 
-async function confirmDeletion(keys: string[], ask: Ask): Promise<boolean> {
+function describeDeletion(keys: string[]): void {
   console.log('\nYou are about to delete:');
 
   if (keys.length === 1) {
@@ -65,13 +61,4 @@ async function confirmDeletion(keys: string[], ask: Ask): Promise<boolean> {
   }
 
   ConsoleFormatter.warning('This will remove translations for all locales.');
-
-  const response = await ask({
-    type: 'confirm',
-    name: 'confirmed',
-    message: 'Are you sure?',
-    initial: false,
-  });
-
-  return response.confirmed === true;
 }

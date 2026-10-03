@@ -1,6 +1,6 @@
 import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, parseCommaSeparatedList, printTerminologyFindings } from '../utils';
+import { ConsoleFormatter, missingTextQuestions, parseCommaSeparatedList, printTerminologyFindings } from '../utils';
 
 export interface EditResourceOptions {
   collection?: string;
@@ -16,21 +16,11 @@ export interface EditResourceOptions {
 export const editResourceCommand = defineCommand<EditResourceOptions>()({
   name: 'Edit resource',
   collection: 'writable',
-  prompts: (options) => [
-    ...(options.key
-      ? []
-      : [
-          {
-            type: 'text' as const,
-            name: 'key',
-            message: 'Resource key',
-            validate: (val: string) => (val && val.trim().length > 0 ? true : 'Required'),
-          },
-        ]),
-    ...(options.baseValue
-      ? []
-      : [{ type: 'text' as const, name: 'baseValue', message: 'New base value (leave empty to keep current)' }]),
-  ],
+  prompts: (options) =>
+    missingTextQuestions(options, [
+      { name: 'key', message: 'Resource key', required: true },
+      { name: 'baseValue', message: 'New base value (leave empty to keep current)' },
+    ]),
   required: ['key'],
   run: async ({ collection, answers }) => {
     const translations =
