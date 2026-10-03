@@ -1,5 +1,4 @@
 import { resolve } from 'node:path';
-import { isDeepStrictEqual } from 'node:util';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { patchCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
@@ -12,6 +11,7 @@ import { assertValidLocale } from './assert-valid-locale';
 import { renameBundleCollectionReferences } from './bundle-collection-references';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
+import { jsonValuesEqual } from './json-values-equal';
 
 export interface CollectionChangeOptions extends MutationSinkOptions {
   protectedTerms?: string[];
@@ -138,7 +138,7 @@ function planCollectionChange(current: OpenedCollection, change: CollectionChang
 
   const recordChanged =
     targetName !== collectionName ||
-    !isDeepStrictEqual(config.collections[collectionName], nextConfig.collections[targetName]);
+    !jsonValuesEqual(config.collections[collectionName], nextConfig.collections[targetName]);
   return {
     configWrite,
     collectionName,
