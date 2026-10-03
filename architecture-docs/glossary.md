@@ -70,9 +70,9 @@ Explained in context: [`core-library.md`](core-library.md#bundle-definition), [`
 
 ---
 
-### Bundle Draft
+### Bundle Form
 
-The Tracker bundle form's raw choices, including inherited settings and disabled type options. `apps/tracker/src/app/collections/bundle-form-dialog/bundle-draft.ts` maps definitions to and from those choices, gates dry-run requests, derives preview paths and trees, and chooses the first invalid section. It has no Angular dependency; the dialog owns the form and preview state.
+The Tracker bundle dialog's form model, `BundleForm`, in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-form.ts`. It owns the typed Angular form, population and validation, section state and errors, definition building, and the form-to-signal bridge. An injected dry-run function supplies its debounced preview, including stale results and error recovery. `submitResult()` validates an attempted submit; `destroy()` releases subscriptions. The dialog keeps DOM handling and writes through [Dialog Config Submit](#dialog-config-submit).
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
