@@ -11,9 +11,10 @@ export function jsonValuesEqual(left: unknown, right: unknown): boolean {
   if (!isRecord(left) || !isRecord(right)) return false;
   const leftKeys = Object.keys(left).filter((key) => left[key] !== undefined);
   const rightKeys = Object.keys(right).filter((key) => right[key] !== undefined);
+  const rightKeySet = new Set(rightKeys);
   return (
     leftKeys.length === rightKeys.length &&
-    leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && jsonValuesEqual(left[key], right[key]))
+    leftKeys.every((key) => rightKeySet.has(key) && jsonValuesEqual(left[key], right[key]))
   );
 }
 
