@@ -10,9 +10,10 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { TokenCasingDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { ChipInput } from '../../shared/chip-input/chip-input';
 import { CollectionsStore } from '../store/collections.store';
 import { NamedEntrySubmit } from '../store/dialog-config-submit';
-import { BundleForm, LOCALE_PLACEHOLDER, type MergeStrategy, type RuleGroup } from './bundle-form';
+import { BundleForm, LOCALE_PLACEHOLDER, type MergeStrategy } from './bundle-form';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { SegmentedControl, type SegmentOption } from './segmented-control';
 
@@ -33,6 +34,7 @@ const code = (value: string): string => `<code>${escapeHtml(value)}</code>`;
     MatSlideToggleModule,
     MatTooltipModule,
     TranslocoPipe,
+    ChipInput,
     SegmentedControl,
   ],
   templateUrl: './bundle-form-dialog.html',
@@ -112,23 +114,6 @@ export class BundleFormDialog {
 
   togglePreview(): void {
     this.previewOpen.update((open) => !open);
-  }
-
-  onTagInputKeydown(event: KeyboardEvent, rule: RuleGroup, input: HTMLInputElement): void {
-    if (event.key === 'Backspace' && !input.value) {
-      const tags = rule.controls.matchingTags.value;
-      if (tags.length > 0) this.model.removeRuleTag(rule, tags[tags.length - 1]);
-      return;
-    }
-    if (event.key !== 'Enter' && event.key !== ',') return;
-    event.preventDefault();
-    this.commitTagInput(rule, input);
-  }
-
-  commitTagInput(rule: RuleGroup, input: HTMLInputElement): void {
-    const raw = input.value;
-    input.value = '';
-    this.model.addRuleTag(rule, raw);
   }
 
   onCancel(): void {

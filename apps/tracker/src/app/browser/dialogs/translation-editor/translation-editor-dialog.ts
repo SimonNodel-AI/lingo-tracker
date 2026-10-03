@@ -34,6 +34,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { CollectionsStore } from '../../../collections/store/collections.store';
+import { ChipInput } from '../../../shared/chip-input/chip-input';
 import { copyToClipboard } from '../../../shared/clipboard';
 import { injectConfirm } from '../../../shared/confirm';
 import { NotificationService } from '../../../shared/notification';
@@ -107,6 +108,7 @@ export type { EditorOutcome } from './editor-submit';
     TranslocoPipe,
     MatTooltipModule,
     PreferredTermAdvisories,
+    ChipInput,
   ],
 })
 export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit {
@@ -685,22 +687,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     // The store's createFolder already updated rootFolders; update the selection.
     this.#location.pick(folder.fullPath);
     this.stagedFolderPath.set(folder.fullPath);
-  }
-
-  /** Enter and comma commit the typed tag; Backspace on an empty field removes the last one. */
-  onTagKeydown(event: KeyboardEvent, input: HTMLInputElement): void {
-    if (event.key === 'Enter' || event.key === ',') {
-      event.preventDefault();
-      this.addTagValue(input.value);
-      input.value = '';
-      return;
-    }
-    if (event.key === 'Backspace' && input.value === '') {
-      const tags = this.tagsList();
-      if (tags.length > 0) {
-        this.removeTag(tags[tags.length - 1]);
-      }
-    }
   }
 
   addTagValue(rawValue: string): void {

@@ -161,13 +161,11 @@ describe('BundleFormDialog — create mode', () => {
     group.controls.allEntries.setValue(false);
     component.model.addRule(group);
     const rule = group.controls.rules.at(0);
-    const input = { value: ' Admin UI ' } as HTMLInputElement;
 
-    component.commitTagInput(rule, input);
+    component.model.addRuleTag(rule, ' Admin UI ');
     expect(rule.controls.matchingTags.value).toEqual(['admin-ui']);
-    expect(input.value).toBe('');
 
-    component.commitTagInput(rule, { value: 'admin-ui' } as HTMLInputElement);
+    component.model.addRuleTag(rule, 'admin-ui');
     expect(rule.controls.matchingTags.value).toEqual(['admin-ui']);
 
     component.model.toggleTagOperator(rule);
@@ -175,6 +173,36 @@ describe('BundleFormDialog — create mode', () => {
 
     component.model.removeRuleTag(rule, 'admin-ui');
     expect(rule.controls.matchingTags.value).toEqual([]);
+  });
+
+  it("should edit a rule's tags from the keyboard: commit on Enter, remove the last on Backspace, commit on blur", () => {
+    const group = component.model.form.controls.collections.at(0);
+    group.controls.allEntries.setValue(false);
+    component.model.addRule(group);
+    const rule = group.controls.rules.at(0);
+    component.model.activateCollection(0);
+    harness.fixture.detectChanges();
+    const input = (harness.fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input.tags-input');
+    expect(input).not.toBeNull();
+    if (!input) return;
+    const press = (key: string): void => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key, cancelable: true }));
+      harness.fixture.detectChanges();
+    };
+
+    input.value = ' Admin UI ';
+    press('Enter');
+    expect(input.value).toBe('');
+    input.value = 'beta';
+    press(',');
+    expect(rule.controls.matchingTags.value).toEqual(['admin-ui', 'beta']);
+
+    press('Backspace');
+    expect(rule.controls.matchingTags.value).toEqual(['admin-ui']);
+
+    input.value = 'late';
+    input.dispatchEvent(new Event('blur'));
+    expect(rule.controls.matchingTags.value).toEqual(['admin-ui', 'late']);
   });
 
   it('should not close when submitted invalid, and land on the first section with errors', () => {
