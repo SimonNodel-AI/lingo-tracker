@@ -15,9 +15,9 @@
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { CannotTranslateBaseLocaleError, TranslationLocaleNotConfiguredError } from '../errors/lingo-tracker-error';
+import { groupByFolder } from '../resource/folder-batch';
 import { readCollection } from '../resource/read-collection';
-import { resolveResourcePaths } from '../resource/resource-file-paths';
-import { reindexMutation, type MutationSinkOptions } from '../resource/resource-mutation';
+import { type MutationSinkOptions, reindexMutation } from '../resource/resource-mutation';
 import type { RunOutcome } from '../run-outcome';
 import {
   type PendingTranslation,
@@ -25,12 +25,7 @@ import {
   type TranslationSnapshot,
   writeBackTranslations,
 } from './translation-write-back';
-import {
-  assertAutoTranslationEnabled,
-  type OpenTranslatorOptions,
-  openTranslator,
-  type TranslatedValue,
-} from './translator';
+import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -180,21 +175,10 @@ export async function translateLocale(
       }
 
       // Group by folder so each folder's files are read and written only once per batch.
-      const byFolder = new Map<
-        string,
-        { entryKey: string; value: TranslatedValue; snapshot?: TranslationSnapshot }[]
-      >();
-      for (const value of values) {
-        const { folderPath, entryKey } = resolveResourcePaths({ key: value.key, translationsFolder });
-        const folderValues = byFolder.get(folderPath) ?? [];
-        folderValues.push({ entryKey, value, snapshot: snapshots.get(value.key) });
-        byFolder.set(folderPath, folderValues);
-      }
-
-      for (const [folderPath, folderValues] of byFolder) {
-        const keysByEntry = new Map(folderValues.map(({ entryKey, value }) => [entryKey, value.key]));
+      for (const { folderPath, members } of groupByFolder(collection, values, (value) => value.key)) {
         const pending: PendingTranslation[] = [];
-        for (const { entryKey, value, snapshot } of folderValues) {
+        for (const { entryKey, item: value, key } of members) {
+          const snapshot = snapshots.get(key);
           if (!snapshot) {
             skippedKeys.push(value.key);
             skippedCount++;
@@ -208,7 +192,11 @@ export async function translateLocale(
         });
         translatedCount += writeBack.written.length;
         skippedCount += writeBack.skipped.length;
-        skippedKeys.push(...writeBack.skipped.map(({ entryKey }) => keysByEntry.get(entryKey) ?? entryKey));
+        skippedKeys.push(
+          ...writeBack.skipped.map(
+            ({ entryKey }) => members.find((member) => member.entryKey === entryKey)?.key ?? entryKey,
+          ),
+        );
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
