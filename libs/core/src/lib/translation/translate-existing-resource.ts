@@ -4,8 +4,9 @@ import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { openResourceEntry } from '../resource/resource-entry';
 import type { ResourceFolder } from '../resource/resource-folder';
-import { type MutationSinkOptions, upsertMutation } from '../resource/resource-mutation';
-import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
+import type { MutationSinkOptions } from '../resource/resource-mutation';
+import { translationBatch } from './translation-batch';
+import { snapshotTranslation } from './translation-write-back';
 import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
 
 export interface TranslateExistingResourceResult {
@@ -41,7 +42,6 @@ export async function translateExistingResource(
   key: string,
   options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const { translationsFolder } = collection;
   assertAutoTranslationEnabled(collection);
 
   const resource = openResourceEntry(collection, key);
@@ -64,32 +64,27 @@ export async function translateExistingResource(
     };
   }
 
-  const snapshots = new Map(targetLocales.map((locale) => [locale, snapshotTranslation(entry.source, meta[locale])]));
-  const translator = openTranslator(collection, options);
-  const { values, skipped } = await translator.translate(
-    [{ key: resource.resolvedKey, source: entry.source }],
-    targetLocales,
+  const snapshots = Object.fromEntries(
+    targetLocales.map((locale) => [locale, snapshotTranslation(entry.source, meta[locale])]),
   );
-
-  const pending = values.flatMap(({ locale, value }) => {
-    const snapshot = snapshots.get(locale);
-    return snapshot ? [{ entryKey: resource.entryKey, locale, value, snapshot }] : [];
-  });
-  const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
-    onMutation: options.onMutation,
-    saved: (freshFolder) => [
-      upsertMutation(
-        translationsFolder,
-        resource.resolvedKey,
-        requireTreeEntry(freshFolder, resource.entryKey, resource.resolvedKey),
-      ),
-    ],
-  });
-  const updatedEntry = requireTreeEntry(writeBack.folder, resource.entryKey, resource.resolvedKey);
+  const translator = openTranslator(collection, options);
+  const outcomes = await translationBatch(
+    collection,
+    [{ key: resource.resolvedKey, source: entry.source, snapshots }],
+    targetLocales,
+    translator,
+    options,
+  );
+  let updatedEntry: ResourceTreeEntry | undefined;
+  for (const outcome of outcomes) {
+    if (outcome.status === 'failed') throw outcome.error;
+    updatedEntry = outcome.entry;
+  }
+  if (!updatedEntry) throw new ResourceNotFoundError(resource.resolvedKey);
 
   return {
-    translatedCount: writeBack.written.length,
-    skippedLocales: [...skipped.map(({ locale }) => locale), ...writeBack.skipped.map(({ locale }) => locale)],
+    translatedCount: outcomes.filter((outcome) => outcome.status === 'written').length,
+    skippedLocales: outcomes.filter((outcome) => outcome.status === 'skipped').map(({ locale }) => locale),
     entry: updatedEntry,
     warnings: [...translator.problems],
   };
