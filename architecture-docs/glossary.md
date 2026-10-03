@@ -119,6 +119,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### Chip Input
+
+`ChipInput` in `apps/tracker/src/app/shared/chip-input/chip-input.ts` is a directive for an `<input>` that adds and removes chips: `[appChipInput]="chips()"` takes the list now shown. Enter or comma emits `chipAdd` with the typed text (even blank, so the host resets its own input state; the host's rule ignores a blank) and clears the field, and Backspace in an empty field emits `chipRemove` with the last chip. `commitOnBlur` makes leaving the field commit typed text; the translation editor leaves it off so a click on an autocomplete option is not preempted. The directive does not interpret text: the translation editor, the collection dialog and the bundle dialog each pass `chipAdd` to their own rule (a tag by [Tag List Edit](#tag-list-edit), a protected term by the [Protected Term Add](#protected-term-add) rule).
+
+Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
+
+---
+
 ### CLI Help Text
 
 The long examples appended to `import`, `validate`, and `preferred-terminology` help. `apps/cli/src/runner/help-text.ts` holds these strings so the [Command Registration](#command-registration) list stays short. Registration passes each string to Commander's `addHelpText('after', ...)` unchanged.
@@ -129,7 +137,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### CLI Option Definitions
 
-Reusable Commander flag declarations in `apps/cli/src/runner/options.ts`. A definition registers one option when the [Command Registration](#command-registration) is applied. `option({ flags, description?, defaultValue?, helpDefault?, parse? })` states which strings are help descriptions and which values Commander parses by default. Its `parse` callback converts and validates a supplied value before the command loads; `find-similar --max-results` uses it to reject non-numeric input. The module owns the collection flag, token casing choices, repeatable list parser, shared `init` and `add-collection` flags, `--yes`, resource field groups, and the value conversions for `--setup-bundle` and `validate --skip-locales`.
+Reusable Commander flag declarations in `apps/cli/src/runner/options.ts`. A definition registers one option when the [Command Registration](#command-registration) is applied. `option({ flags, description?, defaultValue?, helpDefault?, parse? })` states which strings are help descriptions and which values Commander parses by default. Its `parse` callback converts and validates a supplied value before the command loads; `find-similar --max-results` uses it to reject non-numeric input. The module owns the collection flag, token casing choices, repeatable list parser, shared `init` and `add-collection` flags, `--yes`, resource field groups, and the value conversion for `--setup-bundle`. `commaListOption({ flags, description?, helpDefault?, empty? })` uses `parseCommaSeparatedList` to deliver trimmed `string[]` values with empty items removed. A raw empty optional flag (`""`) becomes undefined, so prompt and required-option gates still run. Non-empty inputs with no items (such as `" , "`) retain `[]` and count as supplied flags. `empty: 'clear'` preserves `[]` for replacement flags. `empty: 'preserve'` returns `{ kind: 'empty', input }` for deferred diagnostics. Export reads this explicit empty state to reject `--status` after collection resolution, before core validation and advisories. Commands declare `commaListAnswers` for comma-string prompt fields, which the runner converts with the same parser before required checks and selection. `validate-options.ts` beside validate owns its defaults; `find-similar-options.ts` owns the numeric parser.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
@@ -151,9 +159,21 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Collection Draft
 
-The Tracker collection form's plain values and rules in `apps/tracker/src/app/collections/collection-form-dialog/collection-draft.ts`. It seeds create or edit values, normalizes and changes locale choices, keeps the base locale fixed in edit mode (including an inherited base), reports removed original locales for confirmation, defaults read-only from a `node_modules` folder until the user chooses it, and builds the collection write payload. It has no Angular dependency. `collection-form-dialog.ts` owns the FormGroup, chip controls, confirmation, and store write.
+The Tracker collection form's plain values and rules in `apps/tracker/src/app/collections/collection-form-dialog/collection-draft.ts`. It seeds create or edit values, normalizes and changes locale choices, keeps the base locale fixed in edit mode (including an inherited base), reports removed original locales for confirmation, defaults read-only from a `node_modules` folder until the user chooses it, and builds the collection write payload. It has no Angular dependency. It also adds and removes tags and protected terms. [Collection Form](#collection-form) holds the draft; `collection-form-dialog.ts` owns the confirmation and store write.
 
 Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
+
+---
+
+### Collection Change
+
+The shared change engine for an existing [Collection Entry](#collection-entry). `changeCollection` in `libs/core/src/collections-manager/collection-change.ts` serves update, add-locale, and remove-locale.
+
+All preconditions precede writes. Locale sugar refuses read-only before its locale-specific checks and the stale snapshot. Update patches check terms, rename, entry, bundle references, terms destination, and stale snapshot before read-only and added-locale validation. The engine reads every affected folder before writes. It seeds added locales, purges removed locales, writes config, then writes optional terms.
+
+The planning step resolves the next config, effective collection, locale differences, folders, and terms destination before writes. The write phase writes config before optional terms. A failed terms write leaves config written and throws the original error. Public result shapes remain unchanged. Locale or config failures also throw directly. One reporting step delivers deduplicated [reindex mutations](#resource-mutation) after attempted locale saves or a changed record's config write, including failures. Structural equality ignores object key order and preserves array order.
+
+Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
 
 ---
 
@@ -162,6 +182,14 @@ Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 The write side of a [collection's](#collection) record in `.lingo-tracker.json`: the one place that decides what the stored entry contains. In code, `libs/core/src/lib/config/collection-entry.ts` holds three pure functions over the in-memory config: `toCollectionEntry(config, collection)` builds the record (`translationsFolder`, trimmed, plus only the settings that differ from the global config, so a collection inherits by omission; `translation` is kept verbatim; `readOnly` only when true; tags normalized), `addCollectionEntry` registers it (a folder under `node_modules` is read-only unless the caller decides) and `patchCollectionEntry` changes it, with an optional rename in place. Patch semantics: a field the patch sets replaces the stored value (a setting is cleared, so the collection inherits, with its empty value: `tags: []`, `readOnly: false`, `locales: []`, and `''` for `exportFolder`, `importFolder`, `baseLocale` and `protectedTermsFile`; `translation` has no empty value and cannot be cleared by a patch, only replaced), a field set to `null` is `InvalidCollectionError`, and a field left out or `undefined` keeps its stored value, so a client that never sends `translation`, `exportFolder` or `importFolder` cannot lose them; the merged record is then re-minimized. An empty `locales` list means inherit, never "no locales". The rule for every field is listed once, keyed by the `LingoTrackerCollection` type, so a new field does not compile until its rule is written. `addCollection`, `editCollectionTags` and project-term pointer changes write through it. `assertCollectionFields` rejects null fields and a non-string `translationsFolder` before DTO-only fields are removed by the API mapper. The mapper also requires a string `translationsFolder` on collection request bodies, including updates. `updateCollection`, `addLocaleToCollection` and `removeLocaleFromCollection` share one locale-change path: validate, read every folder, seed added locales, purge removed locales, then write the minimized record once through `patchCollectionEntry`. A changed record delivers reindex mutations for the old and new translations folders. The errors are typed: `CollectionNotFoundError`, `CollectionAlreadyExistsError`, `InvalidCollectionError`.
 
 Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
+
+---
+
+### Collection Form
+
+The Tracker collection dialog's form model, `CollectionForm`, in `apps/tracker/src/app/collections/collection-form-dialog/collection-form.ts`. A signal holds the [Collection Draft](#collection-draft); the typed FormGroup holds only the name and folder text inputs and feeds each change into the draft. It owns locale, base-locale, read-only, tag and protected-term edits through the draft's rules, the add-locale input and its errors, display state (displayed base locale, hints, disclosure), validation of an attempted submit, and the refusal message cleared on the next edit. `destroy()` releases its subscriptions. The dialog keeps DOM handling, the removal confirmation, and the write through [Dialog Config Submit](#dialog-config-submit). It is the collection counterpart of [Bundle Form](#bundle-form).
+
+Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
 ---
 
@@ -175,7 +203,7 @@ Explained in context: [`api.md`](api.md#collection-index)
 
 ### Collection Lifecycle
 
-The core operation that registers or changes a [Collection Entry](#collection-entry) together with its optional protected terms.
+The core operation that registers or changes a [Collection Entry](#collection-entry) together with its optional protected terms. Changes to existing collections use [Collection Change](#collection-change).
 
 Collection rename and delete check bundle references before writing. Rename changes the collection registration and every explicit bundle reference in one config write, unless a bundle already references the new name. Delete removes the registration and its explicit references in one config write, unless an affected bundle would become empty. Either conflict leaves config and translation files untouched.
 
@@ -321,7 +349,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Entry Relocation
 
-The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. The [Move Plan](#move-plan) supplies its key pairs. In code, `relocateEntries(source, destination, relocations, { override?, onMutation? })` in `libs/core/src/lib/resource/relocate-entries.ts` takes a list of `{ from, to }` full keys and returns `{ moved, collisions, errors }` and delivers changes to the sink. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `moveResource` and `moveFolder` move through it.
+The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. The [Move Plan](#move-plan) supplies its key pairs and `sameCollection` fact. In code, `relocateEntries(plan, { override?, onMutation? })` in `libs/core/src/lib/resource/relocate-entries.ts` takes a plan with its source and destination collections, relocations, and `sameCollection` and returns `{ moved, collisions, errors }` and delivers changes to the sink. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `moveResource` and `moveFolder` move through it.
 
 Explained in context: [`core-library.md`](core-library.md#entry-relocation)
 
@@ -503,7 +531,13 @@ Explained in context: [`frontend.md`](frontend.md#browserstore--feature-composit
 
 ### Move Plan
 
-The pure key calculation before [Entry Relocation](#entry-relocation). `planMove(selection, destination)` in `libs/core/src/lib/resource/move-plan.ts` accepts one resource key, a pattern prefix with its selected keys, a folder path with its selected keys and nest mode, or an edited entry key with a destination folder. It returns `{ relocations, warnings }` without reading or writing files. Folder moves nest by default and always nest at the collection root. With `nestUnderDestination: false`, a destination at the same depth renames the folder; a different depth nests it. A same-folder move or nesting under the current parent returns the existing warning. An edited entry with an empty or whitespace-only destination moves to the collection root. `moveFolder`, `moveResource`, and `editResource` supply its key pairs to Entry Relocation. Cross-collection `moveResource` and `moveFolder` take a plain `toCollection` name; core resolves it through `config` and optional `cwd` in the last options argument before planning or writing. A missing or read-only destination throws a typed error for a single move.
+The pure move decision before [Entry Relocation](#entry-relocation). `planMove({ source, destination, selection, destinationPath })` in `libs/core/src/lib/resource/move-plan.ts` compares resolved translations roots without filesystem calls. The source and destination are opened collections. A resource selection returns an `entries` plan with both collections, relocations, and `sameCollection`. A folder selection returns a `folder` plan with only `forKeys(keys)`, or a `refused` result.
+
+Folder refusals are `descendant`, `same-location`, and `already-there`, and apply only within the same collection. Each refusal supplies `warning()`, which returns the existing warning or throws `FolderMoveIntoDescendantError` for a descendant. `moveFolder` calls this method before filesystem reads and does not interpret the refusal reason. The error constructor is the single source of the descendant message. Domain supplies the browser-safe `isDescendantFolderPath(source, destination)` predicate for both Move Plan and the Tracker folder-drop rule.
+
+The selection names a resource key, a pattern prefix with keys, a folder path with nest mode, or an edited entry. A folder plan maps keys that the caller enumerates after the move decision. Its `forKeys(keys)` returns an `entries` plan bound to the same collections and `sameCollection` fact. Folder moves nest by default and always nest at the collection root. With `nestUnderDestination: false`, a destination at the same depth renames the folder, and a different depth nests it. An edited entry with an empty or whitespace-only destination moves to the collection root.
+
+`moveFolder`, `moveResource`, and `editResource` pass the bound plan to Entry Relocation. `moveResources` uses the same interface through `moveResource`. Cross-collection moves take a plain `toCollection` name. Core resolves the destination through `config` and optional `cwd` before the move decision. A missing or read-only destination throws a typed error for a single move.
 
 Explained in context: [`core-library.md`](core-library.md#move-plan)
 
@@ -600,14 +634,6 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#prot
 ### Protected Term Add
 
 `prepareProtectedTermAdd(existing, input)` in `apps/tracker/src/app/shared/protected-terms/protected-term-add.ts` normalizes a newly entered term with the domain rule and checks exact, case-sensitive duplicates. It returns `blank`, `duplicate`, or `added` with the normalized term. The settings draft and collection chips use this one add rule.
-
-Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
-
----
-
-### Protected Terms Chips
-
-`ProtectedTermsChips` in `apps/tracker/src/app/shared/protected-terms/protected-terms-chips.ts` holds the collection dialog's list. `seedRaw(values)` preserves stored values, order, and duplicates exactly. `add(value)` uses the [Protected Term Add](#protected-term-add) rule; `remove(value)` drops matching chips. It has no staged row or error state.
 
 Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
@@ -909,6 +935,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 `translateLocale(collection, params)` translates a collection's resources that need work for one target locale. It calls `onMutation` synchronously with a `reindex` after every folder save attempt, including an attempt that fails after a partial write. Its completed result has a [Run Outcome](#run-outcome): `failed` when any resource failed, otherwise `succeeded`. It stores results through [Translation Write-back](#translation-write-back), so writes made during the provider call survive. Changed or removed entries go into `skippedKeys`. Skipped resources and unreadable folders are reported separately.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline), [`api.md`](api.md#translation-job-system)
+
+---
+
+### Translation Batch
+
+The shared translate-and-store operation beneath [Translate Locale](#translate-locale) and `translateExistingResource`. `translationBatch` in `libs/core/src/lib/translation/translation-batch.ts` takes full keys, source values, per-locale snapshots, target locales, an opened [Translator](#translator), and [Mutation Sink](#mutation-sink) options. It calls the Translator once, groups translated values by folder with `groupByFolder`, and stores each folder through [Translation Write-back](#translation-write-back). It returns one outcome per key and locale: `written`, `skipped` (provider or stale write-back), or `failed` with a `provider` or `write` stage and error message. A provider failure fails the entire batch; a write failure fails only that folder's translated values. Earlier writes and provider skips keep their outcomes. The original error is retained so the single-resource caller can rethrow it.
+
+Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline)
 
 ---
 

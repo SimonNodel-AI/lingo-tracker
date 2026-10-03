@@ -97,12 +97,12 @@ export function openCollection(
     throw new ReadOnlyCollectionError(name);
   }
 
-  const cwd = options.cwd ?? process.cwd();
+  const { cwd = process.cwd(), onMutation } = options;
   const collectionTermsPath = resolveCollectionProtectedTermsFilePath(raw, cwd);
 
   return {
     name,
-    onMutation: options.onMutation,
+    onMutation,
     sourceConfig: config,
     projectRoot: cwd,
     translationsFolder:

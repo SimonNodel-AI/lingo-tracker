@@ -2,13 +2,7 @@ import type { AddResourceParams, AddResourceResult, Collection } from '@simoncod
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
 import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import { type Ask, defineCommand } from '../runner/command-runner';
-import {
-  ConsoleFormatter,
-  confirmOrCancel,
-  missingTextQuestions,
-  parseCommaSeparatedList,
-  printTerminologyFindings,
-} from '../utils';
+import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, printTerminologyFindings } from '../utils';
 
 interface TranslationInput {
   locale: string;
@@ -21,7 +15,7 @@ export interface AddResourceOptions {
   key?: string;
   value?: string;
   comment?: string;
-  tags?: string;
+  tags?: string[];
   targetFolder?: string;
   override?: boolean;
   /** Raw `--translations` JSON: an array of `{ locale, value, status }`. Parsed in `run`. */
@@ -31,6 +25,7 @@ export interface AddResourceOptions {
 export const addResourceCommand = defineCommand<AddResourceOptions>()({
   name: 'Add resource',
   collection: 'writable',
+  commaListAnswers: ['tags'],
   prompts: (options) =>
     missingTextQuestions(options, [
       { name: 'key', message: 'Resource key (dot-delimited, e.g., apps.common.buttons.ok)', required: true },
@@ -50,7 +45,7 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
         ? await promptForTranslations(collection, value, ask)
         : undefined;
 
-    const tagsArray = parseCommaSeparatedList(answers.tags) ?? [];
+    const tagsArray = answers.tags ?? [];
 
     // Locales without a supplied translation are seeded by core (auto-translated or copied as `new`).
     const params = {

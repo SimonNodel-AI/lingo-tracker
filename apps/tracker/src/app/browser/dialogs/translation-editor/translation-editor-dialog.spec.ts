@@ -97,6 +97,25 @@ describe('TranslationEditorDialog', () => {
   const dialogData = createMockData('create');
 
   /** Lets the deferred focus task the dialog queues after a confirmation run. */
+  describe('Tag input', () => {
+    it('should reset the typed-text signal on Enter even when the text is blank', () => {
+      spectator.detectChanges();
+      const input = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input.chip-add-input');
+      expect(input).not.toBeNull();
+      if (!input) return;
+
+      input.value = '   ';
+      input.dispatchEvent(new Event('input'));
+      expect(component.tagInputText()).toBe('   ');
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', cancelable: true }));
+
+      expect(component.tagInputText()).toBe('');
+      expect(input.value).toBe('');
+      expect(component.tagsList()).toEqual([]);
+    });
+  });
+
   const flushFocus = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
   const createDialog = createComponentFactory({

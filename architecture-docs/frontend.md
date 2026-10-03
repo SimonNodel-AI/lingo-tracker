@@ -298,7 +298,9 @@ The store mirrors run state to session storage and resumes active jobs after rel
 
 ### Collection Form Dialog
 
-`collections/collection-form-dialog/collection-draft.ts` is the Angular-free [Collection Draft](glossary.md#collection-draft). It seeds plain values from an existing collection or a blank create, validates and normalizes added locales, picks and protects the base locale, and compares current locales with the original list before a destructive save. The draft also owns the read-only folder default and the user-choice latch. Its result builder sends empty locale and tag lists to clear overrides, omits an unset base locale, sends `protectedTermsFile: ''` when no file is configured, and includes terms only with a file. `collection-form-dialog.ts` keeps the typed FormGroup and FormArray, renders chips and Transloco text, opens the removal confirmation, and submits the draft result through `NamedEntrySubmit`. The dialog passes the current controls to the draft for mutations and save; display helpers read only the controls they need.
+`collections/collection-form-dialog/collection-draft.ts` is the Angular-free [Collection Draft](glossary.md#collection-draft). It seeds plain values from an existing collection or a blank create, validates and normalizes added locales, picks and protects the base locale, adds and removes tags and protected terms, and compares current locales with the original list before a destructive save. The draft also owns the read-only folder default and the user-choice latch. Its result builder sends empty locale and tag lists to clear overrides, omits an unset base locale, sends `protectedTermsFile: ''` when no file is configured, and includes terms only with a file.
+
+`collection-form.ts` holds the [Collection Form](glossary.md#collection-form): one signal holds the draft, and the typed FormGroup holds only the name and folder text inputs, whose changes feed the draft. Locales, base locale, read-only, tags and terms are read from the draft and changed through its rules, so no second copy needs syncing. It needs no TestBed and releases its subscriptions with `destroy()`. `collection-form-dialog.ts` keeps the template bindings, the removal confirmation, close handling, and the submit through `NamedEntrySubmit`. Tag and term inputs use the [Chip Input](glossary.md#chip-input) directive.
 
 ### Protected Terms in the UI
 
@@ -308,7 +310,7 @@ Protected terms live in JSON files on disk rather than in `.lingo-tracker.json`.
 
 A read-only line beneath the field renders `config().protectedTermsFilePath`. Someone who later meets the file in a diff can then see where it came from.
 
-**The collection dialog** uses `ProtectedTermsChips` from `shared/protected-terms/`. It preserves loaded chips exactly, including whitespace and duplicates, so an unrelated edit sends the stored list unchanged. New chips use the same normalization and case-sensitive duplicate rule as `ProtectedTermsDraft`; removal drops matching chips immediately. A collection has no default terms file, so `canEditProtectedTerms()` is true only when the collection carries a `protectedTermsFile`. Without one the chips are disabled, and the dialog explains why. The terms have nowhere to go until someone sets the file with the CLI.
+**The collection dialog** keeps its terms in the [Collection Draft](glossary.md#collection-draft) (`withProtectedTerm`, `withoutProtectedTerm`). It preserves loaded chips exactly, including whitespace and duplicates, so an unrelated edit sends the stored list unchanged. New chips use the same normalization and case-sensitive duplicate rule as `ProtectedTermsDraft`; removal drops matching chips immediately. A collection has no default terms file, so `canEditProtectedTerms()` is true only when the collection carries a `protectedTermsFile`. Without one the chips are disabled, and the dialog explains why. The terms have nowhere to go until someone sets the file with the CLI.
 
 The dialog returns `protectedTermsFile` unchanged in its submit payload. It includes `protectedTerms` only when that setting exists. An edit therefore keeps the setting intact, and it sends no terms that the API would reject.
 
@@ -413,7 +415,7 @@ Only an explicit `true` answer confirms the action. The helper checks `canOpen` 
 
 `TranslationEditorDialog` opens the `FolderPicker` (a nested dialog via `MatDialog`) if the user wants to move the resource to a different folder. `FolderPicker` in turn calls `BrowserStore.createFolder(name, parentPath)` to create folders inline without leaving the dialog.
 
-The dialog also includes a tag chip input (Material `mat-chip-grid` + `mat-autocomplete`) in the Base Info tab. `editor-entry-sources.ts` derives autocomplete suggestions from the browser's translations, scoped to the current collection. Tags are normalized on chip commit by [Tag List Edit](glossary.md#tag-list-edit) (using `normalizeTag` from `@simoncodes-ca/domain`) and sent as `tags: string[]` on the existing `PATCH /collections/:name/resources` endpoint.
+The dialog also includes a tag chip input (a plain `<input>` with the [Chip Input](glossary.md#chip-input) directive and `mat-autocomplete`) in the Base Info tab. `editor-entry-sources.ts` derives autocomplete suggestions from the browser's translations, scoped to the current collection. Tags are normalized on chip commit by [Tag List Edit](glossary.md#tag-list-edit) (using `normalizeTag` from `@simoncodes-ca/domain`) and sent as `tags: string[]` on the existing `PATCH /collections/:name/resources` endpoint.
 
 ### Translation Editor and the Resource Entry Draft
 

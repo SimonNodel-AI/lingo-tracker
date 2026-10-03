@@ -466,14 +466,15 @@
                             <mat-icon class="tags-well-icon" aria-hidden="true">sell</mat-icon>
                           }
                           <input
-                            #tagInput
                             type="text"
                             class="tags-input"
                             autocomplete="off"
                             autocapitalize="off"
                             spellcheck="false"
-                            (keydown)="onTagInputKeydown($event, rule, tagInput)"
-                            (blur)="commitTagInput(rule, tagInput)"
+                            [appChipInput]="rule.controls.matchingTags.value"
+                            [commitOnBlur]="true"
+                            (chipAdd)="model.addRuleTag(rule, $event)"
+                            (chipRemove)="model.removeRuleTag(rule, $event)"
                             [placeholder]="rule.controls.matchingTags.value.length === 0 ? (TOKENS.BUNDLES.DIALOG.COLLECTION.ANYTAG | transloco) : ''"
                             [attr.aria-label]="TOKENS.BUNDLES.DIALOG.COLLECTION.TAGSLABEL | transloco"
                           />

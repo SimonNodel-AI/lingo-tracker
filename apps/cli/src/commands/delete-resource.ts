@@ -1,23 +1,24 @@
 import { deleteResource } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, parseCommaSeparatedList } from '../utils';
+import { ConsoleFormatter, confirmOrCancel, missingTextQuestions } from '../utils';
 
 export interface DeleteResourceOptions {
   collection?: string;
-  key?: string;
+  key?: string[];
   yes?: boolean;
 }
 
 export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
   name: 'Delete resource',
   collection: 'writable',
+  commaListAnswers: ['key'],
   prompts: (options) =>
     missingTextQuestions(options, [
       { name: 'key', message: 'Resource key(s) (single key or comma-separated)', required: true },
     ]),
   required: ['key'],
   run: async ({ collection, answers, interactive, ask }) => {
-    const keys = parseCommaSeparatedList(answers.key) ?? [];
+    const keys = answers.key;
     if (keys.length === 0) {
       throw new Error('No valid keys provided.');
     }
