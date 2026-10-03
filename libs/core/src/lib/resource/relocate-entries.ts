@@ -1,11 +1,11 @@
-import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { resolve } from 'node:path';
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
+import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
+import { openFolders } from './folder-batch';
 import type { ResourceTreeEntry } from './load-resource-tree';
-import { resolveResourcePaths } from './resource-file-paths';
-import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
-import { reindexMutation, removeMutation, type MutationSinkOptions, upsertMutation } from './resource-mutation';
+import type { ResourceFolder, ResourceFolderEntry } from './resource-folder';
+import { type MutationSinkOptions, reindexMutation, removeMutation, upsertMutation } from './resource-mutation';
 
 /**
  * Entry Relocation — the one way entries move between keys, within a collection or into another.
@@ -92,18 +92,11 @@ export function relocateEntries(
     return { moved: [], collisions: [], errors };
   }
 
-  const folders = new Map<string, ResourceFolder>();
+  const sourceFolders = openFolders(source);
+  const destinationFolders = crossCollection ? openFolders(destination) : sourceFolders;
   const slot = (collection: Collection, key: string): Slot => {
-    const paths = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
-    let folder = folders.get(paths.folderPath);
-    if (!folder) {
-      folder = openResourceFolder(paths.folderPath, {
-        baseLocale: collection.baseLocale,
-        translationsFolder: collection.translationsFolder,
-      });
-      folders.set(paths.folderPath, folder);
-    }
-    return { folder, entryKey: paths.entryKey, id: `${paths.folderPath}\u0000${paths.entryKey}` };
+    const { folder, entryKey, folderPath } = (collection === source ? sourceFolders : destinationFolders).entryAt(key);
+    return { folder, entryKey, id: `${folderPath}\u0000${entryKey}` };
   };
 
   // 1. Read every entry to move.

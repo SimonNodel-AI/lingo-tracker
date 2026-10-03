@@ -101,7 +101,6 @@ libs/core/src/
     │   ├── parse-xliff-import.ts # parseXliffImport(): XLIFF 1.2 adapter
     │   ├── import-session.ts     # ImportSession: settings + accumulated changes, warnings, errors, files
     │   ├── process-resource-group.ts # Applies one folder's resources (internal)
-    │   ├── resource-grouping.ts  # groupResourcesByFolder(): batches resources by target path
     │   ├── apply-icu-auto-fix.ts # applyICUAutoFixToResources(): repairs malformed placeholders
     │   ├── normalize-transloco-syntax.ts # {{ x }} → {x} before storage
     │   ├── load-base-locale-values.ts    # Reads current base values for the auto-fix
@@ -131,6 +130,7 @@ libs/core/src/
     │   └── placeholder-protector.ts      # protectPlaceholders() / restorePlaceholders()
     │
     ├── resource/                 # Resource CRUD, Folder Address, folder files, and collection read models
+    │   ├── folder-batch.ts       # groupByFolder() / openFolders(): batch access by full key
     │   ├── folder-address.ts     # validate, resolve and check folder addresses
     │   ├── add-resource.ts       # addResource()
     │   ├── edit-resource.ts      # editResource()
@@ -726,7 +726,7 @@ An import has two parts. A **format adapter** reads one file and returns `Import
 3. **Normalize syntax** — `normalizeTranslocoSyntaxInResources()` converts Transloco `{{ varName }}` to ICU `{varName}`.
 4. **ICU auto-fix** — `applyICUAutoFixToResources()` repairs placeholders that differ from the stored base value (for example, a translated placeholder name), using `icuAutoFixer` from `@simoncodes-ca/domain`. Fixes and failures are recorded separately in the result.
 5. **Validate** — `validateImportResources()` fails invalid keys and hierarchical conflicts, skips empty values, and warns on duplicate and very long keys, before any write.
-6. **Group by folder** — `groupResourcesByFolder()` batches resources by their [resource folder](glossary.md#resource-folder), so each folder is read and written once.
+6. **Group by folder** — `groupByFolder()` in `resource/folder-batch.ts` batches resources by their [resource folder](glossary.md#resource-folder), so each folder is read and written once.
 7. **Process each group** — `processResourceGroup(session, group)` opens the folder with `openResourceFolder()` and applies each resource according to the [import strategy](glossary.md#import-strategy). A missing resource is skipped unless `createMissing` is set; a target-locale creation needs a `baseValue`. A base-locale import writes base values, and `ResourceFolder.setBase()` applies the [staleness rule](glossary.md#staleness-rule); on those imports every written value is checked against the preferred terminology of the session's [Project Terms](#project-terms) (advisory warnings). A target-locale import warns on a `baseValue` mismatch, then runs `findProtectedTermViolations(storedSource, incomingValue, terms)`: a term that appears in the stored source and is missing from the incoming translation fails that entry with `Protected term(s) altered: …`, and the rest of the group is unaffected. Otherwise `resolveImportStatus()` (domain) decides the status. The folder is saved once, only when it changed and never in a dry run.
 8. **Build the result** — `sessionResult()` derives the counts and status transitions from the session's changes and returns the `ImportResult`.
 
