@@ -116,7 +116,6 @@ libs/core/src/
     │
     ├── normalize/                # Normalization pipeline
     │   ├── normalize.ts          # normalize(collection): main entry point
-    │   ├── normalize-entry.ts    # normalizeEntryValues(): Transloco → ICU and tag cleanup (pure)
     │   └── normalize-collections.ts # normalizeCollections(): selected collections, events and totals
     │
     ├── translation/              # Machine translation: the Translator and the operations that use it
@@ -602,12 +601,10 @@ Normalization is a repair and synchronization pass over a [collection's](glossar
 
 Steps:
 
-1. **Sweep folders** — the [Collection Sweep](#collection-sweep) opens every collection folder. Hidden folders are not part of the collection, so normalize does not touch them (it used to walk into them).
+1. **Sweep folders** — the [Collection Sweep](#collection-sweep) opens every collection folder. A missing root yields no folders and normalize reports zero counts and no problems. Hidden folders are not part of the collection, so normalize does not touch them (it used to walk into them).
 2. **Skip what cannot be read** — a folder whose files are not valid JSON, or that cannot be listed, is left as it is and returned in `problems`; the CLI prints one `⚠️  Collection '<name>': Skipped unreadable folder '<path or (root)>': <message>` line for each on stderr. A folder with no entries is left alone.
-3. **Normalize each entry** — two steps, with a clear seam between them:
-   - `normalizeEntryValues(entry)` in `normalize-entry.ts` is pure and counts values that need Transloco-to-ICU conversion (`valuesConverted`); it also prepares normalized tags (`tagsNormalized`). The command passes the raw locale values and prepared tags to the folder.
-   - `ResourceFolder.normalizeEntry(key, values, collection.targetLocales)` converts every locale value to ICU and applies the folder's own rules: it drops a stray base-locale property, re-records every target-locale translation with a current checksum and its stored status (no metadata counts as `new`; a translation whose stored `baseChecksum` differs from the base checksum was made from an older base, so it becomes `stale`, or `new` when its value is a copy of the base or it was `new`, and gets the current `baseChecksum`), puts the base through `setBase` (the [staleness rule](glossary.md#staleness-rule) when the stored checksum disagrees with the value; a missing checksum is just recorded), and seeds each missing target locale with `seedLocale`'s rule (`localesAdded`). It reports whether the entry or its metadata changed. A locale that is not a target locale of the collection (for example one removed from the config) keeps its value and status; ICU conversion updates its checksum if needed.
-4. **Persist changes** — a folder is saved when any entry changed, or when one of its two files is missing (normalize guarantees the pair exists wherever there are entries).
+3. **Normalize each entry** — `ResourceFolder.normalizeEntry(key, collection.targetLocales)` converts each stored value to ICU once, normalizes tags and applies the folder's own rules: it drops a stray base-locale property, re-records every target-locale translation with a current checksum and its stored status (no metadata counts as `new`; a translation whose stored `baseChecksum` differs from the base checksum was made from an older base, so it becomes `stale`, or `new` when its value is a copy of the base or it was `new`, and gets the current `baseChecksum`), applies the same base-update rule as `setBase` (the [staleness rule](glossary.md#staleness-rule) when the stored checksum disagrees with the value; a missing checksum is just recorded), and seeds each missing target locale with `seedLocale`'s rule (`localesAdded`). It returns `valuesConverted`, `tagsNormalized`, `localesAdded` and `changed`; normalize accumulates these counts. A locale that is not a target locale of the collection (for example one removed from the config) keeps its value and status; ICU conversion updates its checksum if needed.
+4. **Persist changes** — a folder is saved when any entry changed, or when `folder.hasMissingFiles()` reports a missing file (normalize guarantees the pair exists wherever there are entries).
 5. **Dry-run mode** — `save({ dryRun: true })` reports the files without writing; counters still reflect what *would* change.
 6. **Prune empty folders** — [Folder Pruning](#folder-pruning) removes only folders with empty collection files and known OS junk. Stray files and hidden directories protect their folders and ancestors. `foldersRemoved` counts actual removals, or planned removals in a dry run.
 
