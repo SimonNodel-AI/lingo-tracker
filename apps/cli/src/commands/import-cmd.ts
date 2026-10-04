@@ -1,6 +1,7 @@
 import { type ImportResult, type ImportRunOptions, ImportSourceError, runImport } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter, reportRunSummary } from '../utils';
@@ -18,13 +19,13 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       sourceExists: (source) => fs.existsSync(path.resolve(cwd, source)),
     }),
   required: ['source', 'locale'],
-  run: async ({ cwd, collection, answers }) => {
+  run: async ({ cwd, collection, answers, summaryDirectory }) => {
     const options = resolveImportOptions(answers);
     const { source, locale } = answers;
     const runOptions: ImportRunOptions = {
       ...options,
       locale,
-      onProgress: options.verbose ? (msg: string) => console.log(`  ${msg}`) : undefined,
+      onProgress: options.verbose ? (msg: string) => CommandOutput.log(`  ${msg}`) : undefined,
     };
 
     let startTime = 0;
@@ -37,8 +38,8 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
         format: options.format,
         onWarning: ({ message, details }) => ConsoleFormatter.warning(message, details),
         onStart: (format) => {
-          if (!answers.format && runOptions.verbose) console.log(`Detected format: ${format}`);
-          console.log('');
+          if (!answers.format && runOptions.verbose) CommandOutput.log(`Detected format: ${format}`);
+          CommandOutput.log('');
           ConsoleFormatter.progress('Starting import...');
           ConsoleFormatter.indent(`Format: ${format}`);
           ConsoleFormatter.indent(`Source: ${source}`);
@@ -46,9 +47,9 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
           ConsoleFormatter.indent(`Strategy: ${runOptions.strategy}`);
           ConsoleFormatter.indent(`Collection: ${collection.name}`);
           if (runOptions.dryRun) ConsoleFormatter.indent('Mode: DRY RUN (no changes will be made)');
-          console.log('');
+          CommandOutput.log('');
           startTime = runOptions.verbose ? Date.now() : 0;
-          if (runOptions.verbose) console.log(`Started at: ${new Date(startTime).toLocaleTimeString()}`);
+          if (runOptions.verbose) CommandOutput.log(`Started at: ${new Date(startTime).toLocaleTimeString()}`);
         },
       });
     } catch (error) {
@@ -67,14 +68,14 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       const endTime = Date.now();
       const elapsedMilliseconds = endTime - startTime;
       const elapsedSeconds = (elapsedMilliseconds / 1000).toFixed(2);
-      console.log(`\nCompleted at: ${new Date(endTime).toLocaleTimeString()}`);
-      console.log(`Elapsed time: ${elapsedSeconds}s (${elapsedMilliseconds}ms)`);
+      CommandOutput.log(`\nCompleted at: ${new Date(endTime).toLocaleTimeString()}`);
+      CommandOutput.log(`Elapsed time: ${elapsedSeconds}s (${elapsedMilliseconds}ms)`);
     }
 
     // Display results
     displayResults(result, runOptions);
 
-    reportRunSummary('import', run.summary, { dryRun: Boolean(runOptions.dryRun) });
+    reportRunSummary('import', run.summary, { dryRun: Boolean(runOptions.dryRun), directory: summaryDirectory });
 
     return exitForRunOutcome(run.outcome);
   },
@@ -101,7 +102,7 @@ function displayResults(result: ImportResult, options: ImportRunOptions): void {
 
   // Display status transitions
   if (result.statusTransitions && result.statusTransitions.length > 0) {
-    console.log('');
+    CommandOutput.log('');
     ConsoleFormatter.indent('Status Transitions:');
     for (const transition of result.statusTransitions) {
       const from = transition.from || 'none';
@@ -112,7 +113,7 @@ function displayResults(result: ImportResult, options: ImportRunOptions): void {
 
   // Display files modified
   if (!options.dryRun && result.filesModified.length > 0) {
-    console.log('');
+    CommandOutput.log('');
     ConsoleFormatter.keyValue('Files Modified', result.filesModified.length);
     if (options.verbose) {
       result.filesModified.forEach((file) => {
@@ -137,10 +138,10 @@ function displayResults(result: ImportResult, options: ImportRunOptions): void {
     ]);
   }
 
-  console.log('─'.repeat(50));
+  CommandOutput.log('─'.repeat(50));
 
   // Summary message
-  console.log('');
+  CommandOutput.log('');
   if (options.dryRun) {
     ConsoleFormatter.success('Dry run complete. No changes were made.');
   } else if (result.resourcesFailed > 0 || result.errors.length > 0) {

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { buildGlossary, type Collection, describeFolderProblem, GlossaryExtractorError } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { hasPipedStdin } from '../runner/terminal';
 import { ConsoleFormatter, parseNameSelection } from '../utils';
@@ -106,8 +107,8 @@ function runGlossary(options: GlossaryCommandOptions, cwd: string, collections: 
 
   if (options.stdout) {
     // Keep stdout clean for piping; status goes to stderr.
-    process.stdout.write(`${json}\n`);
-    console.error(`✅ ${glossary.matchCount} term(s) matched from ${glossary.source.candidates} candidate(s).`);
+    CommandOutput.write(`${json}\n`);
+    CommandOutput.error(`✅ ${glossary.matchCount} term(s) matched from ${glossary.source.candidates} candidate(s).`);
     return;
   }
 

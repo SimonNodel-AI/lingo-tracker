@@ -210,6 +210,7 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 
 - The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes (`process.exitCode`, never `process.exit`). `run` returns `{ exitCode: 1 }` for a failure it has already reported, or throws.
 - Diagnostics go to stderr via `ConsoleFormatter.error/warning`; the payload goes to stdout.
+- Command tests use `runCommand(command, flags, { cwd, ask?, interactive? })` with a temporary project and real core. Use `testing/command-project.ts` to create and clean up the config, collection and summary files; assert on stored files and captured output rather than mocking core.
 - Commands are registered (flags, help text, lazy import) in `apps/cli/src/main.ts`; `main.spec.ts` covers the flag wiring.
 
 ### API Controller Pattern (apps/api/src/app/<feature>/<feature>.controller.ts)

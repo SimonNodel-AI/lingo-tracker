@@ -5,6 +5,7 @@ import {
   normalizeCollections,
   ReadOnlyCollectionError,
 } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter, confirmOrCancel, parseNameSelection, selectionPrompt } from '../utils';
@@ -71,7 +72,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
               break;
             case 'start':
               if (!answers.json) {
-                console.log('');
+                CommandOutput.log('');
                 ConsoleFormatter.progress(`Normalizing collection: ${event.name}`);
                 if (answers.dryRun) ConsoleFormatter.indent('(Dry run - no changes will be made)');
               }
@@ -136,7 +137,7 @@ function printSummary(result: NormalizeCollectionsResult, collectionCount: numbe
 }
 
 function printJsonSummary(result: Pick<NormalizeCollectionsResult, 'collections' | 'totals'>): void {
-  console.log(JSON.stringify({ collections: result.collections, totals: result.totals }, null, 2));
+  CommandOutput.log(JSON.stringify({ collections: result.collections, totals: result.totals }, null, 2));
 }
 
 function printDryRunWarning(options: NormalizeOptions): void {

@@ -1,4 +1,5 @@
 import { deleteResource } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, missingTextQuestions } from '../utils';
 
@@ -50,14 +51,14 @@ export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
 });
 
 function describeDeletion(keys: string[]): void {
-  console.log('\nYou are about to delete:');
+  CommandOutput.log('\nYou are about to delete:');
 
   if (keys.length === 1) {
-    console.log(`  ${keys[0]}`);
+    CommandOutput.log(`  ${keys[0]}`);
   } else {
-    console.log(`  ${keys.length} resources:`);
+    CommandOutput.log(`  ${keys.length} resources:`);
     for (const key of keys) {
-      console.log(`  - ${key}`);
+      CommandOutput.log(`  - ${key}`);
     }
   }
 

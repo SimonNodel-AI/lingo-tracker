@@ -1,442 +1,259 @@
-import { resolve } from 'node:path';
-import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
-import { Test, type TestingModule } from '@nestjs/testing';
-import * as core from '@simoncodes-ca/core';
-import { RouteCollectionPipe } from '../route-collection';
-import { CollectionIndex } from '../../cache/collection-index.service';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import type { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { addResource, loadConfig, openCollection, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { AppModule } from '../../app.module';
 import { ConfigService } from '../../config/config.service';
-import { toHttpException } from '../../errors/lingo-tracker-exception.filter';
-import { FoldersController } from './folders.controller';
-import { moveFolderBody } from '../../validation/dto-schemas';
-import { SchemaPipe } from '../../validation/valid-body';
-import { exactMessage } from '../../validation/exact-message.test-support';
 
-const httpErrorOf = (promise: Promise<unknown>): Promise<HttpException> =>
-  promise.then(() => {
-    throw new Error('expected the handler to reject');
-  }, toHttpException);
-
-// Mock the core module
-jest.mock('@simoncodes-ca/core', () => {
-  const actual = jest.requireActual('@simoncodes-ca/core');
-  return {
-    ...actual,
-    createFolder: jest.fn(),
-    deleteFolder: jest.fn(),
-    moveFolder: jest.fn(),
+/** Real Nest routes, request pipes, exception filter, index and core; no delegation mocks. */
+describe('FoldersController HTTP (real project)', () => {
+  let app: INestApplication | undefined;
+  let server: Server;
+  let cwd: string;
+  let config: LingoTrackerConfig;
+  const configure = () => writeFileSync(join(cwd, '.lingo-tracker.json'), JSON.stringify(config));
+  const collection = (name = 'test-collection') => openCollection(config, name, { cwd, writable: true });
+  const seed = async (path = 'apps.common.buttons', count = 1, name = 'test-collection') => {
+    for (let i = 0; i < count; i++)
+      await addResource(collection(name), { key: `${path}.key${i}`, baseValue: `Value ${i}` });
   };
-});
-
-describe('FoldersController', () => {
-  let foldersModule: TestingModule;
-  let foldersController: FoldersController;
-  let _configService: ConfigService;
-
-  const mockConfig = {
-    exportFolder: 'dist/lingo-export',
-    importFolder: 'dist/lingo-import',
-    baseLocale: 'en',
-    locales: ['en', 'fr', 'es'],
-    collections: {
-      'test-collection': {
-        translationsFolder: './translations/test',
-        baseLocale: 'en',
-        locales: ['en', 'fr', 'es'],
+  const readEntries = (path: string, name = 'test-collection'): unknown =>
+    JSON.parse(
+      readFileSync(join(collection(name).translationsFolder, ...path.split('.'), 'resource_entries.json'), 'utf8'),
+    );
+  const request = async (method: string, body: object, name = 'test-collection', route = '') => {
+    const address = server.address() as AddressInfo | null;
+    if (!address) throw new Error('HTTP server has no address');
+    const response = await fetch(
+      `http://localhost:${address.port}/collections/${encodeURIComponent(name)}/folders${route}`,
+      {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
       },
-      'another-collection': {
-        translationsFolder: './translations/another',
-        baseLocale: 'en',
-        locales: ['en', 'fr'],
-      },
-    },
+    );
+    expect(response.headers.get('content-type')).toContain('application/json');
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> };
   };
+  const move = (body: object, name = 'test-collection') => request('POST', body, name, '/move');
 
-  const collectionFor = (name: string): core.Collection =>
-    new RouteCollectionPipe(_configService, mockIndex as unknown as CollectionIndex).transform({
-      name,
-      writable: true,
-    });
-
-  const mockIndex = { sink: jest.fn() };
-
-  beforeEach(async () => {
-    foldersModule = await Test.createTestingModule({
-      controllers: [FoldersController],
-      providers: [
-        {
-          provide: ConfigService,
-          useValue: {
-            getConfig: jest.fn().mockReturnValue(mockConfig),
-          },
-        },
-        {
-          provide: CollectionIndex,
-          useValue: mockIndex,
-        },
-      ],
-    }).compile();
-
-    foldersController = foldersModule.get<FoldersController>(FoldersController);
-    _configService = foldersModule.get<ConfigService>(ConfigService);
-
-    // Reset all mocks before each test
-    jest.clearAllMocks();
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(ConfigService)
+      .useValue({
+        // ConfigService has no root injection option. Keep real disk loading without changing process cwd.
+        getConfig: () => loadConfig({ cwd }),
+        openProject: () => ({ projectRoot: cwd, sourceConfig: loadConfig({ cwd }) }),
+      })
+      .compile();
+    app = moduleRef.createNestApplication({ logger: false });
+    // Same ephemeral HTTP transport as job-registry.http.spec.ts; supertest is not installed.
+    await app.listen(0);
+    server = app.getHttpServer() as Server;
+  });
+  afterAll(async () => {
+    await app?.close();
+  });
+  beforeEach(() => {
+    cwd = realpathSync(mkdtempSync(join(tmpdir(), 'lingo-api-folders-')));
+    config = {
+      exportFolder: 'dist/export',
+      importFolder: 'dist/import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: {
+        'test-collection': { translationsFolder: join(cwd, 'translations/test') },
+        'another-collection': { translationsFolder: join(cwd, 'translations/another'), locales: ['en', 'fr'] },
+        vendor: { translationsFolder: join(cwd, 'translations/vendor'), readOnly: true },
+        'a%25b': { translationsFolder: join(cwd, 'translations/percent') },
+      },
+    };
+    configure();
+    for (const entry of Object.values(config.collections ?? {}))
+      mkdirSync(entry.translationsFolder, { recursive: true });
+  });
+  afterEach(() => {
+    if (cwd) rmSync(cwd, { recursive: true, force: true });
   });
 
-  describe('POST /folders/move', () => {
-    it('refuses a read-only source collection in the route pipe', () => {
-      jest.spyOn(_configService, 'getConfig').mockReturnValue({
-        ...mockConfig,
-        collections: {
-          ...mockConfig.collections,
-          vendor: { translationsFolder: './translations/vendor', readOnly: true },
-        },
-      });
-      expect(() => collectionFor('vendor')).toThrow(ForbiddenException);
+  it('refuses a read-only source collection in the route pipe', async () => {
+    const result = await move(
+      { sourceFolderPath: 'apps.common.buttons', destinationFolderPath: 'apps.shared' },
+      'vendor',
+    );
+    expect(result.status).toBe(403);
+    expect(result.body.message).toBe('Collection "vendor" is read-only. Its resources cannot be modified.');
+    expect(existsSync(join(cwd, 'translations/vendor/apps'))).toBe(false);
+  });
+  it('should successfully move a folder within the same collection', async () => {
+    await seed('apps.common.buttons', 5);
+    const result = await move({ sourceFolderPath: 'apps.common.buttons', destinationFolderPath: 'apps.shared' });
+    expect(result).toEqual({ status: 201, body: { movedCount: 5, foldersDeleted: 1, warnings: [], errors: [] } });
+    expect(Object.keys(readEntries('apps.shared.buttons') as object)).toHaveLength(5);
+    expect(existsSync(join(cwd, 'translations/test/apps/common/buttons'))).toBe(false);
+  });
+  it('should successfully move a folder with override option', async () => {
+    await seed('apps.buttons', 3);
+    await addResource(collection(), { key: 'apps.actions.buttons.key0', baseValue: 'Existing' });
+    const result = await move({
+      sourceFolderPath: 'apps.buttons',
+      destinationFolderPath: 'apps.actions',
+      override: true,
     });
-
-    it('should successfully move a folder within the same collection', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.common.buttons',
-        destinationFolderPath: 'apps.shared',
-      };
-
-      const mockMoveResult = {
-        movedCount: 5,
-        foldersDeleted: 1,
-        warnings: [],
-        errors: [],
-      };
-
-      (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
-
-      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
-
-      expect(core.moveFolder).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'test-collection',
-          translationsFolder: resolve('./translations/test'),
-        }),
-        moveFolderDto,
-        { config: mockConfig },
-      );
-
-      expect(result).toEqual({
-        movedCount: 5,
-        foldersDeleted: 1,
-        warnings: [],
-        errors: [],
-      });
+    expect(result.body).toMatchObject({ movedCount: 3, foldersDeleted: 1, errors: [] });
+    expect(readEntries('apps.actions.buttons')).toMatchObject({ key0: { source: 'Value 0' } });
+  });
+  it('should handle cross-collection moves', async () => {
+    await seed('apps.buttons', 2);
+    const result = await move({
+      sourceFolderPath: 'apps.buttons',
+      destinationFolderPath: 'shared',
+      toCollection: 'another-collection',
     });
-
-    it('should successfully move a folder with override option', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.actions',
-        override: true,
-      };
-
-      const mockMoveResult = {
-        movedCount: 3,
-        foldersDeleted: 1,
-        warnings: [],
-        errors: [],
-      };
-
-      (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
-
-      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
-
-      expect(core.moveFolder).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'test-collection',
-          translationsFolder: resolve('./translations/test'),
-        }),
-        moveFolderDto,
-        { config: mockConfig },
-      );
-
-      expect(result.movedCount).toBe(3);
-      expect(result.foldersDeleted).toBe(1);
+    expect(result.status).toBe(201);
+    expect(result.body.movedCount).toBe(2);
+    expect(readEntries('shared.buttons', 'another-collection')).toMatchObject({
+      key0: { source: 'Value 0', fr: 'Value 0' },
     });
-
-    it('should handle cross-collection moves', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'shared.buttons',
-        toCollection: 'another-collection',
-      };
-
-      const mockMoveResult = {
-        movedCount: 2,
-        foldersDeleted: 1,
-        warnings: [],
-        errors: [],
-      };
-
-      (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
-
-      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
-
-      expect(core.moveFolder).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: 'test-collection',
-          translationsFolder: resolve('./translations/test'),
-        }),
-        moveFolderDto,
-        expect.objectContaining({ config: mockConfig }),
-      );
-
-      expect(result.movedCount).toBe(2);
+    expect(readEntries('shared.buttons', 'another-collection')).not.toMatchObject({ key0: { es: expect.any(String) } });
+    expect(existsSync(join(cwd, 'translations/test/apps/buttons'))).toBe(false);
+  });
+  it('should map a missing source collection to 404', async () => {
+    const result = await move(
+      { sourceFolderPath: 'apps.buttons', destinationFolderPath: 'apps.actions' },
+      'nonexistent-collection',
+    );
+    expect(result).toEqual({
+      status: 404,
+      body: { statusCode: 404, message: 'Collection "nonexistent-collection" not found', error: 'Not Found' },
     });
-
-    it('should map a missing source collection to 404', async () => {
-      expect(() => collectionFor('nonexistent-collection')).toThrow(NotFoundException);
-      expect(toHttpException(new core.CollectionNotFoundError('nonexistent-collection')).getStatus()).toBe(404);
-
-      expect(core.moveFolder).not.toHaveBeenCalled();
+  });
+  it('should map a missing destination collection to 404', async () => {
+    await seed('apps.buttons');
+    const result = await move({
+      sourceFolderPath: 'apps.buttons',
+      destinationFolderPath: 'apps.actions',
+      toCollection: 'nonexistent-collection',
     });
-
-    it('should map a missing destination collection to 404', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.actions',
-        toCollection: 'nonexistent-collection',
-      };
-
-      (core.moveFolder as jest.Mock).mockRejectedValue(
-        new core.CollectionNotFoundError('nonexistent-collection', 'destination'),
-      );
-      const http = await httpErrorOf(foldersController.move(collectionFor('test-collection'), moveFolderDto));
-      expect(http.getStatus()).toBe(404);
-      expect(http.getResponse()).toEqual({
+    expect(result).toEqual({
+      status: 404,
+      body: {
         statusCode: 404,
         message: 'Destination collection "nonexistent-collection" not found',
         error: 'Not Found',
-      });
-      expect(core.moveFolder).toHaveBeenCalled();
+      },
     });
-
-    it('should map a read-only destination collection to 403', async () => {
-      jest.spyOn(_configService, 'getConfig').mockReturnValue({
-        ...mockConfig,
-        collections: {
-          ...mockConfig.collections,
-          vendor: { translationsFolder: './translations/vendor', readOnly: true },
-        },
-      });
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.actions',
-        toCollection: 'vendor',
-      };
-
-      (core.moveFolder as jest.Mock).mockRejectedValue(new core.ReadOnlyCollectionError('vendor'));
-      const http = await httpErrorOf(foldersController.move(collectionFor('test-collection'), moveFolderDto));
-      expect(http.getStatus()).toBe(403);
-      expect(http.getResponse()).toEqual({
+    expect(readEntries('apps.buttons')).toMatchObject({ key0: { source: 'Value 0' } });
+  });
+  it('should map a read-only destination collection to 403', async () => {
+    await seed('apps.buttons');
+    const result = await move({
+      sourceFolderPath: 'apps.buttons',
+      destinationFolderPath: 'apps.actions',
+      toCollection: 'vendor',
+    });
+    expect(result).toEqual({
+      status: 403,
+      body: {
         statusCode: 403,
         message: 'Collection "vendor" is read-only. Its resources cannot be modified.',
         error: 'Forbidden',
-      });
-      expect(core.moveFolder).toHaveBeenCalled();
+      },
     });
-
-    it('should throw HttpException for validation errors (missing fields)', () => {
-      const pipe = new SchemaPipe(moveFolderBody, 'request body');
-      expect(() => pipe.transform({ sourceFolderPath: '', destinationFolderPath: 'apps.actions' })).toThrow(
-        exactMessage('sourceFolderPath must be a non-empty string'),
-      );
-    });
-
-    it.each([
-      [new core.InvalidFolderPathError('source folder path', 'bad path'), 400],
-      [new core.FolderMoveIntoDescendantError('apps.common', 'apps.common.buttons'), 400],
-      [new core.FolderNotFoundError('apps.missing'), 404],
-    ])('maps a typed move error through the exception filter', async (coreError, status) => {
-      (core.moveFolder as jest.Mock).mockRejectedValue(coreError);
-
-      const error = await httpErrorOf(
-        foldersController.move(collectionFor('test-collection'), {
-          sourceFolderPath: 'apps.common',
-          destinationFolderPath: 'apps.shared',
-        }),
-      );
-
-      expect(error.getStatus()).toBe(status);
-    });
-
-    it('should report a move of an empty folder', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.empty',
-        destinationFolderPath: 'apps.shared',
-      };
-
-      const mockMoveResult = {
-        movedCount: 0,
-        foldersDeleted: 1,
-        warnings: ['No resources found in source folder'],
-        errors: [],
-      };
-
-      (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
-
-      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
-
-      expect(result.movedCount).toBe(0);
-      expect(result.foldersDeleted).toBe(1);
-      expect(result.warnings).toHaveLength(1);
-    });
-
-    it('should return warnings and errors from core function', async () => {
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.actions',
-      };
-
-      const mockMoveResult = {
-        movedCount: 3,
-        foldersDeleted: 0,
-        warnings: ['Resources moved but failed to delete source folder: Permission denied'],
-        errors: [],
-      };
-
-      (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
-
-      const result = await foldersController.move(collectionFor('test-collection'), moveFolderDto);
-
-      expect(result.movedCount).toBe(3);
-      expect(result.foldersDeleted).toBe(0);
-      expect(result.warnings).toHaveLength(1);
-      expect(result.warnings[0]).toContain('failed to delete source folder');
-    });
-
-    it('passes the route param through verbatim', async () => {
-      jest.spyOn(_configService, 'getConfig').mockReturnValue({
-        ...mockConfig,
-        collections: {
-          ...mockConfig.collections,
-          'a%25b': { translationsFolder: './translations/percent' },
-        },
-      });
-      const moveFolderDto = {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.actions',
-      };
-
-      const mockMoveResult = {
-        movedCount: 1,
-        foldersDeleted: 1,
-        warnings: [],
-        errors: [],
-      };
-
-      (core.moveFolder as jest.Mock).mockResolvedValue(mockMoveResult);
-
-      await foldersController.move(collectionFor('a%25b'), moveFolderDto);
-
-      expect(core.moveFolder).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'a%25b', translationsFolder: resolve('./translations/percent') }),
-        expect.any(Object),
-        expect.any(Object),
-      );
-    });
+    expect(readEntries('apps.buttons')).toMatchObject({ key0: { source: 'Value 0' } });
   });
-
-  describe('POST /folders (create)', () => {
-    it('should successfully create a folder', async () => {
-      const createFolderDto = {
-        folderName: 'buttons',
-        parentPath: 'apps.common',
-      };
-
-      const mockCreateResult = {
-        folderPath: 'apps.common.buttons',
-        folderAddress: 'apps.common.buttons',
-        created: true,
-      };
-
-      (core.createFolder as jest.Mock).mockReturnValue(mockCreateResult);
-
-      const result = await foldersController.create(collectionFor('test-collection'), createFolderDto);
-
-      expect(core.createFolder).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
-        { folderName: 'buttons', parentPath: 'apps.common' },
-      );
-
-      expect(result.created).toBe(true);
-      expect(result.folderPath).toBe('apps.common.buttons');
-    });
-
-    it('uses the folder address returned by core for a whitespace-only parent', async () => {
-      (core.createFolder as jest.Mock).mockReturnValue({
-        folderPath: '/translations/buttons',
-        folderAddress: 'buttons',
-        created: true,
-      });
-
-      const result = await foldersController.create(collectionFor('test-collection'), {
-        folderName: 'buttons',
-        parentPath: '  ',
-      });
-
-      expect(result.folder.fullPath).toBe('buttons');
-      expect(result.folder.tree.path).toBe('buttons');
-      expect(core.createFolder).toHaveBeenCalledWith(expect.any(Object), { folderName: 'buttons', parentPath: '  ' });
-    });
-
-    it('lets an invalid folder name propagate; the exception filter answers 400', async () => {
-      (core.createFolder as jest.Mock).mockImplementation(() => {
-        throw new core.InvalidFolderPathError('folder name', 'bad name');
-      });
-
-      const error = await foldersController
-        .create(collectionFor('test-collection'), { folderName: 'bad name' })
-        .catch((e: unknown) => e);
-
-      expect(error).toBeInstanceOf(core.InvalidFolderPathError);
-      const http = toHttpException(error);
-      expect(http.getStatus()).toBe(400);
-      expect(http.message).toBe(
-        'Validation error: Invalid folder name segment "bad name". Segments must match pattern [A-Za-z0-9_-]+',
-      );
-    });
+  it('should throw HttpException for validation errors (missing fields)', async () => {
+    const result = await move({ sourceFolderPath: '', destinationFolderPath: 'apps.actions' });
+    expect(result.status).toBe(400);
+    expect(result.body.message).toBe('sourceFolderPath must be a non-empty string');
   });
-
-  describe('DELETE /folders', () => {
-    it('should successfully delete a folder', async () => {
-      const deleteFolderDto = {
-        folderPath: 'apps.common.buttons',
-      };
-
-      const mockDeleteResult = {
-        folderPath: 'apps.common.buttons',
-        resourcesDeleted: 5,
-      };
-
-      (core.deleteFolder as jest.Mock).mockReturnValue(mockDeleteResult);
-
-      const result = await foldersController.delete(collectionFor('test-collection'), deleteFolderDto);
-
-      expect(core.deleteFolder).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationsFolder: resolve('./translations/test') }),
-        { folderPath: 'apps.common.buttons' },
-      );
-
-      expect(result).toEqual({ deleted: true, folderPath: 'apps.common.buttons', resourcesDeleted: 5 });
+  it.each([
+    ['bad path', 'apps.shared', 400],
+    ['apps.common', 'apps.common.buttons', 400],
+    ['apps.missing', 'apps.shared', 404],
+  ])('maps a typed move error through the exception filter (%s)', async (sourceFolderPath, destinationFolderPath, status) => {
+    await seed('apps.common.buttons');
+    const result = await move({ sourceFolderPath, destinationFolderPath });
+    expect(result.status).toBe(status);
+    expect(result.body.statusCode).toBe(status);
+    expect(result.body.message).toEqual(expect.any(String));
+  });
+  it('should report a move of an empty folder', async () => {
+    mkdirSync(join(cwd, 'translations/test/apps/empty'), { recursive: true });
+    const result = await move({ sourceFolderPath: 'apps.empty', destinationFolderPath: 'apps.shared' });
+    expect(result.body).toMatchObject({
+      movedCount: 0,
+      foldersDeleted: 1,
+      errors: [],
+      warnings: ['No resources found in source folder. Nothing to move.'],
     });
-
-    it('answers 404 when core reports that the folder does not exist', async () => {
-      (core.deleteFolder as jest.Mock).mockImplementation(() => {
-        throw new core.FolderNotFoundError('apps.missing');
-      });
-
-      const error = await httpErrorOf(
-        foldersController.delete(collectionFor('test-collection'), { folderPath: 'apps.missing' }),
-      );
-
-      expect(error.getStatus()).toBe(404);
+    expect(existsSync(join(cwd, 'translations/test/apps/empty'))).toBe(false);
+  });
+  it('should return warnings and errors from core function', async () => {
+    await seed('apps.buttons', 3);
+    writeFileSync(join(cwd, 'translations/test/apps/buttons/keep.txt'), 'unmanaged');
+    const result = await move({ sourceFolderPath: 'apps.buttons', destinationFolderPath: 'apps.actions' });
+    expect(result.body).toMatchObject({
+      movedCount: 3,
+      foldersDeleted: 0,
+      errors: [],
+      warnings: [expect.stringContaining('not part of the collection')],
     });
+    expect(readEntries('apps.actions.buttons')).toMatchObject({ key0: { source: 'Value 0' } });
+    expect(existsSync(join(cwd, 'translations/test/apps/buttons/keep.txt'))).toBe(true);
+  });
+  it('passes the route param through verbatim', async () => {
+    await seed('apps.buttons', 1, 'a%25b');
+    const result = await move({ sourceFolderPath: 'apps.buttons', destinationFolderPath: 'apps.actions' }, 'a%25b');
+    expect(result.status).toBe(201);
+    expect(result.body.movedCount).toBe(1);
+    expect(readEntries('apps.actions.buttons', 'a%25b')).toMatchObject({ key0: { source: 'Value 0' } });
+  });
+  it('should successfully create a folder', async () => {
+    const result = await request('POST', { folderName: 'buttons', parentPath: 'apps.common' });
+    expect(result.status).toBe(201);
+    expect(result.body).toMatchObject({
+      created: true,
+      folderPath: join(cwd, 'translations/test/apps/common/buttons'),
+      folder: {
+        name: 'buttons',
+        fullPath: 'apps.common.buttons',
+        loaded: true,
+        tree: { path: 'apps.common.buttons', resources: [], children: [] },
+      },
+    });
+    expect(existsSync(join(cwd, 'translations/test/apps/common/buttons'))).toBe(true);
+  });
+  it('uses the folder address returned by core for a whitespace-only parent', async () => {
+    const result = await request('POST', { folderName: 'buttons', parentPath: '  ' });
+    expect(result.status).toBe(201);
+    expect(result.body.folder).toMatchObject({ fullPath: 'buttons', tree: { path: 'buttons' } });
+    expect(existsSync(join(cwd, 'translations/test/buttons'))).toBe(true);
+  });
+  it('lets an invalid folder name propagate; the exception filter answers 400', async () => {
+    const result = await request('POST', { folderName: 'bad name' });
+    expect(result.status).toBe(400);
+    expect(result.body.message).toBe(
+      'Validation error: Invalid folder name segment "bad name". Segments must match pattern [A-Za-z0-9_-]+',
+    );
+    expect(existsSync(join(cwd, 'translations/test/bad name'))).toBe(false);
+  });
+  it('should successfully delete a folder', async () => {
+    await seed('apps.common.buttons', 5);
+    const result = await request('DELETE', { folderPath: 'apps.common.buttons' });
+    expect(result).toEqual({
+      status: 200,
+      body: { deleted: true, folderPath: 'apps.common.buttons', resourcesDeleted: 5 },
+    });
+    expect(existsSync(join(cwd, 'translations/test/apps/common/buttons'))).toBe(false);
+  });
+  it('answers 404 when core reports that the folder does not exist', async () => {
+    const result = await request('DELETE', { folderPath: 'apps.missing' });
+    expect(result.status).toBe(404);
+    expect(result.body.statusCode).toBe(404);
   });
 });

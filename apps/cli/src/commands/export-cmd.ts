@@ -1,4 +1,5 @@
 import { type ExportRunResult, exportTargetLocales, runExport } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter, reportRunSummary } from '../utils';
@@ -15,7 +16,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
   prompts: (options, { config, collections, interactive }) =>
     interactive ? exportQuestions(options, { config, targetLocales: exportTargetLocales(collections) }) : [],
   required: ['format'],
-  run: async ({ config, cwd, collections, answers }) => {
+  run: async ({ config, cwd, collections, answers, summaryDirectory }) => {
     const { options, advisories } = resolveExportOptions(answers);
     const format = answers.format;
     for (const message of advisories) ConsoleFormatter.warning(message);
@@ -25,7 +26,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       format,
       exportFolder: config.exportFolder,
       cwd,
-      onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
+      onProgress: options.verbose ? (msg) => CommandOutput.log(`   ${msg}`) : undefined,
       onStart: ({ outputDirectory, locales }) => {
         ConsoleFormatter.progress(`Exporting to ${format.toUpperCase()}...`);
         ConsoleFormatter.indent(`Collections: ${collections.map((c) => c.name).join(', ')}`);
@@ -42,7 +43,11 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
 
     displayResults(result);
 
-    reportRunSummary('export', result.summary, { dryRun: Boolean(options.dryRun), previewOnDryRun: true });
+    reportRunSummary('export', result.summary, {
+      dryRun: Boolean(options.dryRun),
+      previewOnDryRun: true,
+      directory: summaryDirectory,
+    });
     return exitForRunOutcome(result.outcome);
   },
 });

@@ -7,6 +7,7 @@ import {
   generateBundles,
   MultipleBundleConstantNameError,
 } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter, parseListSelection, parseNameSelection, selectionNames, selectionPrompt } from '../utils';
@@ -98,14 +99,14 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
     onEvent: (event) => {
       if (event.kind === 'start') {
         if (!options.quiet) {
-          console.log('');
+          CommandOutput.log('');
           ConsoleFormatter.progress(`Generating bundle: ${event.name}`);
           if (options.verbose && localeFilter) ConsoleFormatter.indent(`Locales: ${localeFilter.join(', ')}`);
         }
         return;
       }
       if (event.kind === 'type-warning') {
-        console.warn(event.warning);
+        CommandOutput.warn(event.warning);
         return;
       }
       const { outcome } = event;

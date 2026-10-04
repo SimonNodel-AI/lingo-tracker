@@ -10,6 +10,7 @@ import {
 } from '@simoncodes-ca/core';
 import type { BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
+import { CommandOutput } from '../runner/command-output';
 import { type Answers, defineCommand, requireOptions } from '../runner/command-runner';
 import type { InitOptions } from '../types/init-options.js';
 import { ConsoleFormatter, collectionSetupQuestions, requiredText } from '../utils';
@@ -60,7 +61,7 @@ function writeConfig(cwd: string, result: Answers<InitOptions>, interactive: boo
   };
 
   initConfig(config, { cwd });
-  console.log(`Created ${CONFIG_FILENAME} in ${cwd}`);
+  CommandOutput.log(`Created ${CONFIG_FILENAME} in ${cwd}`);
 }
 
 type BundleAnswers = {

@@ -4,6 +4,7 @@ import {
   AutoTranslationDisabledError,
   translateLocale,
 } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter } from '../utils';
@@ -60,7 +61,7 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
     const { name: collectionName } = collection;
     const targetLocale = answers.locale;
 
-    console.log('');
+    CommandOutput.log('');
     ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);
 
     const result = await translateLocale(collection, {
@@ -75,21 +76,21 @@ export const translateLocaleCommand = defineCommand<TranslateLocaleOptions>()({
         : undefined,
     });
 
-    console.log('');
+    CommandOutput.log('');
     ConsoleFormatter.success(`Translated locale '${targetLocale}' in collection '${collectionName}'`);
     ConsoleFormatter.keyValue('Translated', result.translatedCount);
     ConsoleFormatter.keyValue('Skipped (needs human translation)', result.skippedCount);
     ConsoleFormatter.keyValue('Failed', result.failedCount);
 
     if (result.warnings.length > 0) {
-      console.log('');
+      CommandOutput.log('');
       for (const warning of result.warnings) {
         ConsoleFormatter.warning(warning);
       }
     }
 
     if (result.failures.length > 0) {
-      console.log('');
+      CommandOutput.log('');
       ConsoleFormatter.section('Failures');
       for (const failure of result.failures) {
         ConsoleFormatter.indent(`${failure.key}: ${failure.error}`);

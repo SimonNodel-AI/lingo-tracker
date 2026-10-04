@@ -1,4 +1,5 @@
 import { type Collection, runValidate } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter } from '../utils';
@@ -162,6 +163,6 @@ function validate(options: ValidateCommandOptions, collections: Collection[]): C
     ConsoleFormatter.error(result.error, result.details);
     return exitForRunOutcome(result.outcome);
   }
-  console.log(result.summary);
+  CommandOutput.log(result.summary);
   return exitForRunOutcome(result.outcome);
 }

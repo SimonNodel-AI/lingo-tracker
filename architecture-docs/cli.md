@@ -395,14 +395,15 @@ The `Collection` itself is the first argument passed to every core resource and 
 
 ## Testing Commands
 
-A command spec gives flags in and checks the core call and the exit code:
+Command specs call `runCommand(command, flags, environment)` from `runner/command-runner.ts`. The environment supplies an explicit `cwd`, optional `interactive` (default false), and an `ask` adapter for interactive answers. An injected `ask` cancels by throwing `CommandCancelledError`; cancellation prints once and returns exit 0. Interactive questions require an adapter and never fall back to reading the terminal. The result is `Promise<{ exitCode: 0 | 1, stdout: string, stderr: string }>`; captured strings include their newlines. This entry point does not change `process.exitCode`, `process.cwd()`, or terminal state.
 
-- Feed the config by mocking core `loadConfig` (keep the real `openCollection` and error classes, so collection resolution runs for real), or with a real temporary `.lingo-tracker.json` and `INIT_CWD`.
-- Control the interactive rule by mocking `runner/terminal` (`isInteractiveTerminal`), not by setting `isTTY`.
-- Mock `prompts` for answers. A cancel is `onCancel` called by the mock.
-- Reset `process.exitCode` before and after each test, and assert it. Nothing calls `process.exit`, so no spec mocks it.
+`testing/command-project.ts` creates a temporary `.lingo-tracker.json` and collection folders, seeds resources through real core, runs commands, and removes only its own project. Its `summaryDirectory` environment option keeps CLI-owned summary files inside the temporary project. Assert on `resource_entries.json`, `tracker_meta.json`, exported files, summaries and captured output. Inject prompt answers directly; reserve mocks for external providers or the clock.
 
-`runner/command-runner.spec.ts` covers the runner itself: the interactive rule, config errors (mocked, and through the real `loadConfig`: invalid JSON, `EISDIR`), the `process.cwd()` fallback, the collection branches (including `--collection ''` and a cancelled select), required options (non-interactive, after prompting, `''`), cancel, thrown errors and `{ exitCode: 1 }`. `main.spec.ts` covers the flag wiring in `main.ts`, which the runner cannot see. `export-options.spec.ts` and `import-options.spec.ts` cover Run Options Resolution and prompt visibility as tables; command specs retain output, exit codes, and core-call behavior.
+The production action and test entry point both execute the same pipeline: config loading, collection resolution, preflight, prompt building and answers, required flags, core calls, cancellation and error reporting. The production action supplies `INIT_CWD` (else `process.cwd()`), real prompts and TTY detection, then sets `process.exitCode`. Its output uses the real console and process streams.
+
+`runner/command-output.ts` owns an async-scoped output port. `ConsoleFormatter`, direct command output and summary announcements use that port. Each test run captures its own stdout and stderr, including concurrent or nested runs, without replacing global console methods or process streams. An optional `output` sink can also consume the captured text. Outside a capture scope the port calls the original console methods and stdout stream, preserving production formatting.
+
+`runner/command-runner.spec.ts` retains coverage of the process adapter and runner rules. `runner/command-environment.spec.ts` covers the explicit environment and output isolation with real config and core. `main.spec.ts` covers Commander flag wiring; `export-options.spec.ts` and `import-options.spec.ts` cover option resolution and prompt visibility. Existing mock-based suites can migrate incrementally; add-resource, import and export now use real projects.
 
 ---
 
