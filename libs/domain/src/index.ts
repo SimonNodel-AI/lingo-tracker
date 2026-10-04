@@ -142,3 +142,10 @@ export {
   validateImportKey,
   validateLocale,
 } from './lib/validation-utils';
+
+export {
+  checkTranslatedValue,
+  describeValueViolation,
+  type TranslatedValueViolation,
+  type ValueCheckOptions,
+} from './lib/check-translated-value';

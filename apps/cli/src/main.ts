@@ -363,6 +363,11 @@ registerCommand(program, {
       description: 'Do not check that each translation interpolates the same placeholders as its base value',
       defaultValue: false,
     }),
+    option({
+      flags: '--skip-protected-terms',
+      description: 'Do not check translations for dropped or altered protected terms',
+      defaultValue: false,
+    }),
   ],
   helpText: validateHelpText,
   load: () => import('./commands/validate').then((module) => module.validateCommand),

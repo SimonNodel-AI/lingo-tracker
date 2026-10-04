@@ -64,7 +64,7 @@ Examples:
   $ lingo-tracker validate --skip-locales fr
   $ lingo-tracker validate --skip-locales fr,de
 
-  # Status gate only, without compiling values as ICU
+  # Skip ICU compilation; other checks still apply
   $ lingo-tracker validate --skip-icu
 
   # Also warn about base-locale plurals that break when copied to ja/ko
@@ -72,6 +72,9 @@ Examples:
 
   # Skip the placeholder-agreement check
   $ lingo-tracker validate --skip-placeholders
+
+  # Skip the protected-term preservation check
+  $ lingo-tracker validate --skip-protected-terms
 
   # Use in CI pipeline (exits with code 1 on validation failure)
   $ lingo-tracker validate || exit 1
@@ -180,19 +183,21 @@ Validation Rules:
 Exit Codes:
   0  All validations passed (all resources verified); preferred terminology
      warnings do not change the exit code
-  1  Validation failures found (new/stale/translated resources), or the
+  1  Status, ICU, placeholder, or protected-term failures, or the
      preferred terminology file exists but cannot be loaded
 
 Notes:
   - Compiles every stored value under its own locale; values that fail are failures
   - Plural categories are per-language, so a 'verified' value can still fail to compile
   - The base locale is compiled too: its value is copied into every translation slot
-  - Use --skip-icu to run the status gate alone; it does not disable
+  - Use --skip-icu to skip compilation; other checks still apply, including
     --require-portable-plurals, which parses rather than compiles
   - Checks that every translation interpolates the same placeholders as its base
     value; a renamed one ('{name}' translated to '{nombre}') renders as empty
     text rather than raising, so no other check sees it. Use --skip-placeholders
     to turn this off
+  - Checks translations for dropped or altered protected terms from the project
+    and collection lists. Use --skip-protected-terms to turn this off
   - Scans each collection's base-locale values for discouraged terms from the
     preferred terminology file (.lingo-tracker-preferred-terminology.json, or
     preferredTerminologyFile in .lingo-tracker.json). Findings are warnings,

@@ -46,6 +46,9 @@ export interface ValidateCommandOptions {
    */
   skipPlaceholders?: boolean;
 
+  /** When true, do not check translations for dropped or altered protected terms. */
+  skipProtectedTerms?: boolean;
+
   /**
    * When true, base-locale values selecting a plural branch by category
    * (`one`, `few`, …) rather than by exact `=N` match generate warnings.
@@ -80,6 +83,7 @@ export interface ValidateCommandOptions {
  * - Folder whose files cannot be read (malformed JSON) → FAILURE (its resources are not validated)
  * - Value does not compile as ICU for its own locale → FAILURE (unless --skip-icu)
  * - Translation interpolates different placeholders than its base value → FAILURE (unless --skip-placeholders)
+ * - Translation drops or alters a protected term → FAILURE (unless --skip-protected-terms)
  * - Base-locale value uses a discouraged term from the preferred-terminology file → WARNING (never fails)
  * - Preferred-terminology file exists but cannot be loaded → FAILURE
  *
@@ -99,7 +103,7 @@ export interface ValidateCommandOptions {
  *
  * **Exit Codes:**
  * - 0: All validations passed (all resources verified); terminology warnings allowed
- * - 1: Validation failures found, unreadable preferred-terminology file, OR configuration errors
+ * - 1: Status, ICU, placeholder, or protected-term failures, unreadable preferred-terminology file, OR configuration errors
  *
  * **Use Cases:**
  * - Pre-release quality gate in CI/CD pipelines
@@ -117,7 +121,7 @@ export interface ValidateCommandOptions {
  * // Relaxed validation - allow translated status with warnings
  * await validateCommand({ allowTranslated: true });
  *
- * // Status gate only, no ICU compilation
+ * // Skip ICU compilation; other checks still apply
  * await validateCommand({ skipIcu: true });
  * ```
  *
@@ -129,11 +133,14 @@ export interface ValidateCommandOptions {
  * # Relaxed mode (staging environments)
  * $ lingo-tracker validate --allow-translated
  *
- * # Status gate only, without compiling values as ICU
+ * # Skip ICU compilation; other checks still apply
  * $ lingo-tracker validate --skip-icu
  *
- * # Status and ICU gates only, without comparing placeholders
+ * # Skip placeholder agreement; other checks still apply
  * $ lingo-tracker validate --skip-placeholders
+ *
+ * # Skip protected-term preservation; other checks still apply
+ * $ lingo-tracker validate --skip-protected-terms
  *
  * # Also warn about base-locale plurals that will not survive being copied
  * $ lingo-tracker validate --require-portable-plurals

@@ -1026,3 +1026,13 @@ Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md
 One validation of the opened [collections](#collection) for CI. In code, `runValidate(collections, options)` in `libs/core/src/lib/validate/run-validate.ts` uses the [Collection Set](#collection-set) for target locales and flattened resources, resolves skipped locales, reads each collection's [Project Terms](#project-terms), runs status, ICU, placeholder, and preferred-terminology checks through `validateResources`, and returns the validation result, its summary, and printable warnings. A missing collection set, no target locale, or every target locale skipped returns an in-band failure; a broken preferred-terminology file fails validation. The rule file belongs to the project, so the run uses the first collection whose read has rules. Validation checks collections independently under each base locale and accepts different base locales.
 
 Explained in context: [`core-library.md`](core-library.md#validation-for-cicd), [`cli.md`](cli.md)
+
+---
+
+### Value Check
+
+The pure check of whether a translated value preserves its source's ICU argument names and verbatim [protected terms](#protected-term). In code, `checkTranslatedValue(source, value, { protectedTerms })` in `libs/domain/src/lib/check-translated-value.ts` returns typed violations (`argument-mismatch` with missing and unexpected names; `protected-term-dropped` with the terms). The [Translator](#translator) maps them to skips, the [Import Run](#import-run) uses them as a backstop after ICU auto-fix and maps them to failed changes, and the [Validate Run](#validate-run) maps them to validation failures. Domain’s `describeValueViolation` supplies the shared import and validation messages. Migration keeps unresolved references as literal placeholders, so import skips argument agreement for that strategy while checking protected terms. Argument repetition and locale-specific plural branches are allowed. ICU syntax validation remains separate. Provider marker restoration and complex-ICU provider skips belong to the translation process.
+
+Explained in context: [`core-library.md`](core-library.md#validation-for-cicd)
+
+---

@@ -44,6 +44,9 @@ export interface ValidationOptions {
    */
   readonly placeholders?: boolean;
 
+  /** When true, translations must preserve protected terms from their supplied Project Terms. */
+  readonly protectedTerms?: boolean;
+
   /**
    * When present, base-locale values are scanned for discouraged terms from the
    * preferred-terminology file.
@@ -212,9 +215,15 @@ export interface IcuValidationDetail {
   readonly message: string;
 }
 
-/**
- * Outcome of the per-locale ICU compilation pass.
- */
+/** A value failure with enough context for the existing validation detail renderer. */
+export type ExplainedValidationDetail = Pick<IcuValidationDetail, 'key' | 'locale' | 'collection' | 'message'>;
+
+export interface ProtectedTermValidationResult {
+  readonly failures: readonly ExplainedValidationDetail[];
+  readonly valuesChecked: number;
+}
+
+/** Outcome of the per-locale ICU compilation pass. */
 export interface IcuValidationResult {
   /**
    * Values that failed to compile under their own locale. These are hard
@@ -346,6 +355,9 @@ export interface ResourceValidationResult {
    */
   readonly placeholders?: PlaceholderValidationResult;
 
+  /** Protected-term preservation failures, omitted when no collection has protected terms. */
+  readonly protectedTerms?: ProtectedTermValidationResult;
+
   /**
    * Outcome of the preferred-terminology pass, when one was requested.
    * Undefined when terminology checking was not requested.
@@ -361,7 +373,7 @@ export interface ResourceValidationResult {
 
   /**
    * Whether the validation passed overall (no status failures, no ICU compile
-   * failures, no placeholder mismatches, no unreadable folder, and no unreadable terminology file).
+   * failures, no placeholder mismatches or protected-term failures, no unreadable folder, and no unreadable terminology file).
    * Note: warnings, including terminology findings, do not cause validation to fail.
    */
   readonly passed: boolean;

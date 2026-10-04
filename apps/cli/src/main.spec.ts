@@ -97,6 +97,19 @@ describe('main.ts flag wiring', () => {
       skipLocales: ['fr', 'de'],
       skipIcu: false,
       skipPlaceholders: true,
+      skipProtectedTerms: false,
+      requirePortablePlurals: false,
+    });
+  });
+
+  it('passes --skip-protected-terms to validate independently of placeholder checking', async () => {
+    await runCli('validate', '--skip-protected-terms');
+    expect(validateCommand).toHaveBeenCalledWith({
+      allowTranslated: false,
+      skipLocales: [],
+      skipIcu: false,
+      skipPlaceholders: false,
+      skipProtectedTerms: true,
       requirePortablePlurals: false,
     });
   });

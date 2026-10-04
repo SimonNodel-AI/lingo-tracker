@@ -331,9 +331,105 @@ describe('importResources merge behavior', () => {
     });
   });
 
+  it('rejects an argument mismatch that ICU auto-fix cannot repair and keeps the old value', () => {
+    seed({
+      ok: { source: 'Folder {name}', es: 'Carpeta {name}', status: 'verified' },
+    });
+    const result = run([
+      {
+        key: 'common.buttons.ok',
+        value: 'Carpeta {nombre} {extra}',
+        baseValue: 'Folder {nombre}',
+      },
+    ]);
+    const reason = "Placeholders disagree with the base value: missing '{name}', unexpected '{extra}', '{nombre}'";
+    expect(result.changes).toEqual([{ key: 'common.buttons.ok', type: 'failed', reason }]);
+    expect(result.errors).toContain(`"common.buttons.ok" ${reason}`);
+    expect(result.resourcesFailed).toBe(1);
+    expect(result.icuAutoFixErrors).toHaveLength(1);
+    expect(result.filesModified).toEqual([]);
+    expect(stored('ok')?.entry['es']).toBe('Carpeta {name}');
+    expect(stored('ok')?.meta?.['es']?.status).toBe('verified');
+  });
+
+  it('checks the supplied source before creating a target-locale resource', () => {
+    const result = run(
+      [
+        {
+          key: 'common.buttons.ok',
+          baseValue: 'Folder {name}',
+          value: 'Carpeta {nombre} {extra}',
+        },
+      ],
+      { locale: 'es', createMissing: true },
+    );
+    expect(result.changes[0]).toMatchObject({
+      type: 'failed',
+      reason: "Placeholders disagree with the base value: missing '{name}', unexpected '{extra}', '{nombre}'",
+    });
+    expect(result.resourcesFailed).toBe(1);
+    expect(result.icuAutoFixErrors).toHaveLength(1);
+    expect(result.filesModified).toEqual([]);
+    expect(stored('ok')).toBeUndefined();
+  });
+
+  it('imports unresolved dotted references under migration without treating them as arguments', () => {
+    seed({ ok: { source: 'Hello' } });
+    const result = run([{ key: 'common.buttons.ok', value: 'Bonjour {{common.two}}' }], {
+      locale: 'es',
+      strategy: 'migration',
+    });
+    expect(result.changes[0]?.type).toBe('value-changed');
+    expect(result.errors).toEqual([]);
+    expect(stored('ok')?.entry['es']).toBe('Bonjour {common.two}');
+  });
+
+  it('imports arguments when the stored source is empty', () => {
+    seed({ ok: { source: '' } });
+    const result = run([{ key: 'common.buttons.ok', value: 'Hola {x}' }]);
+    expect(result.errors).toEqual([]);
+    expect(result.changes[0]?.type).toBe('value-changed');
+    expect(stored('ok')?.entry['es']).toBe('Hola {x}');
+  });
+
   describe('protected terms verification', () => {
     beforeEach(() => {
       writeFileSync(join(dir, '.lingo-tracker-protected-terms.json'), '["iPhone"]', 'utf8');
+    });
+
+    it('rejects a dropped protected term before creating a resource from its imported base value', () => {
+      const result = run(
+        [
+          {
+            key: 'common.buttons.ok',
+            baseValue: 'Get iPhone',
+            value: 'Obtener teléfono',
+          },
+        ],
+        { locale: 'es', createMissing: true },
+      );
+      expect(result.changes).toEqual([
+        {
+          key: 'common.buttons.ok',
+          type: 'failed',
+          reason: 'Protected term(s) altered: iPhone',
+        },
+      ]);
+      expect(result.filesModified).toEqual([]);
+      expect(stored('ok')).toBeUndefined();
+    });
+
+    it('still rejects a dropped protected term when migration keeps unresolved references', () => {
+      seed({ ok: { source: 'Get iPhone' } });
+      const result = run([{ key: 'common.buttons.ok', value: '{{common.two}}' }], {
+        locale: 'es',
+        strategy: 'migration',
+      });
+      expect(result.changes[0]).toMatchObject({
+        type: 'failed',
+        reason: 'Protected term(s) altered: iPhone',
+      });
+      expect(stored('ok')?.entry['es']).toBeUndefined();
     });
 
     it('flags an altered protected term as failed, skips writing it, and records an error', () => {

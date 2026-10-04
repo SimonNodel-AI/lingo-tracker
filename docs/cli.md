@@ -1339,6 +1339,8 @@ lingo-tracker validate [options]
 - `--allow-translated` - Treat 'translated' status as warning instead of failure (default: false)
 - `--skip-locales <locales>` - Comma-separated list of target locales to exclude from validation (e.g. `fr` or `fr,de`). Useful when a locale has been added to the config but its translations are still in progress. Locales that are no collection's target locale emit a warning and are ignored. A collection's base locale is silently ignored, and is still compiled by the ICU check. If all target locales are skipped, the command exits with code `1`.
 - `--skip-icu` - Do not compile values as ICU for their own locale (default: false). Does not disable `--require-portable-plurals`, which parses rather than compiles.
+- `--skip-placeholders` - Do not compare translated ICU argument names with the base value (default: false). Other checks still apply.
+- `--skip-protected-terms` - Do not check translations for dropped or altered protected terms (default: false). Other checks still apply.
 - `--require-portable-plurals` - Warn when a base-locale plural selects a branch by category (`one`, `few`, …) instead of an exact `=N` match (default: false). Warnings never fail the run.
 
 **What Validate Does:**
@@ -1361,10 +1363,12 @@ lingo-tracker validate [options]
 
 A value that does not compile as ICU for its own locale is a failure whatever its status says — plural categories are per-language, so `{count, plural, one {…} other {…}}` is valid in `en` and fatal in `ja`, where the `one` category does not exist. Status records that a human approved the wording; it says nothing about the syntax.
 
+The Value Check compares each translation with its collection's base value for argument names and verbatim protected terms. A renamed argument such as `{name}` becoming `{Name}` is a failure: ICU renders the missing argument as empty text. A dropped or altered protected term also fails validation. Use `--skip-placeholders` or `--skip-protected-terms` to disable either check separately. A missing or broken protected-terms file only warns, and then that file supplies no terms to check.
+
 **Exit Codes:**
 
 - `0` - All validations passed (all resources verified)
-- `1` - Validation failures found (new/stale resources, translated without `--allow-translated`, values that fail to compile as ICU, or a resource folder whose files are not valid JSON), or the preferred terminology file exists but cannot be loaded
+- `1` - Validation failures found (new/stale resources, translated without `--allow-translated`, values that fail to compile as ICU, mismatched argument names, dropped or altered protected terms, or a resource folder whose files are not valid JSON), or the preferred terminology file exists but cannot be loaded
 
 A resource without metadata counts as `new`. A folder whose `resource_entries.json` or `tracker_meta.json` is not valid JSON is listed under **Unreadable Folders**. Its resources are not checked, and validation fails.
 
