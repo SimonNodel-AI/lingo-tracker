@@ -1,12 +1,6 @@
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import type { BundleTypeOutcome, LingoTrackerConfig } from '@simoncodes-ca/core';
 import type { TokenCasing } from '@simoncodes-ca/domain';
-import {
-  BundleNotFoundError,
-  type BundleTypeOutcome,
-  bundleTypeOutcomeDetail,
-  generateBundles,
-  MultipleBundleConstantNameError,
-} from '@simoncodes-ca/core';
+import { BundleNotFoundError, generateBundles, MultipleBundleConstantNameError } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
@@ -86,6 +80,8 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
 
   const debugKeysLocale = options.debugKeys === true ? DEFAULT_DEBUG_KEYS_LOCALE : options.debugKeys || undefined;
 
+  const reportedTypeWarnings = new Set<string>();
+  let warningsCount = 0;
   const runResult = await generateBundles(config, {
     names: selectedNames,
     locales: localeFilter,
@@ -106,6 +102,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         return;
       }
       if (event.kind === 'type-warning') {
+        reportedTypeWarnings.add(event.warning);
         CommandOutput.warn(event.warning);
         return;
       }
@@ -126,10 +123,12 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
       }
       printTypeOutcome(result.typeOutcome, options.quiet ?? false);
-      if (result.warnings.length > 0) {
+      const warnings = result.warnings.filter((warning) => !reportedTypeWarnings.has(warning));
+      warningsCount += warnings.length;
+      if (warnings.length > 0) {
         ConsoleFormatter.warning(
-          `Warnings: ${result.warnings.length}`,
-          options.verbose ? result.warnings.map((warning) => `- ${warning}`) : [],
+          `Warnings: ${warnings.length}`,
+          options.verbose ? warnings.map((warning) => `- ${warning}`) : [],
         );
       }
     },
@@ -141,8 +140,8 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
       ConsoleFormatter.section(`Summary (${totals.bundlesProcessed} bundles)`);
       ConsoleFormatter.keyValue('Total files generated', totals.filesGenerated);
     }
-    if (totals.warningsCount > 0) {
-      ConsoleFormatter.keyValue('Total warnings', totals.warningsCount);
+    if (warningsCount > 0) {
+      ConsoleFormatter.keyValue('Total warnings', warningsCount);
       if (!options.verbose) ConsoleFormatter.indent('Run with --verbose to see warning details');
     }
     const failures = runResult.outcomes.filter((outcome) => outcome.error !== undefined).length;
@@ -152,14 +151,24 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
   return exitForRunOutcome(runResult.outcome);
 }
 
+/** Tree lines and error framing belong to the command, not the core warning contract. */
 function printTypeOutcome(outcome: BundleTypeOutcome, quiet: boolean): void {
-  const detail = bundleTypeOutcomeDetail(outcome);
-  if (outcome.status === 'failed') {
-    ConsoleFormatter.error(`Type generation failed: ${detail}`);
-    return;
-  }
-  if (!quiet) {
-    const line = outcome.status === 'written' ? `└─ Types: ${detail}` : `└─ Types: Skipped (${detail})`;
-    ConsoleFormatter.indent(line);
+  switch (outcome.status) {
+    case 'failed':
+      ConsoleFormatter.error(`Type generation failed: ${outcome.reason}`);
+      return;
+    case 'written':
+      if (!quiet) ConsoleFormatter.indent(`└─ Types: ${outcome.path} (${outcome.keysCount} keys)`);
+      return;
+    case 'skipped':
+      if (!quiet) ConsoleFormatter.indent('└─ Types: Skipped (bundle is empty)');
+      return;
+    case 'not-configured':
+      if (!quiet) ConsoleFormatter.indent('└─ Types: Skipped (no typeDistFile configured)');
+      return;
+    default: {
+      const unhandled: never = outcome;
+      throw new Error(`Unknown bundle type outcome: ${unhandled}`);
+    }
   }
 }

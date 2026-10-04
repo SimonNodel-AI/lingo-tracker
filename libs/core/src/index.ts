@@ -43,9 +43,9 @@ export type {
 export {
   addBundleDefinition,
   deleteBundleDefinition,
-  bundleTypeOutcomeDetail,
   generateBundles,
   generatePreparedBundle,
+  describeTypeOutcome,
   type PrepareBundleRunParams,
   type PreparedBundleRun,
   planBundle,

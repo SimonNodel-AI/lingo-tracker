@@ -140,7 +140,7 @@ describe('generateBundles', () => {
     };
     const events: string[] = [];
 
-    await generateBundles(
+    const result = await generateBundles(
       { ...populated, bundles: { first: legacy } },
       {
         names: ['first'],
@@ -150,6 +150,10 @@ describe('generateBundles', () => {
     );
 
     expect(events).toEqual(['start', 'type-warning', 'result']);
+    expect(result.totals.warningsCount).toBe(1);
+    expect(result.outcomes[0]?.result?.warnings).toEqual([
+      expect.stringContaining("Bundle 'first': 'typeDist' is deprecated"),
+    ]);
   });
 
   it('emits the prepared type warning when a bundle write fails', async () => {

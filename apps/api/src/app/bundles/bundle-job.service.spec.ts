@@ -1,3 +1,6 @@
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import type {
   BundleProgressEvent,
@@ -10,6 +13,8 @@ import { JobNotFoundError } from '../jobs/job-not-found.error';
 import { BundleJobService, JOB_RETENTION_MS, MAX_RETAINED_JOBS } from './bundle-job.service';
 
 const mockGenerateBundle = jest.fn();
+const actualCore = jest.requireActual<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core');
+let projectRoot: string;
 
 jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
@@ -52,7 +57,7 @@ const makeResult = (overrides: Partial<GenerateBundleResult> = {}): GenerateBund
 });
 
 const project = (sourceConfig: LingoTrackerConfig = config): OpenedProject => ({
-  projectRoot: '/opened/project',
+  projectRoot,
   sourceConfig,
 });
 const makeParams = (bundleName = 'main') => ({
@@ -68,9 +73,17 @@ describe('BundleJobService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    projectRoot = mkdtempSync(join(tmpdir(), 'bundle-job-'));
+    mkdirSync(join(projectRoot, 'i18n'));
+    actualCore.addResource(actualCore.openCollection(config, 'app', { cwd: projectRoot, writable: true }), {
+      key: 'hello',
+      baseValue: 'Hello',
+    });
     logger = { error: jest.fn(), log: jest.fn(), warn: jest.fn() };
     service = new BundleJobService(logger as unknown as Logger);
   });
+
+  afterEach(() => rmSync(projectRoot, { recursive: true, force: true }));
 
   it('rejects an unknown name before adding a job', () => {
     expect(() => service.startJob({ bundleName: 'constructor', project: project() })).toThrow(
@@ -149,7 +162,7 @@ describe('BundleJobService', () => {
     const options = mockGenerateBundle.mock.calls[0][1] as Pick<GenerateBundleParams, 'onProgress'>;
     expect(prepared).toMatchObject({
       bundleKey: 'main',
-      cwd: '/opened/project',
+      cwd: projectRoot,
       definition: bundleDefinition,
       locales: ['fr'],
     });
@@ -168,25 +181,28 @@ describe('BundleJobService', () => {
   });
 
   it('logs the legacy type setting warning returned by core', async () => {
-    const warning = "Warning: Bundle 'main': 'typeDist' is deprecated";
-    mockGenerateBundle.mockResolvedValue(
-      makeResult({
-        typeOutcome: { status: 'failed', reason: 'disk full', warning },
-      }),
-    );
-
-    const { jobId } = service.startJob(makeParams());
+    mockGenerateBundle.mockImplementation(actualCore.generatePreparedBundle);
+    const legacy = { ...bundleDefinition, typeDistFile: undefined, typeDist: 'types/invalid.txt' };
+    const { jobId } = service.startJob({
+      bundleName: 'main',
+      project: project({ ...config, bundles: { main: legacy } }),
+    });
     await flush();
 
-    expect(logger.warn).toHaveBeenCalledWith(warning);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Bundle 'main': 'typeDist' is deprecated"));
+    expect(service.getJob(jobId)?.result?.warnings).toEqual([
+      expect.stringContaining("Bundle 'main': 'typeDist' is deprecated"),
+      "Type generation failed for 'main': typeDistFile must end with a .ts extension (e.g. './src/types/tokens.ts'), but got: types/invalid.txt",
+    ]);
     expect(service.getJob(jobId)?.status).toBe('completed');
   });
 
   it('logs the prepared legacy type warning when generation fails', async () => {
-    mockGenerateBundle.mockRejectedValue(new Error('disk full'));
+    mockGenerateBundle.mockImplementation(actualCore.generatePreparedBundle);
+    writeFileSync(join(projectRoot, 'blocked'), 'file');
     const legacy = {
       bundleName: '{locale}',
-      dist: './dist/i18n',
+      dist: 'blocked',
       collections: 'All' as const,
       typeDist: 'types/legacy.ts',
     };

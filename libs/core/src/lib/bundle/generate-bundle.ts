@@ -71,7 +71,8 @@ export interface GenerateBundleResult {
   readonly filesGenerated: number;
   /** Every successfully written file, in write order, relative to `cwd` with `/` separators. An output outside `cwd` begins with `../`. */
   readonly writtenFiles: string[];
-  readonly warnings: string[];
+  /** Generation warnings in encounter order, followed by the prepared type warning. */
+  readonly warnings: readonly string[];
   readonly localesProcessed: string[];
   /** Number of keys written per processed locale (empty locales are omitted). */
   readonly keysPerLocale: Record<string, number>;
@@ -79,10 +80,10 @@ export interface GenerateBundleResult {
 }
 
 export type BundleTypeOutcome =
-  | { readonly status: 'written'; readonly path: string; readonly keysCount: number; readonly warning?: string }
-  | { readonly status: 'skipped'; readonly reason: 'empty-bundle'; readonly warning?: string }
-  | { readonly status: 'failed'; readonly reason: string; readonly warning?: string }
-  | { readonly status: 'not-configured'; readonly warning?: string };
+  | { readonly status: 'written'; readonly path: string; readonly keysCount: number }
+  | { readonly status: 'skipped'; readonly reason: 'empty-bundle' }
+  | { readonly status: 'failed'; readonly reason: string }
+  | { readonly status: 'not-configured' };
 
 /** Returns the outcome detail without status words, bundle key or output framing. */
 export function bundleTypeOutcomeDetail(outcome: BundleTypeOutcome): string {
@@ -111,11 +112,28 @@ export function bundleTypeOutcomeDetail(outcome: BundleTypeOutcome): string {
   }
 }
 
+/** Presentation-free warning for a failed or skipped type result; successful results have none. */
+export function describeTypeOutcome(bundleKey: string, outcome: BundleTypeOutcome): string | undefined {
+  switch (outcome.status) {
+    case 'failed':
+    case 'skipped':
+      return `Type generation ${outcome.status} for '${bundleKey}': ${bundleTypeOutcomeDetail(outcome)}`;
+    case 'written':
+    case 'not-configured':
+      return undefined;
+    default: {
+      const unhandled: never = outcome;
+      throw new Error(`Unknown bundle type outcome: ${unhandled}`);
+    }
+  }
+}
+
 /**
  * Generates a bundle's files: one JSON file per locale (a locale with no entries is skipped with a
  * warning), the debug-keys file when `debugKeysLocale` is set, and the type file when the
  * definition configures one. Collections the config lacks, unreadable folders, ICU values that do
- * not carry to Transloco are reported in `warnings`; type generation has its own outcome.
+ * not carry to Transloco are reported in `warnings`, followed by the prepared type warning.
+ * Type generation has a separate structured outcome; `describeTypeOutcome` supplies its warning.
  */
 export async function generateBundle(params: GenerateBundleParams): Promise<GenerateBundleResult> {
   const prepared = prepareBundleRun({ ...params, source: 'saved' });
@@ -202,6 +220,8 @@ export async function generatePreparedBundle(
 
   if (typeOutcome.status === 'written') writtenFiles.push(typeOutcome.path);
 
+  if (prepared.typeWarning) warnings.push(prepared.typeWarning);
+
   return {
     outcome: typeOutcome.status === 'failed' ? 'failed' : 'succeeded',
     bundleKey,
@@ -235,13 +255,11 @@ function typeOutcomeFromResult(result: GenerateTypesResult, cwd: string): Bundle
       status: 'written',
       path: toProjectRelative(result.typeDistFile, cwd),
       keysCount: result.keysCount,
-      warning: result.warning,
     };
   }
-  if (result.errorReason) return { status: 'failed', reason: result.errorReason, warning: result.warning };
-  if (result.skippedReason === 'empty-bundle')
-    return { status: 'skipped', reason: 'empty-bundle', warning: result.warning };
-  return { status: 'not-configured', warning: result.warning };
+  if (result.errorReason) return { status: 'failed', reason: result.errorReason };
+  if (result.skippedReason === 'empty-bundle') return { status: 'skipped', reason: 'empty-bundle' };
+  return { status: 'not-configured' };
 }
 
 function toProjectRelative(filePath: string, cwd: string): string {

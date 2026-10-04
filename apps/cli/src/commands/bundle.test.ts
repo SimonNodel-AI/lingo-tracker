@@ -17,17 +17,22 @@ type BundleEvent = Parameters<NonNullable<core.GenerateBundlesOptions['onEvent']
 type BundleResult = core.GenerateBundleResult;
 type BundleRun = core.GenerateBundlesResult;
 
-function makeBundleResult(overrides: Partial<BundleResult> = {}): BundleResult {
+type ResultOverrides = Omit<Partial<BundleResult>, 'typeOutcome'> & {
+  typeOutcome?: core.BundleTypeOutcome & { warning?: string };
+};
+function makeBundleResult(overrides: ResultOverrides = {}): BundleResult {
+  const types: core.BundleTypeOutcome & { warning?: string } = overrides.typeOutcome ?? { status: 'not-configured' };
+  const { warning, ...typeOutcome } = types;
   return {
     outcome: overrides.typeOutcome?.status === 'failed' ? 'failed' : 'succeeded',
     bundleKey: 'core',
     filesGenerated: 3,
     writtenFiles: [],
-    warnings: [],
     localesProcessed: ['en', 'fr', 'es'],
     keysPerLocale: {},
-    typeOutcome: { status: 'not-configured' },
     ...overrides,
+    typeOutcome,
+    warnings: [...(overrides.warnings ?? []), ...(warning ? [warning] : [])],
   };
 }
 
@@ -38,11 +43,11 @@ function setRun(events: readonly BundleEvent[], result: BundleRun): void {
   });
 }
 
-function setSingle(overrides: Partial<BundleResult> = {}, name = 'core'): void {
+function setSingle(overrides: ResultOverrides = {}, name = 'core'): void {
   const result = makeBundleResult(overrides);
   const outcome = { name, outcome: result.outcome, result };
   const events: BundleEvent[] = [{ kind: 'start', name }];
-  if (result.typeOutcome.warning) events.push({ kind: 'type-warning', warning: result.typeOutcome.warning });
+  if (overrides.typeOutcome?.warning) events.push({ kind: 'type-warning', warning: overrides.typeOutcome.warning });
   events.push({ kind: 'result', outcome });
   setRun(events, {
     outcome: result.outcome,
@@ -60,7 +65,7 @@ function setFailure(error: Error, name = 'core'): void {
   });
 }
 
-function setTwo(first: Partial<BundleResult>, second: Partial<BundleResult>): void {
+function setTwo(first: ResultOverrides, second: ResultOverrides): void {
   const firstResult = makeBundleResult(first);
   const secondResult = makeBundleResult(second);
   const firstOutcome = { name: 'core', outcome: firstResult.outcome, result: firstResult };
