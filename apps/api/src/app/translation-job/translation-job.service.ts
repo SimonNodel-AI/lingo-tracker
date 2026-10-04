@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Collection, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
-import { translateLocale } from '@simoncodes-ca/core';
+import type { PreparedTranslateLocale, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
+import { executeTranslateLocale } from '@simoncodes-ca/core';
 import type { TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
 import { JobRegistry } from '../jobs/job-registry';
 
@@ -37,8 +37,9 @@ export class TranslationJobService {
     this.#logger = logger;
   }
 
-  /** Queues a bulk translation for a collection the controller has already validated. */
-  startJob(collection: Collection, targetLocale: string): TranslateLocaleJobDto {
+  /** Queues a bulk translation for a run the controller has already prepared. */
+  startJob(prepared: PreparedTranslateLocale): TranslateLocaleJobDto {
+    const { collection, targetLocale } = prepared;
     return this.#jobs.start({
       initial: {
         collectionName: collection.name,
@@ -59,8 +60,7 @@ export class TranslationJobService {
             skippedCount: progress.skippedCount,
           });
         };
-        const result = await translateLocale(collection, {
-          targetLocale,
+        const result = await executeTranslateLocale(prepared, {
           onProgress,
         });
         for (const warning of result.warnings) {

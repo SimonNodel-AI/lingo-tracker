@@ -38,6 +38,7 @@ export {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
+  NoTranslationTargetLocalesError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,

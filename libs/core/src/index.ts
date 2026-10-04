@@ -122,6 +122,7 @@ export {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
+  NoTranslationTargetLocalesError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
@@ -244,6 +245,10 @@ export {
 } from './lib/resource';
 export type {
   OpenTranslatorOptions,
+  PreparedTranslateLocale,
+  PreparedTranslationTargets,
+  TranslationRunOptions,
+  TranslationRunTally,
   ProviderCapabilities,
   TranslateExistingResourceOptions,
   TranslateExistingResourceResult,
@@ -256,7 +261,9 @@ export type {
 } from './lib/translation';
 export {
   assertAutoTranslationEnabled,
-  assertCanTranslateLocale,
+  prepareTranslateLocale,
+  executeTranslateLocale,
+  selectPreparedTranslateLocale,
   translateExistingResource,
   translateLocale,
 } from './lib/translation';

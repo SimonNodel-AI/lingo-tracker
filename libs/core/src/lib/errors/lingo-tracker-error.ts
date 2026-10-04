@@ -469,6 +469,17 @@ export class AutoTranslationDisabledError extends LingoTrackerError {
   }
 }
 
+/** An enabled collection has no target locales for a locale run. */
+export class NoTranslationTargetLocalesError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor(baseLocale: string) {
+    super(
+      `No target locales configured. Add locales other than the base locale "${baseLocale}".`,
+      'NO_TRANSLATION_TARGET_LOCALES',
+    );
+  }
+}
+
 /** A collection's base locale is not a translation target. */
 export class CannotTranslateBaseLocaleError extends LingoTrackerError {
   readonly kind = 'invalid' as const;

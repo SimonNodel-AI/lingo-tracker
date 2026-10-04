@@ -1,13 +1,11 @@
-import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import type { ResourceTreeEntry } from '../resource/load-resource-tree';
 import { openResourceEntry } from '../resource/resource-entry';
 import type { ResourceFolder } from '../resource/resource-folder';
-import { resolveMutationSink, type MutationSinkOptions } from '../resource/resource-mutation';
-import { translationBatch } from './translation-batch';
-import { snapshotTranslation } from './translation-write-back';
-import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openTranslator } from './translator';
+
+import { executeTranslationRun, selectTranslationRow, type TranslationRunOptions } from './translation-run';
+import { assertAutoTranslationEnabled } from './translator';
 
 export interface TranslateExistingResourceResult {
   readonly translatedCount: number;
@@ -35,14 +33,14 @@ export interface TranslateExistingResourceResult {
  * @throws {TranslationError} Some locale needs work and the API key is not set, or the provider failed.
  * @throws {ProtectedTermsFileError} Some locale needs work and a protected-terms file is malformed.
  */
-export interface TranslateExistingResourceOptions extends OpenTranslatorOptions, MutationSinkOptions {}
+export interface TranslateExistingResourceOptions extends Omit<TranslationRunOptions, 'delay'> {}
 
 export async function translateExistingResource(
   collection: Collection,
   key: string,
   options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  assertAutoTranslationEnabled(collection);
+  const translationConfig = assertAutoTranslationEnabled(collection);
 
   const resource = openResourceEntry(collection, key);
   const { folder } = resource;
@@ -52,8 +50,12 @@ export async function translateExistingResource(
     throw new ResourceNotFoundError(resource.resolvedKey);
   }
 
-  const { entry, meta } = current;
-  const targetLocales = collection.targetLocales.filter((locale) => needsTranslation(meta[locale]));
+  const treeEntry = requireTreeEntry(folder, resource.entryKey, resource.resolvedKey);
+  const { row, locales: targetLocales } = selectTranslationRow(
+    resource.resolvedKey,
+    treeEntry,
+    collection.targetLocales,
+  );
 
   if (targetLocales.length === 0) {
     return {
@@ -64,29 +66,22 @@ export async function translateExistingResource(
     };
   }
 
-  const snapshots = Object.fromEntries(
-    targetLocales.map((locale) => [locale, snapshotTranslation(entry.source, meta[locale])]),
-  );
-  const translator = openTranslator(collection, options);
-  const outcomes = await translationBatch(
+  const { tally, warnings } = await executeTranslationRun({
+    ...options,
     collection,
-    [{ key: resource.resolvedKey, source: entry.source, snapshots }],
-    targetLocales,
-    translator,
-    { onMutation: resolveMutationSink(collection, options) },
-  );
-  let updatedEntry: ResourceTreeEntry | undefined;
-  for (const outcome of outcomes) {
-    if (outcome.status === 'failed') throw outcome.error;
-    updatedEntry = outcome.entry;
-  }
-  if (!updatedEntry) throw new ResourceNotFoundError(resource.resolvedKey);
-
+    translationConfig,
+    rows: [row],
+    locales: targetLocales,
+    mutations: 'per-write',
+  });
+  const failure = tally.failures[0];
+  if (failure) throw failure.error;
+  if (!tally.entry) throw new ResourceNotFoundError(resource.resolvedKey);
   return {
-    translatedCount: outcomes.filter((outcome) => outcome.status === 'written').length,
-    skippedLocales: outcomes.filter((outcome) => outcome.status === 'skipped').map(({ locale }) => locale),
-    entry: updatedEntry,
-    warnings: [...translator.problems],
+    translatedCount: tally.translatedCount,
+    skippedLocales: tally.skipped.map(({ locale }) => locale),
+    entry: tally.entry,
+    warnings,
   };
 }
 

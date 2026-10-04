@@ -111,8 +111,15 @@ export function assertAutoTranslationEnabled(collection: Collection): Translatio
  * @throws {ProtectedTermsFileError} No terms were passed and a terms file is not a JSON array of strings.
  */
 export function openTranslator(collection: Collection, options: OpenTranslatorOptions = {}): Translator {
-  const config = assertAutoTranslationEnabled(collection);
+  return openPreparedTranslator(collection, assertAutoTranslationEnabled(collection), options);
+}
 
+/** Open after the run has checked translation availability. */
+export function openPreparedTranslator(
+  collection: Collection,
+  config: TranslationConfig,
+  options: OpenTranslatorOptions = {},
+): Translator {
   const provider = options.provider ?? createTranslationProvider(config.provider, readApiKey(config.apiKeyEnv));
   const terms = options.protectedTerms === undefined ? readProjectTerms(collection) : undefined;
   const protectedTerms = options.protectedTerms ?? (terms ? requireProtectedTerms(terms) : []);

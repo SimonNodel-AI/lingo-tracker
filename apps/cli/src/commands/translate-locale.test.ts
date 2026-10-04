@@ -1,297 +1,255 @@
 import {
-  assertAutoTranslationEnabled,
-  AutoTranslationDisabledError,
   InvalidConfigError,
   type LingoTrackerConfig,
-  loadConfig,
-  type TranslateLocaleResult,
-  translateLocale,
+  type TranslateRequest,
+  type TranslationProvider,
   TranslationError,
 } from '@simoncodes-ca/core';
-import prompts from 'prompts';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isInteractiveTerminal } from '../runner/terminal';
-import { translateLocaleCommand } from './translate-locale';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CommandCancelledError } from '../runner/command-runner';
+import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { createTranslateLocaleCommand, translateLocaleCommand } from './translate-locale';
 
-vi.mock('prompts');
-vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
-vi.mock('@simoncodes-ca/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
+function createProvider(
+  translate: (request: TranslateRequest) => string = ({ text, targetLocale }) => `[${targetLocale}] ${text}`,
+): TranslationProvider & { readonly calls: TranslateRequest[][] } {
+  const calls: TranslateRequest[][] = [];
   return {
-    ...actual,
-    assertAutoTranslationEnabled: vi.fn(actual.assertAutoTranslationEnabled),
-    loadConfig: vi.fn(),
-    translateLocale: vi.fn(),
+    calls,
+    translate: (requests) => {
+      calls.push([...requests]);
+      return Promise.resolve(
+        requests.map((request) => ({ translatedText: translate(request), provider: 'in-memory' })),
+      );
+    },
+    getCapabilities: () => ({ supportsBatch: true, maxBatchSize: Number.MAX_SAFE_INTEGER, supportsFormality: false }),
   };
-});
+}
+
+const noDelay = (): Promise<void> => Promise.resolve();
 
 const CONFIG: LingoTrackerConfig = {
-  exportFolder: 'dist/lingo-export',
-  importFolder: 'dist/lingo-import',
+  exportFolder: 'dist/export',
+  importFolder: 'dist/import',
   baseLocale: 'en',
   locales: ['en', 'fr', 'de'],
-  translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' },
+  translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'TRANSLATE_CLI_SPEC_KEY', delayMs: 0 },
   collections: { main: { translationsFolder: 'src/i18n' } },
 };
 
-const RESULT: TranslateLocaleResult = {
-  outcome: 'succeeded',
-  totalResources: 4,
-  translatedCount: 3,
-  skippedCount: 1,
-  failedCount: 0,
-  warnings: [],
-  failures: [],
-  skippedKeys: ['a.plural'],
-};
-
 describe('translateLocaleCommand', () => {
+  let project: CommandProject;
+  let provider: ReturnType<typeof createProvider>;
   beforeEach(() => {
-    vi.clearAllMocks();
-    process.env.INIT_CWD = '/project';
-    process.exitCode = undefined;
-    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
-    vi.mocked(loadConfig).mockReturnValue(CONFIG);
-    vi.mocked(translateLocale).mockResolvedValue(RESULT);
+    project = createCommandProject({ ...CONFIG, translation: undefined });
+    project.seed('a.b', 'Save');
+    project.configure(CONFIG);
+    provider = createProvider();
   });
-
-  afterEach(() => {
-    process.exitCode = undefined;
-  });
+  afterEach(() => project.cleanup());
+  const command = () => createTranslateLocaleCommand({ provider, delay: noDelay });
 
   it('translates the locale in the only collection', async () => {
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(translateLocale).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'main', translationsFolder: '/project/src/i18n' }),
-      { targetLocale: 'fr', onProgress: undefined },
-    );
-    expect(console.log).toHaveBeenCalledWith('  Translated: 3');
-    expect(process.exitCode).toBe(0);
+    const result = await project.run(command(), { locale: 'fr' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Translated: 1');
+    expect(project.json('src/i18n/a/resource_entries.json')).toMatchObject({ b: { fr: '[fr] Save' } });
   });
-
   it('passes a progress callback with --verbose', async () => {
-    await translateLocaleCommand({ locale: 'fr', verbose: true });
-
-    expect(translateLocale).toHaveBeenCalledWith(expect.anything(), {
-      targetLocale: 'fr',
-      onProgress: expect.any(Function),
-    });
+    const result = await project.run(command(), { locale: 'fr', verbose: true });
+    expect(result.stdout).toContain('[batch 1/1] translated: 1, skipped: 0, failed: 0');
   });
-
   it('exits 1 when some entries failed', async () => {
-    vi.mocked(translateLocale).mockResolvedValue({
-      ...RESULT,
-      outcome: 'failed',
-      failedCount: 1,
-      failures: [{ key: 'a.b', error: 'quota' }],
+    provider = createProvider(() => {
+      throw new Error('quota');
     });
-
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(console.log).toHaveBeenCalledWith('  a.b: quota');
-    expect(process.exitCode).toBe(1);
+    const result = await project.run(command(), { locale: 'fr' });
+    expect(result.stdout).toContain('a.b: quota');
+    expect(result.exitCode).toBe(1);
   });
-
   it('prefixes a run that cannot start with "Translation failed:" and exits 1', async () => {
-    vi.mocked(translateLocale).mockRejectedValue(new Error('API key missing'));
-
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(console.error).toHaveBeenCalledWith('❌ Translation failed: API key missing');
-    expect(process.exitCode).toBe(1);
+    const result = await project.run(translateLocaleCommand, { locale: 'fr' });
+    expect(result.stderr).toContain('Translation failed:');
+    expect(result.stderr).toContain('TRANSLATE_CLI_SPEC_KEY');
+    expect(result.exitCode).toBe(1);
   });
-
-  it('keeps a typed translation error while printing the existing prefix', async () => {
+  it('keeps a typed provider error in the batch failure report', async () => {
     const error = new TranslationError('API key missing', 'MISSING_API_KEY', false);
-    vi.mocked(translateLocale).mockRejectedValue(error);
-
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(error).toBeInstanceOf(TranslationError);
-    expect(error.code).toBe('MISSING_API_KEY');
-    expect(error.message).toBe('API key missing');
-    expect(console.error).toHaveBeenCalledWith('❌ Translation failed: API key missing');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('keeps a disabled-translation error and prints its configuration hint', async () => {
-    const error = new AutoTranslationDisabledError('main');
-    vi.mocked(assertAutoTranslationEnabled).mockImplementationOnce(() => {
+    // A provider error is now exercised through the real batch and printed in failures.
+    provider = createProvider(() => {
       throw error;
     });
-
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(error).toBeInstanceOf(AutoTranslationDisabledError);
-    expect(error.kind).toBe('unavailable');
-    expect(error.message).toBe('Auto-translation is not enabled for collection "main"');
-    expect(console.error).toHaveBeenCalledWith(
-      '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
-    );
-    expect(process.exitCode).toBe(1);
+    const result = await project.run(command(), { locale: 'fr' });
+    expect(result.stdout).toContain('a.b: API key missing');
+    expect(error.code).toBe('MISSING_API_KEY');
+    expect(result.exitCode).toBe(1);
   });
-
+  it('keeps a disabled-translation error and prints its configuration hint', async () => {
+    project.configure({ ...CONFIG, translation: undefined });
+    const result = await project.run(command(), { locale: 'fr' });
+    expect(result.stderr).toContain(
+      'Auto-translation is not enabled for collection "main". Set translation.enabled = true',
+    );
+    expect(result.exitCode).toBe(1);
+  });
   it('prints a typed error cause under the translation failure', async () => {
     const error = new InvalidConfigError('Cannot translate', { cause: new Error('API request failed') });
-    vi.mocked(translateLocale).mockRejectedValue(error);
-
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(console.error).toHaveBeenCalledWith('❌ Translation failed: Cannot translate');
-    expect(console.error).toHaveBeenCalledWith('  API request failed');
-    expect(error.message).toBe('Cannot translate');
+    const failing = createTranslateLocaleCommand({
+      delay: async () => {
+        throw error;
+      },
+      provider,
+    });
+    project.configure({ ...CONFIG, translation: undefined });
+    project.seed('a.c', 'Cancel');
+    project.configure({
+      ...CONFIG,
+      translation: {
+        ...CONFIG.translation,
+        enabled: true,
+        provider: 'google-translate',
+        apiKeyEnv: 'KEY',
+        batchSize: 1,
+      },
+    });
+    const result = await project.run(failing, { locale: 'fr' });
+    expect(result.stderr).toContain('Translation failed: Cannot translate');
+    expect(result.stderr).toContain('API request failed');
   });
-
   it.each([
-    ['the base locale', 'en', '❌ Cannot translate to the base locale "en".'],
-    ['an unconfigured locale', 'ja', '❌ Locale "ja" is not configured. Available locales: en, fr, de'],
+    ['the base locale', 'en', 'Cannot translate to the base locale "en".'],
+    ['an unconfigured locale', 'ja', 'Locale "ja" is not configured. Available locales: en, fr, de'],
   ])('exits 1 for %s', async (_label, locale, message) => {
-    await translateLocaleCommand({ locale });
-
-    expect(console.error).toHaveBeenCalledWith(message);
-    expect(translateLocale).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    const result = await project.run(command(), { locale });
+    expect(result.stderr).toContain(message);
+    expect(provider.calls).toHaveLength(0);
+    expect(result.exitCode).toBe(1);
   });
-
   it.each([
     ['disabled', { ...CONFIG, translation: { enabled: false, provider: 'none', apiKeyEnv: 'NONE' } }],
     ['absent', { ...CONFIG, translation: undefined }],
   ])('exits 1 with a configuration hint, before any core call, when auto-translation is %s', async (_label, config) => {
-    vi.mocked(loadConfig).mockReturnValue(config);
-
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(console.error).toHaveBeenCalledWith(
-      '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
-    );
-    expect(translateLocale).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    project.configure(config);
+    const result = await project.run(command(), { locale: 'fr' });
+    expect(result.stderr).toContain('Set translation.enabled = true');
+    expect(provider.calls).toHaveLength(0);
+    expect(result.exitCode).toBe(1);
   });
-
   it('exits 1 when the collection has no target locales', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, locales: ['en'] });
-
-    await translateLocaleCommand({ locale: 'fr' });
-
-    expect(console.error).toHaveBeenCalledWith(
-      '❌ No target locales configured. Add locales other than the base locale "en".',
-    );
-    expect(translateLocale).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    project.configure({ ...CONFIG, locales: ['en'] });
+    const result = await project.run(command(), { locale: 'fr' });
+    expect(result.stderr).toContain('No target locales configured. Add locales other than the base locale "en".');
+    expect(result.exitCode).toBe(1);
   });
-
   it('exits 1 without --locale in non-interactive mode', async () => {
-    await translateLocaleCommand({});
-
-    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --locale');
-    expect(translateLocale).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    const result = await project.run(command(), {}, { interactive: false });
+    expect(result.stderr).toContain('Missing required options in non-interactive mode: --locale');
+    expect(result.exitCode).toBe(1);
   });
-
   describe('interactive', () => {
-    beforeEach(() => {
-      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
-    });
-
     it('offers the target locales', async () => {
-      vi.mocked(prompts).mockResolvedValueOnce({ locale: 'de' });
-
-      await translateLocaleCommand({});
-
-      expect(prompts).toHaveBeenCalledWith(
-        [
-          expect.objectContaining({
-            name: 'locale',
-            choices: [
-              { title: 'fr', value: 'fr' },
-              { title: 'de', value: 'de' },
-            ],
-          }),
-        ],
-        expect.anything(),
-      );
-      expect(translateLocale).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ targetLocale: 'de' }));
-    });
-
-    it('offers only collection target locales and passes the prompted choice to core', async () => {
-      vi.mocked(loadConfig).mockReturnValue({
-        ...CONFIG,
-        collections: {
-          main: { translationsFolder: 'src/i18n', baseLocale: 'fr', locales: ['fr', 'de'] },
+      const result = await project.run(
+        command(),
+        {},
+        {
+          interactive: true,
+          ask: async (questions) => {
+            expect(questions).toMatchObject([
+              {
+                name: 'locale',
+                choices: [
+                  { title: 'fr', value: 'fr' },
+                  { title: 'de', value: 'de' },
+                ],
+              },
+            ]);
+            return { locale: 'de' };
+          },
         },
-      });
-      vi.mocked(prompts).mockResolvedValueOnce({ locale: 'de' });
-
-      await translateLocaleCommand({});
-
-      // The collection's base locale (fr) and unconfigured locales (including global en) are excluded.
-      expect(prompts).toHaveBeenCalledExactlyOnceWith(
-        [
-          expect.objectContaining({
-            type: 'select',
-            name: 'locale',
-            choices: [{ title: 'de', value: 'de' }],
-          }),
-        ],
-        expect.anything(),
       );
-      expect(translateLocale).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ name: 'main', baseLocale: 'fr', locales: ['fr', 'de'], targetLocales: ['de'] }),
-        { targetLocale: 'de', onProgress: undefined },
-      );
-      expect(process.exitCode).toBe(0);
+      expect(result.exitCode).toBe(0);
+      expect(provider.calls[0]?.[0]?.targetLocale).toBe('de');
     });
-
+    it('offers only collection target locales and passes the prompted choice to core', async () => {
+      project.configure({
+        ...CONFIG,
+        collections: { main: { translationsFolder: 'src/i18n', baseLocale: 'fr', locales: ['fr', 'de'] } },
+      });
+      const result = await project.run(
+        command(),
+        {},
+        {
+          interactive: true,
+          ask: async (questions) => {
+            expect(questions).toMatchObject([{ choices: [{ title: 'de', value: 'de' }] }]);
+            return { locale: 'de' };
+          },
+        },
+      );
+      expect(result.exitCode).toBe(0);
+    });
     it('refuses a collection with auto-translation disabled before asking for a locale', async () => {
-      vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, translation: undefined });
-
-      await translateLocaleCommand({});
-
-      expect(prompts).not.toHaveBeenCalled();
-      expect(console.error).toHaveBeenCalledWith(
-        '❌ Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
+      project.configure({ ...CONFIG, translation: undefined });
+      const result = await project.run(
+        command(),
+        {},
+        {
+          interactive: true,
+          ask: async () => {
+            throw new Error('unexpected prompt');
+          },
+        },
       );
-      expect(translateLocale).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(1);
+      expect(result.stderr).toContain('Set translation.enabled = true');
+      expect(result.exitCode).toBe(1);
     });
-
     it('refuses a collection with no target locales before asking for a locale', async () => {
-      vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, locales: ['en'] });
-
-      await translateLocaleCommand({});
-
-      expect(console.error).toHaveBeenCalledWith(
-        '❌ No target locales configured. Add locales other than the base locale "en".',
+      project.configure({ ...CONFIG, locales: ['en'] });
+      const result = await project.run(
+        command(),
+        {},
+        {
+          interactive: true,
+          ask: async () => {
+            throw new Error('unexpected prompt');
+          },
+        },
       );
-      expect(prompts).not.toHaveBeenCalled();
-      expect(translateLocale).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(1);
+      expect(result.stderr).toContain('No target locales configured');
+      expect(result.exitCode).toBe(1);
     });
-
     it.each([
-      ['en', '❌ Cannot translate to the base locale "en".'],
-      ['ja', '❌ Locale "ja" is not configured. Available locales: en, fr, de'],
+      ['en', 'Cannot translate to the base locale "en".'],
+      ['ja', 'Locale "ja" is not configured. Available locales: en, fr, de'],
     ])('refuses an invalid locale flag %s before prompting or running', async (locale, message) => {
-      await translateLocaleCommand({ locale });
-
-      expect(console.error).toHaveBeenCalledWith(message);
-      expect(prompts).not.toHaveBeenCalled();
-      expect(translateLocale).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(1);
+      const result = await project.run(
+        command(),
+        { locale },
+        {
+          interactive: true,
+          ask: async () => {
+            throw new Error('unexpected prompt');
+          },
+        },
+      );
+      expect(result.stderr).toContain(message);
+      expect(provider.calls).toHaveLength(0);
+      expect(result.exitCode).toBe(1);
     });
-
     it('cancelling prints one cancel line and exits 0', async () => {
-      vi.mocked(prompts).mockImplementationOnce(async (_questions, options) => {
-        options?.onCancel?.({ type: 'select', name: 'locale', message: 'Locale' }, {});
-        return {};
-      });
-
-      await translateLocaleCommand({});
-
-      expect(console.error).toHaveBeenCalledWith('❌ Translate locale cancelled.');
-      expect(translateLocale).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(0);
+      const result = await project.run(
+        command(),
+        {},
+        {
+          interactive: true,
+          ask: async () => {
+            throw new CommandCancelledError();
+          },
+        },
+      );
+      expect(result.stderr).toContain('Translate locale cancelled.');
+      expect(provider.calls).toHaveLength(0);
+      expect(result.exitCode).toBe(0);
     });
   });
 });

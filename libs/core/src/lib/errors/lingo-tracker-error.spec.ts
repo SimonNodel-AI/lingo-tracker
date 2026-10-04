@@ -35,6 +35,7 @@ import {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
+  NoTranslationTargetLocalesError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
@@ -208,6 +209,12 @@ describe('LingoTrackerError subclasses', () => {
       name: 'BundleNotFoundError',
       code: 'BUNDLE_NOT_FOUND',
       message: ErrorMessages.bundleNotFound('main'),
+    },
+    {
+      error: new NoTranslationTargetLocalesError('en'),
+      name: 'NoTranslationTargetLocalesError',
+      code: 'NO_TRANSLATION_TARGET_LOCALES',
+      message: 'No target locales configured. Add locales other than the base locale "en".',
     },
     {
       error: new AutoTranslationDisabledError('main'),

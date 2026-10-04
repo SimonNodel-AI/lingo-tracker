@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import type { Collection, ResourceMutation, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
-import { TranslationError } from '@simoncodes-ca/core';
+import { TranslationError, prepareTranslateLocale, type PreparedTranslateLocale } from '@simoncodes-ca/core';
 import { JobNotFoundError } from '../jobs/job-not-found.error';
 import { TranslationJobService } from './translation-job.service';
 
@@ -10,7 +10,7 @@ jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual('@simoncodes-ca/core');
   return {
     ...actual,
-    translateLocale: (collection: unknown, params: unknown) => mockTranslateLocale(collection, params),
+    executeTranslateLocale: (prepared: unknown, params: unknown) => mockTranslateLocale(prepared, params),
   };
 });
 
@@ -44,7 +44,8 @@ const collection: Collection = {
   config: { translationsFolder: '/path/to/translations' },
 };
 
-const startJob = (service: TranslationJobService): string => service.startJob(collection, 'fr').jobId;
+const startJob = (service: TranslationJobService): string =>
+  service.startJob(prepareTranslateLocale(collection, 'fr')).jobId;
 const flush = async (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
 
 describe('TranslationJobService', () => {
@@ -65,15 +66,15 @@ describe('TranslationJobService', () => {
     await flush();
 
     expect(mockTranslateLocale).toHaveBeenCalledWith(
-      collection,
-      expect.objectContaining({ targetLocale: 'fr', onProgress: expect.any(Function) }),
+      expect.objectContaining({ collection, targetLocale: 'fr' }),
+      expect.objectContaining({ onProgress: expect.any(Function) }),
     );
   });
 
   it('startJob returns the pending snapshot', () => {
     mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
 
-    const job = service.startJob(collection, 'fr');
+    const job = service.startJob(prepareTranslateLocale(collection, 'fr'));
 
     expect(job).toEqual({
       jobId: expect.any(String),
@@ -194,13 +195,13 @@ describe('TranslationJobService', () => {
   it.each(['completes', 'fails'])('preserves the collection sink when the job %s', async (outcome) => {
     const mutation: ResourceMutation = { kind: 'reindex', translationsFolder: collection.translationsFolder };
     if (outcome === 'completes') {
-      mockTranslateLocale.mockImplementationOnce((opened: Collection) => {
-        opened.onMutation?.(mutation);
+      mockTranslateLocale.mockImplementationOnce((opened: PreparedTranslateLocale) => {
+        opened.collection.onMutation?.(mutation);
         return Promise.resolve(makeSuccessResult());
       });
     } else {
-      mockTranslateLocale.mockImplementationOnce((opened: Collection) => {
-        opened.onMutation?.(mutation);
+      mockTranslateLocale.mockImplementationOnce((opened: PreparedTranslateLocale) => {
+        opened.collection.onMutation?.(mutation);
         return Promise.reject(new Error('later failure'));
       });
     }
@@ -210,8 +211,8 @@ describe('TranslationJobService', () => {
 
     expect(service.getJob(jobId, collection.name)?.status).toBe(outcome === 'completes' ? 'completed' : 'failed');
     expect(mockTranslateLocale).toHaveBeenCalledWith(
-      collection,
-      expect.objectContaining({ targetLocale: 'fr', onProgress: expect.any(Function) }),
+      expect.objectContaining({ collection, targetLocale: 'fr' }),
+      expect.objectContaining({ onProgress: expect.any(Function) }),
     );
     expect(mockTranslateLocale.mock.calls[0]?.[1]).not.toHaveProperty('onMutation');
     expect(mockIndex.sink).toHaveBeenCalledWith(mutation);
@@ -319,7 +320,11 @@ describe('TranslationJobService', () => {
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     expect(mockTranslateLocale).toHaveBeenCalledTimes(2);
-    expect(mockTranslateLocale).toHaveBeenNthCalledWith(2, collection, expect.objectContaining({ targetLocale: 'fr' }));
+    expect(mockTranslateLocale).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ collection, targetLocale: 'fr' }),
+      expect.objectContaining({ onProgress: expect.any(Function) }),
+    );
     expect(service.getJob(firstId, collection.name)?.status).toBe('completed');
     expect(service.getJob(secondId, collection.name)?.status).toBe('completed');
   });

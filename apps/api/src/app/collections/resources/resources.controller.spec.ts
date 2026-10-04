@@ -1243,8 +1243,13 @@ describe('ResourcesController', () => {
       const result = await resourcesController.translateLocale(collectionFor('test-collection'), { locale: 'fr-ca' });
 
       expect(translationJobService.startJob).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'test-collection', translationConfig: configWithTranslation.translation }),
-        'fr-ca',
+        expect.objectContaining({
+          collection: expect.objectContaining({
+            name: 'test-collection',
+            translationConfig: configWithTranslation.translation,
+          }),
+          targetLocale: 'fr-ca',
+        }),
       );
       expect(Reflect.getMetadata(HTTP_CODE_METADATA, resourcesController.translateLocale)).toBe(202);
       expect(result).toBe(mockJobDto);
@@ -1271,6 +1276,21 @@ describe('ResourcesController', () => {
       expect(toHttpException(error).getStatus()).toBe(422);
       expect(toHttpException(error).getResponse()).toMatchObject({
         message: 'Auto-translation is not enabled for collection "test-collection"',
+      });
+      expect(resourcesModule.get<TranslationJobService>(TranslationJobService).startJob).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 when no target locales are configured', async () => {
+      (configService.getConfig as jest.Mock).mockReturnValue({
+        ...configWithTranslation,
+        collections: { 'test-collection': { ...mockConfig.collections['test-collection'], locales: ['en'] } },
+      });
+      const error = await resourcesController
+        .translateLocale(collectionFor('test-collection'), { locale: 'fr' })
+        .catch((reason: unknown) => reason);
+      expect(toHttpException(error).getStatus()).toBe(400);
+      expect(toHttpException(error).getResponse()).toMatchObject({
+        message: 'No target locales configured. Add locales other than the base locale "en".',
       });
       expect(resourcesModule.get<TranslationJobService>(TranslationJobService).startJob).not.toHaveBeenCalled();
     });

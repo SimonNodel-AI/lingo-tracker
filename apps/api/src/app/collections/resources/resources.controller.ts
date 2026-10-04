@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   addResources,
-  assertCanTranslateLocale,
+  prepareTranslateLocale,
   type Collection,
   deleteResource,
   editResource,
@@ -183,9 +183,7 @@ export class ResourcesController {
     @RouteCollection() collection: Collection,
     @ValidBody(translateLocaleBody) dto: TranslateLocaleRequestDto,
   ): Promise<TranslateLocaleJobDto> {
-    assertCanTranslateLocale(collection, dto.locale);
-
-    return this.#translationJobService.startJob(collection, dto.locale);
+    return this.#translationJobService.startJob(prepareTranslateLocale(collection, dto.locale));
   }
 
   @Get('translate-locale/:jobId')
