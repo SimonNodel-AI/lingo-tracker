@@ -9,6 +9,7 @@ import {
   type OpenedProject,
   openCollection,
 } from '@simoncodes-ca/core';
+import { readFileSync } from 'node:fs';
 import * as path from 'path';
 import prompts from 'prompts';
 import { CommandOutput, withCommandOutput, type CommandOutputSink } from './command-output';
@@ -46,6 +47,12 @@ export type ConfigFlag<Need extends CollectionNeed> = Need extends 'none' ? bool
 /** Runs follow-up prompts (confirmations, loops) under the runner's cancel rule. */
 export type Ask = (questions: prompts.PromptObject | prompts.PromptObject[]) => Promise<Record<string, unknown>>;
 
+/** Input supplied to commands that accept piped text. Reading is deferred until the command needs it. */
+export interface CommandStdin {
+  readonly isTTY: boolean;
+  read(): string;
+}
+
 interface BaseContext {
   /** Optional directory for CLI-owned run summaries; production uses the system temp directory. */
   readonly summaryDirectory?: string;
@@ -55,6 +62,8 @@ interface BaseContext {
   readonly interactive: boolean;
   /** Prompts inside `run`. Cancelling (Ctrl+C) ends the command like any other cancel. */
   readonly ask: Ask;
+  /** Explicit input adapter, defaulting to the process's terminal state and stdin file descriptor. */
+  readonly stdin: CommandStdin;
 }
 
 interface ConfigResources {
@@ -187,6 +196,8 @@ export interface CommandEnvironment {
   readonly cwd: string;
   readonly interactive?: boolean;
   readonly ask?: Ask;
+  /** Optional input adapter; production reads process.stdin only when a command requests input. */
+  readonly stdin?: CommandStdin;
   /** Optional live output adapter; captured output is returned even when this is supplied. */
   readonly output?: CommandOutputSink;
   /** Tests can keep CLI-owned summary files inside their temporary project. */
@@ -322,6 +333,10 @@ async function execute<
       cwd,
       interactive,
       ask,
+      stdin: environment.stdin ?? {
+        isTTY: Boolean(process.stdin.isTTY),
+        read: () => readFileSync(0, 'utf8'),
+      },
       summaryDirectory: environment.summaryDirectory,
       ...resources,
     } as PromptContext<Need, WithConfig>;

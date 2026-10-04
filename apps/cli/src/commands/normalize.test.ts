@@ -1,458 +1,364 @@
-import {
-  type LingoTrackerConfig,
-  loadConfig,
-  type NormalizeResult,
-  normalize,
-  normalizeCollections,
-} from '@simoncodes-ca/core';
-import prompts from 'prompts';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isInteractiveTerminal } from '../runner/terminal';
-import { normalizeCommand } from './normalize';
+import { chmodSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import type { NormalizeCollectionsResult } from '@simoncodes-ca/core';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CommandCancelledError } from '../runner/command-runner';
+import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { normalizeCommand, type NormalizeOptions } from './normalize';
 
-vi.mock('prompts', () => ({
-  default: vi.fn(),
-}));
-vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
-
-vi.mock('@simoncodes-ca/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  const normalize = vi.fn();
-  // Collection resolution runs for real against the mocked config.
-  return {
-    ...actual,
-    loadConfig: vi.fn(),
-    normalize,
-    normalizeCollections: vi.fn(
-      async (
-        collections: Parameters<typeof actual.normalizeCollections>[0],
-        options: Parameters<typeof actual.normalizeCollections>[1] = {},
-      ) => {
-        if (!options.all && collections[0]?.readOnly) throw new actual.ReadOnlyCollectionError(collections[0].name);
-        const output = await actual.normalizeCollections([]);
-        const results = [...output.collections];
-        const errors: { name: string; error: unknown }[] = [];
-        for (const collection of collections) {
-          if (collection.readOnly) {
-            options.onEvent?.({ kind: 'skip', name: collection.name });
-            continue;
-          }
-          options.onEvent?.({ kind: 'start', name: collection.name });
-          try {
-            const { dryRun: _dryRun, ...result } = await normalize(collection, { dryRun: options.dryRun ?? false });
-            const item = { collectionName: collection.name, ...result };
-            results.push(item);
-            options.onEvent?.({ kind: 'result', result: item });
-          } catch (error) {
-            errors.push({ name: collection.name, error });
-            options.onEvent?.({ kind: 'error', name: collection.name, error });
-          }
-        }
-        const totals = { ...output.totals, collectionsProcessed: results.length };
-        for (const result of results) {
-          for (const field of [
-            'entriesProcessed',
-            'localesAdded',
-            'valuesConverted',
-            'tagsNormalized',
-            'filesCreated',
-            'filesUpdated',
-            'foldersRemoved',
-          ] as const) {
-            totals[field] += result[field];
-          }
-        }
-        return {
-          outcome: errors.length > 0 ? ('failed' as const) : ('succeeded' as const),
-          collections: results,
-          totals,
-          errors,
-        };
-      },
-    ),
-  };
-});
-
-const CONFIG: LingoTrackerConfig = {
-  exportFolder: 'dist/lingo-export',
-  importFolder: 'dist/lingo-import',
-  baseLocale: 'en',
-  locales: ['en', 'fr'],
-  collections: {
-    App: { translationsFolder: 'path/App' },
-    Lib: { translationsFolder: 'path/Lib', readOnly: true },
-  },
+type Payload = Pick<NormalizeCollectionsResult, 'collections' | 'totals'>;
+const zeroTotals = {
+  entriesProcessed: 0,
+  localesAdded: 0,
+  valuesConverted: 0,
+  tagsNormalized: 0,
+  filesCreated: 0,
+  filesUpdated: 0,
+  foldersRemoved: 0,
+  collectionsProcessed: 0,
 };
+const missingSelection = '❌ Missing required option in non-interactive mode: --collection or --all\n';
+const noCollections = '❌ No collections found. Run `lingo-tracker add-collection` first.\n';
+const skippedVendor = '⚠️  Warnings (1):\n  - Skipping read-only collection: vendor\n';
 
-const logged = () => vi.mocked(console.log).mock.calls.map(([line]) => String(line));
-const errored = () => vi.mocked(console.error).mock.calls.map(([line]) => String(line));
-
-describe('normalizeCommand', () => {
-  // Most calls here are real runs; the dry-run test overrides dryRun.
-  const NORMALIZE_RESULT: NormalizeResult = {
-    entriesProcessed: 0,
-    localesAdded: 0,
-    valuesConverted: 0,
-    tagsNormalized: 0,
-    filesCreated: 0,
-    filesUpdated: 0,
-    foldersRemoved: 0,
-    dryRun: false,
-    problems: [],
+describe('normalizeCommand (real project)', () => {
+  let project: CommandProject;
+  const restorePermissions: string[] = [];
+  const entriesPath = 'translations/main/resource_entries.json';
+  const rawEntry = () => project.write(entriesPath, { hello: { source: 'Hello {{ name }}' } });
+  const failedEntry = (name = 'main') =>
+    project.write(`translations/${name}/resource_entries.json`, { broken: { source: 42 } });
+  const payload = (stdout: string): Payload => JSON.parse(stdout);
+  const expectNormalized = () => {
+    expect(project.json(entriesPath)).toMatchObject({ hello: { source: 'Hello {name}', fr: 'Hello {name}' } });
+    expect(project.json('translations/main/tracker_meta.json')).toMatchObject({ hello: { fr: { status: 'new' } } });
+  };
+  const expectFailure = (stderr: string, name = 'main') => {
+    expect(stderr).toMatch(new RegExp(`^❌ Errors \\(1\\):\\n  - Failed to normalize collection "${name}": .+\\n$`));
+    expect(stderr).toContain('"data" argument');
   };
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    process.env.INIT_CWD = '/p';
-    process.exitCode = undefined;
-    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
-    vi.mocked(loadConfig).mockReturnValue(CONFIG);
-    vi.mocked(normalize).mockResolvedValue(NORMALIZE_RESULT);
-  });
-
-  afterEach(() => {
-    process.exitCode = undefined;
-  });
-
-  it('normalizes the named collection with its opened settings', async () => {
-    vi.mocked(normalize).mockResolvedValueOnce({ ...NORMALIZE_RESULT, dryRun: true });
-    await normalizeCommand({ collection: 'App', dryRun: true });
-
-    expect(normalize).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'App',
-        translationsFolder: '/p/path/App',
-        baseLocale: 'en',
-        locales: ['en', 'fr'],
-      }),
-      { dryRun: true },
-    );
-    expect(process.exitCode).toBe(0);
-  });
-
-  it('exits 1 without --collection or --all in non-interactive mode', async () => {
-    await normalizeCommand({});
-
-    expect(normalize).not.toHaveBeenCalled();
-    expect(errored()).toContain('❌ Missing required option in non-interactive mode: --collection or --all');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('keeps normalize all-answer precedence over a collection flag', async () => {
-    const options = { collection: 'Lib', collectionOrAll: '__ALL__' };
-    await normalizeCommand(options);
-    expect(normalize).toHaveBeenCalledTimes(1);
-    expect(normalize).toHaveBeenCalledWith(expect.objectContaining({ name: 'App' }), { dryRun: false });
-    expect(errored()).toContain('  - Skipping read-only collection: Lib');
-    expect(process.exitCode).toBe(0);
-  });
-
-  it('keeps the missing-selection error when an empty collection flag overrides a name answer', async () => {
-    const options = { collection: '', collectionOrAll: 'App' };
-    await normalizeCommand(options);
-    expect(normalize).not.toHaveBeenCalled();
-    expect(errored()).toContain('❌ Missing required option in non-interactive mode: --collection or --all');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('exits 1 for an unknown collection', async () => {
-    await normalizeCommand({ collection: 'Nope' });
-
-    expect(normalize).not.toHaveBeenCalled();
-    expect(errored()).toContain('❌ Collection "Nope" not found');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('exits 1 when no collections are configured', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, collections: {} });
-
-    await normalizeCommand({ all: true });
-
-    expect(normalize).not.toHaveBeenCalled();
-    expect(errored()).toContain('❌ No collections found. Run `lingo-tracker add-collection` first.');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('reports an empty config before requiring --collection or --all', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, collections: {} });
-
-    await normalizeCommand({});
-
-    expect(normalize).not.toHaveBeenCalled();
-    expect(errored()).toEqual(['❌ No collections found. Run `lingo-tracker add-collection` first.']);
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('exits 1 when normalizing a collection fails', async () => {
-    vi.mocked(normalize).mockRejectedValue(new Error('disk full'));
-
-    await normalizeCommand({ collection: 'App' });
-
-    expect(errored()).toContain('  - Failed to normalize collection "App": disk full');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('with --json, reports a failed collection on stderr and keeps stdout to the JSON', async () => {
-    vi.mocked(normalize).mockRejectedValue(new Error('disk full'));
-
-    await normalizeCommand({ collection: 'App', json: true });
-
-    expect(errored()).toEqual(['❌ Errors (1):', '  - Failed to normalize collection "App": disk full']);
-    const lines = logged();
-    expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0])).toMatchObject({ collections: [], totals: { collectionsProcessed: 0 } });
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('with --json, reports a read-only collection on stderr and keeps stdout to the JSON', async () => {
-    await normalizeCommand({ collection: 'Lib', json: true });
-
-    expect(errored()).toEqual(['❌ Collection "Lib" is read-only. Its resources cannot be modified.']);
-    const lines = logged();
-    expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0])).toMatchObject({ collections: [] });
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('labels pruning removal failures on stderr', async () => {
-    vi.mocked(normalize).mockResolvedValueOnce({
-      ...NORMALIZE_RESULT,
-      problems: [{ kind: 'not-removed', folderPath: 'empty', absolutePath: '/p/path/App/empty', message: 'ENOTEMPTY' }],
+    project = createCommandProject({
+      exportFolder: 'dist/export',
+      importFolder: 'dist/import',
+      baseLocale: 'en',
+      locales: ['en', 'fr'],
+      collections: {
+        main: { translationsFolder: 'translations/main' },
+        vendor: { translationsFolder: 'translations/vendor', readOnly: true },
+      },
     });
-    await normalizeCommand({ collection: 'App', json: true });
-    expect(errored()).toContain("  - Collection 'App': Could not remove folder 'empty': ENOTEMPTY");
-    expect(process.exitCode).toBe(0);
+  });
+  afterEach(() => {
+    for (const path of restorePermissions.splice(0)) chmodSync(path, 0o755);
+    project.cleanup();
   });
 
-  it('warns on stderr about each folder problem normalize reports, and still succeeds', async () => {
-    vi.mocked(normalize).mockResolvedValueOnce({
-      ...NORMALIZE_RESULT,
-      problems: [
+  it('normalizes the named collection', async () => {
+    rawEntry();
+    const result = await project.run(normalizeCommand, { collection: 'main' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('🔄 Normalizing collection: main');
+    expect(result.stdout).toContain('✅ Entries processed: 1');
+    expect(result.stdout).toContain('✅ Values converted to ICU: 1');
+    expectNormalized();
+  });
+  it('requires collection or all in noninteractive mode', async () => {
+    const result = await project.run(normalizeCommand, {});
+    expect(result).toEqual({ exitCode: 1, stdout: '', stderr: missingSelection });
+  });
+  it('normalizes all collections when all answer takes precedence', async () => {
+    rawEntry();
+    const flags: NormalizeOptions & { collectionOrAll: string } = { collection: 'vendor', collectionOrAll: '__ALL__' };
+    const result = await project.run(normalizeCommand, flags);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(skippedVendor);
+    expectNormalized();
+  });
+  it('rejects an empty selection even when a name answer is present', async () => {
+    const flags: NormalizeOptions & { collectionOrAll: string } = { collection: '', collectionOrAll: 'main' };
+    const result = await project.run(normalizeCommand, flags);
+    expect(result).toEqual({ exitCode: 1, stdout: '', stderr: missingSelection });
+  });
+  it('exits 1 for an unknown collection', async () => {
+    const result = await project.run(normalizeCommand, { collection: 'missing' });
+    expect(result).toEqual({ exitCode: 1, stdout: '', stderr: '❌ Collection "missing" not found\n' });
+  });
+  it('exits 1 when no collections are configured', async () => {
+    project.configure({ ...project.config, collections: {} });
+    expect(await project.run(normalizeCommand, { all: true })).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: noCollections,
+    });
+  });
+  it('reports empty config before requiring a selection', async () => {
+    project.configure({ ...project.config, collections: {} });
+    expect(await project.run(normalizeCommand, {})).toEqual({ exitCode: 1, stdout: '', stderr: noCollections });
+  });
+  it('reports a failed collection when stored entry data cannot be normalized', async () => {
+    failedEntry();
+    const before = project.read(entriesPath);
+    const result = await project.run(normalizeCommand, { collection: 'main' });
+    expect(result.exitCode).toBe(1);
+    expectFailure(result.stderr);
+    expect(project.read(entriesPath)).toBe(before);
+    expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
+  });
+  it('keeps stdout to one JSON payload when a collection fails', async () => {
+    failedEntry();
+    const writes: string[] = [];
+    const result = await project.run(
+      normalizeCommand,
+      { collection: 'main', json: true },
+      {
+        output: {
+          stdout: (text) => {
+            writes.push(text);
+          },
+          stderr: () => undefined,
+        },
+      },
+    );
+    expect(result.exitCode).toBe(1);
+    expectFailure(result.stderr);
+    expect(writes).toEqual([result.stdout]);
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+  });
+  it('reports read-only collection on stderr while keeping JSON on stdout', async () => {
+    const result = await project.run(normalizeCommand, { collection: 'vendor', json: true });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('❌ Collection "vendor" is read-only. Its resources cannot be modified.\n');
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+  });
+  it.skipIf(process.getuid?.() === 0)('reports a pruning removal failure and retains the empty folder', async () => {
+    const root = join(project.cwd, 'translations/main');
+    mkdirSync(join(root, 'empty'));
+    restorePermissions.push(root);
+    chmodSync(root, 0o555);
+    const result = await project.run(normalizeCommand, { collection: 'main', json: true });
+    const report = payload(result.stdout);
+    const problem = report.collections[0]?.problems[0];
+    expect(problem).toBeDefined();
+    expect(problem).toMatchObject({ kind: 'not-removed', folderPath: 'empty', absolutePath: join(root, 'empty') });
+    expect(problem?.message).toContain('EACCES');
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(
+      `⚠️  Warnings (1):\n  - Collection 'main': Could not remove folder 'empty': ${problem?.message}\n`,
+    );
+    expect(project.exists('translations/main/empty')).toBe(true);
+  });
+  it('warns on folder read problems and includes the exact problem in JSON', async () => {
+    project.write('translations/main/broken/resource_entries.json', '{');
+    const result = await project.run(normalizeCommand, { collection: 'main', json: true });
+    const report = payload(result.stdout);
+    const problem = report.collections[0]?.problems[0];
+    expect(problem).toBeDefined();
+    expect(problem).toMatchObject({
+      kind: 'unreadable',
+      folderPath: 'broken',
+      absolutePath: join(project.cwd, 'translations/main/broken'),
+    });
+    expect(problem?.message).toContain('resource_entries.json');
+    expect(report.collections[0]?.problems).toHaveLength(1);
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(
+      `⚠️  Warnings (1):\n  - Collection 'main': Skipped unreadable folder 'broken': ${problem?.message}\n`,
+    );
+    expect(project.read('translations/main/broken/resource_entries.json')).toBe('{');
+  });
+  it('prints only one JSON payload with the collection name and real counters', async () => {
+    rawEntry();
+    const writes: string[] = [];
+    const result = await project.run(
+      normalizeCommand,
+      { collection: 'main', json: true },
+      {
+        output: {
+          stdout: (text) => {
+            writes.push(text);
+          },
+          stderr: () => undefined,
+        },
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(writes).toEqual([result.stdout]);
+    expect(payload(result.stdout)).toMatchObject({
+      collections: [{ collectionName: 'main', entriesProcessed: 1, localesAdded: 1, valuesConverted: 1, problems: [] }],
+      totals: { collectionsProcessed: 1, entriesProcessed: 1, localesAdded: 1, valuesConverted: 1 },
+    });
+    expectNormalized();
+  });
+  it('preserves failed dry-run JSON shape and does not write', async () => {
+    failedEntry();
+    const before = project.read(entriesPath);
+    const result = await project.run(normalizeCommand, { collection: 'main', json: true, dryRun: true });
+    expect(result.exitCode).toBe(1);
+    expectFailure(result.stderr);
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+    expect(project.read(entriesPath)).toBe(before);
+    expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
+  });
+  it('keeps successful results when another collection fails', async () => {
+    project.configure({
+      ...project.config,
+      collections: { ...project.config.collections, broken: { translationsFolder: 'translations/broken' } },
+    });
+    rawEntry();
+    failedEntry('broken');
+    const result = await project.run(normalizeCommand, { all: true, yes: true, json: true });
+    expect(result.exitCode).toBe(1);
+    const report = payload(result.stdout);
+    expect(report.collections.map((item) => item.collectionName)).toEqual(['main']);
+    expect(report.totals).toMatchObject({ collectionsProcessed: 1, entriesProcessed: 1, localesAdded: 1 });
+    expect(result.stderr).toMatch(
+      /^⚠️ {2}Warnings \(1\):\n {2}- Skipping read-only collection: vendor\n❌ Errors \(1\):\n {2}- Failed to normalize collection "broken": .+\n$/,
+    );
+    expectNormalized();
+    expect(project.json('translations/broken/resource_entries.json')).toEqual({ broken: { source: 42 } });
+  });
+  it('retains empty folders and stored values during a dry run', async () => {
+    rawEntry();
+    mkdirSync(join(project.cwd, 'translations/main/empty'));
+    const before = project.read(entriesPath);
+    const result = await project.run(normalizeCommand, { collection: 'main', dryRun: true, json: true });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toMatchObject({ totals: { foldersRemoved: 1, valuesConverted: 1 } });
+    expect(project.exists('translations/main/empty')).toBe(true);
+    expect(project.read(entriesPath)).toBe(before);
+    expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
+  });
+  it('fails and skips normalize for explicitly selected read-only collection', async () => {
+    project.write('translations/vendor/resource_entries.json', { hello: { source: 'Hello {{ name }}' } });
+    const before = project.read('translations/vendor/resource_entries.json');
+    const result = await project.run(normalizeCommand, { collection: 'vendor' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('❌ Collection "vendor" is read-only. Its resources cannot be modified.\n');
+    expect(project.read('translations/vendor/resource_entries.json')).toBe(before);
+  });
+  it('skips read-only collections during all without failing the run', async () => {
+    rawEntry();
+    const result = await project.run(normalizeCommand, { all: true, yes: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(skippedVendor);
+    expectNormalized();
+  });
+  it('prints dry-run warning after refusing explicitly selected read-only collection', async () => {
+    const result = await project.run(normalizeCommand, { collection: 'vendor', dryRun: true });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      '❌ Collection "vendor" is read-only. Its resources cannot be modified.\n⚠️  Dry run completed - no changes were made.\n',
+    );
+  });
+  it('keeps stdout to one JSON payload when all skips only read-only collection', async () => {
+    project.configure({
+      ...project.config,
+      collections: { vendor: { translationsFolder: 'translations/vendor', readOnly: true } },
+    });
+    const result = await project.run(normalizeCommand, { all: true, yes: true, json: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(skippedVendor);
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+  });
+  it('offers collection choices and all in interactive mode', async () => {
+    rawEntry();
+    const questions: unknown[] = [];
+    const result = await project.run(
+      normalizeCommand,
+      {},
+      {
+        interactive: true,
+        ask: async (asked) => {
+          questions.push(asked);
+          return { collectionOrAll: 'main' };
+        },
+      },
+    );
+    expect(questions).toEqual([
+      [
         {
-          kind: 'unreadable',
-          folderPath: 'bad',
-          absolutePath: '/p/path/App/bad',
-          message: 'Unexpected token in resource_entries.json',
+          type: 'select',
+          name: 'collectionOrAll',
+          message: 'Select collection to normalize',
+          choices: [
+            { title: 'main', value: 'main' },
+            { title: 'vendor', value: 'vendor' },
+            { title: 'All collections', value: '__ALL__' },
+          ],
         },
       ],
-    });
-
-    await normalizeCommand({ collection: 'App', json: true });
-
-    expect(errored()).toContain(
-      "  - Collection 'App': Skipped unreadable folder 'bad': Unexpected token in resource_entries.json",
+    ]);
+    expect(result.exitCode).toBe(0);
+    expectNormalized();
+  });
+  it('cancels when all confirmation is declined', async () => {
+    rawEntry();
+    const before = project.read(entriesPath);
+    const result = await project.run(
+      normalizeCommand,
+      { all: true },
+      { interactive: true, ask: async () => ({ confirmed: false }) },
     );
-    expect(JSON.parse(logged()[0]).collections[0].problems).toEqual([
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('⚠️  This will normalize ALL collections in your project.\n❌ Normalize cancelled.\n');
+    expect(result.stdout).toBe('');
+    expect(project.read(entriesPath)).toBe(before);
+    expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
+  });
+  it('skips all confirmation with yes', async () => {
+    rawEntry();
+    const result = await project.run(
+      normalizeCommand,
+      { all: true, yes: true },
       {
-        kind: 'unreadable',
-        folderPath: 'bad',
-        absolutePath: '/p/path/App/bad',
-        message: 'Unexpected token in resource_entries.json',
+        interactive: true,
+        ask: async () => {
+          throw new Error('Unexpected prompt');
+        },
       },
-    ]);
-    expect(process.exitCode).toBe(0);
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(skippedVendor);
+    expectNormalized();
   });
-
-  it('prints only JSON with --json', async () => {
-    await normalizeCommand({ collection: 'App', json: true });
-
-    const lines = logged();
-    expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0])).toMatchObject({
-      collections: [{ collectionName: 'App' }],
-      totals: { collectionsProcessed: 1 },
-    });
-  });
-
-  it('fails on collection errors in a dry run and keeps JSON output unchanged', async () => {
-    vi.mocked(normalize).mockRejectedValue(new Error('disk full'));
-
-    await normalizeCommand({ collection: 'App', dryRun: true, json: true });
-
-    expect(errored()).toEqual(['❌ Errors (1):', '  - Failed to normalize collection "App": disk full']);
-    const payload = JSON.parse(logged()[0]);
-    expect(Object.keys(payload)).toEqual(['collections', 'totals']);
-    expect(payload.collections).toEqual([]);
-    expect(payload.totals.collectionsProcessed).toBe(0);
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('keeps successful collection results when another collection fails', async () => {
-    vi.mocked(loadConfig).mockReturnValue({
-      ...CONFIG,
-      collections: { ...CONFIG.collections, Other: { translationsFolder: 'path/Other' } },
-    });
-    vi.mocked(normalize).mockRejectedValueOnce(new Error('disk full'));
-
-    await normalizeCommand({ all: true, json: true });
-
-    const payload = JSON.parse(logged()[0]);
-    expect(Object.keys(payload)).toEqual(['collections', 'totals']);
-    expect(payload.collections.map((item: { collectionName: string }) => item.collectionName)).toEqual(['Other']);
-    expect(payload.totals.collectionsProcessed).toBe(1);
-    expect(errored()).toEqual([
-      '⚠️  Warnings (1):',
-      '  - Skipping read-only collection: Lib',
-      '❌ Errors (1):',
-      '  - Failed to normalize collection "App": disk full',
-    ]);
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('uses the core outcome for the exit code', async () => {
-    vi.mocked(normalizeCollections).mockResolvedValueOnce({
-      outcome: 'failed',
-      collections: [],
-      totals: {
-        entriesProcessed: 0,
-        localesAdded: 0,
-        valuesConverted: 0,
-        tagsNormalized: 0,
-        filesCreated: 0,
-        filesUpdated: 0,
-        foldersRemoved: 0,
-        collectionsProcessed: 0,
+  it('normalizes writable collections after confirming all', async () => {
+    rawEntry();
+    const questions: unknown[] = [];
+    const result = await project.run(
+      normalizeCommand,
+      {},
+      {
+        interactive: true,
+        ask: async (asked) => {
+          questions.push(asked);
+          return questions.length === 1 ? { collectionOrAll: '__ALL__' } : { confirmed: true };
+        },
       },
-      errors: [],
-    });
-
-    await normalizeCommand({ collection: 'App', json: true });
-
-    expect(Object.keys(JSON.parse(logged()[0]))).toEqual(['collections', 'totals']);
-    expect(process.exitCode).toBe(1);
+    );
+    expect(questions).toHaveLength(2);
+    expect(questions[1]).toEqual({ type: 'confirm', name: 'confirmed', message: 'Are you sure?', initial: false });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(`⚠️  This will normalize ALL collections in your project.\n${skippedVendor}`);
+    expectNormalized();
   });
-
-  describe('read-only collections', () => {
-    it('fails (exit 1) and skips normalize when an explicitly named collection is read-only', async () => {
-      await normalizeCommand({ collection: 'Lib', json: false });
-
-      expect(normalize).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(1);
-      expect(errored()).toContain('❌ Collection "Lib" is read-only. Its resources cannot be modified.');
-      expect(logged()).not.toContain('ℹ️  Skipping read-only collection: Lib');
-    });
-
-    it('skips read-only collections during --all WITHOUT failing the run', async () => {
-      await normalizeCommand({ all: true, json: false });
-
-      // App (writable) is normalized; Lib (read-only) is skipped, not failed.
-      expect(normalize).toHaveBeenCalledTimes(1);
-      expect(process.exitCode).toBe(0);
-      expect(errored()).toContain('  - Skipping read-only collection: Lib');
-    });
-
-    it('prints the dry-run warning after refusing an explicit read-only collection', async () => {
-      await normalizeCommand({ collection: 'Lib', dryRun: true });
-
-      expect(normalize).not.toHaveBeenCalled();
-      expect(errored()).toEqual([
-        '❌ Collection "Lib" is read-only. Its resources cannot be modified.',
-        '⚠️  Dry run completed - no changes were made.',
-      ]);
-      expect(process.exitCode).toBe(1);
-    });
-
-    it('keeps stdout to one JSON payload when --all skips the only read-only collection', async () => {
-      vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, collections: { Lib: CONFIG.collections.Lib } });
-
-      await normalizeCommand({ all: true, json: true });
-
-      expect(normalize).not.toHaveBeenCalled();
-      expect(logged()).toEqual([
-        JSON.stringify(
-          {
-            collections: [],
-            totals: {
-              entriesProcessed: 0,
-              localesAdded: 0,
-              valuesConverted: 0,
-              tagsNormalized: 0,
-              filesCreated: 0,
-              filesUpdated: 0,
-              foldersRemoved: 0,
-              collectionsProcessed: 0,
-            },
-          },
-          null,
-          2,
-        ),
-      ]);
-      expect(errored()).toEqual(['⚠️  Warnings (1):', '  - Skipping read-only collection: Lib']);
-      expect(process.exitCode).toBe(0);
-    });
-  });
-
-  describe('interactive', () => {
-    beforeEach(() => {
-      vi.mocked(isInteractiveTerminal).mockReturnValue(true);
-    });
-
-    it('offers each collection and "All collections"', async () => {
-      vi.mocked(prompts).mockResolvedValueOnce({ collectionOrAll: 'App' });
-
-      await normalizeCommand({});
-
-      expect(prompts).toHaveBeenCalledWith(
-        [
-          expect.objectContaining({
-            name: 'collectionOrAll',
-            choices: [
-              { title: 'App', value: 'App' },
-              { title: 'Lib', value: 'Lib' },
-              { title: 'All collections', value: '__ALL__' },
-            ],
-          }),
-        ],
-        expect.anything(),
-      );
-      expect(normalize).toHaveBeenCalledTimes(1);
-    });
-
-    it('confirms --all, and declining cancels with exit 0', async () => {
-      vi.mocked(prompts).mockResolvedValueOnce({ confirmed: false });
-
-      await normalizeCommand({ all: true });
-
-      expect(normalize).not.toHaveBeenCalled();
-      expect(errored()).toContain('❌ Normalize cancelled.');
-      expect(process.exitCode).toBe(0);
-    });
-
-    it('skips the --all confirmation with --yes', async () => {
-      await normalizeCommand({ all: true, yes: true });
-
-      expect(prompts).not.toHaveBeenCalled();
-      expect(normalize).toHaveBeenCalledTimes(1);
-    });
-
-    it('choosing "All collections" asks for confirmation, then normalizes the writable ones', async () => {
-      vi.mocked(prompts)
-        .mockResolvedValueOnce({ collectionOrAll: '__ALL__' })
-        .mockResolvedValueOnce({ confirmed: true });
-
-      await normalizeCommand({});
-
-      expect(prompts).toHaveBeenCalledTimes(2);
-      expect(normalize).toHaveBeenCalledTimes(1);
-      expect(process.exitCode).toBe(0);
-    });
-
-    it('reports a cancelled prompt once and returns without exiting or normalizing', async () => {
-      const exit = vi.spyOn(process, 'exit');
-      // The user presses Esc: prompts calls onCancel.
-      vi.mocked(prompts).mockImplementation(async (questions, options) => {
-        const [question] = Array.isArray(questions) ? questions : [questions];
-        options?.onCancel?.(question, {});
-        return {};
-      });
-
-      await expect(normalizeCommand({})).resolves.toBeUndefined();
-
-      expect(errored().filter((line) => line.includes('cancelled'))).toEqual(['❌ Normalize cancelled.']);
-      expect(normalize).not.toHaveBeenCalled();
-      expect(exit).not.toHaveBeenCalled();
-      expect(process.exitCode).toBe(0);
-      exit.mockRestore();
-    });
+  it('reports cancelled prompt once without normalizing', async () => {
+    rawEntry();
+    const before = project.read(entriesPath);
+    const result = await project.run(
+      normalizeCommand,
+      {},
+      {
+        interactive: true,
+        ask: async () => {
+          throw new CommandCancelledError();
+        },
+      },
+    );
+    expect(result).toEqual({ exitCode: 0, stdout: '', stderr: '❌ Normalize cancelled.\n' });
+    expect(project.read(entriesPath)).toBe(before);
+    expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
   });
 });

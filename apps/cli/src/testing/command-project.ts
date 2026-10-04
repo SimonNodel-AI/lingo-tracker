@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { CONFIG_FILENAME, type LingoTrackerConfig, openCollection, addResource } from '@simoncodes-ca/core';
@@ -14,7 +14,7 @@ export function createCommandProject(
     collections: { main: { translationsFolder: 'translations/main' } },
   },
 ) {
-  const cwd = mkdtempSync(join(tmpdir(), 'lingo-cli-command-'));
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'lingo-cli-command-')));
   const write = (relative: string, value: unknown): void => {
     const file = join(cwd, relative);
     mkdirSync(dirname(file), { recursive: true });
