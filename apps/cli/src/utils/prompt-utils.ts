@@ -111,7 +111,13 @@ export function missingTextQuestions<Options extends object>(
 /** Shared collection questions; init alone supplies the existing name default. */
 export function collectionSetupQuestions(
   options: InitOptions,
-  defaults: { readonly collectionName?: string } = {},
+  defaults: {
+    readonly collectionName?: string;
+    readonly exportFolder?: string;
+    readonly importFolder?: string;
+    readonly baseLocale?: string;
+    readonly locales?: readonly string[];
+  } = {},
 ): prompts.PromptObject[] {
   const questions = missingTextQuestions(options, [
     {
@@ -121,16 +127,21 @@ export function collectionSetupQuestions(
       ...(defaults.collectionName === undefined ? {} : { initial: defaults.collectionName }),
     },
     { name: 'translationsFolder', message: 'Path to translations folder', required: true },
-    { name: 'exportFolder', message: 'Export folder', initial: DEFAULT_CONFIG.exportFolder },
-    { name: 'importFolder', message: 'Import folder', initial: DEFAULT_CONFIG.importFolder },
-    { name: 'baseLocale', message: 'Base locale', initial: DEFAULT_CONFIG.baseLocale, required: true },
+    { name: 'exportFolder', message: 'Export folder', initial: defaults.exportFolder || DEFAULT_CONFIG.exportFolder },
+    { name: 'importFolder', message: 'Import folder', initial: defaults.importFolder || DEFAULT_CONFIG.importFolder },
+    {
+      name: 'baseLocale',
+      message: 'Base locale',
+      initial: defaults.baseLocale || DEFAULT_CONFIG.baseLocale,
+      required: true,
+    },
   ]);
   if (!options.locales) {
     questions.push({
       type: 'list',
       name: 'locales',
       message: 'Supported locales (comma-separated)',
-      initial: 'en,fr-ca,es,de',
+      initial: (defaults.locales ?? DEFAULT_CONFIG.locales).join(','),
       separator: ',',
     });
   }

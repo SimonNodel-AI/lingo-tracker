@@ -267,7 +267,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 | Group | What it holds |
 |---|---|
 | Operations | The entry points imported by apps. Resources: `addResource`, `addResources`, `editResource`, `deleteResource`, `moveResource`, `moveResources`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollection`, `editCollectionTags`, `addLocaleToCollection`, `removeLocaleFromCollection`. Bundles: `addBundleDefinition`, `updateBundleDefinition`, `deleteBundleDefinition`, `generateBundles`, `generatePreparedBundle`, `prepareBundleRun`, `planBundle`. Import: `detectImportFormat`, `runImport`. Export: `runExport`, `exportTargetLocales`. Glossary: `buildGlossary`. Normalize: `emptyNormalizeCollectionsResult`, `normalize`, `normalizeCollections`. Translation: `assertAutoTranslationEnabled`, `assertCanTranslateLocale`, `translateExistingResource`, `translateLocale`. Validation: `runValidate`. |
-| Collection & config | `loadConfig`, `openCollection`, `Collection`, `OpenedProject`, `OpenedCollection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `initConfig`, `displayTermPath`, `loadPreferredTerminology`, `updateProjectTerms`, and `resolveProtectedTermsForConfig`, plus the config result types `LoadPreferredTerminologyResult` and `ResolvedProtectedTerms`. |
+| Collection & config | `loadConfig`, `openCollection`, `Collection`, `OpenedProject`, `OpenedCollection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `initConfig`, `initProject`, `InitProjectAnswers`, `InitProjectResult`, `DEFAULT_BUNDLE_DIST`, `DEFAULT_BUNDLE_NAME`, `DEFAULT_TYPE_DIST_FILE`, `displayTermPath`, `loadPreferredTerminology`, `updateProjectTerms`, and `resolveProtectedTermsForConfig`, plus the config result types `LoadPreferredTerminologyResult` and `ResolvedProtectedTerms`. |
 | Project Terms | `updateProjectTerms`, its `ProjectTermsUpdate`, `ProjectTermsUpdateView`, and `ProjectTermsUpdateResult` types, and `TerminologyFindings` used by resource writes. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder`, `OpenResourceFolderOptions`, `EntryDetails`, `NormalizeEntryReport`, `ResourceFolderEntry`, and `ResourceFolderSaveResult`. |
 | Collection Reader | `readCollection`, `CollectionRead`, `CollectionReadProblem`, `CollectionReadTarget`, and `StoredResource`. |
@@ -784,6 +784,16 @@ Every input is an opened `Collection`. An empty set raises `GlossaryNoCollection
 The default n-gram extractor lowercases and removes stopwords, then emits unique unigrams and bigrams. A custom `CandidateExtractor` can be injected; `ai` remains unavailable and raises `GlossaryExtractorError`. The matcher scores candidate text against base values, keeps the best entry per candidate, deduplicates and ranks terms, and includes only `translated` or `verified` locales unless `includeAll` is set. The CLI owns input selection, output path and printing.
 
 ---
+
+## Project Init
+
+`initProject(cwd, answers)` in `lib/config/init-project.ts` owns initial config assembly. `InitProjectAnswers` requires `collectionName` and `translationsFolder`. Optional values cover export/import folders, base locale, locales, bundle customization, and auto-translation provider credentials.
+
+The operation fills omitted global values from `DEFAULT_CONFIG` and trims locale entries, then removes blank entries. It creates a minimal first Collection Entry and a `main` Bundle Definition that selects all collections. Bundle flags imply customization unless `setupBundle` explicitly disables it. Blank optional bundle strings disappear. Auto-translation config exists only when enabled; omitted provider and key variable use the Google Translate defaults.
+
+The operation validates and creates the file through `initConfig` and the existing Config Write path. An existing file raises `InvalidConfigError`; exclusive creation also refuses a concurrent creator. `InitProjectResult` contains the assembled `config` and absolute `configPath`. The CLI owns prompts, flags, and output.
+
+`openCollection` resolves base locale from the global value, else `en`; locales use the global list, else `[]`. Collection Entry omits supplied export/import folders that equal the global value, or the built-in default when absent.
 
 ## Project Terms
 

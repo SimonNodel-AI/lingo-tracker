@@ -6,6 +6,7 @@ import {
   CollectionNotFoundError,
   InvalidCollectionError,
 } from '../errors/lingo-tracker-error';
+import { DEFAULT_CONFIG } from '../../constants';
 import { resolveRenameTarget } from './entry-name';
 
 /**
@@ -38,7 +39,8 @@ type StoreRule<K extends keyof LingoTrackerCollection> = (
 
 /** Keep the value only when it is set, not blank (`''` clears the override), and differs from the global one. */
 function unlessGlobal<K extends 'exportFolder' | 'importFolder' | 'baseLocale'>(key: K): StoreRule<K> {
-  return (value, config) => (value !== undefined && value.trim() !== '' && value !== config[key] ? value : undefined);
+  return (value, config) =>
+    value !== undefined && value.trim() !== '' && value !== (config[key] || DEFAULT_CONFIG[key]) ? value : undefined;
 }
 
 function sameLocales(a: readonly string[], b: readonly string[] | undefined): boolean {
@@ -54,7 +56,9 @@ const STORE: { [K in keyof Required<LingoTrackerCollection>]: StoreRule<K> } = {
   // An empty list means "inherit" (openCollection falls back to the global list only when the key is
   // absent). Order matters to callers (the first locale is the default), so lists are compared as sequences.
   locales: (value, config) =>
-    value !== undefined && value.length > 0 && !sameLocales(value, config.locales) ? value : undefined,
+    value !== undefined && value.length > 0 && !sameLocales(value, config.locales ?? DEFAULT_CONFIG.locales)
+      ? value
+      : undefined,
   // A per-collection override replaces the global block; it is never merged with or diffed against it.
   translation: (value) => value,
   // Stored only when set, so writable collections stay clean.

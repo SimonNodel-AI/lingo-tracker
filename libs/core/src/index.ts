@@ -267,3 +267,11 @@ export type {
   ValidationOptions,
 } from './lib/validate';
 export { runValidate } from './lib/validate';
+
+export {
+  initProject,
+  DEFAULT_BUNDLE_DIST,
+  DEFAULT_BUNDLE_NAME,
+  DEFAULT_TYPE_DIST_FILE,
+} from './lib/config/init-project';
+export type { InitProjectAnswers, InitProjectResult } from './lib/config/init-project';
