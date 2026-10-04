@@ -49,15 +49,15 @@
             #locationPill
             cdkOverlayOrigin
             #locationOrigin="cdkOverlayOrigin"
-            [class.loc-pill--open]="isFolderPopoverOpen()"
+            [class.loc-pill--open]="panels.isFolderPopoverOpen()"
             [class.loc-pill--flash]="locationAbsorbedFlash()"
             [disabled]="isReadOnly()"
             [matTooltip]="locationDisabledTooltip()"
             matTooltipPosition="above"
-            [attr.aria-expanded]="isFolderPopoverOpen()"
+            [attr.aria-expanded]="panels.isFolderPopoverOpen()"
             aria-haspopup="dialog"
             aria-labelledby="translation-editor-location-label"
-            (click)="toggleFolderPopover()"
+            (click)="panels.toggleFolderPopover()"
           >
             <mat-icon class="loc-pill-lead" aria-hidden="true">folder_open</mat-icon>
             <span class="loc-pill-path">
@@ -288,7 +288,7 @@
         [disabled]="otherLocales().length === 0"
         [matTooltip]="otherLocalesDisabledTooltip()"
         matTooltipPosition="above"
-        (click)="openLocalesDrawer()"
+        (click)="panels.openLocalesDrawer()"
       >
         <mat-icon class="linkrow-lead" aria-hidden="true">translate</mat-icon>
         <span class="linkrow-title">{{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.OTHERLOCALES | transloco }}</span>
@@ -304,21 +304,21 @@
       </button>
 
       <!-- Below 1100px the context column is gone; the same blocks live here. -->
-      <div class="disclosure ctx-disc" [class.disclosure--open]="isContextOpen()">
+      <div class="disclosure ctx-disc" [class.disclosure--open]="panels.isContextOpen()">
         <button
           type="button"
           class="disclosure-toggle"
           data-testid="context-disclosure"
-          [attr.aria-expanded]="isContextOpen()"
+          [attr.aria-expanded]="panels.isContextOpen()"
           aria-controls="translation-editor-context-panel"
-          (click)="toggleContext()"
+          (click)="panels.toggleContext()"
         >
           <mat-icon class="disclosure-icon" aria-hidden="true">visibility</mat-icon>
           <span class="disclosure-title">{{ TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.TITLE | transloco }}</span>
           <span class="disclosure-summary">{{ contextSummary() }}</span>
           <mat-icon class="disclosure-chevron" aria-hidden="true">expand_more</mat-icon>
         </button>
-        @if (isContextOpen()) {
+        @if (panels.isContextOpen()) {
           <div id="translation-editor-context-panel" class="disclosure-panel">
             <ng-container *ngTemplateOutlet="contextBlocks" />
           </div>
@@ -332,7 +332,7 @@
     </aside>
 
     <!-- ───────────── Other-locales drawer ───────────── -->
-    @if (isLocalesDrawerOpen()) {
+    @if (panels.isLocalesDrawerOpen()) {
       <section
         class="drawer"
         data-testid="locales-drawer"
@@ -345,14 +345,14 @@
             type="button"
             class="drawer-back"
             [attr.aria-label]="TOKENS.COMMON.ACTIONS.BACK | transloco"
-            (click)="closeLocalesDrawer()"
+            (click)="panels.closeLocalesDrawer()"
           >
             <mat-icon>arrow_back</mat-icon>
           </button>
           <h3 id="translation-editor-drawer-title">
             {{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.OTHERLOCALES | transloco }}
           </h3>
-          <button mat-button type="button" data-testid="drawer-done" (click)="closeLocalesDrawer()">
+          <button mat-button type="button" data-testid="drawer-done" (click)="panels.closeLocalesDrawer()">
             {{ TOKENS.COMMON.ACTIONS.DONE | transloco }}
           </button>
         </header>
@@ -490,13 +490,13 @@
 <ng-template
   cdkConnectedOverlay
   [cdkConnectedOverlayOrigin]="locationOrigin"
-  [cdkConnectedOverlayOpen]="isFolderPopoverOpen()"
+  [cdkConnectedOverlayOpen]="panels.isFolderPopoverOpen()"
   [cdkConnectedOverlayHasBackdrop]="true"
   cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
   cdkConnectedOverlayPanelClass="translation-editor-folder-popover"
   [cdkConnectedOverlayOffsetY]="6"
-  (backdropClick)="closeFolderPopover()"
-  (detach)="closeFolderPopover()"
+  (backdropClick)="panels.closeFolderPopover()"
+  (detach)="panels.closeFolderPopover()"
 >
   <div class="pop" role="dialog" [attr.aria-label]="TOKENS.BROWSER.FOLDERPICKER.TREEARIALABEL | transloco">
     <div class="text-input text-input--compact">
@@ -508,7 +508,7 @@
         spellcheck="false"
         cdkFocusInitial
         [placeholder]="TOKENS.BROWSER.FOLDERPICKER.FILTERPLACEHOLDER | transloco"
-        [value]="folderFilter()"
+        [value]="panels.folderFilter()"
         (input)="onFolderFilterInput($event)"
       />
     </div>
@@ -519,7 +519,7 @@
         [rootFolders]="filteredRootFolders()"
         [initiallyExpanded]="true"
         [hideHeader]="true"
-        (folderConfirmed)="onFolderStaged($event)"
+        (folderConfirmed)="panels.stageFolder($event)"
         (folderCreated)="onFolderCreated($event)"
       />
     </div>

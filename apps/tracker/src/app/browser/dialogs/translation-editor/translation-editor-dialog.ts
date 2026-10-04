@@ -7,6 +7,7 @@ import {
   Component,
   computed,
   type ElementRef,
+  effect,
   HostListener,
   inject,
   type OnDestroy,
@@ -50,6 +51,7 @@ import { EditorAdvisories, filteredEditorTagSuggestions } from './editor-advisor
 import { EditorEntryForm } from './editor-entry-form';
 import { editorTagSuggestions } from './editor-entry-sources';
 import { EditorLocation } from './editor-location';
+import { type EditorFocusTarget, EditorPanels } from './editor-panels';
 import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
@@ -159,16 +161,11 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   /** True for a moment after the footer key is copied, so the button can confirm it. */
   readonly keyJustCopied = this.#keyCopiedFlash.active;
 
-  /** The folder picker popover anchored to the location pill. */
-  readonly isFolderPopoverOpen = signal(false);
-  /** The folder staged inside the popover; only committed by "Use this folder". */
-  readonly stagedFolderPath = signal<string | null>(null);
-  /** Filter text typed in the popover, matched against folder paths. */
-  readonly folderFilter = signal('');
-  /** The other-locales drawer sliding over the context column. */
-  readonly isLocalesDrawerOpen = signal(false);
-  /** The context disclosure shown in place of the column below 1100px. */
-  readonly isContextOpen = signal(false);
+  /** The folder popover, locales drawer and context disclosure; the template binds to it directly. */
+  readonly panels = new EditorPanels({
+    canOpenFolderPopover: () => !this.isReadOnly(),
+    canOpenLocalesDrawer: () => this.otherLocales().length > 0,
+  });
 
   /** Preferred-term findings follow the checked value held by Editor Advisories. */
   readonly preferredTermFindings = this.#advisories.preferredTermFindings;
@@ -353,10 +350,10 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly contextTree = this.#location.contextTree;
 
   /** Root folders narrowed by the popover's filter, pruned to the matching subtrees. */
-  readonly filteredRootFolders = computed(() => filterFolderTree(this.rootFolders(), this.folderFilter()));
+  readonly filteredRootFolders = computed(() => filterFolderTree(this.rootFolders(), this.panels.folderFilter()));
 
   /** The folder the popover's primary button would commit. */
-  readonly popoverFolderPath = computed(() => this.stagedFolderPath() ?? this.selectedFolderPath());
+  readonly popoverFolderPath = computed(() => this.panels.stagedFolderPath() ?? this.selectedFolderPath());
 
   /**
    * App-owned markup, never translator input, so the ICU hint can carry a <code>
@@ -475,7 +472,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       return;
     }
     this.#advisories.applyTerm(this.form.controls.baseValue, rule);
-    this.#focusOnceRendered(() => this.baseValueInput?.nativeElement);
+    this.panels.requestFocus('base-value');
   }
 
   /**
@@ -540,99 +537,59 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
 
   // ── Location popover ──────────────────────────────────────────────────────
 
-  toggleFolderPopover(): void {
-    if (this.isReadOnly()) {
-      return;
-    }
-    if (this.isFolderPopoverOpen()) {
-      this.closeFolderPopover();
-      return;
-    }
-    this.openFolderPopover();
-  }
-
-  openFolderPopover(): void {
-    if (this.isReadOnly()) {
-      return;
-    }
-    this.stagedFolderPath.set(null);
-    this.folderFilter.set('');
-    this.isFolderPopoverOpen.set(true);
-    this.#focusOnceRendered(() => this.folderFilterInput?.nativeElement);
-  }
-
-  /**
-   * Confirm, Escape and a backdrop click all land here, so focus comes back to
-   * the pill that opened the popover rather than the top of the dialog. The
-   * `(detach)` binding fires a second time after we have already closed; the
-   * `wasOpen` check keeps that from stealing focus from wherever it went next.
-   */
-  closeFolderPopover(restoreFocus = true): void {
-    const wasOpen = this.isFolderPopoverOpen();
-    this.isFolderPopoverOpen.set(false);
-    this.stagedFolderPath.set(null);
-    if (wasOpen && restoreFocus) {
-      this.#focusOnceRendered(() => this.locationPill?.nativeElement);
-    }
-  }
-
   /** Opens the picker's own inline folder-name field under the staged folder. */
   startNewFolder(): void {
     this.folderPicker?.onAddFolder(this.popoverFolderPath());
   }
 
   onFolderFilterInput(event: Event): void {
-    this.folderFilter.set((event.target as HTMLInputElement).value);
+    this.panels.setFolderFilter((event.target as HTMLInputElement).value);
   }
 
   /** Confirms the folder staged in the popover and closes it. */
   confirmStagedFolder(): void {
-    const staged = this.stagedFolderPath();
+    const staged = this.panels.confirmStagedFolder();
     if (staged !== null) {
       this.#location.pick(staged);
-    }
-    this.closeFolderPopover();
-  }
-
-  // ── Other-locales drawer ──────────────────────────────────────────────────
-
-  openLocalesDrawer(): void {
-    if (this.otherLocales().length === 0) {
-      return;
-    }
-    this.isLocalesDrawerOpen.set(true);
-    this.#focusOnceRendered(() => this.drawerFirstControl?.nativeElement);
-  }
-
-  /** Done, Escape and the back arrow all hand focus back to the row that opened it. */
-  closeLocalesDrawer(restoreFocus = true): void {
-    const wasOpen = this.isLocalesDrawerOpen();
-    this.isLocalesDrawerOpen.set(false);
-    if (wasOpen && restoreFocus) {
-      this.#focusOnceRendered(() => this.otherLocalesRow?.nativeElement);
     }
   }
 
   /**
-   * Focus after the view that holds the target exists. A microtask would run
-   * before change detection has rendered a panel that was just opened.
-   *
-   * `afterFocus` runs on the same element once it holds focus, for callers that
-   * also have a caret to place or a field to scroll into view.
+   * Turns the panels' focus intent into a DOM focus after the view that holds
+   * the target exists. A microtask would run before change detection has
+   * rendered a panel that was just opened.
    */
-  #focusOnceRendered<T extends HTMLElement>(target: () => T | undefined, afterFocus?: (element: T) => void): void {
-    setTimeout(() => {
-      const element = target();
-      if (!element) {
+  constructor() {
+    effect(() => {
+      const request = this.panels.focusRequest();
+      if (!request) {
         return;
       }
-      element.focus();
-      afterFocus?.(element);
+      setTimeout(() => this.#focusTarget(request.target));
     });
   }
 
-  toggleContext(): void {
-    this.isContextOpen.update((open) => !open);
+  #focusTarget(target: EditorFocusTarget): void {
+    const anchors: Record<EditorFocusTarget, ElementRef<HTMLElement> | undefined> = {
+      'location-pill': this.locationPill,
+      'locales-row': this.otherLocalesRow,
+      'folder-filter': this.folderFilterInput,
+      'drawer-first-control': this.drawerFirstControl,
+      comment: this.commentInput,
+      'base-value': this.baseValueInput,
+    };
+    const element = anchors[target]?.nativeElement;
+    if (!element) {
+      return;
+    }
+    element.focus();
+    if (target === 'comment' && element instanceof HTMLTextAreaElement) {
+      // The field may be below the fold on a scrolled form.
+      element.scrollIntoView?.({ block: 'nearest' });
+      // Selects whatever is there, so a rewrite types over it; an empty field
+      // just parks the caret.
+      element.setSelectionRange(0, element.value.length);
+    }
   }
 
   /** Writes a status from the per-locale pill menu into the same FormArray as before. */
@@ -645,12 +602,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   async onCancel(): Promise<void> {
     // Escape and the close button reach here; an open panel is the nearest thing
     // to dismiss, so it goes first and the form stays untouched.
-    if (this.isFolderPopoverOpen()) {
-      this.closeFolderPopover();
-      return;
-    }
-    if (this.isLocalesDrawerOpen()) {
-      this.closeLocalesDrawer();
+    if (this.panels.dismissNearest()) {
       return;
     }
     if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
@@ -674,11 +626,6 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     return this.confirm(spec, { width: '440px', disableClose: true });
   }
 
-  /** The picker inside the popover stages a folder; the popover's button commits it. */
-  onFolderStaged(folderPath: string): void {
-    this.stagedFolderPath.set(folderPath);
-  }
-
   onFolderConfirmed(folderPath: string): void {
     this.#location.pick(folderPath);
   }
@@ -686,7 +633,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   onFolderCreated(folder: FolderNodeDto): void {
     // The store's createFolder already updated rootFolders; update the selection.
     this.#location.pick(folder.fullPath);
-    this.stagedFolderPath.set(folder.fullPath);
+    this.panels.stageFolder(folder.fullPath);
   }
 
   addTagValue(rawValue: string): void {
@@ -773,8 +720,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.errorMessage.set(this.transloco.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS));
 
     // Focus belongs to the offending field, not to whatever opened the panel.
-    this.closeFolderPopover(false);
-    this.closeLocalesDrawer(false);
+    this.panels.closeAll();
 
     queueMicrotask(() => {
       const target = this.form.controls.key.invalid ? this.keyInput : this.baseValueInput;
@@ -789,7 +735,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       return;
     }
     if (decision.kind === 'focus-comment') {
-      this.#focusCommentField();
+      this.panels.requestFocus('comment');
       return;
     }
     if (decision.kind === 'outcome') {
@@ -831,21 +777,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
    * "Add comment" asked for the Comment field, so put the caret in it. The
    * confirmation's focus trap hands focus back to the Save button as it closes,
    * and `afterClosed()` resolves in that same turn — deferring a task past it
-   * (the `#focusOnceRendered` pattern) is what keeps CDK from taking it back.
+   * (the deferred focus intent) is what keeps CDK from taking it back.
    */
-  #focusCommentField(): void {
-    this.#focusOnceRendered(
-      () => this.commentInput?.nativeElement,
-      (textarea) => {
-        // The field may be below the fold on a scrolled form.
-        textarea.scrollIntoView?.({ block: 'nearest' });
-        // Selects whatever is there, so a rewrite types over it; an empty field
-        // just parks the caret.
-        textarea.setSelectionRange(0, textarea.value.length);
-      },
-    );
-  }
-
   getLocaleFormGroup(index: number): FormGroup<{
     locale: FormControl<string>;
     value: FormControl<string>;
