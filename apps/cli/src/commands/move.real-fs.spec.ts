@@ -1,40 +1,34 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { CONFIG_FILENAME, type LingoTrackerConfig } from '@simoncodes-ca/core';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createCommandProject, type CommandProject } from '../testing/command-project';
 import { moveResourceCommand } from './move';
 
 describe('moveResourceCommand (real core)', () => {
-  let projectDir: string;
-  const originalInitCwd = process.env.INIT_CWD;
+  let project: CommandProject;
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    projectDir = mkdtempSync(join(tmpdir(), 'lingo-cli-move-'));
-    process.env.INIT_CWD = projectDir;
-    process.exitCode = undefined;
-    const config: LingoTrackerConfig = {
-      exportFolder: 'dist/export',
-      importFolder: 'dist/import',
-      baseLocale: 'en',
-      locales: ['en'],
-      collections: { main: { translationsFolder: 'translations/main' } },
-    };
-    writeFileSync(join(projectDir, CONFIG_FILENAME), JSON.stringify(config));
+    project = createCommandProject();
   });
-
-  afterEach(() => {
-    rmSync(projectDir, { recursive: true, force: true });
-    if (originalInitCwd === undefined) delete process.env.INIT_CWD;
-    else process.env.INIT_CWD = originalInitCwd;
-    process.exitCode = undefined;
-  });
+  afterEach(() => project.cleanup());
 
   it('prints the typed missing destination and exits 1', async () => {
-    await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'missing' });
+    const result = await project.run(moveResourceCommand, {
+      collection: 'main',
+      source: 'a.ok',
+      dest: 'b.ok',
+      destCollection: 'missing',
+    });
+    expect(result).toMatchObject({ exitCode: 1 });
+    expect(result.stderr).toContain('Destination collection "missing" not found');
+  });
 
-    expect(console.error).toHaveBeenCalledWith('❌ Destination collection "missing" not found');
-    expect(process.exitCode).toBe(1);
+  it('prints the identical malformed-pattern message through the typed-error path and exits 1', async () => {
+    project.seed('a.ok');
+    const result = await project.run(moveResourceCommand, { collection: 'main', source: 'invalid@char*', dest: 'b' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
+      '❌ Key validation: Invalid key segment "invalid@char". Segments must match pattern [A-Za-z0-9_-]+',
+    );
+    expect(result.stderr).not.toContain('Errors:');
+    expect(project.exists('translations/main/a/resource_entries.json')).toBe(true);
   });
 });

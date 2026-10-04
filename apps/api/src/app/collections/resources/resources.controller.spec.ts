@@ -442,6 +442,28 @@ describe('ResourcesController', () => {
       });
     });
 
+    it('answers 400 without mutations for a malformed pattern after a valid operation', async () => {
+      const message = 'Key validation: Invalid key segment "invalid@char". Segments must match pattern [A-Za-z0-9_-]+';
+      const actual = jest.requireActual<typeof core>('@simoncodes-ca/core');
+      moves().mockImplementationOnce(actual.moveResources);
+      const operations = [
+        op,
+        { source: 'invalid@char*', destination: 'dest' },
+        { source: 'later.ok', destination: 'never.ok' },
+      ];
+      const error = await httpErrorOf(
+        resourcesController.move(collectionFor('test-collection'), {
+          moves: operations,
+        }),
+      );
+      expect(mockIndex.sink).not.toHaveBeenCalled();
+      expect(moves()).toHaveBeenCalledWith(expect.objectContaining({ name: 'test-collection' }), operations, {
+        config: mockConfig,
+      });
+      expect(error.getStatus()).toBe(400);
+      expect(error.getResponse()).toEqual({ statusCode: 400, error: 'Bad Request', message });
+    });
+
     it('should pass override flag', async () => {
       moves().mockResolvedValue(result());
       const override = { ...op, override: true };

@@ -431,7 +431,7 @@ Steps:
 
 `addResources` resolves and prepares every item before writing. It rejects malformed keys, unknown locales, duplicate or existing keys, unreadable folder JSON, and translation failures before any write. It saves each item in input order, returning counts, skipped locales, and terminology findings. Earlier items are delivered through `onMutation` as they are saved. A later disk failure leaves those entries on disk; if the failing folder save started, `saveReporting` delivers `reindex`. There is no rollback.
 
-`moveResources` runs each operation through `moveResource`, resolving writable destination collections from `config` and optional `cwd`. A missing or read-only destination adds an error and later operations continue. It combines counts, warnings, and errors. If operation N throws, earlier completed operations remain on disk and their mutations have already reached the sink.
+`moveResources` runs each operation through `moveResource`, resolving writable destination collections from `config` and optional `cwd`. A missing or read-only destination adds an error and later operations continue. It combines counts, warnings, and errors through [Move Report](#move-report). It validates every source key or pattern and destination before any write. Malformed input throws `InvalidResourceKeyError`, with no writes or mutations from the batch. If operation N throws, earlier completed operations remain on disk and their mutations have already reached the sink.
 
 ### edit-resource
 
@@ -464,7 +464,7 @@ Steps:
 
 **Entry point:** `moveResource(collection, { source, destination, override?, toCollection? }, { config?, cwd?, onMutation? }?)`
 
-Two modes, one move: both get relocations and `sameCollection` from the [Move Plan](#move-plan) and hand them to the [Entry Relocation](#entry-relocation) in one call. A collision becomes a warning (`Destination key already exists: <key>. Use override option to force move.`); a failed relocation is an error.
+Two modes, one move: both get relocations and `sameCollection` from the [Move Plan](#move-plan) and hand them to the [Entry Relocation](#entry-relocation) in one call. [Move Report](#move-report) converts collisions to warnings and records relocation errors. A malformed pattern throws `InvalidResourceKeyError` with the existing validation message.
 
 - **Single key move** — one relocation, `source` to `destination`.
 - **Wildcard pattern move** — a pattern ending with `*` is expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to every key under the prefix, each moved under `destination`. A folder the sweep cannot read is one error in the result; the other keys still move.
@@ -484,6 +484,16 @@ The refusal reasons are `descendant`, `same-location`, and `already-there`. Thes
 A single key keeps its explicit destination. A wildcard prefix maps every swept key under the destination prefix, including the collection root. An edited entry keeps its last key segment, and an empty or whitespace-only destination folder names the collection root. A folder move appends the last source segment by default or for a root destination. With `nestUnderDestination: false`, equal depths replace the source folder path, and unequal depths append that last segment.
 
 A folder selection does not include keys. Its plan supplies `forKeys(keys)` for keys that the caller enumerates after the move decision. This method returns an `entries` plan bound to the collections and `sameCollection` fact already decided. `moveResource` validates and sweeps patterns, and `moveResources` calls it for each operation. `editResource` checks the destination collision before saving. Entry Relocation takes only the bound plan and options, so separate collection arguments cannot disagree with the plan.
+
+### Move Report
+
+**Internal module:** `lib/resource/move-report.ts`.
+
+`MoveReport` owns the result accumulator for resource, batch, and folder moves. `merge()` accepts relocation results or completed move results. `warn()` and `fail()` append messages. `finish()` returns the existing counts and diagnostics with a Run Outcome. Any error fails the run. Warnings alone succeed. `finish(true)` adds the source-folder deletion count.
+
+Folder moves follow Move Plan, Entry Relocation, then Folder Pruning. The report consumes pruning results directly, including protected content and entries that appeared again. It counts only removal of the source folder. Pruning problems fail an empty-source move and produce warnings after resources moved.
+
+Malformed folder paths and resource patterns throw typed errors. A malformed pattern keeps its validation message and uses `InvalidResourceKeyError` with kind `invalid`. The CLI exits 1 through the runner's typed-error path. The API returns HTTP 400 instead of a successful response with an `errors` array. Missing entries and collisions during valid moves remain report diagnostics.
 
 ### Entry Relocation
 

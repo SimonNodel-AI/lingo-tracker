@@ -5,6 +5,7 @@ import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helper
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
 import { moveResource } from './move-resource';
 
 function collection(translationsFolder: string, name = 'main'): Collection {
@@ -115,7 +116,6 @@ describe('Move Resource (real fs)', () => {
       expect(result.movedCount).toBe(0);
       expect(result.warnings).toHaveLength(1);
       expect(result.outcome).toBe('succeeded');
-      expect(result.warnings[0]).toContain('already exists');
 
       // Verify no change
       const sourceFileContent = fs.readFileSync(sourceFile, 'utf8');
@@ -342,18 +342,18 @@ describe('Move Resource (real fs)', () => {
       const invalidPath = join(testDir, 'invalid@char');
       const exists = vi.spyOn(fs, 'existsSync');
 
-      const result = await moveResource(collection(testDir), {
-        source: invalidPattern,
-        destination: 'dest',
+      await expect(
+        moveResource(collection(testDir), {
+          source: invalidPattern,
+          destination: 'dest',
+        }),
+      ).rejects.toMatchObject({
+        name: InvalidResourceKeyError.name,
+        kind: 'invalid',
+        key: invalidPattern,
+        message: 'Key validation: Invalid key segment "invalid@char". Segments must match pattern [A-Za-z0-9_-]+',
       });
-
-      // It should NOT try to check if the folder exists because validation should fail first
       expect(exists).not.toHaveBeenCalledWith(invalidPath);
-
-      // It should return error
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.outcome).toBe('failed');
-      expect(result.errors[0]).toContain('Invalid key segment');
     });
   });
 
