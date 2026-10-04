@@ -42,7 +42,9 @@ export class ConfigController {
       return { message: 'Configuration updated successfully' };
     }
     updateProjectTerms(this.configService.openProject(), {
-      ...(update.protectedTerms !== undefined && { protectedTerms: { replace: update.protectedTerms } }),
+      ...(update.protectedTerms !== undefined && {
+        protectedTerms: { target: {}, change: { kind: 'replace', replace: update.protectedTerms } },
+      }),
       ...(update.preferredTerminology !== undefined && {
         preferredTerminology: { set: update.preferredTerminology },
       }),

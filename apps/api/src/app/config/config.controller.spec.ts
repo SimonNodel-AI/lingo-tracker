@@ -76,7 +76,7 @@ describe('ConfigController', () => {
     jest.clearAllMocks();
     (updateProjectTerms as jest.Mock).mockReset();
     (updateProjectTerms as jest.Mock).mockImplementation((_config, update) => {
-      if (update.protectedTerms && !Array.isArray(update.protectedTerms.replace)) {
+      if (update.protectedTerms && !Array.isArray(update.protectedTerms.change.replace)) {
         throw new InvalidCollectionError('protectedTerms must be an array of strings');
       }
     });
@@ -162,7 +162,7 @@ describe('ConfigController', () => {
 
       expect(updateProjectTerms).toHaveBeenCalledWith(
         expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
-        { protectedTerms: { replace: ['iPhone'] } },
+        { protectedTerms: { target: {}, change: { kind: 'replace', replace: ['iPhone'] } } },
       );
       expect(result).toEqual({ message: 'Configuration updated successfully' });
     });
@@ -178,7 +178,7 @@ describe('ConfigController', () => {
       const error = catchHttpException(() => controller.updateConfig({ protectedTerms: 'iPhone' } as never));
       expect(updateProjectTerms).toHaveBeenCalledWith(
         expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
-        { protectedTerms: { replace: 'iPhone' } },
+        { protectedTerms: { target: {}, change: { kind: 'replace', replace: 'iPhone' } } },
       );
       expect(error.getStatus()).toBe(400);
       expect(messageOf(error)).toBe('protectedTerms must be an array of strings');
@@ -214,7 +214,7 @@ describe('ConfigController', () => {
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
           expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
-          { protectedTerms: { replace: ['iPhone'] } },
+          { protectedTerms: { target: {}, change: { kind: 'replace', replace: ['iPhone'] } } },
         );
       });
 
@@ -223,7 +223,10 @@ describe('ConfigController', () => {
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
           expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
-          { protectedTerms: { replace: ['iPhone'] }, preferredTerminology: { set: rules } },
+          {
+            protectedTerms: { target: {}, change: { kind: 'replace', replace: ['iPhone'] } },
+            preferredTerminology: { set: rules },
+          },
         );
       });
 
@@ -285,7 +288,10 @@ describe('ConfigController', () => {
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
           expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
-          { protectedTerms: { replace: ['iPhone'] }, preferredTerminology: { set: invalid } },
+          {
+            protectedTerms: { target: {}, change: { kind: 'replace', replace: ['iPhone'] } },
+            preferredTerminology: { set: invalid },
+          },
         );
       });
 
@@ -296,7 +302,10 @@ describe('ConfigController', () => {
 
         expect(updateProjectTerms).toHaveBeenCalledWith(
           expect.objectContaining({ projectRoot: process.cwd(), sourceConfig: baseConfig }),
-          { protectedTerms: { replace: 'iPhone' }, preferredTerminology: { set: rules } },
+          {
+            protectedTerms: { target: {}, change: { kind: 'replace', replace: 'iPhone' } },
+            preferredTerminology: { set: rules },
+          },
         );
       });
 

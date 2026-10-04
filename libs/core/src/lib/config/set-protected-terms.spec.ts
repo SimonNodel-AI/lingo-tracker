@@ -34,26 +34,35 @@ describe('protected terms edits', () => {
     return result;
   };
   const replaceGlobalTerms = (terms: string[]) =>
-    termResult(updateProjectTerms(project(), { protectedTerms: { replace: terms } }).protectedTermsResult);
-  const replaceCollectionTerms = (collection: string, terms: string[]) =>
     termResult(
-      updateProjectTerms(project(), { protectedTerms: { target: { collection }, edit: { set: terms } } })
+      updateProjectTerms(project(), { protectedTerms: { target: {}, change: { kind: 'replace', replace: terms } } })
         .protectedTermsResult,
     );
+  const replaceCollectionTerms = (collection: string, terms: string[]) =>
+    termResult(
+      updateProjectTerms(project(), {
+        protectedTerms: { target: { collection }, change: { kind: 'edit', edit: { set: terms } } },
+      }).protectedTermsResult,
+    );
   const changeGlobalTermsPointer = (pointer: string | undefined) => {
-    const result = updateProjectTerms(project(), { protectedTerms: { file: pointer ?? '' } }).protectedTermsFileChange;
+    const result = updateProjectTerms(project(), {
+      protectedTerms: { target: {}, change: { kind: 'view' }, file: pointer ?? '' },
+    }).protectedTermsFileChange;
     if (!result) throw new Error('Missing pointer result');
     return result;
   };
   const changeCollectionTermsPointer = (collection: string, pointer: string | undefined) => {
     const result = updateProjectTerms(project(), {
-      protectedTerms: { target: { collection }, file: pointer ?? '' },
+      protectedTerms: { target: { collection }, change: { kind: 'view' }, file: pointer ?? '' },
     }).protectedTermsFileChange;
     if (!result) throw new Error('Missing pointer result');
     return result;
   };
   const applyTermsEdit = (target: { collection?: string }, _view: ProtectedTermsView, edit: ProtectedTermsEdit) =>
-    termResult(updateProjectTerms(project(), { protectedTerms: { target, edit } }).protectedTermsResult);
+    termResult(
+      updateProjectTerms(project(), { protectedTerms: { target, change: { kind: 'edit', edit } } })
+        .protectedTermsResult,
+    );
 
   beforeEach(() => {
     mkdirSync(join(tempDir(), 'i18n'));

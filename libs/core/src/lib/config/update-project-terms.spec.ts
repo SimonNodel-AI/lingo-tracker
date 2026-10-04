@@ -62,7 +62,7 @@ describe('updateProjectTerms', () => {
     const before = readFileSync(protectedFile, 'utf8');
     expect(() =>
       updateProjectTerms(project(config), {
-        protectedTerms: { replace: ['Changed'] },
+        protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
         preferredTerminology: { set: [{ discouraged: 'Email', preferred: 'email' }] },
       }),
     ).toThrow(PreferredTerminologyValidationError);
@@ -71,7 +71,7 @@ describe('updateProjectTerms', () => {
 
   it('returns normalized protected terms after a replacement', () => {
     const result = updateProjectTerms(project(config), {
-      protectedTerms: { replace: [' iPhone ', 'iPhone', 'Node.js'] },
+      protectedTerms: { target: {}, change: { kind: 'replace', replace: [' iPhone ', 'iPhone', 'Node.js'] } },
     });
     expect(result.protectedTermsResult?.terms).toEqual(['iPhone', 'Node.js']);
     expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual(['iPhone', 'Node.js']);
@@ -83,7 +83,7 @@ describe('updateProjectTerms', () => {
     const before = readFileSync(preferredFile, 'utf8');
     expect(() =>
       updateProjectTerms(project(config), {
-        protectedTerms: { replace: ['Changed'] },
+        protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
         preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
       }),
     ).toThrow();
@@ -96,7 +96,7 @@ describe('updateProjectTerms', () => {
     mkdirSync(protectedFile);
     expect(() =>
       updateProjectTerms(project(config), {
-        protectedTerms: { replace: ['Changed'] },
+        protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
         preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
       }),
     ).toThrow();
@@ -140,7 +140,7 @@ describe('updateProjectTerms', () => {
     let thrown: unknown;
     try {
       updateProjectTerms(project(config), {
-        protectedTerms: { replace: ['Changed'] },
+        protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
         preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
       });
     } catch (error) {
@@ -163,7 +163,11 @@ describe('updateProjectTerms', () => {
     const collectionFile = join(cwd, 'collection.json');
     expect(() =>
       updateProjectTerms(project(config), {
-        protectedTerms: { target: { collection: 'app' }, file: 'collection.json', edit: { add: ['New'] } },
+        protectedTerms: {
+          target: { collection: 'app' },
+          change: { kind: 'edit', edit: { add: ['New'] } },
+          file: 'collection.json',
+        },
       }),
     ).toThrow('not valid JSON');
     expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual(JSON.parse(updatedBefore));
@@ -176,7 +180,7 @@ describe('updateProjectTerms', () => {
     const before = readFileSync(configPath, 'utf8');
     const newFile = join(cwd, 'new-protected.json');
     const plan = planProjectTermsUpdate(project(config), {
-      protectedTerms: { file: 'new-protected.json', list: true },
+      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json', list: true },
     });
     expect(plan.view.protectedTermsFileChange?.filePath).toBe(newFile);
     expect(plan.view.protectedTerms?.globalFilePath).toBe(newFile);
@@ -187,7 +191,7 @@ describe('updateProjectTerms', () => {
   it('refuses a planned pointer edit when its loaded config changes before apply', () => {
     const configPath = join(cwd, '.lingo-tracker.json');
     const plan = planProjectTermsUpdate(project(loadConfig({ cwd })), {
-      protectedTerms: { file: 'new-protected.json', list: true },
+      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json', list: true },
     });
     const changed = `${JSON.stringify({ ...config, baseLocale: 'fr' })}\n`;
     writeFileSync(configPath, changed);
@@ -203,7 +207,7 @@ describe('updateProjectTerms', () => {
     mkdirSync(destination);
     expect(() =>
       updateProjectTerms(project(loadConfig({ cwd })), {
-        protectedTerms: { file: 'directory', list: true },
+        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'directory', list: true },
       }),
     ).toThrow();
     const restored = JSON.parse(readFileSync(configPath, 'utf8')) as LingoTrackerConfig;
@@ -218,7 +222,7 @@ describe('updateProjectTerms', () => {
 
     expect(() =>
       updateProjectTerms(project(loadConfig({ cwd })), {
-        protectedTerms: { file: 'new-protected.json' },
+        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
         preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
       }),
     ).toThrow();
@@ -232,7 +236,11 @@ describe('updateProjectTerms', () => {
   it('reports an unknown collection for a replacement with a collection pointer change', () => {
     expect(() =>
       updateProjectTerms(project(loadConfig({ cwd })), {
-        protectedTerms: { target: { collection: 'missing' }, file: 'new-protected.json', replace: ['New'] },
+        protectedTerms: {
+          target: { collection: 'missing' },
+          change: { kind: 'replace', replace: ['New'] },
+          file: 'new-protected.json',
+        },
       }),
     ).toThrow(CollectionNotFoundError);
     expect(existsSync(join(cwd, 'new-protected.json'))).toBe(false);
@@ -243,7 +251,7 @@ describe('updateProjectTerms', () => {
     const before = readFileSync(configPath, 'utf8');
     expect(() =>
       updateProjectTerms(project(config), {
-        protectedTerms: { file: 'missing/terms.json', list: true },
+        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'missing/terms.json', list: true },
       }),
     ).toThrow();
     expect(readFileSync(configPath, 'utf8')).toBe(before);
@@ -252,7 +260,7 @@ describe('updateProjectTerms', () => {
   it('uses the supplied config for a preferred file edit after changing a protected terms pointer', () => {
     const supplied = { ...config, preferredTerminologyFile: 'from-caller.json' };
     updateProjectTerms(project(supplied), {
-      protectedTerms: { file: 'new-protected.json' },
+      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
       preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
     });
     expect(existsSync(join(cwd, 'from-caller.json'))).toBe(true);
@@ -262,13 +270,15 @@ describe('updateProjectTerms', () => {
   it('uses the supplied protected terms pointer for an edit', () => {
     const supplied = { ...config, protectedTermsFile: 'from-caller.json' };
     const before = readFileSync(protectedFile, 'utf8');
-    updateProjectTerms(project(supplied), { protectedTerms: { edit: { add: ['New'] } } });
+    updateProjectTerms(project(supplied), {
+      protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['New'] } } },
+    });
     expect(JSON.parse(readFileSync(join(cwd, 'from-caller.json'), 'utf8'))).toEqual(['New']);
     expect(readFileSync(protectedFile, 'utf8')).toBe(before);
   });
 
   it('rejects an invalid protected terms replacement from untyped API input before writing', () => {
-    const untypedApiInput: unknown = { protectedTerms: { replace: 'x' } };
+    const untypedApiInput: unknown = { protectedTerms: { target: {}, change: { kind: 'replace', replace: 'x' } } };
     const before = readFileSync(protectedFile, 'utf8');
     // API request bodies are untyped at runtime; core must validate this value.
     expect(() => updateProjectTerms(project(config), untypedApiInput as ProjectTermsUpdate)).toThrow(
@@ -294,7 +304,7 @@ describe('updateProjectTerms', () => {
 
   it('identifies malformed project-term edit fields before writing', () => {
     const cases: readonly [unknown, InvalidProjectTermsEditError['problem']][] = [
-      [{ protectedTerms: { list: true, file: 42 } }, 'protected-file-path'],
+      [{ protectedTerms: { target: {}, change: { kind: 'view' }, list: true, file: 42 } }, 'protected-file-path'],
       [{ preferredTerminology: { remove: 42 } }, 'preferred-remove-shape'],
       [{ preferredTerminology: { upsert: { discouraged: 'A' } } }, 'preferred-upsert-shape'],
       [{ preferredTerminology: { upsert: { discouraged: 'A', preferred: 42 } } }, 'preferred-upsert-shape'],
@@ -321,17 +331,23 @@ describe('updateProjectTerms', () => {
   });
 
   it.each([
-    [{ protectedTerms: { edit: {} } }, 'protected-missing'],
-    [{ protectedTerms: { edit: { set: ['A'], add: ['B'] } } }, 'protected-conflict'],
+    [{ protectedTerms: { target: {}, change: { kind: 'edit', edit: {} } } }, 'protected-missing'],
+    [
+      { protectedTerms: { target: {}, change: { kind: 'edit', edit: { set: ['A'], add: ['B'] } } } },
+      'protected-conflict',
+    ],
     [{ preferredTerminology: {} }, 'preferred-missing'],
     [{ preferredTerminology: { upsert: { discouraged: 'A', preferred: 'B' }, remove: 'B' } }, 'preferred-conflict'],
     [{ preferredTerminology: { set: [], remove: 'B' } }, 'preferred-conflict'],
-    [{ protectedTerms: { replace: ['A'], edit: { add: ['B'] } } }, 'protected-replacement-conflict'],
+    [
+      { protectedTerms: { target: {}, change: { kind: 'replace', replace: ['A'], edit: { add: ['B'] } } } },
+      'protected-replacement-conflict',
+    ],
   ] as const)('rejects an invalid edit combination before writing: %j', (update, problem) => {
     const before = readFileSync(protectedFile, 'utf8');
     let thrown: unknown;
     try {
-      updateProjectTerms(project(config), update);
+      updateProjectTerms(project(config), update as unknown as ProjectTermsUpdate);
     } catch (error) {
       thrown = error;
     }

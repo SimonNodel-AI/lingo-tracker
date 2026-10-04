@@ -35,6 +35,7 @@ export {
 } from './protected-terms-file';
 export type { TermFile } from './term-file';
 export {
+  type ProtectedTermsChange,
   type ProjectTermsUpdate,
   type ProjectTermsUpdatePlan,
   type ProjectTermsUpdateResult,

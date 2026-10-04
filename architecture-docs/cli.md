@@ -61,7 +61,7 @@ All commands are registered in `apps/cli/src/main.ts`. Each row below lists the 
 
 ### `protected-terms` scoping
 
-The command includes `--file` in the structured edit passed to `planProjectTermsUpdate()`. `--file x.json --add Foo` therefore names the new file first during `apply()`, then writes into it. Core restores the pointer and the files it changed if the update fails. The command prints the pointer line after a successful preview. If apply later fails, it warns that the printed pointer change was reverted.
+The command builds `{ target, change }`, with an incremental `edit` change. The command includes `--file` in the structured edit passed to `planProjectTermsUpdate()`. `--file x.json --add Foo` therefore names the new file first during `apply()`, then writes into it. The [Config Write Transaction](glossary.md#config-write-transaction) restores config and companion file bytes if the update fails. Collection add uses the same rollback. Collection edit rolls back only when no locale file write was attempted. Otherwise, a terms failure leaves the new config consistent with the locale files. The command prints the pointer line after a successful preview. If apply later fails, it warns that the printed pointer change was reverted.
 
 Both scopes read through the plan's `view`. The command prints warnings and lists, then calls `apply()`; it raises the original flag usage messages before planning. Core validates the structured edit and uses the shared list merge with protected-term normalization.
 

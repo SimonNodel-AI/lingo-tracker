@@ -81,6 +81,7 @@ export {
 export { assertCollectionFields } from './lib/config/collection-entry';
 export { assertProtectedTerms } from './lib/config/set-protected-terms';
 export type {
+  ProtectedTermsChange,
   ProjectTermsUpdate,
   ProjectTermsUpdatePlan,
   ProjectTermsUpdateResult,

@@ -69,7 +69,14 @@ export async function changeCollection(
       filesUpdated += result.filesUpdated;
     }
     configWriteAttempted = true;
-    configWrite.write(nextConfig);
+    if (localeWriteAttempted) {
+      // Locale files cannot be rolled back here. Keep the new config consistent with them
+      // even if the subsequent terms write fails.
+      configWrite.write(nextConfig);
+      writeTerms?.write();
+    } else {
+      configWrite.transaction(nextConfig, writeTerms === undefined ? [] : [writeTerms]);
+    }
   } finally {
     // One reporting step for successful and failed locale/config writes, in original folder order.
     const foldersToReport = [
@@ -84,9 +91,6 @@ export async function changeCollection(
       resolveMutationSink(current, options)?.(reindexMutation(folder));
     }
   }
-
-  // Config remains written if this final terms write fails; preserve the original error.
-  writeTerms?.();
 
   const message =
     targetName === collectionName

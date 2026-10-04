@@ -96,8 +96,9 @@ describe('Collection Change', () => {
     expect(JSON.parse(readFileSync(join(cwd, 'terms.json'), 'utf8'))).toEqual(['Pixel']);
   });
 
-  it('throws the terms write error after writing config and reporting the mutation', async () => {
+  it('restores config after a terms write error and reports the mutation', async () => {
     mkdirSync(join(cwd, 'terms.json'));
+    const before = readFileSync(join(cwd, CONFIG_FILENAME));
     await expect(
       changeCollection(
         open(),
@@ -108,12 +109,13 @@ describe('Collection Change', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 'EISDIR' });
-    expect(loadConfig({ cwd }).collections['app'].protectedTermsFile).toBe('terms.json');
+    expect(readFileSync(join(cwd, CONFIG_FILENAME))).toEqual(before);
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: join(cwd, 'i18n') }]);
   });
 
-  it('keeps the public update rejection on terms failure with config written and mutation reported', async () => {
+  it('keeps the public update rejection on terms failure with config restored and mutation reported', async () => {
     mkdirSync(join(cwd, 'terms.json'));
+    const before = readFileSync(join(cwd, CONFIG_FILENAME));
     await expect(
       updateCollection(
         open(),
@@ -125,7 +127,7 @@ describe('Collection Change', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 'EISDIR' });
-    expect(loadConfig({ cwd }).collections['app'].protectedTermsFile).toBe('terms.json');
+    expect(readFileSync(join(cwd, CONFIG_FILENAME))).toEqual(before);
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: join(cwd, 'i18n') }]);
   });
 

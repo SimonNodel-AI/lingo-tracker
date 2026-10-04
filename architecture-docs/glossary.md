@@ -14,6 +14,8 @@ The one error value the Tracker UI sees for a failed API request (`ApiError` in 
 
 The server maps core errors by `kind` and an API-owned table keyed on `code`. Core supplies domain facts, including optional `details`. The API table owns message transforms, status overrides, and inclusion of `details` as response `errors`. The Tracker receives those lists as `ApiError.details`. The server does not send the core `kind` or `code`.
 
+Config and companion-file failures keep their original error mapping after a [Config Write Transaction](#config-write-transaction) rollback.
+
 Explained in context: [`frontend.md`](frontend.md#api-errors--one-adapter-at-the-http-seam), [`api.md`](api.md#error-mapping)
 
 ---
@@ -173,7 +175,7 @@ The shared change engine for an existing [Collection Entry](#collection-entry). 
 
 All preconditions precede writes. Locale sugar refuses read-only before its locale-specific checks and the stale snapshot. Update patches check terms, rename, entry, bundle references, terms destination, and stale snapshot before read-only and added-locale validation. The engine reads every affected folder before writes. It seeds added locales, purges removed locales, writes config, then writes optional terms.
 
-The planning step resolves the next config, effective collection, locale differences, folders, and terms destination before writes. The write phase writes config before optional terms. A failed terms write leaves config written and throws the original error. Public result shapes remain unchanged. Locale or config failures also throw directly. One reporting step delivers deduplicated [reindex mutations](#resource-mutation) after attempted locale saves or a changed record's config write, including failures. Structural equality ignores object key order and preserves array order.
+The planning step resolves the next config, effective collection, locale differences, folders, and terms destination before writes. The write phase writes config before optional terms. If no locale file write was attempted, a failed terms write restores config and companion files through the [Config Write Transaction](#config-write-transaction). After a locale write attempt, core keeps the new config so it agrees with the locale files. Both paths throw the original terms error. Public result shapes remain unchanged. Locale or config failures also throw directly. One reporting step delivers deduplicated [reindex mutations](#resource-mutation) after attempted locale saves or a changed record's config write, including failures. Structural equality ignores object key order and preserves array order.
 
 Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
 
@@ -211,7 +213,7 @@ The core operation that registers or changes a [Collection Entry](#collection-en
 
 Collection rename and delete check bundle references before writing. Rename changes the collection registration and every explicit bundle reference in one config write, unless a bundle already references the new name. Delete removes the registration and its explicit references in one config write, unless an affected bundle would become empty. Either conflict leaves config and translation files untouched.
 
-`addCollection(project, name, collection, { protectedTerms? })` and `updateCollection(openedCollection, newName, patch, { protectedTerms? })` check the term list and the resulting entry before their first write. The resulting entry supplies the file pointer, including one supplied in the same request or retained through a rename. A missing pointer raises `ProtectedTermsFileNotSetError` and changes no file. After any locale file changes required by an update, core writes `.lingo-tracker.json` and then the protected-terms file. The two files are not atomic: if the terms write itself fails, the config entry remains written. `editCollectionTags(openedCollection, { add?, remove?, set? })` edits inherited tags in the registration, with core enforcing flag combinations and normalization. `initConfig(config, { cwd? })` validates and creates a config through the same config write path with an exclusive file create, refusing an existing file even when it appears during the write.
+`addCollection(project, name, collection, { protectedTerms? })` and `updateCollection(openedCollection, newName, patch, { protectedTerms? })` check the term list and the resulting entry before their first write. The resulting entry supplies the file pointer, including one supplied in the same request or retained through a rename. A missing pointer raises `ProtectedTermsFileNotSetError` and changes no file. After any locale file changes required by an update, core writes `.lingo-tracker.json` and then the protected-terms file. The [Config Write Transaction](#config-write-transaction) restores both files if no locale file write was attempted. After a locale write attempt, a terms failure leaves the new config in place. Locale resource writes remain outside this transaction. `editCollectionTags(openedCollection, { add?, remove?, set? })` edits inherited tags in the registration, with core enforcing flag combinations and normalization. `initConfig(config, { cwd? })` validates and creates a config through the same config write path with an exclusive file create, refusing an existing file even when it appears during the write.
 
 `loadConfig()` records the exact config bytes it read. `guardedConfigWrite(openedProject)` checks that version before every config write, including add, delete, bundle writes, and writes delayed by a CLI prompt. A changed or removed file raises `ConfigChangedError` instead of replacing another process's edit. The locale-change path checks before touching locale files; the handle checks again when it writes config. The API answers 409 with the error message, and the CLI prints it and exits 1.
 
@@ -275,9 +277,21 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ---
 
+### Config Write Transaction
+
+`guardedConfigWrite(project).transaction(config, companions)` writes optional config and staged companion files together. `CompanionFileWrite` supplies a destination path and a write callback. The shared implementation is `libs/core/src/lib/config/config-write-transaction.ts`.
+
+The transaction snapshots every destination before the first write. It restores attempted destinations in reverse order after a failure. Existing files regain their exact bytes; new files disappear; existing directories stay intact. After a completed config write, the config guard checks for concurrent changes before any restoration. If config changed, the transaction preserves companion files that the current config can still reference. Validation and version-check failures leave config untouched. Once the config write starts, a failed write restores its previous bytes. Restoration failures become the original error's cause.
+
+Collection Lifecycle uses this transaction only when no locale file write was attempted. Project Terms Update always uses it. Locale resource writes remain outside its scope. The transaction provides synchronous rollback, without crash recovery or a filesystem lock.
+
+---
+
 ### Config Write
 
 One write to `.lingo-tracker.json` from the Tracker UI, and the one way its outcome comes back. In code, `injectConfigWrite(store)` in `apps/tracker/src/app/collections/store/config-write.ts` returns the function that runs one, and every mutation of `CollectionsStore` is: `createCollection`, `updateCollection`, `deleteCollection`, `updateGlobalConfig`, and the bundle feature's `createBundle`, `updateBundle`, `deleteBundle`. Each sends its request, reloads `GET /api/config`, stores the config, and returns an Observable of that config, so the caller hears back only once the store already holds what the server holds; if that reload fails, the write still happened, so the Observable resolves with `null` and the store reports the load failure in `error`; a rejected write errors with the [API Error](#api-error) of the request (`conflict` for a taken name, `invalid` with the rule messages or the per-row preferred-terminology errors as `details`, anything else) and leaves the store as it was. The Observable is cold, like the browser store's entry writes: nothing is sent until the caller subscribes, and the caller owns the reaction. The collection and bundle form dialogs write through the store themselves, cannot be closed while the write is in flight, and close only on success; a taken name lands on the name field, any other refusal on an error line in the dialog (the bundle dialog lists the server's rule messages). The collections manager toasts a create or edit only when a dialog closes with a saved result, and awaits a delete's outcome before it toasts. Settings Draft handles the save outcome: the saved config reseeds both lists, while the page gives one toast (a failed reload still earns the toast); a refusal keeps every edit and maps rule errors onto the rows that were sent, while the page shows its message. The store's `error` signal reports only a failed load (the initial one, or the reload after a write).
+
+Core config writes can stage companion term files through `guardedConfigWrite(project).transaction(config, companions)`. See [Config Write Transaction](#config-write-transaction) for its rollback scope.
 
 Explained in context: [`frontend.md`](frontend.md#collectionsstore)
 
@@ -499,6 +513,8 @@ Explained in context: [`api.md`](api.md#translation-job-system)
 
 `listEditProblem()` and `mergeListEdit()` in `libs/domain/src/lib/list-edit.ts` provide the shared add, remove and set rules for collection tags and protected terms. Every list is an array of strings. Core maps a missing or conflicting edit to a typed, flag-free error; the CLI checks its own flag combinations before calling core. Each caller supplies its own normalization: tags use `normalizeTags()`, while protected terms keep case and punctuation with `normalizeProtectedTerms()`.
 
+The Project Terms Update union separates a complete replacement from an incremental `ListEdit`. Both paths retain protected-term normalization.
+
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms)
 
 ---
@@ -597,6 +613,8 @@ The check runs in core, where the value is stored: `addResource` and `editResour
 
 Contrast with [Protected Term](#protected-term), which keeps a word unchanged in translations and blocks imports that alter it.
 
+Preferred-terminology writes share the [Config Write Transaction](#config-write-transaction) with protected-term and config writes in the same update.
+
 Explained in context: [`docs/features/preferred-terminology.md`](../docs/features/preferred-terminology.md)
 
 ---
@@ -621,13 +639,17 @@ Explained in context: [`cli.md`](cli.md), [`core-library.md`](core-library.md#pr
 
 The terms and rules in force for an opened [collection](#collection): its [protected terms](#protected-term) (the global list united with the collection's own) and the project's [preferred terminology](#preferred-terminology). In code, `readProjectTerms(collection)` in `libs/core/src/lib/config/project-terms.ts` reads the files `openCollection` resolved into `Collection.termFiles` and returns `ProjectTerms`: `protectedTerms`, `preferredTerminology`, `problems` (every term file that is named but missing, a warning, or exists but cannot be used, an error) and `checkBaseValue(key, value)`, the advisory terminology check of a stored base value (its findings, and the rule-file problems that limited it). Opening a collection reads nothing; each operation reads the Project Terms once, and nothing is cached, so a long-running API sees a hand edit or `git pull` on its next request. Reading never throws. A consumer that guards values with the protected terms and has no advisory channel asks for `requireProtectedTerms(terms)`, which throws `ProtectedTermsFileError` for a broken protected-terms file: the [Translator](#translator) when it opens, and the [import run](#import-run) before it writes. The Translator reports a missing named protected-terms file in its `problems`. Every other consumer reports the problems: `addResource` and `editResource` in their `terminology` result, import in its `warnings`, export in its `warnings` and, for a broken protected-terms file, its `errors` (the command exits 1), `validate` as printed warnings and, for a broken rule file, a failure. The two file kinds share one term-file module (`term-file.ts`: pointer resolution, the missing-file rule, the read that reports instead of throwing, the write with typed errors); each kind adds only its item check and its serialization. Direct writes of the global lists go through [Project Terms Update](#project-terms-update).
 
+Project-wide edits use the [Project Terms Update](#project-terms-update) request union and the shared [Config Write Transaction](#config-write-transaction). The collection read interface stays unchanged.
+
 Explained in context: [`core-library.md`](core-library.md#project-terms)
 
 ---
 
 ### Project Terms Update
 
-`planProjectTermsUpdate(project, update)` in `libs/core/src/lib/config/update-project-terms.ts` validates structured protected-term and preferred-terminology edits once, reports invalid combinations through a machine-readable `problem` on `InvalidProjectTermsEditError`, and returns a read-only `view` and `apply()`. The CLI checks whether its preferred-terminology flags form a complete upsert, then shows the view and applies the plan. `updateProjectTerms` plans and applies in one call for the API. The plan resolves the pointer, term paths, and preview once. Apply uses those resolved values and writes the pointer before the term edit. The separate pointer setters are gone. It saves the exact previous bytes of changed term files. On failure, it restores those files and reverts only its pointer key if that key still holds the new value, preserving unrelated config edits. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API keeps its config update success message.
+`planProjectTermsUpdate(project, update)` in `libs/core/src/lib/config/update-project-terms.ts` validates structured protected-term and preferred-terminology edits once, reports invalid combinations through a machine-readable `problem` on `InvalidProjectTermsEditError`, and returns a read-only `view` and `apply()`. The CLI checks whether its preferred-terminology flags form a complete upsert, then shows the view and applies the plan. `updateProjectTerms` plans and applies in one call for the API. The plan resolves the pointer, term paths, and preview once. Apply uses those resolved values and writes the pointer before the term edit. The separate pointer setters are gone. It stages config and term writes through the [Config Write Transaction](#config-write-transaction). On failure, the transaction restores their exact previous bytes. A concurrent config change prevents restoration of config and companion files. This preserves a carried file that the current config can still reference. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API keeps its config update success message.
+
+The protected-term request contains `target` and `change`. `change.kind` selects `replace`, `edit`, or `view`. Both replacements and incremental edits write the selected global or collection scope. A collection replacement requires its own file pointer.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`api.md`](api.md#endpoint-reference), [`cli.md`](cli.md#protected-terms-scoping)
 
@@ -652,6 +674,8 @@ Example file:
 ```
 
 A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. `readProtectedTermsTarget()` reads the stored scope through `readGlobalProtectedTerms` / `readCollectionProtectedTerms`, which return `terms` (and a warning for a missing named file) and throw `ProtectedTermsFileError` for a malformed file. The config endpoint sends edits to core `updateProjectTerms()`, which checks an untyped list before it writes.
+
+A protected-term replacement selects its scope through `target.collection`. Core writes the collection file when the request names a collection.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms), [`core-library.md`](core-library.md#project-terms)
 
@@ -926,6 +950,8 @@ Explained in context: [`core-library.md`](core-library.md#term-glossary), [`cli.
 
 The direct file-edit side of [Project Terms](#project-terms), owned by core config. Collection create and update can also provide a whole protected-terms list through the [Collection Lifecycle](#collection-lifecycle). Project Terms Update changes `protectedTermsFile` and carries over the old list. [Project Terms Update](#project-terms-update) previews stored terms, paths, warnings and the effective union before a write, so the CLI can print that view. Protected terms use the domain `ListEdit`: `set`, `add` and `remove` hold arrays; the CLI splits its comma-separated `--set` value. Preferred terminology uses a replacement rule array, one `upsert` rule, or one discouraged term to remove. Core checks missing and conflicting structured edits; the CLI maps each typed `problem` to its flag wording and checks incomplete preferred-terminology flag groups before making a core request. Core applies protected-term lists through the shared [List Edit Merge](#list-edit-merge). Preferred-terminology upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched.
 
+Protected-term requests use `{ target, change }`. `change.kind: 'replace'` supplies a complete list; `change.kind: 'edit'` supplies a `ListEdit`.
+
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`cli.md`](cli.md#protected-terms-scoping), [`api.md`](api.md#error-mapping)
 
 ---
@@ -1054,6 +1080,8 @@ The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/c
 The API maps `kind` to a default HTTP status. An API-owned code table declares message transforms, status overrides, and inclusion of core `details` as response `errors`. All core error classes live in `errors/`, including translation and terminology validation errors. Core exposes domain facts without HTTP metadata. The filter reads these facts without checks for specific subclasses. The API may define its own `LingoTrackerError` subclasses, such as `JobNotFoundError` with kind `not-found`, because the filter reads only `kind`, `code` and `exposeMessage` to select their HTTP mapping. A core spec reserves kind `upstream` for `TranslationError`, so unknown provider codes keep the same prefix and default 502.
 
 A missing move destination is `CollectionNotFoundError` with the same `not-found` kind and a destination-specific message; a read-only destination is `ReadOnlyCollectionError` with kind `forbidden`. `CollectionBaseLocaleMismatchError` has kind `invalid` and maps a whole-collection source-locale disagreement to HTTP 400. Project-term and collection-tag edit errors name data, not CLI flags, and so do the glossary extractor and bundle constant-name errors (`GlossaryExtractorError`, `MultipleBundleConstantNameError`), so the API shows flag-free text; their `problem` fields identify invalid edit combinations so the commands in `apps/cli/src/commands/` can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
+
+Transaction rollback preserves the original error type and message. A restoration failure becomes its cause, so existing HTTP status mappings stay unchanged.
 
 Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
 

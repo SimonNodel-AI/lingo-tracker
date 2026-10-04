@@ -50,10 +50,13 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
       const plan = planProjectTermsUpdate(project, {
         protectedTerms: {
           target,
-          edit: {
-            add: options.add,
-            remove: options.remove,
-            ...(hasSet && { set: options.set ?? [] }),
+          change: {
+            kind: 'edit',
+            edit: {
+              add: options.add,
+              remove: options.remove,
+              ...(hasSet && { set: options.set ?? [] }),
+            },
           },
           list: hasList,
           ...(hasFile && { file: options.file }),
