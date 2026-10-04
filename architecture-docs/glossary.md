@@ -16,6 +16,8 @@ The server maps core errors by `kind` and an API-owned table keyed on `code`. Co
 
 Config and companion-file failures keep their original error mapping after a [Config Write Transaction](#config-write-transaction) rollback.
 
+The project snapshot preserves config response fields and serialization order. Malformed protected files still map to HTTP 500; invalid term edits still map to HTTP 400.
+
 Explained in context: [`frontend.md`](frontend.md#api-errors--one-adapter-at-the-http-seam), [`api.md`](api.md#error-mapping)
 
 ---
@@ -511,9 +513,11 @@ Explained in context: [`api.md`](api.md#translation-job-system)
 
 ### List Edit Merge
 
-`listEditProblem()` and `mergeListEdit()` in `libs/domain/src/lib/list-edit.ts` provide the shared add, remove and set rules for collection tags and protected terms. Every list is an array of strings. Core maps a missing or conflicting edit to a typed, flag-free error; the CLI checks its own flag combinations before calling core. Each caller supplies its own normalization: tags use `normalizeTags()`, while protected terms keep case and punctuation with `normalizeProtectedTerms()`.
+`listEditProblem()` and `mergeListEdit()` in `libs/domain/src/lib/list-edit.ts` provide the shared add, remove and set rules for collection tags and protected terms. Every list is an array of strings. Core maps a missing or conflicting edit to a typed, flag-free error; the CLI maps those typed problems to its existing flag messages. Each caller supplies its own normalization: tags use `normalizeTags()`, while protected terms keep case and punctuation with `normalizeProtectedTerms()`.
 
 The Project Terms Update union separates a complete replacement from an incremental `ListEdit`. Both paths retain protected-term normalization.
+
+Domain `validateListEdit` owns string-array, conflict, and missing-edit checks for collection tags and protected terms. Callers supply typed errors and refusal precedence. `assertStringArray` is the shared array assertion.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms)
 
@@ -615,6 +619,8 @@ Contrast with [Protected Term](#protected-term), which keeps a word unchanged in
 
 Preferred-terminology writes share the [Config Write Transaction](#config-write-transaction) with protected-term and config writes in the same update.
 
+The project snapshot contains the loaded rule file with its warning or error. Core converts preferred-terminology flags to a request before structured validation.
+
 Explained in context: [`docs/features/preferred-terminology.md`](../docs/features/preferred-terminology.md)
 
 ---
@@ -641,15 +647,19 @@ The terms and rules in force for an opened [collection](#collection): its [prote
 
 Project-wide edits use the [Project Terms Update](#project-terms-update) request union and the shared [Config Write Transaction](#config-write-transaction). The collection read interface stays unchanged.
 
+`readProjectTermsView(project)` returns a project snapshot: config, workspace name, global and collection protected terms, preferred rules, paths, and file problems. API config responses and CLI list previews use this snapshot. It reports malformed term files without throwing; each consumer preserves its existing refusal policy.
+
 Explained in context: [`core-library.md`](core-library.md#project-terms)
 
 ---
 
 ### Project Terms Update
 
-`planProjectTermsUpdate(project, update)` in `libs/core/src/lib/config/update-project-terms.ts` validates structured protected-term and preferred-terminology edits once, reports invalid combinations through a machine-readable `problem` on `InvalidProjectTermsEditError`, and returns a read-only `view` and `apply()`. The CLI checks whether its preferred-terminology flags form a complete upsert, then shows the view and applies the plan. `updateProjectTerms` plans and applies in one call for the API. The plan resolves the pointer, term paths, and preview once. Apply uses those resolved values and writes the pointer before the term edit. The separate pointer setters are gone. It stages config and term writes through the [Config Write Transaction](#config-write-transaction). On failure, the transaction restores their exact previous bytes. A concurrent config change prevents restoration of config and companion files. This preserves a carried file that the current config can still reference. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API keeps its config update success message.
+`planProjectTermsUpdate(project, update)` in `libs/core/src/lib/config/update-project-terms.ts` validates structured protected-term and preferred-terminology edits once, reports invalid combinations through a machine-readable `problem` on `InvalidProjectTermsEditError`, and returns a read-only `view` and `apply()`. Core `preferredTerminologyRequestFromFlags` checks incomplete flag groups and builds the request. The CLI shows the snapshot view and applies the plan. `updateProjectTerms` plans and applies in one call for the API. The plan resolves the pointer, term paths, and preview once. Apply uses those resolved values and writes the pointer before the term edit. The separate pointer setters are gone. It stages config and term writes through the [Config Write Transaction](#config-write-transaction). On failure, the transaction restores their exact previous bytes. A concurrent config change prevents restoration of config and companion files. This preserves a carried file that the current config can still reference. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API keeps its config update success message.
 
 The protected-term request contains `target` and `change`. `change.kind` selects `replace`, `edit`, or `view`. Both replacements and incremental edits write the selected global or collection scope. A collection replacement requires its own file pointer.
+
+The plan reads one project snapshot for its list previews. Protected-term and preferred-terminology refusals use separate problem types in one `InvalidProjectTermsEditError`.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`api.md`](api.md#endpoint-reference), [`cli.md`](cli.md#protected-terms-scoping)
 
@@ -673,9 +683,11 @@ Example file:
 ]
 ```
 
-A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. `readProtectedTermsTarget()` reads the stored scope through `readGlobalProtectedTerms` / `readCollectionProtectedTerms`, which return `terms` (and a warning for a missing named file) and throw `ProtectedTermsFileError` for a malformed file. The config endpoint sends edits to core `updateProjectTerms()`, which checks an untyped list before it writes.
+A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. `protectedTermsTargetView()` selects a stored scope from `readProjectTermsView()`. It returns terms and warnings and throws `ProtectedTermsFileError` for a malformed file. The config endpoint sends edits to core `updateProjectTerms()`, which checks an untyped list before it writes.
 
 A protected-term replacement selects its scope through `target.collection`. Core writes the collection file when the request names a collection.
+
+CLI scope selection uses `protectedTermsTargetView` on the project snapshot. It reports global and selected-collection problems, and ignores unrelated collection problems.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms), [`core-library.md`](core-library.md#project-terms)
 
@@ -948,9 +960,11 @@ Explained in context: [`core-library.md`](core-library.md#term-glossary), [`cli.
 
 ### Term List Edit
 
-The direct file-edit side of [Project Terms](#project-terms), owned by core config. Collection create and update can also provide a whole protected-terms list through the [Collection Lifecycle](#collection-lifecycle). Project Terms Update changes `protectedTermsFile` and carries over the old list. [Project Terms Update](#project-terms-update) previews stored terms, paths, warnings and the effective union before a write, so the CLI can print that view. Protected terms use the domain `ListEdit`: `set`, `add` and `remove` hold arrays; the CLI splits its comma-separated `--set` value. Preferred terminology uses a replacement rule array, one `upsert` rule, or one discouraged term to remove. Core checks missing and conflicting structured edits; the CLI maps each typed `problem` to its flag wording and checks incomplete preferred-terminology flag groups before making a core request. Core applies protected-term lists through the shared [List Edit Merge](#list-edit-merge). Preferred-terminology upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched.
+The direct file-edit side of [Project Terms](#project-terms), owned by core config. Collection create and update can also provide a whole protected-terms list through the [Collection Lifecycle](#collection-lifecycle). Project Terms Update changes `protectedTermsFile` and carries over the old list. [Project Terms Update](#project-terms-update) previews stored terms, paths, warnings and the effective union before a write, so the CLI can print that view. Protected terms use the domain `ListEdit`: `set`, `add` and `remove` hold arrays; the CLI splits its comma-separated `--set` value. Preferred terminology uses a replacement rule array, one `upsert` rule, or one discouraged term to remove. Core checks missing and conflicting structured edits; the CLI maps each typed `problem` to its flag wording. Core `preferredTerminologyRequestFromFlags` checks incomplete preferred-terminology flag groups before it builds a request. Core applies protected-term lists through the shared [List Edit Merge](#list-edit-merge). Preferred-terminology upsert and removal match discouraged terms without regard to case; a validation error carries its row details and leaves the file untouched.
 
 Protected-term requests use `{ target, change }`. `change.kind: 'replace'` supplies a complete list; `change.kind: 'edit'` supplies a `ListEdit`.
+
+`ProtectedTermsEditProblem` and `PreferredTerminologyEditProblem` define each command’s own problem codes. Each CLI wording table covers every code with a string.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`cli.md`](cli.md#protected-terms-scoping), [`api.md`](api.md#error-mapping)
 
@@ -1082,6 +1096,8 @@ The API maps `kind` to a default HTTP status. An API-owned code table declares m
 A missing move destination is `CollectionNotFoundError` with the same `not-found` kind and a destination-specific message; a read-only destination is `ReadOnlyCollectionError` with kind `forbidden`. `CollectionBaseLocaleMismatchError` has kind `invalid` and maps a whole-collection source-locale disagreement to HTTP 400. Project-term and collection-tag edit errors name data, not CLI flags, and so do the glossary extractor and bundle constant-name errors (`GlossaryExtractorError`, `MultipleBundleConstantNameError`), so the API shows flag-free text; their `problem` fields identify invalid edit combinations so the commands in `apps/cli/src/commands/` can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
 
 Transaction rollback preserves the original error type and message. A restoration failure becomes its cause, so existing HTTP status mappings stay unchanged.
+
+`InvalidProjectTermsEditError.problem` accepts `ProtectedTermsEditProblem` or `PreferredTerminologyEditProblem`. The exported type guards narrow each command to its own codes. The error retains its invalid kind and HTTP 400 mapping.
 
 Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
 

@@ -61,7 +61,14 @@ export {
   JS_IDENTIFIER_PATTERN,
   validateJavaScriptIdentifier,
 } from './lib/js-identifier';
-export { type ListEdit, type ListEditProblem, listEditProblem, mergeListEdit } from './lib/list-edit';
+export {
+  assertStringArray,
+  type ListEdit,
+  type ListEditProblem,
+  listEditProblem,
+  mergeListEdit,
+  validateListEdit,
+} from './lib/list-edit';
 // Shared types
 export type { LocaleMetadata } from './lib/locale-metadata';
 export { isUnderNodeModules } from './lib/node-modules';

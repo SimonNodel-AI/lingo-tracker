@@ -158,29 +158,3 @@ export interface ResolvedProtectedTerms {
   /** Per-collection terms and file path, keyed by collection name. `filePath` is absent when unconfigured. */
   collections: Record<string, { terms: string[]; filePath?: string }>;
 }
-
-/**
- * Reads every protected-terms file referenced by a config in one pass. Intended for
- * read-only consumers such as the API, which need both the terms and the paths they
- * came from. A file that fails to parse throws, exactly as a direct read would.
- *
- * @throws {ProtectedTermsFileError} A file is not a JSON array of strings.
- */
-export function resolveProtectedTermsForConfig(
-  config: LingoTrackerConfig,
-  cwd: string = process.cwd(),
-): ResolvedProtectedTerms {
-  const collections: ResolvedProtectedTerms['collections'] = {};
-  for (const [name, collection] of Object.entries(config.collections ?? {})) {
-    collections[name] = {
-      terms: readCollectionProtectedTerms(collection, cwd).terms,
-      filePath: resolveCollectionProtectedTermsFilePath(collection, cwd),
-    };
-  }
-
-  return {
-    globalTerms: readGlobalProtectedTerms(config, cwd).terms,
-    globalFilePath: resolveGlobalProtectedTermsFilePath(config, cwd),
-    collections,
-  };
-}

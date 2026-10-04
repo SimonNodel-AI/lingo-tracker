@@ -1,7 +1,7 @@
 // Core errors declare domain kinds and details; adapters own presentation.
 
 export type { FolderPathPart } from './error-messages';
-export type { CollectionTagEditProblem, ErrorKind, ProjectTermsEditProblem } from './lingo-tracker-error';
+export type { CollectionTagEditProblem, ErrorKind } from './lingo-tracker-error';
 export {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
@@ -32,6 +32,10 @@ export {
   InvalidLocaleError,
   InvalidNameError,
   InvalidProjectTermsEditError,
+  isProtectedTermsEditProblem,
+  isPreferredTerminologyEditProblem,
+  type ProtectedTermsEditProblem,
+  type PreferredTerminologyEditProblem,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
   LingoTrackerError,

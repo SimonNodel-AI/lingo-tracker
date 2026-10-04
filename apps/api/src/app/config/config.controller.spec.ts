@@ -4,10 +4,10 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import {
   InvalidCollectionError,
   InvalidConfigError,
-  loadPreferredTerminology,
+  readProjectTermsView,
+  type ProjectTermsView,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
-  resolveProtectedTermsForConfig,
   updateProjectTerms,
 } from '@simoncodes-ca/core';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
@@ -18,8 +18,7 @@ import { ConfigService } from './config.service';
 // Mock the file readers and writers; keep the real error classes so the filter mapping applies.
 jest.mock('@simoncodes-ca/core', () => ({
   ...jest.requireActual('@simoncodes-ca/core'),
-  resolveProtectedTermsForConfig: jest.fn(),
-  loadPreferredTerminology: jest.fn(),
+  readProjectTermsView: jest.fn(),
   updateProjectTerms: jest.fn(),
 }));
 
@@ -47,6 +46,7 @@ function messageOf(http: HttpException): unknown {
 describe('ConfigController', () => {
   let moduleRef: TestingModule;
   let controller: ConfigController;
+  let snapshot: ProjectTermsView;
 
   const baseConfig = {
     exportFolder: 'dist/export',
@@ -81,12 +81,18 @@ describe('ConfigController', () => {
       }
     });
     configService.getConfig.mockReturnValue(baseConfig);
-    (resolveProtectedTermsForConfig as jest.Mock).mockReturnValue({
-      globalTerms: [],
-      globalFilePath: '/project/.lingo-tracker-protected-terms.json',
-      collections: {},
-    });
-    (loadPreferredTerminology as jest.Mock).mockReturnValue({ rules: [], filePath: TERMINOLOGY_PATH });
+    snapshot = {
+      config: baseConfig,
+      projectName: basename(process.cwd()),
+      protectedTerms: {
+        globalTerms: [],
+        globalFilePath: '/project/.lingo-tracker-protected-terms.json',
+        collections: {},
+      },
+      preferredTerminology: { rules: [], filePath: TERMINOLOGY_PATH },
+      problems: [],
+    };
+    (readProjectTermsView as jest.Mock).mockImplementation(() => snapshot);
   });
 
   describe('getConfig', () => {
@@ -96,26 +102,26 @@ describe('ConfigController', () => {
         globalFilePath: '/project/.lingo-tracker-protected-terms.json',
         collections: {},
       };
-      (resolveProtectedTermsForConfig as jest.Mock).mockReturnValue(resolved);
+      snapshot = { ...snapshot, protectedTerms: resolved };
 
       const mapSpy = jest.spyOn(mapper, 'mapConfigToDto');
       controller.getConfig();
 
-      expect(mapSpy).toHaveBeenCalledWith(baseConfig, resolved, basename(process.cwd()), {
-        rules: [],
-        filePath: TERMINOLOGY_PATH,
-      });
+      expect(mapSpy).toHaveBeenCalledWith(snapshot);
     });
 
     it('loads preferred terminology for the served config and exposes rules and path', () => {
-      (loadPreferredTerminology as jest.Mock).mockReturnValue({
-        rules: [{ discouraged: 'Expenditure', preferred: 'Investment', reason: 'Planning term.' }],
-        filePath: TERMINOLOGY_PATH,
-      });
+      snapshot = {
+        ...snapshot,
+        preferredTerminology: {
+          rules: [{ discouraged: 'Expenditure', preferred: 'Investment', reason: 'Planning term.' }],
+          filePath: TERMINOLOGY_PATH,
+        },
+      };
 
       const dto = controller.getConfig();
 
-      expect(loadPreferredTerminology).toHaveBeenCalledWith(baseConfig, process.cwd());
+      expect(readProjectTermsView).toHaveBeenCalledWith({ sourceConfig: baseConfig, projectRoot: process.cwd() });
       expect(dto.preferredTerminology).toEqual([
         { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Planning term.' },
       ]);
@@ -124,11 +130,14 @@ describe('ConfigController', () => {
     });
 
     it('exposes a broken terminology file as preferredTerminologyError', () => {
-      (loadPreferredTerminology as jest.Mock).mockReturnValue({
-        rules: [],
-        filePath: TERMINOLOGY_PATH,
-        error: 'Preferred terminology file is not valid JSON',
-      });
+      snapshot = {
+        ...snapshot,
+        preferredTerminology: {
+          rules: [],
+          filePath: TERMINOLOGY_PATH,
+          error: 'Preferred terminology file is not valid JSON',
+        },
+      };
 
       const dto = controller.getConfig();
 
@@ -137,11 +146,14 @@ describe('ConfigController', () => {
     });
 
     it('exposes the resolved terms and their file path on the DTO', () => {
-      (resolveProtectedTermsForConfig as jest.Mock).mockReturnValue({
-        globalTerms: ['iPhone'],
-        globalFilePath: '/project/.lingo-tracker-protected-terms.json',
-        collections: {},
-      });
+      snapshot = {
+        ...snapshot,
+        protectedTerms: {
+          globalTerms: ['iPhone'],
+          globalFilePath: '/project/.lingo-tracker-protected-terms.json',
+          collections: {},
+        },
+      };
 
       const dto = controller.getConfig();
 

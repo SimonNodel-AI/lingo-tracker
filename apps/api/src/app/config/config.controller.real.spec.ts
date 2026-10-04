@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
@@ -39,6 +39,72 @@ describe('ConfigController preferred terminology (real core)', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it('refuses the first broken collection file before a broken global file with the same HTTP status', () => {
+    config.protectedTermsFile = 'protected.json';
+    config.collections['first'] = { translationsFolder: 'i18n', protectedTermsFile: 'first.json' };
+    config.collections['second'] = { translationsFolder: 'other', protectedTermsFile: 'second.json' };
+    for (const path of ['protected.json', 'first.json', 'second.json']) writeFileSync(join(projectDir, path), '{bad');
+    let thrown: unknown;
+    try {
+      controller.getConfig();
+    } catch (error) {
+      thrown = error;
+    }
+    const http = toHttpException(thrown);
+    expect(http.getStatus()).toBe(500);
+    expect(http.getResponse()).toEqual(
+      expect.objectContaining({ message: expect.stringContaining(join(projectDir, 'first.json')) }),
+    );
+  });
+
+  it('keeps GET config JSON byte-identical for the existing terms and rule fixtures', () => {
+    config.protectedTermsFile = 'protected.json';
+    config.collections['app'] = { translationsFolder: './i18n', protectedTermsFile: 'own.json' };
+    writeFileSync(join(projectDir, 'protected.json'), '["SimonCodes"]');
+    writeFileSync(join(projectDir, 'own.json'), '["iPhone"]');
+    writeFileSync(
+      filePath(),
+      '[{"discouraged":"Expenditure","preferred":"Investment","reason":"Planning term."},{"discouraged":"E-mail","preferred":"email"}]',
+    );
+    const fixture = {
+      exportFolder: 'dist/export',
+      importFolder: 'dist/import',
+      baseLocale: 'en',
+      locales: ['en'],
+      collections: {
+        app: {
+          translationsFolder: './i18n',
+          protectedTermsFile: 'own.json',
+          protectedTerms: ['iPhone'],
+          protectedTermsFilePath: join(projectDir, 'own.json'),
+        },
+      },
+      protectedTerms: ['SimonCodes'],
+      protectedTermsFilePath: join(projectDir, 'protected.json'),
+      preferredTerminology: [
+        { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Planning term.' },
+        { discouraged: 'E-mail', preferred: 'email' },
+      ],
+      preferredTerminologyFilePath: filePath(),
+      projectName: basename(projectDir),
+    };
+    expect(JSON.stringify(controller.getConfig())).toBe(JSON.stringify(fixture));
+  });
+
+  it('keeps GET config JSON byte-identical when default term files are absent', () => {
+    const fixture = {
+      exportFolder: 'dist/export',
+      importFolder: 'dist/import',
+      baseLocale: 'en',
+      locales: ['en'],
+      collections: {},
+      protectedTermsFilePath: join(projectDir, '.lingo-tracker-protected-terms.json'),
+      preferredTerminologyFilePath: filePath(),
+      projectName: basename(projectDir),
+    };
+    expect(JSON.stringify(controller.getConfig())).toBe(JSON.stringify(fixture));
   });
 
   it('answers invalid rows with 400 and submitted-row details without changing the file', () => {

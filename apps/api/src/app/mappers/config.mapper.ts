@@ -1,6 +1,7 @@
 import type {
   LingoTrackerCollection,
   LingoTrackerConfig,
+  ProjectTermsView,
   LoadPreferredTerminologyResult,
   ResolvedProtectedTerms,
 } from '@simoncodes-ca/core';
@@ -48,18 +49,9 @@ function mapPreferredTerminology(
   };
 }
 
-/**
- * Maps config to its DTO. `resolved` carries the protected terms and `terminology` the
- * preferred-terminology file, both already read from disk by the caller — the mapper
- * itself stays free of file I/O. `projectName` is the served workspace folder name,
- * supplied by the controller for the same reason.
- */
-export function mapConfigToDto(
-  config: LingoTrackerConfig,
-  resolved?: ResolvedProtectedTerms,
-  projectName?: string,
-  terminology?: LoadPreferredTerminologyResult,
-): LingoTrackerConfigDto {
+/** Projects a full project snapshot to the DTO without file I/O or refusal policy. */
+export function mapConfigToDto(snapshot: ProjectTermsView): LingoTrackerConfigDto {
+  const { config, protectedTerms: resolved, preferredTerminology: terminology, projectName } = snapshot;
   return {
     exportFolder: config.exportFolder,
     importFolder: config.importFolder,
@@ -71,9 +63,9 @@ export function mapConfigToDto(
     ...(config.tokenCasing && { tokenCasing: config.tokenCasing }),
     ...(config.transformICUToTransloco !== undefined && { transformICUToTransloco: config.transformICUToTransloco }),
     translation: config.translation,
-    protectedTerms: resolved?.globalTerms.length ? [...resolved.globalTerms] : undefined,
-    protectedTermsFilePath: resolved?.globalFilePath,
-    ...(terminology && mapPreferredTerminology(terminology)),
+    protectedTerms: resolved.globalTerms.length ? [...resolved.globalTerms] : undefined,
+    protectedTermsFilePath: resolved.globalFilePath,
+    ...mapPreferredTerminology(terminology),
     ...(projectName && { projectName }),
   };
 }

@@ -1,5 +1,5 @@
 import {
-  listEditProblem,
+  validateListEdit,
   mergeListEdit,
   normalizeProtectedTerms,
   validatePreferredTermRules,
@@ -8,6 +8,7 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   CollectionNotFoundError,
   InvalidProjectTermsEditError,
+  InvalidCollectionError,
   PreferredTerminologyValidationError,
 } from '../errors/lingo-tracker-error';
 import { patchCollectionEntry } from './collection-entry';
@@ -16,7 +17,6 @@ import type { OpenedProject } from './open-collection';
 import {
   editPreferredTerminology,
   type LoadPreferredTerminologyResult,
-  loadPreferredTerminology,
   type PreferredTerminologyEdit,
   type PreferredTerminologyEditResult,
   resolvePreferredTerminologyFilePath,
@@ -35,9 +35,9 @@ import {
   type ProtectedTermsEdit,
   type ProtectedTermsEditResult,
   type ProtectedTermsView,
-  readProtectedTermsTarget,
 } from './set-protected-terms';
 import { assertWritableTermFilePath } from './term-file';
+import { protectedTermsTargetView, readProjectTermsView } from './project-terms-view';
 import type { CompanionFileWrite } from './config-write-transaction';
 
 /** Replacements and incremental edits both write the explicitly selected scope. */
@@ -92,29 +92,32 @@ function validateProjectTermsUpdate(update: ProjectTermsUpdate): ValidatedEdit {
   const preferredRequest = update.preferredTerminology;
   const protectedEdit = protectedRequest?.change.edit;
   const replacing = protectedRequest !== undefined && protectedRequest.change.kind === 'replace';
-  const protectedProblem = protectedEdit === undefined ? 'missing' : listEditProblem(protectedEdit);
+  let hasProtectedEdit = false;
 
   if (protectedRequest !== undefined) {
     if (protectedRequest.file !== undefined && typeof protectedRequest.file !== 'string') {
       throw new InvalidProjectTermsEditError('Protected terms file path must be a string', 'protected-file-path');
     }
-    if (protectedProblem === 'conflict') {
-      throw new InvalidProjectTermsEditError(
-        'A replacement list cannot be combined with additions or removals',
-        'protected-conflict',
-      );
-    }
-    if (!replacing && protectedProblem === 'missing' && !protectedRequest.list && protectedRequest.file === undefined) {
-      throw new InvalidProjectTermsEditError(
-        'A protected terms update needs a list edit, list view, or file path',
-        'protected-missing',
-      );
-    }
+    hasProtectedEdit = validateListEdit(protectedEdit ?? {}, {
+      shape: () => new InvalidCollectionError('protectedTerms must be an array of strings'),
+      conflict: () =>
+        new InvalidProjectTermsEditError(
+          'A replacement list cannot be combined with additions or removals',
+          'protected-conflict',
+        ),
+      combinationsFirst: true,
+      ...(!replacing &&
+        !protectedRequest.list &&
+        protectedRequest.file === undefined && {
+          missing: () =>
+            new InvalidProjectTermsEditError(
+              'A protected terms update needs a list edit, list view, or file path',
+              'protected-missing',
+            ),
+        }),
+    });
     if (replacing) assertProtectedTerms(protectedRequest.change.replace);
-    if (protectedEdit?.add !== undefined) assertProtectedTerms(protectedEdit.add);
-    if (protectedEdit?.remove !== undefined) assertProtectedTerms(protectedEdit.remove);
-    if (protectedEdit?.set !== undefined) assertProtectedTerms(protectedEdit.set);
-    if (replacing && protectedProblem !== 'missing') {
+    if (replacing && hasProtectedEdit) {
       throw new InvalidProjectTermsEditError(
         'A replacement list cannot be combined with another list edit',
         'protected-replacement-conflict',
@@ -158,7 +161,7 @@ function validateProjectTermsUpdate(update: ProjectTermsUpdate): ValidatedEdit {
       if (errors.length > 0) throw new PreferredTerminologyValidationError(errors, preferredRequest.set);
     }
   }
-  return { replacing, hasProtectedEdit: protectedProblem !== 'missing', hasPreferredEdit };
+  return { replacing, hasProtectedEdit, hasPreferredEdit };
 }
 
 interface PointerChange {
@@ -238,14 +241,24 @@ export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTe
   const protectedRequest = update.protectedTerms;
   const { replacing } = validated;
   const preferredRequest = update.preferredTerminology;
-  let protectedTerms =
-    protectedRequest !== undefined && !replacing
-      ? readProtectedTermsTarget(project, protectedRequest.target)
-      : undefined;
+  const collectionName = protectedRequest?.target.collection;
+  if (
+    protectedRequest !== undefined &&
+    !replacing &&
+    collectionName &&
+    currentConfig.collections[collectionName] === undefined
+  ) {
+    throw new CollectionNotFoundError(collectionName);
+  }
+  const needsProtectedView = protectedRequest !== undefined && !replacing;
+  const needsPreferredView = preferredRequest !== undefined && preferredRequest.set === undefined;
+  const snapshot = needsProtectedView || needsPreferredView ? readProjectTermsView(project) : undefined;
+  let protectedTerms: ProtectedTermsView | undefined;
+  if (needsProtectedView && protectedRequest !== undefined && snapshot !== undefined) {
+    protectedTerms = protectedTermsTargetView(snapshot, protectedRequest.target);
+  }
   const preferredTerminology =
-    preferredRequest !== undefined && preferredRequest.set === undefined
-      ? loadPreferredTerminology(currentConfig, cwd)
-      : undefined;
+    preferredRequest !== undefined && preferredRequest.set === undefined ? snapshot?.preferredTerminology : undefined;
   const pointerPlan =
     protectedRequest === undefined
       ? { nextConfig: currentConfig, protectedTerms, pointerChange: undefined, protectedTermsFileChange: undefined }
@@ -254,7 +267,6 @@ export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTe
   protectedTerms = pointerPlan.protectedTerms;
   const preferredPath = validated.hasPreferredEdit ? resolvePreferredTerminologyFilePath(nextConfig, cwd) : undefined;
   if (preferredPath !== undefined) assertWritableTermFilePath('preferred terminology file', preferredPath);
-  const collectionName = protectedRequest?.target?.collection;
   let protectedPath: string | undefined;
   if (replacing || validated.hasProtectedEdit) {
     if (collectionName) {

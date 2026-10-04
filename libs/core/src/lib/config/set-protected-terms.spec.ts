@@ -4,13 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { CollectionNotFoundError } from '../errors/lingo-tracker-error';
-import {
-  readProtectedTermsTarget,
-  type ProtectedTermsEdit,
-  type ProtectedTermsEditResult,
-  type ProtectedTermsView,
-} from './set-protected-terms';
+import type { ProtectedTermsEdit, ProtectedTermsEditResult } from './set-protected-terms';
+import { protectedTermsTargetView, readProjectTermsView } from './project-terms-view';
 import { loadConfig } from './load-config';
 import { updateProjectTerms } from './update-project-terms';
 
@@ -58,7 +53,7 @@ describe('protected terms edits', () => {
     if (!result) throw new Error('Missing pointer result');
     return result;
   };
-  const applyTermsEdit = (target: { collection?: string }, _view: ProtectedTermsView, edit: ProtectedTermsEdit) =>
+  const applyTermsEdit = (target: { collection?: string }, edit: ProtectedTermsEdit) =>
     termResult(
       updateProjectTerms(project(), { protectedTerms: { target, change: { kind: 'edit', edit } } })
         .protectedTermsResult,
@@ -168,23 +163,17 @@ describe('protected terms edits', () => {
 
   it('adds, removes, and replaces terms through one edit interface', () => {
     writeFileSync(defaultPath(), '["iPhone"]');
-    expect(applyTermsEdit({}, readProtectedTermsTarget(project(), {}), { add: [' Node.js ', 'iPhone'] }).terms).toEqual(
-      ['iPhone', 'Node.js'],
-    );
-    expect(applyTermsEdit({}, readProtectedTermsTarget(project(), {}), { remove: ['iPhone'] }).terms).toEqual([
-      'Node.js',
-    ]);
-    expect(applyTermsEdit({}, readProtectedTermsTarget(project(), {}), { set: [' C++', ' C++ '] }).terms).toEqual([
-      'C++',
-    ]);
+    expect(applyTermsEdit({}, { add: [' Node.js ', 'iPhone'] }).terms).toEqual(['iPhone', 'Node.js']);
+    expect(applyTermsEdit({}, { remove: ['iPhone'] }).terms).toEqual(['Node.js']);
+    expect(applyTermsEdit({}, { set: [' C++', ' C++ '] }).terms).toEqual(['C++']);
     expect(readJson(defaultPath())).toEqual(['C++']);
   });
 
   it('changes a pointer before adding to the new file and reports the list before the edit', () => {
     writeFileSync(defaultPath(), '["iPhone"]');
     changeGlobalTermsPointer('config/terms.json');
-    const view = readProtectedTermsTarget(project(), {});
-    const result = applyTermsEdit({}, view, { add: ['Pixel'] });
+    const view = protectedTermsTargetView(readProjectTermsView(project()), {});
+    const result = applyTermsEdit({}, { add: ['Pixel'] });
     expect(view.globalTerms).toEqual(['iPhone']);
     expect(result.terms).toEqual(['iPhone', 'Pixel']);
     expect(result.filePath).toBe(join(tempDir(), 'config/terms.json'));
@@ -193,35 +182,8 @@ describe('protected terms edits', () => {
 
   it('does not overwrite a malformed list during an edit', () => {
     writeFileSync(defaultPath(), '{broken');
-    expect(() => readProtectedTermsTarget(project(), {})).toThrow('not valid JSON');
+    expect(() => applyTermsEdit({}, { add: ['New'] })).toThrow('not valid JSON');
     expect(readFileSync(defaultPath(), 'utf8')).toBe('{broken');
-  });
-
-  it('rejects an unknown collection with CollectionNotFoundError', () => {
-    expect(() => readProtectedTermsTarget(project(), { collection: 'missing' })).toThrow(CollectionNotFoundError);
-  });
-
-  it('returns warnings, stored lists, and the effective union before an edit', () => {
-    writeConfig({
-      ...baseConfig,
-      protectedTermsFile: 'missing.json',
-      collections: { myApp: { ...baseConfig.collections['myApp'], protectedTermsFile: 'i18n/own.json' } },
-    });
-    writeFileSync(join(tempDir(), 'i18n/own.json'), '["Pixel"]');
-    const view = readProtectedTermsTarget(project(), { collection: 'myApp' });
-    expect(view.warnings).toEqual([
-      `Protected terms file not found: ${join(tempDir(), 'missing.json')}. Treating as an empty list.`,
-    ]);
-    expect(view.globalTerms).toEqual([]);
-    expect(view.collectionTerms).toEqual(['Pixel']);
-    expect(view.storedTerms).toEqual(['Pixel']);
-    expect(view.effectiveTerms).toEqual(['Pixel']);
-    expect(view.globalFilePath).toBe(join(tempDir(), 'missing.json'));
-    expect(view.collectionFilePath).toBe(join(tempDir(), 'i18n/own.json'));
-    writeFileSync(join(tempDir(), 'missing.json'), '["iPhone"]');
-    const populated = readProtectedTermsTarget(project(), { collection: 'myApp' });
-    expect(populated.warnings).toEqual([]);
-    expect(populated.effectiveTerms).toEqual(['iPhone', 'Pixel']);
   });
 
   it('rejects a non-string list before writing a term file', () => {

@@ -1,6 +1,5 @@
-import { basename } from 'node:path';
 import { Controller, Get, Put } from '@nestjs/common';
-import { loadPreferredTerminology, resolveProtectedTermsForConfig, updateProjectTerms } from '@simoncodes-ca/core';
+import { ProtectedTermsFileError, readProjectTermsView, updateProjectTerms } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
 import { mapConfigToDto, mapDtoToConfigUpdate } from '../mappers/config.mapper';
 import { ConfigService } from './config.service';
@@ -13,14 +12,12 @@ export class ConfigController {
 
   @Get()
   getConfig(): LingoTrackerConfigDto {
-    const config = this.configService.getConfig();
-    const cwd = process.cwd();
-    return mapConfigToDto(
-      config,
-      resolveProtectedTermsForConfig(config),
-      basename(cwd),
-      loadPreferredTerminology(config, cwd),
+    const snapshot = readProjectTermsView(this.configService.openProject());
+    const broken = snapshot.problems.find(
+      (problem) => problem.file === 'protected-terms' && problem.severity === 'error',
     );
+    if (broken !== undefined) throw new ProtectedTermsFileError(broken.filePath, broken.message);
+    return mapConfigToDto(snapshot);
   }
 
   /**

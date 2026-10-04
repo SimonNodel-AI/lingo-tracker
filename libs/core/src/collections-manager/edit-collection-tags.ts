@@ -1,4 +1,4 @@
-import { type ListEdit, listEditProblem, mergeListEdit, normalizeTags } from '@simoncodes-ca/domain';
+import { type ListEdit, validateListEdit, mergeListEdit, normalizeTags } from '@simoncodes-ca/domain';
 import { patchCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
 import type { OpenedCollection } from '../lib/config/open-collection';
@@ -9,18 +9,11 @@ export type CollectionTagEdit = ListEdit;
 
 /** Edits the opened registration's inherited tags and normalizes the result. */
 export function editCollectionTags(collection: OpenedCollection, edit: CollectionTagEdit): string[] {
-  for (const values of [edit.add, edit.remove, edit.set]) {
-    if (values !== undefined && (!Array.isArray(values) || values.some((value) => typeof value !== 'string'))) {
-      throw new InvalidCollectionError('Tag edit lists must be arrays of strings');
-    }
-  }
-  const problem = listEditProblem(edit);
-  if (problem === 'conflict') {
-    throw new InvalidCollectionError(ErrorMessages.collectionTagEditConflict(), { problem: 'tag-conflict' });
-  }
-  if (problem === 'missing') {
-    throw new InvalidCollectionError(ErrorMessages.collectionTagEditMissing(), { problem: 'tag-missing' });
-  }
+  validateListEdit(edit, {
+    shape: () => new InvalidCollectionError('Tag edit lists must be arrays of strings'),
+    conflict: () => new InvalidCollectionError(ErrorMessages.collectionTagEditConflict(), { problem: 'tag-conflict' }),
+    missing: () => new InvalidCollectionError(ErrorMessages.collectionTagEditMissing(), { problem: 'tag-missing' }),
+  });
 
   const { sourceConfig: config, name } = collection;
 

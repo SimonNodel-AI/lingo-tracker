@@ -147,23 +147,50 @@ export class ProtectedTermsFileError extends LingoTrackerError {
   }
 }
 
-export type ProjectTermsEditProblem =
+export type ProtectedTermsEditProblem =
   | 'protected-conflict'
   | 'protected-missing'
   | 'protected-file-path'
+  | 'protected-replacement-conflict';
+
+export type PreferredTerminologyEditProblem =
   | 'preferred-missing'
   | 'preferred-conflict'
   | 'preferred-remove-shape'
   | 'preferred-replacement-shape'
   | 'preferred-upsert-shape'
-  | 'protected-replacement-conflict';
+  | 'preferred-orphan-flags'
+  | 'preferred-incomplete-flags';
+
+const protectedTermsProblems: Record<ProtectedTermsEditProblem, true> = {
+  'protected-conflict': true,
+  'protected-missing': true,
+  'protected-file-path': true,
+  'protected-replacement-conflict': true,
+};
+const preferredTerminologyProblems: Record<PreferredTerminologyEditProblem, true> = {
+  'preferred-missing': true,
+  'preferred-conflict': true,
+  'preferred-remove-shape': true,
+  'preferred-replacement-shape': true,
+  'preferred-upsert-shape': true,
+  'preferred-orphan-flags': true,
+  'preferred-incomplete-flags': true,
+};
+
+export function isProtectedTermsEditProblem(problem: unknown): problem is ProtectedTermsEditProblem {
+  return typeof problem === 'string' && Object.keys(protectedTermsProblems).includes(problem);
+}
+export function isPreferredTerminologyEditProblem(problem: unknown): problem is PreferredTerminologyEditProblem {
+  return typeof problem === 'string' && Object.keys(preferredTerminologyProblems).includes(problem);
+}
 
 /** A Project Terms edit has missing or conflicting options. */
 export class InvalidProjectTermsEditError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
-  readonly problem: ProjectTermsEditProblem;
+  readonly problem: ProtectedTermsEditProblem | PreferredTerminologyEditProblem;
 
-  constructor(message: string, problem: ProjectTermsEditProblem) {
+  constructor(message: string, problem: ProtectedTermsEditProblem | PreferredTerminologyEditProblem) {
     super(message, 'INVALID_PROJECT_TERMS_EDIT');
     this.problem = problem;
   }
