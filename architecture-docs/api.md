@@ -141,7 +141,7 @@ graph TD
     end
 
     subgraph core["@simoncodes-ca/core"]
-        COREOPS["addResource · addResources · editResource · deleteResource\nmoveResource · moveResources · createFolder · deleteFolder\nmoveFolder · addLocaleToCollection\nremoveLocaleFromCollection · readCollection\ntranslateExistingResource · translateLocale\nloadResourceTree · searchResources · treeResources"]
+        COREOPS["addResource · addResources · editResource · deleteResource\nmoveResource · moveResources · createFolder · deleteFolder\nmoveFolder · addLocaleToCollection\nremoveLocaleFromCollection · readCollection\ntranslateExistingResource · translateLocale\nResourceTreeIndex · searchResources"]
     end
 
     TRACKER -->|"REST /api/*"| controllers
@@ -167,7 +167,7 @@ graph TD
     COLLC --> COLMAP
 
     CONFIGS -->|"reads .lingo-tracker.json"| COREOPS
-    INDEX -->|"core.loadResourceTree()"| COREOPS
+    INDEX -->|"ResourceTreeIndex.load()"| COREOPS
     RESC -->|"delegate writes"| COREOPS
     FOLDC -->|"delegate writes"| COREOPS
     LOCALEC -->|"delegate writes"| COREOPS
@@ -253,7 +253,7 @@ This means a single `node apps/api/main.js` process serves both the UI and the A
 
 ## Collection Index
 
-`CollectionIndex` (`apps/api/src/app/cache/collection-index.service.ts`) is a singleton Nest provider. It holds an in-memory copy of each open collection's [resource tree](glossary.md#resource-tree), so the Tracker can browse and search a collection without reading the disk on each request.
+`CollectionIndex` (`apps/api/src/app/cache/collection-index.service.ts`) is a singleton Nest provider. It caches a core [Resource Tree Index](glossary.md#resource-tree-index) for each open collection, so the Tracker can browse and search a collection without reading the disk on each request.
 
 ### Interface
 
@@ -267,10 +267,10 @@ apply(changes: readonly ResourceMutation[]): void;              // used by sink 
 
 Controllers do not know how the index works. They read with `tree()`, `searchPage()` and `status()`. Writable collections carry `sink` as their default `onMutation`, so core writes inherit it. These items are internal to the index:
 
-- **Indexing.** `tree()` indexes a collection that is not indexed or whose last attempt failed. `status()` indexes only a collection that is not indexed, and reports `error` as it is. Both report the state that they found, so the first read answers `not-started` (and `/tree` returns `202`). `searchPage()` never starts indexing. It runs [Resource Search](glossary.md#resource-search) over `treeResources(tree)` when the collection is indexed, and over the disk (`readCollection(collection).resources`) until then. On the disk path it logs the folders the reader could not read with one `Logger.warn` per problem, using `describeFolderProblem` with the collection name. The tree loader also sends problems through `onProblem` to this logger; core does not print them. Direct resource and folder operations reject linked addresses with `InvalidCollectionFolderError` (`invalid`, HTTP 400); folder move/delete refusals name the operation and target. Both sources give the same results, because the same matcher ranks every match before the limit applies. `searchRequestFromQuery` in `search-result.mapper.ts` maps `mode=similar` to core's `similar-value` and parses `maxResults` with `Number`. It calls `normalizeSearchRequest` with default 100. Core caps valid limits at 500. A blank query returns an empty page. Core `searchPage` reports `limited` and the true `totalFound` before slicing; `totalFound` was previously the returned page size when limited.
-- **Revalidation.** Before each read, a ready entry compares a stat-only disk fingerprint (`computeTreeFingerprint`) with the fingerprint from its last index or own write. If they differ, the entry is dropped and indexed again. This makes CLI commands, `git checkout` and hand edits visible without a restart. Filesystem watching is not used, because inotify does not fire for Windows-side writes on a WSL `/mnt/c` mount, and the same is true for some network and container mounts. The check runs at most once per `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` (default 2000 ms) for each entry.
+- **Indexing.** `tree()` indexes a collection that is not indexed or whose last attempt failed. `status()` indexes only a collection that is not indexed, and reports `error` as it is. Both report the state that they found, so the first read answers `not-started` (and `/tree` returns `202`). `searchPage()` never starts indexing. It runs [Resource Search](glossary.md#resource-search) through `ResourceTreeIndex.searchPage()` when the collection is indexed, and through an unloaded instance until then. Core chooses the tree or Collection Reader source. On the disk path it logs the folders the reader could not read with one `Logger.warn` per problem, using `describeFolderProblem` with the collection name. The tree loader also sends problems through `onProblem` to this logger; core does not print them. Direct resource and folder operations reject linked addresses with `InvalidCollectionFolderError` (`invalid`, HTTP 400); folder move/delete refusals name the operation and target. Both sources give the same results, because the same matcher ranks every match before the limit applies. `searchRequestFromQuery` in `search-result.mapper.ts` maps `mode=similar` to core's `similar-value` and parses `maxResults` with `Number`. It calls `normalizeSearchRequest` with default 100. Core caps valid limits at 500. A blank query returns an empty page. Core `ResourceTreeIndex.searchPage` reports `limited` and the true `totalFound` before slicing; `totalFound` was previously the returned page size when limited.
+- **Revalidation.** Before each read, a ready entry compares a stat-only disk fingerprint with the fingerprint from its last index or own write through `ResourceTreeIndex.isStale()`. If they differ, the entry is dropped and indexed again. This makes CLI commands, `git checkout` and hand edits visible without a restart. Filesystem watching is not used, because inotify does not fire for Windows-side writes on a WSL `/mnt/c` mount, and the same is true for some network and container mounts. The check runs at most once per `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` (default 2000 ms) for each entry.
 - **Own writes.** After `apply()` patches an entry, the index refreshes that entry's fingerprint at the end of the tick. Each delivered mutation calls `apply`; the pending timer collapses all patches in a tick into one fingerprint scan. A read that comes before the refresh adopts the new fingerprint, so an own write is never read as an outside change.
-- **Patching.** One tree-walk helper applies each mutation to the tree. When a mutation does not match the tree (for example, a `remove` of a key that the index does not have), the index drops that collection. The next read indexes it again. A wrong patch never stays in memory.
+- **Patching.** The sink sends each mutation to `ResourceTreeIndex.apply()`. Core returns `patched`, `ignored`, or `reload`. Core owns all mutation kinds, including `reindex` and incompatible patches. A reload result includes the log reason. The API removes that cache entry, and the next tree or status read loads it again.
 
 ### Bounded Multi-Collection Design
 
@@ -282,7 +282,7 @@ The index holds a `Map` of entries keyed by collection name. The map is capped a
 
 **Eviction.** Each read or patch increments the entry's `accessSequence` (a monotonic counter, not a clock, because several collections can be touched in the same millisecond). When a new entry is added at the cap, the entry with the lowest `accessSequence` is dropped.
 
-**Per-entry state.** The fingerprint, the revalidation throttle stamp and the deferred fingerprint-refresh timer are stored on the entry. A read of one collection cannot postpone the staleness check of a different collection.
+**Per-entry state.** Each entry holds a Resource Tree Index with its own fingerprint. The API entry owns the revalidation throttle stamp and deferred refresh timer. A read of one collection cannot postpone the staleness check of a different collection.
 
 ### Index State Machine
 
@@ -297,8 +297,8 @@ reindex or failed patch
     not_started --> indexing : first tree() or status() read
     error --> indexing : next tree() read (retry)
 
-    indexing --> ready : core.loadResourceTree() succeeds
-    indexing --> error : core.loadResourceTree() throws
+    indexing --> ready : ResourceTreeIndex.load() succeeds
+    indexing --> error : ResourceTreeIndex.load() throws
 
     ready --> not_started : entry dropped
     ready --> ready : apply() patches the tree
@@ -307,21 +307,21 @@ reindex or failed patch
 | State | Meaning |
 |-------|---------|
 | `not-started` | The index has no entry for this collection. The read that reported it has started indexing. |
-| `indexing` | `core.loadResourceTree()` is running. `loadResourceTree()` is synchronous, so in practice the read that starts indexing also finishes it; the state is part of the HTTP contract. |
+| `indexing` | `ResourceTreeIndex.load()` is running. `ResourceTreeIndex.load()` is synchronous, so in practice the read that starts indexing also finishes it; the state is part of the HTTP contract. |
 | `ready` | The tree is in memory. Reads are served from it. |
 | `error` | The last attempt threw. The message is reported by `status()`. The next `tree()` read tries again. |
 
 ### Writes: Resource Mutations
 
-Each core write with mutation support, including `addResources`, `moveResources`, and `translateLocale`, accepts `onMutation` in its last object argument. `openCollection` also accepts a default sink and exposes it on the returned `Collection`. One core helper, `resolveMutationSink`, selects `options.onMutation ?? collection.onMutation`, so explicit callbacks still win. `RouteCollectionPipe` attaches `CollectionIndex.sink` when it opens a writable collection; resource, folder, and locale controllers inherit it. Collection update and delete routes open their own handles with the same sink, preserving their registration-specific access rules. `createCollection` now reports a benign `reindex` mutation for the newly registered folder after its config write. The translation job service receives the same writable route collection and inherits its sink. Core delivers mutations synchronously after disk operations; locale translation coalesces them at each batch boundary, so the index follows disk order even when requests overlap. A successful Resource Folder save delivers an `upsert` or `remove`; one that throws delivers `reindex`, since one JSON file may already be on disk. Earlier completed batch items remain delivered if a later item fails. The sink catches and logs any index error, so indexing cannot fail a write. There is no rollback. The index matches mutations by absolute `translationsFolder`, including both sides of a cross-collection move.
+Each core write with mutation support, including `addResources`, `moveResources`, and `translateLocale`, accepts `onMutation` in its last object argument. `openCollection` also accepts a default sink and exposes it on the returned `Collection`. One core helper, `resolveMutationSink`, selects `options.onMutation ?? collection.onMutation`, so explicit callbacks still win. `RouteCollectionPipe` attaches `CollectionIndex.sink` when it opens a writable collection; resource, folder, and locale controllers inherit it. Collection update and delete routes open their own handles with the same sink, preserving their registration-specific access rules. `createCollection` now reports a benign `reindex` mutation for the newly registered folder after its config write. The translation job service receives the same writable route collection and inherits its sink. Core delivers mutations synchronously after disk operations; locale translation coalesces them at each batch boundary, so the index follows disk order even when requests overlap. A successful Resource Folder save delivers an `upsert` or `remove`; one that throws delivers `reindex`, since one JSON file may already be on disk. Earlier completed batch items remain delivered if a later item fails. The sink catches and logs any index error, so indexing cannot fail a write. There is no rollback. Resource Tree Index matches mutations by absolute `translationsFolder`, including both sides of a cross-collection move.
 
-| Mutation | Delivered by | Index action |
+| Mutation | Delivered by | Core Resource Tree Index action |
 |---|---|---|
 | `upsert` (key, entry) | `addResource` / `addResources`, `editResource` (after each source save and at the destination after a `moveTo`), `translateExistingResource`, `moveResource` / `moveResources` / `moveFolder` (destination) | Insert or replace the entry. Missing folders are created, as on disk. |
-| `remove` (key) | `deleteResource`, `moveResource` / `moveResources` / `moveFolder` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → drop the collection. |
+| `remove` (key) | `deleteResource`, `moveResource` / `moveResources` / `moveFolder` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → return `reload`; the API removes the cache entry. |
 | `add-folder` (path) | `createFolder` | Create the folder node (and missing parents). |
-| `remove-folder` (path) | `deleteFolder`, `moveFolder` (every removed source folder, deepest first) | Remove the folder node. Missing folder → drop the collection. |
-| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`, `deleteCollection`, `translateLocale`, API `createCollection`; a move, folder create/delete, or Resource Folder save whose write failed part-way | Drop the collection. Every folder's metadata changed, or the change is not known. |
+| `remove-folder` (path) | `deleteFolder`, `moveFolder` (every removed source folder, deepest first) | Remove the folder node. Missing folder → return `reload`; the API removes the cache entry. |
+| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`, `deleteCollection`, `translateLocale`, API `createCollection`; a move, folder create/delete, or Resource Folder save whose write failed part-way | Return `reload`; the API removes the cache entry. The change is broad or uncertain. |
 
 A relocation delivers a `remove` for every moved key first, then an `upsert` for every moved key. A folder move then delivers `remove-folder` for each folder it removes, deepest first. Removes come first because one batch can move an entry into a key that another entry of the same batch leaves (`a.*` to `a.b`). Thus the index follows partial moves, merges into an existing folder, and `nestUnderDestination: false` in the same way as the disk. The translate-locale job inherits the sink from its opened route collection.
 
@@ -345,7 +345,7 @@ sequenceDiagram
     Index->>Index: revalidate against disk fingerprint
 
     alt Not indexed or last attempt failed
-        Index->>Core: loadResourceTree()
+        Index->>Core: ResourceTreeIndex.load()
         Index-->>API: { status: "not-started" | "error" }
         API-->>UI: 202 Accepted { status: "not-ready", message: "..." }
         UI->>UI: wait, then retry

@@ -22,6 +22,7 @@ Return to [architecture README](README.md).
   - [Move Plan](#move-plan)
   - [Entry Relocation](#entry-relocation)
 - [Collection Reader](#collection-reader)
+  - [Resource Tree Index](#resource-tree-index)
   - [Resource Search](#resource-search)
 - [Collection Set](#collection-set)
 - [Collection Sweep](#collection-sweep)
@@ -147,8 +148,9 @@ libs/core/src/
     │   ├── collection-sweep.ts   # sweepCollection(), sweepKeys(): the Collection Sweep (write side)
     │   ├── folder-pruning.ts     # pruneEmptyFolders(): safe removal of empty folders
     │   ├── load-resource-tree.ts # loadResourceTree(): the API's resource tree (built on readCollectionFolders)
-    │   ├── search.ts             # searchResources(), treeResources(): Resource Search over the reader or an index tree
+    │   ├── search.ts             # Resource Search; tree/page adapters remain internal
     │   ├── resource-mutation.ts  # ResourceMutation: what a write changed
+    │   ├── resource-tree-index.ts # ResourceTreeIndex: tree, patches, fingerprints, subtree and search
     │   └── tree-fingerprint.ts   # computeTreeFingerprint(): stat-only change detection
     │
     ├── folder/                   # Folder-level filesystem operations
@@ -272,7 +274,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 | Project Terms | `updateProjectTerms`, its `ProjectTermsUpdate`, `ProjectTermsUpdateView`, and `ProjectTermsUpdateResult` types, plus `ProjectTermsView` and `PreferredTerminologyFlags`, and `TerminologyFindings` used by resource writes. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder`, `OpenResourceFolderOptions`, `EntryDetails`, `NormalizeEntryReport`, `ResourceFolderEntry`, and `ResourceFolderSaveResult`. |
 | Collection Reader | `readCollection`, `CollectionRead`, `CollectionReadProblem`, `CollectionReadTarget`, and `StoredResource`. |
-| Read models | `computeTreeFingerprint`, `searchPage`, `extractResourcesRecursively`, `extractSubtree`, `loadResourceTree`, `searchResources`, `treeResources`, `treeFingerprintsMatch`; and the signature types `ComputeTreeFingerprintOptions`, `FolderChild`, `LoadResourceTreeOptions`, `MatchType`, `ResourceMutation`, `ResourceTreeEntry`, `ResourceTreeNode`, `SearchMode`, `SearchOptions`, `SearchPage`, `SearchResult`, `SearchableResource`, `TreeFingerprint`. |
+| Read models | `ResourceTreeIndex`, `ResourceTreeApplyResult`, `extractResourcesRecursively`, `searchResources`, and `normalizeSearchRequest`; signature types include `FolderChild`, `MatchType`, `ResourceMutation`, `ResourceTreeEntry`, `ResourceTreeNode`, `SearchMode`, `SearchOptions`, `SearchRequest`, `SearchPage`, `SearchResult`, `SearchableResource`, and `TreeFingerprint`. |
 | Errors | `LingoTrackerError` and the typed subclasses imported by apps, including `TranslationError` and `PreferredTerminologyValidationError`. |
 | Operation types | The parameter and result types needed by exported operations: `AddCollectionOptions`, `AddLocaleToCollectionOptions`, `AddLocaleToCollectionResult`, `AddResourceOptions`, `AddResourceParams`, `AddResourceResult`, `AddResourcesResult`, `BuildGlossaryOptions`, `BuildGlossaryResult`, `BundlePlan`, `BundlePlanExampleKey`, `BundlePlanFile`, `BundleProgressEvent`, `BundleRunOutcome`, `BundleTypeOutcome`, `CollectionNormalizeResult`, `CollectionTagEdit`, `CreateFolderParams`, `CreateFolderResult`, `DeleteFolderParams`, `DeleteFolderResult`, `DeleteResourceParams`, `DeleteResourceResult`, `EditResourceChanges`, `EditResourceResult`, `ExistingResourcePolicy`, `ExportFormat`, `ExportLocaleResult`, `ExportResult`, `ExportRunOptions`, `ExportRunResult`, `GenerateBundleParams`, `GenerateBundleResult`, `GenerateBundlesOptions`, `GenerateBundlesResult`, `ImportFormat`, `ImportResult`, `ImportRunOptions`, `ImportRunWarning`, `MoveFolderParams`, `MoveFolderResult`, `MoveResourceParams`, `MoveResourceResult`, `MoveResourcesOperation`, `NormalizeCollectionsOptions`, `NormalizeCollectionsResult`, `NormalizeOptions`, `NormalizeResult`, `OpenTranslatorOptions`, `PreferredTerminologyEditResult`, `PlanBundleParams`, `PrepareBundleRunParams`, `PreparedBundleRun`, `ProviderCapabilities`, `RemoveLocaleFromCollectionOptions`, `RemoveLocaleFromCollectionResult`, `RunImportOptions`, `RunImportResult`, `TranslateExistingResourceResult`, `TranslateLocaleParams`, `TranslateLocaleProgress`, `TranslateLocaleResult`, `TranslationProvider`, `TranslateRequest`, `TranslateResult`, `UpdateBundleDefinitionOptions`, `UpdateCollectionOptions`, `ValidateRunOptions`, and `ValidateRunResult`. `LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `Collection`, `LoadConfigOptions`, `OpenCollectionOptions`, `LoadPreferredTerminologyResult`, `ResolvedProtectedTerms`, `StoredProtectedTerms`, `TermFile`, `TermFiles`, `ErrorKind`, `FolderPathPart`, `ResourceEntryMetadata`, `ResourceTranslation`, `ResourceValidationResult`, and `ValidationOptions` also remain exported for their signatures. `BundleDefinition` and export argument types come from `@simoncodes-ca/domain`. |
 
@@ -540,11 +542,30 @@ The caller decides what a problem means:
 | `loadResourceTree` | Passes it to `onProblem`; the Collection Index logs it with `describeFolderProblem`. The tree keeps the folder, with no resources. |
 | `translateLocale` | Does not translate the folder's resources and adds one line to `warnings` in the result (`Folder '<path>' was not translated: <message>`). The CLI prints the warnings after the summary; the API translation job logs them with `Logger.warn`. |
 
+### Resource Tree Index
+
+**Entry point:** `ResourceTreeIndex` in `lib/resource/resource-tree-index.ts`
+
+The [Resource Tree Index](glossary.md#resource-tree-index) owns one collection's tree and its disk fingerprint. The constructor takes a `Collection`, an optional tree, and an optional fingerprint. A supplied snapshot permits mutation, subtree, and search tests without disk access.
+
+Its interface contains these operations:
+
+- `load(onProblem?)` records a stat fingerprint before it loads the full tree through the Collection Reader.
+- `apply(mutation)` returns `patched`, `ignored`, or `reload` with a reason. It creates and sorts folders for upserts and folder additions. It replaces existing resources in place and removes resources or whole subtrees. A `reindex` or an incompatible patch invalidates the tree and returns `reload`. Unrelated mutations and patches before loading return `ignored`.
+- `isStale(collection?)` compares the current disk fingerprint with the stored fingerprint. A missing baseline is stale.
+- `refreshFingerprint(collection?)` adopts the current disk fingerprint after the owner's writes. The optional collection preserves revalidation against the current read's folder.
+- `subtree(path?)`, `loaded`, and `totalKeys` expose the tree read and key count.
+- `searchPage(request, onProblem?, collection?)` returns ranked results, `limited`, `limit`, and the true `totalFound`. It reads the tree when loaded and the Collection Reader otherwise. It does not load or cache a tree. The optional collection preserves the current read's base locale and disk source.
+
+Core owns mutation interpretation and tree operations. The API Collection Index owns per-collection instances, cache states, revalidation cadence, deferred refresh timers, LRU eviction, and logging. Core reports folder problems through callbacks and returns reload reasons. The API decides when to replace an invalidated index.
+
+The public barrel exports this module instead of six internal helpers: `computeTreeFingerprint`, `treeFingerprintsMatch`, `treeResources`, `extractSubtree`, `loadResourceTree`, and `searchPage`. `ComputeTreeFingerprintOptions` and `LoadResourceTreeOptions` also remain internal. `readCollection` and `describeFolderProblem` remain public for CLI callers. The existing internal helpers retain their own specs.
+
 ### Resource Search
 
 **Entry point:** `searchResources(resources, collection, query, { mode, limit })` in `lib/resource/search.ts`
 
-[Resource Search](glossary.md#resource-search) is the one matcher over a collection's resources. It takes any `Iterable<SearchableResource>` (`{ fullKey, entry }`), so the caller picks the source: `readCollection(collection).resources` for the disk, or `treeResources(tree)` for an index tree (the loaded folders only, each entry keyed from its folder's `folderPathSegments`). It is pure. The reader's `problems` are the caller's to report (see the table above). `collection` is only read for `baseLocale`.
+[Resource Search](glossary.md#resource-search) is the one matcher over a collection's resources. It takes any `Iterable<SearchableResource>` (`{ fullKey, entry }`), so the caller picks the source: `readCollection(collection).resources` for the disk, or the internal `treeResources(tree)` adapter used by Resource Tree Index. The adapter yields loaded folders with full keys. It is pure. The reader's `problems` are the caller's to report (see the table above). `collection` is only read for `baseLocale`.
 
 `normalizeSearchRequest(request, defaultLimit)` trims the query, returns `blank` for empty text, uses the caller's default for an invalid limit, and caps positive integer limits at 500. The API uses default 100; the CLI uses default 5. `searchResources` also uses this rule with default 100. It collects every match, ranks lightweight candidates, applies the normalized `limit`, and only then builds the `SearchResult`s. A better match is never lost because the walk found it late. A blank query returns `[]`. Matching is case-insensitive.
 
@@ -557,7 +578,7 @@ Why whole words: the search reads the whole collection, so a substring rule matc
 
 A `SearchResult` carries `key`, `source` (`''` when a hand-edited entry has no string `source`; such an entry never matches on its base value), `translations` (a copy of the stored ones, without the base value), `metadata`, `comment`, `tags` and the match fields. It fits the domain `buildResourceSummary` input.
 
-`searchPage(resources, collection, request)` takes the normalized core `SearchRequest`, counts all ranked candidates, and returns the requested page with `limited`, `limit`, and the true `totalFound` before slicing. The API controller maps its DTO/query strings to the core mode and numeric limit before calling the normalizer; core never reads HTTP vocabulary.
+The internal `searchPage(resources, collection, request)` takes the normalized core `SearchRequest`, counts all ranked candidates, and returns the requested page with `limited`, `limit`, and the true `totalFound` before slicing. The API controller maps its DTO/query strings to the core mode and numeric limit before calling the normalizer; core never reads HTTP vocabulary.
 
 Callers: `CollectionIndex.searchPage` in the API (the index tree when the collection is indexed, else the reader) and the CLI `find-similar` (the reader, `mode: 'similar-value'`). Before this module, disk search and tree search were two copies of the matcher that stopped at the limit before they ranked, the CLI scored the first 500 text hits with Levenshtein, and the Tracker filtered a 25-hit text search by substring.
 

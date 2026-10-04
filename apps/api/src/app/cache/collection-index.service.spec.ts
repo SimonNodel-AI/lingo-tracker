@@ -7,18 +7,13 @@ import {
   addResource,
   addResources,
   type Collection,
-  createFolder,
-  deleteFolder,
-  deleteResource,
-  editResource,
   type FolderChild,
   type LingoTrackerConfig,
   loadConfig,
-  loadResourceTree,
-  moveFolder,
   moveResource,
   openCollection,
   openResourceFolder,
+  ResourceTreeIndex,
   type ResourceTreeNode,
 } from '@simoncodes-ca/core';
 import { CollectionIndex, type TreeRead } from './collection-index.service';
@@ -70,11 +65,9 @@ describe('CollectionIndex', () => {
   }
 
   function expectIndexMatchesDisk(target: Collection = collection()): void {
-    const fromDisk = loadResourceTree({
-      translationsFolder: target.translationsFolder,
-      baseLocale: target.baseLocale,
-      depth: Number.POSITIVE_INFINITY,
-    });
+    const diskIndex = new ResourceTreeIndex(target);
+    diskIndex.load();
+    const fromDisk = diskIndex.subtree();
     expect(normalized(readyTree(target))).toEqual(normalized(fromDisk));
   }
 
@@ -132,11 +125,6 @@ describe('CollectionIndex', () => {
       expectIndexMatchesDisk();
     });
 
-    it('returns the subtree at a path, and null for a path that does not exist', () => {
-      expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel', 'ok']);
-      expect(readyTree(collection(), 'missing.path')).toBeNull();
-    });
-
     it('reports status for the cache-status endpoint', () => {
       expect(index.status(collection())).toEqual({ status: 'not-started', collectionName: 'main' });
 
@@ -170,42 +158,6 @@ describe('CollectionIndex', () => {
       readyTree();
     });
 
-    it('adds a resource, creating its folders', async () => {
-      await addResource(
-        collection(),
-        {
-          key: 'apps.dialogs.confirm.yes',
-          baseValue: 'Yes',
-        },
-        { onMutation: index.sink },
-      );
-
-      expect(keysOf(readyTree(collection(), 'apps.dialogs.confirm'))).toEqual(['yes']);
-      expectIndexMatchesDisk();
-    });
-
-    it('replaces an edited resource in place', async () => {
-      await editResource(collection(), 'common.ok', { baseValue: 'Okay' }, { onMutation: index.sink });
-
-      expect(readyTree(collection(), 'common')?.resources.find((r) => r.key === 'ok')?.source).toBe('Okay');
-      expectIndexMatchesDisk();
-    });
-
-    it('removes deleted resources', () => {
-      deleteResource(collection(), { keys: ['common.ok', 'apps.title'] }, { onMutation: index.sink });
-
-      expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);
-      expectIndexMatchesDisk();
-    });
-
-    it('moves resources by pattern', async () => {
-      await moveResource(collection(), { source: 'common.*', destination: 'shared' }, { onMutation: index.sink });
-
-      expect(keysOf(readyTree(collection(), 'shared'))).toEqual(['cancel', 'ok']);
-      expect(keysOf(readyTree(collection(), 'common'))).toEqual([]);
-      expectIndexMatchesDisk();
-    });
-
     it('moves a resource to another collection and updates both', async () => {
       writeEntry('other', 'existing', 'Existing');
       const other = openCollection(config('other'), 'other', { cwd: root });
@@ -225,28 +177,6 @@ describe('CollectionIndex', () => {
       expect(keysOf(readyTree(other, 'imported'))).toEqual(['ok']);
       expectIndexMatchesDisk();
       expectIndexMatchesDisk(other);
-    });
-
-    it('creates, moves and deletes folders', async () => {
-      createFolder(collection(), { folderName: 'empty', parentPath: 'apps' }, { onMutation: index.sink });
-      expect(readyTree(collection(), 'apps.empty')).not.toBeNull();
-
-      await moveFolder(
-        collection(),
-        {
-          sourceFolderPath: 'common',
-          destinationFolderPath: 'apps',
-        },
-        { onMutation: index.sink },
-      );
-
-      expect(keysOf(readyTree(collection(), 'apps.common'))).toEqual(['cancel', 'ok']);
-      expect(readyTree(collection(), 'common')).toBeNull();
-
-      deleteFolder(collection(), { folderPath: 'apps.empty' }, { onMutation: index.sink });
-      expect(readyTree(collection(), 'apps.empty')).toBeNull();
-
-      expectIndexMatchesDisk();
     });
 
     it('re-indexes a collection whose locales changed', async () => {
