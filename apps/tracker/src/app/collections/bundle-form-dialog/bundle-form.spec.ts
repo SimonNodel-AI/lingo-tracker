@@ -1,9 +1,14 @@
 import { signal } from '@angular/core';
 import type { BundleDefinitionDto, BundleDryRunRequestDto, BundleDryRunResultDto } from '@simoncodes-ca/data-transfer';
 import { normalizeBundleDefinition } from '@simoncodes-ca/domain';
-import { Observable, of, Subject } from 'rxjs';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Observable, of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fakeDialog, fakeEnv } from '../../../testing/form-submit-env';
+import { toApiError } from '../../shared/api-error/api-error';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { BundleForm, type BundleFormOptions, type BundleSection } from './bundle-form';
+import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 
 const definition: BundleDefinitionDto = {
   bundleName: 'admin.{locale}',
@@ -23,6 +28,7 @@ const result: BundleDryRunResultDto = {
 
 const models: BundleForm[] = [];
 function build(options: Partial<BundleFormOptions> = {}): BundleForm {
+  const env = options.env ?? fakeEnv();
   const model = new BundleForm({
     data: { mode: 'create', name: 'admin', bundle: definition },
     collectionNames: () => ['main', 'extra'],
@@ -33,6 +39,7 @@ function build(options: Partial<BundleFormOptions> = {}): BundleForm {
     icuTransform: () => true,
     dryRun: () => of(result),
     ...options,
+    env,
   });
   models.push(model);
   return model;
@@ -564,5 +571,142 @@ describe('BundleForm definition preview and validation', () => {
     if (errors.includes('types')) model.form.controls.typeDistFile.setErrors({ required: true });
     model.form.markAllAsTouched();
     expect(model.firstInvalidSection()).toBe(expected);
+  });
+});
+
+const rejection = (status: number, body: object) =>
+  throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } })));
+
+describe('BundleForm — submit', () => {
+  const setup = (data: BundleFormDialogData = { mode: 'create' }) => {
+    const env = fakeEnv();
+    const form = build({ data, env });
+    if (data.mode === 'create') {
+      form.form.controls.name.setValue('admin');
+      form.form.controls.dist.setValue('./dist/i18n');
+      form.form.controls.bundleName.setValue('admin.{locale}');
+      form.form.controls.allCollections.setValue(true);
+    }
+    const dialog = fakeDialog<BundleFormResult>();
+    const create = vi.fn((_result: BundleFormResult) => of(null));
+    const update = vi.fn((_name: string, _patch: { name: string | undefined }, _result: BundleFormResult) => of(null));
+    const submit = () => form.submit({ dialog, create, update });
+    return { env, form, dialog, create, update, submit };
+  };
+  const editData: BundleFormDialogData = { mode: 'edit', name: 'admin', bundle: definition };
+
+  it('creates the bundle and closes only once the write has been accepted', () => {
+    const { dialog, create, submit } = setup();
+    const write = new Subject<null>();
+    create.mockReturnValue(write);
+
+    submit();
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: 'admin' }));
+    expect(dialog.close).not.toHaveBeenCalled();
+
+    write.next(null);
+    expect(dialog.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'admin' }));
+  });
+
+  it('does not write while the form is invalid', () => {
+    const { form, dialog, create, submit } = setup();
+    form.form.controls.dist.setValue('');
+    submit();
+    expect(create).not.toHaveBeenCalled();
+    expect(dialog.close).not.toHaveBeenCalled();
+  });
+
+  it('updates under the existing name and omits an unchanged rename', () => {
+    const { create, update, submit } = setup(editData);
+    submit();
+    expect(update).toHaveBeenCalledWith('admin', { name: undefined }, expect.objectContaining({ name: 'admin' }));
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('shows a taken name on the name field and opens the Output section', () => {
+    const { form, dialog, create, submit } = setup();
+    create.mockReturnValue(rejection(409, { message: 'taken', error: 'Conflict' }));
+    form.activate('types');
+
+    submit();
+
+    expect(dialog.close).not.toHaveBeenCalled();
+    expect(form.saving()).toBe(false);
+    expect(form.form.controls.name.hasError('nameExists')).toBe(true);
+    expect(form.activeSection()).toBe('output');
+    expect(form.submitErrors()).toEqual([]);
+
+    form.form.controls.name.setValue('other');
+    expect(form.form.controls.name.valid).toBe(true);
+  });
+
+  it('lists every rule message of a definition the server rejects, and clears them on the next edit', () => {
+    const { form, dialog, create, submit } = setup();
+    create.mockReturnValue(rejection(400, { message: 'Invalid', errors: ['dist is required.', 'ghost is missing.'] }));
+
+    submit();
+
+    expect(dialog.close).not.toHaveBeenCalled();
+    expect(form.submitErrors()).toEqual(['dist is required.', 'ghost is missing.']);
+
+    form.form.controls.dist.setValue('./dist/other');
+    expect(form.submitErrors()).toEqual([]);
+  });
+
+  it('shows the server message, else the create-failed text, for any other refusal', () => {
+    const { form, create, submit } = setup();
+    create
+      .mockReturnValueOnce(rejection(403, { message: 'Config is read-only', error: 'Forbidden' }))
+      .mockReturnValueOnce(rejection(500, { error: 'Internal Server Error' }));
+
+    submit();
+    expect(form.submitErrors()).toEqual(['Config is read-only']);
+
+    form.form.controls.dist.setValue('./dist/other');
+    submit();
+    expect(form.submitErrors()).toEqual([TRACKER_TOKENS.BUNDLES.TOAST.CREATEFAILED]);
+  });
+
+  it('lists server details from a locked-name conflict', () => {
+    const { form, update, submit } = setup(editData);
+    update.mockReturnValue(rejection(409, { message: 'already exists', errors: ['Conflicting output path.'] }));
+    submit();
+    expect(form.submitErrors()).toEqual(['Conflicting output path.']);
+  });
+
+  it('locks closing while the write is in flight and restores it after a refusal', () => {
+    const { form, dialog, create, submit } = setup();
+    const write = new Subject<null>();
+    create.mockReturnValue(write);
+
+    submit();
+    expect(form.saving()).toBe(true);
+    expect(dialog.disableClose).toBe(true);
+
+    write.error(toApiError(new HttpErrorResponse({ status: 403, error: { message: 'nope' } })));
+    expect(form.saving()).toBe(false);
+    expect(dialog.disableClose).toBe(false);
+  });
+
+  it('ignores a second submit while the first is in flight', () => {
+    const { create, submit } = setup();
+    create.mockReturnValue(new Subject<null>());
+    submit();
+    submit();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels an in-flight write when destroyed, without closing or reporting', () => {
+    const { env, form, dialog, create, submit } = setup();
+    const write = new Subject<null>();
+    create.mockReturnValue(write);
+    submit();
+
+    env.destroy();
+    write.next(null);
+
+    expect(dialog.close).not.toHaveBeenCalled();
+    expect(write.observed).toBe(false);
+    expect(form.submitErrors()).toEqual([]);
   });
 });

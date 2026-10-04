@@ -1,4 +1,4 @@
-import type { DestroyRef, WritableSignal } from '@angular/core';
+import { type DestroyRef, signal, type WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { Observable } from 'rxjs';
 import type { AbstractControl, FormControl, ValidationErrors } from '@angular/forms';
@@ -13,7 +13,7 @@ import { type ConfigRefusal, classifyConfigRefusal } from './config-write';
  * the previous lock value is restored. Destruction mid-write still cancels the write.
  */
 export function submitDialogConfigWrite<TResult>(options: {
-  dialogRef: { disableClose: boolean | undefined; close(result: TResult): void };
+  dialogRef: DialogCloser<TResult>;
   write: Observable<unknown>;
   saving: WritableSignal<boolean>;
   result: TResult;
@@ -38,22 +38,34 @@ export type NamedEntryRefusal =
   | { kind: 'name-conflict' }
   | { kind: 'message'; message: string; details: readonly unknown[] };
 
-interface NamedEntrySubmitConfig<TResult> {
+/** The dialog's close handle: what a write locks while it is in flight and closes on success. */
+export interface DialogCloser<TResult> {
+  disableClose: boolean | undefined;
+  close(result: TResult): void;
+}
+
+/** What a form needs from its dialog's injection context to submit and to cancel a write on destroy. */
+export interface FormSubmitEnv {
+  translate: (token: string) => string;
+  destroyRef: DestroyRef;
+}
+
+interface NamedEntrySubmitConfig {
   /** The control is read after form construction; its validator needs this helper during construction. */
   nameControl: () => FormControl<string>;
   normalizeName?: (value: unknown) => string;
   fallbackTokens: { create: string; update: string };
-  translate: (token: string) => string;
-  dialogRef: { disableClose: boolean | undefined; close(result: TResult): void };
-  saving: WritableSignal<boolean>;
-  destroyRef: DestroyRef;
+  env: FormSubmitEnv;
 }
 
 /** One submit policy for a named collection or bundle. The form keeps its own field rendering. */
 export class NamedEntrySubmit<TResult> {
   #serverTakenName: string | undefined;
 
-  constructor(private readonly config: NamedEntrySubmitConfig<TResult>) {}
+  /** True from submit until the server has answered. */
+  readonly saving = signal(false);
+
+  constructor(private readonly config: NamedEntrySubmitConfig) {}
 
   private normalizeName(value: unknown): string {
     return this.config.normalizeName?.(value) ?? String(value ?? '');
@@ -65,6 +77,7 @@ export class NamedEntrySubmit<TResult> {
   };
 
   submit(options: {
+    dialog: DialogCloser<TResult>;
     existingName: string | undefined;
     name: string;
     create: () => Observable<unknown>;
@@ -79,11 +92,11 @@ export class NamedEntrySubmit<TResult> {
             name: options.name !== options.existingName ? options.name : undefined,
           });
     submitDialogConfigWrite({
-      dialogRef: this.config.dialogRef,
+      dialogRef: options.dialog,
       write,
-      saving: this.config.saving,
+      saving: this.saving,
       result: options.result,
-      destroyRef: this.config.destroyRef,
+      destroyRef: this.config.env.destroyRef,
       onRefusal: (refusal) => {
         const nameControl = this.config.nameControl();
         if (refusal.kind === 'conflict' && nameControl.enabled) {
@@ -97,7 +110,7 @@ export class NamedEntrySubmit<TResult> {
           options.existingName === undefined ? this.config.fallbackTokens.create : this.config.fallbackTokens.update;
         options.onRefusal({
           kind: 'message',
-          message: apiErrorMessage(refusal.error, this.config.translate(token)),
+          message: apiErrorMessage(refusal.error, this.config.env.translate(token)),
           details: refusal.details,
         });
       },

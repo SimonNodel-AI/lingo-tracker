@@ -1,8 +1,10 @@
 import { computed, type Signal, signal, type WritableSignal } from '@angular/core';
-import { FormControl, FormGroup, type ValidatorFn, Validators } from '@angular/forms';
+import { FormControl, FormGroup, Validators } from '@angular/forms';
 import { isUnderNodeModules } from '@simoncodes-ca/domain';
+import type { Observable } from 'rxjs';
 import { Subscription } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { type DialogCloser, type FormSubmitEnv, NamedEntrySubmit } from '../store/dialog-config-submit';
 import {
   type CollectionDraft,
   type CollectionDraftResult,
@@ -26,11 +28,16 @@ import type { CollectionFormDialogData } from './collection-form-dialog-data';
 /**
  * The collection dialog's form model, independent of the dialog DOM. The Collection Draft is the
  * one copy of the collection's values; every edit goes through its rules. The typed form holds
- * only the two text inputs the user types into, and feeds each change into the draft.
+ * only the two text inputs the user types into, and feeds each change into the draft. It also owns
+ * the submit: the `saving` state, the write sequencing, and where a refusal lands.
  */
 export class CollectionForm {
   readonly #changes = new Subscription();
   readonly #draft: WritableSignal<CollectionDraft>;
+  readonly #entrySubmit: NamedEntrySubmit<CollectionDraftResult>;
+
+  /** True from submit until the server has answered. */
+  readonly saving: Signal<boolean>;
 
   readonly form: FormGroup<{ name: FormControl<string>; translationsFolder: FormControl<string> }>;
   readonly addLocaleInput = new FormControl<string>('', { nonNullable: true });
@@ -73,14 +80,26 @@ export class CollectionForm {
 
   constructor(
     private readonly data: CollectionFormDialogData,
-    nameValidator: ValidatorFn,
+    env: FormSubmitEnv,
   ) {
+    this.#entrySubmit = new NamedEntrySubmit({
+      nameControl: () => this.form.controls.name,
+      fallbackTokens: {
+        create: TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED,
+        update: TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED,
+      },
+      env,
+    });
+    this.saving = this.#entrySubmit.saving;
     const seed = toCollectionDraft(data);
     this.#draft = signal(seed);
     this.draft = this.#draft.asReadonly();
     this.advancedOpen = signal(seed.tags.length > 0 || seed.protectedTerms.length > 0);
     this.form = new FormGroup({
-      name: new FormControl<string>('', { validators: [Validators.required, nameValidator], nonNullable: true }),
+      name: new FormControl<string>('', {
+        validators: [Validators.required, this.#entrySubmit.nameValidator],
+        nonNullable: true,
+      }),
       translationsFolder: new FormControl<string>('', { validators: [Validators.required], nonNullable: true }),
     });
     const { name, translationsFolder } = seed;
@@ -97,6 +116,7 @@ export class CollectionForm {
       controls.translationsFolder.valueChanges.subscribe((folder) => this.#draft.update((d) => withFolder(d, folder))),
     );
     this.#changes.add(this.form.valueChanges.subscribe(() => this.submitError.set(null)));
+    env.destroyRef.onDestroy(() => this.destroy());
   }
 
   get isEditMode(): boolean {
@@ -203,6 +223,35 @@ export class CollectionForm {
 
   result(): CollectionDraftResult {
     return toCollectionResult(this.#draft());
+  }
+
+  /**
+   * Writes the collection and closes `dialog` with it once the server accepts. A taken name lands on
+   * the name field; any other refusal on `submitError`. Ignored while a write is in flight.
+   */
+  submit(options: {
+    dialog: DialogCloser<CollectionDraftResult>;
+    create: (result: CollectionDraftResult) => Observable<unknown>;
+    update: (
+      existingName: string,
+      patch: { name: string | undefined },
+      result: CollectionDraftResult,
+    ) => Observable<unknown>;
+  }): void {
+    if (this.saving()) return;
+    const result = this.result();
+    this.submitError.set(null);
+    this.#entrySubmit.submit({
+      dialog: options.dialog,
+      existingName: this.isEditMode ? this.data.name : undefined,
+      name: result.name,
+      create: () => options.create(result),
+      update: (name, patch) => options.update(name, patch, result),
+      result,
+      onRefusal: (refusal) => {
+        if (refusal.kind === 'message') this.submitError.set(refusal.message);
+      },
+    });
   }
 
   /** A change to locales, base locale or read-only: the same edits that retire a stale refusal. */

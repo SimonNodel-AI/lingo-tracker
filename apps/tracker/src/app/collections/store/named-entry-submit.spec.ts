@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { DestroyRef, signal } from '@angular/core';
+import { DestroyRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FormControl } from '@angular/forms';
 import { of, throwError } from 'rxjs';
@@ -17,19 +17,16 @@ function harness(existingName: string | undefined = undefined, normalizeName?: (
   const update = vi.fn((_name: string, _patch: { name: string | undefined }) => of(null));
   const onRefusal = vi.fn();
   const dialogRef = { disableClose: false as boolean | undefined, close: vi.fn() };
-  const saving = signal(false);
   const submit = new NamedEntrySubmit<string>({
     nameControl: () => nameControl,
     normalizeName,
     fallbackTokens: { create: 'create-failed', update: 'update-failed' },
-    translate: (token) => token,
-    dialogRef,
-    saving,
-    destroyRef: TestBed.inject(DestroyRef),
+    env: { translate: (token) => token, destroyRef: TestBed.inject(DestroyRef) },
   });
+  const saving = submit.saving;
   nameControl.addValidators(submit.nameValidator);
   nameControl.updateValueAndValidity();
-  const options = { existingName, name: 'draft', create, update, result: 'saved', onRefusal };
+  const options = { dialog: dialogRef, existingName, name: 'draft', create, update, result: 'saved', onRefusal };
   return { submit, options, nameControl, create, update, onRefusal, dialogRef, saving };
 }
 
