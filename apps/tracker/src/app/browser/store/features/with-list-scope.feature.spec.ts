@@ -1,5 +1,7 @@
-import { HttpTestingController, type TestRequest, provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting, type TestRequest } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectionSettings } from '../../../../testing/collection-settings';
@@ -326,5 +328,57 @@ describe('BrowserStore List Scope', () => {
     expect(store.sortedTranslations()).toEqual([]);
     expect(store.currentFolderPath()).toBe('');
     expect(toastError).not.toHaveBeenCalled();
+  });
+  it('restores only the removed row against newer rows in the same loaded folder', () => {
+    open('app', 'a.one', 'a.two');
+    const removed = store.removeRow('a.one');
+    expect(removed.atFolder).toBe('');
+    expect(keys(store.translations())).toEqual(['a.two']);
+    patchState(unprotected(store), { translations: [entry('a.new')] });
+    store.restoreRow(removed);
+    expect(keys(store.translations())).toEqual(['a.new', 'a.one']);
+    store.restoreRow(removed);
+    expect(keys(store.translations())).toEqual(['a.new', 'a.one']);
+  });
+
+  it('does not restore a row after another folder loads or nesting invalidates its folder', () => {
+    open('app', 'one');
+    const removed = store.removeRow('one');
+    store.showFolder('b');
+    listRead('app', 'b').flush(folder('b', 'b.two'));
+    store.restoreRow(removed);
+    expect(keys(store.translations())).toEqual(['b.two']);
+    const second = store.removeRow('b.two');
+    store.setNestedResources(false);
+    store.restoreRow(second);
+    expect(store.translations()).toEqual([]);
+    http.expectOne((req) => req.params.get('path') === 'b').flush(folder('b', 'b.three'));
+  });
+
+  it('keeps a newer copy, ignores missing rows, and allows rollback while search is shown', () => {
+    open('app', 'one');
+    const removed = store.removeRow('one');
+    store.showQuery('one');
+    searchRead('app', 'one').flush(found('one', 'one'));
+    store.restoreRow(removed);
+    expect(keys(store.translations())).toEqual(['one']);
+    store.replaceEntry('one', { ...entry('one'), base: { locale: 'en', value: 'newer' } });
+    store.restoreRow(removed);
+    store.restoreRow(store.removeRow('missing'));
+    expect(store.translations()[0]?.base.value).toBe('newer');
+    expect(store.searchResults()[0]?.matchType).toBe('partial-value');
+    expect(store.searchResults()[0]?.base.value).toBe('newer');
+  });
+
+  it('replaces and removes entries in both caches without inserting absent entries', () => {
+    open('app', 'one', 'two');
+    store.showQuery('one');
+    searchRead('app', 'one').flush(found('one', 'one', 'other'));
+    store.replaceEntry('missing', entry('missing'));
+    expect(keys(store.translations())).toEqual(['one', 'two']);
+    expect(keys(store.searchResults())).toEqual(['one', 'other']);
+    store.removeEntry('one');
+    expect(keys(store.translations())).toEqual(['two']);
+    expect(keys(store.searchResults())).toEqual(['other']);
   });
 });

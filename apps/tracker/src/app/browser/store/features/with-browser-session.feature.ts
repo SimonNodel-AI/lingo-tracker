@@ -4,15 +4,8 @@ import {
   collectionNeedsReopen,
   sameCollectionSettings,
 } from '../../../collections/store/collection-settings';
-import { initialRootState, type RootState } from '../root-state';
-import { type CacheStatusState, initialCacheStatusState } from './with-cache-status.feature';
-import { type FilterState, initialFilterState } from './with-filter.feature';
-import { type FolderTreeState, initialFolderTreeState } from './with-folder-tree.feature';
-import { initialListScopeState, type ListScopeState } from './with-list-scope.feature';
-import { initialFolderWritesState, type FolderWritesState } from './with-folder-writes.feature';
-
-/** Everything the session resets: the root state plus every feature's own slice. */
-type SessionState = RootState & ListScopeState & FilterState & FolderTreeState & FolderWritesState & CacheStatusState;
+import type { CollectionResetRegistry } from '../collection-reset';
+import type { RootState } from '../root-state';
 
 /** The root fields a collection's settings set: the settings themselves and their projections. */
 function settingsState(settings: CollectionSettings): Partial<RootState> {
@@ -29,10 +22,8 @@ function settingsState(settings: CollectionSettings): Partial<RootState> {
  * The Browser Session: the one path that opens a collection in the browser.
  *
  * The store is root-provided, so it outlives the route. Opening a collection therefore
- * starts every feature at its own initial state (each feature exports it; nothing here
- * names another feature's fields), applies the resolved collection settings, restores the
- * collection's saved view preferences, and starts index polling. Composes last, since it
- * calls into the view-preferences and cache-status features.
+ * runs every reset registered by `withCollectionState`, applies the resolved collection settings, restores the
+ * collection's saved view preferences, and starts index polling.
  *
  * Every open bumps `sessionId`. Loaders capture it when they start (`session-guard.ts`), so a
  * response from a collection that is no longer open, or from an earlier open of this one, is
@@ -45,7 +36,8 @@ function settingsState(settings: CollectionSettings): Partial<RootState> {
 export function withBrowserSessionFeature<_>() {
   return signalStoreFeature(
     {
-      state: type<SessionState>(),
+      state: type<RootState>(),
+      props: type<CollectionResetRegistry>(),
       methods: type<{
         restoreViewPreferences(collectionName: string): void;
         checkCacheStatus(): void;
@@ -58,16 +50,9 @@ export function withBrowserSessionFeature<_>() {
         const sessionId = store.sessionId() + 1;
         // A list load of the previous session (and its not-ready retries) stops here, not later.
         store._cancelListLoads();
-        patchState(
-          store,
-          initialRootState,
-          initialListScopeState,
-          initialFilterState,
-          initialFolderTreeState,
-          initialFolderWritesState,
-          initialCacheStatusState,
-          { sessionId, ...settingsState(settings) },
-        );
+        // Resets and the settings/sessionId patch are synchronous, so computed signals/effects do not observe intermediate state.
+        for (const { reset } of store._collectionResets) reset();
+        patchState(store, { sessionId, ...settingsState(settings) });
 
         store.restoreViewPreferences(settings.name);
         store.checkCacheStatus();

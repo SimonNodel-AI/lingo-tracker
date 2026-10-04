@@ -1,20 +1,22 @@
 import { computed } from '@angular/core';
-import { signalStore, withState, withComputed, withMethods, patchState } from '@ngrx/signals';
-import { initialRootState } from './root-state';
-import { withListScopeFeature } from './features/with-list-scope.feature';
+import { patchState, signalStore, withComputed, withMethods } from '@ngrx/signals';
+import { withCollectionResetRegistry, withCollectionState } from './collection-reset';
+import { withBrowserSessionFeature } from './features/with-browser-session.feature';
 import { withCacheStatusFeature } from './features/with-cache-status.feature';
+import { withEntryWritesFeature } from './features/with-entry-writes.feature';
 import { withFilterFeature } from './features/with-filter.feature';
-import { withViewPreferencesFeature } from './features/with-view-preferences.feature';
-import { withTranslationsFeature } from './features/with-translations.feature';
 import { withFolderTreeFeature } from './features/with-folder-tree.feature';
 import { withFolderTreeInteractionsFeature } from './features/with-folder-tree-interactions.feature';
-import { withEntryWritesFeature } from './features/with-entry-writes.feature';
 import { withFolderWritesFeature } from './features/with-folder-writes.feature';
-import { withBrowserSessionFeature } from './features/with-browser-session.feature';
+import { withListScopeFeature } from './features/with-list-scope.feature';
+import { withTranslationsFeature } from './features/with-translations.feature';
+import { withViewPreferencesFeature } from './features/with-view-preferences.feature';
+import { initialRootState } from './root-state';
 
 export const BrowserStore = signalStore(
   { providedIn: 'root' },
-  withState(initialRootState),
+  withCollectionResetRegistry(),
+  withCollectionState(initialRootState),
   withListScopeFeature(),
   withFilterFeature(),
   withTranslationsFeature(),
