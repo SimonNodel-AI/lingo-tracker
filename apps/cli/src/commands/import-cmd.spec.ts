@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -165,8 +165,31 @@ describe('import-cmd (real project)', () => {
     project.write('imports/fr.json', { 'bad key': 'Wrong', 'also bad': 'Wrong', 'buttons.ok': 'Bonjour' });
     const result = await run();
     expect(result.exitCode).toBe(1);
+    expect(result.stderr).toMatch(/❌ Errors \(2\):\n {2}- .*\n {2}- /);
+    expect(result.stderr).not.toContain('more (full list');
     expect(result.stderr).toContain('Errors (2)');
     expect(stored()).toMatchObject({ ok: { fr: 'Bonjour' } });
+  });
+  const manyBadKeys = () =>
+    project.write('imports/fr.json', Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`bad key ${i}`, 'x'])));
+  it('caps a long error list and points at the written summary file', async () => {
+    manyBadKeys();
+    const result = await run();
+    const [summary] = summaries();
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Errors (12):');
+    expect(result.stderr).toContain(`  ... and 2 more (full list in ${join(project.cwd, summary)})`);
+    expect(result.stderr.match(/^ {2}- /gm)).toHaveLength(10);
+    const written = readFileSync(join(project.cwd, summary), 'utf8');
+    for (let i = 0; i < 12; i++) expect(written).toContain(`bad key ${i}`);
+  });
+  it('prints every error in a dry run, which writes no summary file', async () => {
+    manyBadKeys();
+    const result = await run({ ...flags, dryRun: true });
+    expect(summaries()).toEqual([]);
+    expect(result.stderr).toContain('Errors (12):');
+    expect(result.stderr).not.toContain('more (full list');
+    expect(result.stderr.match(/^ {2}- /gm)).toHaveLength(12);
   });
   it('should exit with code 1 when only errors array is non-empty', async () => {
     // Real validation errors still fail the command even when no entry can be stored.

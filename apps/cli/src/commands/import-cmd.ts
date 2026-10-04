@@ -1,10 +1,15 @@
-import { type ImportResult, type ImportRunOptions, ImportSourceError, runImport } from '@simoncodes-ca/core';
+import {
+  type ImportResult,
+  type ImportRunOptions,
+  ImportSourceError,
+  type RunOutcome,
+  runImport,
+} from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import { CommandOutput } from '../runner/command-output';
-import { defineCommand } from '../runner/command-runner';
-import { exitForRunOutcome } from '../runner/run-outcome';
-import { ConsoleFormatter, reportRunSummary } from '../utils';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
 import { type ImportCommandOptions, importQuestions, resolveImportOptions } from './import-options';
 
 export type { ImportCommandOptions } from './import-options';
@@ -72,16 +77,20 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       CommandOutput.log(`Elapsed time: ${elapsedSeconds}s (${elapsedMilliseconds}ms)`);
     }
 
-    // Display results
-    displayResults(result, runOptions);
-
-    reportRunSummary('import', run.summary, { dryRun: Boolean(runOptions.dryRun), directory: summaryDirectory });
-
-    return exitForRunOutcome(run.outcome);
+    const dryRun = Boolean(runOptions.dryRun);
+    const summary = saveRunSummary('import', run.summary, { dryRun, directory: summaryDirectory });
+    const exit = displayResults(run.outcome, result, runOptions, summary.path);
+    summary.announce();
+    return exit;
   },
 });
 
-function displayResults(result: ImportResult, options: ImportRunOptions): void {
+function displayResults(
+  outcome: RunOutcome,
+  result: ImportResult,
+  options: ImportRunOptions,
+  summaryPath: string | undefined,
+): CommandResult {
   ConsoleFormatter.section('Import Results');
 
   if (options.dryRun) {
@@ -122,21 +131,13 @@ function displayResults(result: ImportResult, options: ImportRunOptions): void {
     }
   }
 
-  // Display warnings
-  if (result.warnings.length > 0) {
-    ConsoleFormatter.warning(`Warnings (${result.warnings.length}):`, [
-      ...result.warnings.slice(0, 10),
-      ...(result.warnings.length > 10 ? [`... and ${result.warnings.length - 10} more warnings`] : []),
-    ]);
-  }
-
-  // Display errors
-  if (result.errors.length > 0) {
-    ConsoleFormatter.error(`Errors (${result.errors.length}):`, [
-      ...result.errors.slice(0, 10),
-      ...(result.errors.length > 10 ? [`... and ${result.errors.length - 10} more errors`] : []),
-    ]);
-  }
+  const exit = printRunReport({
+    warnings: result.warnings,
+    errors: result.errors,
+    outcome,
+    dryRun: options.dryRun,
+    summaryPath,
+  });
 
   CommandOutput.log('─'.repeat(50));
 
@@ -151,4 +152,5 @@ function displayResults(result: ImportResult, options: ImportRunOptions): void {
   } else {
     ConsoleFormatter.success('Import completed successfully!');
   }
+  return exit;
 }

@@ -149,14 +149,14 @@ describe('mapUpdateResourceResultToDto', () => {
 
 describe('mapDeleteResourceResultToDto', () => {
   it('retains undefined errors as an own field', () => {
-    const dto = mapDeleteResourceResultToDto({ entriesDeleted: 1 });
+    const dto = mapDeleteResourceResultToDto({ outcome: 'succeeded', entriesDeleted: 1 });
     expect(dto).toStrictEqual({ entriesDeleted: 1, errors: undefined });
     expect(Object.keys(dto)).toEqual(['entriesDeleted', 'errors']);
   });
 
   it('passes through empty and nonempty errors', () => {
     for (const errors of [[], [{ key: 'app.save', error: 'Missing' }]]) {
-      expect(mapDeleteResourceResultToDto({ entriesDeleted: 0, errors }).errors).toBe(errors);
+      expect(mapDeleteResourceResultToDto({ outcome: 'succeeded', entriesDeleted: 0, errors }).errors).toBe(errors);
     }
   });
 });

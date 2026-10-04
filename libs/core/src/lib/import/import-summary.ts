@@ -82,7 +82,7 @@ ${formatFilesModified(result.filesModified)}
     summary += `
 ## Warnings
 
-${formatMarkdownList(result.warnings)}
+${formatMarkdownList(result.warnings, Infinity)}
 `;
   }
 
@@ -91,7 +91,7 @@ ${formatMarkdownList(result.warnings)}
     summary += `
 ## Errors
 
-${formatMarkdownList(result.errors)}
+${formatMarkdownList(result.errors, Infinity)}
 `;
   }
 

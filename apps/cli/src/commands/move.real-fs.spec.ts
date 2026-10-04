@@ -21,6 +21,16 @@ describe('moveResourceCommand (real core)', () => {
     expect(result.stderr).toContain('Destination collection "missing" not found');
   });
 
+  it('prints a bulleted Warnings list and still exits 0 when the destination already exists', async () => {
+    project.seed('a.ok');
+    project.seed('b.ok');
+    const result = await project.run(moveResourceCommand, { collection: 'main', source: 'a.ok', dest: 'b.ok' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(
+      '⚠️  Warnings (1):\n  - Destination key already exists: b.ok. Use override option to force move.',
+    );
+  });
+
   it('prints the identical malformed-pattern message through the typed-error path and exits 1', async () => {
     project.seed('a.ok');
     const result = await project.run(moveResourceCommand, { collection: 'main', source: 'invalid@char*', dest: 'b' });

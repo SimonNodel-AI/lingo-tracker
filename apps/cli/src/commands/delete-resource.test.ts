@@ -37,7 +37,7 @@ describe('deleteResourceCommand', () => {
     process.exitCode = undefined;
     vi.mocked(loadConfig).mockReturnValue(mockConfig);
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
-    mockDeleteResource.mockReturnValue({ entriesDeleted: 1 });
+    mockDeleteResource.mockReturnValue({ outcome: 'succeeded', entriesDeleted: 1 });
   });
 
   afterEach(() => {
@@ -65,6 +65,7 @@ describe('deleteResourceCommand', () => {
 
   it('exits 1 when some keys could not be deleted', async () => {
     mockDeleteResource.mockReturnValue({
+      outcome: 'failed',
       entriesDeleted: 1,
       errors: [{ key: 'apps.common.invalid', error: 'Resource not found' }],
     });
@@ -74,13 +75,14 @@ describe('deleteResourceCommand', () => {
     expect(mockDeleteResource).toHaveBeenCalledWith(expectedCollection, {
       keys: ['apps.common.ok', 'apps.common.invalid'],
     });
-    expect(console.error).toHaveBeenCalledWith('⚠️  Some operations failed:');
+    expect(console.error).toHaveBeenCalledWith('❌ Errors (1):');
     expect(console.error).toHaveBeenCalledWith('  - apps.common.invalid: Resource not found');
     expect(process.exitCode).toBe(1);
   });
 
   it('warns on zero deletions and exits 1 for the key that failed', async () => {
     mockDeleteResource.mockReturnValue({
+      outcome: 'failed',
       entriesDeleted: 0,
       errors: [{ key: 'apps.common.notfound', error: 'Resource not found' }],
     });

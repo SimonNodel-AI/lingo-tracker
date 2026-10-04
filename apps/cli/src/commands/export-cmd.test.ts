@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -341,6 +341,20 @@ describe('exportCommand (real project)', () => {
     expect(result.stderr).toContain('Overwriting existing file: fr.json');
     expect(result.stderr).toContain('Overwriting existing file: es.json');
   });
+  it('caps a long warning list and the named summary file holds every warning', async () => {
+    const locales = Array.from({ length: 12 }, (_, i) => `l${i}`);
+    project.configure({ ...project.config, locales: ['en', ...locales] });
+    mkdirSync(join(project.cwd, 'dist/export'), { recursive: true });
+    for (const locale of locales) writeFileSync(join(project.cwd, `dist/export/${locale}.json`), '{}');
+    const result = await run();
+    const [summary] = summaries();
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('Warnings (12):');
+    expect(result.stderr).toContain(`  ... and 2 more (full list in ${join(project.cwd, summary)})`);
+    expect(result.stderr.match(/^ {2}- /gm)).toHaveLength(10);
+    const written = readFileSync(join(project.cwd, summary), 'utf8');
+    for (const locale of locales) expect(written).toContain(`Overwriting existing file: ${locale}.json`);
+  });
   it('should display errors when present', async () => {
     failedFiles();
     mkdirSync(join(project.cwd, 'dist/export/es.json'));
@@ -349,6 +363,8 @@ describe('exportCommand (real project)', () => {
     expect(result.stderr).toContain('Errors (2)');
     expect(result.stderr).toContain('Failed to export locale fr:');
     expect(result.stderr).toContain('Failed to export locale es:');
+    expect(result.stderr).toMatch(/❌ Errors \(2\):\n {2}- .*Failed to export locale fr:/);
+    expect(result.stdout).toContain('Files Created: 0');
   });
   it('should handle hierarchical conflicts as errors', async () => {
     project.write('translations/common/resource_entries.json', {

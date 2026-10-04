@@ -10,8 +10,7 @@ import {
 } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
-import { exitForRunOutcome } from '../runner/run-outcome';
-import { ConsoleFormatter } from '../utils';
+import { ConsoleFormatter, printRunReport } from '../utils';
 
 export interface TranslateLocaleOptions {
   collection?: string;
@@ -87,22 +86,11 @@ export function createTranslateLocaleCommand(options: TranslationRunOptions = {}
       ConsoleFormatter.keyValue('Skipped (needs human translation)', result.skippedCount);
       ConsoleFormatter.keyValue('Failed', result.failedCount);
 
-      if (result.warnings.length > 0) {
-        CommandOutput.log('');
-        for (const warning of result.warnings) {
-          ConsoleFormatter.warning(warning);
-        }
-      }
-
-      if (result.failures.length > 0) {
-        CommandOutput.log('');
-        ConsoleFormatter.section('Failures');
-        for (const failure of result.failures) {
-          ConsoleFormatter.indent(`${failure.key}: ${failure.error}`);
-        }
-      }
-
-      return exitForRunOutcome(result.outcome);
+      return printRunReport({
+        warnings: result.warnings,
+        errors: result.failures.map((failure) => `${failure.key}: ${failure.error}`),
+        outcome: result.outcome,
+      });
     },
   });
 }

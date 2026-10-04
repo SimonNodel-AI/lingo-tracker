@@ -143,7 +143,7 @@ describe('normalizeCommand', () => {
     await normalizeCommand(options);
     expect(normalize).toHaveBeenCalledTimes(1);
     expect(normalize).toHaveBeenCalledWith(expect.objectContaining({ name: 'App' }), { dryRun: false });
-    expect(errored()).toContain('⚠️  Skipping read-only collection: Lib');
+    expect(errored()).toContain('  - Skipping read-only collection: Lib');
     expect(process.exitCode).toBe(0);
   });
 
@@ -188,7 +188,7 @@ describe('normalizeCommand', () => {
 
     await normalizeCommand({ collection: 'App' });
 
-    expect(errored()).toContain('❌ Failed to normalize collection "App": disk full');
+    expect(errored()).toContain('  - Failed to normalize collection "App": disk full');
     expect(process.exitCode).toBe(1);
   });
 
@@ -197,7 +197,7 @@ describe('normalizeCommand', () => {
 
     await normalizeCommand({ collection: 'App', json: true });
 
-    expect(errored()).toEqual(['❌ Failed to normalize collection "App": disk full']);
+    expect(errored()).toEqual(['❌ Errors (1):', '  - Failed to normalize collection "App": disk full']);
     const lines = logged();
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0])).toMatchObject({ collections: [], totals: { collectionsProcessed: 0 } });
@@ -220,7 +220,7 @@ describe('normalizeCommand', () => {
       problems: [{ kind: 'not-removed', folderPath: 'empty', absolutePath: '/p/path/App/empty', message: 'ENOTEMPTY' }],
     });
     await normalizeCommand({ collection: 'App', json: true });
-    expect(errored()).toContain("⚠️  Collection 'App': Could not remove folder 'empty': ENOTEMPTY");
+    expect(errored()).toContain("  - Collection 'App': Could not remove folder 'empty': ENOTEMPTY");
     expect(process.exitCode).toBe(0);
   });
 
@@ -240,7 +240,7 @@ describe('normalizeCommand', () => {
     await normalizeCommand({ collection: 'App', json: true });
 
     expect(errored()).toContain(
-      "⚠️  Collection 'App': Skipped unreadable folder 'bad': Unexpected token in resource_entries.json",
+      "  - Collection 'App': Skipped unreadable folder 'bad': Unexpected token in resource_entries.json",
     );
     expect(JSON.parse(logged()[0]).collections[0].problems).toEqual([
       {
@@ -269,7 +269,7 @@ describe('normalizeCommand', () => {
 
     await normalizeCommand({ collection: 'App', dryRun: true, json: true });
 
-    expect(errored()).toEqual(['❌ Failed to normalize collection "App": disk full']);
+    expect(errored()).toEqual(['❌ Errors (1):', '  - Failed to normalize collection "App": disk full']);
     const payload = JSON.parse(logged()[0]);
     expect(Object.keys(payload)).toEqual(['collections', 'totals']);
     expect(payload.collections).toEqual([]);
@@ -291,8 +291,10 @@ describe('normalizeCommand', () => {
     expect(payload.collections.map((item: { collectionName: string }) => item.collectionName)).toEqual(['Other']);
     expect(payload.totals.collectionsProcessed).toBe(1);
     expect(errored()).toEqual([
-      '❌ Failed to normalize collection "App": disk full',
-      '⚠️  Skipping read-only collection: Lib',
+      '⚠️  Warnings (1):',
+      '  - Skipping read-only collection: Lib',
+      '❌ Errors (1):',
+      '  - Failed to normalize collection "App": disk full',
     ]);
     expect(process.exitCode).toBe(1);
   });
@@ -336,7 +338,7 @@ describe('normalizeCommand', () => {
       // App (writable) is normalized; Lib (read-only) is skipped, not failed.
       expect(normalize).toHaveBeenCalledTimes(1);
       expect(process.exitCode).toBe(0);
-      expect(errored()).toContain('⚠️  Skipping read-only collection: Lib');
+      expect(errored()).toContain('  - Skipping read-only collection: Lib');
     });
 
     it('prints the dry-run warning after refusing an explicit read-only collection', async () => {
@@ -375,7 +377,7 @@ describe('normalizeCommand', () => {
           2,
         ),
       ]);
-      expect(errored()).toEqual(['⚠️  Skipping read-only collection: Lib']);
+      expect(errored()).toEqual(['⚠️  Warnings (1):', '  - Skipping read-only collection: Lib']);
       expect(process.exitCode).toBe(0);
     });
   });

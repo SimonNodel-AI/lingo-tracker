@@ -314,9 +314,9 @@ Exit codes:
 | Partial failure: `delete-resource` or `move` reports per-key errors; `normalize` fails on a collection; `bundle` fails on a bundle or type generation, names an unknown bundle, or finds no bundles | 1 |
 | Completed `move`, `normalize`, `bundle`, `validate`, `translate-locale`, `export`, or `import` run with a `failed` [Run Outcome](glossary.md#run-outcome); export errors and conflicts are exempt in `--dry-run`, while import errors and failed resources still fail in dry runs | 1 |
 
-`move` and `normalize` return `exitForRunOutcome(result.outcome)`. Core decides whether a completed run fails: move counts result errors, and normalize counts collection errors, including in dry runs. Normalize folder problems remain warnings.
+`move`, `delete-resource`, `normalize`, `translate-locale`, `export`, and `import` return the exit result of `printRunReport` (`exitForRunOutcome(result.outcome)`); `delete-resource` fails when any key errors. Core decides whether a completed run fails: move counts result errors, and normalize counts collection errors, including in dry runs. Normalize folder problems remain warnings.
 
-`normalize --all` skips a read-only collection with a stderr warning and does not fail. A collection that fails, or a read-only `--collection`, prints `❌ Failed to normalize collection "x": <message>` or `❌ Collection "x" is read-only. …` on stderr, also with `--json`.
+`normalize --all` skips a read-only collection with a stderr warning and does not fail. A collection that fails, or a read-only `--collection`, lists `Failed to normalize collection "x": <message>` under `❌ Errors (N):` (after the run, with skipped read-only collections and folder problems under `⚠️  Warnings (N):`), or prints `❌ Collection "x" is read-only. …` on stderr, also with `--json`.
 
 ### Changes Introduced by the Command Runner
 
@@ -411,7 +411,9 @@ The production action and test entry point both execute the same pipeline: confi
 
 All shared utilities live in `apps/cli/src/utils/` and are re-exported from `apps/cli/src/utils/index.ts` as a flat namespace. Commands import from `'../utils'`.
 
-`reportRunSummary(kind, summary, { dryRun })` writes the Markdown from an import or export run (via `writeRunSummary`) and prints `<Kind> summary written to: <path>`. A write or lazy `summary()` failure only warns and never changes the exit code, which comes from the run outcome. A dry run writes nothing and prints `<Kind> summary would be written to: <path>`. Export passes `previewOnDryRun` and also prints the summary text as its only preview; import does not call `summary()`. Both commands call it after displaying results.
+`reportRunSummary(kind, summary, { dryRun })` writes the Markdown from an import or export run (via `writeRunSummary`) and prints `<Kind> summary written to: <path>`. A write or lazy `summary()` failure only warns and never changes the exit code, which comes from the run outcome. A dry run writes nothing and prints `<Kind> summary would be written to: <path>`. Export passes `previewOnDryRun` and also prints the summary text as its only preview; import does not call `summary()`. The import and export summary files list every warning and error, so the capped `... and N more (full list in <path>)` line is accurate. Import and export call `saveRunSummary` before displaying results (so the Run Report can name the file) and `announce()` after.
+
+`printRunReport({ counts?, warnings, errors, outcome, dryRun?, summaryPath? })` (`run-report.ts`, the [Run Report](glossary.md#run-report)) prints a run's `Warnings (N):` and `Errors (N):` lists on stderr with `- ` bullets and returns the exit result. Lists over 10 are capped as `... and N more (full list in <path>)` only when the command wrote a run summary file (`saveRunSummary(...).path`; never in a dry run); otherwise every item is printed. Commands do not format these lists themselves.
 
 The Command Runner and the interactive rule live in `apps/cli/src/runner/` ([Command Runner](#command-runner)); commands import them from `'../runner/command-runner'`.
 

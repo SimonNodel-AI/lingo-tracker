@@ -1,8 +1,7 @@
 import { type ExportRunResult, exportTargetLocales, runExport } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
-import { defineCommand } from '../runner/command-runner';
-import { exitForRunOutcome } from '../runner/run-outcome';
-import { ConsoleFormatter, reportRunSummary } from '../utils';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
 import { type ExportCommandOptions, exportQuestions, exportSelection, resolveExportOptions } from './export-options';
 
 export type { ExportCommandOptions } from './export-options';
@@ -41,18 +40,19 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       return;
     }
 
-    displayResults(result);
-
-    reportRunSummary('export', result.summary, {
-      dryRun: Boolean(options.dryRun),
+    const dryRun = Boolean(options.dryRun);
+    const summary = saveRunSummary('export', result.summary, {
+      dryRun,
       previewOnDryRun: true,
       directory: summaryDirectory,
     });
-    return exitForRunOutcome(result.outcome);
+    const exit = displayResults(result, dryRun, summary.path);
+    summary.announce();
+    return exit;
   },
 });
 
-function displayResults(result: ExportRunResult): void {
+function displayResults(result: ExportRunResult, dryRun: boolean, summaryPath: string | undefined): CommandResult {
   for (const { locale, outcome, resourcesExported, filesCreated, error } of result.localeResults) {
     if (outcome === 'exported') {
       ConsoleFormatter.indent(`✅ ${locale}: Exported ${resourcesExported} resources to ${filesCreated.join(', ')}`);
@@ -62,21 +62,12 @@ function displayResults(result: ExportRunResult): void {
   }
 
   ConsoleFormatter.section('Export Summary');
-  ConsoleFormatter.keyValue('Files Created', result.filesCreated.length);
-  ConsoleFormatter.keyValue('Resources Exported', result.resourcesExported);
-
-  if (result.warnings.length > 0) {
-    ConsoleFormatter.warning(
-      `Warnings (${result.warnings.length}):`,
-      result.warnings.map((w) => `- ${w}`),
-    );
-  }
-
-  const errors = [...result.errors, ...result.hierarchicalConflicts];
-  if (errors.length > 0) {
-    ConsoleFormatter.error(
-      `Errors (${errors.length}):`,
-      errors.map((e) => `- ${e}`),
-    );
-  }
+  return printRunReport({
+    counts: { 'Files Created': result.filesCreated.length, 'Resources Exported': result.resourcesExported },
+    warnings: result.warnings,
+    errors: [...result.errors, ...result.hierarchicalConflicts],
+    outcome: result.outcome,
+    dryRun,
+    summaryPath,
+  });
 }

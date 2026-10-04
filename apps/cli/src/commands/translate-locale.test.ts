@@ -64,7 +64,7 @@ describe('translateLocaleCommand', () => {
       throw new Error('quota');
     });
     const result = await project.run(command(), { locale: 'fr' });
-    expect(result.stdout).toContain('a.b: quota');
+    expect(result.stderr).toContain('❌ Errors (1):\n  - a.b: quota');
     expect(result.exitCode).toBe(1);
   });
   it('prefixes a run that cannot start with "Translation failed:" and exits 1', async () => {
@@ -80,7 +80,7 @@ describe('translateLocaleCommand', () => {
       throw error;
     });
     const result = await project.run(command(), { locale: 'fr' });
-    expect(result.stdout).toContain('a.b: API key missing');
+    expect(result.stderr).toContain('❌ Errors (1):\n  - a.b: API key missing');
     expect(error.code).toBe('MISSING_API_KEY');
     expect(result.exitCode).toBe(1);
   });

@@ -100,7 +100,7 @@ describe('moveResourceCommand', () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });
 
     expect(console.error).toHaveBeenCalledWith('⚠️  No resources were moved.');
-    expect(console.error).toHaveBeenCalledWith('❌ Errors:');
+    expect(console.error).toHaveBeenCalledWith('❌ Errors (1):');
     expect(console.error).toHaveBeenCalledWith('  - b.ok already exists');
     expect(process.exitCode).toBe(1);
   });
@@ -125,9 +125,9 @@ describe('moveResourceCommand', () => {
     await moveResourceCommand({ collection: 'main', source: 'a.*', dest: 'b' });
 
     expect(console.log).toHaveBeenCalledWith('✅ Moved 1 resource(s)');
-    expect(console.error).toHaveBeenCalledWith('⚠️  Warnings:');
+    expect(console.error).toHaveBeenCalledWith('⚠️  Warnings (1):');
     expect(console.error).toHaveBeenCalledWith('  - Destination already exists');
-    expect(console.error).toHaveBeenCalledWith('❌ Errors:');
+    expect(console.error).toHaveBeenCalledWith('❌ Errors (1):');
     expect(console.error).toHaveBeenCalledWith('  - Source could not be read');
     expect(process.exitCode).toBe(1);
   });
