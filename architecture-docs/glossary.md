@@ -317,6 +317,14 @@ Explained in context: [`frontend.md`](frontend.md#lazy-loaded-dialogs)
 
 ---
 
+### Confirmed Write
+
+The one way a Tracker surface asks, writes and tells the user. `injectConfirmedWrite()` in `apps/tracker/src/app/shared/confirmed-write.ts` builds on [Confirmation](#confirmation) and [Outcome Feedback](#outcome-feedback). `confirmDestructive({ title, message, cancelButtonText?, width? })` and the general `confirmWrite(spec)` return the `(inSession?) => Promise<boolean>` callback the store's write guards accept (`requestFolderDelete`, `requestFolderMove`, `requestEntryDelete`). The callback checks the [Browser Session](#browser-session) guard (when the store gives one) and the surface's `DestroyRef` before the dialog opens, and answers `false` if the surface was destroyed while the dialog was open. `runWrite(outcome$)` toasts the decided `feedback` of each outcome as it arrives. It never cancels the write: after destroy the write still runs to its end, so the store settles it, and only the toast is suppressed. This holds for the folder, entry-delete, collection and bundle writes alike. Callers pass only tokens and params, and no caller checks `destroyed` or rebuilds the dialog data or the toast.
+
+Explained in context: [`frontend.md`](frontend.md#lazy-loaded-dialogs)
+
+---
+
 ### Connector Links
 
 The lines from collection cards to a hovered bundle card in the Tracker's Collections Manager. `apps/tracker/src/app/collections/collections-manager.ts` measures the hovered bundle and only its referenced collection cards, then passes their rectangles to `collectionLinks` in `apps/tracker/src/app/collections/collection-links.ts`. The pure function returns the SVG paths and dot positions. It draws nothing when the columns stack or no referenced collection card is present. Its fixed port offset, column inset, dot standoff, rounding and curve reach keep the lines aligned with the cards.

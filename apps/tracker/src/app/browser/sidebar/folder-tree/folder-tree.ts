@@ -23,7 +23,7 @@ import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { SearchInput } from '../../../shared/components/search-input';
-import { injectConfirm } from '../../../shared/confirm';
+import { injectConfirmedWrite } from '../../../shared/confirmed-write';
 import { injectMidpointFlip } from '../../../shared/timed-transients';
 import { injectFeedback } from '../../feedback';
 import { BrowserStore } from '../../store/browser.store';
@@ -72,7 +72,7 @@ const SCROLL_INTERVAL_MS = 50;
 })
 export class FolderTree {
   readonly store = inject(BrowserStore);
-  readonly #confirm = injectConfirm();
+  readonly #write = injectConfirmedWrite();
   readonly TOKENS = TRACKER_TOKENS;
   readonly #feedback = injectFeedback();
 
@@ -275,44 +275,31 @@ export class FolderTree {
    * Opens confirmation dialog and deletes folder if confirmed.
    */
   onDeleteFolder(folderPath: string): void {
-    const folderName = extractFolderNameFromPath(folderPath);
-
-    this.store
-      .requestFolderDelete(folderPath, (inSession) =>
-        this.#confirm(
-          {
-            title: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE,
-            message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, params: { name: folderName } },
-            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.DELETE,
-            actionType: 'destructive',
-          },
-          { width: '400px', canOpen: inSession },
-        ),
-      )
-      .subscribe((outcome) => this.#feedback.toast(outcome.feedback));
+    const name = extractFolderNameFromPath(folderPath);
+    const confirm = this.#write.confirmDestructive({
+      title: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE,
+      message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, params: { name } },
+      width: '400px',
+    });
+    void this.#write.runWrite(this.store.requestFolderDelete(folderPath, confirm));
   }
 
   /** Confirms a folder move before handing the write to the store. */
   confirmMoveFolder(sourceFolderPath: string, destinationFolderPath: string): void {
-    this.store
-      .requestFolderMove({ sourceFolderPath, destinationFolderPath }, (inSession) =>
-        this.#confirm(
-          {
-            title: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE,
-            message: {
-              token: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX,
-              params: {
-                name: extractFolderNameFromPath(sourceFolderPath),
-                dest: destinationFolderPath || { token: TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL },
-              },
-            },
-            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.MOVE,
-            actionType: 'standard',
-          },
-          { width: '400px', canOpen: inSession },
-        ),
-      )
-      .subscribe((outcome) => this.#feedback.toast(outcome.feedback));
+    const confirm = this.#write.confirmWrite({
+      title: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.TITLE,
+      message: {
+        token: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX,
+        params: {
+          name: extractFolderNameFromPath(sourceFolderPath),
+          dest: destinationFolderPath || { token: TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL },
+        },
+      },
+      confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.MOVE,
+      actionType: 'standard',
+      width: '400px',
+    });
+    void this.#write.runWrite(this.store.requestFolderMove({ sourceFolderPath, destinationFolderPath }, confirm));
   }
 
   /**
