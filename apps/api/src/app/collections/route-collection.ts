@@ -17,18 +17,24 @@ import { ConfigService } from '../config/config.service';
 
 export interface RouteCollectionOptions {
   readonly writable?: boolean;
+  readonly lifecycle?: 'update' | 'delete';
 }
 
 interface RouteCollectionRef {
   readonly name: string;
   readonly writable: boolean;
+  readonly lifecycle?: 'update' | 'delete';
 }
 
 export function routeCollectionRef(
   options: RouteCollectionOptions,
   request: { method: string; params: Record<string, string | undefined> },
 ): RouteCollectionRef {
-  return { name: request.params.collectionName ?? '', writable: options.writable ?? request.method !== 'GET' };
+  return {
+    name: request.params.collectionName ?? '',
+    writable: options.writable ?? (options.lifecycle ? false : request.method !== 'GET'),
+    ...(options.lifecycle && { lifecycle: options.lifecycle }),
+  };
 }
 
 export const RouteCollection = (options: RouteCollectionOptions = {}) =>
@@ -48,12 +54,14 @@ export class RouteCollectionPipe implements PipeTransform<RouteCollectionRef, Op
     this.#configService = configService;
   }
 
-  transform({ name, writable }: RouteCollectionRef): OpenedCollection {
+  transform({ name, writable, lifecycle }: RouteCollectionRef): OpenedCollection {
+    const reportsMutations = writable || lifecycle !== undefined;
     try {
       return openCollection(this.#configService.getConfig(), name, {
         cwd: this.#configService.projectRoot,
         writable,
-        onMutation: writable ? this.index.sink : undefined,
+        onMutation: reportsMutations ? this.index.sink : undefined,
+        forDeletion: lifecycle === 'delete',
       });
     } catch (error) {
       // Route pipes also run in modules without the app-level exception filter.

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../constants';
 import { loadConfig } from '../lib/config/load-config';
@@ -40,6 +40,40 @@ describe('addCollection', () => {
         admin: { translationsFolder: './admin', tags: ['team-x'] },
       },
     });
+  });
+
+  it('reports one reindex for the normalized translations folder after writing config', () => {
+    writeFileSync(join(tempDir(), CONFIG_FILENAME), JSON.stringify(config));
+    const onMutation = vi.fn(() =>
+      expect(readConfig().collections['admin']).toEqual({ translationsFolder: './admin' }),
+    );
+
+    addCollection(
+      { projectRoot: tempDir(), sourceConfig: loadConfig({ cwd: tempDir() }) },
+      'admin',
+      { translationsFolder: '  ./admin  ' },
+      { onMutation },
+    );
+
+    expect(onMutation).toHaveBeenCalledTimes(1);
+    expect(onMutation).toHaveBeenCalledWith({
+      kind: 'reindex',
+      translationsFolder: join(tempDir(), 'admin'),
+    });
+  });
+
+  it('does not report a mutation when registration fails', () => {
+    writeFileSync(join(tempDir(), CONFIG_FILENAME), JSON.stringify(config));
+    const onMutation = vi.fn();
+    expect(() =>
+      addCollection(
+        { projectRoot: tempDir(), sourceConfig: loadConfig({ cwd: tempDir() }) },
+        'existing',
+        { translationsFolder: './new' },
+        { onMutation },
+      ),
+    ).toThrow(CollectionAlreadyExistsError);
+    expect(onMutation).not.toHaveBeenCalled();
   });
 
   it('leaves the file untouched when the name is taken', () => {

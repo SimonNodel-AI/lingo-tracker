@@ -76,6 +76,50 @@ describe('RouteCollection', () => {
     expect(open('vendor', 'POST', false).readOnly).toBe(true);
   });
 
+  it('opens read-only registrations for updates with the index sink', () => {
+    const current = pipe.transform(
+      routeCollectionRef(
+        { lifecycle: 'update' },
+        {
+          method: 'PUT',
+          params: { collectionName: 'vendor' },
+        },
+      ),
+    );
+    expect(current.readOnly).toBe(true);
+    expect(current.onMutation).toBe(sink);
+  });
+
+  it('opens malformed registrations for deletion with the index sink', () => {
+    const broken = { ...config, collections: { broken: {} } } as unknown as LingoTrackerConfig;
+    getConfig.mockReturnValueOnce(broken);
+    const current = pipe.transform(
+      routeCollectionRef({ lifecycle: 'delete' }, { method: 'DELETE', params: { collectionName: 'broken' } }),
+    );
+    expect(current.translationsFolder).toBe('');
+    expect(current.onMutation).toBe(sink);
+    expect(
+      pipe.transform(
+        routeCollectionRef({ lifecycle: 'delete' }, { method: 'DELETE', params: { collectionName: 'vendor' } }),
+      ).readOnly,
+    ).toBe(true);
+  });
+
+  it('answers 404 for an unknown update collection without inspecting the body', () => {
+    const error = httpErrorOf(() =>
+      pipe.transform(
+        routeCollectionRef({ lifecycle: 'update' }, { method: 'PUT', params: { collectionName: 'missing' } }),
+      ),
+    );
+    expect(error).toBeInstanceOf(NotFoundException);
+    expect(error.getResponse()).toEqual({
+      statusCode: 404,
+      error: 'Not Found',
+      message: 'Collection "missing" not found',
+    });
+    expect(getConfig).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['a%b', 'a%25b', 'my collection', 'ünïcode'])('uses the literal route name %s', (name) => {
     expect(open(name, 'GET').name).toBe(name);
     expect(getConfig).toHaveBeenCalledTimes(1);

@@ -101,7 +101,6 @@ describe('core public surface', () => {
       'prepareTranslateLocale',
       'readCollection',
       'readProjectTermsView',
-      'reindexMutation',
       'removeLocaleFromCollection',
       'runExport',
       'runImport',
