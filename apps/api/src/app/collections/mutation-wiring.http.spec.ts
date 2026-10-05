@@ -126,6 +126,44 @@ describe('Collection Index mutation wiring over HTTP', () => {
     jest.restoreAllMocks();
   });
 
+  it('reads a newly registered collection through the tree without manual reindexing', async () => {
+    if (!app) throw new Error('HTTP app was not initialized');
+    process.chdir(originalCwd);
+    if (project) rmSync(project, { recursive: true, force: true });
+    project = mkdtempSync(join(tmpdir(), 'lingo-create-http-'));
+    process.chdir(project);
+    project = process.cwd();
+    const config: LingoTrackerConfig = {
+      exportFolder: 'export',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en'],
+      collections: { added: { translationsFolder: 'added' } },
+    };
+    writeFileSync(join(project, CONFIG_FILENAME), JSON.stringify(config));
+    const previous = openCollection(config, 'added');
+    const index = app.get(CollectionIndex);
+    index.tree(previous, '');
+    index.tree(previous, '');
+    await addResource(previous, { key: 'created', baseValue: 'Created' });
+    writeFileSync(join(project, CONFIG_FILENAME), JSON.stringify({ ...config, collections: {} }));
+
+    const response = await fetch(`${baseUrl}/collections`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'added', collection: { translationsFolder: 'added' } }),
+    });
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ message: 'Collection "added" added successfully' });
+    const firstRead = await fetch(`${baseUrl}/collections/added/resources/tree`);
+    expect(firstRead.status).toBe(202);
+    const tree = await fetch(`${baseUrl}/collections/added/resources/tree`);
+    expect(tree.status).toBe(200);
+    expect(await tree.json()).toMatchObject({
+      resources: [expect.objectContaining({ fullKey: 'created', base: { locale: 'en', value: 'Created' } })],
+    });
+  });
+
   it('delivers a mutation to the real index for every discovered writing route', async () => {
     if (!app) throw new Error('HTTP app was not initialized');
     const routes = await writingRoutes(AppModule);

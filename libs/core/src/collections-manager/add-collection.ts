@@ -1,11 +1,13 @@
+import { resolve } from 'node:path';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import { addCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
 import type { OpenedProject } from '../lib/config/open-collection';
 import { assertProtectedTerms } from '../lib/config/set-protected-terms';
+import { type MutationSinkOptions, reindexMutation } from '../lib/resource/resource-mutation';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 
-export interface AddCollectionOptions {
+export interface AddCollectionOptions extends MutationSinkOptions {
   protectedTerms?: string[];
 }
 
@@ -38,6 +40,7 @@ export function addCollection(
     project.projectRoot,
   );
   configWrite.transaction(nextConfig, writeTerms === undefined ? [] : [writeTerms]);
+  options.onMutation?.(reindexMutation(resolve(project.projectRoot, collection.translationsFolder.trim())));
 
   return { message: `Collection "${collectionName}" added successfully` };
 }
