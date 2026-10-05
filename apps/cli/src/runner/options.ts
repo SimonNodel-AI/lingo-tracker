@@ -1,5 +1,5 @@
 import { type Command, Option } from 'commander';
-import { type ExplicitEmptyList, parseCommaSeparatedList } from '../utils';
+import { type ExplicitEmptyList, parseCommaSeparatedList } from '../utils/string-parsers';
 
 /** One Commander option registration. Each command gets its own Option instance. */
 export type OptionDefinition = (command: Command) => void;

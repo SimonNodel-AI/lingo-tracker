@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import type { EditCollectionOptions } from './commands/edit-collection';
-import {
-  EXPORT_DEFAULTS,
-  IMPORT_DEFAULTS,
-  IMPORT_STRATEGY_DEFAULTS as importStrategyDefaults,
-  IMPORT_MIGRATION_DEFAULTS as migrationDefaults,
-} from './commands/run-option-defaults';
+import { EXPORT_OPTION_TABLE } from './commands/export-option-table';
+import { IMPORT_OPTION_TABLE } from './commands/import-option-table';
+import { tableOptions } from './commands/option-table';
 import { importHelpText, preferredTerminologyHelpText, validateHelpText } from './runner/help-text';
 import {
   choiceOption,
@@ -222,115 +219,14 @@ registerCommand(program, {
 registerCommand(program, {
   name: 'export',
   description: 'Export translation resources to XLIFF or JSON',
-  options: [
-    option({ flags: '-f, --format <format>', description: 'Export format (xliff | json)' }),
-    commaListOption({
-      flags: '-c, --collection <names>',
-      description: 'Specific collection(s) to export (comma-separated)',
-    }),
-    commaListOption({ flags: '-l, --locale <locales>', description: 'Target locale(s) to export (comma-separated)' }),
-    commaListOption({
-      flags: '-s, --status <statuses>',
-      empty: 'preserve',
-      description: 'Filter by translation status (comma-separated)',
-      helpDefault: EXPORT_DEFAULTS.status,
-    }),
-    commaListOption({ flags: '-t, --tags <tags>', description: 'Filter by tags (comma-separated)' }),
-    option({ flags: '-o, --output <path>', description: 'Output directory path' }),
-    option({
-      flags: '--structure <type>',
-      description: 'JSON structure (flat | hierarchical)',
-      helpDefault: EXPORT_DEFAULTS.structure,
-    }),
-    option({ flags: '--rich', description: 'Include metadata in JSON objects', helpDefault: EXPORT_DEFAULTS.rich }),
-    option({
-      flags: '--include-base',
-      description: 'Include base locale value (JSON only)',
-      helpDefault: EXPORT_DEFAULTS.includeBase,
-    }),
-    option({
-      flags: '--include-status',
-      description: 'Include translation status (JSON only)',
-      helpDefault: EXPORT_DEFAULTS.includeStatus,
-    }),
-    option({
-      flags: '--include-comment',
-      description: 'Include comment (JSON only)',
-      helpDefault: EXPORT_DEFAULTS.includeComment,
-    }),
-    option({
-      flags: '--include-tags',
-      description: 'Include tags array (JSON only)',
-      helpDefault: EXPORT_DEFAULTS.includeTags,
-    }),
-    option({
-      flags: '--no-protect-notes',
-      description: 'Do not emit do-not-translate instructions for protected terms',
-    }),
-    option({
-      flags: '--base-property-name <name>',
-      description: 'Property name for base locale value in JSON output (default: baseValue)',
-    }),
-    option({ flags: '--filename <pattern>', description: 'Custom filename pattern' }),
-    option({
-      flags: '--dry-run',
-      description: 'Show what would be exported without writing files',
-      defaultValue: false,
-    }),
-    option({ flags: '--verbose', description: 'Show detailed export progress', defaultValue: false }),
-  ],
+  options: tableOptions(EXPORT_OPTION_TABLE),
   load: () => import('./commands/export-cmd').then((module) => module.exportCommand),
 });
 
 registerCommand(program, {
   name: 'import',
   description: 'Import translation resources from XLIFF or JSON',
-  options: [
-    option({
-      flags: '-f, --format <format>',
-      description: 'Import format (xliff | json) - auto-detected from file extension if omitted',
-    }),
-    option({ flags: '-s, --source <path>', description: 'Path to import file (required)' }),
-    option({ flags: '-l, --locale <locale>', description: 'Target locale for import (e.g., es, fr-ca)' }),
-    option({ flags: '-c, --collection <name>', description: 'Target collection to import into' }),
-    option({
-      flags: '--strategy <strategy>',
-      description: 'Import strategy (translation-service | verification | migration | update)',
-      helpDefault: IMPORT_DEFAULTS.strategy,
-    }),
-    option({
-      flags: '--update-comments',
-      description: `Update resource comments from import data (migration: ${migrationDefaults.updateComments})`,
-      helpDefault: importStrategyDefaults.updateComments,
-    }),
-    option({
-      flags: '--update-tags',
-      description: `Update resource tags from rich JSON (migration: ${migrationDefaults.updateTags})`,
-      helpDefault: importStrategyDefaults.updateTags,
-    }),
-    option({
-      flags: '--preserve-status',
-      description: 'Allow rich JSON to specify status (advanced)',
-      helpDefault: IMPORT_DEFAULTS.preserveStatus,
-    }),
-    option({
-      flags: '--create-missing',
-      description: `Create new resources if they don't exist (migration: ${migrationDefaults.createMissing})`,
-      helpDefault: importStrategyDefaults.createMissing,
-    }),
-    option({
-      flags: '--validate-base',
-      description: 'Warn if source base value differs from existing',
-      helpDefault: IMPORT_DEFAULTS.validateBase,
-    }),
-    option({ flags: '--no-validate-base', description: 'Do not warn when source base value differs from existing' }),
-    option({
-      flags: '--dry-run',
-      description: 'Show what would be imported without modifying files',
-      defaultValue: false,
-    }),
-    option({ flags: '--verbose', description: 'Show detailed import progress', defaultValue: false }),
-  ],
+  options: tableOptions(IMPORT_OPTION_TABLE),
   helpText: importHelpText,
   load: () => import('./commands/import-cmd').then((module) => module.importCommand),
 });
