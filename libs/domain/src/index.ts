@@ -156,3 +156,6 @@ export {
   type TranslatedValueViolation,
   type ValueCheckOptions,
 } from './lib/check-translated-value';
+
+// Locale seeding input
+export { parseTranslationInputs, type TranslationInput, type TranslationInputsResult } from './lib/translation-inputs';

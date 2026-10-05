@@ -1,14 +1,8 @@
-import type { AddResourceParams, AddResourceResult, Collection } from '@simoncodes-ca/core';
+import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
-import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import { parseTranslationInputs, TRANSLATION_STATUSES, type TranslationInput } from '@simoncodes-ca/domain';
 import { type Ask, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, printTerminologyFindings } from '../utils';
-
-interface TranslationInput {
-  locale: string;
-  value: string;
-  status?: unknown;
-}
 
 export interface AddResourceOptions {
   collection?: string;
@@ -54,8 +48,7 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
       comment: answers.comment || undefined,
       tags: tagsArray.length > 0 ? tagsArray : undefined,
       targetFolder,
-      // Core checks statuses after JSON shape validation and before writing.
-      translations: translations as AddResourceParams['translations'],
+      translations,
     };
     let result: AddResourceResult;
     try {
@@ -92,25 +85,16 @@ function parseTranslations(raw: string): TranslationInput[] {
   } catch (error) {
     throw new Error(`Invalid --translations JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
-  if (!isTranslationList(parsed)) {
-    throw new Error(
-      'Invalid --translations: expected a JSON array of { "locale", "value" } with optional "status" ' +
-        `one of ${TRANSLATION_STATUSES.join(', ')}`,
-    );
-  }
-  return parsed;
+  return checkedTranslations(parsed);
 }
 
-function isTranslationList(value: unknown): value is TranslationInput[] {
-  return Array.isArray(value) && value.every(isTranslationInput);
-}
-
-function isTranslationInput(item: unknown): item is TranslationInput {
-  if (typeof item !== 'object' || item === null) {
-    return false;
+function checkedTranslations(raw: unknown): TranslationInput[] {
+  const result = parseTranslationInputs(raw);
+  if (result.success === false) {
+    const location = result.index === null ? '' : `item ${result.index}: `;
+    throw new Error(`Invalid --translations: ${location}${result.reason}`);
   }
-  const { locale, value } = item as Record<string, unknown>;
-  return typeof locale === 'string' && typeof value === 'string';
+  return result.translations;
 }
 
 /** Interactive only: offers a translation and a status for each target locale. */
@@ -133,7 +117,7 @@ async function promptForTranslations(
     return undefined;
   }
 
-  const translations: TranslationInput[] = [];
+  const translations: unknown[] = [];
   for (const locale of collection.targetLocales) {
     const translationPrompt = await ask({
       type: 'text',
@@ -145,12 +129,8 @@ async function promptForTranslations(
       type: 'select',
       name: 'value',
       message: `Status for ${locale}`,
-      choices: [
-        { title: 'new', value: 'new' },
-        { title: 'translated', value: 'translated' },
-        { title: 'verified', value: 'verified' },
-      ],
-      initial: 1, // Default to 'translated'
+      choices: TRANSLATION_STATUSES.map((status) => ({ title: status, value: status })),
+      initial: TRANSLATION_STATUSES.indexOf('translated'),
     });
     translations.push({
       locale,
@@ -159,5 +139,5 @@ async function promptForTranslations(
       status: statusPrompt.value,
     });
   }
-  return translations;
+  return checkedTranslations(translations);
 }
