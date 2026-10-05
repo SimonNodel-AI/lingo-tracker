@@ -1,4 +1,4 @@
-import type { ResourceTreeNode, ResourceTreeEntry } from './load-resource-tree';
+import type { ResourceTreeNode, ResourceTreeEntry } from './resource-tree-types';
 
 /**
  * Extracts a subtree from a resource tree at the specified path.

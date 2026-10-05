@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { openCollection } from '../config/open-collection';
-import type { ResourceTreeEntry, ResourceTreeNode } from './load-resource-tree';
+import type { ResourceTreeEntry, ResourceTreeNode } from './resource-tree-types';
 import { ResourceTreeIndex } from './resource-tree-index';
 import type { TreeFingerprint } from './tree-fingerprint';
 import * as treeFingerprint from './tree-fingerprint';

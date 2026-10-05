@@ -6,13 +6,38 @@ import {
   NoTranslationTargetLocalesError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
-import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import { readCollection } from '../resource/read-collection';
 import { reindexMutation, resolveMutationSink, type MutationSinkOptions } from '../resource/resource-mutation';
-import type { TranslateLocaleProgress, TranslateLocaleResult } from './translate-locale';
+import type { RunOutcome } from '../run-outcome';
 import { translationBatch, type TranslationBatchOutcome, type TranslationBatchRow } from './translation-batch';
 import { snapshotTranslation } from './translation-write-back';
 import { assertAutoTranslationEnabled, openPreparedTranslator, type OpenTranslatorOptions } from './translator';
+
+export interface TranslateLocaleCounts {
+  /**
+   * Number of resources eligible for translation (status `new`, `stale`, or missing metadata
+   * for the target locale). Does NOT represent the total collection size.
+   * Returns 0 when no resources needed translation.
+   */
+  readonly totalResources: number;
+  readonly translatedCount: number;
+  readonly failedCount: number;
+  readonly skippedCount: number;
+}
+
+export interface TranslateLocaleProgress extends TranslateLocaleCounts {
+  readonly currentBatch: number;
+  readonly totalBatches: number;
+}
+
+export interface TranslateLocaleResult extends TranslateLocaleCounts {
+  readonly outcome: RunOutcome;
+  readonly failures: ReadonlyArray<{ key: string; error: string }>;
+  readonly skippedKeys: string[];
+  /** One line per folder the Collection Reader could not read (its resources were not translated). */
+  readonly warnings: string[];
+}
 
 export interface TranslationRun {
   readonly targetLocales: readonly string[];

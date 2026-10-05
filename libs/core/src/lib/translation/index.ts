@@ -10,7 +10,7 @@ export {
   type TranslateExistingResourceResult,
   translateExistingResource,
 } from './translate-existing-resource';
-export type { TranslateLocaleProgress, TranslateLocaleResult } from './translate-locale';
+export type { TranslateLocaleProgress, TranslateLocaleResult } from './translation-run';
 export type {
   ProviderCapabilities,
   TranslateRequest,

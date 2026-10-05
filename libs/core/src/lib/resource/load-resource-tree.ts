@@ -1,37 +1,10 @@
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ResourceEntryMetadata } from './resource-entry-metadata';
+import type { ResourceTreeNode } from './resource-tree-types';
 import { checkCollectionFolderPath } from './folder-address';
 import type { CollectionFolderProblem } from './collection-folders';
 import { readCollectionFolders } from './read-collection';
-
-export interface ResourceTreeNode {
-  /** Folder path segments (empty array for root) */
-  folderPathSegments: string[];
-
-  /** Resources in this folder */
-  resources: ResourceTreeEntry[];
-
-  /** Child folders */
-  children: FolderChild[];
-}
-
-export interface ResourceTreeEntry {
-  key: string;
-  source: string;
-  translations: Record<string, string>;
-  comment?: string;
-  tags?: string[];
-  metadata: ResourceEntryMetadata;
-}
-
-export interface FolderChild {
-  name: string;
-  fullPathSegments: string[];
-  loaded: boolean;
-  tree?: ResourceTreeNode;
-}
 
 export interface LoadResourceTreeOptions {
   /** Receives unreadable folder problems; core never logs them. */

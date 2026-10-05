@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractSubtree, extractResourcesRecursively } from './extract-subtree';
-import type { ResourceTreeNode } from './load-resource-tree';
+import type { ResourceTreeNode } from './resource-tree-types';
 
 describe('extractSubtree', () => {
   describe('root extraction', () => {

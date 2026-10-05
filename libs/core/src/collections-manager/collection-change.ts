@@ -30,7 +30,7 @@ export interface CollectionChange {
   readonly targetLocales?: (current: Collection) => string[];
 }
 
-/** The shared validation, folder rewrite and single config write for every locale change. */
+/** The shared validation, folder rewrite and single config write for collection edits. */
 export async function changeCollection(
   current: OpenedCollection,
   change: CollectionChange,

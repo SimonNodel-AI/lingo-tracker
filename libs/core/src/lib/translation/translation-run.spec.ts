@@ -10,7 +10,7 @@ import { writeJsonFile } from '../file-io/json-file-operations';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
-import type { TranslateLocaleProgress } from './translate-locale';
+import type { TranslateLocaleProgress } from './translation-run';
 
 import * as batchModule from './translation-batch';
 import {

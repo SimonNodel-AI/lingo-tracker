@@ -193,7 +193,7 @@ Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
 ### Collection Change
 
-The shared change engine for an existing [Collection Entry](#collection-entry). `changeCollection` in `libs/core/src/collections-manager/collection-change.ts` serves update, add-locale, and remove-locale.
+The shared change engine for an existing [Collection Entry](#collection-entry). `changeCollection` in `libs/core/src/collections-manager/collection-change.ts` serves update, tag edits, add-locale, and remove-locale. Tag edits validate and normalize the list edit, then await this engine; read-only registrations still permit tag edits. Refused edits write nothing and emit no mutation. Changed tags emit one collection reindex.
 
 All preconditions precede writes. Locale sugar refuses read-only before its locale-specific checks and the stale snapshot. Update patches check terms, rename, entry, bundle references, terms destination, and stale snapshot before read-only and added-locale validation. The engine reads every affected folder before writes. It seeds added locales, purges removed locales, writes config, then writes optional terms.
 
@@ -587,6 +587,12 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 ---
 
+### Locale Files
+
+The filesystem phase of [Collection Change](#collection-change), in `libs/core/src/collections-manager/locale-files.ts`. `openLocaleFolders(collection)` opens every [Collection Sweep](#collection-sweep) folder before writes and refuses an unreadable folder. `seedLocaleFiles(folders, locale, onSave?)` and `dropLocaleFiles(folders, locale, onSave?)` return `{ entries, filesUpdated }`, save only changed folders, and call `onSave` after each save attempt, including failures. They never write config. Seeding preserves existing translations and gives missing locales a `new` base-value copy; dropping removes values and metadata.
+
+---
+
 ### Locale Seeding
 
 What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/lib/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
@@ -891,6 +897,12 @@ Explained in context: [`core-library.md`](core-library.md#resource-tree-index), 
 
 ---
 
+### Resource Tree Types
+
+The shared read-model types in `libs/core/src/lib/resource/resource-tree-types.ts`: `ResourceTreeEntry`, `ResourceTreeNode`, and `FolderChild`. The [Collection Reader](#collection-reader), Resource Folder, tree loader, and their consumers depend on this type-only module, so the reader does not depend on the tree loader. Core exports these types through its public resource interface.
+
+---
+
 ### Route Collection
 
 The API parameter seam for resource, folder, locale, and existing collection registration routes. `@RouteCollection()` supplies the `Collection` opened by `RouteCollectionPipe` from the already-decoded `:collectionName` param. The pipe reads config once and retains that snapshot on the opened collection for locale writes, requires writable access for methods other than `GET` by default, attaches `CollectionIndex.sink` to writable handles, and maps missing or read-only source collections to Nest 404 or 403 exceptions. This is the route source rule: the HTTP contract spec runs without `APP_FILTER`, so the pipe must return its own HTTP body. Move destinations follow one separate core rule; core resolves the plain `toCollection` name, and the app filter maps its typed errors. Route Collection has no body validation or DTO mapping. The collection update route uses `@ValidBody(updateCollectionBody)`; collection lookup takes precedence, so an invalid body sent to an unknown collection now answers 404 instead of 400, while an existing collection still answers 400. `@RouteCollection({ lifecycle: 'update' })` opens without requiring writable resources; core refuses effective locale changes on read-only collections. `@RouteCollection({ lifecycle: 'delete' })` allows read-only collections and registrations with missing or non-string translations folders. Both lifecycle handles carry the index sink. Creation uses an Opened Project and supplies the sink directly to `addCollection`. The Tracker encodes names once in API URL path segments; its router also encodes navigation segments, and `TranslationBrowser` uses the decoded route name directly.
@@ -1096,7 +1108,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
 
 The handle prepared by `prepareTranslationRun(collection, options?)` in `libs/core/src/lib/translation/translation-run.ts`, above [Translation Batch](#translation-batch). Preparation checks enabled auto-translation and configured target locales, and exposes only `targetLocales` for a prompt. `forLocale(locale)` validates a configured, non-base target and returns a bound run with `collectionName`, `targetLocale`, and `execute({ onProgress? })`. Typed errors keep their existing messages. An enabled collection without target locales raises `NoTranslationTargetLocalesError`. Collection and translation config stay inside the handle. Provider, protected terms, delay, and mutation sink overrides belong to preparation options.
 
-The bound run reads resources and selects work through `selectTranslationRow`, the shared [Staleness Rule](#staleness-rule), then executes batches and returns `TranslateLocaleResult`. It opens the Translator once and tallies each key/locale outcome once. `TranslateLocaleProgress` carries the resource counts and batch position; the API job embeds it and maps its counters to the unchanged HTTP response. Internal `executeTranslationRun` also serves single-resource translation, whose result projects locales and rethrows the first failure.
+The bound run reads resources and selects work through `selectTranslationRow`, the shared [Staleness Rule](#staleness-rule), then executes batches and returns `TranslateLocaleResult`. Its counts, progress, and result types live beside the run in `translation-run.ts`; core retains the public progress and result exports. It opens the Translator once and tallies each key/locale outcome once. `TranslateLocaleProgress` carries the resource counts and batch position; the API job embeds it and maps its counters to the unchanged HTTP response. Internal `executeTranslationRun` also serves single-resource translation, whose result projects locales and rethrows the first failure.
 
 The run uses the configured delay between batches. Tests inject `delay(ms)` instead of a real timer. Locale runs emit one collection `reindex` after each batch with save attempts, including partial failures. Single-resource runs retain their precise `upsert` notification. The CLI prepares before prompts and binds the chosen locale. The API controller binds before queueing, so invalid requests fail before 202.
 

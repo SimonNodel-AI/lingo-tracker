@@ -18,13 +18,8 @@ export {
   editResource,
 } from './edit-resource';
 export { extractResourcesRecursively, extractSubtree } from './extract-subtree';
-export {
-  type FolderChild,
-  type LoadResourceTreeOptions,
-  loadResourceTree,
-  type ResourceTreeEntry,
-  type ResourceTreeNode,
-} from './load-resource-tree';
+export { type LoadResourceTreeOptions, loadResourceTree } from './load-resource-tree';
+export type { FolderChild, ResourceTreeEntry, ResourceTreeNode } from './resource-tree-types';
 export type { ResourceTranslation } from './locale-seeding';
 export { type MoveResourceParams, type MoveResourceResult, moveResource } from './move-resource';
 export { type MoveResourcesOperation, moveResources } from './move-resources';

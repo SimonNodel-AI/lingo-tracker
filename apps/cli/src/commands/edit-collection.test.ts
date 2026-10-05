@@ -40,7 +40,7 @@ describe('editCollectionCommand', () => {
     process.env.INIT_CWD = '/test/project';
     process.exitCode = undefined;
     vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditCollectionTags.mockReturnValue(['existing-tag', 'new-feature']);
+    mockEditCollectionTags.mockResolvedValue(['existing-tag', 'new-feature']);
   });
 
   afterEach(() => {
@@ -100,7 +100,7 @@ describe('editCollectionCommand', () => {
   });
 
   it('does not duplicate an already-existing tag', async () => {
-    mockEditCollectionTags.mockReturnValueOnce(['existing-tag']);
+    mockEditCollectionTags.mockResolvedValueOnce(['existing-tag']);
     await editCollectionCommand('myApp', { addTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
@@ -111,7 +111,7 @@ describe('editCollectionCommand', () => {
   });
 
   it('removes a tag from the collection', async () => {
-    mockEditCollectionTags.mockReturnValueOnce([]);
+    mockEditCollectionTags.mockResolvedValueOnce([]);
     await editCollectionCommand('myApp', { removeTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
@@ -122,7 +122,7 @@ describe('editCollectionCommand', () => {
   });
 
   it('replaces all tags with --set-tags', async () => {
-    mockEditCollectionTags.mockReturnValueOnce(['alpha', 'beta']);
+    mockEditCollectionTags.mockResolvedValueOnce(['alpha', 'beta']);
     await editCollectionCommand('myApp', { setTags: ['alpha', 'beta'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
@@ -133,7 +133,7 @@ describe('editCollectionCommand', () => {
   });
 
   it('clears all tags when --set-tags is empty string', async () => {
-    mockEditCollectionTags.mockReturnValueOnce([]);
+    mockEditCollectionTags.mockResolvedValueOnce([]);
     await editCollectionCommand('myApp', { setTags: [] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
