@@ -3,7 +3,7 @@ import type {
   Collection,
   DeleteResourceResult,
   EditResourceResult,
-  MoveResourceResult,
+  MoveResult,
   TerminologyFindings,
   TranslateExistingResourceResult,
 } from '@simoncodes-ca/core';
@@ -66,7 +66,7 @@ export function mapDeleteResourceResultToDto(result: DeleteResourceResult): Dele
 }
 
 /** Maps a move result, preserving empty warning and error arrays. */
-export function mapMoveResourcesResultToDto(result: MoveResourceResult): MoveResourceResponseDto {
+export function mapMoveResourcesResultToDto(result: MoveResult): MoveResourceResponseDto {
   return { movedCount: result.movedCount, warnings: result.warnings, errors: result.errors };
 }
 

@@ -44,6 +44,7 @@ export {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  MoveConfigRequiredError,
   MultipleBundleConstantNameError,
   NoTranslationTargetLocalesError,
   ParentDirectoryMissingError,

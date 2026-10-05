@@ -18,7 +18,7 @@ import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/ling
 import { addResource } from '../resource/add-resource';
 import { openResourceFolder } from '../resource/resource-folder';
 import { PRUNABLE_OS_JUNK_FILES } from '../resource/folder-pruning';
-import { moveFolder } from './move-folder';
+import { executeMove } from '../resource/execute-move';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {
@@ -50,7 +50,7 @@ function collection(translationsFolder: string): Collection {
  * Regression: a folder that could not be read (malformed tracker_meta.json) was silently skipped
  * while enumerating keys, so moveFolder deleted the source tree with that folder's entries never copied.
  */
-describe('moveFolder with an unreadable folder (real fs)', () => {
+describe('executeMove for folders with an unreadable folder (real fs)', () => {
   let root: string;
 
   const entries = JSON.stringify({ ok: { source: 'OK' } });
@@ -74,9 +74,13 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
     writeFolder('{}', 'target', 'nested');
     symlinkSync(join(root, 'target'), join(root, 'linked'));
     for (const sourceFolderPath of ['linked', 'linked.nested']) {
-      await expect(
-        moveFolder(collection(root), { sourceFolderPath, destinationFolderPath: 'shared' }, { onMutation }),
-      ).rejects.toThrow(`Cannot move folder '${sourceFolderPath}':`);
+      expect(() =>
+        executeMove(
+          collection(root),
+          { kind: 'folder', source: sourceFolderPath, destination: 'shared' },
+          { onMutation },
+        ),
+      ).toThrow(`Cannot move folder '${sourceFolderPath}':`);
       expect(collected).toEqual([]);
       expect(existsSync(join(root, 'shared'))).toBe(false);
       expect(readFileSync(join(root, 'target', 'nested', 'resource_entries.json'), 'utf8')).toBe(entries);
@@ -88,13 +92,13 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
   it('refuses a missing destination before a folder move writes', async () => {
     writeFolder('{}', 'apps');
     const config = { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} };
-    await expect(
-      moveFolder(
+    expect(() =>
+      executeMove(
         collection(root),
-        { sourceFolderPath: 'apps', destinationFolderPath: 'shared', toCollection: 'missing' },
+        { kind: 'folder', source: 'apps', destination: 'shared', toCollection: 'missing' },
         { config, onMutation },
       ),
-    ).rejects.toThrow(CollectionNotFoundError);
+    ).toThrow(CollectionNotFoundError);
     expect(collected).toEqual([]);
     expect(existsSync(join(root, 'apps', 'resource_entries.json'))).toBe(true);
   });
@@ -108,13 +112,13 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
       locales: ['en'],
       collections: { vendor: { translationsFolder: 'vendor', readOnly: true } },
     };
-    await expect(
-      moveFolder(
+    expect(() =>
+      executeMove(
         collection(root),
-        { sourceFolderPath: 'apps', destinationFolderPath: 'shared', toCollection: 'vendor' },
+        { kind: 'folder', source: 'apps', destination: 'shared', toCollection: 'vendor' },
         { config, cwd: root, onMutation },
       ),
-    ).rejects.toThrow(ReadOnlyCollectionError);
+    ).toThrow(ReadOnlyCollectionError);
     expect(collected).toEqual([]);
     expect(existsSync(join(root, 'apps', 'resource_entries.json'))).toBe(true);
   });
@@ -123,12 +127,9 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
     writeFolder(JSON.stringify({ ok: { en: { checksum: 'x' } } }), 'apps', 'good');
     writeFolder('{ not json', 'apps', 'bad');
 
-    const result = await moveFolder(
+    const result = await executeMove(
       collection(root),
-      {
-        sourceFolderPath: 'apps',
-        destinationFolderPath: 'shared',
-      },
+      { kind: 'folder', source: 'apps', destination: 'shared' },
       { onMutation },
     );
 
@@ -145,12 +146,9 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
   it('does not delete a source folder whose only resources are unreadable', async () => {
     writeFolder('{ not json', 'apps', 'bad');
 
-    const result = await moveFolder(
+    const result = await executeMove(
       collection(root),
-      {
-        sourceFolderPath: 'apps.bad',
-        destinationFolderPath: 'shared',
-      },
+      { kind: 'folder', source: 'apps.bad', destination: 'shared' },
       { onMutation },
     );
 
@@ -161,20 +159,16 @@ describe('moveFolder with an unreadable folder (real fs)', () => {
   });
 });
 
-describe('moveFolder to the root without nesting (real fs)', () => {
+describe('executeMove for folders to the root without nesting (real fs)', () => {
   const root = useTempDir('move-folder-root-depth-');
 
   it('treats a depth-one source as already at the root and moves nothing', async () => {
     const source = collection(root());
     await addResource(source, { key: 'apps.one', baseValue: 'One' });
 
-    const result = await moveFolder(
+    const result = await executeMove(
       source,
-      {
-        sourceFolderPath: 'apps',
-        destinationFolderPath: '',
-        nestUnderDestination: false,
-      },
+      { kind: 'folder', source: 'apps', destination: '', nestUnderDestination: false },
       { onMutation },
     );
 
@@ -189,13 +183,9 @@ describe('moveFolder to the root without nesting (real fs)', () => {
     const source = collection(root());
     await addResource(source, { key: 'apps.deep.one', baseValue: 'One' });
 
-    const result = await moveFolder(
+    const result = await executeMove(
       source,
-      {
-        sourceFolderPath: 'apps.deep',
-        destinationFolderPath: '',
-        nestUnderDestination: false,
-      },
+      { kind: 'folder', source: 'apps.deep', destination: '', nestUnderDestination: false },
       { onMutation },
     );
 
@@ -214,12 +204,9 @@ describe('moveFolder to the root without nesting (real fs)', () => {
     const source = collection(root());
     await addResource(source, { key: 'common.testdata.foo', baseValue: 'Foo' });
 
-    const result = await moveFolder(
+    const result = await executeMove(
       source,
-      {
-        sourceFolderPath: 'common.testdata',
-        destinationFolderPath: '',
-      },
+      { kind: 'folder', source: 'common.testdata', destination: '' },
       { onMutation },
     );
 
@@ -236,7 +223,7 @@ describe('moveFolder to the root without nesting (real fs)', () => {
  * Regression: with override off, a destination collision skipped that resource, but the source
  * folder was still deleted because another resource moved, losing the skipped resource.
  */
-describe('moveFolder with a destination collision (real fs)', () => {
+describe('executeMove for folders with a destination collision (real fs)', () => {
   let root: string;
 
   beforeEach(async () => {
@@ -251,13 +238,9 @@ describe('moveFolder with a destination collision (real fs)', () => {
   });
 
   it('moves the other resources, keeps the source folder with the skipped one, and reports matching mutations', async () => {
-    const result = await moveFolder(
+    const result = await executeMove(
       collection(root),
-      {
-        sourceFolderPath: 'src',
-        destinationFolderPath: 'dst',
-        override: false,
-      },
+      { kind: 'folder', source: 'src', destination: 'dst', override: false },
       { onMutation },
     );
 
@@ -282,7 +265,7 @@ describe('moveFolder with a destination collision (real fs)', () => {
   });
 });
 
-describe('moveFolder across collections and around content outside the collection (real fs)', () => {
+describe('executeMove for folders across collections and around content outside the collection (real fs)', () => {
   let root: string;
 
   beforeEach(() => {
@@ -301,11 +284,7 @@ describe('moveFolder across collections and around content outside the collectio
     mkdirSync(hidden);
     writeFileSync(join(hidden, 'resource_entries.json'), JSON.stringify({ old: { source: 'Old' } }));
 
-    const result = await moveFolder(
-      source,
-      { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
-      { onMutation },
-    );
+    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(2);
@@ -328,11 +307,7 @@ describe('moveFolder across collections and around content outside the collectio
     mkdirSync(join(source.translationsFolder, 'apps'), { recursive: true });
     writeFileSync(join(source.translationsFolder, 'apps', 'README.md'), 'notes');
 
-    const result = await moveFolder(
-      source,
-      { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
-      { onMutation },
-    );
+    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
 
     expect(result.foldersDeleted).toBe(0);
     expect(collected).toEqual([]);
@@ -344,11 +319,7 @@ describe('moveFolder across collections and around content outside the collectio
     const source = collection(join(root, 'main'));
     mkdirSync(join(source.translationsFolder, 'apps', 'deep'), { recursive: true });
 
-    const result = await moveFolder(
-      source,
-      { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
-      { onMutation },
-    );
+    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
 
     expect(result.foldersDeleted).toBe(1);
     expect(collected).toEqual([
@@ -368,9 +339,9 @@ describe('moveFolder across collections and around content outside the collectio
     mkdirSync(join(source.translationsFolder, 'apps', 'empty'));
     collected.length = 0;
 
-    const result = await moveFolder(
+    const result = await executeMove(
       source,
-      { sourceFolderPath: 'common', destinationFolderPath: 'apps' },
+      { kind: 'folder', source: 'common', destination: 'apps' },
       {
         onMutation: (mutation) => {
           onMutation(mutation);
@@ -410,11 +381,7 @@ describe('moveFolder across collections and around content outside the collectio
       writeFileSync(join(source.translationsFolder, 'apps', 'deep', name), 'junk');
     }
     collected.length = 0;
-    const result = await moveFolder(
-      source,
-      { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
-      { onMutation },
-    );
+    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
     expect(result).toEqual({ outcome: 'succeeded', movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] });
     expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
     expect(collected.filter((mutation) => mutation.kind === 'remove-folder')).toEqual([
@@ -427,9 +394,9 @@ describe('moveFolder across collections and around content outside the collectio
     const source = collection(join(root, 'main'));
     await addResource(source, { key: 'apps.one', baseValue: 'One' });
     collected.length = 0;
-    const result = await moveFolder(
+    const result = await executeMove(
       source,
-      { sourceFolderPath: 'apps', destinationFolderPath: 'shared' },
+      { kind: 'folder', source: 'apps', destination: 'shared' },
       {
         onMutation: (mutation) => {
           onMutation(mutation);
@@ -474,13 +441,9 @@ describe('moveFolder across collections and around content outside the collectio
       ],
     });
 
-    const result = await moveFolder(
+    const result = await executeMove(
       source,
-      {
-        sourceFolderPath: 'apps',
-        destinationFolderPath: '',
-        toCollection: 'other',
-      },
+      { kind: 'folder', source: 'apps', destination: '', toCollection: 'other' },
       {
         onMutation,
         config: {

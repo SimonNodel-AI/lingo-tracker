@@ -33,6 +33,14 @@ export abstract class LingoTrackerError extends Error {
   }
 }
 
+/** A named move destination cannot be opened without project config. */
+export class MoveConfigRequiredError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor() {
+    super('Move destination resolution requires config', ERROR_CODES.MOVE_CONFIG_REQUIRED);
+  }
+}
+
 /** A source file could not be detected, read, or parsed before an import writes resources. */
 export class ImportSourceError extends LingoTrackerError {
   readonly kind = 'internal' as const;

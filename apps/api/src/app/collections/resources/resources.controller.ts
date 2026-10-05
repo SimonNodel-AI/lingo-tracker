@@ -15,7 +15,7 @@ import {
   type Collection,
   deleteResource,
   editResource,
-  moveResources,
+  executeMoves,
   prepareTranslationRun,
   translateExistingResource,
 } from '@simoncodes-ca/core';
@@ -118,7 +118,7 @@ export class ResourcesController {
     // Cross-collection moves need the config to resolve destination collections.
     const config = this.#configService.getConfig();
 
-    const result = await moveResources(collection, dto.moves, { config });
+    const result = executeMoves(collection, dto.moves, { config });
     return mapMoveResourcesResultToDto(result);
   }
 

@@ -10,7 +10,7 @@ import {
   type FolderChild,
   type LingoTrackerConfig,
   loadConfig,
-  moveResource,
+  executeMove,
   openCollection,
   openResourceFolder,
   ResourceTreeIndex,
@@ -163,13 +163,9 @@ describe('CollectionIndex', () => {
       const other = openCollection(config('other'), 'other', { cwd: root });
       readyTree(other);
 
-      await moveResource(
+      await executeMove(
         collection(),
-        {
-          source: 'common.ok',
-          destination: 'imported.ok',
-          toCollection: 'other',
-        },
+        { source: 'common.ok', destination: 'imported.ok', toCollection: 'other' },
         { onMutation: index.sink, config: config('other'), cwd: root },
       );
 

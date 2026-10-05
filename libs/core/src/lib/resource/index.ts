@@ -21,8 +21,6 @@ export { extractResourcesRecursively, extractSubtree } from './extract-subtree';
 export { type LoadResourceTreeOptions, loadResourceTree } from './load-resource-tree';
 export type { FolderChild, ResourceTreeEntry, ResourceTreeNode } from './resource-tree-types';
 export type { ResourceTranslation } from './locale-seeding';
-export { type MoveResourceParams, type MoveResourceResult, moveResource } from './move-resource';
-export { type MoveResourcesOperation, moveResources } from './move-resources';
 export {
   type CollectionRead,
   type CollectionReadProblem,

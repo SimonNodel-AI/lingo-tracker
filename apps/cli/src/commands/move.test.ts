@@ -2,7 +2,7 @@ import {
   CollectionNotFoundError,
   type LingoTrackerConfig,
   loadConfig,
-  moveResource,
+  executeMove,
   ReadOnlyCollectionError,
 } from '@simoncodes-ca/core';
 import prompts from 'prompts';
@@ -14,7 +14,7 @@ vi.mock('prompts');
 vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  return { ...actual, loadConfig: vi.fn(), moveResource: vi.fn() };
+  return { ...actual, loadConfig: vi.fn(), executeMove: vi.fn() };
 });
 
 const CONFIG: LingoTrackerConfig = {
@@ -38,7 +38,7 @@ describe('moveResourceCommand', () => {
     process.exitCode = undefined;
     vi.mocked(isInteractiveTerminal).mockReturnValue(false);
     vi.mocked(loadConfig).mockReturnValue(CONFIG);
-    vi.mocked(moveResource).mockResolvedValue({ outcome: 'succeeded', movedCount: 1, warnings: [], errors: [] });
+    vi.mocked(executeMove).mockReturnValue({ outcome: 'succeeded', movedCount: 1, warnings: [], errors: [] });
   });
 
   afterEach(() => {
@@ -48,11 +48,16 @@ describe('moveResourceCommand', () => {
   it('moves within the collection with the given flags', async () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', override: true });
 
-    expect(moveResource).toHaveBeenCalledWith(collectionNamed('main'), {
-      source: 'a.ok',
-      destination: 'b.ok',
-      override: true,
-    });
+    expect(executeMove).toHaveBeenCalledWith(
+      collectionNamed('main'),
+      {
+        source: 'a.ok',
+        destination: 'b.ok',
+        override: true,
+        toCollection: undefined,
+      },
+      { config: CONFIG, cwd: '/project' },
+    );
     expect(console.log).toHaveBeenCalledWith('✅ Moved 1 resource(s)');
     expect(process.exitCode).toBe(0);
   });
@@ -60,7 +65,7 @@ describe('moveResourceCommand', () => {
   it('moves into the collection named by --dest-collection', async () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'admin' });
 
-    expect(moveResource).toHaveBeenCalledWith(
+    expect(executeMove).toHaveBeenCalledWith(
       collectionNamed('main'),
       { source: 'a.ok', destination: 'b.ok', override: undefined, toCollection: 'admin' },
       { config: CONFIG, cwd: '/project' },
@@ -70,19 +75,23 @@ describe('moveResourceCommand', () => {
   });
 
   it('exits 1 for an unknown destination collection', async () => {
-    vi.mocked(moveResource).mockRejectedValue(new CollectionNotFoundError('missing', 'destination'));
+    vi.mocked(executeMove).mockImplementation(() => {
+      throw new CollectionNotFoundError('missing', 'destination');
+    });
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'missing' });
 
-    expect(moveResource).toHaveBeenCalled();
+    expect(executeMove).toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('❌ Destination collection "missing" not found');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 for a read-only destination collection', async () => {
-    vi.mocked(moveResource).mockRejectedValue(new ReadOnlyCollectionError('vendor'));
+    vi.mocked(executeMove).mockImplementation(() => {
+      throw new ReadOnlyCollectionError('vendor');
+    });
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'vendor' });
 
-    expect(moveResource).toHaveBeenCalled();
+    expect(executeMove).toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(
       '❌ Collection "vendor" is read-only. Its resources cannot be modified.',
     );
@@ -90,7 +99,7 @@ describe('moveResourceCommand', () => {
   });
 
   it('exits 1 when the move reports errors', async () => {
-    vi.mocked(moveResource).mockResolvedValue({
+    vi.mocked(executeMove).mockReturnValue({
       outcome: 'failed',
       movedCount: 0,
       warnings: [],
@@ -106,7 +115,9 @@ describe('moveResourceCommand', () => {
   });
 
   it('exits 1 with the core message when core throws', async () => {
-    vi.mocked(moveResource).mockRejectedValue(new Error('Resource not found: a.ok'));
+    vi.mocked(executeMove).mockImplementation(() => {
+      throw new Error('Resource not found: a.ok');
+    });
 
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });
 
@@ -115,7 +126,7 @@ describe('moveResourceCommand', () => {
   });
 
   it('prints moved resources and errors for a partial failure', async () => {
-    vi.mocked(moveResource).mockResolvedValue({
+    vi.mocked(executeMove).mockReturnValue({
       outcome: 'failed',
       movedCount: 1,
       warnings: ['Destination already exists'],
@@ -133,7 +144,7 @@ describe('moveResourceCommand', () => {
   });
 
   it('uses the core outcome for the exit code', async () => {
-    vi.mocked(moveResource).mockResolvedValue({ outcome: 'failed', movedCount: 0, warnings: [], errors: [] });
+    vi.mocked(executeMove).mockReturnValue({ outcome: 'failed', movedCount: 0, warnings: [], errors: [] });
 
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok' });
 
@@ -145,7 +156,7 @@ describe('moveResourceCommand', () => {
     await moveResourceCommand({ collection: 'main' });
 
     expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --source, --dest');
-    expect(moveResource).not.toHaveBeenCalled();
+    expect(executeMove).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(1);
   });
 
@@ -159,9 +170,10 @@ describe('moveResourceCommand', () => {
 
       await moveResourceCommand({ collection: 'main' });
 
-      expect(moveResource).toHaveBeenCalledWith(
+      expect(executeMove).toHaveBeenCalledWith(
         collectionNamed('main'),
         expect.objectContaining({ source: 'a.*', destination: 'b' }),
+        { config: CONFIG, cwd: '/project' },
       );
     });
 
@@ -174,7 +186,7 @@ describe('moveResourceCommand', () => {
       await moveResourceCommand({ collection: 'main' });
 
       expect(console.error).toHaveBeenCalledWith('❌ Move resource cancelled.');
-      expect(moveResource).not.toHaveBeenCalled();
+      expect(executeMove).not.toHaveBeenCalled();
       expect(process.exitCode).toBe(0);
     });
   });

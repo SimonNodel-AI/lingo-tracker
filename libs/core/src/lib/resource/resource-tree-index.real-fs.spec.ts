@@ -11,8 +11,7 @@ import {
   editResource,
   type FolderChild,
   type LingoTrackerConfig,
-  moveFolder,
-  moveResource,
+  executeMove,
   openCollection,
   openResourceFolder,
   type ResourceTreeNode,
@@ -130,7 +129,7 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
   });
 
   it('moves resources by pattern', async () => {
-    await moveResource(collection(), { source: 'common.*', destination: 'shared' }, { onMutation: sink });
+    await executeMove(collection(), { source: 'common.*', destination: 'shared' }, { onMutation: sink });
 
     expect(keysOf(readyTree(collection(), 'shared'))).toEqual(['cancel', 'ok']);
     expect(keysOf(readyTree(collection(), 'common'))).toEqual([]);
@@ -141,14 +140,7 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
     createFolder(collection(), { folderName: 'empty', parentPath: 'apps' }, { onMutation: sink });
     expect(readyTree(collection(), 'apps.empty')).not.toBeNull();
 
-    await moveFolder(
-      collection(),
-      {
-        sourceFolderPath: 'common',
-        destinationFolderPath: 'apps',
-      },
-      { onMutation: sink },
-    );
+    await executeMove(collection(), { kind: 'folder', source: 'common', destination: 'apps' }, { onMutation: sink });
 
     expect(keysOf(readyTree(collection(), 'apps.common'))).toEqual(['cancel', 'ok']);
     expect(readyTree(collection(), 'common')).toBeNull();

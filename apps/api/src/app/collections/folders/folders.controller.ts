@@ -1,5 +1,5 @@
 import { Controller, Post, Delete } from '@nestjs/common';
-import { type Collection, createFolder, deleteFolder, moveFolder } from '@simoncodes-ca/core';
+import { type Collection, createFolder, deleteFolder, executeMove } from '@simoncodes-ca/core';
 import type {
   CreateFolderDto,
   CreateFolderResponseDto,
@@ -73,11 +73,22 @@ export class FoldersController {
     // Cross-collection moves need the config to resolve the destination.
     const config = this.configService.getConfig();
 
-    const result = await moveFolder(collection, moveFolderDto, { config });
+    const result = executeMove(
+      collection,
+      {
+        kind: 'folder',
+        source: moveFolderDto.sourceFolderPath,
+        destination: moveFolderDto.destinationFolderPath,
+        override: moveFolderDto.override,
+        toCollection: moveFolderDto.toCollection,
+        nestUnderDestination: moveFolderDto.nestUnderDestination,
+      },
+      { config },
+    );
 
     return {
       movedCount: result.movedCount,
-      foldersDeleted: result.foldersDeleted,
+      foldersDeleted: result.foldersDeleted ?? 0,
       warnings: result.warnings,
       errors: result.errors,
     };
