@@ -1,0 +1,607 @@
+import { computed, type Signal, signal } from '@angular/core';
+import type { FormControl, FormGroup } from '@angular/forms';
+import type {
+  FolderNodeDto,
+  LingoTrackerConfigDto,
+  ResourceSummaryDto,
+  SearchResultDto,
+  TranslationStatus,
+} from '@simoncodes-ca/data-transfer';
+import { type PreferredTermRule, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import { Subscription } from 'rxjs';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { copyWithFeedback } from '../../../shared/clipboard';
+import type { ConfirmationSpec, ConfirmOptions } from '../../../shared/confirm';
+import type { NotificationService } from '../../../shared/notification';
+import { hasSearchLength } from '../../../shared/search/search-minimum';
+import { createFlash, createRestartableDelay } from '../../../shared/timed-transients';
+import type { TokenTranslator } from '../../../shared/translate-token';
+import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
+import type { Feedback } from '../../feedback';
+import type { SimilarValues } from '../../services/similar-values';
+import type { BrowserStore } from '../../store/browser.store';
+import { filterFolderTree } from '../../store/folder-tree.utils';
+import { EditorAdvisories, filteredEditorTagSuggestions } from './editor-advisories';
+import { EditorEntryForm } from './editor-entry-form';
+import { editorTagSuggestions } from './editor-entry-sources';
+import { EditorLocation, type EditorLocationPeek } from './editor-location';
+import { type EditorFocusTarget, EditorPanels } from './editor-panels';
+import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
+import { resolveDraftKey } from './resource-entry-draft';
+
+export interface TranslationEditorDialogData {
+  mode: 'create' | 'edit';
+  resource?: ResourceSummaryDto;
+  collectionName: string;
+  folderPath?: string;
+  availableLocales: string[];
+  baseLocale: string;
+  /** When true, the dialog opens in view-only mode: inputs disabled, no save. */
+  readOnly?: boolean;
+}
+
+/** External reads, writes and presentation supplied to one editor; no injector or DOM required. */
+export interface EditorSessionOptions {
+  browser: Pick<
+    InstanceType<typeof BrowserStore>,
+    'rootFolders' | 'currentFolderPath' | 'translations' | 'createResource' | 'updateResource'
+  >;
+  config: Signal<LingoTrackerConfigDto | null>;
+  peek: EditorLocationPeek;
+  similar: Pick<SimilarValues, 'suggestions'>;
+  translate: TokenTranslator;
+  activeLang: () => string;
+  confirm: (spec: ConfirmationSpec, options?: ConfirmOptions) => Promise<boolean>;
+  close: (outcome: EditorOutcome) => void;
+  focus: (target: EditorFocusTarget) => void;
+  feedbackText: (feedback: Feedback) => string;
+  notifications: Pick<NotificationService, 'success' | 'error'>;
+}
+
+/** Composes one editor's form, location, advice, panels and save protocol into its view model. */
+export class EditorSession {
+  readonly #subscriptions = new Subscription();
+  #destroyed = false;
+  #animationFrame = 0;
+  readonly #copyFlash = createFlash(1500);
+  readonly #locationDelay = createRestartableDelay(900);
+
+  readonly errorMessage = signal<string | null>(null);
+  readonly entry = new EditorEntryForm();
+  readonly advisories: EditorAdvisories;
+  /** True while the location pill is highlighting a folder it just absorbed from the key field. */
+  readonly locationAbsorbedFlash = signal(false);
+  /** Live-region text announcing the same move to a screen reader, which cannot see the flash. */
+  readonly locationAbsorbedMessage = signal('');
+  /** Set once the user attempts to save, so errors surface on untouched fields too. */
+  readonly submitAttempted = signal(false);
+  /** True for a moment after the footer key is copied, so the button can confirm it. */
+  readonly keyJustCopied = this.#copyFlash.active;
+
+  /** The folder popover, locales drawer and context disclosure; the template binds to it directly. */
+  readonly panels = new EditorPanels({
+    canOpenFolderPopover: () => !this.isReadOnly(),
+    canOpenLocalesDrawer: () => this.otherLocales().length > 0,
+  });
+
+  readonly preferredTermAdvisoriesId = 'translation-editor-preferred-terms';
+
+  /**
+   * The base value's `aria-describedby`: the error or ICU hint as before, plus
+   * the advisories while there are any.
+   */
+  readonly baseValueDescribedBy = computed(() => {
+    const ids = [this.showBaseValueError() ? 'translation-editor-base-value-error' : 'translation-editor-icu-hint'];
+    if (this.advisories.preferredTermFindings().length > 0) {
+      ids.push(this.preferredTermAdvisoriesId);
+    }
+    return ids.join(' ');
+  });
+
+  readonly tagInputText = signal('');
+  readonly inheritedTagsList = computed(() => this.data.resource?.inheritedTags ?? []);
+
+  readonly location: EditorLocation;
+  readonly submit: EditorSubmitSession;
+
+  readonly otherLocales = computed(() =>
+    this.data.availableLocales.filter((locale) => locale !== this.data.baseLocale),
+  );
+
+  readonly translationStatusOptions: TranslationStatus[] = [...TRANSLATION_STATUSES];
+
+  readonly isEditMode = computed(() => this.data.mode === 'edit');
+  /** Whether the dialog is view-only because the collection is read-only. */
+  readonly isReadOnly = computed(() => this.data.readOnly === true);
+  readonly dialogTitle = computed(() =>
+    this.isEditMode()
+      ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE
+      : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATETITLE,
+  );
+  readonly dialogSubtitle = computed(() =>
+    this.isEditMode()
+      ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITSUBTITLEX
+      : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATESUBTITLEX,
+  );
+  readonly saveButtonLabel = computed(() =>
+    this.isEditMode()
+      ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UPDATEBUTTON
+      : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.SAVEBUTTON,
+  );
+  readonly hasSearchQuery = computed(() => hasSearchLength(this.advisories.baseValueText().trim()));
+
+  /** Live form validity, for the footer's earned check glyph. */
+  readonly isFormValid = computed(() => {
+    this.entry.formState();
+    return this.entry.form.valid && !this.location.keyCollision();
+  });
+
+  /** True once the key control is both invalid and worth complaining about. */
+  readonly showKeyError = computed(() => {
+    this.entry.formState();
+    return this.entry.form.controls.key.invalid && (this.entry.form.controls.key.touched || this.submitAttempted());
+  });
+
+  /** True once the English value is both missing and worth complaining about. */
+  readonly showBaseValueError = computed(() => {
+    this.entry.formState();
+    return (
+      this.entry.form.controls.baseValue.invalid &&
+      (this.entry.form.controls.baseValue.touched || this.submitAttempted())
+    );
+  });
+
+  /** Transloco token for a status label, from the shared status presentation, so the spine never shows raw enum text. */
+  readonly statusLabelToken = statusLabelTokenFor;
+
+  /** Explains a disabled Other locales row instead of leaving it silently grey. */
+  readonly otherLocalesDisabledTooltip = computed(() =>
+    this.otherLocales().length === 0
+      ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.NOOTHERLOCALESTOOLTIP)
+      : '',
+  );
+
+  /** Explains a disabled location trigger instead of leaving it silently grey. */
+  readonly locationDisabledTooltip = computed(() =>
+    this.isReadOnly() ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.READONLYTABTOOLTIP) : '',
+  );
+
+  /** The base locale under a name a reader recognises ("English"), for the value label. */
+  readonly baseLocaleName = computed(() => this.getLocaleDisplayName(this.data.baseLocale));
+
+  /** The right-hand summary on the "Other locales" row, already localized. */
+  readonly otherLocalesSummary = computed(() =>
+    this.isEditMode()
+      ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.NEEDWORKX, {
+          count: this.entry.needWorkCount(),
+        })
+      : this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.AUTOTRANSLATEDX, {
+          count: this.otherLocales().length,
+        }),
+  );
+
+  /** How many similar values are pinned in the context column right now. */
+  readonly similarCount = computed(() => this.advisories.similarResources().length);
+
+  /**
+   * The similar-values block only exists once the search has hits to show. It
+   * never stands in for a pending search: the results clear the moment the
+   * English value changes, so an empty block would be a placeholder, not news.
+   */
+  readonly showSimilarContext = computed(() => this.similarCount() > 0);
+
+  /** The key carrying the exact same text, or '' when no hit matches verbatim. */
+  readonly exactMatchKey = computed(() => this.advisories.exactMatch()?.fullKey ?? '');
+
+  /** The one-line summary the narrow "Context" disclosure carries. */
+  readonly contextSummary = computed(() => {
+    // The key itself is not summarised here: the footer carries it in full, and
+    // the form's own key error carries the collision.
+    const parts = [
+      this.location.selectedFolderPath() || this.options.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
+    ];
+    if (this.similarCount() > 0) {
+      parts.push(
+        this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.SIMILARCOUNTX, {
+          count: this.similarCount(),
+        }),
+      );
+    }
+    return parts.join(' · ');
+  });
+
+  /** Root folders narrowed by the popover's filter, pruned to the matching subtrees. */
+  readonly filteredRootFolders = computed(() =>
+    filterFolderTree(this.options.browser.rootFolders(), this.panels.folderFilter()),
+  );
+
+  /** The folder the popover's primary button would commit. */
+  readonly popoverFolderPath = computed(() => this.panels.stagedFolderPath() ?? this.location.selectedFolderPath());
+
+  /**
+   * App-owned markup, never translator input, so the ICU hint can carry a <code>
+   * run. The braces are HTML entities: a literal `{count}` handed to Transloco
+   * as a parameter is re-read as an ICU argument and resolves to `undefined`.
+   */
+  readonly icuPlaceholderMarkup = '<code>&#123;count&#125;</code>';
+
+  readonly #tagSuggestions: Signal<string[]>;
+
+  readonly filteredTagSuggestions = computed(() =>
+    filteredEditorTagSuggestions(
+      this.tagInputText(),
+      this.entry.tags(),
+      this.inheritedTagsList(),
+      this.#tagSuggestions(),
+    ),
+  );
+
+  constructor(
+    private readonly data: TranslationEditorDialogData,
+    private readonly options: EditorSessionOptions,
+  ) {
+    this.advisories = new EditorAdvisories(this.options.config);
+    this.location = new EditorLocation({
+      collectionName: this.data.collectionName,
+      mode: this.data.mode,
+      original: this.data.resource,
+      rootFolders: this.options.browser.rootFolders,
+      browserFolderPath: this.options.browser.currentFolderPath,
+      browserEntries: this.options.browser.translations,
+      peek: this.options.peek,
+      moreLabel: (count) =>
+        this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
+    });
+    this.submit = new EditorSubmitSession({
+      writes: {
+        create: (dto) => this.options.browser.createResource(this.data.collectionName, dto),
+        update: (dto) => this.options.browser.updateResource(this.data.collectionName, dto),
+      },
+      confirmMissingComment: () => this.#showCommentConfirmation(),
+      chooseConflict: (fullKey) => this.#showKeyConflictDialog(fullKey),
+      onWriteStart: () => this.errorMessage.set(null),
+    });
+    this.#tagSuggestions = editorTagSuggestions(options.browser);
+    this.#initialize();
+  }
+
+  #initialize(): void {
+    // Initialize folder path from dialog data
+    this.location.pick(this.data.folderPath || '');
+    this.entry.seed(
+      this.data.availableLocales,
+      this.data.baseLocale,
+      this.isEditMode() ? this.data.resource : undefined,
+      this.location.selectedFolderPath(),
+    );
+
+    const baseValue = this.entry.form.controls.baseValue;
+    this.advisories.observe(
+      baseValue.value,
+      baseValue.valueChanges,
+      this.options.similar.suggestions(
+        baseValue.valueChanges,
+        this.data.collectionName,
+        this.isEditMode() ? this.entry.initialBaseValue() : undefined,
+        this.#originalEntry()?.fullKey,
+      ),
+    );
+
+    this.#setupDottedKeyAbsorption();
+
+    // View-only mode: lock down all inputs. Save is hidden in the template.
+    if (this.isReadOnly()) {
+      this.entry.form.disable({ emitEvent: false });
+    }
+  }
+
+  /** True when closing now would throw away work the user has done. */
+  hasUnsavedChanges(): boolean {
+    if (this.isReadOnly() || this.submit.isSubmitting()) {
+      return false;
+    }
+    return this.entry.hasUnsavedChanges(this.location.selectedFolderPath());
+  }
+
+  /** The entry an edit started from, or undefined in create mode. */
+  #originalEntry(): ResourceSummaryDto | undefined {
+    return this.isEditMode() ? this.data.resource : undefined;
+  }
+
+  destroy(): void {
+    this.#destroyed = true;
+    cancelAnimationFrame(this.#animationFrame);
+    this.#locationDelay.destroy();
+    this.#copyFlash.destroy();
+    this.#subscriptions.unsubscribe();
+    this.advisories.destroy();
+    this.entry.destroy();
+    this.location.destroy();
+  }
+
+  /**
+   * "Use …": rewrites the rule's discouraged term to the preferred spelling
+   * through the ordinary value-change path, as if typed, and never saves. The
+   * note goes at once rather than after the debounce, and the caret goes back
+   * to the field because the button it was on no longer exists.
+   */
+  onApplyPreferredTerm(rule: PreferredTermRule): void {
+    if (this.isReadOnly()) {
+      return;
+    }
+    this.advisories.applyTerm(this.entry.form.controls.baseValue, rule);
+    this.panels.requestFocus('base-value');
+  }
+
+  /**
+   * A dotted key typed into the single-segment key field moves its prefix into the
+   * location pill; `absorbDottedKey` holds the rule.
+   *
+   * Listening on `valueChanges` covers every way text arrives: typed, pasted,
+   * dropped, or completed by the browser. The segment validator stays on as the
+   * backstop for characters that are invalid in any position.
+   */
+  #setupDottedKeyAbsorption(): void {
+    this.location.typeKey(this.entry.form.controls.key.value);
+    this.#subscriptions.add(
+      this.entry.form.controls.key.valueChanges.subscribe((value) => {
+        const absorbed = this.location.typeKey(value);
+        if (!absorbed) {
+          return;
+        }
+
+        this.#setKeyControl(absorbed.leaf);
+
+        if (absorbed.folder !== undefined) {
+          this.#announceLocationAbsorbed(absorbed.folder);
+        }
+      }),
+    );
+  }
+
+  /** Writes the leaf without re-entering the key's valueChanges subscription. */
+  #setKeyControl(leaf: string): void {
+    const control = this.entry.form.controls.key;
+    control.setValue(leaf, { emitEvent: false });
+    control.markAsDirty();
+    control.updateValueAndValidity({ emitEvent: false });
+    this.entry.publishSnapshot();
+  }
+
+  /**
+   * The prefix leaves the field the user is looking at and lands in a pill above
+   * it, so say so twice: a highlight for the eye, a live region for the reader.
+   */
+  #announceLocationAbsorbed(folderPath: string): void {
+    this.locationAbsorbedMessage.set(
+      this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.LOCATIONFROMKEYX, { folder: folderPath }),
+    );
+
+    this.locationAbsorbedFlash.set(false);
+    // Let the class drop for a frame so a second paste re-runs the animation.
+    cancelAnimationFrame(this.#animationFrame);
+    this.#animationFrame = requestAnimationFrame(() => {
+      if (!this.#destroyed) this.locationAbsorbedFlash.set(true);
+    });
+    this.#locationDelay.schedule(() => this.locationAbsorbedFlash.set(false));
+  }
+
+  /** Confirms the folder staged in the popover and closes it. */
+  confirmStagedFolder(): void {
+    const staged = this.panels.confirmStagedFolder();
+    if (staged !== null) {
+      this.location.pick(staged);
+    }
+  }
+
+  /** Writes a status from the per-locale pill menu into the same FormArray as before. */
+  setLocaleStatus(index: number, status: TranslationStatus): void {
+    const group = this.getLocaleFormGroup(index);
+    group.controls.status.setValue(status);
+    group.controls.status.markAsDirty();
+  }
+
+  async onCancel(): Promise<void> {
+    // Escape and the close button reach here; an open panel is the nearest thing
+    // to dismiss, so it goes first and the form stays untouched.
+    if (this.panels.dismissNearest()) {
+      return;
+    }
+    if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
+      return;
+    }
+    this.options.close({ kind: 'cancelled' });
+  }
+
+  #confirmDiscard(): Promise<boolean> {
+    const spec = {
+      title: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.TITLE,
+      message: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.MESSAGE,
+      confirmButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.DISCARD,
+      cancelButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UNSAVED.KEEPEDITING,
+    };
+
+    return this.options.confirm(spec, { width: '440px', disableClose: true });
+  }
+
+  onFolderConfirmed(folderPath: string): void {
+    this.location.pick(folderPath);
+  }
+
+  onFolderCreated(folder: FolderNodeDto): void {
+    // The store's createFolder already updated rootFolders; update the selection.
+    this.location.pick(folder.fullPath);
+    this.panels.stageFolder(folder.fullPath);
+  }
+
+  addTagValue(rawValue: string): void {
+    this.entry.addTag(rawValue);
+    this.tagInputText.set('');
+  }
+
+  removeTag(tag: string): void {
+    this.entry.removeTag(tag, this.inheritedTagsList());
+  }
+
+  /**
+   * Leaves for the entry that already holds this key. Same close payload as the
+   * conflict dialog's "Edit existing", and the same unsaved-work guard as any
+   * other way out of the dialog.
+   */
+  async openExistingResource(): Promise<void> {
+    const existingKey = resolveDraftKey(this.entry.draft(this.location.selectedFolderPath()));
+
+    if (this.hasUnsavedChanges() && !(await this.#confirmDiscard())) {
+      return;
+    }
+
+    this.options.close({ kind: 'open-existing', fullKey: existingKey });
+  }
+
+  onSimilarResourceClick(result: SearchResultDto): void {
+    this.#copyToClipboard(result.fullKey, this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYCOPIED));
+  }
+
+  /**
+   * The footer is the only place the full dotted key is spelled out, so it is
+   * also the place to take it from. Same clipboard path and same snackbar the
+   * row's key chip uses, plus a check glyph while the toast is still up.
+   */
+  copyFullKey(): void {
+    this.#copyToClipboard(
+      this.location.fullKeyPreview(),
+      this.options.translate(TRACKER_TOKENS.BROWSER.TOAST.COPIEDTOCLIPBOARD),
+      () => this.#copyFlash.trigger(),
+    );
+  }
+
+  #copyToClipboard(text: string, successMessage: string, onCopied?: () => void): void {
+    const failedMessage = this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COPYFAILED);
+    void copyWithFeedback(text, {
+      successMessage,
+      failedMessage,
+      notifications: this.options.notifications,
+      onCopied,
+    });
+  }
+
+  async onSubmit(): Promise<void> {
+    const decision = await this.submit.trigger({
+      mode: this.data.mode,
+      draft: this.entry.draft(this.location.selectedFolderPath()),
+      original: this.#originalEntry(),
+      readOnly: this.isReadOnly(),
+      invalid: this.entry.form.invalid,
+      collision: this.location.keyCollision(),
+    });
+    this.#renderSubmitDecision(decision);
+  }
+
+  /**
+   * Names the problem, dismisses anything covering the form, and puts the caret
+   * in the offending field.
+   */
+  #revealValidationFailure(): void {
+    this.submitAttempted.set(true);
+    this.entry.form.markAllAsTouched();
+    this.errorMessage.set(this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS));
+
+    // Focus belongs to the offending field, not to whatever opened the panel.
+    this.panels.closeAll();
+
+    queueMicrotask(() => {
+      if (!this.#destroyed) this.options.focus(this.entry.form.controls.key.invalid ? 'key' : 'base-value');
+    });
+  }
+
+  #renderSubmitDecision(decision: EditorSubmitDecision): void {
+    if (decision.kind === 'ignored') return;
+    if (decision.kind === 'invalid') {
+      this.#revealValidationFailure();
+      return;
+    }
+    if (decision.kind === 'focus-comment') {
+      this.panels.requestFocus('comment');
+      return;
+    }
+    if (decision.kind === 'outcome') {
+      this.options.close(decision.outcome);
+      return;
+    }
+
+    this.errorMessage.set(this.options.feedbackText(decision.feedback));
+  }
+
+  #showKeyConflictDialog(existingKey: string): Promise<boolean> {
+    const spec = {
+      title: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.TITLE,
+      message: {
+        token: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.MESSAGEX,
+        params: {
+          key: existingKey,
+        },
+      },
+      confirmButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.EDITEXISTING,
+      cancelButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONFLICT.CHOOSEDIFFERENTKEY,
+    };
+
+    return this.options.confirm(spec, { width: '500px' });
+  }
+
+  #showCommentConfirmation(): Promise<boolean> {
+    const spec = {
+      title: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.TITLE,
+      message: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.MESSAGE,
+      confirmButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.SAVEANYWAY,
+      cancelButtonText: TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.COMMENTCONFIRM.ADDCOMMENT,
+    };
+
+    return this.options.confirm(spec, { width: '400px', disableClose: true });
+  }
+
+  /** The typed locale fields shared by the drawer and save path. */
+  getLocaleFormGroup(index: number): FormGroup<{
+    locale: FormControl<string>;
+    value: FormControl<string>;
+    status: FormControl<TranslationStatus>;
+  }> {
+    return this.entry.form.controls.translations.at(index) as FormGroup<{
+      locale: FormControl<string>;
+      value: FormControl<string>;
+      status: FormControl<TranslationStatus>;
+    }>;
+  }
+
+  /**
+   * Renders a locale as a name the reader recognises ("French (Canada)") with
+   * the raw code as the fallback, rather than shouting `FR-CA` at them.
+   */
+  getLocaleDisplayName(locale: string | undefined): string {
+    if (!locale) {
+      return '';
+    }
+
+    const code = locale.toUpperCase();
+    try {
+      const names = new Intl.DisplayNames([this.options.activeLang()], { type: 'language' });
+      const name = names.of(locale);
+      return name && name.toLowerCase() !== locale.toLowerCase() ? name : code;
+    } catch {
+      return code;
+    }
+  }
+
+  getKeyErrorMessage(): string {
+    const keyControl = this.entry.form.controls.key;
+
+    if (keyControl.hasError('required')) {
+      return TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYREQUIRED;
+    }
+
+    if (keyControl.hasError('pattern')) {
+      return TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR;
+    }
+
+    return '';
+  }
+}

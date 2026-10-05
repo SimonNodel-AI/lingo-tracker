@@ -1,4 +1,4 @@
-import { computed, signal, type Signal } from '@angular/core';
+import { computed, type Signal, signal } from '@angular/core';
 import type { FormControl } from '@angular/forms';
 import type { LingoTrackerConfigDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { applyPreferredTerm, findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
@@ -13,7 +13,6 @@ export const PREFERRED_TERM_DEBOUNCE_MS = 300;
 export class EditorAdvisories {
   readonly #baseValueText = signal('');
   readonly baseValueText = this.#baseValueText.asReadonly();
-  readonly baseValueLength = computed(() => this.baseValueText().trim().length);
   readonly #checkedValue = signal('');
   readonly #similarResources = signal<SearchResultDto[]>([]);
   readonly similarResources = this.#similarResources.asReadonly();

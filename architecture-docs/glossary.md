@@ -361,6 +361,14 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ## E
 
+### Copy with Feedback
+
+The shared clipboard action in `apps/tracker/src/app/shared/clipboard.ts`. `copyWithFeedback(text, feedback)` copies the text and shows one success or error toast. The caller supplies both messages and the notification seam. Only a successful copy runs the optional `onCopied` callback. The result is `copied` or `failed`, including an unavailable clipboard API or a rejected write.
+
+Explained in context: [`frontend.md`](frontend.md#timed-ui-transients-and-clipboard)
+
+---
+
 ### Editor Advisories
 
 The translation editor's advice rules in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-advisories.ts`. `EditorAdvisories.observe()` follows base-value and Similar Values streams until `destroy()`: typed text updates at once, preferred-term findings update after a 300 ms pause, and a failed rule-file load suppresses them. It holds pinned hits and their clear/loading/ready state, identifies a trimmed, case-insensitive exact match, and applies a preferred term through the form's normal value-change path. Its signals are read-only to the dialog. Pure tag suggestion filtering excludes the entry's own and inherited tags. The dialog keeps rendering and focus after Use.
@@ -379,7 +387,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Editor Focus
 
-The translation editor's named focus anchors in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-focus.ts`. `EditorFocus` registers lazy anchor getters so conditional views resolve their current element when `focus(target)` runs. It focuses the named field or panel control and, for Comment, scrolls it into view and selects its text. Missing anchors do nothing. [Editor Panels](#editor-panels) owns focus intent; the dialog keeps its ViewChild refs and scheduling after render or validation.
+The translation editor's named focus anchors in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-focus.ts`. `EditorFocus` registers lazy anchor getters so conditional views resolve their current element when `focus(target)` runs. It focuses the named field or panel control and, for Comment, scrolls it into view and selects its text. Missing anchors do nothing. [Editor Panels](#editor-panels) owns focus intent; the dialog keeps its ViewChild refs and scheduling after render. [Editor Session](#editor-session) schedules validation focus.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -403,7 +411,17 @@ Explained in context: [`frontend.md`](frontend.md#the-editor-outcome)
 
 ### Editor Panels
 
-The translation editor's transient panels in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-panels.ts`. `EditorPanels` owns which of the folder popover, the other-locales drawer and the context disclosure is open, the popover's staged folder and filter, and the order Escape dismisses them: `dismissNearest()` closes the popover, then the drawer, and returns true when it consumed the key. It also owns focus intent as a signal. Opening a panel asks for focus inside it; closing one asks for focus on its opener, but only if it was open. `closeAll()` closes both without any focus ask, so a validation failure can focus the offending field. The class never touches the DOM. The dialog keeps the template and its element refs, and one effect passes `focusRequest` to [Editor Focus](#editor-focus) after render. [Editor Location](#editor-location) owns the committed folder; the dialog owns the accidental-close guard.
+The translation editor's transient panels in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-panels.ts`. `EditorPanels` owns which of the folder popover, the other-locales drawer and the context disclosure is open, the popover's staged folder and filter, and the order Escape dismisses them: `dismissNearest()` closes the popover, then the drawer, and returns true when it consumed the key. It also owns focus intent as a signal. Opening a panel asks for focus inside it; closing one asks for focus on its opener, but only if it was open. `closeAll()` closes both without any focus ask, so a validation failure can focus the offending field. The class never touches the DOM. The dialog keeps the template and its element refs, and one effect passes `focusRequest` to [Editor Focus](#editor-focus) after render. [Editor Location](#editor-location) owns the committed folder; [Editor Session](#editor-session) owns the accidental-close guard.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
+### Editor Session
+
+The translation editor composition in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-session.ts`. `new EditorSession(data, options)` exposes the entry form, location, advisories, submit protocol, and panels directly. It composes Editor Entry Form, Editor Location, Editor Advisories, and Editor Submit. It owns dotted-key synchronization, absorption feedback, the unsaved-work guard, and submit decision presentation. The options supply store and API seams, confirmation, close, feedback, and named focus. The owner must call `destroy()` to release subscriptions, timers, and pending animation frames.
+
+The component keeps its template, DOM anchors, focus after render, and Escape/backdrop bridge. The focus effect uses `onCleanup` to cancel superseded callbacks and callbacks pending at destruction. Session tests use fakes for confirmation, close, and focus without TestBed.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -411,7 +429,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Editor Submit
 
-The translation editor's save session in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `EditorSubmitSession` owns idle, missing-comment confirmation, key-conflict choice, writing and done phases. It ignores a trigger outside idle and remembers "Save Anyway" after a refused write. Writing and done both keep the dialog's busy indicator on until it closes. Injected functions provide the store writes and both prompts. The session returns an [Editor Outcome](#editor-outcome), a message decision or a focus decision. Message decisions carry [Outcome Feedback](#outcome-feedback), with the existing token, optional server-message detail, error tone, and inline placement. The dialog shows this feedback through `injectFeedback().text` and retains the existing focus behavior. An empty write or rejected prompt gives the unexpected message and restores idle. `submitEditor` builds the create or update request from the [Resource Entry Draft](#resource-entry-draft) and classifies API refusals. `submitGate` keeps the read-only, submitting, invalid-form, collision and comment order. `resolveDraftKey` in `resource-entry-draft.ts` trims the leaf for the preview, create request and conflict hand-off. [Editor Location](#editor-location) gathers known entries; `editor-entry-sources.ts` derives tag suggestions.
+The translation editor's save session in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `EditorSubmitSession` owns idle, missing-comment confirmation, key-conflict choice, writing and done phases. It ignores a trigger outside idle and remembers "Save Anyway" after a refused write. Writing and done both keep the dialog's busy indicator on until it closes. Injected functions provide the store writes and both prompts. The session returns an [Editor Outcome](#editor-outcome), a message decision or a focus decision. Message decisions carry [Outcome Feedback](#outcome-feedback), with the existing token, optional server-message detail, error tone, and inline placement. [Editor Session](#editor-session) shows this feedback through its supplied `feedbackText` function and owns the focus decisions. An empty write or rejected prompt gives the unexpected message and restores idle. `submitEditor` builds the create or update request from the [Resource Entry Draft](#resource-entry-draft) and classifies API refusals. `submitGate` keeps the read-only, submitting, invalid-form, collision and comment order. `resolveDraftKey` in `resource-entry-draft.ts` trims the leaf for the preview, create request and conflict hand-off. [Editor Location](#editor-location) gathers known entries; `editor-entry-sources.ts` derives tag suggestions.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -1069,6 +1087,16 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 A locale-bound [Translation Run](#translation-run) translates a collection's resources that need work for one target locale. A batch with save attempts emits one `reindex`, including partial failures. Its completed result has a [Run Outcome](#run-outcome): `failed` when any resource failed, otherwise `succeeded`. It stores results through [Translation Write-back](#translation-write-back), so writes made during the provider call survive. Changed or removed entries go into `skippedKeys`. Skipped resources and unreadable folders are reported separately.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline), [`api.md`](api.md#translation-job-system)
+
+---
+
+### Timed UI Transients
+
+The timer helpers in `apps/tracker/src/app/shared/timed-transients.ts`. `createRestartableDelay(durationMs)` exposes `schedule`, `cancel`, and `destroy`. A schedule replaces the pending callback and restarts the delay. Cancellation permits another schedule; destruction cancels the callback and rejects later schedules.
+
+`createFlash(durationMs)` exposes a read-only `active` signal, `trigger`, and `destroy`. A trigger activates the signal and restarts its reset delay. Destruction cancels the reset and rejects later triggers without changing the last signal value. Owners must call `destroy()`. The `injectRestartableDelay` and `injectFlash` wrappers register this cleanup with `DestroyRef`.
+
+Explained in context: [`frontend.md`](frontend.md#timed-ui-transients-and-clipboard)
 
 ---
 

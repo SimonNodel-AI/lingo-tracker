@@ -1,6 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { injectFlash, injectMidpointFlip, injectRestartableDelay } from './timed-transients';
+import {
+  createFlash,
+  createRestartableDelay,
+  injectFlash,
+  injectMidpointFlip,
+  injectRestartableDelay,
+} from './timed-transients';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -154,6 +160,43 @@ describe('injectMidpointFlip', () => {
     vi.runAllTimers();
     expect(commit).not.toHaveBeenCalled();
     expect(flip.active()).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('timed transients without an injector', () => {
+  it('can cancel a pending delay and schedule again until destroyed', () => {
+    const delay = createRestartableDelay(900);
+    const callback = vi.fn();
+    delay.schedule(callback);
+    delay.cancel();
+    vi.advanceTimersByTime(900);
+    expect(callback).not.toHaveBeenCalled();
+    delay.schedule(callback);
+    vi.advanceTimersByTime(900);
+    expect(callback).toHaveBeenCalledOnce();
+    delay.schedule(callback);
+    delay.destroy();
+    delay.schedule(callback);
+    vi.runAllTimers();
+    expect(callback).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('restarts a flash and cancels its reset on explicit destruction', () => {
+    const flash = createFlash(1500);
+    flash.trigger();
+    vi.advanceTimersByTime(1000);
+    flash.trigger();
+    vi.advanceTimersByTime(1499);
+    expect(flash.active()).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(flash.active()).toBe(false);
+    flash.trigger();
+    flash.destroy();
+    flash.trigger();
+    vi.runAllTimers();
+    expect(flash.active()).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 });

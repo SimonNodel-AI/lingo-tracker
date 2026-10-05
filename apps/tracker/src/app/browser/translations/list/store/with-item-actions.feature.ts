@@ -4,7 +4,7 @@ import { TranslocoService } from '@jsverse/transloco';
 import { signalStoreFeature, type, withMethods } from '@ngrx/signals';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { copyToClipboard } from '../../../../shared/clipboard';
+import { copyWithFeedback } from '../../../../shared/clipboard';
 import { injectConfirmedWrite } from '../../../../shared/confirmed-write';
 import { NotificationService } from '../../../../shared/notification';
 import { injectFeedback } from '../../../feedback';
@@ -32,12 +32,10 @@ export function withItemActions() {
 
       return {
         copyKey(translation: ResourceSummaryDto): void {
-          void copyToClipboard(translation.fullKey).then((outcome) => {
-            if (outcome === 'copied') {
-              notifications.success(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPIEDTOCLIPBOARD));
-            } else {
-              notifications.error(transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPYFAILED));
-            }
+          void copyWithFeedback(translation.fullKey, {
+            successMessage: transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPIEDTOCLIPBOARD),
+            failedMessage: transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.COPYFAILED),
+            notifications,
           });
         },
 
