@@ -1,4 +1,4 @@
-import type { LingoTrackerConfig, ResolvedProtectedTerms } from '@simoncodes-ca/core';
+import type { LingoTrackerConfig, ProjectTermsView, ResolvedProtectedTerms } from '@simoncodes-ca/core';
 import { mapCollectionToDto, mapDtoToCollection } from './collection.mapper';
 import { mapConfigToDto, mapDtoToConfigUpdate } from './config.mapper';
 
@@ -25,8 +25,32 @@ describe('config.mapper', () => {
       },
     };
 
+    const snapshot = (overrides: Partial<ProjectTermsView> = {}): ProjectTermsView => ({
+      config,
+      projectName: '',
+      problems: [],
+      protectedTerms: {
+        globalTerms: [],
+        globalFilePath: '/project/.lingo-tracker-protected-terms.json',
+        collections: {},
+      },
+      preferredTerminology: { rules: [], filePath: '/project/.lingo-tracker-preferred-terminology.json' },
+      ...overrides,
+    });
+
+    it('projects snapshots with protected-file problems without throwing', () => {
+      const dto = mapConfigToDto(
+        snapshot({
+          problems: [
+            { file: 'protected-terms', severity: 'error', filePath: '/project/broken.json', message: 'Broken' },
+          ],
+        }),
+      );
+      expect(dto.collections).toEqual({ app: expect.objectContaining({ translationsFolder: './i18n' }) });
+    });
+
     it('exposes the resolved terms and file paths at both levels', () => {
-      const dto = mapConfigToDto(config, resolved);
+      const dto = mapConfigToDto(snapshot({ config, protectedTerms: resolved }));
 
       expect(dto.protectedTerms).toEqual(['SimonCodes']);
       expect(dto.protectedTermsFilePath).toBe('/project/.lingo-tracker-protected-terms.json');
@@ -35,32 +59,41 @@ describe('config.mapper', () => {
     });
 
     it('keeps the collection pointer so a round-trip cannot drop it', () => {
-      const dto = mapConfigToDto(config, resolved);
+      const dto = mapConfigToDto(snapshot({ config, protectedTerms: resolved }));
 
       expect(dto.collections.app.protectedTermsFile).toBe('i18n/terms.json');
       expect(mapDtoToCollection(dto.collections.app).protectedTermsFile).toBe('i18n/terms.json');
     });
 
-    it('omits protected-terms fields when nothing was resolved', () => {
-      const dto = mapConfigToDto({
-        exportFolder: 'dist/export',
-        importFolder: 'dist/import',
-        baseLocale: 'en',
-        locales: ['en'],
-        collections: {},
-      });
+    it('omits empty protected terms but keeps their resolved file path', () => {
+      const dto = mapConfigToDto(
+        snapshot({
+          config: {
+            exportFolder: 'dist/export',
+            importFolder: 'dist/import',
+            baseLocale: 'en',
+            locales: ['en'],
+            collections: {},
+          },
+        }),
+      );
 
       expect(dto.protectedTerms).toBeUndefined();
-      expect(dto.protectedTermsFilePath).toBeUndefined();
+      expect(dto.protectedTermsFilePath).toBe('/project/.lingo-tracker-protected-terms.json');
       expect(dto.collections).toEqual({});
     });
 
     it('omits an empty term list rather than exposing an empty array', () => {
-      const dto = mapConfigToDto(config, {
-        globalTerms: [],
-        globalFilePath: '/project/.lingo-tracker-protected-terms.json',
-        collections: { app: { terms: [], filePath: undefined } },
-      });
+      const dto = mapConfigToDto(
+        snapshot({
+          config,
+          protectedTerms: {
+            globalTerms: [],
+            globalFilePath: '/project/.lingo-tracker-protected-terms.json',
+            collections: { app: { terms: [], filePath: undefined } },
+          },
+        }),
+      );
 
       expect(dto.protectedTerms).toBeUndefined();
       expect(dto.collections.app.protectedTerms).toBeUndefined();
@@ -68,12 +101,16 @@ describe('config.mapper', () => {
     });
 
     it('maps bundle definitions by name', () => {
-      const dto = mapConfigToDto({
-        ...config,
-        bundles: {
-          main: { bundleName: '{locale}', dist: './dist/i18n', collections: 'All', typeDistFile: './dist/main.ts' },
-        },
-      });
+      const dto = mapConfigToDto(
+        snapshot({
+          config: {
+            ...config,
+            bundles: {
+              main: { bundleName: '{locale}', dist: './dist/i18n', collections: 'All', typeDistFile: './dist/main.ts' },
+            },
+          },
+        }),
+      );
 
       expect(dto.bundles).toEqual({
         main: { bundleName: '{locale}', dist: './dist/i18n', collections: 'All', typeDistFile: './dist/main.ts' },
@@ -85,28 +122,38 @@ describe('config.mapper', () => {
       // the bundle is saved (the domain `normalizeBundleDefinition`), and the Tracker form reads
       // the definition through that same function.
       const legacy = { bundleName: '{locale}', dist: './dist', collections: 'All', typeDist: './src/t.ts', extra: 1 };
-      const dto = mapConfigToDto({
-        ...config,
-        bundles: { legacy: legacy as unknown as NonNullable<LingoTrackerConfig['bundles']>[string] },
-      });
+      const dto = mapConfigToDto(
+        snapshot({
+          config: {
+            ...config,
+            bundles: { legacy: legacy as unknown as NonNullable<LingoTrackerConfig['bundles']>[string] },
+          },
+        }),
+      );
 
       expect(dto.bundles?.['legacy']).toEqual(legacy);
     });
 
     it('omits bundles when the config has none', () => {
-      const dto = mapConfigToDto(config);
+      const dto = mapConfigToDto(snapshot({ config }));
 
       expect('bundles' in dto).toBe(false);
     });
 
     it('maps loaded preferred terminology rules and file path', () => {
-      const dto = mapConfigToDto(config, resolved, undefined, {
-        rules: [
-          { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Planning term.' },
-          { discouraged: 'E-mail', preferred: 'email' },
-        ],
-        filePath: '/project/.lingo-tracker-preferred-terminology.json',
-      });
+      const dto = mapConfigToDto(
+        snapshot({
+          config,
+          protectedTerms: resolved,
+          preferredTerminology: {
+            rules: [
+              { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Planning term.' },
+              { discouraged: 'E-mail', preferred: 'email' },
+            ],
+            filePath: '/project/.lingo-tracker-preferred-terminology.json',
+          },
+        }),
+      );
 
       expect(dto.preferredTerminology).toEqual([
         { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Planning term.' },
@@ -119,26 +166,44 @@ describe('config.mapper', () => {
     });
 
     it('omits an empty rule list but keeps the file path', () => {
-      const dto = mapConfigToDto(config, resolved, undefined, {
-        rules: [],
-        filePath: '/project/.lingo-tracker-preferred-terminology.json',
-      });
+      const dto = mapConfigToDto(
+        snapshot({
+          config,
+          protectedTerms: resolved,
+          preferredTerminology: {
+            rules: [],
+            filePath: '/project/.lingo-tracker-preferred-terminology.json',
+          },
+        }),
+      );
 
       expect('preferredTerminology' in dto).toBe(false);
       expect(dto.preferredTerminologyFilePath).toBe('/project/.lingo-tracker-preferred-terminology.json');
     });
 
     it('maps a load error and a missing-file warning to their own fields', () => {
-      const broken = mapConfigToDto(config, resolved, undefined, {
-        rules: [],
-        filePath: '/project/terms.json',
-        error: 'Preferred terminology file is not valid JSON',
-      });
-      const missing = mapConfigToDto(config, resolved, undefined, {
-        rules: [],
-        filePath: '/project/terms.json',
-        warning: 'Preferred terminology file not found',
-      });
+      const broken = mapConfigToDto(
+        snapshot({
+          config,
+          protectedTerms: resolved,
+          preferredTerminology: {
+            rules: [],
+            filePath: '/project/terms.json',
+            error: 'Preferred terminology file is not valid JSON',
+          },
+        }),
+      );
+      const missing = mapConfigToDto(
+        snapshot({
+          config,
+          protectedTerms: resolved,
+          preferredTerminology: {
+            rules: [],
+            filePath: '/project/terms.json',
+            warning: 'Preferred terminology file not found',
+          },
+        }),
+      );
 
       expect(broken.preferredTerminologyError).toBe('Preferred terminology file is not valid JSON');
       expect('preferredTerminologyWarning' in broken).toBe(false);
@@ -146,16 +211,18 @@ describe('config.mapper', () => {
       expect('preferredTerminologyError' in missing).toBe(false);
     });
 
-    it('omits every preferred-terminology field when nothing was loaded', () => {
-      const dto = mapConfigToDto(config, resolved);
+    it('omits absent rules and problems but keeps the preferred-terminology path', () => {
+      const dto = mapConfigToDto(snapshot({ config, protectedTerms: resolved }));
 
       expect('preferredTerminology' in dto).toBe(false);
-      expect('preferredTerminologyFilePath' in dto).toBe(false);
+      expect(dto.preferredTerminologyFilePath).toBe('/project/.lingo-tracker-preferred-terminology.json');
+      expect('preferredTerminologyError' in dto).toBe(false);
+      expect('preferredTerminologyWarning' in dto).toBe(false);
     });
 
     it('exposes projectName only when provided', () => {
-      expect(mapConfigToDto(config, undefined, 'lingo-tracker').projectName).toBe('lingo-tracker');
-      expect('projectName' in mapConfigToDto(config)).toBe(false);
+      expect(mapConfigToDto(snapshot({ config, projectName: 'lingo-tracker' })).projectName).toBe('lingo-tracker');
+      expect('projectName' in mapConfigToDto(snapshot({ config }))).toBe(false);
     });
   });
 

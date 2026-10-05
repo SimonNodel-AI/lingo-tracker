@@ -1,7 +1,7 @@
 import { type INestApplication, Logger } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { prepareTranslateLocale, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { BundleJobService } from '../bundles/bundle-job.service';
 import { BundlesController } from '../bundles/bundles.controller';
 import { CollectionIndex } from '../cache/collection-index.service';
@@ -14,7 +14,7 @@ import { TranslationJobService } from '../translation-job/translation-job.servic
 jest.mock('@simoncodes-ca/core', () => ({
   ...jest.requireActual('@simoncodes-ca/core'),
   generatePreparedBundle: jest.fn(() => new Promise<void>(() => {})),
-  translateLocale: jest.fn(() => new Promise<void>(() => {})),
+  executeTranslateLocale: jest.fn(() => new Promise<void>(() => {})),
 }));
 
 describe('Job Registry HTTP protocol', () => {
@@ -58,7 +58,9 @@ describe('Job Registry HTTP protocol', () => {
     baseUrl = (await app.getUrl()).replace('[::1]', 'localhost');
     translationJobId = moduleRef
       .get(TranslationJobService)
-      .startJob(moduleRef.get(RouteCollectionPipe).transform({ name: 'app', writable: true }), 'fr').jobId;
+      .startJob(
+        prepareTranslateLocale(moduleRef.get(RouteCollectionPipe).transform({ name: 'app', writable: true }), 'fr'),
+      ).jobId;
   });
 
   afterAll(async () => {

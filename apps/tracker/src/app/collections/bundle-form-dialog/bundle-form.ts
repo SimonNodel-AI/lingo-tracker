@@ -1,4 +1,4 @@
-import { computed, signal } from '@angular/core';
+import { computed, type Signal, signal } from '@angular/core';
 import {
   type AbstractControl,
   FormArray,
@@ -28,6 +28,8 @@ import {
   normalizeBundleDefinition,
 } from '@simoncodes-ca/domain';
 import { catchError, debounceTime, map, type Observable, of, Subscription, startWith, switchMap, tap } from 'rxjs';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { type DialogCloser, type FormSubmitEnv, NamedEntrySubmit } from '../store/dialog-config-submit';
 import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
@@ -40,7 +42,7 @@ export interface BundleFormOptions {
   baseLocale: () => string;
   tokenCasing: () => TokenCasingDto;
   icuTransform: () => boolean;
-  nameValidator?: ValidatorFn;
+  env: FormSubmitEnv;
   dryRun: (request: BundleDryRunRequestDto) => Observable<BundleDryRunResultDto>;
 }
 
@@ -65,6 +67,9 @@ const TOKEN_SEPARATORS = /(?<=[._])/;
 /** Typed bundle editing and preview state, independent of the dialog DOM. */
 export class BundleForm {
   readonly #changes = new Subscription();
+  readonly #entrySubmit: NamedEntrySubmit<BundleFormResult>;
+  /** True from submit until the server has answered. */
+  readonly saving: Signal<boolean>;
   readonly form: FormGroup<{
     name: FormControl<string>;
     dist: FormControl<string>;
@@ -225,6 +230,16 @@ export class BundleForm {
   });
 
   constructor(private readonly options: BundleFormOptions) {
+    this.#entrySubmit = new NamedEntrySubmit({
+      nameControl: () => this.form.controls.name,
+      normalizeName: (value) => String(value ?? '').trim(),
+      fallbackTokens: {
+        create: TRACKER_TOKENS.BUNDLES.TOAST.CREATEFAILED,
+        update: TRACKER_TOKENS.BUNDLES.TOAST.UPDATEFAILED,
+      },
+      env: options.env,
+    });
+    this.saving = this.#entrySubmit.saving;
     this.form = new FormGroup({
       name: new FormControl<string>('', {
         nonNullable: true,
@@ -249,6 +264,7 @@ export class BundleForm {
     this.#wireDependentValidation();
     this.#wireDryRun();
     this.#changes.add(this.form.valueChanges.subscribe(() => this.submitErrors.set([])));
+    options.env.destroyRef.onDestroy(() => this.destroy());
   }
 
   get isEditMode(): boolean {
@@ -385,6 +401,42 @@ export class BundleForm {
     return errors.length > 0 ? undefined : result;
   }
 
+  /**
+   * Validates, then writes the bundle and closes `dialog` with it once the server accepts. A taken
+   * name opens the Output section on the name field; any other refusal lands in `submitErrors`.
+   * Ignored while a write is in flight.
+   */
+  submit(options: {
+    dialog: DialogCloser<BundleFormResult>;
+    create: (result: BundleFormResult) => Observable<unknown>;
+    update: (
+      existingName: string,
+      patch: { name: string | undefined },
+      result: BundleFormResult,
+    ) => Observable<unknown>;
+  }): void {
+    if (this.saving()) return;
+    const result = this.submitResult();
+    if (!result) return;
+    this.#entrySubmit.submit({
+      dialog: options.dialog,
+      existingName: this.isEditMode ? this.options.data.name : undefined,
+      name: result.name,
+      create: () => options.create(result),
+      update: (name, patch) => options.update(name, patch, result),
+      result,
+      onRefusal: (refusal) => {
+        if (refusal.kind === 'name-conflict') {
+          this.activate('output');
+          return;
+        }
+        // Server rule messages take precedence over the general refusal message.
+        const details = refusal.details.filter((item): item is string => typeof item === 'string');
+        this.submitErrors.set(details.length > 0 ? details : [refusal.message]);
+      },
+    });
+  }
+
   // ───────────────────────────── private ─────────────────────────────
 
   #initialSection(): BundleSection {
@@ -453,7 +505,7 @@ export class BundleForm {
       const value = String(control.value ?? '').trim();
       if (!value) return null;
       return (
-        this.options.nameValidator?.(control) ??
+        this.#entrySubmit.nameValidator(control) ??
         (this.options.bundleNames().includes(value) ? { nameExists: { name: value } } : null)
       );
     };

@@ -32,6 +32,72 @@ describe('runValidate', () => {
     },
   });
 
+  it('fails verified translations that drop project protected terms even when placeholders are skipped', () => {
+    const first = collection('first', { locales: ['en', 'fr'], targetLocales: ['fr'] });
+    const second = collection('second', { locales: ['en', 'fr'], targetLocales: ['fr'] });
+    writeFileSync(first.termFiles.protectedTerms.path, '["iPhone"]');
+    writeFileSync(second.termFiles.protectedTerms.path, '["Acme"]');
+    seedResources(first, {
+      phone: {
+        source: 'Buy iPhone',
+        translations: {
+          fr: { value: 'Acheter téléphone', status: 'verified' },
+        },
+      },
+    });
+    seedResources(second, {
+      phone: {
+        source: 'Buy iPhone',
+        translations: {
+          fr: { value: 'Acheter téléphone', status: 'verified' },
+        },
+      },
+    });
+    const result = complete([first, second], {
+      skipPlaceholders: true,
+      skipIcu: true,
+    });
+    expect(result.outcome).toBe('failed');
+    expect(result.validation.passed).toBe(false);
+    expect(result.validation.failures).toEqual([]);
+    expect(result.validation.protectedTerms?.failures).toEqual([
+      {
+        key: 'phone',
+        locale: 'fr',
+        collection: 'first',
+        message: 'Protected term(s) altered: iPhone',
+      },
+    ]);
+    expect(result.summary).toContain('Protected Term Failures (1)');
+    expect(result.summary).toContain('Protected term(s) altered: iPhone');
+    expect(result.validation.placeholders).toBeUndefined();
+  });
+
+  it('can skip protected-term checks while retaining placeholder failures', () => {
+    const main = collection('main', { locales: ['en', 'fr'], targetLocales: ['fr'] });
+    writeFileSync(main.termFiles.protectedTerms.path, '["iPhone"]');
+    seedResources(main, {
+      phone: {
+        source: 'Buy iPhone {name}',
+        translations: { fr: { value: 'Téléphone {nom}', status: 'verified' } },
+      },
+    });
+    const result = complete([main], {
+      skipProtectedTerms: true,
+      skipIcu: true,
+    });
+    expect(result.validation.protectedTerms).toBeUndefined();
+    expect(result.validation.placeholders?.failures).toHaveLength(1);
+    expect(result.outcome).toBe('failed');
+    const skipped = complete([main], {
+      skipProtectedTerms: true,
+      skipPlaceholders: true,
+      skipIcu: true,
+    });
+    expect(skipped.outcome).toBe('succeeded');
+    expect(skipped.summary).not.toContain('Protected Term Failures');
+  });
+
   it('reports no collections as an in-band failure', () => {
     expect(runValidate([])).toEqual({
       status: 'failed',

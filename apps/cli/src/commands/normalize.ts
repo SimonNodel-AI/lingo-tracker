@@ -5,9 +5,9 @@ import {
   normalizeCollections,
   ReadOnlyCollectionError,
 } from '@simoncodes-ca/core';
+import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
-import { exitForRunOutcome } from '../runner/run-outcome';
-import { ConsoleFormatter, confirmOrCancel, parseNameSelection, selectionPrompt } from '../utils';
+import { ConsoleFormatter, confirmOrCancel, parseNameSelection, printRunReport, selectionPrompt } from '../utils';
 
 export interface NormalizeOptions {
   collection?: string;
@@ -60,6 +60,8 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
   run: async ({ collections, selection, answers }) => {
     const all = selection.kind === 'all';
     let result: NormalizeCollectionsResult;
+    const warnings: string[] = [];
+    const errors: string[] = [];
     try {
       result = await normalizeCollections(collections, {
         all,
@@ -67,11 +69,11 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
         onEvent: (event) => {
           switch (event.kind) {
             case 'skip':
-              ConsoleFormatter.warning(`Skipping read-only collection: ${event.name}`);
+              warnings.push(`Skipping read-only collection: ${event.name}`);
               break;
             case 'start':
               if (!answers.json) {
-                console.log('');
+                CommandOutput.log('');
                 ConsoleFormatter.progress(`Normalizing collection: ${event.name}`);
                 if (answers.dryRun) ConsoleFormatter.indent('(Dry run - no changes will be made)');
               }
@@ -79,7 +81,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
             case 'result': {
               const item = event.result;
               for (const problem of item.problems) {
-                ConsoleFormatter.warning(describeFolderProblem(problem, { collectionName: item.collectionName }));
+                warnings.push(describeFolderProblem(problem, { collectionName: item.collectionName }));
               }
               if (!answers.json) {
                 ConsoleFormatter.indent(`✅ Entries processed: ${item.entriesProcessed}`);
@@ -93,7 +95,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
               break;
             }
             case 'error':
-              ConsoleFormatter.error(
+              errors.push(
                 `Failed to normalize collection "${event.name}": ${event.error instanceof Error ? event.error.message : String(event.error)}`,
               );
               break;
@@ -108,7 +110,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       return { exitCode: 1 };
     }
     printSummary(result, collections.length, answers);
-    return exitForRunOutcome(result.outcome);
+    return printRunReport({ warnings, errors, outcome: result.outcome, dryRun: answers.dryRun });
   },
 });
 
@@ -136,7 +138,7 @@ function printSummary(result: NormalizeCollectionsResult, collectionCount: numbe
 }
 
 function printJsonSummary(result: Pick<NormalizeCollectionsResult, 'collections' | 'totals'>): void {
-  console.log(JSON.stringify({ collections: result.collections, totals: result.totals }, null, 2));
+  CommandOutput.log(JSON.stringify({ collections: result.collections, totals: result.totals }, null, 2));
 }
 
 function printDryRunWarning(options: NormalizeOptions): void {

@@ -101,6 +101,31 @@ describe('ConfigFileOperations version check', () => {
     expect(() => guardedConfigWrite({ projectRoot: tempDir(), sourceConfig })).toThrow(InvalidConfigError);
   });
 
+  it('restores exact config bytes when a transaction config write fails part-way', () => {
+    writeFileSync(configPath(), `${JSON.stringify(config())}\n`);
+    const sourceConfig = loadConfig({ cwd: tempDir() });
+    const handle = guardedConfigWrite({ projectRoot: tempDir(), sourceConfig });
+    const before = readFileSync(configPath());
+    const companionPath = join(tempDir(), 'terms.json');
+    writeFileSync(companionPath, '["Original"]\n');
+    const companionBefore = readFileSync(companionPath);
+    const ioError = new Error('ENOSPC');
+    // Use the existing one-call writer mock; truncation and restoration use real filesystem writes.
+    vi.mocked(writeJsonFile).mockImplementationOnce(({ filePath }) => {
+      writeFileSync(filePath, '{"baseLocale":');
+      throw ioError;
+    });
+    expect(() =>
+      handle.transaction({ ...sourceConfig, exportFolder: 'ours' }, [
+        { path: companionPath, write: () => writeFileSync(companionPath, '["Changed"]\n') },
+      ]),
+    ).toThrow(new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: ioError }));
+    expect(readFileSync(configPath())).toEqual(before);
+    expect(readFileSync(companionPath)).toEqual(companionBefore);
+    handle.write({ ...sourceConfig, exportFolder: 'retry' });
+    expect(loadConfig({ cwd: tempDir() }).exportFolder).toBe('retry');
+  });
+
   it('wraps a guarded write failure and leaves the file untouched', () => {
     writeFileSync(configPath(), JSON.stringify(config()));
     const sourceConfig = loadConfig({ cwd: tempDir() });

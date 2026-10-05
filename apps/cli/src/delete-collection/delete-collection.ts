@@ -1,5 +1,6 @@
 import { CONFIG_FILENAME, deleteCollection } from '@simoncodes-ca/core';
 import * as path from 'path';
+import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { confirmOrCancel } from '../utils';
 
@@ -28,6 +29,6 @@ export const deleteCollectionCommand = defineCommand<DeleteCollectionOptions>()(
     });
 
     const result = deleteCollection(collection);
-    console.log(result.message);
+    CommandOutput.log(result.message);
   },
 });

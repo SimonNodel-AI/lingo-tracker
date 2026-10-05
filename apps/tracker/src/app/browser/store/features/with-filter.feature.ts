@@ -1,19 +1,20 @@
 import { computed } from '@angular/core';
-import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
+import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { NEEDS_WORK_STATUSES } from '@simoncodes-ca/domain';
+import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 import {
   clearAll,
   compactDisplayLocale,
   filterableLocales,
   filteredLocales,
   isShowingAllLocales,
+  type LocaleContext,
+  type LocaleSelection,
   localeFilterLabel,
   selectAll,
   selectLocales,
   toggleLocale,
-  type LocaleContext,
-  type LocaleSelection,
 } from '../locale-selection';
 
 export interface FilterState {
@@ -33,11 +34,12 @@ export const initialFilterState: FilterState = {
 export function withFilterFeature<_>() {
   return signalStoreFeature(
     {
+      props: type<CollectionResetRegistry>(),
       state: type<
         Pick<LocaleSelection, 'densityMode' | 'compactLocale' | 'compactLocaleManuallyChanged'> & LocaleContext
       >(),
     },
-    withState(initialFilterState),
+    withCollectionState(initialFilterState),
     withComputed(({ selectedLocales, densityMode, availableLocales, baseLocale, selectedStatuses }) => ({
       isShowingAllLocales: computed(() =>
         isShowingAllLocales(selectedLocales(), { availableLocales: availableLocales() }),

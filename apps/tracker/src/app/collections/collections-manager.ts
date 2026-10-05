@@ -18,10 +18,11 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import type { Observable } from 'rxjs';
+import { catchError, map, of, type Observable } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
+import type { Feedback } from '../browser/feedback';
 import { apiErrorMessage } from '../shared/api-error/api-error';
-import { injectConfirm, type ConfirmationText } from '../shared/confirm';
+import { injectConfirmedWrite } from '../shared/confirmed-write';
 import { NotificationService } from '../shared/notification';
 import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData } from './bundle-form-dialog/bundle-form-dialog-data';
@@ -37,6 +38,13 @@ const loadBundleDialog = () =>
   import('./bundle-form-dialog/bundle-form-dialog').then((module) => module.BundleFormDialog);
 const loadCollectionDialog = () =>
   import('./collection-form-dialog/collection-form-dialog').then((module) => module.CollectionFormDialog);
+
+const toast = (tone: 'success' | 'error', token: string, detail?: string): Feedback => ({
+  tone,
+  placement: 'toast',
+  token,
+  ...(detail ? { detail } : {}),
+});
 
 /**
  * Collections Manager component for viewing and managing translation collections.
@@ -77,7 +85,7 @@ export class CollectionsManager {
   readonly #host = inject<ElementRef<HTMLElement>>(ElementRef);
   readonly #destroyRef = inject(DestroyRef);
   readonly #dialog = inject(MatDialog);
-  readonly #confirm = injectConfirm();
+  readonly #write = injectConfirmedWrite();
   readonly #notifications = inject(NotificationService);
   readonly #router = inject(Router);
   readonly #transloco = inject(TranslocoService);
@@ -340,29 +348,29 @@ export class CollectionsManager {
     });
   }
 
+  /** Confirms, then toasts the delete's result: success once the Config Write resolves, else the refusal. */
   #confirmThenDelete(options: {
     title: string;
-    message: ConfirmationText;
+    message: { token: string; params: { name: string } };
     success: string;
     failure: string;
     delete: () => Observable<unknown>;
   }): void {
-    this.#confirm(
-      {
-        title: options.title,
-        message: options.message,
-        confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.DELETE,
-        cancelButtonText: TRACKER_TOKENS.COMMON.ACTIONS.CANCEL,
-        actionType: 'destructive',
-      },
-      { width: '400px' },
-    ).then((confirmed) => {
+    const confirm = this.#write.confirmDestructive({
+      title: options.title,
+      message: options.message,
+      cancelButtonText: TRACKER_TOKENS.COMMON.ACTIONS.CANCEL,
+      width: '400px',
+    });
+    void confirm().then((confirmed) => {
       if (!confirmed) return;
-      options.delete().subscribe({
-        next: () => this.#notifications.success(this.#transloco.translate(options.success)),
-        error: (error: unknown) =>
-          this.#notifications.error(apiErrorMessage(error, this.#transloco.translate(options.failure))),
-      });
+      return this.#write.runWrite(
+        options.delete().pipe(
+          map(() => ({ feedback: toast('success', options.success) })),
+          // An empty detail falls back to the token's wording (the delete-failed fallback).
+          catchError((error: unknown) => of({ feedback: toast('error', options.failure, apiErrorMessage(error, '')) })),
+        ),
+      );
     });
   }
 

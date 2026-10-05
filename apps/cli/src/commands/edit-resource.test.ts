@@ -1,341 +1,127 @@
-import { resolve } from 'node:path';
-import { ConfigNotFoundError, editResource, loadConfig } from '@simoncodes-ca/core';
-import prompts from 'prompts';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isInteractiveTerminal } from '../runner/terminal';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { CommandCancelledError } from '../runner/command-runner';
+import { createCommandProject, type CommandProject } from '../testing/command-project';
 import { editResourceCommand } from './edit-resource';
 
-vi.mock('prompts');
-vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false) }));
-vi.mock('@simoncodes-ca/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  return {
-    ...actual,
-    loadConfig: vi.fn(),
-    editResource: vi.fn(),
-  };
-});
-
-const mockEditResource = vi.mocked(editResource);
-
-describe('editResourceCommand', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    process.env.INIT_CWD = '/test/project';
-    process.exitCode = undefined;
-    vi.mocked(isInteractiveTerminal).mockReturnValue(false);
+describe('editResourceCommand (real project)', () => {
+  let project: CommandProject;
+  const key = 'apps.common.buttons.ok';
+  const entries = () => project.json('translations/main/apps/common/buttons/resource_entries.json');
+  beforeEach(async () => {
+    project = createCommandProject();
+    await project.seed(key);
   });
+  afterEach(() => project.cleanup());
 
-  afterEach(() => {
-    process.exitCode = undefined;
+  it('updates the base value and reports success', async () => {
+    const result = await project.run(editResourceCommand, { key, baseValue: 'OK Updated' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('updated successfully');
+    expect(entries()).toMatchObject({ ok: { source: 'OK Updated' } });
   });
-
-  const mockConfig = {
-    exportFolder: 'dist/lingo-export',
-    importFolder: 'dist/lingo-import',
-    baseLocale: 'en',
-    locales: ['en', 'fr'],
-    collections: {
-      default: {
-        translationsFolder: 'src/i18n',
-        baseLocale: 'en',
+  it('reports no changes detected', async () => {
+    const result = await project.run(editResourceCommand, { key, baseValue: 'Original' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('No changes detected');
+  });
+  it('updates comment and tags', async () => {
+    const result = await project.run(editResourceCommand, { key, comment: 'New comment', tags: ['ui', 'buttons'] });
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: { comment: 'New comment', tags: ['ui', 'buttons'] } });
+  });
+  it('updates a locale value', async () => {
+    const result = await project.run(editResourceCommand, { key, locale: 'fr', localeValue: "D'accord" });
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: { fr: "D'accord" } });
+  });
+  it('warns when locale is supplied without its value and leaves translation unchanged', async () => {
+    const result = await project.run(editResourceCommand, { key, locale: 'fr' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('Both --locale and --localeValue must be provided');
+    expect(entries()).toMatchObject({ ok: { fr: 'Original' } });
+  });
+  it('does not update when config is missing', async () => {
+    project.remove('.lingo-tracker.json');
+    const result = await project.run(editResourceCommand, { key, baseValue: 'changed' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Configuration file .lingo-tracker.json not found');
+    expect(entries()).toMatchObject({ ok: { source: 'Original' } });
+  });
+  it('does not update when collection is missing', async () => {
+    const result = await project.run(editResourceCommand, { collection: 'missing', key, baseValue: 'changed' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Collection "missing" not found');
+    expect(entries()).toMatchObject({ ok: { source: 'Original' } });
+  });
+  it('prompts for a missing base value', async () => {
+    const questions: unknown[] = [];
+    const result = await project.run(
+      editResourceCommand,
+      { key },
+      {
+        interactive: true,
+        ask: async (asked) => {
+          questions.push(asked);
+          return { baseValue: 'Prompted Value' };
+        },
       },
-    },
-  };
-
-  it('should update a resource successfully', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockResolvedValue({
-      resolvedKey: 'apps.common.buttons.ok',
-      updated: true,
-    });
-
-    const options = {
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-      baseValue: 'OK Updated',
-    };
-
-    await editResourceCommand(options);
-
-    expect(mockEditResource).toHaveBeenCalledWith(
-      expect.objectContaining({
-        name: 'default',
-        translationsFolder: resolve('/test/project', 'src/i18n'),
-        baseLocale: 'en',
-      }),
-      'apps.common.buttons.ok',
-      expect.objectContaining({
-        baseValue: 'OK Updated',
-      }),
     );
+    expect(questions).toEqual([expect.arrayContaining([expect.objectContaining({ name: 'baseValue', type: 'text' })])]);
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: { source: 'Prompted Value' } });
   });
-
-  it('should handle no changes detected', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockResolvedValue({
-      resolvedKey: 'apps.common.buttons.ok',
-      updated: false,
-      message: 'No changes detected',
+  it('moves the resource to target folder', async () => {
+    const result = await project.run(editResourceCommand, { key, targetFolder: 'shared' });
+    expect(result.exitCode).toBe(0);
+    expect(project.json('translations/main/shared/resource_entries.json')).toMatchObject({
+      ok: { source: 'Original' },
     });
-
-    const options = {
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-      baseValue: 'OK',
-    };
-
-    await editResourceCommand(options);
-
-    expect(mockEditResource).toHaveBeenCalled();
   });
-
-  it('should update comment and tags', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockResolvedValue({
-      resolvedKey: 'apps.common.buttons.ok',
-      updated: true,
-    });
-
-    const options = {
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-      comment: 'New comment',
-      tags: ['ui', 'buttons'],
-    };
-
-    await editResourceCommand(options);
-
-    expect(mockEditResource).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
-      'apps.common.buttons.ok',
-      expect.objectContaining({
-        comment: 'New comment',
-        tags: ['ui', 'buttons'],
-      }),
-    );
+  it('prints a core error when resource is missing', async () => {
+    const result = await project.run(editResourceCommand, { key: 'apps.missing', baseValue: 'x' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Resource not found: apps.missing');
   });
-
-  it('should update locale value', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockResolvedValue({
-      resolvedKey: 'apps.common.buttons.ok',
-      updated: true,
-    });
-
-    const options = {
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-      locale: 'fr',
-      localeValue: "D'accord",
-    };
-
-    await editResourceCommand(options);
-
-    expect(mockEditResource).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
-      'apps.common.buttons.ok',
-      expect.objectContaining({
-        translations: {
-          fr: { value: "D'accord" },
-        },
-      }),
-    );
+  it('requires key in non-interactive mode', async () => {
+    const result = await project.run(editResourceCommand, { baseValue: 'x' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Missing required options in non-interactive mode: --key');
   });
-
-  it('should warn if locale provided without value', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-
-    const stderrSpy = vi.spyOn(console, 'error');
-
-    const options = {
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-      locale: 'fr',
-      // Missing localeValue
-    };
-
-    await editResourceCommand(options);
-
-    expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('Both --locale and --localeValue must be provided'));
-    expect(mockEditResource).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'default' }),
-      'apps.common.buttons.ok',
-      expect.not.objectContaining({
-        translations: expect.anything(),
-      }),
-    );
-  });
-
-  it('should not update if config does not exist', async () => {
-    vi.mocked(loadConfig).mockImplementation(() => {
-      throw new ConfigNotFoundError('/test/project/.lingo-tracker.json');
-    });
-
-    const options = {
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-    };
-
-    await editResourceCommand(options);
-
-    expect(mockEditResource).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('should not update if collection does not exist', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-
-    const options = {
-      collection: 'nonexistent',
-      key: 'apps.common.buttons.ok',
-    };
-
-    await editResourceCommand(options);
-
-    expect(mockEditResource).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('should prompt for baseValue if not provided', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockResolvedValue({
-      resolvedKey: 'apps.common.buttons.ok',
-      updated: true,
-    });
-
-    // Mock prompts to return baseValue
-    const promptsMock = vi.mocked(prompts);
-    promptsMock.mockResolvedValueOnce({
-      baseValue: 'Promped Value',
-    });
-
-    const options = {
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-    };
-
-    vi.mocked(isInteractiveTerminal).mockReturnValue(true);
-    await editResourceCommand(options);
-
-    expect(promptsMock).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: 'baseValue',
-          type: 'text',
-        }),
-      ]),
-      expect.any(Object),
-    );
-
-    expect(mockEditResource).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'default', translationsFolder: resolve('/test/project', 'src/i18n') }),
-      'apps.common.buttons.ok',
-      expect.objectContaining({
-        baseValue: 'Promped Value',
-      }),
-    );
-  });
-
-  it('maps --target-folder to moveTo', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockResolvedValue({ resolvedKey: 'shared.ok', updated: true });
-
-    await editResourceCommand({
-      collection: 'default',
-      key: 'apps.common.buttons.ok',
-      targetFolder: 'shared',
-    });
-
-    expect(mockEditResource).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'default' }),
-      'apps.common.buttons.ok',
-      expect.objectContaining({ moveTo: 'shared' }),
-    );
-  });
-
-  it('prints the core error and exits 1 when core throws', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditResource.mockRejectedValue(new Error('Resource not found: apps.missing'));
-
-    await editResourceCommand({ collection: 'default', key: 'apps.missing', baseValue: 'x' });
-
-    expect(console.error).toHaveBeenCalledWith('❌ Resource not found: apps.missing');
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('exits 1 when --key is missing in non-interactive mode', async () => {
-    vi.mocked(loadConfig).mockReturnValue(mockConfig);
-
-    await editResourceCommand({ collection: 'default', baseValue: 'x' });
-
-    expect(mockEditResource).not.toHaveBeenCalled();
-    expect(console.error).toHaveBeenCalledWith('❌ Missing required options in non-interactive mode: --key');
-    expect(process.exitCode).toBe(1);
-  });
-
   describe('preferred terminology', () => {
-    const terminology = {
-      findings: [
-        {
-          key: 'budget.title',
-          discouraged: 'Expenditure',
-          preferred: 'Investment',
-          reason: 'Finance style guide',
-          message: 'consider "Investment" instead of "Expenditure"',
+    beforeEach(() =>
+      project.write('.lingo-tracker-preferred-terminology.json', [
+        { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' },
+      ]),
+    );
+    it('prints findings for the new base value', async () => {
+      const result = await project.run(editResourceCommand, { key, baseValue: 'Capital expenditure' });
+      expect(result.stderr).toContain('consider "Investment" instead of "Expenditure"');
+      expect(result.stderr).toContain('Finance style guide');
+    });
+    it('prints no terminology warning for a translation-only edit', async () => {
+      const result = await project.run(editResourceCommand, { key, locale: 'fr', localeValue: 'Expenditure' });
+      expect(result.stderr).not.toContain('Preferred terminology');
+    });
+    it('warns when the terminology rule file is invalid', async () => {
+      project.write('.lingo-tracker-preferred-terminology.json', '{');
+      const result = await project.run(editResourceCommand, { key, baseValue: 'Expenditure' });
+      expect(result.stderr).toContain('Preferred terminology checks skipped');
+      expect(result.stderr.match(/Preferred terminology checks skipped/g)).toHaveLength(1);
+    });
+  });
+  it('reports cancelled prompts once without changing the resource', async () => {
+    const result = await project.run(
+      editResourceCommand,
+      {},
+      {
+        interactive: true,
+        ask: async () => {
+          throw new CommandCancelledError();
         },
-      ],
-      problems: [],
-    };
-
-    beforeEach(() => {
-      vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    });
-
-    const logged = (spy: ReturnType<typeof vi.spyOn>) => spy.mock.calls.map((call) => String(call[0]));
-
-    it('prints the findings core returned for the new base value after a successful edit', async () => {
-      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true, terminology });
-
-      await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
-
-      expect(logged(stderrSpy)).toContain('⚠️  Preferred terminology: consider "Investment" instead of "Expenditure"');
-      expect(logged(stderrSpy)).toContain('  Finance style guide');
-      expect(process.exitCode).toBe(0);
-      stderrSpy.mockRestore();
-    });
-
-    it('prints nothing when the result carries no terminology (no base value in the edit)', async () => {
-      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({ resolvedKey: 'budget.title', updated: true });
-
-      await editResourceCommand({
-        collection: 'default',
-        key: 'budget.title',
-        baseValue: '',
-        locale: 'fr',
-        localeValue: 'Expenditure',
-      });
-
-      expect(logged(stderrSpy).some((line) => line.includes('Preferred terminology'))).toBe(false);
-      stderrSpy.mockRestore();
-    });
-
-    it('prints one warning per rule-file problem', async () => {
-      const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockEditResource.mockResolvedValue({
-        resolvedKey: 'budget.title',
-        updated: true,
-        terminology: { findings: [], problems: ['Preferred terminology checks skipped: not valid JSON'] },
-      });
-
-      await editResourceCommand({ collection: 'default', key: 'budget.title', baseValue: 'Capital expenditure' });
-
-      const lines = logged(stderrSpy);
-      expect(lines).toContain('⚠️  Preferred terminology checks skipped: not valid JSON');
-      expect(lines.filter((line) => line.includes('Preferred terminology'))).toHaveLength(1);
-      stderrSpy.mockRestore();
-    });
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('❌ Edit resource cancelled.\n');
+    expect(entries()).toMatchObject({ ok: { source: 'Original' } });
   });
 });

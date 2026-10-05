@@ -1,10 +1,11 @@
 import { computed, inject } from '@angular/core';
-import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
-import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
+import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { splitResolvedKey } from '@simoncodes-ca/domain';
 import { catchError, defer, finalize, from, map, type Observable, of, switchMap, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
+import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 import {
   cancelFolderDraft,
   dismissFolderDraftError,
@@ -14,14 +15,7 @@ import {
   startFolderDraft,
 } from '../folder-draft';
 import { folderDrop } from '../folder-drop';
-import { planFolderMove, planFolderMoveRollback } from '../folder-move-plan';
-import {
-  findFolderInTree,
-  insertFolderIntoTree,
-  parentFolderPath,
-  prunePathsUnder,
-  removeFolderFromTree,
-} from '../folder-tree.utils';
+import { parentFolderPath } from '../folder-tree.utils';
 import {
   type CreateFolderOutcome,
   type CreateFolderResult,
@@ -40,6 +34,7 @@ import {
 } from '../folder-write-feedback';
 import { captureSession } from '../session-guard';
 import { refused } from '../write-refusal';
+import type { RemovedRow } from './with-list-scope.feature';
 
 export interface FolderWritesState extends FolderDraft {
   newlyCreatedFolderPath: string | null;
@@ -69,24 +64,26 @@ export type {
 export function withFolderWritesFeature<_>() {
   return signalStoreFeature(
     {
+      props: type<CollectionResetRegistry>(),
       state: type<{
         sessionId: number;
         selectedCollection: string | null;
         isReadOnly: boolean;
-        currentFolderPath: string;
-        translations: ResourceSummaryDto[];
-        loadedFolderPath: string | null;
-        rootFolders: FolderNodeDto[];
-        expandedFolders: ReadonlySet<string>;
       }>(),
       methods: type<{
         showFolder(path: string): void;
         reloadList(): void;
         loadRootFolders(): void;
-        loadFolderChildren(path: string): void;
+        insertFolder(folder: FolderNodeDto, parentPath: string | null): void;
+        removeFolder(path: string): boolean;
+        detachFolder(path: string): FolderNodeDto | undefined;
+        applyFolderMove(sourcePath: string, destinationPath: string, sourceNode: FolderNodeDto | undefined): string;
+        restoreFolder(path: string, node: FolderNodeDto | undefined): void;
+        removeRow(key: string): RemovedRow;
+        restoreRow(removed: RemovedRow): void;
       }>(),
     },
-    withState(initialFolderWritesState),
+    withCollectionState(initialFolderWritesState),
     withComputed(({ movesInFlight }) => ({
       isMoving: computed(() => movesInFlight() > 0),
     })),
@@ -120,33 +117,17 @@ export function withFolderWritesFeature<_>() {
             return of({ kind: 'noop', reason: decision.noOp } as const);
           if (!decision.canLand) return of({ kind: 'invalid-drop' } as const);
           const inSession = captureSession(store);
-          const sourceNode = findFolderInTree(store.rootFolders(), sourceFolderPath);
+          const sourceNode = store.detachFolder(sourceFolderPath);
           const folderName = extractFolderNameFromPath(sourceFolderPath);
-          // A concurrent tree load can replace the optimistic tree while the request is pending.
-          const optimisticTree = removeFolderFromTree(store.rootFolders(), sourceFolderPath);
-          patchState(store, { rootFolders: optimisticTree });
           return moving(
             api.moveFolder(collection, sourceFolderPath, destinationFolderPath).pipe(
               map((): MoveFolderResult => {
                 if (!inSession()) return { kind: 'stale-session' };
-                const plan = planFolderMove(
-                  { tree: store.rootFolders(), expanded: store.expandedFolders(), sourceNode },
-                  sourceFolderPath,
-                  destinationFolderPath,
-                );
-                if (plan.kind === 'patch-tree') {
-                  patchState(store, { rootFolders: plan.tree });
-                  if (plan.loadChildrenFor) store.loadFolderChildren(plan.loadChildrenFor);
-                } else store.loadRootFolders();
-                patchState(store, { expandedFolders: plan.expanded });
-                store.showFolder(plan.showPath);
+                store.showFolder(store.applyFolderMove(sourceFolderPath, destinationFolderPath, sourceNode));
                 return { kind: 'moved', folderName, destinationFolderPath };
               }),
               catchError((error: unknown) => {
-                if (inSession()) {
-                  const tree = planFolderMoveRollback(store.rootFolders(), sourceFolderPath, sourceNode);
-                  if (tree) patchState(store, { rootFolders: tree });
-                }
+                if (inSession()) store.restoreFolder(sourceFolderPath, sourceNode);
                 return of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const));
               }),
             ),
@@ -168,8 +149,8 @@ export function withFolderWritesFeature<_>() {
           return api.createFolder(collection, folderName, parentPath || undefined).pipe(
             map((response): CreateFolderResult => {
               if (!inSession()) return { kind: 'stale-session' };
+              store.insertFolder(response.folder, parentPath);
               patchState(store, {
-                rootFolders: insertFolderIntoTree(store.rootFolders(), response.folder, parentPath),
                 newlyCreatedFolderPath: response.folder.fullPath,
               });
               setTimeout(() => {
@@ -206,12 +187,7 @@ export function withFolderWritesFeature<_>() {
                 deletingFolderPath: null,
               });
               if (response.deleted) {
-                patchState(store, {
-                  rootFolders: removeFolderFromTree(store.rootFolders(), folderPath),
-                  expandedFolders: prunePathsUnder(store.expandedFolders(), folderPath),
-                });
-                const shown = store.currentFolderPath();
-                if (shown === folderPath || shown.startsWith(`${folderPath}.`)) {
+                if (store.removeFolder(folderPath)) {
                   store.showFolder(parentFolderPath(folderPath) ?? '');
                 }
               }
@@ -337,11 +313,7 @@ export function withFolderWritesFeature<_>() {
             )
               return of({ kind: 'noop', reason: 'already-in-folder' } as const);
             const inSession = captureSession(store);
-            const movedRow = store.translations().find((row) => row.fullKey === sourceKey);
-            const rowsFolder = store.loadedFolderPath();
-            patchState(store, {
-              translations: store.translations().filter((row) => row.fullKey !== sourceKey),
-            });
+            const removed = store.removeRow(sourceKey);
             const destinationKey = destinationFolderPath ? `${destinationFolderPath}.${entryKey}` : entryKey;
             return moving(
               api.moveResource(collection, sourceKey, destinationKey).pipe(
@@ -352,16 +324,7 @@ export function withFolderWritesFeature<_>() {
                   return { kind: 'moved', entryKey, destinationFolderPath };
                 }),
                 catchError((error: unknown) => {
-                  if (inSession()) {
-                    const rows = store.translations();
-                    if (
-                      movedRow &&
-                      store.loadedFolderPath() === rowsFolder &&
-                      !rows.some((row) => row.fullKey === sourceKey)
-                    ) {
-                      patchState(store, { translations: [...rows, movedRow] });
-                    }
-                  }
+                  if (inSession()) store.restoreRow(removed);
                   return of(inSession() ? refused(error) : ({ kind: 'stale-session' } as const));
                 }),
               ),

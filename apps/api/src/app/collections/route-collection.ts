@@ -51,6 +51,7 @@ export class RouteCollectionPipe implements PipeTransform<RouteCollectionRef, Op
   transform({ name, writable }: RouteCollectionRef): OpenedCollection {
     try {
       return openCollection(this.#configService.getConfig(), name, {
+        cwd: this.#configService.projectRoot,
         writable,
         onMutation: writable ? this.index.sink : undefined,
       });

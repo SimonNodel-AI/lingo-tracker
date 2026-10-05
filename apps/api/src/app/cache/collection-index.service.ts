@@ -1,22 +1,13 @@
-import { resolve } from 'node:path';
 import { Injectable, Logger } from '@nestjs/common';
 import {
   type Collection,
-  computeTreeFingerprint,
   describeFolderProblem,
-  extractSubtree,
-  loadResourceTree,
   type MutationSink,
   type ResourceMutation,
+  ResourceTreeIndex,
   type ResourceTreeNode,
-  readCollection,
-  type SearchableResource,
   type SearchPage,
   type SearchRequest,
-  searchPage,
-  type TreeFingerprint,
-  treeFingerprintsMatch,
-  treeResources,
 } from '@simoncodes-ca/core';
 import type { CacheStatusDto } from '@simoncodes-ca/data-transfer';
 
@@ -53,11 +44,9 @@ interface IndexEntry {
   /** The collection as it was when indexed. Its folder identifies which mutations apply. */
   readonly collection: Collection;
   status: 'indexing' | 'ready' | 'error';
-  tree: ResourceTreeNode | null;
+  readonly index: ResourceTreeIndex;
   indexedAt: Date | null;
   error?: string;
-  /** Disk state as of the last index or own write, used to spot outside changes. */
-  fingerprint: TreeFingerprint | null;
   /**
    * Monotonic use counter, bumped on every read and write of this entry. A counter rather
    * than a clock: several collections can be touched within the same millisecond, and
@@ -111,27 +100,22 @@ export class CollectionIndex {
       return { status: entry ? 'error' : 'not-started' };
     }
 
-    if (entry.status === 'indexing' || !entry.tree) {
+    if (entry.status === 'indexing' || !entry.index.loaded) {
       return { status: 'indexing' };
     }
 
-    return { status: 'ready', tree: extractSubtree(entry.tree, path) };
+    return { status: 'ready', tree: entry.index.subtree(path) };
   }
 
   /** Searches the index or disk without starting indexing. Logs unreadable disk folders. */
   searchPage(collection: Collection, request: SearchRequest): SearchPage {
     const entry = this.#read(collection);
-    return searchPage(this.#searchSource(collection, entry), collection, request);
-  }
-
-  #searchSource(collection: Collection, entry: IndexEntry | undefined): Iterable<SearchableResource> {
-    if (entry?.status === 'ready' && entry.tree) return treeResources(entry.tree);
-
-    const { resources, problems } = readCollection(collection);
-    for (const problem of problems) {
-      this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name }));
-    }
-    return resources;
+    const source = entry?.status === 'ready' ? entry.index : new ResourceTreeIndex(collection);
+    return source.searchPage(
+      request,
+      (problem) => this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name })),
+      collection,
+    );
   }
 
   /** Index state for the cache-status endpoint. Starts indexing when the collection is not indexed. */
@@ -143,11 +127,17 @@ export class CollectionIndex {
       return { status: 'not-started', collectionName: collection.name };
     }
 
-    const status: CacheStatusDto = { status: entry.status, collectionName: collection.name };
+    const status: CacheStatusDto = {
+      status: entry.status,
+      collectionName: collection.name,
+    };
     if (entry.indexedAt) status.indexedAt = entry.indexedAt.toISOString();
     if (entry.error) status.error = entry.error;
-    if (entry.status === 'ready' && entry.tree) {
-      status.stats = { totalKeys: countResources(entry.tree), localeCount: entry.collection.locales.length };
+    if (entry.status === 'ready' && entry.index.loaded) {
+      status.stats = {
+        totalKeys: entry.index.totalKeys,
+        localeCount: entry.collection.locales.length,
+      };
     }
     return status;
   }
@@ -161,23 +151,13 @@ export class CollectionIndex {
     const patched = new Set<IndexEntry>();
 
     for (const mutation of changes) {
-      const folder = resolve(mutation.translationsFolder);
-
       for (const entry of [...this.#entries.values()]) {
-        if (resolve(entry.collection.translationsFolder) !== folder) continue;
-
-        if (mutation.kind === 'reindex') {
-          this.#drop(entry, 'a write asked for a re-index');
-          continue;
-        }
-        if (entry.status !== 'ready' || !entry.tree) continue;
-
-        try {
-          patchTree(entry.tree, mutation);
+        const result = entry.index.apply(mutation);
+        if (result.kind === 'reload') {
+          this.#drop(entry, result.reason);
+        } else if (result.kind === 'patched') {
           entry.accessSequence = ++this.#accessSequence;
           patched.add(entry);
-        } catch (error) {
-          this.#drop(entry, error instanceof Error ? error.message : String(error));
         }
       }
     }
@@ -213,17 +193,15 @@ export class CollectionIndex {
     if (now - entry.lastRevalidationAt < this.#revalidationIntervalMs) return false;
     entry.lastRevalidationAt = now;
 
-    const fingerprint = computeTreeFingerprint({ translationsFolder: collection.translationsFolder });
-
     // An own write is still waiting for its deferred fingerprint refresh. Adopt the
     // fingerprint now instead of reading our own change as somebody else's.
     if (entry.pendingFingerprintRefresh !== null) {
+      entry.index.refreshFingerprint(collection);
       this.#cancelFingerprintRefresh(entry);
-      entry.fingerprint = fingerprint;
       return false;
     }
 
-    return !treeFingerprintsMatch(entry.fingerprint, fingerprint);
+    return entry.index.isStale(collection);
   }
 
   #index(collection: Collection): void {
@@ -239,9 +217,8 @@ export class CollectionIndex {
     const entry: IndexEntry = {
       collection,
       status: 'indexing',
-      tree: null,
+      index: new ResourceTreeIndex(collection),
       indexedAt: null,
-      fingerprint: null,
       accessSequence: ++this.#accessSequence,
       lastRevalidationAt: 0,
       pendingFingerprintRefresh: null,
@@ -250,16 +227,9 @@ export class CollectionIndex {
 
     const startedAt = Date.now();
     try {
-      // Taken before the load: a write that lands mid-load then disagrees with this
-      // fingerprint, which costs one extra re-index but never loses the change.
-      entry.fingerprint = computeTreeFingerprint({ translationsFolder: collection.translationsFolder });
-      entry.tree = loadResourceTree({
-        translationsFolder: collection.translationsFolder,
-        baseLocale: collection.baseLocale,
-        path: '',
-        depth: Number.POSITIVE_INFINITY,
-        onProblem: (problem) => this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name })),
-      });
+      entry.index.load((problem) =>
+        this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name })),
+      );
       entry.status = 'ready';
       entry.indexedAt = new Date();
       entry.lastRevalidationAt = Date.now();
@@ -303,7 +273,7 @@ export class CollectionIndex {
 
     entry.pendingFingerprintRefresh = setTimeout(() => {
       entry.pendingFingerprintRefresh = null;
-      entry.fingerprint = computeTreeFingerprint({ translationsFolder: entry.collection.translationsFolder });
+      entry.index.refreshFingerprint();
     }, 0);
 
     // A pending refresh must never hold the process open on its own.
@@ -316,85 +286,4 @@ export class CollectionIndex {
       entry.pendingFingerprintRefresh = null;
     }
   }
-}
-
-/** Applies one write to an indexed tree. Throws when the tree does not match what the write expects. */
-function patchTree(tree: ResourceTreeNode, mutation: Exclude<ResourceMutation, { kind: 'reindex' }>): void {
-  switch (mutation.kind) {
-    case 'upsert': {
-      const { folder, name } = splitKey(mutation.key);
-      const resources = folderAt(tree, folder, true).resources;
-      const index = resources.findIndex((resource) => resource.key === name);
-      if (index >= 0) {
-        resources[index] = mutation.entry;
-      } else {
-        resources.push(mutation.entry);
-        resources.sort((a, b) => a.key.localeCompare(b.key));
-      }
-      return;
-    }
-    case 'remove': {
-      const { folder, name } = splitKey(mutation.key);
-      const resources = folderAt(tree, folder, false).resources;
-      const index = resources.findIndex((resource) => resource.key === name);
-      if (index < 0) throw new Error(`resource "${mutation.key}" is not in the index`);
-      resources.splice(index, 1);
-      return;
-    }
-    case 'add-folder':
-      folderAt(tree, segmentsOf(mutation.path), true);
-      return;
-    case 'remove-folder': {
-      const { folder, name } = splitKey(mutation.path);
-      const children = folderAt(tree, folder, false).children;
-      const index = children.findIndex((child) => child.name === name);
-      if (index < 0) throw new Error(`folder "${mutation.path}" is not in the index`);
-      children.splice(index, 1);
-      return;
-    }
-  }
-}
-
-/** Walks to the folder at `segments`. With `create`, missing folders are added (as on disk). */
-function folderAt(tree: ResourceTreeNode, segments: readonly string[], create: boolean): ResourceTreeNode {
-  let node = tree;
-
-  for (let depth = 0; depth < segments.length; depth++) {
-    const name = segments[depth];
-    const fullPathSegments = segments.slice(0, depth + 1);
-    let child = node.children.find((candidate) => candidate.name === name);
-
-    if (!child && create) {
-      child = {
-        name,
-        fullPathSegments,
-        loaded: true,
-        tree: { folderPathSegments: fullPathSegments, resources: [], children: [] },
-      };
-      node.children.push(child);
-      node.children.sort((a, b) => a.name.localeCompare(b.name));
-    }
-
-    if (!child?.tree) throw new Error(`folder "${fullPathSegments.join('.')}" is not in the index`);
-    node = child.tree;
-  }
-
-  return node;
-}
-
-function segmentsOf(path: string): string[] {
-  return path.split('.').filter((segment) => segment.length > 0);
-}
-
-/** Splits `a.b.c` into the folder `['a', 'b']` and the name `c`. */
-function splitKey(key: string): { folder: string[]; name: string } {
-  const segments = segmentsOf(key);
-  return { folder: segments.slice(0, -1), name: segments[segments.length - 1] ?? '' };
-}
-
-function countResources(node: ResourceTreeNode): number {
-  return node.children.reduce(
-    (total, child) => total + (child.tree ? countResources(child.tree) : 0),
-    node.resources.length,
-  );
 }

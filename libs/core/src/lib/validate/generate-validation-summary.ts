@@ -77,6 +77,14 @@ export function generateValidationSummary(result: ResourceValidationResult, opti
       ),
     );
   }
+  if (result.protectedTerms && result.protectedTerms.failures.length > 0) {
+    sections.push(
+      buildDetailSection(
+        `❌ Protected Term Failures (${result.protectedTerms.failures.length})`,
+        result.protectedTerms.failures,
+      ),
+    );
+  }
   if (result.terminology) {
     sections.push(...buildTerminologySections(result.terminology));
   }
@@ -420,6 +428,9 @@ function buildFooterSection(result: ResourceValidationResult, options: Validatio
   }
   if (result.terminology?.configError !== undefined) {
     lines.push('  Preferred Terminology File: failed to load');
+  }
+  if (result.protectedTerms && result.protectedTerms.failures.length > 0) {
+    lines.push(`  Total Protected Term Failures: ${result.protectedTerms.failures.length}`);
   }
   if (options.allowTranslated && result.warnings.length > 0) {
     lines.push(`  Total Warnings: ${result.warnings.length}`);

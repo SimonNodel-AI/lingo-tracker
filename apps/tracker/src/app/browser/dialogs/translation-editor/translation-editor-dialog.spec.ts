@@ -606,7 +606,9 @@ describe('TranslationEditorDialog', () => {
 
       await component.onSubmit();
       // Focus is deferred a task past afterClosed() so the confirmation's focus
-      // trap cannot restore focus to the Save button on top of it.
+      // trap cannot restore focus to the Save button on top of it. The dialog's
+      // focus effect runs with change detection, as it does in the app.
+      spectator.detectChanges();
       await flushFocus();
 
       const commentField = spectator.query('#translation-editor-comment');
@@ -623,6 +625,7 @@ describe('TranslationEditorDialog', () => {
       component.form.controls.comment.setValue('');
 
       await component.onSubmit();
+      spectator.detectChanges();
       await flushFocus();
 
       const commentField = spectator.query('#translation-editor-comment');
@@ -639,6 +642,7 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
 
       await component.onSubmit();
+      spectator.detectChanges();
       await flushFocus();
 
       const commentField = spectator.query<HTMLTextAreaElement>('#translation-editor-comment');
@@ -731,7 +735,7 @@ describe('TranslationEditorDialog', () => {
 
   describe('Location popover', () => {
     it('should stay closed until the location pill is used', () => {
-      expect(component.isFolderPopoverOpen()).toBe(false);
+      expect(component.panels.isFolderPopoverOpen()).toBe(false);
       expect(document.querySelector('.pop')).toBeNull();
     });
 
@@ -739,85 +743,84 @@ describe('TranslationEditorDialog', () => {
       spectator.click('[data-testid="location-pill"]');
       spectator.detectChanges();
 
-      expect(component.isFolderPopoverOpen()).toBe(true);
+      expect(component.panels.isFolderPopoverOpen()).toBe(true);
       expect(document.querySelector('.pop')).not.toBeNull();
     });
 
-    it('should toggle the popover shut on a second click', () => {
-      component.openFolderPopover();
+    it('should toggle the popover shut on a second click of the pill', () => {
+      spectator.click('[data-testid="location-pill"]');
+      spectator.click('[data-testid="location-pill"]');
       spectator.detectChanges();
 
-      component.toggleFolderPopover();
-      spectator.detectChanges();
-
-      expect(component.isFolderPopoverOpen()).toBe(false);
+      expect(component.panels.isFolderPopoverOpen()).toBe(false);
+      expect(document.querySelector('.pop')).toBeNull();
     });
 
     it('should stage a folder without committing it', () => {
-      component.openFolderPopover();
-      component.onFolderStaged('common.errors');
+      component.panels.openFolderPopover();
+      component.panels.stageFolder('common.errors');
 
-      expect(component.stagedFolderPath()).toBe('common.errors');
+      expect(component.panels.stagedFolderPath()).toBe('common.errors');
       expect(component.selectedFolderPath()).toBe('common.buttons');
       expect(component.popoverFolderPath()).toBe('common.errors');
     });
 
     it('should commit the staged folder and close on confirm', () => {
-      component.openFolderPopover();
-      component.onFolderStaged('common.errors');
+      component.panels.openFolderPopover();
+      component.panels.stageFolder('common.errors');
 
       component.confirmStagedFolder();
 
       expect(component.selectedFolderPath()).toBe('common.errors');
-      expect(component.isFolderPopoverOpen()).toBe(false);
-      expect(component.stagedFolderPath()).toBeNull();
+      expect(component.panels.isFolderPopoverOpen()).toBe(false);
+      expect(component.panels.stagedFolderPath()).toBeNull();
     });
 
     it('should select and stage a newly created folder', () => {
       component.form.controls.key.setValue('a.');
-      component.openFolderPopover();
+      component.panels.openFolderPopover();
 
       component.onFolderCreated({ name: 'new', fullPath: 'common.new', loaded: false });
 
       expect(component.selectedFolderPath()).toBe('common.new');
-      expect(component.stagedFolderPath()).toBe('common.new');
+      expect(component.panels.stagedFolderPath()).toBe('common.new');
       expect(component.popoverFolderPath()).toBe('common.new');
 
-      component.closeFolderPopover();
+      component.panels.closeFolderPopover();
       component.form.controls.key.setValue('b.ok');
       expect(component.selectedFolderPath()).toBe('b');
     });
 
     it('should keep the current folder when nothing was staged', () => {
-      component.openFolderPopover();
+      component.panels.openFolderPopover();
 
       component.confirmStagedFolder();
 
       expect(component.selectedFolderPath()).toBe('common.buttons');
-      expect(component.isFolderPopoverOpen()).toBe(false);
+      expect(component.panels.isFolderPopoverOpen()).toBe(false);
     });
 
     it('should dismiss the popover instead of the dialog on cancel', async () => {
-      component.openFolderPopover();
+      component.panels.openFolderPopover();
 
       await component.onCancel();
 
-      expect(component.isFolderPopoverOpen()).toBe(false);
+      expect(component.panels.isFolderPopoverOpen()).toBe(false);
       expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
     it('should not open the popover in a read-only collection', () => {
       renderDialog({ ...createMockData('create'), readOnly: true });
 
-      component.toggleFolderPopover();
+      component.panels.toggleFolderPopover();
 
-      expect(component.isFolderPopoverOpen()).toBe(false);
+      expect(component.panels.isFolderPopoverOpen()).toBe(false);
     });
   });
 
   describe('Other locales drawer', () => {
     it('should stay closed until the Other locales row is used', () => {
-      expect(component.isLocalesDrawerOpen()).toBe(false);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(false);
       expect(spectator.query('[data-testid="locales-drawer"]')).toBeNull();
     });
 
@@ -825,40 +828,40 @@ describe('TranslationEditorDialog', () => {
       spectator.click('[data-testid="other-locales-row"]');
       spectator.detectChanges();
 
-      expect(component.isLocalesDrawerOpen()).toBe(true);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(true);
       expect(spectator.query('[data-testid="locales-drawer"]')).not.toBeNull();
     });
 
     it('should close the drawer from Done', () => {
-      component.openLocalesDrawer();
+      component.panels.openLocalesDrawer();
       spectator.detectChanges();
 
       spectator.click('[data-testid="drawer-done"]');
       spectator.detectChanges();
 
-      expect(component.isLocalesDrawerOpen()).toBe(false);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(false);
       expect(spectator.query('[data-testid="locales-drawer"]')).toBeNull();
     });
 
     it('should dismiss the drawer instead of the dialog on cancel', async () => {
-      component.openLocalesDrawer();
+      component.panels.openLocalesDrawer();
 
       await component.onCancel();
 
-      expect(component.isLocalesDrawerOpen()).toBe(false);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(false);
       expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
     it('should not open when the collection has only the base locale', () => {
       renderDialog({ ...createMockData('create'), availableLocales: ['en'] });
 
-      component.openLocalesDrawer();
+      component.panels.openLocalesDrawer();
 
-      expect(component.isLocalesDrawerOpen()).toBe(false);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(false);
     });
 
     it('should edit the same FormArray the save path reads', () => {
-      component.openLocalesDrawer();
+      component.panels.openLocalesDrawer();
       spectator.detectChanges();
 
       component.setLocaleStatus(0, 'verified');
@@ -966,8 +969,8 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
       expect(component.keyCollision()).toBe(false);
 
-      component.openFolderPopover();
-      component.onFolderStaged('common.errors');
+      component.panels.openFolderPopover();
+      component.panels.stageFolder('common.errors');
       component.confirmStagedFolder();
       spectator.detectChanges();
 
@@ -981,8 +984,8 @@ describe('TranslationEditorDialog', () => {
       );
       renderDialog(createMockData('edit', entry('common.buttons.save')));
 
-      component.openFolderPopover();
-      component.onFolderStaged('common.errors');
+      component.panels.openFolderPopover();
+      component.panels.stageFolder('common.errors');
       component.confirmStagedFolder();
       spectator.detectChanges();
 
@@ -1361,14 +1364,14 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should move focus into the drawer and hand it back on Done', () => {
-      component.openLocalesDrawer();
+      component.panels.openLocalesDrawer();
       spectator.detectChanges();
       vi.advanceTimersByTime(0);
 
       const drawerField = spectator.query('[data-testid="locales-drawer"] textarea');
       expect(document.activeElement).toBe(drawerField);
 
-      component.closeLocalesDrawer();
+      component.panels.closeLocalesDrawer();
       spectator.detectChanges();
       vi.advanceTimersByTime(0);
 
@@ -1376,7 +1379,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should hand focus back to the Other locales row when Escape closes the drawer', async () => {
-      component.openLocalesDrawer();
+      component.panels.openLocalesDrawer();
       spectator.detectChanges();
       vi.advanceTimersByTime(0);
 
@@ -1384,12 +1387,12 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
       vi.advanceTimersByTime(0);
 
-      expect(component.isLocalesDrawerOpen()).toBe(false);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(false);
       expect(document.activeElement).toBe(spectator.query('[data-testid="other-locales-row"]'));
     });
 
     it('should move focus to the popover filter and hand it back to the pill', () => {
-      component.openFolderPopover();
+      component.panels.openFolderPopover();
       spectator.detectChanges();
       vi.advanceTimersByTime(0);
 
@@ -1403,16 +1406,16 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should dismiss the popover before the drawer before the dialog', async () => {
-      component.openLocalesDrawer();
-      component.openFolderPopover();
+      component.panels.openLocalesDrawer();
+      component.panels.openFolderPopover();
       spectator.detectChanges();
 
       await component.onCancel();
-      expect(component.isFolderPopoverOpen()).toBe(false);
-      expect(component.isLocalesDrawerOpen()).toBe(true);
+      expect(component.panels.isFolderPopoverOpen()).toBe(false);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(true);
 
       await component.onCancel();
-      expect(component.isLocalesDrawerOpen()).toBe(false);
+      expect(component.panels.isLocalesDrawerOpen()).toBe(false);
       expect(dialogRef.close).not.toHaveBeenCalled();
 
       await component.onCancel();

@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { buildGlossary, type Collection, describeFolderProblem, GlossaryExtractorError } from '@simoncodes-ca/core';
-import { type CommandResult, defineCommand } from '../runner/command-runner';
-import { hasPipedStdin } from '../runner/terminal';
+import { CommandOutput } from '../runner/command-output';
+import { type CommandResult, type CommandStdin, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, parseNameSelection } from '../utils';
 
 export interface GlossaryCommandOptions {
@@ -28,7 +28,7 @@ export interface GlossaryCommandOptions {
  * Reads the input block from --text, --input <file>, or piped stdin (in that order
  * of precedence). Returns null and reports an error when no input is available.
  */
-function resolveInputText(options: GlossaryCommandOptions, cwd: string): string | null {
+function resolveInputText(options: GlossaryCommandOptions, cwd: string, stdin: CommandStdin): string | null {
   if (options.text && options.text.trim().length > 0) {
     return options.text;
   }
@@ -43,9 +43,9 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string): string 
   }
 
   // Fall back to piped stdin when not attached to a terminal.
-  if (hasPipedStdin()) {
+  if (!stdin.isTTY) {
     try {
-      const piped = fs.readFileSync(0, 'utf8');
+      const piped = stdin.read();
       if (piped.trim().length > 0) return piped;
     } catch {
       // No readable stdin — fall through to the error below.
@@ -83,11 +83,16 @@ export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
   name: 'Glossary',
   collection: 'many',
   many: { select: (answers) => parseNameSelection(answers.collection) ?? { kind: 'all' } },
-  run: ({ cwd, collections, answers }) => runGlossary(answers, cwd, collections),
+  run: ({ cwd, collections, answers, stdin }) => runGlossary(answers, cwd, collections, stdin),
 });
 
-function runGlossary(options: GlossaryCommandOptions, cwd: string, collections: Collection[]): CommandResult {
-  const block = resolveInputText(options, cwd);
+function runGlossary(
+  options: GlossaryCommandOptions,
+  cwd: string,
+  collections: Collection[],
+  stdin: CommandStdin,
+): CommandResult {
+  const block = resolveInputText(options, cwd, stdin);
   if (block === null) {
     return { exitCode: 1 };
   }
@@ -106,8 +111,8 @@ function runGlossary(options: GlossaryCommandOptions, cwd: string, collections: 
 
   if (options.stdout) {
     // Keep stdout clean for piping; status goes to stderr.
-    process.stdout.write(`${json}\n`);
-    console.error(`✅ ${glossary.matchCount} term(s) matched from ${glossary.source.candidates} candidate(s).`);
+    CommandOutput.write(`${json}\n`);
+    CommandOutput.error(`✅ ${glossary.matchCount} term(s) matched from ${glossary.source.candidates} candidate(s).`);
     return;
   }
 

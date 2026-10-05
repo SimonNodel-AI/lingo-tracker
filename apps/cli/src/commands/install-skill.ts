@@ -1,6 +1,7 @@
 import { hasFsErrorCode } from '@simoncodes-ca/core';
 import fs from 'fs';
 import path from 'path';
+import { CommandOutput } from '../runner/command-output';
 import { type Ask, defineCommand } from '../runner/command-runner';
 import { requiredText } from '../utils';
 
@@ -37,7 +38,7 @@ async function promptForCollections(ask: Ask): Promise<CollectionSpec[]> {
   let addMore = true;
 
   while (addMore) {
-    console.log(`\nCollection ${collections.length + 1}:`);
+    CommandOutput.log(`\nCollection ${collections.length + 1}:`);
 
     const answers = await ask([
       {
@@ -280,8 +281,8 @@ export const installSkillCommand = defineCommand<InstallSkillOptions>()({
     fs.writeFileSync(skillMdPath, await generateSkillMd(collections, tokenCasing), 'utf-8');
     fs.writeFileSync(patternsMdPath, await readPatternsMdTemplate(), 'utf-8');
 
-    console.log('Skill installed successfully:');
-    console.log(`  ${skillMdPath}`);
-    console.log(`  ${patternsMdPath}`);
+    CommandOutput.log('Skill installed successfully:');
+    CommandOutput.log(`  ${skillMdPath}`);
+    CommandOutput.log(`  ${patternsMdPath}`);
   },
 });

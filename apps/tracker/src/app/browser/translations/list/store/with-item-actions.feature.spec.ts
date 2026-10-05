@@ -110,35 +110,6 @@ describe('TranslationListStore item actions', () => {
     expectNoNotifications();
   });
 
-  it('does not open confirmation when the list is destroyed before the lazy dialog loads', async () => {
-    openCollection();
-
-    const deletion = actions.deleteTranslation(entry);
-    // The lazy import has yielded; destroy the action's injector before it resumes.
-    TestBed.resetTestingModule();
-    await deletion;
-
-    expect(dialog.open).not.toHaveBeenCalled();
-    expect(api.deleteResource).not.toHaveBeenCalled();
-    expectNoNotifications();
-  });
-
-  it('does not delete when the list is destroyed before an open dialog confirms', async () => {
-    openCollection();
-    const closed = new Subject<boolean>();
-    dialog.open.mockReturnValue({ afterClosed: () => closed.asObservable() });
-
-    const deletion = actions.deleteTranslation(entry);
-    await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledOnce());
-    TestBed.resetTestingModule();
-    closed.next(true);
-    closed.complete();
-    await deletion;
-
-    expect(api.deleteResource).not.toHaveBeenCalled();
-    expectNoNotifications();
-  });
-
   it('does not open confirmation without a collection', async () => {
     await actions.deleteTranslation(entry);
 

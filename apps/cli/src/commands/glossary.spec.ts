@@ -1,246 +1,276 @@
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import type { BuildGlossaryResult } from '@simoncodes-ca/core';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('@simoncodes-ca/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
-  return { ...actual, loadConfig: vi.fn(), buildGlossary: vi.fn() };
-});
-vi.mock('../runner/terminal', () => ({ isInteractiveTerminal: vi.fn(() => false), hasPipedStdin: vi.fn(() => false) }));
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>();
-  return {
-    ...actual,
-    existsSync: vi.fn(() => true),
-    readFileSync: vi.fn(() => ''),
-    writeFileSync: vi.fn(),
-    default: { ...actual, existsSync: vi.fn(() => true), readFileSync: vi.fn(() => ''), writeFileSync: vi.fn() },
-  };
-});
-
-import * as fs from 'fs';
-import {
-  buildGlossary,
-  ConfigNotFoundError,
-  GlossaryExtractorError,
-  type LingoTrackerConfig,
-  loadConfig,
-} from '@simoncodes-ca/core';
-import { hasPipedStdin } from '../runner/terminal';
+import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { editResourceCommand } from './edit-resource';
 import { glossaryCommand } from './glossary';
 
-const CONFIG: LingoTrackerConfig = {
-  exportFolder: 'dist/lingo-export',
-  importFolder: 'dist/lingo-import',
-  baseLocale: 'en',
-  locales: ['en', 'fr'],
-  collections: { app: { translationsFolder: 'i18n' } },
-};
-const RESULT = {
-  baseLocale: 'en',
-  locales: ['fr'],
-  source: { chars: 4, candidates: 1 },
-  matchCount: 1,
-  terms: [
-    {
-      key: 'save',
-      collection: 'app',
-      base: 'Save',
-      matchedTerm: 'save',
-      score: 1,
-      translations: { fr: 'Enregistrer' },
-      status: { fr: 'verified' as const },
-    },
-  ],
-  readProblems: [],
-};
-const writtenContent = (): string => (vi.mocked(fs.writeFileSync).mock.calls.at(-1)?.[1] as string) ?? '';
+type Glossary = Omit<BuildGlossaryResult, 'readProblems'>;
 
-describe('glossaryCommand', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    process.env.INIT_CWD = '/project';
-    process.exitCode = undefined;
-    vi.mocked(hasPipedStdin).mockReturnValue(false);
-    vi.mocked(loadConfig).mockReturnValue(CONFIG);
-    vi.mocked(buildGlossary).mockReturnValue(RESULT);
+const helloTerm = {
+  key: 'terms.hello',
+  collection: 'main',
+  base: 'Hello',
+  matchedTerm: 'hello',
+  score: 1,
+  translations: { fr: 'Bonjour' },
+  status: { fr: 'translated' },
+};
+
+describe('glossaryCommand (real project)', () => {
+  let project: CommandProject;
+  const glossaryFiles = () => readdirSync(project.cwd).filter((name) => name.startsWith('lingo-tracker-glossary-'));
+  const payload = (stdout: string): Glossary => JSON.parse(stdout);
+  const expectedHello = () => ({
+    baseLocale: 'en',
+    locales: ['fr', 'es'],
+    source: { chars: 5, candidates: 1 },
+    matchCount: 1,
+    terms: [helloTerm],
+  });
+  beforeEach(async () => {
+    project = createCommandProject();
+    await project.seed('terms.hello', 'Hello');
+    await project.seed('terms.goodbye', 'Goodbye');
+    const result = await project.run(editResourceCommand, { key: 'terms.hello', locale: 'fr', localeValue: 'Bonjour' });
+    expect(result.exitCode).toBe(0);
+    expect(project.json('translations/main/terms/tracker_meta.json')).toMatchObject({
+      hello: { fr: { status: 'translated' } },
+    });
   });
   afterEach(() => {
-    process.exitCode = undefined;
+    vi.restoreAllMocks();
+    project.cleanup();
   });
 
-  it('exits 1 when configuration is missing', async () => {
-    vi.mocked(loadConfig).mockImplementation(() => {
-      throw new ConfigNotFoundError('/project/.lingo-tracker.json');
+  it('fails when configuration is missing', async () => {
+    project.remove('.lingo-tracker.json');
+    const result = await project.run(glossaryCommand, { text: 'Hello' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Configuration file .lingo-tracker.json not found');
+    expect(glossaryFiles()).toEqual([]);
+  });
+  it('fails when no input is provided', async () => {
+    let readCalls = 0;
+    const result = await project.run(
+      glossaryCommand,
+      {},
+      {
+        stdin: {
+          isTTY: true,
+          read: () => {
+            readCalls++;
+            throw new Error('Unexpected stdin read');
+          },
+        },
+      },
+    );
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: '❌ No input provided. Use --text "...", --input <file>, or pipe text via stdin.\n',
     });
-    await glossaryCommand({ text: 'Save' });
-    expect(buildGlossary).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    expect(readCalls).toBe(0);
+    expect(glossaryFiles()).toEqual([]);
   });
-
-  it('exits 1 when no input is provided', async () => {
-    await glossaryCommand({});
-    expect(buildGlossary).not.toHaveBeenCalled();
-    expect(fs.readFileSync).not.toHaveBeenCalledWith(0, 'utf8');
-    expect(process.exitCode).toBe(1);
+  it('derives glossary terms from piped stdin when no text or input file is supplied', async () => {
+    let readCalls = 0;
+    const result = await project.run(
+      glossaryCommand,
+      { stdout: true },
+      {
+        stdin: {
+          isTTY: false,
+          read: () => {
+            readCalls++;
+            return 'Hello';
+          },
+        },
+      },
+    );
+    expect(readCalls).toBe(1);
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toEqual(expectedHello());
+    expect(result.stderr).toBe('✅ 1 term(s) matched from 1 candidate(s).\n');
+    expect(glossaryFiles()).toEqual([]);
   });
-
-  it('passes --text to core and writes its JSON payload by default', async () => {
-    await glossaryCommand({ text: 'Save' });
-    expect(buildGlossary).toHaveBeenCalledWith([expect.objectContaining({ name: 'app' })], 'Save', {
-      extractor: undefined,
-      locales: undefined,
-      includeAll: undefined,
+  it('writes the complete term payload to a timestamped file by default', async () => {
+    const result = await project.run(glossaryCommand, { text: 'Hello' });
+    const files = glossaryFiles();
+    expect(result.exitCode).toBe(0);
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/^lingo-tracker-glossary-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z\.json$/);
+    expect(project.json(files[0] ?? '')).toEqual(expectedHello());
+    expect(project.json(files[0] ?? '')).not.toHaveProperty('readProblems');
+    expect(result.stdout).toContain('1 term(s) matched from 1 candidate(s).');
+    expect(result.stdout).toContain(join(project.cwd, files[0] ?? ''));
+    expect(result.stderr).toBe('');
+  });
+  it('uses millisecond precision to keep two same-second runs in distinct files', async () => {
+    vi.spyOn(Date.prototype, 'toISOString')
+      .mockReturnValueOnce('2026-10-04T12:30:00.001Z')
+      .mockReturnValueOnce('2026-10-04T12:30:00.002Z');
+    const first = await project.run(glossaryCommand, { text: 'Hello' });
+    const second = await project.run(glossaryCommand, { text: 'Goodbye', includeAll: true });
+    expect(first.exitCode).toBe(0);
+    expect(second.exitCode).toBe(0);
+    expect(glossaryFiles()).toEqual([
+      'lingo-tracker-glossary-2026-10-04T12-30-00-001Z.json',
+      'lingo-tracker-glossary-2026-10-04T12-30-00-002Z.json',
+    ]);
+    expect(project.json(glossaryFiles()[0] ?? '')).toEqual(expectedHello());
+    expect(project.json(glossaryFiles()[1] ?? '')).toMatchObject({
+      terms: [{ key: 'terms.goodbye', base: 'Goodbye' }],
     });
-    const { readProblems: _readProblems, ...payload } = RESULT;
-    expect(writtenContent()).toBe(JSON.stringify(payload, null, 2));
   });
-
-  it('writes to a millisecond-precision timestamped file by default (no same-second collisions)', async () => {
-    await glossaryCommand({ text: 'Save' });
-    expect(vi.mocked(fs.writeFileSync).mock.calls[0][0]).toMatch(
-      /lingo-tracker-glossary-\d{4}-\d{2}-\d{2}T[\d-]+Z\.json$/,
-    );
+  it('reads from input file', async () => {
+    project.write('input.txt', 'Hello');
+    const result = await project.run(glossaryCommand, { input: 'input.txt', stdout: true });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toEqual(expectedHello());
+    expect(glossaryFiles()).toEqual([]);
   });
-
-  it('reads from --input file', async () => {
-    vi.mocked(fs.readFileSync).mockReturnValue('Save document');
-    await glossaryCommand({ input: 'help.md' });
-    expect(fs.existsSync).toHaveBeenCalledWith('/project/help.md');
-    expect(buildGlossary).toHaveBeenCalledWith(expect.any(Array), 'Save document', expect.any(Object));
-  });
-
-  it('reads from piped stdin when no --text/--input and not a TTY', async () => {
-    vi.mocked(hasPipedStdin).mockReturnValue(true);
-    vi.mocked(fs.readFileSync).mockReturnValue('Please Save your work');
-    await glossaryCommand({});
-    expect(fs.readFileSync).toHaveBeenCalledWith(0, 'utf8');
-    expect(buildGlossary).toHaveBeenCalledWith(expect.any(Array), 'Please Save your work', expect.any(Object));
-  });
-
-  it('exits 1 when --input file does not exist', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-    await glossaryCommand({ input: 'missing.md' });
-    expect(buildGlossary).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('prints JSON to stdout with --stdout and does not write a file', async () => {
-    await glossaryCommand({ text: 'Save', stdout: true });
-    expect(fs.writeFileSync).not.toHaveBeenCalled();
-    const printed = vi.mocked(process.stdout.write).mock.calls[0][0] as string;
-    expect(JSON.parse(printed)).toMatchObject({ matchCount: 1, terms: RESULT.terms });
-    expect(JSON.parse(printed)).not.toHaveProperty('readProblems');
-  });
-
-  it('keeps stdout to the JSON payload with --stdout: warnings and the status line go to stderr', async () => {
-    vi.mocked(buildGlossary).mockReturnValue({ ...RESULT, locales: [] });
-    await glossaryCommand({ text: 'Save', stdout: true, locales: ['en'] });
-    expect(console.error).toHaveBeenCalledWith(
-      '⚠️  No target locales to include (only the base locale is configured or requested).',
-    );
-    expect(console.error).toHaveBeenCalledWith('✅ 1 term(s) matched from 1 candidate(s).');
-    expect(console.log).not.toHaveBeenCalled();
-    expect(process.stdout.write).toHaveBeenCalledTimes(1);
-  });
-
-  it('maps --locales to a trimmed list for core', async () => {
-    await glossaryCommand({ text: 'Save', locales: ['fr', 'es'] });
-    expect(buildGlossary).toHaveBeenCalledWith(
-      expect.any(Array),
-      'Save',
-      expect.objectContaining({ locales: ['fr', 'es'] }),
-    );
-  });
-
-  it('reads only the collection named by --collection', async () => {
-    vi.mocked(loadConfig).mockReturnValue({
-      ...CONFIG,
-      collections: { app: { translationsFolder: 'i18n' }, admin: { translationsFolder: 'admin' } },
+  it('fails when input file does not exist', async () => {
+    const result = await project.run(glossaryCommand, { input: 'missing.txt' });
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: `❌ Input file not found: ${join(project.cwd, 'missing.txt')}\n`,
     });
-    await glossaryCommand({ text: 'Save', collection: 'app' });
-    expect(buildGlossary).toHaveBeenCalledWith(
-      [expect.objectContaining({ name: 'app', translationsFolder: '/project/i18n' })],
-      'Save',
-      expect.any(Object),
+    expect(glossaryFiles()).toEqual([]);
+  });
+  it('prints the complete JSON term to stdout without writing a file', async () => {
+    const result = await project.run(glossaryCommand, { text: 'Hello', stdout: true });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toEqual(expectedHello());
+    expect(payload(result.stdout)).not.toHaveProperty('readProblems');
+    expect(glossaryFiles()).toEqual([]);
+  });
+  it('keeps stdout to JSON while warnings and status go to stderr', async () => {
+    project.write('translations/main/broken/resource_entries.json', '{');
+    const result = await project.run(glossaryCommand, { text: 'Hello', stdout: true });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toEqual(expectedHello());
+    expect(result.stderr).toMatch(
+      /^⚠️ {2}Collection 'main': Skipped unreadable folder 'broken': .+\n✅ 1 term\(s\) matched from 1 candidate\(s\).\n$/,
+    );
+    expect(glossaryFiles()).toEqual([]);
+  });
+  it('accepts explicit locales', async () => {
+    const result = await project.run(glossaryCommand, { text: 'Hello', stdout: true, locales: ['fr', 'es'] });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toEqual(expectedHello());
+  });
+  it('warns when only the base locale is requested', async () => {
+    const result = await project.run(glossaryCommand, { text: 'Hello', stdout: true, locales: ['en'] });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toMatchObject({ locales: [], matchCount: 0, terms: [] });
+    expect(result.stderr).toBe(
+      '⚠️  No target locales to include (only the base locale is configured or requested).\n✅ 0 term(s) matched from 1 candidate(s).\n',
     );
   });
-
-  it('exits 1 when --collection cannot be resolved', async () => {
-    await glossaryCommand({ text: 'Save', collection: 'nope' });
-    expect(console.error).toHaveBeenCalledWith('❌ Collection "nope" not found');
-    expect(buildGlossary).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('uses the runner no-collections failure when config is empty', async () => {
-    vi.mocked(loadConfig).mockReturnValue({ ...CONFIG, collections: {} });
-    await glossaryCommand({ text: 'Save' });
-    expect(console.error).toHaveBeenCalledWith('❌ No collections found. Run `lingo-tracker add-collection` first.');
-    expect(buildGlossary).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
-  });
-
-  it('writes an empty glossary when core finds nothing', async () => {
-    vi.mocked(buildGlossary).mockReturnValue({ ...RESULT, matchCount: 0, terms: [] });
-    await glossaryCommand({ text: 'unrelated' });
-    expect(JSON.parse(writtenContent())).toMatchObject({ matchCount: 0, terms: [] });
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('No matching translations found.'));
-  });
-
-  it('maps --include-all to core', async () => {
-    await glossaryCommand({ text: 'Save', includeAll: true });
-    expect(buildGlossary).toHaveBeenCalledWith(
-      expect.any(Array),
-      'Save',
-      expect.objectContaining({ includeAll: true }),
-    );
-  });
-
-  it('passes opened collection locale overrides to core', async () => {
-    vi.mocked(loadConfig).mockReturnValue({
-      ...CONFIG,
-      collections: { app: { translationsFolder: 'i18n', baseLocale: 'fr', locales: ['fr', 'es'] } },
+  it('reads only the selected collection when two collections have matching terms', async () => {
+    project.configure({
+      ...project.config,
+      collections: { ...project.config.collections, other: { translationsFolder: 'translations/other' } },
     });
-    await glossaryCommand({ text: 'Enregistrer' });
-    expect(buildGlossary).toHaveBeenCalledWith(
-      [expect.objectContaining({ baseLocale: 'fr', targetLocales: ['es'] })],
-      'Enregistrer',
-      expect.any(Object),
-    );
+    await project.seed('terms.save', 'Save', 'other');
+    const updated = await project.run(editResourceCommand, {
+      collection: 'other',
+      key: 'terms.save',
+      locale: 'fr',
+      localeValue: 'Enregistrer',
+    });
+    expect(updated.exitCode).toBe(0);
+    const all = await project.run(glossaryCommand, { text: 'Hello Save', stdout: true });
+    expect(payload(all.stdout).terms.map((term) => term.collection)).toEqual(expect.arrayContaining(['main', 'other']));
+    const result = await project.run(glossaryCommand, { text: 'Hello Save', stdout: true, collection: 'main' });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout).terms).toEqual([helloTerm]);
   });
-
-  it('reports an unreadable folder on stderr and keeps JSON clean', async () => {
-    vi.mocked(buildGlossary).mockReturnValue({
-      ...RESULT,
-      readProblems: [
-        { kind: 'unreadable', folderPath: 'bad', collectionName: 'app', message: 'Failed to parse JSON file x' },
+  it('fails when collection cannot be resolved', async () => {
+    const result = await project.run(glossaryCommand, { text: 'Hello', collection: 'missing' });
+    expect(result).toEqual({ exitCode: 1, stdout: '', stderr: '❌ Collection "missing" not found\n' });
+    expect(glossaryFiles()).toEqual([]);
+  });
+  it('uses runner no-collections error for empty config', async () => {
+    project.configure({ ...project.config, collections: {} });
+    const result = await project.run(glossaryCommand, { text: 'Hello' });
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: '❌ No collections found. Run `lingo-tracker add-collection` first.\n',
+    });
+    expect(glossaryFiles()).toEqual([]);
+  });
+  it('writes an empty glossary and reports no matching translations', async () => {
+    const result = await project.run(glossaryCommand, { text: 'unrelated' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('No matching translations found.');
+    expect(project.json(glossaryFiles()[0] ?? '')).toMatchObject({ matchCount: 0, terms: [] });
+    expect(project.json(glossaryFiles()[0] ?? '')).not.toHaveProperty('readProblems');
+  });
+  it('includes new translations only when include-all is enabled', async () => {
+    const defaults = await project.run(glossaryCommand, { text: 'Goodbye', stdout: true });
+    expect(payload(defaults.stdout)).toMatchObject({ matchCount: 0, terms: [] });
+    const result = await project.run(glossaryCommand, { text: 'Goodbye', stdout: true, includeAll: true });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toMatchObject({
+      matchCount: 1,
+      terms: [
+        {
+          key: 'terms.goodbye',
+          base: 'Goodbye',
+          translations: { fr: 'Goodbye', es: 'Goodbye' },
+          status: { fr: 'new', es: 'new' },
+        },
       ],
     });
-    await glossaryCommand({ text: 'Save', stdout: true });
-    expect(console.error).toHaveBeenCalledWith(
-      "⚠️  Collection 'app': Skipped unreadable folder 'bad': Failed to parse JSON file x",
-    );
-    expect(console.log).not.toHaveBeenCalled();
-    expect(JSON.parse(vi.mocked(process.stdout.write).mock.calls[0][0] as string)).not.toHaveProperty('readProblems');
   });
-
-  it('passes core output without interpreting metadata', async () => {
-    await glossaryCommand({ text: 'Save' });
-    expect(JSON.parse(writtenContent()).terms).toEqual(RESULT.terms);
+  it('reports unreadable collection and folder names while keeping problems out of the saved file', async () => {
+    project.write('translations/main/broken/resource_entries.json', '{');
+    const result = await project.run(glossaryCommand, { text: 'Hello' });
+    expect(result.exitCode).toBe(0);
+    expect(project.json(glossaryFiles()[0] ?? '')).toEqual(expectedHello());
+    expect(project.json(glossaryFiles()[0] ?? '')).not.toHaveProperty('readProblems');
+    expect(result.stderr).toContain("Collection 'main': Skipped unreadable folder 'broken':");
+    expect(result.stderr).toContain('resource_entries.json');
+    expect(result.stdout).toContain('1 term(s) matched from 1 candidate(s).');
   });
-
-  it('exits 1 with a clear error for the unimplemented ai extractor', async () => {
-    vi.mocked(buildGlossary).mockImplementation(() => {
-      throw new GlossaryExtractorError('ai');
+  it('uses collection base and locale overrides in the glossary payload', async () => {
+    project.configure({
+      ...project.config,
+      collections: { main: { translationsFolder: 'translations/main', baseLocale: 'fr', locales: ['fr', 'es'] } },
     });
-    await glossaryCommand({ text: 'Save', extractor: 'ai' });
-    expect(buildGlossary).toHaveBeenCalledWith(expect.any(Array), 'Save', expect.objectContaining({ extractor: 'ai' }));
-    expect(console.error).toHaveBeenCalledWith(
-      '❌ The "ai" extractor is not yet implemented. Use --extractor ngram (the default).',
-    );
-    expect(fs.writeFileSync).not.toHaveBeenCalled();
-    expect(process.exitCode).toBe(1);
+    await project.seed('terms.save', 'Enregistrer');
+    const updated = await project.run(editResourceCommand, { key: 'terms.save', locale: 'es', localeValue: 'Guardar' });
+    expect(updated.exitCode).toBe(0);
+    const result = await project.run(glossaryCommand, { text: 'Enregistrer', stdout: true });
+    expect(result.exitCode).toBe(0);
+    expect(payload(result.stdout)).toMatchObject({
+      baseLocale: 'fr',
+      locales: ['es'],
+      matchCount: 1,
+      terms: [
+        {
+          key: 'terms.save',
+          base: 'Enregistrer',
+          translations: { es: 'Guardar' },
+          status: { es: 'translated' },
+        },
+      ],
+    });
+    expect(payload(result.stdout)).not.toHaveProperty('readProblems');
+  });
+  it('reports the unimplemented ai extractor with the ngram hint and writes no file', async () => {
+    const result = await project.run(glossaryCommand, { text: 'Hello', extractor: 'ai' });
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: '❌ The "ai" extractor is not yet implemented. Use --extractor ngram (the default).\n',
+    });
+    expect(glossaryFiles()).toEqual([]);
   });
 });

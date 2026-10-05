@@ -9,8 +9,10 @@ import {
   type OpenedProject,
   openCollection,
 } from '@simoncodes-ca/core';
+import { readFileSync } from 'node:fs';
 import * as path from 'path';
 import prompts from 'prompts';
+import { CommandOutput, withCommandOutput, type CommandOutputSink } from './command-output';
 import { parseCommaSeparatedList } from '../utils/string-parsers';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { type Selection, selectionPrompt } from '../utils/prompt-utils';
@@ -45,13 +47,23 @@ export type ConfigFlag<Need extends CollectionNeed> = Need extends 'none' ? bool
 /** Runs follow-up prompts (confirmations, loops) under the runner's cancel rule. */
 export type Ask = (questions: prompts.PromptObject | prompts.PromptObject[]) => Promise<Record<string, unknown>>;
 
+/** Input supplied to commands that accept piped text. Reading is deferred until the command needs it. */
+export interface CommandStdin {
+  readonly isTTY: boolean;
+  read(): string;
+}
+
 interface BaseContext {
-  /** The project root: `INIT_CWD` (set by pnpm), else `process.cwd()`. */
+  /** Optional directory for CLI-owned run summaries; production uses the system temp directory. */
+  readonly summaryDirectory?: string;
+  /** The explicit project root; production uses `INIT_CWD` (set by pnpm), else `process.cwd()`. */
   readonly cwd: string;
-  /** The runner's interactive rule, read once: stdin and stdout are both a terminal. */
+  /** The environment's interactive rule, read once; production requires stdin and stdout to be terminals. */
   readonly interactive: boolean;
   /** Prompts inside `run`. Cancelling (Ctrl+C) ends the command like any other cancel. */
   readonly ask: Ask;
+  /** Explicit input adapter, defaulting to the process's terminal state and stdin file descriptor. */
+  readonly stdin: CommandStdin;
 }
 
 interface ConfigResources {
@@ -179,6 +191,52 @@ function getCwd(): string {
   return process.env.INIT_CWD || process.cwd();
 }
 
+/** Explicit execution environment; omitted prompts cannot read the terminal. */
+export interface CommandEnvironment {
+  readonly cwd: string;
+  readonly interactive?: boolean;
+  readonly ask?: Ask;
+  /** Optional input adapter; production reads process.stdin only when a command requests input. */
+  readonly stdin?: CommandStdin;
+  /** Optional live output adapter; captured output is returned even when this is supplied. */
+  readonly output?: CommandOutputSink;
+  /** Tests can keep CLI-owned summary files inside their temporary project. */
+  readonly summaryDirectory?: string;
+}
+
+export interface CommandExecution {
+  readonly exitCode: 0 | 1;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+export interface DefinedCommand<Options extends object> {
+  (options: Options): Promise<void>;
+  readonly execute: (options: Options, environment: CommandEnvironment) => Promise<0 | 1>;
+}
+
+/** Runs the same pipeline as the production action, without changing process state. */
+export async function runCommand<Options extends object>(
+  command: DefinedCommand<Options>,
+  options: Options,
+  environment: CommandEnvironment,
+): Promise<CommandExecution> {
+  let stdout = '';
+  let stderr = '';
+  const sink: CommandOutputSink = {
+    stdout: (text) => {
+      stdout += text;
+      environment.output?.stdout(text);
+    },
+    stderr: (text) => {
+      stderr += text;
+      environment.output?.stderr(text);
+    },
+  };
+  const exitCode = await withCommandOutput({ sink }, () => command.execute(options, environment));
+  return { exitCode, stdout, stderr };
+}
+
 /**
  * Defines a CLI command. The returned function is what `main.ts` calls with the parsed
  * Commander options. Curried so the options type is given and the rest is inferred:
@@ -205,10 +263,18 @@ export function defineCommand<Options extends object>() {
     const Required extends keyof Options & string = never,
   >(
     spec: CommandSpec<Options, Need, WithConfig, Required>,
-  ): ((options: Options) => Promise<void>) => {
-    return async (options: Options) => {
-      process.exitCode = await execute(spec, options);
+  ): DefinedCommand<Options> => {
+    const command = async (options: Options): Promise<void> => {
+      // With no capture scope, the output port uses the real console/streams.
+      process.exitCode = await execute(spec, options, {
+        cwd: getCwd(),
+        interactive: isInteractiveTerminal(),
+        ask,
+      });
     };
+    return Object.assign(command, {
+      execute: (options: Options, environment: CommandEnvironment) => execute(spec, options, environment),
+    });
   };
 }
 
@@ -217,11 +283,19 @@ async function execute<
   Need extends CollectionNeed,
   WithConfig extends boolean,
   Required extends keyof Options & string,
->(spec: CommandSpec<Options, Need, WithConfig, Required>, options: Options): Promise<0 | 1> {
+>(
+  spec: CommandSpec<Options, Need, WithConfig, Required>,
+  options: Options,
+  environment: CommandEnvironment,
+): Promise<0 | 1> {
   let duringRun = false;
   try {
-    const cwd = getCwd();
-    const interactive = isInteractiveTerminal();
+    const { cwd, interactive = false } = environment;
+    const ask: Ask =
+      environment.ask ??
+      (async () => {
+        throw new Error('Interactive commands require an ask adapter.');
+      });
     let resources: Partial<ConfigResources & CollectionResources & ManyCollectionResources> = {};
 
     if (spec.config !== false) {
@@ -240,7 +314,9 @@ async function execute<
         const flag = spec.collectionOption ?? 'collection';
         const given: unknown = options[flag as keyof Options];
         const name =
-          typeof given === 'string' && given.length > 0 ? given : await selectCollection(config, interactive, flag);
+          typeof given === 'string' && given.length > 0
+            ? given
+            : await selectCollection(config, interactive, flag, ask);
         resources = {
           ...resources,
           collection: openCollection(config, name, {
@@ -253,7 +329,17 @@ async function execute<
     }
 
     // `resources` holds exactly what Need and WithConfig promise; the type cannot follow the branches above.
-    const promptContext = { cwd, interactive, ask, ...resources } as PromptContext<Need, WithConfig>;
+    const promptContext = {
+      cwd,
+      interactive,
+      ask,
+      stdin: environment.stdin ?? {
+        isTTY: Boolean(process.stdin.isTTY),
+        read: () => readFileSync(0, 'utf8'),
+      },
+      summaryDirectory: environment.summaryDirectory,
+      ...resources,
+    } as PromptContext<Need, WithConfig>;
 
     await spec.preflight?.({ ...promptContext, options });
     const questions = spec.prompts ? await spec.prompts(options, promptContext) : [];
@@ -311,7 +397,12 @@ function readConfig(cwd: string): LingoTrackerConfig {
 export const NO_COLLECTIONS_MESSAGE = 'No collections found. Run `lingo-tracker add-collection` first.';
 
 /** No `--collection`: none configured fails, one is used, several are prompted for (interactive) or fail. */
-async function selectCollection(config: LingoTrackerConfig, interactive: boolean, flag: string): Promise<string> {
+async function selectCollection(
+  config: LingoTrackerConfig,
+  interactive: boolean,
+  flag: string,
+  ask: Ask,
+): Promise<string> {
   const names = Object.keys(config.collections ?? {});
   if (names.length === 0) {
     throw new Error(NO_COLLECTIONS_MESSAGE);
@@ -352,12 +443,12 @@ function report(error: unknown, name: string, formattedMessage?: string): 0 | 1 
     return 0;
   }
   if (error instanceof ConfigNotFoundError) {
-    console.error(`❌ Configuration file ${CONFIG_FILENAME} not found.`);
-    console.error('Run "lingo-tracker init" to initialize a project.');
+    CommandOutput.error(`❌ Configuration file ${CONFIG_FILENAME} not found.`);
+    CommandOutput.error('Run "lingo-tracker init" to initialize a project.');
     return 1;
   }
   if (error instanceof ConfigParseError) {
-    console.error(`❌ Failed to parse configuration file: ${error.reason}`);
+    CommandOutput.error(`❌ Failed to parse configuration file: ${error.reason}`);
     return 1;
   }
   // A wrapping error may keep its message fixed (it can reach an API client) and hold the

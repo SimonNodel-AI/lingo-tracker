@@ -6,6 +6,7 @@ import {
   InvalidCollectionFolderError,
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
+import type { RunOutcome } from '../run-outcome';
 import { openResourceEntry } from './resource-entry';
 import { resolveResourcePaths } from './resource-file-paths';
 import { resourceFolderPresence } from './resource-folder';
@@ -16,6 +17,8 @@ export interface DeleteResourceParams {
 }
 
 export interface DeleteResourceResult {
+  /** `failed` when any key could not be deleted, even if others were; same rule as a Move Report. */
+  readonly outcome: RunOutcome;
   entriesDeleted: number;
   errors?: Array<{
     key: string;
@@ -59,6 +62,7 @@ export function deleteResource(
   }
 
   return {
+    outcome: errors.length > 0 ? 'failed' : 'succeeded',
     entriesDeleted,
     errors: errors.length > 0 ? errors : undefined,
   };

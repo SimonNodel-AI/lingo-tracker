@@ -410,6 +410,7 @@ const cases: Case[] = [
       '--skip-icu',
       '--require-portable-plurals',
       '--skip-placeholders',
+      '--skip-protected-terms',
     ],
     fullCall: [
       {
@@ -418,6 +419,7 @@ const cases: Case[] = [
         skipIcu: true,
         requirePortablePlurals: true,
         skipPlaceholders: true,
+        skipProtectedTerms: true,
       },
     ],
     defaultCall: [
@@ -427,6 +429,7 @@ const cases: Case[] = [
         skipIcu: false,
         requirePortablePlurals: false,
         skipPlaceholders: false,
+        skipProtectedTerms: false,
       },
     ],
   },

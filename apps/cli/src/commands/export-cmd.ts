@@ -1,7 +1,7 @@
 import { type ExportRunResult, exportTargetLocales, runExport } from '@simoncodes-ca/core';
-import { defineCommand } from '../runner/command-runner';
-import { exitForRunOutcome } from '../runner/run-outcome';
-import { ConsoleFormatter, reportRunSummary } from '../utils';
+import { CommandOutput } from '../runner/command-output';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
 import { type ExportCommandOptions, exportQuestions, exportSelection, resolveExportOptions } from './export-options';
 
 export type { ExportCommandOptions } from './export-options';
@@ -15,7 +15,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
   prompts: (options, { config, collections, interactive }) =>
     interactive ? exportQuestions(options, { config, targetLocales: exportTargetLocales(collections) }) : [],
   required: ['format'],
-  run: async ({ config, cwd, collections, answers }) => {
+  run: async ({ config, cwd, collections, answers, summaryDirectory }) => {
     const { options, advisories } = resolveExportOptions(answers);
     const format = answers.format;
     for (const message of advisories) ConsoleFormatter.warning(message);
@@ -25,7 +25,7 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       format,
       exportFolder: config.exportFolder,
       cwd,
-      onProgress: options.verbose ? (msg) => console.log(`   ${msg}`) : undefined,
+      onProgress: options.verbose ? (msg) => CommandOutput.log(`   ${msg}`) : undefined,
       onStart: ({ outputDirectory, locales }) => {
         ConsoleFormatter.progress(`Exporting to ${format.toUpperCase()}...`);
         ConsoleFormatter.indent(`Collections: ${collections.map((c) => c.name).join(', ')}`);
@@ -40,14 +40,19 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
       return;
     }
 
-    displayResults(result);
-
-    reportRunSummary('export', result.summary, { dryRun: Boolean(options.dryRun), previewOnDryRun: true });
-    return exitForRunOutcome(result.outcome);
+    const dryRun = Boolean(options.dryRun);
+    const summary = saveRunSummary('export', result.summary, {
+      dryRun,
+      previewOnDryRun: true,
+      directory: summaryDirectory,
+    });
+    const exit = displayResults(result, dryRun, summary.path);
+    summary.announce();
+    return exit;
   },
 });
 
-function displayResults(result: ExportRunResult): void {
+function displayResults(result: ExportRunResult, dryRun: boolean, summaryPath: string | undefined): CommandResult {
   for (const { locale, outcome, resourcesExported, filesCreated, error } of result.localeResults) {
     if (outcome === 'exported') {
       ConsoleFormatter.indent(`✅ ${locale}: Exported ${resourcesExported} resources to ${filesCreated.join(', ')}`);
@@ -57,21 +62,12 @@ function displayResults(result: ExportRunResult): void {
   }
 
   ConsoleFormatter.section('Export Summary');
-  ConsoleFormatter.keyValue('Files Created', result.filesCreated.length);
-  ConsoleFormatter.keyValue('Resources Exported', result.resourcesExported);
-
-  if (result.warnings.length > 0) {
-    ConsoleFormatter.warning(
-      `Warnings (${result.warnings.length}):`,
-      result.warnings.map((w) => `- ${w}`),
-    );
-  }
-
-  const errors = [...result.errors, ...result.hierarchicalConflicts];
-  if (errors.length > 0) {
-    ConsoleFormatter.error(
-      `Errors (${errors.length}):`,
-      errors.map((e) => `- ${e}`),
-    );
-  }
+  return printRunReport({
+    counts: { 'Files Created': result.filesCreated.length, 'Resources Exported': result.resourcesExported },
+    warnings: result.warnings,
+    errors: [...result.errors, ...result.hierarchicalConflicts],
+    outcome: result.outcome,
+    dryRun,
+    summaryPath,
+  });
 }

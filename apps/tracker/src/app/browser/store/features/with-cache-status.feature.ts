@@ -1,12 +1,13 @@
 import { computed, inject, type Signal } from '@angular/core';
-import { signalStoreFeature, withState, withComputed, withMethods, patchState, type } from '@ngrx/signals';
-import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { pipe, switchMap, interval, startWith, takeWhile, catchError, of, tap } from 'rxjs';
 import { TranslocoService } from '@jsverse/transloco';
-import { BrowserApiService } from '../../services/browser-api.service';
+import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import type { CacheStatusType } from '@simoncodes-ca/data-transfer';
-import { apiErrorMessage } from '../../../shared/api-error/api-error';
+import { catchError, interval, of, pipe, startWith, switchMap, takeWhile, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { apiErrorMessage } from '../../../shared/api-error/api-error';
+import { BrowserApiService } from '../../services/browser-api.service';
+import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 
 export interface CacheStatusState {
   cacheStatus: CacheStatusType | null;
@@ -24,11 +25,10 @@ export function withCacheStatusFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean }>(),
-      // Provided by withListScopeFeature, which composes before this feature.
-      props: type<{ listLoaded: Signal<boolean> }>(),
+      props: type<CollectionResetRegistry & { listLoaded: Signal<boolean> }>(),
       methods: type<{ loadRootFolders(): void; reloadList(): void }>(),
     },
-    withState(initialCacheStatusState),
+    withCollectionState(initialCacheStatusState),
     withComputed(({ cacheStatus, collectionStats }) => ({
       isCacheReady: computed(() => cacheStatus() === 'ready'),
 

@@ -1,7 +1,6 @@
 import { moveResource } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
-import { exitForRunOutcome } from '../runner/run-outcome';
-import { ConsoleFormatter, missingTextQuestions } from '../utils';
+import { ConsoleFormatter, missingTextQuestions, printRunReport } from '../utils';
 
 export interface MoveResourceOptions {
   collection?: string;
@@ -32,19 +31,6 @@ export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
       ConsoleFormatter.warning('No resources were moved.');
     }
 
-    if (result.warnings && result.warnings.length > 0) {
-      ConsoleFormatter.warning(
-        'Warnings:',
-        result.warnings.map((warning) => `- ${warning}`),
-      );
-    }
-
-    if (result.errors && result.errors.length > 0) {
-      ConsoleFormatter.error(
-        'Errors:',
-        result.errors.map((error) => `- ${error}`),
-      );
-    }
-    return exitForRunOutcome(result.outcome);
+    return printRunReport(result);
   },
 });

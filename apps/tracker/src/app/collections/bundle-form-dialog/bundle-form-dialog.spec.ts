@@ -13,6 +13,7 @@ import type {
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
+import { fakeEnv } from '../../../testing/form-submit-env';
 import { toApiError } from '../../shared/api-error/api-error';
 import { CollectionsStore } from '../store/collections.store';
 import { BundleForm } from './bundle-form';
@@ -121,6 +122,7 @@ const buildModelHarness = (data: BundleFormDialogData) => {
     tokenCasing: () => 'upperCase',
     icuTransform: () => true,
     dryRun: (request) => store.dryRunBundle(request),
+    env: fakeEnv(),
   });
   modelHarnesses.push(model);
   return { component: { model }, store };
@@ -311,46 +313,6 @@ describe('BundleFormDialog — create mode', () => {
       expect(component.model.form.controls.name.valid).toBe(true);
     });
 
-    it('should stay open and list every rule message of a definition the server rejects', () => {
-      harness.store.createBundle.mockReturnValue(
-        rejection(400, {
-          message: 'Invalid bundle definition',
-          error: 'Bad Request',
-          errors: ['dist (output folder) is required.', "Collection 'ghost' does not exist in the configuration."],
-        }),
-      );
-      fillOutput(component);
-
-      component.onSubmit();
-      harness.fixture.detectChanges();
-
-      expect(harness.dialogRef.close).not.toHaveBeenCalled();
-      expect(component.model.submitErrors()).toEqual([
-        'dist (output folder) is required.',
-        "Collection 'ghost' does not exist in the configuration.",
-      ]);
-      expect(submitErrorsText(harness)).toContain("Collection 'ghost' does not exist in the configuration.");
-
-      // The next edit clears the server's answer like any other submit error.
-      component.model.form.controls.dist.setValue('./dist/other');
-      expect(component.model.submitErrors()).toEqual([]);
-    });
-
-    it('should show the server message, else the create-failed text, for any other refusal', () => {
-      harness.store.createBundle
-        .mockReturnValueOnce(rejection(403, { message: 'Config is read-only', error: 'Forbidden' }))
-        .mockReturnValueOnce(rejection(500, { error: 'Internal Server Error' }));
-      fillOutput(component);
-
-      component.onSubmit();
-      expect(component.model.submitErrors()).toEqual(['Config is read-only']);
-
-      component.model.form.controls.dist.setValue('./dist/other');
-      component.onSubmit();
-      expect(component.model.submitErrors()).toEqual(['Failed to create bundle']);
-      expect(harness.dialogRef.close).not.toHaveBeenCalled();
-    });
-
     it('should not let the dialog close while the write is in flight, and allow it again after a refusal', () => {
       const write = new Subject<LingoTrackerConfigDto | null>();
       harness.store.createBundle.mockReturnValue(write);
@@ -367,16 +329,6 @@ describe('BundleFormDialog — create mode', () => {
 
       expect(harness.dialogRef.disableClose).toBe(false);
       expect(closeButtons(harness).some((button) => button.disabled)).toBe(false);
-    });
-
-    it('should ignore a second submit while the first is in flight', () => {
-      harness.store.createBundle.mockReturnValue(new Subject<LingoTrackerConfigDto | null>());
-      fillOutput(component);
-
-      component.onSubmit();
-      component.onSubmit();
-
-      expect(harness.store.createBundle).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -611,29 +563,6 @@ describe('BundleFormDialog — edit mode', () => {
     });
     expect(harness.store.createBundle).not.toHaveBeenCalled();
   });
-
-  it('should show a refusal above the footer when the name is locked, so a conflict has no field to land on', () => {
-    harness.store.updateBundle.mockReturnValue(rejection(409, { message: 'Bundle "tracker" already exists' }));
-
-    component.onSubmit();
-    harness.fixture.detectChanges();
-
-    expect(harness.dialogRef.close).not.toHaveBeenCalled();
-    expect(component.model.submitErrors()).toEqual(['Bundle "tracker" already exists']);
-  });
-
-  it('should list server details from a conflict when the name is locked', () => {
-    harness.store.updateBundle.mockReturnValue(
-      rejection(409, { message: 'Bundle "tracker" already exists', errors: ['Conflicting bundle output path.'] }),
-    );
-
-    component.onSubmit();
-    harness.fixture.detectChanges();
-
-    expect(harness.dialogRef.close).not.toHaveBeenCalled();
-    expect(component.model.submitErrors()).toEqual(['Conflicting bundle output path.']);
-    expect(submitErrorsText(harness)).toContain('Conflicting bundle output path.');
-  });
 });
 
 // These existing cases now exercise the form model directly, without constructing a dialog.
@@ -649,6 +578,7 @@ describe('BundleForm — migrated dialog form cases', () => {
       tokenCasing: () => 'upperCase',
       icuTransform: () => true,
       dryRun: () => of(dryRunResult),
+      env: fakeEnv(),
     });
   beforeEach(() => {
     model = createModel({ mode: 'create' });

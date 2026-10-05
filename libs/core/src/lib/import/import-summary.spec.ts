@@ -356,7 +356,7 @@ describe('import-summary', () => {
       expect(summary).toContain('`common` - Hierarchical conflict: has value and child keys');
     });
 
-    it('should limit displayed items to first 10 with overflow indicator', () => {
+    it('should list every warning and error but limit modified files to first 10', () => {
       const warnings = Array.from({ length: 15 }, (_, i) => `Warning ${i + 1}`);
       const errors = Array.from({ length: 12 }, (_, i) => `Error ${i + 1}`);
       const files = Array.from({ length: 20 }, (_, i) => `/test/file${i + 1}.json`);
@@ -389,10 +389,10 @@ describe('import-summary', () => {
 
       const summary = generateImportSummary(result, options);
 
-      expect(summary).toContain('Warning 10');
-      expect(summary).toContain('... and 5 more');
-      expect(summary).toContain('Error 10');
-      expect(summary).toContain('... and 2 more');
+      expect(summary).toContain('- Warning 15\n');
+      expect(summary).toContain('- Error 12\n');
+      expect(summary).not.toContain('... and 5 more');
+      expect(summary).not.toContain('... and 2 more');
       expect(summary).toContain('/test/file10.json');
       expect(summary).toContain('+ 10 more files');
     });

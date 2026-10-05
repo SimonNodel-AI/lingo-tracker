@@ -1,7 +1,8 @@
 import {
   displayTermPath,
   InvalidProjectTermsEditError,
-  type ProjectTermsEditProblem,
+  isProtectedTermsEditProblem,
+  type ProtectedTermsEditProblem,
   type ProjectTermsUpdateResult,
   ProtectedTermsFileNotSetError,
   planProjectTermsUpdate,
@@ -19,16 +20,9 @@ export interface ProtectedTermsOptions {
   file?: string;
 }
 
-const protectedEditWording: Record<ProjectTermsEditProblem, string | undefined> = {
+const protectedEditWording: Partial<Record<ProtectedTermsEditProblem, string>> = {
   'protected-conflict': '--set cannot be combined with --add or --remove',
   'protected-missing': 'Provide at least one of --add, --remove, --set, --list, or --file',
-  'protected-file-path': undefined,
-  'protected-replacement-conflict': undefined,
-  'preferred-missing': undefined,
-  'preferred-conflict': undefined,
-  'preferred-remove-shape': undefined,
-  'preferred-replacement-shape': undefined,
-  'preferred-upsert-shape': undefined,
 };
 
 export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
@@ -50,10 +44,13 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
       const plan = planProjectTermsUpdate(project, {
         protectedTerms: {
           target,
-          edit: {
-            add: options.add,
-            remove: options.remove,
-            ...(hasSet && { set: options.set ?? [] }),
+          change: {
+            kind: 'edit',
+            edit: {
+              add: options.add,
+              remove: options.remove,
+              ...(hasSet && { set: options.set ?? [] }),
+            },
           },
           list: hasList,
           ...(hasFile && { file: options.file }),
@@ -89,7 +86,7 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
       result = plan.apply();
     } catch (error) {
       if (pointerLinePrinted) ConsoleFormatter.warning('Protected terms file change was reverted.');
-      if (error instanceof InvalidProjectTermsEditError) {
+      if (error instanceof InvalidProjectTermsEditError && isProtectedTermsEditProblem(error.problem)) {
         const message = protectedEditWording[error.problem];
         if (message !== undefined) throw new Error(message);
       }

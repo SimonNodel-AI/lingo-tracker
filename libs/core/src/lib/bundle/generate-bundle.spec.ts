@@ -12,6 +12,7 @@ import {
   type BundleTypeOutcome,
   type GenerateBundleParams,
   bundleTypeOutcomeDetail,
+  describeTypeOutcome,
   generateBundle as generateBundleByName,
   generatePreparedBundle,
 } from './generate-bundle';
@@ -21,19 +22,19 @@ describe('bundleTypeOutcomeDetail', () => {
   it('returns details for every status without status words, framing or deprecated-setting warnings', () => {
     const cases: ReadonlyArray<{ outcome: BundleTypeOutcome; detail: string }> = [
       {
-        outcome: { status: 'written', path: 'types/main.ts', keysCount: 2, warning: 'legacy setting' },
+        outcome: { status: 'written', path: 'types/main.ts', keysCount: 2 },
         detail: 'types/main.ts (2 keys)',
       },
       {
-        outcome: { status: 'skipped', reason: 'empty-bundle', warning: 'legacy setting' },
+        outcome: { status: 'skipped', reason: 'empty-bundle' },
         detail: 'bundle is empty',
       },
       {
-        outcome: { status: 'not-configured', warning: 'legacy setting' },
+        outcome: { status: 'not-configured' },
         detail: 'no typeDistFile configured',
       },
       {
-        outcome: { status: 'failed', reason: 'disk full', warning: 'legacy setting' },
+        outcome: { status: 'failed', reason: 'disk full' },
         detail: 'disk full',
       },
     ];
@@ -354,6 +355,50 @@ describe('generateBundle (real fs)', () => {
   });
 
   describe('type generation', () => {
+    it('orders collection, locale, prepared and outcome warnings for every type status', async () => {
+      for (const legacy of [false, true]) {
+        for (const status of ['written', 'skipped', 'failed', 'not-configured'] as const) {
+          const name = `${status}-${legacy}`;
+          const folder = seed(name, status === 'skipped' ? {} : { hello: { source: 'Hello' } });
+          const typePath =
+            status === 'not-configured' ? '' : status === 'failed' ? 'types/invalid.txt' : `types/${name}.ts`;
+          const bundleDefinition = {
+            ...definition({
+              collections: [
+                { name: 'deleted', entriesSelectionRules: 'All' },
+                { name, entriesSelectionRules: 'All' },
+              ],
+            }),
+            ...(legacy ? { typeDist: typePath } : { typeDistFile: typePath }),
+          };
+          const result = await generateBundle({
+            bundleKey: 'main',
+            bundleDefinition,
+            config: config({ [name]: folder }),
+            locales: ['en'],
+            cwd: root(),
+          });
+          const preparedWarning =
+            "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.";
+          const ordinary = [
+            "Collection 'deleted' not found in config",
+            ...(status === 'skipped' ? ["Bundle 'main' for locale 'en' is empty"] : []),
+          ];
+          const outcomeWarning =
+            status === 'skipped'
+              ? ["Type generation skipped for 'main': bundle is empty"]
+              : status === 'failed'
+                ? [
+                    "Type generation failed for 'main': typeDistFile must end with a .ts extension (e.g. './src/types/tokens.ts'), but got: types/invalid.txt",
+                  ]
+                : [];
+          expect(result.typeOutcome.status).toBe(status);
+          expect(result.warnings).toEqual([...ordinary, ...(legacy ? [preparedWarning] : [])]);
+          expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toBe(outcomeWarning[0]);
+        }
+      }
+    });
+
     it('writes types and reports the generated file and key count when configured', async () => {
       const common = seed('common', { 'buttons.ok': { source: 'OK' }, 'buttons.cancel': { source: 'Cancel' } });
       const result = await generateBundle({
@@ -397,7 +442,7 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome.status).toBe('written');
       expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-      expect(result.typeOutcome.warning).toContain("'typeDist' is deprecated");
+      expect(result.warnings.join()).toContain("'typeDist' is deprecated");
       expect(warn).not.toHaveBeenCalled();
     });
 
@@ -435,7 +480,7 @@ describe('generateBundle (real fs)', () => {
       expect(readFileSync(join(root(), 'types/main.ts'), 'utf8')).toContain('export const CUSTOM_TOKENS');
     });
 
-    it('reports thrown type generation errors through the type outcome only', async () => {
+    it('describes thrown type generation errors from the structured outcome', async () => {
       const common = seed('common', { welcome: { source: 'Welcome' } });
       writeFileSync(join(root(), 'blocked'), 'not a directory');
       const result = await generateBundle({
@@ -448,10 +493,11 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome).toMatchObject({ status: 'failed' });
       expect(result.outcome).toBe('failed');
-      expect(result.warnings.some((warning) => warning.startsWith("Type generation failed for 'main':"))).toBe(false);
+      expect(result.warnings).toEqual([]);
+      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toMatch(/^Type generation failed for 'main': /);
     });
 
-    it('reports a rejected type file path as failed without adding a warning', async () => {
+    it('describes a rejected type file path as a failed outcome', async () => {
       const common = seed('common', { welcome: { source: 'Welcome' } });
       const result = await generateBundle({
         bundleKey: 'main',
@@ -463,6 +509,7 @@ describe('generateBundle (real fs)', () => {
       expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
       expect(result.outcome).toBe('failed');
       expect(result.warnings).toEqual([]);
+      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toMatch(/^Type generation failed for 'main': /);
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
     });
 
@@ -494,7 +541,10 @@ describe('generateBundle (real fs)', () => {
       });
 
       expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
-      expect(result.warnings).not.toContain("Type generation skipped for 'main': bundle is empty");
+      expect(result.warnings).toEqual([]);
+      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toBe(
+        "Type generation skipped for 'main': bundle is empty",
+      );
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(false);
     });
 
@@ -925,7 +975,7 @@ describe('generateBundle (real fs)', () => {
 
     async function bundleFixtureLocale(
       locale: string,
-    ): Promise<{ emitted: Record<string, string>; warnings: string[] }> {
+    ): Promise<{ emitted: Record<string, string>; warnings: readonly string[] }> {
       const fixtureData = fixture();
       const result = await generateBundle({
         bundleKey: 'icu-edge-cases',

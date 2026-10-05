@@ -5,10 +5,12 @@ sidebar_position: 4
 
 # Validate Feature
 
-The Validate feature provides a comprehensive translation validation system designed to ensure translation completeness and quality before production deployment. It serves as a quality gate in CI/CD pipelines, and answers two independent questions about every resource:
+The Validate feature provides a comprehensive translation validation system designed to ensure translation completeness and quality before production deployment. It serves as a quality gate in CI/CD pipelines, and answers four independent questions about every resource:
 
 1. **Status** — has a human approved this translation?
 2. **ICU** — does the stored value actually compile for the locale it is stored under?
+3. **Arguments** — does the translation preserve the source's ICU argument names?
+4. **Protected terms** — does the translation preserve the source's protected terms verbatim?
 
 The second question matters because approval is about wording, not syntax. A value can be marked `verified` and still render nothing at runtime.
 
@@ -40,14 +42,18 @@ lingo-tracker validate [options]
 | `--allow-translated` | Treat 'translated' status as warning instead of failure | `false` |
 | `--skip-locales <locales>` | Comma-separated list of **target** locales to exclude from validation | None |
 | `--skip-icu` | Do not compile values as ICU for their own locale | `false` |
+| `--skip-placeholders` | Do not compare translated ICU argument names with the base value | `false` |
+| `--skip-protected-terms` | Do not check translations for dropped or altered protected terms | `false` |
 | `--require-portable-plurals` | Warn when a base-locale plural selects by category instead of an exact `=N` match | `false` |
 
 ### Exit Codes
 
 - `0` - All validations passed (all resources verified or only warnings)
-- `1` - Validation failures found, OR configuration errors (config file missing or invalid JSON, no collections configured, no target locales configured, all target locales were skipped, preferred terminology file exists but cannot be loaded)
+- `1` - Status, ICU, argument, or protected-term failures, OR configuration errors (config file missing or invalid JSON, no collections configured, no target locales configured, all target locales were skipped, preferred terminology file exists but cannot be loaded)
 
 Preferred terminology warnings never change the exit code.
+
+Argument and protected-term checks use the shared Value Check against each collection's base value. A rename, including `{name}` becoming `{Name}`, fails because ICU renders a missing argument as empty text. A dropped or altered protected term also fails. The two skip flags disable these checks independently; `--skip-icu` disables compilation only. A missing or broken protected-terms file only warns, and then that file supplies no terms to check.
 
 ## Validation Rules
 

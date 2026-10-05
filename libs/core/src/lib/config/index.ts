@@ -30,14 +30,17 @@ export {
   readGlobalProtectedTerms,
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFilePath,
-  resolveProtectedTermsForConfig,
   type StoredProtectedTerms,
 } from './protected-terms-file';
 export type { TermFile } from './term-file';
 export {
+  type ProtectedTermsChange,
   type ProjectTermsUpdate,
   type ProjectTermsUpdatePlan,
   type ProjectTermsUpdateResult,
   planProjectTermsUpdate,
   updateProjectTerms,
 } from './update-project-terms';
+
+export { readProjectTermsView, type ProjectTermsView } from './project-terms-view';
+export { preferredTerminologyRequestFromFlags, type PreferredTerminologyFlags } from './preferred-terminology-request';

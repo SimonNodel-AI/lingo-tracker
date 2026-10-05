@@ -189,6 +189,15 @@ describe('Translator.translate', () => {
     expect(outcome.skipped).toEqual([{ key: 'greet', locale: 'fr', reason: 'placeholder-mismatch' }]);
   });
 
+  it('maps a value with an added ICU argument to a placeholder skip', async () => {
+    const provider = new InMemoryTranslationProvider(({ text }) => `${text} {unexpected}`);
+    const outcome = await openTranslator(collection(), { provider }).translate(
+      [{ key: 'greet', source: 'Hello {name}' }],
+      ['fr'],
+    );
+    expect(outcome).toEqual({ values: [], skipped: [{ key: 'greet', locale: 'fr', reason: 'placeholder-mismatch' }] });
+  });
+
   it('normalises every value to ICU', async () => {
     const outcome = await openTranslator(collection(), { provider: toFrench }).translate(
       [{ key: 'greet', source: 'Hello {{ name }}' }],
@@ -210,6 +219,18 @@ describe('Translator.translate', () => {
 
     expect(outcome.skipped).toEqual([{ key: 'buy', locale: 'fr', reason: 'protected-term', terms: ['iPhone'] }]);
     expect(outcome.values).toEqual([{ key: 'brand', locale: 'fr', value: 'Made by Acme' }]);
+  });
+
+  it('preserves the protected-term skip reason when the value also introduces an argument', async () => {
+    const provider = new InMemoryTranslationProvider(({ text }) => `${text.replace('iPhone', 'téléphone')} {extra}`);
+    const outcome = await openTranslator(collection(), { provider, protectedTerms: ['iPhone'] }).translate(
+      [{ key: 'buy', source: 'Buy iPhone {name}' }],
+      ['fr'],
+    );
+    expect(outcome).toEqual({
+      values: [],
+      skipped: [{ key: 'buy', locale: 'fr', reason: 'protected-term', terms: ['iPhone'] }],
+    });
   });
 
   it('skips a translation that changes the case of a protected term', async () => {

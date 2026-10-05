@@ -4,9 +4,11 @@ import {
   type CollectionSetResource,
 } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
+import type { ProjectTerms } from '../config/project-terms';
 import type {
   IcuValidationResult,
   PlaceholderValidationResult,
+  ProtectedTermValidationResult,
   ResourceValidationDetail,
   ResourceValidationResult,
   StatusCounts,
@@ -14,7 +16,7 @@ import type {
   ValidationOptions,
 } from './types';
 import { validateIcuValues } from './validate-icu';
-import { validatePlaceholders } from './validate-placeholders';
+import { validateTranslatedValues } from './validate-translated-values';
 import { validateTerminology } from './validate-terminology';
 
 /**
@@ -44,7 +46,8 @@ import { validateTerminology } from './validate-terminology';
  * When `options.placeholders` is set, a third pass checks that every
  * translation interpolates the same arguments as its base value. A renamed
  * argument renders as empty text rather than raising, so neither of the other
- * two passes can see it.
+ * two passes can see it. The same pass checks verbatim protected terms from each
+ * collection's supplied Project Terms when `options.protectedTerms` is set.
  *
  * When `options.terminology` is provided, a fourth pass scans each collection's
  * base-locale values for discouraged terms. Its findings are advisory and never
@@ -54,12 +57,14 @@ import { validateTerminology } from './validate-terminology';
  *
  * @param collections - The opened collections to validate (see `openCollection`)
  * @param options - Validation configuration options
+ * @param termsByCollection - Preloaded Project Terms keyed by the exact opened collection objects
  * @returns Comprehensive validation result with counts, failures, warnings, and successes
  *
  * @example
  * ```typescript
  * const collections = Object.keys(config.collections).map((name) => openCollection(config, name, { cwd }));
- * const result = validateResources(collections, { allowTranslated: false, skippedLocales: ['de'] });
+ * const terms = new Map(collections.map((collection) => [collection, readProjectTerms(collection)]));
+ * const result = validateResources(collections, { allowTranslated: false, skippedLocales: ['de'] }, terms);
  *
  * if (!result.passed) {
  *   console.error(`Validation failed: ${result.failures.length} failures`);
@@ -69,6 +74,7 @@ import { validateTerminology } from './validate-terminology';
 export function validateResources(
   collections: readonly Collection[],
   options: ValidationOptions,
+  termsByCollection: ReadonlyMap<Collection, ProjectTerms>,
 ): ResourceValidationResult {
   const skipped = new Set(options.skippedLocales ?? []);
 
@@ -79,6 +85,7 @@ export function validateResources(
   const unreadableFolders: UnreadableFolderDetail[] = [];
   const icuResults: IcuValidationResult[] = [];
   const placeholderResults: PlaceholderValidationResult[] = [];
+  const protectedTermResults: ProtectedTermValidationResult[] = [];
   const set = readCollectionSet(collections, { allowDifferentBaseLocales: true });
   const allResources = set.resources;
   const validatedLocales = new Set<string>();
@@ -121,15 +128,34 @@ export function validateResources(
       );
     }
 
-    // And placeholder agreement is a third: a value can be approved and compile
-    // cleanly while interpolating an argument the caller never passes.
-    if (options.placeholders) {
-      placeholderResults.push(validatePlaceholders(resources, targetLocales, collection.baseLocale));
+    const terms = termsByCollection.get(collection);
+    if (!terms) throw new Error(`Project Terms were not supplied for collection '${collection.name}'`);
+    if (options.placeholders || options.protectedTerms) {
+      const checked = validateTranslatedValues(resources, targetLocales, collection.baseLocale, {
+        protectedTerms: terms.protectedTerms,
+        checkArguments: options.placeholders ?? false,
+        checkProtectedTerms: options.protectedTerms ?? false,
+      });
+      if (options.placeholders) placeholderResults.push(checked);
+      if (options.protectedTerms && terms.protectedTerms.length > 0) {
+        protectedTermResults.push({
+          failures: checked.protectedTermFailures,
+          valuesChecked: checked.valuesChecked,
+        });
+      }
     }
   }
 
   const icu = options.icu ? mergeIcuResults(icuResults) : undefined;
   const placeholders = options.placeholders ? mergePlaceholderResults(placeholderResults) : undefined;
+
+  const protectedTerms =
+    protectedTermResults.length > 0
+      ? {
+          failures: protectedTermResults.flatMap((result) => result.failures),
+          valuesChecked: protectedTermResults.reduce((total, result) => total + result.valuesChecked, 0),
+        }
+      : undefined;
 
   // Terminology is advisory: findings suggest wording and never block. A rule
   // file that failed to load does block, because then nothing was checked.
@@ -145,11 +171,13 @@ export function validateResources(
     unreadableFolders.length === 0 &&
     (icu?.failures.length ?? 0) === 0 &&
     (placeholders?.failures.length ?? 0) === 0 &&
+    (protectedTerms?.failures.length ?? 0) === 0 &&
     terminology?.configError === undefined;
 
   return {
     icu,
     placeholders,
+    protectedTerms,
     terminology,
     unreadableFolders,
     totalResourcesValidated,

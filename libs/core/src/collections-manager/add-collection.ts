@@ -14,7 +14,7 @@ export interface AddCollectionOptions {
  * (`lib/config/collection-entry.ts`): `translationsFolder` plus the settings that differ
  * from the global config; a folder under `node_modules` is read-only unless told otherwise.
  * All preconditions are checked before writing. The write order is config, then terms.
- * If the terms write itself fails, the new config entry remains written.
+ * A failed terms write restores the config and companion file bytes.
  *
  * @throws {CollectionAlreadyExistsError} A collection with this name exists.
  * @throws {InvalidCollectionError} `translationsFolder` is missing or blank.
@@ -37,8 +37,7 @@ export function addCollection(
     options.protectedTerms,
     project.projectRoot,
   );
-  configWrite.write(nextConfig);
-  writeTerms?.();
+  configWrite.transaction(nextConfig, writeTerms === undefined ? [] : [writeTerms]);
 
   return { message: `Collection "${collectionName}" added successfully` };
 }

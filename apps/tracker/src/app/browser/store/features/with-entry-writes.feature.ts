@@ -1,28 +1,27 @@
 import { inject } from '@angular/core';
-import { patchState, signalStoreFeature, type, withMethods } from '@ngrx/signals';
+import { signalStoreFeature, type, withMethods } from '@ngrx/signals';
 import type {
   CreateResourceDto,
   CreateResourceResponseDto,
   ResourceSummaryDto,
-  SearchResultDto,
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 import { catchError, defer, from, map, type Observable, of, switchMap, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
-import { captureSession } from '../session-guard';
 import { doesUpdateMoveEntry } from '../does-update-move-entry';
 import {
   type DeleteResourceOutcome,
-  deleteOutcome,
   decideDeleteResource,
   decideTranslateResource,
+  deleteOutcome,
   deleteRefusal,
-  translateRefusal,
   type RequestedEntryDeleteOutcome,
   type TranslateResourceOutcome,
   translateOutcome,
+  translateRefusal,
 } from '../resource-write-outcome';
+import { captureSession } from '../session-guard';
 
 /**
  * Entry Writes owns the read-only rule, session validity and decided feedback for delete/translate.
@@ -38,36 +37,15 @@ export function withEntryWritesFeature<_>() {
         sessionId: number;
         selectedCollection: string | null;
         isReadOnly: boolean;
-        translations: ResourceSummaryDto[];
-        searchResults: SearchResultDto[];
       }>(),
-      // Provided by withListScopeFeature, which composes before this feature.
-      methods: type<{ reloadList(): void }>(),
+      methods: type<{
+        reloadList(): void;
+        replaceEntry(key: string, resource: ResourceSummaryDto): void;
+        removeEntry(key: string): void;
+      }>(),
     },
     withMethods((store) => {
       const api = inject(BrowserApiService);
-
-      /** Replaces the cached entry with what the server now holds, in both caches. A cache without it is left as is. */
-      function patchEntry(fullKey: string, resource: ResourceSummaryDto): void {
-        const translations = store.translations();
-        const searchResults = store.searchResults();
-        patchState(store, {
-          translations: translations.some((entry) => entry.fullKey === fullKey)
-            ? translations.map((entry) => (entry.fullKey === fullKey ? resource : entry))
-            : translations,
-          searchResults: searchResults.some((result) => result.fullKey === fullKey)
-            ? searchResults.map((result) => (result.fullKey === fullKey ? { ...result, ...resource } : result))
-            : searchResults,
-        });
-      }
-
-      /** Drops an entry that no longer lives where the caches show it. */
-      function dropEntry(fullKey: string): void {
-        patchState(store, {
-          translations: store.translations().filter((entry) => entry.fullKey !== fullKey),
-          searchResults: store.searchResults().filter((result) => result.fullKey !== fullKey),
-        });
-      }
 
       function deleteResource(fullKey: string): Observable<DeleteResourceOutcome> {
         return defer(() => {
@@ -78,7 +56,7 @@ export function withEntryWritesFeature<_>() {
           return api.deleteResource(collection, [fullKey]).pipe(
             map((response) => {
               if (!inSession()) return decideDeleteResource({ kind: 'stale-session' });
-              if (response.entriesDeleted > 0) dropEntry(fullKey);
+              if (response.entriesDeleted > 0) store.removeEntry(fullKey);
               return decideDeleteResource(deleteOutcome(response));
             }),
             catchError((error: unknown) =>
@@ -109,9 +87,9 @@ export function withEntryWritesFeature<_>() {
               tap((response) => {
                 if (!inSession()) return;
                 if (doesUpdateMoveEntry(dto)) {
-                  dropEntry(dto.key);
+                  store.removeEntry(dto.key);
                 } else if (response.resource) {
-                  patchEntry(dto.key, response.resource);
+                  store.replaceEntry(dto.key, response.resource);
                 }
               }),
             );
@@ -150,7 +128,7 @@ export function withEntryWritesFeature<_>() {
             return api.translateResource(collection, fullKey).pipe(
               map((response) => {
                 if (!inSession()) return decideTranslateResource({ kind: 'stale-session' });
-                patchEntry(fullKey, response.resource);
+                store.replaceEntry(fullKey, response.resource);
                 return decideTranslateResource(translateOutcome(response));
               }),
               catchError((error: unknown) =>

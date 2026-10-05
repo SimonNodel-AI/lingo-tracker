@@ -520,4 +520,38 @@ describe('deleteResource', () => {
       expect(vi.mocked(fs.unlinkSync)).not.toHaveBeenCalled();
     });
   });
+
+  describe('run outcome', () => {
+    const present = { ok: { source: 'OK' }, cancel: { source: 'Cancel' } };
+    const mockFolder = (): void => {
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFileSync).mockImplementation((path) =>
+        path.toString().includes('resource_entries.json')
+          ? JSON.stringify(present)
+          : JSON.stringify({ ok: { en: { checksum: 'a' } }, cancel: { en: { checksum: 'b' } } }),
+      );
+      vi.mocked(fs.writeFileSync).mockImplementation(() => undefined);
+    };
+
+    it('succeeds when every key is deleted', () => {
+      mockFolder();
+      const result = deleteResource(collection, { keys: ['app.ok', 'app.cancel'] });
+      expect(result.entriesDeleted).toBe(2);
+      expect(result.outcome).toBe('succeeded');
+    });
+
+    it('fails when some keys are missing, even though others were deleted', () => {
+      mockFolder();
+      const result = deleteResource(collection, { keys: ['app.ok', 'app.missing'] });
+      expect(result.entriesDeleted).toBe(1);
+      expect(result.outcome).toBe('failed');
+    });
+
+    it('fails when no key is deleted', () => {
+      mockFolder();
+      const result = deleteResource(collection, { keys: ['app.missing'] });
+      expect(result.entriesDeleted).toBe(0);
+      expect(result.outcome).toBe('failed');
+    });
+  });
 });

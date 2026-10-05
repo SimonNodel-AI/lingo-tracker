@@ -269,7 +269,7 @@ describe('collectionSetupQuestions', () => {
         type: 'list',
         name: 'locales',
         message: 'Supported locales (comma-separated)',
-        initial: 'en,fr-ca,es,de',
+        initial: '',
         separator: ',',
       },
     ]);

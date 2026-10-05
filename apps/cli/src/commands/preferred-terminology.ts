@@ -1,11 +1,13 @@
 import {
   displayTermPath,
   InvalidProjectTermsEditError,
+  isPreferredTerminologyEditProblem,
   type OpenedProject,
   type PreferredTerminologyEditResult,
   PreferredTerminologyValidationError,
-  type ProjectTermsEditProblem,
+  type PreferredTerminologyEditProblem,
   planProjectTermsUpdate,
+  preferredTerminologyRequestFromFlags,
 } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
@@ -23,16 +25,11 @@ export interface PreferredTerminologyOptions {
   remove?: string;
 }
 
-const preferredEditWording: Record<ProjectTermsEditProblem, string | undefined> = {
+const preferredEditWording: Partial<Record<PreferredTerminologyEditProblem, string>> = {
   'preferred-missing': 'Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>',
   'preferred-conflict': '--add and --remove cannot be combined; run them separately',
-  'protected-conflict': undefined,
-  'protected-missing': undefined,
-  'protected-file-path': undefined,
-  'protected-replacement-conflict': undefined,
-  'preferred-remove-shape': undefined,
-  'preferred-replacement-shape': undefined,
-  'preferred-upsert-shape': undefined,
+  'preferred-orphan-flags': '--preferred and --reason can only be used with --add',
+  'preferred-incomplete-flags': '--add requires --preferred <preferred>',
 };
 
 /** `Expenditure → Investment — reason`, without a reason suffix when there is none. */
@@ -50,31 +47,10 @@ export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOpt
 /** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
 function run(options: PreferredTerminologyOptions, project: OpenedProject, cwd: string): CommandResult {
   const hasList = options.list === true;
-  // A partial CLI rule cannot be represented as a core upsert. Keep only these flag-shape checks here.
-  if (options.add !== undefined && options.remove !== undefined && options.preferred === undefined) {
-    throw new Error('--add and --remove cannot be combined; run them separately');
-  }
-  if (
-    options.add === undefined &&
-    (options.preferred !== undefined || options.reason !== undefined) &&
-    (options.remove !== undefined || hasList)
-  ) {
-    throw new Error('--preferred and --reason can only be used with --add');
-  }
-  if (options.add !== undefined && options.preferred === undefined) {
-    throw new Error('--add requires --preferred <preferred>');
-  }
   let result: PreferredTerminologyEditResult | undefined;
   try {
     const plan = planProjectTermsUpdate(project, {
-      preferredTerminology: {
-        list: hasList,
-        ...(options.add !== undefined &&
-          options.preferred !== undefined && {
-            upsert: { discouraged: options.add, preferred: options.preferred, reason: options.reason },
-          }),
-        ...(options.remove !== undefined && { remove: options.remove }),
-      },
+      preferredTerminology: preferredTerminologyRequestFromFlags(options),
     });
     const { preferredTerminology: loaded } = plan.view;
     if (loaded !== undefined) {
@@ -91,7 +67,7 @@ function run(options: PreferredTerminologyOptions, project: OpenedProject, cwd: 
     }
     result = plan.apply().preferredTerminologyResult;
   } catch (error) {
-    if (error instanceof InvalidProjectTermsEditError) {
+    if (error instanceof InvalidProjectTermsEditError && isPreferredTerminologyEditProblem(error.problem)) {
       const message = preferredEditWording[error.problem];
       if (message !== undefined) throw new Error(message);
     }

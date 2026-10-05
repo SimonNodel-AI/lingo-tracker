@@ -52,6 +52,7 @@ export {
   reindexMutation,
   saveReporting,
 } from './resource-mutation';
+export { type ResourceTreeApplyResult, ResourceTreeIndex } from './resource-tree-index';
 export {
   type MatchType,
   type NormalizedSearchRequest,

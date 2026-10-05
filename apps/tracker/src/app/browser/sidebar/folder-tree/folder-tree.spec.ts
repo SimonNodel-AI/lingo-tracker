@@ -5,7 +5,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { getState, patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
-import type { CreateFolderResponseDto } from '@simoncodes-ca/data-transfer';
+import type { CreateFolderResponseDto, DeleteFolderResponseDto } from '@simoncodes-ca/data-transfer';
 import { NEVER, of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectionSettings } from '../../../../testing/collection-settings';
@@ -518,6 +518,52 @@ describe('FolderTree', () => {
     component.onDeleteFolder('common');
 
     await vi.waitFor(() => expect(error).toHaveBeenCalledWith('Not empty'));
+  });
+
+  it('still settles a confirmed folder delete when the sidebar is destroyed before the response', async () => {
+    createComponent();
+    openCollection('my-collection');
+    const error = vi.spyOn(spectator.inject(NotificationService), 'error').mockImplementation(() => undefined);
+    const success = vi.spyOn(spectator.inject(NotificationService), 'success').mockImplementation(() => undefined);
+    const response = new Subject<DeleteFolderResponseDto>();
+    dialog.open.mockReturnValue({ afterClosed: () => of(true) });
+    vi.spyOn(spectator.inject(BrowserApiService), 'deleteFolder').mockReturnValue(response.asObservable());
+    const { store } = component;
+
+    component.onDeleteFolder('common');
+    await vi.waitFor(() => expect(store.deletingFolderPath()).toBe('common'));
+    fixture.destroy();
+    response.error(toApiError(new HttpErrorResponse({ status: 409, error: { message: 'Not empty' } })));
+
+    expect(store.deletingFolderPath()).toBeNull();
+    expect(store.isDeletingFolder()).toBe(false);
+    expect(error).not.toHaveBeenCalled();
+    expect(success).not.toHaveBeenCalled();
+  });
+
+  it('still settles a confirmed folder move when the sidebar is destroyed before the response', async () => {
+    createComponent();
+    openCollection('my-collection');
+    const { store } = component;
+    await vi.waitFor(() => expect(store.folderTreeLoaded()).toBe(true));
+    patchState(unprotected(store), {
+      rootFolders: [
+        { name: 'common', fullPath: 'common', loaded: false },
+        { name: 'errors', fullPath: 'errors', loaded: false },
+      ],
+    });
+    const response = new Subject<never>();
+    dialog.open.mockReturnValue({ afterClosed: () => of(true) });
+    vi.spyOn(spectator.inject(BrowserApiService), 'moveFolder').mockReturnValue(response.asObservable());
+
+    component.confirmMoveFolder('common', 'errors');
+    await vi.waitFor(() => expect(store.isMoving()).toBe(true));
+    expect(store.rootFolders().map((folder) => folder.fullPath)).not.toContain('common');
+    fixture.destroy();
+    response.error(toApiError(new HttpErrorResponse({ status: 500, error: { message: 'Boom' } })));
+
+    expect(store.isMoving()).toBe(false);
+    expect(store.rootFolders().map((folder) => folder.fullPath)).toContain('common');
   });
 
   it('keeps the inline error and tree visible through an unrelated folder expand and load', async () => {

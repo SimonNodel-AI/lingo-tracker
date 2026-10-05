@@ -1,16 +1,13 @@
 import type { Collection } from '../config/open-collection';
 import { FolderNotFoundError, InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
-import { describeFolderProblem } from '../resource/collection-folders';
 import { sweepKeys } from '../resource/collection-sweep';
 import { inspectFolderAddress, resolveFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import { pruneEmptyFolders } from '../resource/folder-pruning';
 import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from '../resource/move-destination';
-import { withMoveOutcome } from '../resource/move-outcome';
+import { MoveReport, type MoveResult } from '../resource/move-report';
 import { planMove } from '../resource/move-plan';
-import { mergeRelocation } from '../resource/move-resource';
 import { relocateEntries } from '../resource/relocate-entries';
-import { resolveMutationSink, type MutationSink } from '../resource/resource-mutation';
-import type { RunOutcome } from '../run-outcome';
+import { resolveMutationSink } from '../resource/resource-mutation';
 
 export interface MoveFolderParams {
   /** The source folder path to move (dot-delimited like "apps.common.buttons") */
@@ -30,16 +27,9 @@ export interface MoveFolderParams {
   readonly nestUnderDestination?: boolean;
 }
 
-export interface MoveFolderResult {
-  readonly outcome: RunOutcome;
-  /** Number of resources moved */
-  movedCount: number;
-  /** Number of folders deleted after move */
+export interface MoveFolderResult extends MoveResult {
+  /** Number of source folders deleted after move (zero or one). */
   foldersDeleted: number;
-  /** Warning messages */
-  warnings: string[];
-  /** Error messages */
-  errors: string[];
 }
 
 /**
@@ -91,12 +81,7 @@ export async function moveFolder(
   const { sourceFolderPath, destinationFolderPath, override = false, nestUnderDestination = true } = params;
   const destinationCollection = resolveMoveDestination(collection, params.toCollection, options);
 
-  const result: Omit<MoveFolderResult, 'outcome'> = {
-    movedCount: 0,
-    foldersDeleted: 0,
-    warnings: [],
-    errors: [],
-  };
+  const report = new MoveReport();
 
   // Validate folder path segments before planning or touching disk.
   validateFolderAddress(sourceFolderPath, 'source folder path', false);
@@ -111,8 +96,8 @@ export async function moveFolder(
     destinationPath: destinationFolderPath,
   });
   if (plan.kind === 'refused') {
-    result.warnings.push(plan.warning());
-    return withMoveOutcome(result);
+    report.warn(plan.warning());
+    return report.finish(true);
   }
 
   let isDirectory: boolean;
@@ -137,79 +122,45 @@ export async function moveFolder(
 
   // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
   if (enumerationErrors.length > 0) {
-    result.errors.push(...enumerationErrors);
-    return withMoveOutcome(result);
+    for (const error of enumerationErrors) report.fail(error);
+    return report.finish(true);
   }
 
-  if (resourceKeys.length === 0) {
-    result.warnings.push('No resources found in source folder. Nothing to move.');
-    // Still remove the empty folder
-    try {
-      pruneSource(collection, sourceFolderPath, result, resolveMutationSink(collection, options));
-    } catch (error) {
-      result.errors.push(`Failed to delete empty source folder: ${errorMessage(error)}`);
-    }
-    return withMoveOutcome(result);
-  }
+  const empty = resourceKeys.length === 0;
+  if (empty) report.warn('No resources found in source folder. Nothing to move.');
 
   // One Entry Relocation for the whole tree: each folder is read and written once.
-  const relocation = relocateEntries(plan.forKeys(resourceKeys), {
-    override,
-    onMutation: resolveMutationSink(collection, options),
-  });
-  mergeRelocation(result, relocation);
+  const relocation = empty
+    ? { moved: [], collisions: [], errors: [] }
+    : relocateEntries(plan.forKeys(resourceKeys), {
+        override,
+        onMutation: resolveMutationSink(collection, options),
+      });
+  report.merge(relocation);
 
   // Keys that stayed in the source (collision without override, or an error); the source folder must be kept.
   const movedKeys = new Set(relocation.moved.map(({ from }) => from));
   const keptKeys = resourceKeys.filter((key) => !movedKeys.has(key));
 
   if (keptKeys.length > 0) {
-    result.warnings.push(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
+    report.warn(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
   }
 
   // Only remove the source folder when every resource in it was moved
-  if (keptKeys.length === 0 && result.errors.length === 0) {
+  if (keptKeys.length === 0 && report.hasErrors === false) {
     try {
-      pruneSource(collection, sourceFolderPath, result, resolveMutationSink(collection, options));
-    } catch (error) {
-      result.warnings.push(`Resources moved but failed to delete source folder: ${errorMessage(error)}`);
-    }
-  }
-
-  return withMoveOutcome(result);
-}
-
-/** Adapts shared pruning to the folder move's source count and warning format. */
-function pruneSource(
-  collection: Collection,
-  sourceFolderPath: string,
-  result: Omit<MoveFolderResult, 'outcome'>,
-  onMutation?: MutationSink,
-): void {
-  const pruning = pruneEmptyFolders(collection, { startPath: sourceFolderPath, onMutation });
-  if (pruning.removed.includes(sourceFolderPath)) {
-    result.foldersDeleted++;
-  } else {
-    const resources = pruning.kept
-      .filter((folder) => folder.reason === 'entries')
-      .flatMap((folder) => folder.entries ?? []);
-    if (resources.length > 0) {
-      result.warnings.push(`Source folder kept: it has resources again: ${resources.join(', ')}`);
-    }
-    if (pruning.problems.length > 0) {
-      throw new Error(pruning.problems.map((problem) => describeFolderProblem(problem)).join(', '));
-    }
-    const leftovers = pruning.kept
-      .filter((folder) => folder.reason === 'content')
-      .flatMap((folder) => folder.entries ?? []);
-    if (leftovers.length > 0) {
-      result.warnings.push(
-        `Source folder kept: holds content that is not part of the collection: ${leftovers.join(', ')}`,
+      report.prune(
+        sourceFolderPath,
+        pruneEmptyFolders(collection, {
+          startPath: sourceFolderPath,
+          onMutation: resolveMutationSink(collection, options),
+        }),
+        empty,
       );
+    } catch (error) {
+      report.pruningFailed(error, empty);
     }
   }
-}
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return report.finish(true);
 }

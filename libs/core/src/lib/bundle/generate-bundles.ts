@@ -67,7 +67,7 @@ export async function generateBundles(
     } catch (error) {
       outcome = { name, outcome: 'failed', error };
     }
-    const typeWarning = outcome.result?.typeOutcome.warning ?? prepared.typeWarning;
+    const typeWarning = prepared.typeWarning;
     if (typeWarning) onEvent?.({ kind: 'type-warning', warning: typeWarning });
     outcomes.push(outcome);
     onEvent?.({ kind: 'result', outcome });

@@ -1,14 +1,13 @@
 import { resolveMutationSink } from './resource-mutation';
-import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import type { RunOutcome } from '../run-outcome';
 import { describeFolderProblem } from './collection-folders';
 import { sweepKeys } from './collection-sweep';
 import { folderAddressExists } from './folder-address';
 import { type MoveOptions, type MoveOptionsWithConfig, resolveMoveDestination } from './move-destination';
-import { withMoveOutcome } from './move-outcome';
+import { MoveReport, type MoveResult } from './move-report';
+import { movePatternPrefix, validateMoveInput } from './move-input';
 import { type MoveSelection, planMove } from './move-plan';
-import { type RelocationResult, relocateEntries } from './relocate-entries';
+import { relocateEntries } from './relocate-entries';
 
 export interface MoveResourceParams {
   /** Full source key, or a prefix pattern ending with `*` (`common.buttons.*`). */
@@ -21,12 +20,7 @@ export interface MoveResourceParams {
   readonly toCollection?: string;
 }
 
-export interface MoveResourceResult {
-  readonly outcome: RunOutcome;
-  movedCount: number;
-  warnings: string[];
-  errors: string[];
-}
+export type MoveResourceResult = MoveResult;
 
 /**
  * Moves resources from source to destination, within a collection or into another one, as one
@@ -49,14 +43,15 @@ export async function moveResource(
   params: MoveResourceParams,
   options: MoveOptions = {},
 ): Promise<MoveResourceResult> {
+  validateMoveInput(params);
   const { source, destination, override = false } = params;
   const destinationCollection = resolveMoveDestination(collection, params.toCollection, options);
-  const result: Omit<MoveResourceResult, 'outcome'> = { movedCount: 0, warnings: [], errors: [] };
+  const report = new MoveReport();
 
   let selection: Exclude<MoveSelection, { readonly kind: 'folder' }>;
   if (source.endsWith('*')) {
-    const expanded = expandPattern(collection, source, result);
-    if (!expanded) return withMoveOutcome(result);
+    const expanded = expandPattern(collection, source, report);
+    if (!expanded) return report.finish();
     selection = expanded;
   } else {
     selection = { kind: 'key', key: source };
@@ -72,52 +67,28 @@ export async function moveResource(
     override,
     onMutation: resolveMutationSink(collection, options),
   });
-  return withMoveOutcome(mergeRelocation(result, relocation));
-}
-
-/** Adds a relocation's outcome to a move result: collisions become warnings. */
-export function mergeRelocation<T extends Omit<MoveResourceResult, 'outcome'>>(
-  result: T,
-  relocation: RelocationResult,
-): T {
-  result.movedCount += relocation.moved.length;
-  result.warnings.push(...relocation.collisions.map(({ to }) => collisionWarning(to)));
-  result.errors.push(...relocation.errors);
-  return result;
-}
-
-function collisionWarning(destinationKey: string): string {
-  return `Destination key already exists: ${destinationKey}. Use override option to force move.`;
+  report.merge(relocation);
+  return report.finish();
 }
 
 /**
  * Select every key the Collection Sweep finds under a `prefix.*` pattern.
- * `undefined` (with the reason in `result`) when nothing can move.
+ * `undefined` (with the reason in the report) when nothing can move.
  */
 function expandPattern(
   collection: Collection,
   pattern: string,
-  result: Omit<MoveResourceResult, 'outcome'>,
+  report: MoveReport,
 ): Extract<MoveSelection, { readonly kind: 'pattern' }> | undefined {
-  const prefix = pattern.slice(0, -1); // remove '*'
-  const cleanPrefix = prefix.endsWith('.') ? prefix.slice(0, -1) : prefix;
-
-  if (cleanPrefix.length > 0) {
-    try {
-      validateKey(cleanPrefix);
-    } catch (error) {
-      result.errors.push(error instanceof Error ? error.message : String(error));
-      return undefined;
-    }
-  }
+  const cleanPrefix = movePatternPrefix(pattern);
 
   if (!folderAddressExists(collection.translationsFolder, cleanPrefix)) {
-    result.warnings.push(`No folder found for prefix ${cleanPrefix}. Nothing moved.`);
+    report.warn(`No folder found for prefix ${cleanPrefix}. Nothing moved.`);
     return undefined;
   }
 
   const { keys, problems } = sweepKeys(collection, { startPath: cleanPrefix });
-  result.errors.push(...problems.map((problem) => describeFolderProblem(problem)));
+  for (const problem of problems) report.fail(describeFolderProblem(problem));
 
   return { kind: 'pattern', prefix: cleanPrefix, keys };
 }

@@ -12,6 +12,7 @@ export interface ValidateRunOptions {
   readonly skipLocales?: readonly string[];
   readonly skipIcu?: boolean;
   readonly skipPlaceholders?: boolean;
+  readonly skipProtectedTerms?: boolean;
   readonly requirePortablePlurals?: boolean;
 }
 
@@ -93,9 +94,10 @@ export function runValidate(collections: readonly Collection[], options: Validat
   }
 
   // Read every collection's Project Terms. Collections share the global files, so report each
-  // term-file problem once. Validate checks translations, not protected terms: a missing or
-  // broken protected-terms file only warns, as does a named rule file that is missing.
-  const projectTerms = collections.map((collection) => readProjectTerms(collection));
+  // term-file problem once. A missing or broken protected-terms file only warns, and
+  // then the protected-term check covers nothing. A named rule file that is missing also warns.
+  const termsByCollection = new Map(collections.map((collection) => [collection, readProjectTerms(collection)]));
+  const projectTerms = [...termsByCollection.values()];
   const problems = projectTerms.flatMap((terms) => terms.problems);
   warnings.push(
     ...new Set(
@@ -122,10 +124,11 @@ export function runValidate(collections: readonly Collection[], options: Validat
     icu: compileValues || requirePortablePlurals ? { compileValues, requirePortablePlurals } : undefined,
     // A renamed placeholder renders empty; neither ICU compilation nor status catches it.
     placeholders: !options.skipPlaceholders,
+    protectedTerms: !options.skipProtectedTerms,
     // Without rules or a load error, omit the check and its summary output entirely.
     terminology: rules.length > 0 || ruleFileError !== undefined ? { rules, loadError: ruleFileError } : undefined,
   };
-  const validation = validateResources(collections, validationOptions);
+  const validation = validateResources(collections, validationOptions, termsByCollection);
   return {
     status: 'complete',
     outcome: validation.passed ? 'succeeded' : 'failed',

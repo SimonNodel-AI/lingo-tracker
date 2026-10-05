@@ -20,9 +20,10 @@ import type { ImportedResource, ImportResult, ImportRunOptions } from './types';
  * 3. Converts Transloco `{{ name }}` placeholders to ICU `{name}`.
  * 4. Repairs placeholders that differ from the stored base value (ICU auto-fix).
  * 5. Drops invalid resources: bad keys, hierarchical conflicts, empty values. Duplicate keys warn.
- * 6. Applies the resources one folder at a time, with the strategy's rules for creation,
- *    status, comments, tags, protected terms, and preferred terminology (the collection's
- *    Project Terms, read once per run; a rule-file problem is reported in `warnings`).
+ * 6. Uses Value Check as a backstop after ICU auto-fix, then applies the resources per folder
+ *    with the strategy's rules for creation, status, comments, tags, and preferred terminology.
+ *    Migration skips argument agreement for unresolved references but still checks protected terms.
+ *    The collection's Project Terms are read once per run; a rule-file problem is reported in `warnings`.
  *
  * Nothing is written in a dry run; the result says what would change.
  *

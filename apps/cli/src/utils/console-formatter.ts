@@ -22,6 +22,8 @@
  * ```
  */
 
+import { CommandOutput } from '../runner/command-output';
+
 /** Indents every line of `message` by `level` × 2 spaces. */
 function indentLines(message: string, level: number): string {
   const spaces = '  '.repeat(level);
@@ -33,9 +35,9 @@ function indentLines(message: string, level: number): string {
 
 /** Writes a diagnostic and its detail lines (indented one level) to stderr. */
 function diagnostic(line: string, details: readonly string[]): void {
-  console.error(line);
+  CommandOutput.error(line);
   for (const detail of details) {
-    console.error(indentLines(detail, 1));
+    CommandOutput.error(indentLines(detail, 1));
   }
 }
 
@@ -54,7 +56,7 @@ export const ConsoleFormatter = {
    * @param message - Success message to display
    */
   success(message: string): void {
-    console.log(`✅ ${message}`);
+    CommandOutput.log(`✅ ${message}`);
   },
 
   /**
@@ -71,7 +73,7 @@ export const ConsoleFormatter = {
    * @param message - Info message to display
    */
   info(message: string): void {
-    console.log(`ℹ️  ${message}`);
+    CommandOutput.log(`ℹ️  ${message}`);
   },
 
   /**
@@ -79,7 +81,7 @@ export const ConsoleFormatter = {
    * @param message - Progress message to display
    */
   progress(message: string): void {
-    console.log(`🔄 ${message}`);
+    CommandOutput.log(`🔄 ${message}`);
   },
 
   /**
@@ -87,8 +89,8 @@ export const ConsoleFormatter = {
    * @param title - Section title
    */
   section(title: string): void {
-    console.log(`\n📊 ${title}`);
-    console.log('─'.repeat(50));
+    CommandOutput.log(`\n📊 ${title}`);
+    CommandOutput.log('─'.repeat(50));
   },
 
   /**
@@ -101,7 +103,7 @@ export const ConsoleFormatter = {
    * @param level - Indentation level (default: 1, each level = 2 spaces)
    */
   indent(message: string, level = 1): void {
-    console.log(indentLines(message, level));
+    CommandOutput.log(indentLines(message, level));
   },
 
   /**
@@ -112,6 +114,6 @@ export const ConsoleFormatter = {
    */
   keyValue(key: string, value: string | number, indent = 1): void {
     const spaces = '  '.repeat(indent);
-    console.log(`${spaces}${key}: ${value}`);
+    CommandOutput.log(`${spaces}${key}: ${value}`);
   },
 } as const;

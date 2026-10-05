@@ -77,6 +77,7 @@ describe('validateCommand', () => {
       skipLocales: ['fr'],
       skipIcu: true,
       skipPlaceholders: true,
+      skipProtectedTerms: true,
       requirePortablePlurals: true,
     });
 
@@ -90,6 +91,7 @@ describe('validateCommand', () => {
         skipLocales: ['fr'],
         skipIcu: true,
         skipPlaceholders: true,
+        skipProtectedTerms: true,
         requirePortablePlurals: true,
       },
     );

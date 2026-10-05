@@ -61,16 +61,14 @@ export class BundleJobService {
           total = event.total;
           update({ progress: { current: event.index, total: event.total, currentFile: event.file } });
         };
-        let typeWarning = prepared.typeWarning;
         try {
           const result = await generatePreparedBundle(prepared, { onProgress });
-          typeWarning = result.typeOutcome.warning ?? typeWarning;
           update({
             progress: { current: total, total },
             result: mapGenerateBundleResultToJobResult(result),
           });
         } finally {
-          if (typeWarning) this.#logger.warn(typeWarning);
+          if (prepared.typeWarning) this.#logger.warn(prepared.typeWarning);
         }
       },
       onError: (jobId, message) => {

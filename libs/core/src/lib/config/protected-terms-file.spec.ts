@@ -13,7 +13,6 @@ import {
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFile,
   resolveGlobalProtectedTermsFilePath,
-  resolveProtectedTermsForConfig,
 } from './protected-terms-file';
 
 const baseConfig = (overrides: Partial<LingoTrackerConfig> = {}): LingoTrackerConfig => ({
@@ -106,32 +105,6 @@ describe('protected-terms-file', () => {
       const collection: LingoTrackerCollection = { translationsFolder: './i18n' };
 
       expect(readCollectionProtectedTerms(collection, cwd)).toEqual({ terms: [] });
-    });
-  });
-
-  describe('resolveProtectedTermsForConfig', () => {
-    it('reads every scope in one pass, reporting terms and paths', () => {
-      write(DEFAULT_PROTECTED_TERMS_FILENAME, '["SimonCodes"]');
-      write('app-terms.json', '["iPhone"]');
-      const config = baseConfig({
-        collections: {
-          app: { translationsFolder: './i18n', protectedTermsFile: 'app-terms.json' },
-          other: { translationsFolder: './other' },
-        },
-      });
-
-      const resolved = resolveProtectedTermsForConfig(config, cwd);
-
-      expect(resolved.globalTerms).toEqual(['SimonCodes']);
-      expect(resolved.globalFilePath).toBe(resolve(cwd, DEFAULT_PROTECTED_TERMS_FILENAME));
-      expect(resolved.collections['app']).toEqual({ terms: ['iPhone'], filePath: join(cwd, 'app-terms.json') });
-      expect(resolved.collections['other']).toEqual({ terms: [], filePath: undefined });
-    });
-
-    it('throws for a malformed file, exactly as a direct read would', () => {
-      write(DEFAULT_PROTECTED_TERMS_FILENAME, '{ "terms": [] }');
-
-      expect(() => resolveProtectedTermsForConfig(baseConfig(), cwd)).toThrow(ProtectedTermsFileError);
     });
   });
 });

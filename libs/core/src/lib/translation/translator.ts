@@ -20,7 +20,7 @@
  * @module translator
  */
 
-import { classifyICUContent, findProtectedTermViolations, translocoToICU } from '@simoncodes-ca/domain';
+import { checkTranslatedValue, classifyICUContent, translocoToICU } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { protectedTermsWarnings, readProjectTerms, requireProtectedTerms } from '../config/project-terms';
@@ -46,7 +46,7 @@ export interface TranslatedValue {
 /**
  * Why an entry was not translated for a locale:
  * - `complex-icu` — plural, select, or another complex ICU construct; never sent to the provider.
- * - `placeholder-mismatch` — the provider lost or duplicated a placeholder marker.
+ * - `placeholder-mismatch` — the provider lost or duplicated a marker, or the value has different argument names.
  * - `protected-term` — the translation dropped a protected term present in the source.
  */
 export type TranslationSkipReason = 'complex-icu' | 'placeholder-mismatch' | 'protected-term';
@@ -111,8 +111,15 @@ export function assertAutoTranslationEnabled(collection: Collection): Translatio
  * @throws {ProtectedTermsFileError} No terms were passed and a terms file is not a JSON array of strings.
  */
 export function openTranslator(collection: Collection, options: OpenTranslatorOptions = {}): Translator {
-  const config = assertAutoTranslationEnabled(collection);
+  return openPreparedTranslator(collection, assertAutoTranslationEnabled(collection), options);
+}
 
+/** Open after the run has checked translation availability. */
+export function openPreparedTranslator(
+  collection: Collection,
+  config: TranslationConfig,
+  options: OpenTranslatorOptions = {},
+): Translator {
   const provider = options.provider ?? createTranslationProvider(config.provider, readApiKey(config.apiKeyEnv));
   const terms = options.protectedTerms === undefined ? readProjectTerms(collection) : undefined;
   const protectedTerms = options.protectedTerms ?? (terms ? requireProtectedTerms(terms) : []);
@@ -205,9 +212,20 @@ async function translateForLocale(
     }
 
     const value = translocoToICU(restored.value);
-    const terms = findProtectedTermViolations(source, value, protectedTerms);
-    if (terms.length > 0) {
-      skipped.push({ key, locale: targetLocale, reason: 'protected-term', terms });
+    const violations = checkTranslatedValue(source, value, { protectedTerms });
+    if (violations.length > 0) {
+      // Preserve the protected-term reason when the value also has an argument mismatch.
+      const protectedTermViolation = violations.find((violation) => violation.kind === 'protected-term-dropped');
+      skipped.push(
+        protectedTermViolation
+          ? {
+              key,
+              locale: targetLocale,
+              reason: 'protected-term',
+              terms: protectedTermViolation.terms,
+            }
+          : { key, locale: targetLocale, reason: 'placeholder-mismatch' },
+      );
       continue;
     }
 

@@ -3,10 +3,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslocoService } from '@jsverse/transloco';
 import { signalStoreFeature, type, withMethods } from '@ngrx/signals';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import { firstValueFrom, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { copyToClipboard } from '../../../../shared/clipboard';
-import { type ConfirmationSpec, injectConfirm } from '../../../../shared/confirm';
+import { injectConfirmedWrite } from '../../../../shared/confirmed-write';
 import { NotificationService } from '../../../../shared/notification';
 import { injectFeedback } from '../../../feedback';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
@@ -24,7 +23,7 @@ export function withItemActions() {
     },
     withMethods((store) => {
       const browserStore = inject(BrowserStore);
-      const confirm = injectConfirm();
+      const write = injectConfirmedWrite();
       const launcher = inject(TranslationEditorLauncher);
       const destroyRef = inject(DestroyRef);
       const notifications = inject(NotificationService);
@@ -49,30 +48,14 @@ export function withItemActions() {
           });
         },
 
-        async deleteTranslation(translation: ResourceSummaryDto): Promise<void> {
+        deleteTranslation(translation: ResourceSummaryDto): Promise<void> {
           const { fullKey } = translation;
-
-          const spec: ConfirmationSpec = {
+          const confirm = write.confirmDestructive({
             title: TRACKER_TOKENS.BROWSER.DIALOG.DELETERESOURCE.TITLE,
             message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETERESOURCE.MESSAGEX, params: { key: fullKey } },
-            confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.DELETE,
             cancelButtonText: TRACKER_TOKENS.COMMON.ACTIONS.CANCEL,
-            actionType: 'destructive',
-          };
-
-          await firstValueFrom(
-            browserStore
-              .requestEntryDelete(fullKey, (inSession) =>
-                confirm(spec, { canOpen: () => inSession() && !destroyRef.destroyed }).then(
-                  (yes) => yes && !destroyRef.destroyed,
-                ),
-              )
-              .pipe(
-                takeUntilDestroyed(destroyRef),
-                tap((outcome) => feedback.toast(outcome.feedback)),
-              ),
-            { defaultValue: null },
-          );
+          });
+          return write.runWrite(browserStore.requestEntryDelete(fullKey, confirm));
         },
 
         translateResource(translation: ResourceSummaryDto): void {

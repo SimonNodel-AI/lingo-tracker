@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import type { Collection } from '../config/open-collection';
+import { readProjectTerms, type ProjectTerms } from '../config/project-terms';
 import {
   type SeedResource,
   seedResources,
@@ -13,10 +14,13 @@ import { validateResources } from './validate-resources';
 
 describe('validateResources (real fs)', () => {
   const root = useTempDir('validate-resources-');
+  const termsByCollection = new Map<Collection, ProjectTerms>();
 
   /** A collection in its own subfolder of the temp dir; targets `es` and `fr` unless told otherwise. */
   function collection(name = 'main', overrides: Partial<Collection> = {}): Collection {
-    return testCollection(join(root(), name), { name, locales: ['en', 'es', 'fr'], ...overrides });
+    const opened = testCollection(join(root(), name), { name, locales: ['en', 'es', 'fr'], ...overrides });
+    termsByCollection.set(opened, readProjectTerms(opened));
+    return opened;
   }
 
   /** A resource whose translations all have the given status. */
@@ -37,7 +41,7 @@ describe('validateResources (real fs)', () => {
         'common.cancel': withStatus('Cancel', { es: 'verified', fr: 'verified' }),
       });
 
-      const result = validateResources([main], { allowTranslated: false });
+      const result = validateResources([main], { allowTranslated: false }, termsByCollection);
 
       expect(result.passed).toBe(true);
       expect(result.successes).toHaveLength(4);
@@ -52,7 +56,7 @@ describe('validateResources (real fs)', () => {
     });
 
     it('passes for a collection without resources', () => {
-      const result = validateResources([collection()], { allowTranslated: false });
+      const result = validateResources([collection()], { allowTranslated: false }, termsByCollection);
 
       expect(result.passed).toBe(true);
       expect(result.totalResourcesValidated).toBe(0);
@@ -63,7 +67,7 @@ describe('validateResources (real fs)', () => {
       const main = collection();
       seedResources(main, { 'common.ok': withStatus('OK', { es: 'new', fr: 'stale' }) });
 
-      const result = validateResources([main], { allowTranslated: false });
+      const result = validateResources([main], { allowTranslated: false }, termsByCollection);
 
       expect(result.passed).toBe(false);
       expect(result.failures).toEqual([
@@ -78,7 +82,7 @@ describe('validateResources (real fs)', () => {
       seedResources(main, { 'common.ok': withStatus('OK', { es: 'verified' }) });
       writeFolderFiles(main.translationsFolder, 'loose', { entries: { orphan: { source: 'Orphan' } } });
 
-      const result = validateResources([main], { allowTranslated: false });
+      const result = validateResources([main], { allowTranslated: false }, termsByCollection);
 
       expect(result.failures.map((failure) => `${failure.key}/${failure.locale}/${failure.status}`)).toEqual([
         'common.ok/fr/new',
@@ -91,8 +95,8 @@ describe('validateResources (real fs)', () => {
       const main = collection();
       seedResources(main, { 'common.ok': withStatus('OK', { es: 'translated', fr: 'verified' }) });
 
-      const strict = validateResources([main], { allowTranslated: false });
-      const relaxed = validateResources([main], { allowTranslated: true });
+      const strict = validateResources([main], { allowTranslated: false }, termsByCollection);
+      const relaxed = validateResources([main], { allowTranslated: true }, termsByCollection);
 
       expect(strict.passed).toBe(false);
       expect(strict.failures).toEqual([{ key: 'common.ok', locale: 'es', collection: 'main', status: 'translated' }]);
@@ -110,7 +114,7 @@ describe('validateResources (real fs)', () => {
         ),
       );
 
-      const result = validateResources([main], { allowTranslated: false });
+      const result = validateResources([main], { allowTranslated: false }, termsByCollection);
 
       // es is new; fr and de have no status at all
       expect(result.failures).toHaveLength(60);
@@ -125,7 +129,7 @@ describe('validateResources (real fs)', () => {
       seedResources(common, { ok: withStatus('OK', { es: 'verified', fr: 'verified' }) });
       seedResources(admin, { users: withStatus('Users', { de: 'new' }) });
 
-      const result = validateResources([common, admin], { allowTranslated: false });
+      const result = validateResources([common, admin], { allowTranslated: false }, termsByCollection);
 
       expect(result.successes.map((detail) => `${detail.collection}/${detail.locale}`)).toEqual([
         'common/es',
@@ -143,7 +147,7 @@ describe('validateResources (real fs)', () => {
       seedResources(first, { 'shared.title': withStatus('Title', { es: 'verified', fr: 'verified' }) });
       seedResources(second, { 'shared.title': withStatus('Title', { es: 'new', fr: 'verified' }) });
 
-      const result = validateResources([first, second], { allowTranslated: false });
+      const result = validateResources([first, second], { allowTranslated: false }, termsByCollection);
 
       expect(result.totalUniqueKeys).toBe(2);
       expect(result.totalResourcesValidated).toBe(4);
@@ -154,7 +158,7 @@ describe('validateResources (real fs)', () => {
       const french = collection('french', { baseLocale: 'fr', locales: ['fr', 'en'] });
       seedResources(french, { ok: withStatus('Bien', { en: 'verified' }) });
 
-      const result = validateResources([french], { allowTranslated: false });
+      const result = validateResources([french], { allowTranslated: false }, termsByCollection);
 
       expect(result.passed).toBe(true);
       expect(result.successes).toEqual([{ key: 'ok', locale: 'en', collection: 'french', status: 'verified' }]);
@@ -164,7 +168,7 @@ describe('validateResources (real fs)', () => {
       const main = collection();
       seedResources(main, { ok: withStatus('OK', { es: 'verified', fr: 'new' }) });
 
-      const result = validateResources([main], { allowTranslated: false, skippedLocales: ['fr'] });
+      const result = validateResources([main], { allowTranslated: false, skippedLocales: ['fr'] }, termsByCollection);
 
       expect(result.passed).toBe(true);
       expect(result.localesValidated).toBe(1);
@@ -175,7 +179,7 @@ describe('validateResources (real fs)', () => {
       const main = collection('main', { locales: ['en', 'es'] });
       seedResources(main, { ok: withStatus('OK', { es: 'new' }) });
 
-      const result = validateResources([main], { allowTranslated: false, skippedLocales: ['es'] });
+      const result = validateResources([main], { allowTranslated: false, skippedLocales: ['es'] }, termsByCollection);
 
       expect(result.passed).toBe(true);
       expect(result.totalResourcesValidated).toBe(0);
@@ -189,7 +193,7 @@ describe('validateResources (real fs)', () => {
       seedResources(main, { 'good.ok': withStatus('OK', { es: 'verified', fr: 'verified' }) });
       writeFolderFiles(main.translationsFolder, 'bad', { entries: { x: { source: 'X' } }, meta: '{ broken' });
 
-      const result = validateResources([main], { allowTranslated: false });
+      const result = validateResources([main], { allowTranslated: false }, termsByCollection);
 
       expect(result.passed).toBe(false);
       expect(result.failures).toHaveLength(0);
@@ -210,10 +214,14 @@ describe('validateResources (real fs)', () => {
         count: { source: plural, translations: { en: { value: plural, status: 'verified' } } },
       });
 
-      const result = validateResources([main, japanese], {
-        allowTranslated: false,
-        icu: { compileValues: true, requirePortablePlurals: true },
-      });
+      const result = validateResources(
+        [main, japanese],
+        {
+          allowTranslated: false,
+          icu: { compileValues: true, requirePortablePlurals: true },
+        },
+        termsByCollection,
+      );
 
       expect(result.icu?.valuesChecked).toBe(4);
       // The portability rule reads base values only, each under its own collection's base locale.
@@ -229,7 +237,7 @@ describe('validateResources (real fs)', () => {
         greeting: { source: 'Bonjour {name}', translations: { en: { value: 'Hello {nom}', status: 'verified' } } },
       });
 
-      const result = validateResources([french], { allowTranslated: false, placeholders: true });
+      const result = validateResources([french], { allowTranslated: false, placeholders: true }, termsByCollection);
 
       expect(result.passed).toBe(false);
       expect(result.placeholders?.valuesChecked).toBe(1);
@@ -239,7 +247,7 @@ describe('validateResources (real fs)', () => {
     });
 
     it('leaves the ICU and placeholder results undefined when not requested', () => {
-      const result = validateResources([collection()], { allowTranslated: false });
+      const result = validateResources([collection()], { allowTranslated: false }, termsByCollection);
 
       expect(result.icu).toBeUndefined();
       expect(result.placeholders).toBeUndefined();
@@ -254,7 +262,7 @@ describe('validateResources (real fs)', () => {
       const main = collection();
       seedResources(main, { 'budget.title': budget });
 
-      const result = validateResources([main], { allowTranslated: false, terminology: { rules } });
+      const result = validateResources([main], { allowTranslated: false, terminology: { rules } }, termsByCollection);
 
       expect(result.passed).toBe(true);
       expect(result.terminology?.warnings).toHaveLength(1);
@@ -268,7 +276,11 @@ describe('validateResources (real fs)', () => {
       seedResources(main, { 'budget.title': budget });
       seedResources(legacy, { 'legacy.title': budget });
 
-      const result = validateResources([main, legacy], { allowTranslated: false, terminology: { rules } });
+      const result = validateResources(
+        [main, legacy],
+        { allowTranslated: false, terminology: { rules } },
+        termsByCollection,
+      );
 
       expect(result.terminology?.warnings.map((warning) => `${warning.collection}:${warning.locale}`)).toEqual([
         'main:en',
@@ -280,10 +292,14 @@ describe('validateResources (real fs)', () => {
       const main = collection();
       seedResources(main, { 'budget.title': budget });
 
-      const result = validateResources([main], {
-        allowTranslated: false,
-        terminology: { rules: [], loadError: 'broken' },
-      });
+      const result = validateResources(
+        [main],
+        {
+          allowTranslated: false,
+          terminology: { rules: [], loadError: 'broken' },
+        },
+        termsByCollection,
+      );
 
       expect(result.passed).toBe(false);
       expect(result.terminology?.configError).toBe('broken');
@@ -291,7 +307,9 @@ describe('validateResources (real fs)', () => {
     });
 
     it('leaves the terminology result undefined when not requested', () => {
-      expect(validateResources([collection()], { allowTranslated: false }).terminology).toBeUndefined();
+      expect(
+        validateResources([collection()], { allowTranslated: false }, termsByCollection).terminology,
+      ).toBeUndefined();
     });
   });
 });

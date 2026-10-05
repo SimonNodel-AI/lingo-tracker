@@ -9,12 +9,15 @@ import { hasFsErrorCode } from '../file-io/fs-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import type { OpenedProject } from './open-collection';
 import { configContentHash, configReadVersion, loadConfig } from './load-config';
+import { type CompanionFileWrite, runConfigWriteTransaction } from './config-write-transaction';
 
 export interface ConfigFileOperations {
   /** Read the configuration file */
   read(): LingoTrackerConfig;
   /** Write the configuration file */
   write(config: LingoTrackerConfig): void;
+  /** Write optional config and staged companion files, restoring exact bytes on failure. */
+  transaction(config: LingoTrackerConfig | undefined, companions: readonly CompanionFileWrite[]): void;
   /** Refuse a write based on a config snapshot if the file has changed since that read. */
   assertUnchanged(): void;
   /** Create the file only if absent, using the same validation and serialization as write. */
@@ -62,10 +65,11 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
     if (configContentHash(currentContent) !== expectedVersion) throw new ConfigChangedError();
   };
 
-  const writeConfig = (config: LingoTrackerConfig, createOnly: boolean): void => {
+  const writeConfig = (config: LingoTrackerConfig, createOnly: boolean, onWriteStarted?: () => void): void => {
     if (validate) validateConfig(config);
     assertUnchanged();
     try {
+      onWriteStarted?.();
       writeJsonFile({ filePath: configPath, data: config, pretty: true, createOnly });
     } catch (error) {
       if (createOnly && hasFsErrorCode(error, 'EEXIST')) {
@@ -99,6 +103,46 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
 
     write(config: LingoTrackerConfig): void {
       writeConfig(config, false);
+    },
+
+    transaction(config, companions): void {
+      assertUnchanged();
+      const previousVersion = expectedVersion;
+      let configWriteStarted = false;
+      let configWritten = false;
+      try {
+        runConfigWriteTransaction(
+          [
+            ...(config === undefined
+              ? []
+              : [
+                  {
+                    path: configPath,
+                    write: () => {
+                      writeConfig(config, false, () => {
+                        configWriteStarted = true;
+                      });
+                      configWritten = true;
+                    },
+                  },
+                ]),
+            ...companions,
+          ],
+          (path) => {
+            // Do not overwrite another writer's config while restoring our transaction.
+            if (path === configPath) {
+              if (!configWriteStarted) return false;
+              // Failed writes can leave partial bytes that differ from the baseline.
+              // Check for concurrent edits only after our write completed successfully.
+              if (configWritten) assertUnchanged();
+            }
+            return true;
+          },
+        );
+      } catch (error) {
+        expectedVersion = previousVersion;
+        throw error;
+      }
     },
 
     assertUnchanged,

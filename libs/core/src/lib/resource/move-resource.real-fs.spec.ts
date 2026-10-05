@@ -5,7 +5,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { Collection } from '../config/open-collection';
-import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
+import {
+  CollectionNotFoundError,
+  InvalidResourceKeyError,
+  ReadOnlyCollectionError,
+} from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { moveFolder } from '../folder/move-folder';
 import { calculateChecksum } from './checksum';
@@ -262,6 +266,90 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(result.outcome).toBe('failed');
     expect(result.movedCount).toBe(1);
     expect(read('resource_entries.json', 'shared')).toEqual(entries);
+    expect(collected.map(({ kind }) => kind)).toEqual(['remove', 'upsert']);
+  });
+
+  it('rejects a malformed batch pattern before any write or mutation', async () => {
+    writeFolder('common');
+    writeFolder('later');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { main: { translationsFolder: root } },
+    };
+    const before = readFileSync(join(root, 'common', 'resource_entries.json'), 'utf8');
+    const metadataBefore = readFileSync(join(root, 'common', 'tracker_meta.json'), 'utf8');
+    await expect(
+      moveResources(
+        collection(),
+        [
+          { source: 'common.ok', destination: 'shared.ok' },
+          { source: 'invalid@char*', destination: 'dest' },
+          { source: 'later.ok', destination: 'never.ok' },
+        ],
+        { config, onMutation },
+      ),
+    ).rejects.toBeInstanceOf(InvalidResourceKeyError);
+    expect(readFileSync(join(root, 'common', 'resource_entries.json'), 'utf8')).toBe(before);
+    expect(readFileSync(join(root, 'common', 'tracker_meta.json'), 'utf8')).toBe(metadataBefore);
+    expect(existsSync(join(root, 'shared'))).toBe(false);
+    expect(read('resource_entries.json', 'later')).toEqual(entries);
+    expect(existsSync(join(root, 'never'))).toBe(false);
+    expect(collected).toEqual([]);
+  });
+
+  it('rejects malformed source keys and destinations anywhere in a batch before writing', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { main: { translationsFolder: root } },
+    };
+    for (const malformed of [
+      { source: 'invalid@key', destination: 'dest.ok' },
+      { source: 'common.ok', destination: 'invalid@dest' },
+      { source: 'common.*', destination: 'invalid@prefix' },
+      { source: 'common.ok', destination: '' },
+    ]) {
+      await expect(
+        moveResources(collection(), [{ source: 'common.ok', destination: 'shared.ok' }, malformed], {
+          config,
+          onMutation,
+        }),
+      ).rejects.toBeInstanceOf(InvalidResourceKeyError);
+      expect(read('resource_entries.json', 'common')).toEqual(entries);
+      expect(read('tracker_meta.json', 'common')).toEqual(meta);
+      expect(existsSync(join(root, 'shared'))).toBe(false);
+      expect(collected).toEqual([]);
+    }
+  });
+
+  it('keeps runtime skips in the report and permits a root destination for patterns', async () => {
+    writeFolder('common');
+    const config: LingoTrackerConfig = {
+      exportFolder: 'dist',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      collections: { main: { translationsFolder: root } },
+    };
+    const result = await moveResources(
+      collection(),
+      [
+        { source: 'missing.key', destination: 'dest.key' },
+        { source: 'absent.*', destination: '' },
+        { source: 'common.*', destination: '' },
+      ],
+      { config, onMutation },
+    );
+    expect(result).toMatchObject({ movedCount: 1, outcome: 'failed' });
+    expect(result.errors).toHaveLength(1);
+    expect(result.warnings).toHaveLength(1);
+    expect(read('resource_entries.json')).toEqual(entries);
     expect(collected.map(({ kind }) => kind)).toEqual(['remove', 'upsert']);
   });
 

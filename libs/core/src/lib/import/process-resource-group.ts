@@ -1,5 +1,6 @@
 import {
-  findProtectedTermViolations,
+  checkTranslatedValue,
+  describeValueViolation,
   honouredImportSourceStatus,
   importStrategyPolicy,
   resolveImportStatus,
@@ -250,16 +251,17 @@ function warnAboutPreferredTerminology(change: ImportChange, terms: ProjectTerms
  * 2. **Base-locale import** (migration only): writes the base value; the Staleness rule updates
  *    every translation. Values written are checked against the preferred terminology.
  * 3. **Target-locale import**: warns on a `baseValue` mismatch (unless `validateBase` is false),
- *    fails an entry whose value dropped a protected term of its source, and otherwise writes the
- *    value with the status from `resolveImportStatus` (strategy, old status, source status).
+ *    fails an entry whose value violates its source's argument or protected-term contract, and
+ *    otherwise writes the value with the status from `resolveImportStatus` (strategy, old status, source status).
  * 4. **Comment and tags**: updated when `updateComments` / `updateTags` are set.
  *
- * Appends one change per resource to `session.changes`; warnings, errors (protected-term
+ * Appends one change per resource to `session.changes`; warnings, errors (value
  * violations) and written files go to the session too.
  */
 export function processResourceGroup(session: ImportSession, group: FolderGroup<ImportedResource>): void {
   const { options, terms, isBaseLocaleImport, changes, warnings, errors } = session;
   const { baseLocale } = session.collection;
+  const resolvesReferences = importStrategyPolicy(options.strategy).resolvesReferences;
 
   let folder: ResourceFolder;
   try {
@@ -276,6 +278,23 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
 
   const ctx: GroupContext = { locale: options.locale, baseLocale, options, folder, dataModified: false };
 
+  function failedValueCheck(source: string | undefined, resource: ImportedResource): boolean {
+    // Without a source there is no value contract to check.
+    if (!source) return false;
+
+    // Value Check is the backstop after ICU auto-fix. Migration keeps unresolved
+    // references as literal placeholders, so only protected terms apply there.
+    const violations = checkTranslatedValue(source, resource.value, {
+      protectedTerms: terms.protectedTerms,
+    }).filter((violation) => violation.kind !== 'argument-mismatch' || !resolvesReferences);
+    if (violations.length === 0) return false;
+
+    const reason = violations.map(describeValueViolation).join('; ');
+    errors.push(`"${resource.key}" ${reason}`);
+    changes.push({ key: resource.key, type: 'failed', reason });
+    return true;
+  }
+
   for (const { item: resource, entryKey } of group.members) {
     const stored = folder.get(entryKey);
 
@@ -288,6 +307,8 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
         });
         continue;
       }
+      // This imported baseValue becomes the stored source when the resource is created.
+      if (!isBaseLocaleImport && failedValueCheck(resource.baseValue, resource)) continue;
       const created = handleNewResource(ctx, resource, entryKey, isBaseLocaleImport);
       if (isBaseLocaleImport) warnAboutPreferredTerminology(created, terms, warnings);
       changes.push(created);
@@ -312,18 +333,7 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
       }
     }
 
-    // Verify protected terms from the stored source appear verbatim in the incoming value.
-    // Base-locale imports never reach here (they are handled by the base-locale branch above).
-    if (terms.protectedTerms.length > 0) {
-      const storedSource = stored.entry.source ?? '';
-      const violations = findProtectedTermViolations(storedSource, resource.value, [...terms.protectedTerms]);
-      if (violations.length > 0) {
-        const reason = `Protected term(s) altered: ${violations.join(', ')}`;
-        errors.push(`"${resource.key}" ${reason}`);
-        changes.push({ key: resource.key, type: 'failed', reason });
-        continue;
-      }
-    }
+    if (failedValueCheck(stored.entry.source, resource)) continue;
 
     changes.push(handleTargetLocaleUpdate(ctx, resource, entryKey));
   }

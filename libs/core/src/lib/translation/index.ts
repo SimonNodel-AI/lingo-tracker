@@ -11,7 +11,6 @@ export {
   translateExistingResource,
 } from './translate-existing-resource';
 export {
-  assertCanTranslateLocale,
   type TranslateLocaleParams,
   type TranslateLocaleProgress,
   type TranslateLocaleResult,
@@ -34,3 +33,13 @@ export {
   type Translator,
   type TranslatorEntry,
 } from './translator';
+
+export {
+  prepareTranslateLocale,
+  executeTranslateLocale,
+  selectPreparedTranslateLocale,
+  type PreparedTranslateLocale,
+  type PreparedTranslationTargets,
+  type TranslationRunOptions,
+  type TranslationRunTally,
+} from './translation-run';

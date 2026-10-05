@@ -33,6 +33,7 @@ import {
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
   MultipleBundleConstantNameError,
+  NoTranslationTargetLocalesError,
   ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
@@ -192,6 +193,15 @@ describe('toHttpException', () => {
       new BaseLocaleImmutableError('en'),
       400,
       { message: 'Cannot add or remove the base locale "en"', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
+      new NoTranslationTargetLocalesError('en'),
+      400,
+      {
+        message: 'No target locales configured. Add locales other than the base locale "en".',
+        error: 'Bad Request',
+        statusCode: 400,
+      },
     ],
     [
       new CannotTranslateBaseLocaleError('en'),

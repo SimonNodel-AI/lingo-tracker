@@ -1,14 +1,16 @@
-import type { ValidationErrors } from '@angular/forms';
-import { afterEach, describe, expect, it } from 'vitest';
+import { HttpErrorResponse } from '@angular/common/http';
+import { of, Subject, throwError } from 'rxjs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeDialog, fakeEnv } from '../../../testing/form-submit-env';
+import { toApiError } from '../../shared/api-error/api-error';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import type { CollectionDraftResult } from './collection-draft';
 import { CollectionForm } from './collection-form';
 import type { CollectionFormDialogData } from './collection-form-dialog-data';
 
 const forms: CollectionForm[] = [];
-function build(
-  data: CollectionFormDialogData = { mode: 'create' },
-  nameValidator: (control: { value: unknown }) => ValidationErrors | null = () => null,
-): CollectionForm {
-  const form = new CollectionForm(data, nameValidator);
+function build(data: CollectionFormDialogData = { mode: 'create' }, env = fakeEnv()): CollectionForm {
+  const form = new CollectionForm(data, env);
   forms.push(form);
   return form;
 }
@@ -202,17 +204,6 @@ describe('CollectionForm — create mode', () => {
     fillValid(form);
 
     expect(form.validate()).toBe(true);
-  });
-
-  it('shows a taken name as a conflict and clears it when the name changes', () => {
-    const form = build({ mode: 'create' }, (control) => (control.value === 'taken' ? { nameExists: true } : null));
-    form.form.controls.name.setValue('taken');
-    form.form.controls.name.markAsTouched();
-    expect(form.showNameConflict).toBe(true);
-    expect(form.showNameError).toBe(true);
-
-    form.form.controls.name.setValue('other');
-    expect(form.showNameConflict).toBe(false);
   });
 
   it('builds the result with locales and base', () => {
@@ -469,5 +460,138 @@ describe('CollectionForm — edit mode', () => {
         protectedTermsFile: '',
       },
     });
+  });
+});
+
+const rejection = (status: number, body: object) =>
+  throwError(() => toApiError(new HttpErrorResponse({ status, error: { statusCode: status, ...body } })));
+
+describe('CollectionForm — submit', () => {
+  const setup = (data: CollectionFormDialogData = { mode: 'create' }) => {
+    const env = fakeEnv();
+    const form = build(data, env);
+    if (data.mode === 'create') fillValid(form);
+    const dialog = fakeDialog<CollectionDraftResult>();
+    const create = vi.fn((_result: CollectionDraftResult) => of(null));
+    const update = vi.fn((_name: string, _patch: { name: string | undefined }, _result: CollectionDraftResult) =>
+      of(null),
+    );
+    const submit = () => form.submit({ dialog, create, update });
+    return { env, form, dialog, create, update, submit };
+  };
+
+  it('creates the collection and closes only once the write has been accepted', () => {
+    const { form, dialog, create, submit } = setup();
+    const write = new Subject<null>();
+    create.mockReturnValue(write);
+
+    submit();
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ name: 'my-collection' }));
+    expect(dialog.close).not.toHaveBeenCalled();
+
+    write.next(null);
+    expect(dialog.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'my-collection' }));
+    expect(form.saving()).toBe(true);
+  });
+
+  it('updates under the existing name and omits an unchanged rename', () => {
+    const { dialog, create, update, submit } = setup(editData);
+    submit();
+    expect(update).toHaveBeenCalledWith('my-app', { name: undefined }, expect.objectContaining({ name: 'my-app' }));
+    expect(create).not.toHaveBeenCalled();
+    expect(dialog.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'my-app' }));
+  });
+
+  it('shows a taken name on the name field and keeps the dialog open', () => {
+    const { form, dialog, create, submit } = setup();
+    create.mockReturnValue(rejection(409, { message: 'taken', error: 'Conflict' }));
+
+    submit();
+
+    expect(dialog.close).not.toHaveBeenCalled();
+    expect(form.saving()).toBe(false);
+    expect(form.showNameConflict).toBe(true);
+    expect(form.submitError()).toBeNull();
+
+    form.form.controls.name.setValue('other');
+    expect(form.showNameConflict).toBe(false);
+    expect(form.form.controls.name.valid).toBe(true);
+  });
+
+  it('shows any other refusal on submitError, keeps what was typed, and clears it on the next edit', () => {
+    const { form, dialog, create, submit } = setup();
+    create.mockReturnValue(rejection(400, { message: 'folder must be a string', error: 'Bad Request' }));
+
+    submit();
+
+    expect(dialog.close).not.toHaveBeenCalled();
+    expect(form.submitError()).toBe('folder must be a string');
+    expect(form.form.controls.name.value).toBe('my-collection');
+    expect(form.form.controls.name.valid).toBe(true);
+
+    form.form.controls.translationsFolder.setValue('./other');
+    expect(form.submitError()).toBeNull();
+  });
+
+  it('shows a locked-name conflict on submitError, since the name field cannot take it', () => {
+    const { form, update, submit } = setup(editData);
+    update.mockReturnValue(rejection(409, { message: 'already exists' }));
+    submit();
+    expect(form.submitError()).toBe('already exists');
+  });
+
+  it('falls back to the create-failed text for a refusal without a message', () => {
+    const { form, create, submit } = setup();
+    create.mockReturnValue(rejection(500, { error: 'Internal Server Error' }));
+    submit();
+    expect(form.submitError()).toBe(TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED);
+  });
+
+  it('clears the previous refusal when the next submit starts', () => {
+    const { form, dialog, create, submit } = setup();
+    create.mockReturnValueOnce(rejection(400, { message: 'nope', error: 'Bad Request' }));
+    submit();
+    expect(form.submitError()).toBe('nope');
+
+    create.mockReturnValue(new Subject<null>());
+    submit();
+    expect(form.submitError()).toBeNull();
+    expect(dialog.close).not.toHaveBeenCalled();
+  });
+
+  it('locks closing while the write is in flight and restores it after a refusal', () => {
+    const { form, dialog, create, submit } = setup();
+    const write = new Subject<null>();
+    create.mockReturnValue(write);
+
+    submit();
+    expect(form.saving()).toBe(true);
+    expect(dialog.disableClose).toBe(true);
+
+    write.error(toApiError(new HttpErrorResponse({ status: 400, error: { message: 'nope' } })));
+    expect(form.saving()).toBe(false);
+    expect(dialog.disableClose).toBe(false);
+  });
+
+  it('ignores a second submit while the first is in flight', () => {
+    const { create, submit } = setup();
+    create.mockReturnValue(new Subject<null>());
+    submit();
+    submit();
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels an in-flight write when destroyed, without closing or reporting', () => {
+    const { env, form, dialog, create, submit } = setup();
+    const write = new Subject<null>();
+    create.mockReturnValue(write);
+    submit();
+
+    env.destroy();
+    write.next(null);
+
+    expect(dialog.close).not.toHaveBeenCalled();
+    expect(write.observed).toBe(false);
+    expect(form.submitError()).toBeNull();
   });
 });

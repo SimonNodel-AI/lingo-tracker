@@ -7,6 +7,27 @@ export interface ListEdit {
 
 export type ListEditProblem = 'conflict' | 'missing';
 
+/** Check untyped arrays once; callers supply their domain error and wording. */
+export function assertStringArray(values: unknown, invalid: () => Error): asserts values is string[] {
+  if (!Array.isArray(values) || values.some((value) => typeof value !== 'string')) throw invalid();
+}
+
+/** Validate list shape and combinations, preserving the caller's refusal precedence. */
+export function validateListEdit(
+  edit: ListEdit,
+  errors: { shape: () => Error; conflict: () => Error; missing?: () => Error; combinationsFirst?: boolean },
+): boolean {
+  const problem = listEditProblem(edit);
+  if (errors.combinationsFirst && problem === 'conflict') throw errors.conflict();
+  if (errors.combinationsFirst && problem === 'missing' && errors.missing !== undefined) throw errors.missing();
+  for (const values of [edit.add, edit.remove, edit.set]) {
+    if (values !== undefined) assertStringArray(values, errors.shape);
+  }
+  if (problem === 'conflict') throw errors.conflict();
+  if (problem === 'missing' && errors.missing !== undefined) throw errors.missing();
+  return problem !== 'missing';
+}
+
 export function listEditProblem(edit: ListEdit): ListEditProblem | undefined {
   const hasAdd = (edit.add ?? []).length > 0;
   const hasRemove = (edit.remove ?? []).length > 0;

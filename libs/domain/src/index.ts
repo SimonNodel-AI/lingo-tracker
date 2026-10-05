@@ -61,7 +61,14 @@ export {
   JS_IDENTIFIER_PATTERN,
   validateJavaScriptIdentifier,
 } from './lib/js-identifier';
-export { type ListEdit, type ListEditProblem, listEditProblem, mergeListEdit } from './lib/list-edit';
+export {
+  assertStringArray,
+  type ListEdit,
+  type ListEditProblem,
+  listEditProblem,
+  mergeListEdit,
+  validateListEdit,
+} from './lib/list-edit';
 // Shared types
 export type { LocaleMetadata } from './lib/locale-metadata';
 export { isUnderNodeModules } from './lib/node-modules';
@@ -142,3 +149,10 @@ export {
   validateImportKey,
   validateLocale,
 } from './lib/validation-utils';
+
+export {
+  checkTranslatedValue,
+  describeValueViolation,
+  type TranslatedValueViolation,
+  type ValueCheckOptions,
+} from './lib/check-translated-value';

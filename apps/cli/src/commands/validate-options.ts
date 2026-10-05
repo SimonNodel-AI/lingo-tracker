@@ -3,6 +3,7 @@ export function parseValidateOptions(options: {
   skipLocales?: string[];
   skipIcu: boolean;
   skipPlaceholders: boolean;
+  skipProtectedTerms: boolean;
   requirePortablePlurals: boolean;
 }) {
   return {
@@ -10,6 +11,7 @@ export function parseValidateOptions(options: {
     skipLocales: options.skipLocales ?? [],
     skipIcu: options.skipIcu,
     skipPlaceholders: options.skipPlaceholders,
+    skipProtectedTerms: options.skipProtectedTerms,
     requirePortablePlurals: options.requirePortablePlurals,
   };
 }

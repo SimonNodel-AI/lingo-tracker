@@ -138,56 +138,6 @@ describe('CollectionFormDialog — create mode', () => {
       expect(component.model.form.controls.name.valid).toBe(true);
     });
 
-    it('should stay open and show any other refusal above the buttons, keeping what was typed', async () => {
-      store.createCollection.mockReturnValue(
-        rejection(400, { message: 'collection.translationsFolder must be a string', error: 'Bad Request' }),
-      );
-      fillValidForm();
-
-      await component.onSubmit();
-      fixture.detectChanges();
-
-      expect(mockDialogRef.close).not.toHaveBeenCalled();
-      expect(submitError()).toBe('collection.translationsFolder must be a string');
-      expect(component.model.form.controls.name.value).toBe('my-collection');
-      expect(component.model.form.controls.name.valid).toBe(true);
-    });
-
-    it('should fall back to the create-failed text for a refusal without a message', async () => {
-      store.createCollection.mockReturnValue(rejection(500, { error: 'Internal Server Error' }));
-      fillValidForm();
-
-      await component.onSubmit();
-      fixture.detectChanges();
-
-      expect(submitError()).toBe('Failed to create collection');
-    });
-
-    it('should clear the previous refusal and disable the button while the next submit is in flight', async () => {
-      store.createCollection.mockReturnValueOnce(rejection(400, { message: 'nope', error: 'Bad Request' }));
-      fillValidForm();
-      await component.onSubmit();
-      fixture.detectChanges();
-      expect(submitError()).toBe('nope');
-
-      await component.onSubmit();
-      fixture.detectChanges();
-
-      expect(submitError()).toBeNull();
-      expect(mockDialogRef.close).toHaveBeenCalledTimes(1);
-    });
-
-    it('should clear a refusal on the next edit', async () => {
-      store.createCollection.mockReturnValue(rejection(400, { message: 'nope', error: 'Bad Request' }));
-      fillValidForm();
-      await component.onSubmit();
-      expect(component.model.submitError()).toBe('nope');
-
-      component.model.form.controls.translationsFolder.setValue('./other');
-
-      expect(component.model.submitError()).toBeNull();
-    });
-
     it('should not let the dialog close while the write is in flight, and allow it again after a refusal', async () => {
       const write = new Subject<LingoTrackerConfigDto | null>();
       store.createCollection.mockReturnValue(write);
@@ -204,16 +154,6 @@ describe('CollectionFormDialog — create mode', () => {
 
       expect(mockDialogRef.disableClose).toBe(false);
       expect(closeButtons().some((button) => button.disabled)).toBe(false);
-    });
-
-    it('should ignore a second submit while the first is in flight', async () => {
-      store.createCollection.mockReturnValue(new Subject<LingoTrackerConfigDto | null>());
-      fillValidForm();
-
-      await component.onSubmit();
-      await component.onSubmit();
-
-      expect(store.createCollection).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -359,18 +299,6 @@ describe('CollectionFormDialog — edit mode', () => {
     });
     expect(store.createCollection).not.toHaveBeenCalled();
     expect(mockDialogRef.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'my-app' }));
-  });
-
-  it('should show a refusal above the buttons when the name is locked, so a conflict has no field to land on', async () => {
-    store.updateCollection.mockReturnValue(rejection(409, { message: 'Collection "my-app" already exists' }));
-
-    await component.onSubmit();
-    fixture.detectChanges();
-
-    expect(mockDialogRef.close).not.toHaveBeenCalled();
-    expect(
-      (fixture.nativeElement as HTMLElement).querySelector('[data-testid="submit-error"] span')?.textContent,
-    ).toContain('Collection "my-app" already exists');
   });
 
   it('should return protected terms and preserve the file pointer in the result config', async () => {

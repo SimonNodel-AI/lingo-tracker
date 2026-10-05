@@ -1,4 +1,4 @@
-import { addCollection, CONFIG_FILENAME, DEFAULT_CONFIG } from '@simoncodes-ca/core';
+import { addCollection, CONFIG_FILENAME } from '@simoncodes-ca/core';
 import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import { type Ask, defineCommand } from '../runner/command-runner';
 import type { InitOptions } from '../types/init-options.js';
@@ -7,7 +7,7 @@ import { ConsoleFormatter, collectionSetupQuestions } from '../utils';
 export const addCollectionCommand = defineCommand<InitOptions>()({
   name: 'Add collection',
   collection: 'none',
-  prompts: (options) => collectionSetupQuestions(options),
+  prompts: (options, { config }) => collectionSetupQuestions(options, config),
   required: ['collectionName', 'translationsFolder'],
   // Core refuses a duplicate name (CollectionAlreadyExistsError) and defaults a folder under
   // node_modules to read-only when the flag is left unset.
@@ -18,10 +18,10 @@ export const addCollectionCommand = defineCommand<InitOptions>()({
 
     const newCollection = {
       translationsFolder,
-      exportFolder: answers.exportFolder ?? DEFAULT_CONFIG.exportFolder,
-      importFolder: answers.importFolder ?? DEFAULT_CONFIG.importFolder,
-      baseLocale: answers.baseLocale ?? DEFAULT_CONFIG.baseLocale,
-      locales: answers.locales ?? DEFAULT_CONFIG.locales,
+      exportFolder: answers.exportFolder,
+      importFolder: answers.importFolder,
+      baseLocale: answers.baseLocale,
+      locales: answers.locales,
       readOnly,
     };
 

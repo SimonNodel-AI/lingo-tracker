@@ -1,8 +1,8 @@
 import { computed, type Signal } from '@angular/core';
-import { signalStoreFeature, withComputed, type } from '@ngrx/signals';
-import { resourceStatusScope, translationListRows } from '../../translations/utils/translation-list-view';
+import { signalStoreFeature, type, withComputed } from '@ngrx/signals';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
+import { resourceStatusScope, translationListRows } from '../../translations/utils/translation-list-view';
 
 /** The list as the user sees it: the List Scope's rows, filtered by status, sorted, and counted. */
 export function withTranslationsFeature<_>() {
@@ -17,7 +17,6 @@ export function withTranslationsFeature<_>() {
         sortField: 'key' | 'status';
         sortDirection: 'asc' | 'desc';
       }>(),
-      // Provided by withListScopeFeature, which composes before this feature.
       props: type<{ isSearchMode: Signal<boolean> }>(),
     },
     withComputed(({ selectedLocales, availableLocales }) => ({
