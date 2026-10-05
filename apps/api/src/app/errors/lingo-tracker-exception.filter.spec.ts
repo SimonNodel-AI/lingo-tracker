@@ -46,6 +46,7 @@ import {
 } from '@simoncodes-ca/core';
 // Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
 import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
+import { JobNotFoundError } from '../jobs/job-not-found.error';
 import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-exception.filter';
 
 describe('toHttpException', () => {
@@ -71,6 +72,11 @@ describe('toHttpException', () => {
       { message: 'Folder not found: apps.missing', error: 'Not Found', statusCode: 404 },
     ],
     [new BundleNotFoundError('main'), 404, { message: 'Bundle "main" not found', error: 'Not Found', statusCode: 404 }],
+    [
+      new JobNotFoundError('missing-job', 'Translation'),
+      404,
+      { message: 'Translation job "missing-job" not found', error: 'Not Found', statusCode: 404 },
+    ],
     [
       new ConfigChangedError(),
       409,
@@ -423,7 +429,7 @@ describe('toHttpException', () => {
       .map(([error]) => error)
       .filter((error): error is LingoTrackerError => error instanceof LingoTrackerError)
       .map((error) => error.constructor.name)
-      .filter((name) => name !== 'UnmappedError')
+      .filter((name) => ['UnmappedError', 'JobNotFoundError'].includes(name) === false)
       // Its code-dependent responses are pinned in the TranslationError table below.
       .concat('TranslationError')
       .sort();
@@ -441,15 +447,20 @@ describe('toHttpException', () => {
     }
   });
 
-  it.each([
+  const translationCases = [
     ['INVALID_REQUEST', 400, 'Bad Request'],
+    ['INVALID_REQUEST_TIMEOUT', 502, 'Bad Gateway'],
+    ['INVALID_RESPONSE', 502, 'Bad Gateway'],
+    ['TIMEOUT', 502, 'Bad Gateway'],
     ['MISSING_API_KEY', 500, 'Internal Server Error'],
     ['UNKNOWN_PROVIDER', 500, 'Internal Server Error'],
     ['AUTH_ERROR', 500, 'Internal Server Error'],
     ['RATE_LIMIT', 429, 'Too Many Requests'],
     ['SERVER_ERROR', 502, 'Bad Gateway'],
     ['SOMETHING_NEW', 502, 'Bad Gateway'],
-  ])('maps a TranslationError with code %s to %i', (code, status, error) => {
+  ] as const;
+
+  it.each(translationCases)('maps a TranslationError with code %s to %i', (code, status, error) => {
     const http = toHttpException(new TranslationError('Provider said no', code, false));
 
     expect(http.getStatus()).toBe(status);
@@ -458,6 +469,79 @@ describe('toHttpException', () => {
       error,
       statusCode: status,
     });
+  });
+
+  it('pins every core, provider, and API job error code', () => {
+    // A later step replaces this HEAD snapshot with ERROR_CODES/PROVIDER_ERROR_CODES.
+    const expectedCodes = [
+      'AUTH_ERROR',
+      'AUTO_TRANSLATION_DISABLED',
+      'BASE_LOCALE_IMMUTABLE',
+      'BUNDLE_ALREADY_EXISTS',
+      'BUNDLE_NOT_FOUND',
+      'CANNOT_TRANSLATE_BASE_LOCALE',
+      'COLLECTION_ALREADY_EXISTS',
+      'COLLECTION_BASE_LOCALE_MISMATCH',
+      'COLLECTION_NOT_FOUND',
+      'COLLECTION_READ_ONLY',
+      'COLLECTION_RENAME_BUNDLE_CONFLICT',
+      'COLLECTION_REQUIRED_BY_BUNDLE',
+      'CONFIG_CHANGED',
+      'CONFIG_NOT_FOUND',
+      'CONFIG_PARSE_FAILED',
+      'CORE_OPERATION_ERROR',
+      'FOLDER_MOVE_INTO_DESCENDANT',
+      'FOLDER_NOT_FOUND',
+      'GLOSSARY_EXTRACTOR_ERROR',
+      'GLOSSARY_NO_COLLECTIONS',
+      'IMPORT_SOURCE_ERROR',
+      'INVALID_BUNDLE_DEFINITION',
+      'INVALID_BUNDLE_LOCALES',
+      'INVALID_COLLECTION',
+      'INVALID_COLLECTION_FOLDER',
+      'INVALID_CONFIG',
+      'INVALID_FOLDER_PATH',
+      'INVALID_IMPORT_LOCALE',
+      'INVALID_LOCALE',
+      'INVALID_NAME',
+      'INVALID_PREFERRED_TERMINOLOGY',
+      'INVALID_PROJECT_TERMS_EDIT',
+      'INVALID_PROTECTED_TERMS_FILE',
+      'INVALID_REQUEST',
+      'INVALID_REQUEST_TIMEOUT',
+      'INVALID_RESOURCE_KEY',
+      'INVALID_RESPONSE',
+      'INVALID_TRANSLATION_STATUS',
+      'JOB_NOT_FOUND',
+      'LOCALE_ALREADY_EXISTS',
+      'LOCALE_NOT_FOUND',
+      'MISSING_API_KEY',
+      'MULTIPLE_BUNDLE_CONSTANT_NAME',
+      'NO_TRANSLATION_TARGET_LOCALES',
+      'PARENT_DIRECTORY_MISSING',
+      'PROTECTED_TERMS_FILE_NOT_SET',
+      'RATE_LIMIT',
+      'RESOURCE_ALREADY_EXISTS',
+      'RESOURCE_NOT_FOUND',
+      'SERVER_ERROR',
+      'TIMEOUT',
+      'TRANSLATION_LOCALE_NOT_CONFIGURED',
+      'UNKNOWN_PROVIDER',
+    ];
+    const caseCodes = cases
+      .map(([error]) => error)
+      .filter((error): error is LingoTrackerError => error instanceof LingoTrackerError)
+      .map((error) => error.code);
+    const providerCodes = translationCases.map(([code]) => code);
+    const pinnedCodes = [
+      ...new Set(
+        [...caseCodes, ...providerCodes]
+          // These synthetic codes pin fallback behavior, rather than errors raised at HEAD.
+          .filter((code) => ['UNMAPPED', 'SOMETHING_NEW'].includes(code) === false),
+      ),
+    ].sort();
+
+    expect(pinnedCodes).toEqual(expectedCodes);
   });
 
   it('returns an HttpException unchanged', () => {
