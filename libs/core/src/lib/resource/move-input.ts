@@ -7,19 +7,20 @@ export function movePatternPrefix(pattern: string): string {
   return prefix.endsWith('.') ? prefix.slice(0, -1) : prefix;
 }
 
-/** Validate submitted addresses without reading folders or changing the collection. */
+/** Validate submitted addresses and infer resource selection without reading or changing folders. */
 export function validateMoveInput({
   source,
   destination,
 }: {
   readonly source: string;
   readonly destination: string;
-}): void {
+}): 'key' | 'pattern' {
   const pattern = source.endsWith('*');
   const prefix = pattern ? movePatternPrefix(source) : source;
   if (pattern === false || prefix.length > 0) validateMoveKey(prefix, source);
   // Only a pattern destination can name the collection root.
   if (pattern === false || destination.length > 0) validateMoveKey(destination, destination);
+  return pattern ? 'pattern' : 'key';
 }
 
 function validateMoveKey(key: string, input: string): void {

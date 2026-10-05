@@ -107,6 +107,7 @@ export {
   type ProtectedTermsEditProblem,
   type PreferredTerminologyEditProblem,
   LingoTrackerError,
+  MoveConfigRequiredError,
   MultipleBundleConstantNameError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
@@ -129,11 +130,9 @@ export type {
   CreateFolderResult,
   DeleteFolderParams,
   DeleteFolderResult,
-  MoveFolderParams,
-  MoveFolderResult,
 } from './lib/folder';
 // Operations: folders
-export { createFolder, deleteFolder, moveFolder } from './lib/folder';
+export { createFolder, deleteFolder } from './lib/folder';
 // Operations: glossary
 export { type BuildGlossaryOptions, type BuildGlossaryResult, buildGlossary } from './lib/glossary/build-glossary';
 export type {
@@ -169,9 +168,6 @@ export type {
   EditResourceOptions,
   EditResourceResult,
   ExistingResourcePolicy,
-  MoveResourceParams,
-  MoveResourceResult,
-  MoveResourcesOperation,
   OpenResourceFolderOptions,
   ResourceEntryMetadata,
   ResourceTranslation,
@@ -196,8 +192,6 @@ export {
   type MatchType,
   type MutationSink,
   type MutationSinkOptions,
-  moveResource,
-  moveResources,
   type NormalizedSearchRequest,
   type NormalizeEntryReport,
   normalizeSearchRequest,
@@ -257,3 +251,12 @@ export {
   DEFAULT_TYPE_DIST_FILE,
 } from './lib/config/init-project';
 export type { InitProjectAnswers, InitProjectResult } from './lib/config/init-project';
+
+export {
+  executeMove,
+  executeMoves,
+  type MoveRequest,
+  type MoveOptions,
+  type ExecuteMoveResult,
+} from './lib/resource/execute-move';
+export type { MoveResult } from './lib/resource/move-report';

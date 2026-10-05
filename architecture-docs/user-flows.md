@@ -387,7 +387,7 @@ sequenceDiagram
     BS->>BS: movesInFlight + 1 — isMoving, so isDisabled is true
 
     BS->>API: POST /api/collections/{name}/resources/move<br/>{ source: "apps.common.ok", destination: "apps.navigation.ok" }
-    API->>Core: moveResource(..., { onMutation: index.sink })
+    API->>Core: executeMoves(collection, selections)
     Core->>Index: onMutation(remove at source)
     Core->>Index: onMutation(upsert at destination)
     API-->>BS: MoveResourceResponseDto { success: true }

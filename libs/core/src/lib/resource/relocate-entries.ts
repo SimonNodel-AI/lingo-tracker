@@ -15,7 +15,7 @@ import {
 
 /**
  * Entry Relocation — the one way entries move between keys, within a collection or into another.
- * `editResource` (`moveTo`), `moveResource` (one key or a pattern) and `moveFolder` all move through it.
+ * `editResource` (`moveTo`) and `executeMove` (key, pattern or folder) move through it.
  *
  * - **Batch**: every folder involved is opened once, and saved once, however many entries move
  *   in or out of it. A folder is saved only after every folder it sends entries to, and the saves

@@ -26,8 +26,6 @@ export {
   type ResourceTreeNode,
 } from './load-resource-tree';
 export type { ResourceTranslation } from './locale-seeding';
-export { type MoveResourceParams, type MoveResourceResult, moveResource } from './move-resource';
-export { type MoveResourcesOperation, moveResources } from './move-resources';
 export {
   type CollectionRead,
   type CollectionReadProblem,

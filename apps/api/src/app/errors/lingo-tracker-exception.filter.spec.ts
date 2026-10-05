@@ -30,6 +30,11 @@ import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-ex
 describe('toHttpException', () => {
   const cases = [
     [
+      new internalErrors.MoveConfigRequiredError(),
+      400,
+      { message: 'Move destination resolution requires config', error: 'Bad Request', statusCode: 400 },
+    ],
+    [
       new internalErrors.InvalidNameError(),
       400,
       { message: 'name must be a non-empty string', error: 'Bad Request', statusCode: 400 },

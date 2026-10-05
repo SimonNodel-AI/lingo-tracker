@@ -18,7 +18,7 @@ Return to [architecture README](README.md).
   - [add-resource](#add-resource)
   - [edit-resource](#edit-resource)
   - [delete-resource](#delete-resource)
-  - [move-resource](#move-resource)
+  - [move-executor](#move-executor)
   - [Move Plan](#move-plan)
   - [Entry Relocation](#entry-relocation)
 - [Collection Reader](#collection-reader)
@@ -137,7 +137,7 @@ libs/core/src/
     │   ├── add-resource.ts       # addResource()
     │   ├── edit-resource.ts      # editResource()
     │   ├── delete-resource.ts    # deleteResource()
-    │   ├── move-resource.ts      # moveResource()
+    │   ├── execute-move.ts       # executeMove() / executeMoves(): key, pattern and folder moves
     │   ├── move-plan.ts          # planMove(): pure move refusals, collection identity, and destination keys
     │   ├── relocate-entries.ts   # Entry Relocation used by moves
     │   ├── checksum.ts           # MD5 checksums
@@ -155,8 +155,7 @@ libs/core/src/
     │
     ├── folder/                   # Folder-level filesystem operations
     │   ├── create-folder.ts      # createFolder(): mkdir with segment validation
-    │   ├── delete-folder.ts      # deleteFolder(): recursive removal
-    │   └── move-folder.ts        # moveFolder(): re-key a folder tree as one Entry Relocation, then delete the source
+    │   └── delete-folder.ts      # deleteFolder(): recursive removal
     │
     ├── file-io/                  # Low-level JSON read/write helpers (internal; no barrel)
     │   ├── json-file-operations.ts  # readJsonFile(), writeJsonFile(), typed helpers
@@ -190,7 +189,7 @@ graph TD
         VALIDATE["validate/\nvalidateResources"]
         NORMALIZE["normalize/\nnormalize"]
         TRANSLATION["translation/\nopenTranslator\ntranslateExistingResource\ntranslateLocale"]
-        FOLDER["folder/\ncreateFolder · deleteFolder\nmoveFolder"]
+        FOLDER["folder/\ncreateFolder · deleteFolder"]
         FILEIO["file-io/\nreadJsonFile · writeJsonFile\nensureDirectoryExists"]
         CONFIG_LIB["config/\nloadConfig · openCollection\nguardedConfigWrite"]
         ERRORS["errors/\nErrorMessages"]
@@ -269,7 +268,7 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 | Group | What it holds |
 |---|---|
-| Operations | The entry points imported by apps. Resources: `addResource`, `addResources`, `editResource`, `deleteResource`, `moveResource`, `moveResources`. Folders: `createFolder`, `deleteFolder`, `moveFolder`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollection`, `editCollectionTags`, `addLocaleToCollection`, `removeLocaleFromCollection`. Bundles: `addBundleDefinition`, `updateBundleDefinition`, `deleteBundleDefinition`, `generateBundles`, `generatePreparedBundle`, `prepareBundleRun`, `planBundle`. Import: `detectImportFormat`, `runImport`. Export: `runExport`, `exportTargetLocales`. Glossary: `buildGlossary`. Normalize: `emptyNormalizeCollectionsResult`, `normalize`, `normalizeCollections`. Translation: `prepareTranslationRun`, `translateExistingResource`. Validation: `runValidate`. |
+| Operations | The entry points imported by apps. Resources: `addResource`, `addResources`, `editResource`, `deleteResource`, `executeMove`, `executeMoves`. Folders: `createFolder`, `deleteFolder`, `executeMove`. Collections and locales: `addCollection`, `updateCollection`, `deleteCollection`, `editCollectionTags`, `addLocaleToCollection`, `removeLocaleFromCollection`. Bundles: `addBundleDefinition`, `updateBundleDefinition`, `deleteBundleDefinition`, `generateBundles`, `generatePreparedBundle`, `prepareBundleRun`, `planBundle`. Import: `detectImportFormat`, `runImport`. Export: `runExport`, `exportTargetLocales`. Glossary: `buildGlossary`. Normalize: `emptyNormalizeCollectionsResult`, `normalize`, `normalizeCollections`. Translation: `prepareTranslationRun`, `translateExistingResource`. Validation: `runValidate`. |
 | Collection & config | `loadConfig`, `openCollection`, `Collection`, `OpenedProject`, `OpenedCollection`, `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `LingoTrackerConfig`, `LingoTrackerCollection`, `TranslationConfig`, `initConfig`, `initProject`, `InitProjectAnswers`, `InitProjectResult`, `DEFAULT_BUNDLE_DIST`, `DEFAULT_BUNDLE_NAME`, `DEFAULT_TYPE_DIST_FILE`, `displayTermPath`, `loadPreferredTerminology`, `updateProjectTerms`, `readProjectTermsView`, `preferredTerminologyRequestFromFlags`, plus the config result types `LoadPreferredTerminologyResult` and `ResolvedProtectedTerms`. |
 | Project Terms | `updateProjectTerms`, its `ProjectTermsUpdate`, `ProjectTermsUpdateView`, and `ProjectTermsUpdateResult` types, plus `ProjectTermsView` and `PreferredTerminologyFlags`, and `TerminologyFindings` used by resource writes. |
 | ResourceFolder | `openResourceFolder`, `ResourceFolder`, `OpenResourceFolderOptions`, `EntryDetails`, `NormalizeEntryReport`, `ResourceFolderEntry`, and `ResourceFolderSaveResult`. |
@@ -295,7 +294,7 @@ Each config writer receives an `OpenedProject` or `OpenedCollection` and calls c
 
 The write side is the [Collection Entry](glossary.md#collection-entry) (`lib/config/collection-entry.ts`): three pure functions over the in-memory config that decide what a collection's record contains. `toCollectionEntry(config, collection)` builds the minimal record: `translationsFolder` (trimmed; blank is `InvalidCollectionError`), then only what differs from the global config (`exportFolder`, `importFolder`, `baseLocale`, `locales` compared as ordered lists), `translation` verbatim (a per-collection override is never diffed against the global block), `readOnly` only when true, normalized non-empty `tags`, a trimmed non-empty `protectedTermsFile`. A blank `exportFolder`, `importFolder` or `baseLocale` is not stored (the collection inherits), and a field set to `null` (possible in a JSON body, not in the type) is `InvalidCollectionError`. `assertCollectionFields` also rejects a non-string `translationsFolder`; the API mapper calls it before dropping DTO-only fields. The rule for every field is listed once in a record keyed by the `LingoTrackerCollection` type, so a new field is a compile error until its rule exists. `addCollectionEntry(config, name, collection)` refuses a taken name and, when `readOnly` is left unset, marks a folder under `node_modules` read-only (the domain `isUnderNodeModules`). An empty `locales` list is dropped too: it means inherit, and `openCollection` uses the global list when the collection list is absent or empty. `patchCollectionEntry(config, name, patch, newName?)` refuses an unknown name and a rename onto a taken one, merges `patch` over the stored record (a field the patch sets wins, so `tags: []`, `readOnly: false`, `locales: []`, or `''` for `exportFolder`, `importFolder`, `baseLocale` or `protectedTermsFile` clear a setting; a field left out or `undefined` keeps its stored value; `translation` has no empty value, since a `TranslationConfig` needs `enabled`, `provider` and `apiKeyEnv`, so a patch replaces the override but cannot clear it), rebuilds the record through the field rules and renames in place, keeping the collection's position in the file. So a caller that edits one setting never carries the others over, and a client that does not send `translation`, `exportFolder` or `importFolder` cannot drop them.
 
-`addCollection`, `editCollectionTags`, project-term pointer changes, and every locale change write collection records through the Collection Entry. `addCollection(project, name, collection, { protectedTerms? })` and `updateCollection(openedCollection, newName, patch, { protectedTerms?, onMutation? })` validate protected terms and the resulting entry, including its file pointer, before writing. They stage config and terms through the [Config Write Transaction](glossary.md#config-write-transaction). A failed terms write restores their exact previous bytes only when no locale file write was attempted. After a locale write attempt, core keeps the new config. A refused precondition changes neither file. `editCollectionTags(openedCollection, { add?, remove?, set? })` takes arrays for every supplied list, checks the edit, and returns normalized tags. `initConfig(config, { cwd? })` refuses an existing config with `InvalidConfigError`, validates through `createConfigFileOperations().create()` and uses an exclusive file create, so a concurrent creator cannot be overwritten; it produces the same JSON bytes as the old CLI init path. `updateCollection`, `addLocaleToCollection`, and `removeLocaleFromCollection` share one locale-change path: validate the request, read every folder before writing, seed added locales, purge removed locales, then write the minimized config once with `patchCollectionEntry`. Add/remove compute the target locale list from the collection's effective locales. An unreadable folder leaves config and files unchanged. A base locale, old or new, is never seeded or purged. A changed collection record delivers reindex mutations for its old and new translations folders, with duplicate paths removed. `deleteCollection` can remove a malformed registration whose `translationsFolder` is missing or is not a string. It delivers a reindex mutation only when that field is a string. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `createFolder`, `deleteFolder`, `moveFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
+`addCollection`, `editCollectionTags`, project-term pointer changes, and every locale change write collection records through the Collection Entry. `addCollection(project, name, collection, { protectedTerms? })` and `updateCollection(openedCollection, newName, patch, { protectedTerms?, onMutation? })` validate protected terms and the resulting entry, including its file pointer, before writing. They stage config and terms through the [Config Write Transaction](glossary.md#config-write-transaction). A failed terms write restores their exact previous bytes only when no locale file write was attempted. After a locale write attempt, core keeps the new config. A refused precondition changes neither file. `editCollectionTags(openedCollection, { add?, remove?, set? })` takes arrays for every supplied list, checks the edit, and returns normalized tags. `initConfig(config, { cwd? })` refuses an existing config with `InvalidConfigError`, validates through `createConfigFileOperations().create()` and uses an exclusive file create, so a concurrent creator cannot be overwritten; it produces the same JSON bytes as the old CLI init path. `updateCollection`, `addLocaleToCollection`, and `removeLocaleFromCollection` share one locale-change path: validate the request, read every folder before writing, seed added locales, purge removed locales, then write the minimized config once with `patchCollectionEntry`. Add/remove compute the target locale list from the collection's effective locales. An unreadable folder leaves config and files unchanged. A base locale, old or new, is never seeded or purged. A changed collection record delivers reindex mutations for its old and new translations folders, with duplicate paths removed. `deleteCollection` can remove a malformed registration whose `translationsFolder` is missing or is not a string. It delivers a reindex mutation only when that field is a string. The [Import run](glossary.md#import-run) and the [Export run](glossary.md#export-run) take `Collection` objects, so they read the base locale and locales from there and never read the config file. The resource and folder operations (`addResource`, `editResource`, `deleteResource`, `executeMove`, `translateExistingResource`, `createFolder`, `deleteFolder`) take the opened `Collection` as their first parameter too, so no caller passes a base locale, a locale list, a translation config, or a `cwd`. See [Collection-bound operations](#collection-bound-operations). The typed errors extend `LingoTrackerError`; see [Error Model](#error-model).
 
 **Collection Change.** `changeCollection` in `collections-manager/collection-change.ts` owns the shared engine for update, add-locale, and remove-locale. All refusals precede writes. Locale sugar checks read-only before locale-specific checks and the stale snapshot. Update patches check terms, rename, entry, bundle references, terms destination, and stale snapshot before read-only and added-locale validation. Every affected folder is read before writes. The engine seeds added locales, purges removed locales, writes config, then writes optional terms.
 
@@ -341,10 +340,11 @@ The internal `lib/errors/index.ts` barrel exports every error subclass. Its comp
 | `InvalidResourceKeyError` | `INVALID_RESOURCE_KEY` | `key` | `validateAndResolvePaths` (so `addResource`, `editResource` including its `moveTo`, `translateExistingResource`) |
 | `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | `key` | `editResource`, `translateExistingResource`; `deleteResource` returns its message in `errors[]` for a missing entry or resource file |
 | `ResourceAlreadyExistsError` | `RESOURCE_ALREADY_EXISTS` | `key` | `editResource` with a `moveTo` whose folder already has the entry key |
-| `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder`, `deleteFolder`, `moveFolder` |
+| `MoveConfigRequiredError` | `MOVE_CONFIG_REQUIRED` | — | `executeMove`, `executeMoves` with a named destination and no config |
+| `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder`, `deleteFolder`, `executeMove` |
 | `InvalidCollectionFolderError` | `INVALID_COLLECTION_FOLDER` | `problem` | Direct address resolution and Resource Folder reads/saves; move/delete folder refusals use `Cannot move/delete folder` wording. |
-| `FolderNotFoundError` | `FOLDER_NOT_FOUND` | `folderPath` | `deleteFolder`, `moveFolder` (source missing or not a directory); `deleteResource` returns its Folder Address-based message in `errors[]` |
-| `FolderMoveIntoDescendantError` | `FOLDER_MOVE_INTO_DESCENDANT` | `sourceFolderPath`, `destinationFolderPath` | `moveFolder` (same collection) |
+| `FolderNotFoundError` | `FOLDER_NOT_FOUND` | `folderPath` | `deleteFolder`, `executeMove` (source missing or not a directory); `deleteResource` returns its Folder Address-based message in `errors[]` |
+| `FolderMoveIntoDescendantError` | `FOLDER_MOVE_INTO_DESCENDANT` | `sourceFolderPath`, `destinationFolderPath` | `executeMove` (same collection) |
 | `AutoTranslationDisabledError` | `AUTO_TRANSLATION_DISABLED` | `collectionName` | `assertAutoTranslationEnabled`, the precondition of `openTranslator`, `translateExistingResource` and `prepareTranslationRun` (checked first, even when there is no work) |
 | `CannotTranslateBaseLocaleError` | `CANNOT_TRANSLATE_BASE_LOCALE` | `locale` | `TranslationRun.forLocale` when the target is the collection's base locale |
 | `TranslationLocaleNotConfiguredError` | `TRANSLATION_LOCALE_NOT_CONFIGURED` | `locale`, `availableLocales` | `TranslationRun.forLocale` when the target is not configured for the collection |
@@ -357,7 +357,7 @@ The internal `lib/errors/index.ts` barrel exports every error subclass. Its comp
 Rules:
 
 - **Domain validators stay untyped.** `@simoncodes-ca/domain` has no error classes. `validateKey`, `validateTargetFolder`, and `validateLocale` throw a plain `Error`. Core wraps each call in one place and throws the typed error with the same message: `validateAndResolvePaths` for keys and target folders, and `assertValidLocale` (`collections-manager/assert-valid-locale.ts`) for locales.
-- **Batch operations report per-item failures, not throw.** `deleteResource`, `moveResource`, and `moveFolder` put per-key failures into their result (`errors`) as strings. Bad input to the whole operation (a malformed folder path, a missing folder, a move into the folder's own descendant) is a typed error.
+- **Batch operations report per-item failures, not throw.** `deleteResource`, `executeMove`, and `executeMoves` put per-key failures into their result (`errors`) as strings. Bad input to the whole operation (a malformed folder path, a missing folder, a move into the folder's own descendant) is a typed error.
 - **Programmer-error assertions stay `Error`.** `ResourceFolder` asserts that callers do not set a translation for the base locale, do not set a status without locale metadata, and do not require a missing entry. Operational file I/O and parser failures use `CoreOperationError`: the CLI keeps their message, and the API answers a generic 500 without one. `deleteResource` turns lower-level file failures into a key-based per-item message and keeps the underlying error in `cause`.
 - **Adapters do not duplicate core's checks.** The CLI `add-collection` no longer tests for a taken name itself, and `translate-locale` no longer tests `translationConfig.enabled`: the core errors (`CollectionAlreadyExistsError`, `AutoTranslationDisabledError`) reach the runner, which prints their message. The API controllers have no catch-all; every core error reaches the exception filter.
 
@@ -386,17 +386,16 @@ addResource(collection, { key, baseValue, comment?, tags?, targetFolder?, transl
 addResources(collection, items, { provider?, protectedTerms?, onMutation? }?)
 editResource(collection, key, { baseValue?, comment?, tags?, translations?, moveTo? }, { onMutation? }?)
 deleteResource(collection, { keys }, { onMutation? }?)
-moveResource(collection, { source, destination, override?, toCollection? }, { config?, cwd?, onMutation? }?)
-moveResources(collection, ops, { config, cwd?, onMutation? })
+executeMove(collection, selection, { config?, cwd?, onMutation? }?)
+executeMoves(collection, selections, { config?, cwd?, onMutation? }?)
 translateExistingResource(collection, key, { provider?, protectedTerms?, onMutation? }?)
 prepareTranslationRun(collection, { provider?, protectedTerms?, onMutation?, delay? }?)
 run.forLocale(targetLocale).execute({ onProgress? }?)
 createFolder(collection, { folderName, parentPath? }, { onMutation? }?)
 deleteFolder(collection, { folderPath }, { onMutation? }?)
-moveFolder(collection, { sourceFolderPath, destinationFolderPath, override?, nestUnderDestination?, toCollection? }, { config?, cwd?, onMutation? }?)
 ```
 
-`addResource`, `addResources` and `editResource` take the same optional `{ provider?, protectedTerms? }` as a last parameter, for [locale seeding](#locale-seeding). The base locale, the target locales, the translation config and the term files come only from the `Collection`; there is no `'en'` fallback. All three check stored base values against the [Project Terms](#project-terms) and return advisory `terminology` (`editResource` does so when the edit supplied a base value and updated the entry). A cross-collection move takes a plain `toCollection` name. Its `config` is required by the move function's type signature; core opens the destination writable using that config and optional `cwd` from the last options argument. A single move throws typed `CollectionNotFoundError` or `ReadOnlyCollectionError` before writing; a batch records their messages and continues.
+`addResource`, `addResources` and `editResource` take the same optional `{ provider?, protectedTerms? }` as a last parameter, for [locale seeding](#locale-seeding). The base locale, the target locales, the translation config and the term files come only from the `Collection`; there is no `'en'` fallback. All three check stored base values against the [Project Terms](#project-terms) and return advisory `terminology` (`editResource` does so when the edit supplied a base value and updated the entry). A cross-collection move takes a plain `toCollection` name. Core requires `config` at runtime for a named destination (`MoveConfigRequiredError` when absent), then opens it writable using optional `cwd`. Destination errors follow the [Move Executor error policy](glossary.md#move-executor).
 
 **Key placement.** `addResource` stores `targetFolder.key` (`resolveResourceKey`, applied by `validateAndResolvePaths`). `editResource` takes the entry's full, existing key. Its `moveTo` is a destination folder (`''` is the collection root): the entry keeps its entry key (the last segment) and moves there through the [Entry Relocation](#entry-relocation), after the edit is saved. The destination must not already have that entry key (`ResourceAlreadyExistsError`). This is checked before anything is written, and again by the relocation, which reads both folders fresh just before the move, because auto-translation may run in between; a collision found then throws with the edit already saved in the source folder. The destination is written before the source entry is removed.
 
@@ -427,11 +426,11 @@ Steps:
 
 ### Resource Batches
 
-**Entry points:** `addResources(collection, items, options?)` and `moveResources(collection, ops, { config, cwd?, onMutation? })`.
+**Entry points:** `addResources(collection, items, options?)` and `executeMoves(collection, selections, { config?, cwd?, onMutation? }?)`.
 
 `addResources` resolves and prepares every item before writing. It rejects malformed keys, unknown locales, duplicate or existing keys, unreadable folder JSON, and translation failures before any write. It saves each item in input order, returning counts, skipped locales, and terminology findings. Earlier items are delivered through `onMutation` as they are saved. A later disk failure leaves those entries on disk; if the failing folder save started, `saveReporting` delivers `reindex`. There is no rollback.
 
-`moveResources` runs each operation through `moveResource`, resolving writable destination collections from `config` and optional `cwd`. A missing or read-only destination adds an error and later operations continue. It combines counts, warnings, and errors through [Move Report](#move-report). It validates every source key or pattern and destination before any write. Malformed input throws `InvalidResourceKeyError`, with no writes or mutations from the batch. If operation N throws, earlier completed operations remain on disk and their mutations have already reached the sink.
+`executeMoves` validates submitted addresses once, resolves destinations and checks accepted folder sources before any writes, then runs the same executor body for each selection in order. Destination-unavailable errors are per-operation report entries. Counts, warnings, errors and folder removals accumulate through [Move Report](#move-report). If a runtime operation throws, earlier writes and delivered mutations remain; there is no rollback.
 
 ### edit-resource
 
@@ -460,16 +459,19 @@ Steps:
 4. **Save** — `entry.save(onMutation)` saves the folder and reports `remove`. An empty folder loses both files.
 5. **Batch errors** — errors per key are collected and returned; the operation does not stop on ordinary per-key failures. A linked address throws `InvalidCollectionFolderError` before its files are read or changed. Missing folders use `FolderNotFoundError` with a Folder Address; missing files or entries use `ResourceNotFoundError` with the key. Read and parse failures say `folder <address> has unreadable resource files`; save failures say `could not write folder <address>`. Both start with `Failed to delete resource <key>:` and keep the original error in `cause`, so `errors[]` contains no server path.
 
-### move-resource
+### Move Executor
 
-**Entry point:** `moveResource(collection, { source, destination, override?, toCollection? }, { config?, cwd?, onMutation? }?)`
+**Entry point:** `executeMove(collection, selection, { config?, cwd?, onMutation? }?)`
 
-Two modes, one move: both get relocations and `sameCollection` from the [Move Plan](#move-plan) and hand them to the [Entry Relocation](#entry-relocation) in one call. [Move Report](#move-report) converts collisions to warnings and records relocation errors. A malformed pattern throws `InvalidResourceKeyError` with the existing validation message.
+`executeMove` in `lib/resource/execute-move.ts` owns validation, destination resolution, sweep, planning, relocation and folder pruning. `MoveRequest` has `source`, `destination`, optional `override` and `toCollection`. Core infers key/pattern selections; folders explicitly set `kind: 'folder'` and may set `nestUnderDestination`. Both entry points are synchronous. `MoveOptions` has optional `config`, `cwd`, and `onMutation`. The same entry point serves the CLI and both API move routes. There are no config-dependent overloads.
 
-- **Single key move** — one relocation, `source` to `destination`.
-- **Wildcard pattern move** — a pattern ending with `*` is expanded by `sweepKeys()` ([Collection Sweep](#collection-sweep)) to every key under the prefix, each moved under `destination`. A folder the sweep cannot read is one error in the result; the other keys still move.
+- **Key**: one explicit source/destination pair.
+- **Pattern**: `source` ends with `*` (including `prefix*`, `prefix.*`, and root `*`). Collection Sweep expands it; unreadable children become errors while readable siblings still move.
+- **Folder**: Move Plan decides refusals before source inspection. An enumeration problem stops all writes. After every key moves without errors, Folder Pruning removes empty source folders. Stray files and hidden directories protect their folders; OS junk does not prevent removal.
 
-`moveFolder()` gets one Move Plan before filesystem reads. After the plan permits the move, `sweepKeys()` lists the source keys. The same plan maps their destinations and supplies `sameCollection` to Entry Relocation. After every key moves without errors, [Folder Pruning](#folder-pruning) removes empty folders under the source address, including the source itself. Stray files and hidden directories protect their folders. OS junk does not prevent removal.
+The [Move Executor glossary entry](glossary.md#move-executor) defines the error policy, batch preflight guarantees and the safety reason for the folder/pattern sweep difference. Single moves throw destination-unavailable errors; the batch boundary converts those into report entries. Folder input validation precedes destination lookup.
+
+Results are Move Reports, with `foldersDeleted` for folder selections. CLI and API adapters use their existing presentation and HTTP error mappings without additional report fields.
 
 The result retains the warning `Source folder kept: holds content that is not part of the collection: <paths>`. New collection entries produce `Source folder kept: it has resources again: <paths>`. `foldersDeleted` counts the source folder only. Each removed folder, including the source, emits a `remove-folder` mutation. A source tree without entries uses the same pruning rule. `deleteFolder` still deletes the whole tree intentionally.
 
@@ -479,11 +481,11 @@ The result retains the warning `Source folder kept: holds content that is not pa
 
 The planner has no filesystem calls. Its one argument supplies the opened source and destination collections, the selection, and the destination path. A resource selection returns an `entries` plan with both collections, relocations, and `sameCollection`. A folder selection returns a `folder` plan with only `forKeys(keys)`, or a typed refusal.
 
-The refusal reasons are `descendant`, `same-location`, and `already-there`. These folder refusals apply only within the same collection. Each refusal supplies `warning()`, which returns the existing warning or throws `FolderMoveIntoDescendantError`. `moveFolder` calls this method before source inspection and enumeration, preserving refusal behavior for missing sources. The error constructor supplies the descendant message once. The browser-safe domain predicate `isDescendantFolderPath` supplies the descendant rule for both the planner and the Tracker folder-drop rule.
+The refusal reasons are `descendant`, `same-location`, and `already-there`. These folder refusals apply only within the same collection. Each refusal supplies `warning()`, which returns the existing warning or throws `FolderMoveIntoDescendantError`. `executeMove` calls this method before source inspection and enumeration, preserving refusal behavior for missing sources. The error constructor supplies the descendant message once. The browser-safe domain predicate `isDescendantFolderPath` supplies the descendant rule for both the planner and the Tracker folder-drop rule.
 
 A single key keeps its explicit destination. A wildcard prefix maps every swept key under the destination prefix, including the collection root. An edited entry keeps its last key segment, and an empty or whitespace-only destination folder names the collection root. A folder move appends the last source segment by default or for a root destination. With `nestUnderDestination: false`, equal depths replace the source folder path, and unequal depths append that last segment.
 
-A folder selection does not include keys. Its plan supplies `forKeys(keys)` for keys that the caller enumerates after the move decision. This method returns an `entries` plan bound to the collections and `sameCollection` fact already decided. `moveResource` validates and sweeps patterns, and `moveResources` calls it for each operation. `editResource` checks the destination collision before saving. Entry Relocation takes only the bound plan and options, so separate collection arguments cannot disagree with the plan.
+A folder selection does not include keys. Its plan supplies `forKeys(keys)` for keys that the caller enumerates after the move decision. This method returns an `entries` plan bound to the collections and `sameCollection` fact already decided. Move Executor validates and sweeps selections once; `executeMoves` uses its validated execution body. `editResource` checks the destination collision before saving. Entry Relocation takes only the bound plan and options, so separate collection arguments cannot disagree with the plan.
 
 ### Move Report
 
@@ -510,7 +512,7 @@ The [Entry Relocation](glossary.md#entry-relocation) is the one move primitive. 
 | Errors | A malformed key, a missing source entry, a folder that is not valid JSON, a relocation onto its own key, or a key listed twice is one error each; the other relocations still move. |
 | Mutations | The sink receives a `remove` per moved key at the source, then an `upsert` per moved key at the destination. |
 
-Callers: `moveResource` (one key, or a pattern), `moveFolder`, and `editResource` with a `moveTo` (one relocation; a collision throws `ResourceAlreadyExistsError`). Before this module, the edit move and `moveResource` each copied, saved and removed on their own with different collision rules, a folder move of N keys rewrote the source folder once per key, and a cross-collection move kept locales the destination does not have and did not seed the ones it has.
+Callers: `executeMove` (key, pattern or folder), and `editResource` with a `moveTo` (one relocation; a collision throws `ResourceAlreadyExistsError`). Before Entry Relocation, the edit move and the former `moveResource` each copied, saved and removed on their own with different collision rules, a folder move of N keys rewrote the source folder once per key, and a cross-collection move kept locales the destination does not have and did not seed the ones it has.
 
 ---
 
@@ -617,7 +619,7 @@ Which folders it visits is the one collection-folder policy it shares with the r
 | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection` (a locale list change), through `openLocaleFolders` and `seedLocaleFiles` / `dropLocaleFiles` | Opens every folder first, then `seedLocale` / `dropLocale` and `save()` when anything changed | Throws with the problem's message before the config or any file is written. |
 | `normalize` | `normalizeEntry` for each entry, then `save({ dryRun })` | Leaves the folder as it is and returns it in `problems`. |
 | `deleteFolder` | Counts its entries for `resourcesDeleted` | Unreadable entries are not counted. A shared-walk preflight rejects a symlinked start or ancestor before any deletion; malformed files within an accepted folder retain the existing deletion policy. |
-| `moveFolder`, and a wildcard `moveResource` (through `sweepKeys`) | Lists the keys to move, for the [Entry Relocation](#entry-relocation) | One error in the result. `moveFolder` then moves and deletes nothing. |
+| `executeMove` folder and pattern selections (through `sweepKeys`) | Lists the keys to move, for the [Entry Relocation](#entry-relocation) | One error in the result. Folder selections move and delete nothing; patterns can move readable siblings. |
 
 Before the sweep, each of these walked the folders with `walkFolders` itself: add/remove-locale skipped hidden folders, and normalize, folder move/delete and the wildcard move walked into them.
 
@@ -964,7 +966,7 @@ The function never stops at the first failure — it validates all resources and
 
 Core returns a [Run Outcome](glossary.md#run-outcome) with each completed export, import, translate-locale, validate, bundle, move, and normalize run. Bundle runs also report it per bundle. `succeeded` exits 0 in the CLI, while `failed` exits 1, even when some output was produced.
 
-`moveResource`, `moveResources`, and `moveFolder` fail when their result contains errors. `normalizeCollections` fails when a collection raises an error, including in dry runs. Normalize folder problems and read-only skips in all mode do not fail the run. API move responses omit the outcome through explicit field mapping.
+`executeMove` and `executeMoves` fail when their result contains errors. `normalizeCollections` fails when a collection raises an error, including in dry runs. Normalize folder problems and read-only skips in all mode do not fail the run. API move responses omit the outcome through explicit field mapping.
 
 Export ignores errors and hierarchical conflicts in a dry run; import still fails for errors or failed resources in a dry run. A failed bundle type generation now gives the CLI exit code 1. Validate retains its `status` field for in-band precondition failures and uses `outcome` for the final success decision. The `--allow-translated` flag maps directly to `options.allowTranslated`.
 

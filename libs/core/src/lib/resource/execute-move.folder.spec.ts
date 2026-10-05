@@ -9,7 +9,7 @@ import {
   FolderNotFoundError,
   InvalidFolderPathError,
 } from '../errors/lingo-tracker-error';
-import { moveFolder } from './move-folder';
+import { executeMove } from './execute-move';
 
 function collection(translationsFolder: string, name = 'main'): Collection {
   return {
@@ -188,12 +188,9 @@ describe('Move Folder', () => {
     mockFileSystem.set(join(testDir, 'apps', 'common', 'buttons', RESOURCE_ENTRIES_FILENAME), '{"ok":{"source":"OK"}}');
     (fs.lstatSync as Mock).mockImplementationOnce(() => ({ isSymbolicLink: () => true }));
 
-    await expect(
-      moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.common.buttons',
-        destinationFolderPath: 'shared',
-      }),
-    ).rejects.toThrow("Cannot move folder 'apps.common.buttons': Folder 'apps': This folder is a symbolic link");
+    await expect(() =>
+      executeMove(collection(testDir), { kind: 'folder', source: 'apps.common.buttons', destination: 'shared' }),
+    ).toThrow("Cannot move folder 'apps.common.buttons': Folder 'apps': This folder is a symbolic link");
     expect(fs.lstatSync).toHaveBeenCalledTimes(1);
     expect(fs.lstatSync).toHaveBeenCalledWith(join(testDir, 'apps'));
     expect(fs.writeFileSync).not.toHaveBeenCalled();
@@ -228,9 +225,10 @@ describe('Move Folder', () => {
         }),
       );
 
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.common.buttons',
-        destinationFolderPath: 'apps.shared',
+      const result = await executeMove(collection(testDir), {
+        kind: 'folder',
+        source: 'apps.common.buttons',
+        destination: 'apps.shared',
       });
 
       expect(result.movedCount).toBe(1);
@@ -292,9 +290,10 @@ describe('Move Folder', () => {
         }),
       );
 
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.common.buttons',
-        destinationFolderPath: 'apps.shared',
+      const result = await executeMove(collection(testDir), {
+        kind: 'folder',
+        source: 'apps.common.buttons',
+        destination: 'apps.shared',
       });
 
       expect(result.movedCount).toBe(3);
@@ -326,9 +325,10 @@ describe('Move Folder', () => {
       addDirectory(join(testDir, 'apps'));
       addDirectory(emptyFolder);
 
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.empty',
-        destinationFolderPath: 'apps.shared',
+      const result = await executeMove(collection(testDir), {
+        kind: 'folder',
+        source: 'apps.empty',
+        destination: 'apps.shared',
       });
 
       expect(result.movedCount).toBe(0);
@@ -338,12 +338,9 @@ describe('Move Folder', () => {
     });
 
     it('should throw for non-existent source folder', async () => {
-      await expect(
-        moveFolder(collection(testDir), {
-          sourceFolderPath: 'apps.nonexistent',
-          destinationFolderPath: 'apps.shared',
-        }),
-      ).rejects.toThrow(FolderNotFoundError);
+      await expect(() =>
+        executeMove(collection(testDir), { kind: 'folder', source: 'apps.nonexistent', destination: 'apps.shared' }),
+      ).toThrow(FolderNotFoundError);
       expect(mockDirectories.has(join(testDir, 'apps', 'nonexistent'))).toBe(false);
     });
 
@@ -353,12 +350,9 @@ describe('Move Folder', () => {
       addDirectory(join(testDir, 'apps'));
       mockFileSystem.set(filePath, 'some content');
 
-      await expect(
-        moveFolder(collection(testDir), {
-          sourceFolderPath: 'apps.notadir',
-          destinationFolderPath: 'apps.shared',
-        }),
-      ).rejects.toThrow(FolderNotFoundError);
+      await expect(() =>
+        executeMove(collection(testDir), { kind: 'folder', source: 'apps.notadir', destination: 'apps.shared' }),
+      ).toThrow(FolderNotFoundError);
       expect(mockFileSystem.get(filePath)).toBe('some content');
     });
   });
@@ -372,12 +366,9 @@ describe('Move Folder', () => {
       const buttonsFolder = join(commonFolder, 'buttons');
       addDirectory(buttonsFolder);
 
-      await expect(
-        moveFolder(collection(testDir), {
-          sourceFolderPath: 'apps.common',
-          destinationFolderPath: 'apps.common.buttons',
-        }),
-      ).rejects.toThrow(FolderMoveIntoDescendantError);
+      await expect(() =>
+        executeMove(collection(testDir), { kind: 'folder', source: 'apps.common', destination: 'apps.common.buttons' }),
+      ).toThrow(FolderMoveIntoDescendantError);
       expect(mockDirectories.has(commonFolder)).toBe(true);
     });
 
@@ -386,12 +377,13 @@ describe('Move Folder', () => {
       addDirectory(join(testDir, 'apps'));
       addDirectory(commonFolder);
 
-      await expect(
-        moveFolder(collection(testDir), {
-          sourceFolderPath: 'apps.common',
-          destinationFolderPath: 'apps.common.buttons.nested.deep',
+      await expect(() =>
+        executeMove(collection(testDir), {
+          kind: 'folder',
+          source: 'apps.common',
+          destination: 'apps.common.buttons.nested.deep',
         }),
-      ).rejects.toThrow(FolderMoveIntoDescendantError);
+      ).toThrow(FolderMoveIntoDescendantError);
       expect(mockDirectories.has(commonFolder)).toBe(true);
     });
 
@@ -419,9 +411,10 @@ describe('Move Folder', () => {
 
       // Move to sibling: apps.actions
       // With new default (nestUnderDestination: true), creates apps.actions.buttons.ok
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'apps.actions',
+      const result = await executeMove(collection(testDir), {
+        kind: 'folder',
+        source: 'apps.buttons',
+        destination: 'apps.actions',
       });
 
       expect(result.movedCount).toBe(1);
@@ -447,9 +440,10 @@ describe('Move Folder', () => {
       addDirectory(join(testDir, 'apps', 'common'));
       addDirectory(buttonsFolder);
 
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.common.buttons',
-        destinationFolderPath: 'apps.common.buttons',
+      const result = await executeMove(collection(testDir), {
+        kind: 'folder',
+        source: 'apps.common.buttons',
+        destination: 'apps.common.buttons',
       });
 
       expect(result.movedCount).toBe(0);
@@ -463,13 +457,9 @@ describe('Move Folder', () => {
       addDirectory(join(testDir, 'apps'));
       addDirectory(buttonsFolder);
 
-      const result = await moveFolder(
+      const result = await executeMove(
         collection(testDir),
-        {
-          sourceFolderPath: 'apps.buttons',
-          destinationFolderPath: 'apps.buttons',
-          toCollection: 'alias',
-        },
+        { kind: 'folder', source: 'apps.buttons', destination: 'apps.buttons', toCollection: 'alias' },
         { config: moveConfig('alias', testDir) },
       );
 
@@ -504,9 +494,10 @@ describe('Move Folder', () => {
 
       // Move apps.common.buttons to apps.common (its parent)
       // With nestUnderDestination=true, this would result in apps.common.buttons.ok -> apps.common.buttons.ok (no-op)
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'apps.common.buttons',
-        destinationFolderPath: 'apps.common',
+      const result = await executeMove(collection(testDir), {
+        kind: 'folder',
+        source: 'apps.common.buttons',
+        destination: 'apps.common',
       });
 
       expect(result.movedCount).toBe(0);
@@ -545,11 +536,12 @@ describe('Move Folder', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       addDirectory(collectionBFolder);
 
-      const result = await moveFolder(
+      const result = await executeMove(
         collection(collectionAFolder, 'collectionA'),
         {
-          sourceFolderPath: 'apps.buttons',
-          destinationFolderPath: 'shared.buttons',
+          kind: 'folder',
+          source: 'apps.buttons',
+          destination: 'shared.buttons',
           nestUnderDestination: false,
           toCollection: 'collectionB',
         },
@@ -602,11 +594,12 @@ describe('Move Folder', () => {
       addDirectory(collectionBFolder);
 
       // Same path but different collection should work
-      const result = await moveFolder(
+      const result = await executeMove(
         collection(collectionAFolder, 'collectionA'),
         {
-          sourceFolderPath: 'apps.buttons',
-          destinationFolderPath: 'apps.buttons',
+          kind: 'folder',
+          source: 'apps.buttons',
+          destination: 'apps.buttons',
           nestUnderDestination: false,
           toCollection: 'collectionB',
         },
@@ -626,12 +619,13 @@ describe('Move Folder', () => {
 
   describe('Validation', () => {
     it('should reject invalid source folder path segments', async () => {
-      await expect(
-        moveFolder(collection(testDir), {
-          sourceFolderPath: 'apps.invalid@char.buttons',
-          destinationFolderPath: 'apps.shared',
+      await expect(() =>
+        executeMove(collection(testDir), {
+          kind: 'folder',
+          source: 'apps.invalid@char.buttons',
+          destination: 'apps.shared',
         }),
-      ).rejects.toThrow(InvalidFolderPathError);
+      ).toThrow(InvalidFolderPathError);
     });
 
     it('should reject invalid destination folder path segments', async () => {
@@ -639,12 +633,9 @@ describe('Move Folder', () => {
       addDirectory(join(testDir, 'apps'));
       addDirectory(buttonsFolder);
 
-      await expect(
-        moveFolder(collection(testDir), {
-          sourceFolderPath: 'apps.buttons',
-          destinationFolderPath: 'apps.invalid@char',
-        }),
-      ).rejects.toThrow(InvalidFolderPathError);
+      await expect(() =>
+        executeMove(collection(testDir), { kind: 'folder', source: 'apps.buttons', destination: 'apps.invalid@char' }),
+      ).toThrow(InvalidFolderPathError);
     });
   });
   describe('Existing destination folder', () => {
@@ -692,9 +683,10 @@ describe('Move Folder', () => {
       );
 
       // Move testdata into common (should merge with existing common.testdata)
-      const result = await moveFolder(collection(testDir), {
-        sourceFolderPath: 'testdata',
-        destinationFolderPath: 'common',
+      const result = await executeMove(collection(testDir), {
+        kind: 'folder',
+        source: 'testdata',
+        destination: 'common',
         nestUnderDestination: true,
       });
 

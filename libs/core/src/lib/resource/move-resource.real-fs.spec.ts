@@ -11,10 +11,8 @@ import {
   ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
-import { moveFolder } from '../folder/move-folder';
+import { executeMove, executeMoves } from './execute-move';
 import { calculateChecksum } from './checksum';
-import { moveResource } from './move-resource';
-import { moveResources } from './move-resources';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {
@@ -82,10 +80,10 @@ describe('moving resources keeps metadata (real fs)', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('moveResource carries values, details, checksums, and statuses', async () => {
+  it('executeMove carries values, details, checksums, and statuses', async () => {
     writeFolder('common');
 
-    const result = await moveResource(
+    const result = await executeMove(
       collection(),
       { source: 'common.ok', destination: 'shared.buttons.confirm' },
       { onMutation },
@@ -107,26 +105,22 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(existsSync(join(root, 'common', 'resource_entries.json'))).toBe(false);
   });
 
-  it('moveResource by pattern keeps statuses', async () => {
+  it('executeMove with a pattern keeps statuses', async () => {
     writeFolder('common', 'buttons');
 
-    await moveResource(collection(), { source: 'common.*', destination: 'shared' }, { onMutation });
+    await executeMove(collection(), { source: 'common.*', destination: 'shared' }, { onMutation });
 
     expect(read('tracker_meta.json', 'shared', 'buttons').ok.fr.status).toBe('verified');
     expect(read('tracker_meta.json', 'shared', 'buttons').ok.es.status).toBe('stale');
   });
 
-  it('moveResource across collections keeps statuses', async () => {
+  it('executeMove across collections keeps statuses', async () => {
     writeFolder('common');
     const otherCollection = join(root, 'other');
 
-    await moveResource(
+    await executeMove(
       collection(),
-      {
-        source: 'common.ok',
-        destination: 'common.ok',
-        toCollection: 'other',
-      },
+      { source: 'common.ok', destination: 'common.ok', toCollection: 'other' },
       {
         onMutation,
         config: {
@@ -151,13 +145,13 @@ describe('moving resources keeps metadata (real fs)', () => {
       locales: ['en', 'fr', 'es'],
       collections: { main: { translationsFolder: root } },
     };
-    await expect(
-      moveResource(
+    expect(() =>
+      executeMove(
         collection(),
         { source: 'common.ok', destination: 'shared.ok', toCollection: 'missing' },
         { config, onMutation },
       ),
-    ).rejects.toThrow(CollectionNotFoundError);
+    ).toThrow(CollectionNotFoundError);
     expect(collected).toEqual([]);
     expect(read('resource_entries.json', 'common')).toEqual(entries);
   });
@@ -171,13 +165,13 @@ describe('moving resources keeps metadata (real fs)', () => {
       locales: ['en', 'fr', 'es'],
       collections: { vendor: { translationsFolder: 'vendor', readOnly: true } },
     };
-    await expect(
-      moveResource(
+    expect(() =>
+      executeMove(
         collection(),
         { source: 'common.ok', destination: 'shared.ok', toCollection: 'vendor' },
         { config, cwd: root, onMutation },
       ),
-    ).rejects.toThrow(ReadOnlyCollectionError);
+    ).toThrow(ReadOnlyCollectionError);
     expect(collected).toEqual([]);
     expect(read('resource_entries.json', 'common')).toEqual(entries);
   });
@@ -191,7 +185,7 @@ describe('moving resources keeps metadata (real fs)', () => {
       locales: ['en', 'fr', 'es'],
       collections: { other: { translationsFolder: 'other' } },
     };
-    const result = await moveResource(
+    const result = await executeMove(
       collection(),
       { source: 'common.ok', destination: 'shared.ok', toCollection: 'other' },
       { config, cwd: root, onMutation },
@@ -201,15 +195,12 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(collected.map(({ translationsFolder }) => translationsFolder)).toEqual([root, join(root, 'other')]);
   });
 
-  it('moveFolder keeps statuses', async () => {
+  it('executeMove with a folder keeps statuses', async () => {
     writeFolder('apps', 'buttons');
 
-    const result = await moveFolder(
+    const result = await executeMove(
       collection(),
-      {
-        sourceFolderPath: 'apps.buttons',
-        destinationFolderPath: 'shared',
-      },
+      { kind: 'folder', source: 'apps.buttons', destination: 'shared' },
       { onMutation },
     );
 
@@ -224,7 +215,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     writeFolder('common');
     writeFolder('shared');
 
-    const result = await moveResource(collection(), { source: 'common.ok', destination: 'shared.ok' }, { onMutation });
+    const result = await executeMove(collection(), { source: 'common.ok', destination: 'shared.ok' }, { onMutation });
 
     expect(result.movedCount).toBe(0);
     expect(result.warnings[0]).toContain('Destination key already exists');
@@ -234,7 +225,7 @@ describe('moving resources keeps metadata (real fs)', () => {
   it('moves a pattern to the collection root with an empty destination', async () => {
     writeFolder('common', 'buttons');
 
-    const result = await moveResource(collection(), { source: 'common.*', destination: '' }, { onMutation });
+    const result = await executeMove(collection(), { source: 'common.*', destination: '' }, { onMutation });
 
     expect(result.errors).toEqual([]);
     expect(result.outcome).toBe('succeeded');
@@ -253,7 +244,7 @@ describe('moving resources keeps metadata (real fs)', () => {
       collections: { main: { translationsFolder: root } },
     };
 
-    const result = await moveResources(
+    const result = await executeMoves(
       collection(),
       [
         { source: 'common.ok', destination: 'ignored.ok', toCollection: 'missing' },
@@ -281,8 +272,8 @@ describe('moving resources keeps metadata (real fs)', () => {
     };
     const before = readFileSync(join(root, 'common', 'resource_entries.json'), 'utf8');
     const metadataBefore = readFileSync(join(root, 'common', 'tracker_meta.json'), 'utf8');
-    await expect(
-      moveResources(
+    expect(() =>
+      executeMoves(
         collection(),
         [
           { source: 'common.ok', destination: 'shared.ok' },
@@ -291,7 +282,7 @@ describe('moving resources keeps metadata (real fs)', () => {
         ],
         { config, onMutation },
       ),
-    ).rejects.toBeInstanceOf(InvalidResourceKeyError);
+    ).toThrow(InvalidResourceKeyError);
     expect(readFileSync(join(root, 'common', 'resource_entries.json'), 'utf8')).toBe(before);
     expect(readFileSync(join(root, 'common', 'tracker_meta.json'), 'utf8')).toBe(metadataBefore);
     expect(existsSync(join(root, 'shared'))).toBe(false);
@@ -315,12 +306,12 @@ describe('moving resources keeps metadata (real fs)', () => {
       { source: 'common.*', destination: 'invalid@prefix' },
       { source: 'common.ok', destination: '' },
     ]) {
-      await expect(
-        moveResources(collection(), [{ source: 'common.ok', destination: 'shared.ok' }, malformed], {
+      expect(() =>
+        executeMoves(collection(), [{ source: 'common.ok', destination: 'shared.ok' }, { ...malformed }], {
           config,
           onMutation,
         }),
-      ).rejects.toBeInstanceOf(InvalidResourceKeyError);
+      ).toThrow(InvalidResourceKeyError);
       expect(read('resource_entries.json', 'common')).toEqual(entries);
       expect(read('tracker_meta.json', 'common')).toEqual(meta);
       expect(existsSync(join(root, 'shared'))).toBe(false);
@@ -337,7 +328,7 @@ describe('moving resources keeps metadata (real fs)', () => {
       locales: ['en', 'fr', 'es'],
       collections: { main: { translationsFolder: root } },
     };
-    const result = await moveResources(
+    const result = await executeMoves(
       collection(),
       [
         { source: 'missing.key', destination: 'dest.key' },
@@ -371,9 +362,9 @@ describe('moving resources keeps metadata (real fs)', () => {
       if (options.filePath.endsWith(join('blocked', 'resource_entries.json'))) throw new Error('blocked write');
       return actual.writeJsonFile(options);
     });
-    let result: Awaited<ReturnType<typeof moveResources>>;
+    let result: Awaited<ReturnType<typeof executeMoves>>;
     try {
-      result = await moveResources(
+      result = await executeMoves(
         collection(),
         [
           { source: 'common.ok', destination: 'shared.ok' },
@@ -406,7 +397,7 @@ describe('moving resources keeps metadata (real fs)', () => {
       },
     };
 
-    const result = await moveResources(
+    const result = await executeMoves(
       collection(),
       [{ source: 'common.ok', destination: 'shared.ok', toCollection: 'vendor' }],
       { onMutation, config },
@@ -431,7 +422,7 @@ describe('moving resources keeps metadata (real fs)', () => {
         other: { translationsFolder: 'other' },
       },
     };
-    const result = await moveResources(
+    const result = await executeMoves(
       collection(),
       [
         { source: 'common.ok', destination: 'ignored.ok', toCollection: 'vendor' },
