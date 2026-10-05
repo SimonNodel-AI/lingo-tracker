@@ -3,8 +3,6 @@ import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
 import {
-  ERROR_CODES,
-  PROVIDER_ERROR_CODES,
   AutoTranslationDisabledError,
   BundleNotFoundError,
   CollectionNotFoundError,
@@ -23,6 +21,7 @@ import {
   ResourceAlreadyExistsError,
   TranslationError,
 } from '@simoncodes-ca/core';
+import { ERROR_CODES, PROVIDER_ERROR_CODES } from '../../../../../libs/core/src/lib/errors/error-codes';
 // Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
 import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import { JobNotFoundError } from '../jobs/job-not-found.error';

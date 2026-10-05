@@ -114,8 +114,6 @@ export {
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
   TranslationError,
-  ERROR_CODES,
-  PROVIDER_ERROR_CODES,
   type DomainErrorCode,
   type ErrorCode,
   type KnownProviderErrorCode,
