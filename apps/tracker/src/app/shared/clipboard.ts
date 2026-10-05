@@ -10,3 +10,23 @@ export async function copyToClipboard(text: string): Promise<ClipboardOutcome> {
     return 'failed';
   }
 }
+
+/** Copies once and renders exactly one toast; success effects run only after the write succeeds. */
+export async function copyWithFeedback(
+  text: string,
+  feedback: {
+    successMessage: string;
+    failedMessage: string;
+    notifications: { success(message: string): void; error(message: string): void };
+    onCopied?: () => void;
+  },
+): Promise<ClipboardOutcome> {
+  const outcome = await copyToClipboard(text);
+  if (outcome === 'copied') {
+    feedback.notifications.success(feedback.successMessage);
+    feedback.onCopied?.();
+  } else {
+    feedback.notifications.error(feedback.failedMessage);
+  }
+  return outcome;
+}

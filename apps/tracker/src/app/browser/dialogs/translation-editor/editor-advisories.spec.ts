@@ -115,7 +115,7 @@ describe('EditorAdvisories', () => {
     advisories.observe('', values, EMPTY);
     values.next(' Expenditure ');
     expect(advisories.baseValueText()).toBe(' Expenditure ');
-    expect(advisories.baseValueLength()).toBe(11);
+    expect(advisories.baseValueText().trim().length).toBe(11);
     expect(advisories.preferredTermFindings()).toEqual([]);
     vi.advanceTimersByTime(PREFERRED_TERM_DEBOUNCE_MS - 1);
     expect(advisories.preferredTermFindings()).toEqual([]);
