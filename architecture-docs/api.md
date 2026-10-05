@@ -11,6 +11,7 @@ Return to [architecture README](README.md).
 - [Endpoint Reference](#endpoint-reference)
 - [Component Diagram](#component-diagram)
 - [Error Mapping](#error-mapping)
+- [Completed Outcome HTTP Policy](#completed-outcome-http-policy)
 - [Static File Serving](#static-file-serving)
 - [Collection Index](#collection-index)
   - [Interface](#interface)
@@ -134,6 +135,7 @@ graph TD
             CFGMAP["config.mapper\nLingoTrackerConfig → LingoTrackerConfigDto"]
             SRCHMAP["search-result.mapper\nQuery → SearchRequest\nSearchPage + Collection → SearchResultsDto"]
             RESMAP["resource-response.mapper\nCore results → Resource response DTOs"]
+            FOLDMAP["folder-response.mapper\nCore results → Folder response DTOs"]
             STATUSMAP["index-status.mapper\nIndex read status → Retry body"]
         end
 
@@ -162,7 +164,7 @@ graph TD
     RESC --> SRCHMAP
     RESC --> RESMAP
     RESC --> STATUSMAP
-    FOLDC --> TREEMP
+    FOLDC --> FOLDMAP
     CONFIGC --> CFGMAP
     COLLC --> COLMAP
 
@@ -187,6 +189,12 @@ Controllers and the exception filter construct HTTP responses. Core errors decla
 Config-writing routes use `ConfigService.openProject()` or an opened collection to pass the request's config snapshot to core's guarded write. `PUT /config` opens the config through `ConfigService` for both protected terms and preferred terminology, so missing and malformed config use the same mapped read errors as other routes. Core errors reach the global exception filter (see [Error Mapping](#error-mapping)).
 
 **Read-only enforcement.** `@RouteCollection()` defaults `writable` to true for any method other than `GET`; `{ writable: false }` can override it. `RouteCollectionPipe` is the single API choke point for source collection resolution and read-only enforcement. A missing collection answers 404 before a read-only check. The `Collections` controller does not use this decorator: updating a collection's config entry or unregistering it (`PUT`/`DELETE /collections/:name`) is permitted even when its resources are read-only. Core defaults `readOnly` to true for new `node_modules` paths when the DTO omits it.
+
+---
+
+## Completed Outcome HTTP Policy
+
+A completed delete or move report uses the route's normal success status even when core returns `outcome: 'failed'`. Resource deletion returns HTTP 200; resource and folder moves are POST routes and return HTTP 201. Per-item failures stay in `errors`, alongside any successful count. Controllers do not turn these completed outcomes into HTTP errors. The CLI uses the same internal outcome to select an exit code. Response DTOs currently exclude `outcome`; the API mappers project it away. Thrown precondition and operational errors still use the exception filter below; folder deletion throws on failure instead of returning a failed report.
 
 ---
 
@@ -430,7 +438,7 @@ A provider or folder write failure in one batch does not reject the run. That ba
 
 ## Mapper Layer
 
-The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. Response transformations happen in `apps/api/src/app/mappers/`. Request DTOs whose types already match core inputs pass through directly, including resource creation, deletion, move operations, and folder requests. Update requests still adapt `locales` to core `translations` inline. Controllers map domain responses to DTOs. Bundle definitions are the one exception: `BundleDefinitionDto` is an alias of the domain `BundleDefinition`, so the bundles controller passes it to core as it is.
+The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. Response transformations happen in `apps/api/src/app/mappers/`. Request DTOs whose types already match core inputs pass through directly, including resource creation, deletion, move operations, and folder requests. Update requests still adapt `locales` to core `translations` inline. Controllers use mappers only when response data needs shaping. Locale results pass through directly, typed as their response DTOs by the controller. Core owns its result interfaces independently of data-transfer; neither library imports the other. API [Response Contracts](glossary.md#response-contracts) enforce equality at this seam. Bundle definitions also pass through: `BundleDefinitionDto` is an alias of the domain `BundleDefinition`, so the bundles controller passes it to core as it is.
 
 For the entity types that mappers transform, see [domain-and-data-model.md](domain-and-data-model.md).
 
@@ -442,7 +450,8 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 | `config.mapper.ts` | `ProjectTermsView` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper`; bundles pass through unmapped (the DTO is the domain `BundleDefinition`); shallow clone of `locales[]`. Takes one project snapshot, including both term kinds and the workspace name. The mapper reads no files. |
 | `bundle.mapper.ts` | `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | No definition mapping: `BundleDefinitionDto` is the domain type, and the domain `normalizeBundleDefinition` does the trimming. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper copies core's written paths, includes type metadata when the type outcome is `written`, and restores the previous warning text for failed or skipped type generation so the Tracker sees it. |
 | `search-result.mapper.ts` | `SearchResult` + `Collection` → `SearchResultDto` | The hit's Resource Summary (from its `key`, `source`, `translations` and `metadata`) plus `matchType` (`'similar-value'` for `mode=similar`), `matchedLocales`, and `similarity` (0..1) when the search was in similar mode |
-| `resource-response.mapper.ts` | Resource create, update, translate, delete and move results → endpoint response DTOs | Keeps each endpoint's optional-field rules. Supplies the full key and collection for Resource Summaries. Copies terminology findings and problems. |
+| `resource-response.mapper.ts` | Resource create, update, translate, delete and move results → endpoint response DTOs | Keeps optional-field rules, builds Resource Summaries and copies terminology. Delete and move project away internal `outcome`; resource moves also omit folder counts. |
+| `folder-response.mapper.ts` | Folder create, delete and move results → endpoint response DTOs | Builds the loaded empty insertion node using core's resolved address and the submitted name; adds `deleted: true`; omits move `outcome` and defaults absent folder counts to zero. |
 | `search-result.mapper.ts` | `SearchQuery` → `NormalizedSearchRequest`; `SearchPage` or blank outcome → `SearchResultsDto` | Translates the mode, parses the limit, and delegates normalization to core. Preserves the original query in the response. |
 | `resource-tree.mapper.ts` | Tree endpoint result + `includeNested` → `ResourceTreeDto` | Includes nested entries only for `includeNested=true`. Resolves their addresses against the requested folder, including the collection root. |
 | `index-status.mapper.ts` | Unavailable `TreeRead` status → `TreeStatusResponseDto` | Supplies the existing retry status and message. The controller sets HTTP 202. |
@@ -450,6 +459,10 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 The request and index-status adapters belong in `mappers/` because they translate API contracts. The Collection Index continues to own reads and indexing.
 
 The resource response mappers preserve the existing endpoint differences. Translate always includes `skippedLocales`, including an empty array, and omits empty `warnings`. Create omits empty `skippedLocales`. Update always includes `skippedLocales`, `message`, and `resource` as object fields, even when their values are `undefined`. JSON serialization omits those undefined values. Create and update omit `terminology` only when both findings and problems are empty or absent.
+
+The [Folder Response Mapper](glossary.md#folder-response-mapper) owns folder response shaping. Creation preserves the submitted name, including multiple segments, and uses core's resolved `folderAddress` for both `fullPath` and tree `path`. It returns a loaded empty tree even when `created` is false, preserving the existing insertion response. Deletion adds `deleted: true`; a failed folder deletion throws before mapping. Folder moves reuse `mapMoveResourcesResultToDto` for the common payload, then add the folder count while preserving the response field order.
+
+Core's delete and move results own their payload fields, internal `outcome`, and optional move folder counts. `response-contracts.ts` checks equality of locale results against their DTOs (normalizing readonly properties), delete results against `DeleteResourceResponseDto` after omitting `outcome`, and move results against `Required<MoveResourceResponseDto>` after omitting `outcome` and `foldersDeleted`. Adding, removing, or changing payload fields fails API typecheck. `MoveFolderResponseDto` reuses the required diagnostics shape within data-transfer. These checks introduce no core → data-transfer dependency. Delete and move mappers remain because these current core results are not structurally equal to the HTTP payloads. None of these DTOs has an `outcome` field, so the projections omit it consistently and keep the wire contract unchanged.
 
 Delete always includes the `errors` object field, even when its value is `undefined`. Move always includes `warnings` and `errors`, including empty arrays. Blank search responses use `query || ''`; normal search responses use `query ?? ''`. These rules remain unchanged.
 

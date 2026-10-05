@@ -399,6 +399,8 @@ deleteFolder(collection, { folderPath }, { onMutation? }?)
 
 **Key placement.** `addResource` stores `targetFolder.key` (`resolveResourceKey`, applied by `validateAndResolvePaths`). `editResource` takes the entry's full, existing key. Its `moveTo` is a destination folder (`''` is the collection root): the entry keeps its entry key (the last segment) and moves there through the [Entry Relocation](#entry-relocation), after the edit is saved. The destination must not already have that entry key (`ResourceAlreadyExistsError`). This is checked before anything is written, and again by the relocation, which reads both folders fresh just before the move, because auto-translation may run in between; a collision found then throws with the edit already saved in the source folder. The destination is written before the source entry is removed.
 
+Core owns its locale, resource deletion, and move result interfaces and does not depend on data-transfer. The API returns locale results directly as DTOs and checks structural equality through its [Response Contracts](glossary.md#response-contracts). Delete and move results include internal `RunOutcome`; moves also carry optional folder counts. The API checks the projected payload types, retains mappers for the extra internal fields, and preserves its [completed-outcome HTTP policy](api.md#completed-outcome-http-policy).
+
 ### Locale seeding
 
 [Locale seeding](glossary.md#locale-seeding) (`seedLocales` in `lib/resource/locale-seeding.ts`) decides what each of `collection.targetLocales` gets when a base value is written:

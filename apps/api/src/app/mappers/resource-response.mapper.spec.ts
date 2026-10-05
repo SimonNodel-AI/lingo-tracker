@@ -152,6 +152,7 @@ describe('mapDeleteResourceResultToDto', () => {
     const dto = mapDeleteResourceResultToDto({ outcome: 'succeeded', entriesDeleted: 1 });
     expect(dto).toStrictEqual({ entriesDeleted: 1, errors: undefined });
     expect(Object.keys(dto)).toEqual(['entriesDeleted', 'errors']);
+    expect(dto).not.toHaveProperty('outcome');
   });
 
   it('passes through empty and nonempty errors', () => {
@@ -170,8 +171,23 @@ describe('mapMoveResourcesResultToDto', () => {
       const dto = mapMoveResourcesResultToDto(result);
       expect(dto).toStrictEqual({ movedCount: result.movedCount, warnings: result.warnings, errors: result.errors });
       expect(Object.keys(dto)).toEqual(['movedCount', 'warnings', 'errors']);
+      expect(dto).not.toHaveProperty('outcome');
       expect(dto.warnings).toBe(result.warnings);
       expect(dto.errors).toBe(result.errors);
     }
+  });
+});
+
+describe('resource move payload projection', () => {
+  it('omits folder counts from batches that contain folder selections', () => {
+    expect(
+      mapMoveResourcesResultToDto({
+        outcome: 'succeeded',
+        movedCount: 1,
+        foldersDeleted: 1,
+        warnings: [],
+        errors: [],
+      }),
+    ).toStrictEqual({ movedCount: 1, warnings: [], errors: [] });
   });
 });
