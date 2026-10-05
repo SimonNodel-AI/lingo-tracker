@@ -108,14 +108,26 @@ describe('addResourceCommand (real project)', () => {
     });
   });
 
-  it('prints the typed core error for an invalid translation status', async () => {
+  it('rejects an invalid translation status before calling core', async () => {
     const result = await project.run(addResourceCommand, {
       ...flags,
       translations: '[{"locale":"fr","value":"Oui","status":"done"}]',
     });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toBe(
-      '❌ Invalid translation status "done". Valid statuses: new, translated, stale, verified\n',
+      '❌ Invalid --translations: item 0: status must be one of new, translated, stale, verified\n',
+    );
+    expect(project.exists('translations/main/buttons')).toBe(false);
+  });
+
+  it('rejects a non-string status with exit 1 and a flag diagnostic', async () => {
+    const result = await project.run(addResourceCommand, {
+      ...flags,
+      translations: '[{"locale":"fr","value":"Oui","status":null}]',
+    });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      '❌ Invalid --translations: item 0: status must be one of new, translated, stale, verified\n',
     );
     expect(project.exists('translations/main/buttons')).toBe(false);
   });
@@ -126,7 +138,7 @@ describe('addResourceCommand (real project)', () => {
       translations: '[{"locale":"fr","status":"verified"}]',
     });
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Invalid --translations: expected a JSON array');
+    expect(result.stderr).toContain('Invalid --translations: item 0: value must be a string');
     expect(project.exists('translations/main/buttons')).toBe(false);
   });
 

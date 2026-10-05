@@ -77,6 +77,7 @@ describe('domain public surface', () => {
       'normalizeTag',
       'normalizeTags',
       'normalizedLevenshtein',
+      'parseTranslationInputs',
       'recordTranslation',
       'resolveAllReferences',
       'resolveImportStatus',

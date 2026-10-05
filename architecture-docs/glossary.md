@@ -567,6 +567,8 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/lib/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
 
+`parseTranslationInputs(raw)` in domain checks supplied translations once: an array of objects with a non-empty string locale, string value, and optional status from `TRANSLATION_STATUSES`. It returns a typed list of `TranslationInput` values or the first failure's zero-based item index and reason (a null index means the input is not an array). Core's `AddResourceParams.translations` uses the same type. The CLI owns JSON decoding and flag diagnostics; it also parses interactive translation answers through this function.
+
 Explained in context: [`core-library.md`](core-library.md#locale-seeding)
 
 ---
@@ -1089,7 +1091,7 @@ A status (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review
 | `stale` | Base locale value changed after translation was written | Failure |
 | `verified` | Translation reviewed and approved by a language expert | Success |
 
-The lifecycle flows: `new` → `translated` → `verified`. If the base value changes after `verified`, the status becomes `stale`. A caller can explicitly mark an identical copy `translated` or `verified`. Core checks status values on resource writes and checks each export filter value with the same `InvalidTranslationStatusError`. The CLI parses `--translations` JSON shape and splits `--status`, rejects an empty status split with its flag message, then passes status values to core.
+The lifecycle flows: `new` → `translated` → `verified`. If the base value changes after `verified`, the status becomes `stale`. A caller can explicitly mark an identical copy `translated` or `verified`. Core checks status values on resource writes and checks each export filter value with the same `InvalidTranslationStatusError`. The CLI decodes `--translations` JSON and passes it to domain’s `parseTranslationInputs` to check shape and statuses. It splits `--status`, rejects an empty status split with its flag message, then passes status values to core.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`bundle-generation.md`](bundle-generation.md), [`domain-and-data-model.md`](domain-and-data-model.md)
 
