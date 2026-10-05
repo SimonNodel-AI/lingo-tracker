@@ -1,3 +1,4 @@
+import type { SortField, SortDirection } from '../../translations/utils/sort-translations';
 import { computed, type Signal } from '@angular/core';
 import { signalStoreFeature, type, withComputed } from '@ngrx/signals';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
@@ -14,8 +15,8 @@ export function withTranslationsFeature<_>() {
         selectedLocales: string[];
         availableLocales: string[];
         selectedStatuses: TranslationStatus[];
-        sortField: 'key' | 'status';
-        sortDirection: 'asc' | 'desc';
+        sortField: SortField;
+        sortDirection: SortDirection;
       }>(),
       props: type<{ isSearchMode: Signal<boolean> }>(),
     },

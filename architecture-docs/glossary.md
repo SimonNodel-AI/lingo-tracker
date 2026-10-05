@@ -98,6 +98,14 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ---
 
+### Bundle Run Controller
+
+The plain Tracker controller in `apps/tracker/src/app/collections/store/bundle-run-controller.ts`. `start(name, locales?, defaultLocaleCount?)` ignores a running bundle and replaces a finished result. `startAll(names, defaultLocaleCount?)` skips running bundles and keeps an active batch. `restore()` restores persisted runs, immediately queries active jobs and polls them to completion; a failed resumed request removes the run. `clear(name)` cancels that bundle’s subscription and persists dismissal (removing the key when the run map is empty), and `destroy()` cancels requests and polling. Starting or resuming a bundle replaces its previous subscription. Its three ports supply jobs, Keyed Storage, and a clock with a poll scheduler. `changes` publishes run maps, started batch names, batch position and busy state. Start/poll errors become failed runs with a localized fallback and any API rule details; storage errors never break a run. Batch names are not persisted.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-runs)
+
+---
+
 ### Bundle Run Preparation
 
 The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, typeWarning, tokenConstantNameOverride }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `selectPreparedBundleLocale` selects one locale and adds the empty-bundle warning in one place. A prepared `typeWarning` becomes the optional result `configWarning`, separate from counted run warnings. If generation throws before returning a result, the API logs that warning once.
@@ -108,9 +116,9 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#where-bundle
 
 ### Bundle Runs
 
-The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. `withBundlesFeature` stores those names in `bundleBatch` and exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
+The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Run Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
 
-The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The store owns API calls, polling, and session storage. Bundle warnings travel through named result fields: `warnings` carries generation warnings, `configWarning` carries the legacy type-setting deprecation, and `typeWarning` carries a skipped or failed type-outcome warning. The prepared config deprecation also travels on `BundleRunOutcome`, including when generation throws. The CLI prints that deprecation before success or error handling and renders type status separately, counting only generation warnings in its summary. The API composes generation warnings, config deprecation, then type-outcome warning into the unchanged job result DTO `warnings`, each once. Core totals count generation warnings and config deprecations only for returned generation results, as before. There is no separate warning event. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
+The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. Bundle warnings travel through named result fields: `warnings` carries generation warnings, `configWarning` carries the legacy type-setting deprecation, and `typeWarning` carries a skipped or failed type-outcome warning. The prepared config deprecation also travels on `BundleRunOutcome`, including when generation throws. The CLI prints that deprecation before success or error handling and renders type status separately, counting only generation warnings in its summary. The API composes generation warnings, config deprecation, then type-outcome warning into the unchanged job result DTO `warnings`, each once. Core totals count generation warnings and config deprecations only for returned generation results, as before. There is no separate warning event. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
@@ -549,6 +557,16 @@ Explained in context: [`api.md`](api.md#translation-job-system)
 
 ---
 
+## K
+
+### Keyed Storage
+
+The typed best-effort persistence seam in `apps/tracker/src/app/shared/storage/keyed-storage.ts`. `KeyedStorage<T>` binds one key and a fixed `{ parse, serialize }` codec to a lazy raw adapter. The `json` and `raw` presets keep the wire format paired. `read()` returns a parsed value or absence, `write(value)` persists it, and `remove()` removes only that key. Missing adapters, blocked storage getters, read/parser errors, serialization/quota errors and removal errors are silently contained. No operation throws or logs a storage failure. Injectable browser local/session adapters avoid storage access on the server; `MemoryStorageAdapter` supplies isolated test storage. Theme and UI locale retain raw-string formats; view preferences and bundle runs retain JSON and their existing keys.
+
+Explained in context: [`frontend.md`](frontend.md)
+
+---
+
 ## L
 
 ### List Edit Merge
@@ -599,7 +617,7 @@ Explained in context: [`core-library.md`](core-library.md#locale-seeding)
 
 ### Locale Selection
 
-The one pure value for density, the locale filter and the remembered compact locale in the Tracker (`apps/tracker/src/app/browser/store/locale-selection.ts`). Its transitions select locales, switch density and restore saved preferences; its projections give the locales and filter label to show. Entering compact remembers the full selection; leaving restores it unless the user changed the compact selection. The default compact locale is the available base locale, else the first available locale. The filter and view-preferences features read and patch this value; persistence stays in the view-preferences feature. Repeating the current density is a no-op, preserving the multi-selection across compact → compact → full.
+The one pure value for density, the locale filter and the remembered compact locale in the Tracker (`apps/tracker/src/app/browser/store/locale-selection.ts`). Its transitions select locales, switch density and restore saved preferences; its projections give the locales and filter label to show. Entering compact remembers the full selection; leaving restores it unless the user changed the compact selection. The default compact locale is the available base locale, else the first available locale. The filter and view-preferences features read and patch this value; the [Stored View Preferences](#stored-view-preferences) module owns the persisted shape, and the feature persists it through [Keyed Storage](#keyed-storage). Repeating the current density is a no-op, preserving the multi-selection across compact → compact → full.
 
 In compact, select-all and clear-all change only the filter; restoration keeps the remembered `compactLocale` even when it displays a fallback. For an empty collection, compact display falls back to the base locale string while restoration selects nothing.
 
@@ -974,6 +992,14 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 The domain module `libs/domain/src/lib/staleness.ts` holds both parts of this rule. `applyBaseChange` sets a translation to `stale` when the base value changes. It sets an identical copy to `new`. When a writer omits the status, `recordTranslation` stores `new` for a copy of the base or `translated` for a different value. It keeps every explicit status, including `translated`. [Resource Folder](#resource-folder) applies these rules through `setBase` and `setTranslation`. The module also holds `needsTranslation`; the [Import Strategy Policy](#import-strategy-policy) owns `resolveImportStatus`. `needsTranslation` uses the [translation status](#translation-status) module's `isNeedsWorkStatus` predicate for stored statuses and treats missing metadata as work.
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
+
+---
+
+### Stored View Preferences
+
+The pure Tracker module `apps/tracker/src/app/browser/store/view-preferences.ts`. One field schema in `view-preferences.types.ts` defines the persisted type, snapshot fields and validation. `snapshot(state)` copies the eight preferences from plain values or field readers, excluding transient state and copying arrays. Field readers keep the persistence effect subscribed only to those preferences. `restore(saved, ctx)` returns a partial state patch: absent or non-object data is ignored, corrupt fields are omitted independently, and Locale Selection resolves retired `medium` density and locales removed from the collection. An object with no valid fields still resets density to compact and resolves the locale selection against the current collection. Other preference fields remain unchanged. Missing density in a saved object defaults to compact. Restoration never overwrites full-selection memory. The store feature caches one keyed store per collection and owns the persistence effect.
+
+Explained in context: [`frontend.md`](frontend.md#browserstore--feature-composition)
 
 ---
 
