@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { commandRegistrations } from './testing/command-registrations';
+import { flagValues } from './runner/flag-record';
 import { createCli } from './program';
 import { Command } from 'commander';
 import { afterAll, describe, expect, it, vi } from 'vitest';
@@ -67,7 +69,13 @@ describe('Commander surface baseline', () => {
     };
     for (const command of commands) {
       command.parseOptions(argvByCommand[command.name()]);
-      surface[command.name()] = { help: command.helpInformation(), options: command.opts() };
+      const registration = commandRegistrations.find((entry) => entry.name === command.name());
+      if (!registration) throw new Error(`Missing registration for ${command.name()}`);
+      // Snapshot the values delivered to handlers, including record-key mapping.
+      surface[command.name()] = {
+        help: command.helpInformation(),
+        options: flagValues(registration.flags, command.opts(), []),
+      };
     }
     expect(surface).toMatchSnapshot();
   });

@@ -27,6 +27,38 @@ describe('command flag records', () => {
     expect(calls).toEqual([{ source: 'a', destination: 'b', tags: ['x', 'y'], limit: 5 }]);
   });
 
+  it('maps renamed scalar, list and paired negated attributes without leaking Commander keys', async () => {
+    const calls: unknown[] = [];
+    const flags = defineFlags<{ resultLimit?: number; localeIDs?: string[]; transformICU?: boolean }>()({
+      resultLimit: { flags: '--max-results <n>', parse: Number, runtimeDefault: 5 },
+      localeIDs: { flags: '--locale-ids <ids>', list: 'optional', runtimeDefault: [] },
+      transformICU: {
+        flags: '--transform-icu',
+        negative: { flags: '--no-transform-icu', description: 'Disable transformation' },
+      },
+    });
+    const invoke = async (argv: string[]) => {
+      const root = new Command();
+      registerCommand(root, {
+        name: 'convert',
+        description: '',
+        flags,
+        load: async () => async (options) => {
+          calls.push(options);
+        },
+      });
+      await root.parseAsync(['convert', ...argv], { from: 'user' });
+    };
+    await invoke(['--max-results', '8', '--locale-ids', 'en,fr', '--transform-icu']);
+    await invoke(['--no-transform-icu']);
+    await invoke([]);
+    expect(calls).toEqual([
+      { resultLimit: 8, localeIDs: ['en', 'fr'], transformICU: true },
+      { resultLimit: 5, localeIDs: [], transformICU: false },
+      { resultLimit: 5, localeIDs: [] },
+    ]);
+  });
+
   it('creates fresh repeatable defaults for every registered command', async () => {
     const flags = defineFlags<{ tag?: string[] }>()({ tag: { flags: '--tag <tag>', list: 'repeatable' } });
     const root = new Command();

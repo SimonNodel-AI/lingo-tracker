@@ -169,7 +169,7 @@ Base-locale values that use a discouraged term get a warning suggesting the pref
 ### Other useful commands
 \`\`\`bash
 npx lingo-tracker normalize ${flagName(NORMALIZE_FLAGS.collection)} ${primary.name}
-npx lingo-tracker validate ${flagName(NORMALIZE_FLAGS.collection)} ${primary.name}
+npx lingo-tracker validate
 \`\`\``;
 }
 
