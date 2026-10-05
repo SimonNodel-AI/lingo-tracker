@@ -1,3 +1,11 @@
+import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
+import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
+import { DELETE_RESOURCE_FLAGS } from './delete-resource-flags';
+import { PREFERRED_TERMINOLOGY_FLAGS } from './preferred-terminology-flags';
+import { NORMALIZE_FLAGS } from './normalize-flags';
+import { flagName } from '../runner/flag-record';
+import { BUNDLE_FLAGS } from './bundle-flags';
+import { INSTALL_SKILL_FLAGS } from './install-skill-flags';
 import { hasFsErrorCode } from '@simoncodes-ca/core';
 import fs from 'fs';
 import path from 'path';
@@ -104,8 +112,10 @@ export function generateCollectionsSection(collections: CollectionSpec[]): strin
 export function generateCliCommandsSection(collections: CollectionSpec[], tokenCasing?: string): string {
   const primary = collections[0];
   const bundleFlag =
-    collections.length === 1 ? `--name ${primary.bundle}` : `--name ${collections.map((c) => c.bundle).join(',')}`;
-  const casingFlag = tokenCasing ? ` --token-casing ${tokenCasing}` : '';
+    collections.length === 1
+      ? `${flagName(BUNDLE_FLAGS.name)} ${primary.bundle}`
+      : `${flagName(BUNDLE_FLAGS.name)} ${collections.map((c) => c.bundle).join(',')}`;
+  const casingFlag = tokenCasing ? ` ${flagName(BUNDLE_FLAGS.tokenCasing)} ${tokenCasing}` : '';
 
   const multiCollectionNote =
     collections.length > 1
@@ -119,11 +129,11 @@ export function generateCliCommandsSection(collections: CollectionSpec[], tokenC
   return `${notePrefix}### Add a resource
 \`\`\`bash
 npx lingo-tracker add-resource \\
-  --collection ${primary.name} \\
-  --key <dot.delimited.key> \\
-  --value "<base locale text>" \\
-  --comment "<context for translators>" \\
-  --tags "<single top-level domain tag>"
+  ${flagName(ADD_RESOURCE_FLAGS.collection)} ${primary.name} \\
+  ${flagName(ADD_RESOURCE_FLAGS.key)} <dot.delimited.key> \\
+  ${flagName(ADD_RESOURCE_FLAGS.value)} "<base locale text>" \\
+  ${flagName(ADD_RESOURCE_FLAGS.comment)} "<context for translators>" \\
+  ${flagName(ADD_RESOURCE_FLAGS.tags)} "<single top-level domain tag>"
 \`\`\`
 
 ### Regenerate bundle (after adding/editing resources)
@@ -135,31 +145,31 @@ This regenerates both the JSON bundle files and the typed TypeScript token const
 ### Edit a resource
 \`\`\`bash
 npx lingo-tracker edit-resource \\
-  --collection ${primary.name} \\
-  --key <dot.delimited.key> \\
-  --base-value "<new text>"
+  ${flagName(EDIT_RESOURCE_FLAGS.collection)} ${primary.name} \\
+  ${flagName(EDIT_RESOURCE_FLAGS.key)} <dot.delimited.key> \\
+  ${flagName(EDIT_RESOURCE_FLAGS.baseValue)} "<new text>"
 \`\`\`
 
 ### Delete a resource
 \`\`\`bash
 npx lingo-tracker delete-resource \\
-  --collection ${primary.name} \\
-  --key <dot.delimited.key> \\
-  --yes
+  ${flagName(DELETE_RESOURCE_FLAGS.collection)} ${primary.name} \\
+  ${flagName(DELETE_RESOURCE_FLAGS.key)} <dot.delimited.key> \\
+  ${flagName(DELETE_RESOURCE_FLAGS.yes)}
 \`\`\`
 
 ### Preferred terminology (project-wide)
 \`\`\`bash
-npx lingo-tracker preferred-terminology --list
-npx lingo-tracker preferred-terminology --add "<discouraged term>" --preferred "<preferred term>" --reason "<optional reason>"
-npx lingo-tracker preferred-terminology --remove "<discouraged term>"
+npx lingo-tracker preferred-terminology ${flagName(PREFERRED_TERMINOLOGY_FLAGS.list)}
+npx lingo-tracker preferred-terminology ${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} "<discouraged term>" ${flagName(PREFERRED_TERMINOLOGY_FLAGS.preferred)} "<preferred term>" ${flagName(PREFERRED_TERMINOLOGY_FLAGS.reason)} "<optional reason>"
+npx lingo-tracker preferred-terminology ${flagName(PREFERRED_TERMINOLOGY_FLAGS.remove)} "<discouraged term>"
 \`\`\`
 Base-locale values that use a discouraged term get a warning suggesting the preferred term.
 
 ### Other useful commands
 \`\`\`bash
-npx lingo-tracker normalize --collection ${primary.name}
-npx lingo-tracker validate --collection ${primary.name}
+npx lingo-tracker normalize ${flagName(NORMALIZE_FLAGS.collection)} ${primary.name}
+npx lingo-tracker validate ${flagName(NORMALIZE_FLAGS.collection)} ${primary.name}
 \`\`\``;
 }
 
@@ -219,6 +229,7 @@ export async function readPatternsMdTemplate(): Promise<string> {
 }
 
 export const installSkillCommand = defineCommand<InstallSkillOptions>()({
+  flags: INSTALL_SKILL_FLAGS,
   name: 'Install skill',
   // Generates a skill file from templates; reads no project configuration.
   collection: 'none',
@@ -264,8 +275,8 @@ export const installSkillCommand = defineCommand<InstallSkillOptions>()({
       }
     } else {
       throw new Error(
-        'Missing required option in non-interactive mode: --collection\n' +
-          'Usage: npx lingo-tracker install-skill --collection name:bundle:TokenConstant:tokenFilePath',
+        `Missing required option in non-interactive mode: ${flagName(INSTALL_SKILL_FLAGS.collection)}\n` +
+          `Usage: npx lingo-tracker install-skill ${flagName(INSTALL_SKILL_FLAGS.collection)} name:bundle:TokenConstant:tokenFilePath`,
       );
     }
 

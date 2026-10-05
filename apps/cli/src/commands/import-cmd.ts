@@ -1,3 +1,4 @@
+import { IMPORT_FLAGS } from './import-cmd-flags';
 import { type ImportResult, type ImportRunOptions, type RunOutcome, runImport } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -10,6 +11,7 @@ import { type ImportCommandOptions, importQuestions, resolveImportOptions } from
 export type { ImportCommandOptions } from './import-options';
 
 export const importCommand = defineCommand<ImportCommandOptions>()({
+  flags: IMPORT_FLAGS,
   name: 'Import',
   collection: 'writable',
   prompts: (options, { collection, cwd }) =>

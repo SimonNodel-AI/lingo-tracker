@@ -1,3 +1,4 @@
+import { CommandOutput } from '../runner/command-output';
 import type { RunOutcome } from '@simoncodes-ca/core';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import type { CommandResult } from '../runner/command-runner';
@@ -6,7 +7,12 @@ import { ConsoleFormatter } from './console-formatter';
 /** Longest warnings or errors list printed in full when a run summary file holds the rest. */
 export const RUN_REPORT_LIST_LIMIT = 10;
 
+export type RunReportPresentation = { readonly kind: 'text' } | { readonly kind: 'json'; readonly payload: unknown };
+
 export interface RunReport {
+  presentation?: RunReportPresentation;
+  section?: string;
+  notice?: string;
   /** Labeled totals printed first, in order, on stdout. */
   counts?: Readonly<Record<string, number>>;
   warnings: readonly string[];
@@ -24,8 +30,23 @@ export interface RunReport {
  * with `- ` bullets. A list over {@link RUN_REPORT_LIST_LIMIT} is capped only when the
  * full list is in the run summary file; otherwise every item is printed.
  */
-export function printRunReport({ counts, warnings, errors, outcome, dryRun, summaryPath }: RunReport): CommandResult {
-  for (const [label, value] of Object.entries(counts ?? {})) ConsoleFormatter.keyValue(label, value);
+export function printRunReport({
+  counts,
+  warnings,
+  errors,
+  outcome,
+  dryRun,
+  summaryPath,
+  presentation,
+  section,
+  notice,
+}: RunReport): CommandResult {
+  if (presentation?.kind === 'json') CommandOutput.log(JSON.stringify(presentation.payload, null, 2));
+  else {
+    if (section) ConsoleFormatter.section(section);
+    for (const [label, value] of Object.entries(counts ?? {})) ConsoleFormatter.keyValue(label, value);
+    if (notice) ConsoleFormatter.warning(notice);
+  }
   const fullListPath = dryRun ? undefined : summaryPath;
   if (warnings.length > 0)
     ConsoleFormatter.warning(`Warnings (${warnings.length}):`, bulletList(warnings, fullListPath));

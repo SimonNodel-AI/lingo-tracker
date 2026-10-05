@@ -1,27 +1,32 @@
-export const importHelpText = `
+import { flagName } from './flag-record';
+import { IMPORT_OPTION_TABLE } from '../commands/import-option-table';
+import { VALIDATE_FLAGS } from '../commands/validate-options';
+import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
+
+export const importHelpText = () => `
 Examples:
   # Import XLIFF from translation service (most common workflow)
-  $ lingo-tracker import --source translations-es.xlf --locale es
+  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} translations-es.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} es
 
   # Import with dry-run to preview changes first
-  $ lingo-tracker import --source translations-fr.xlf --locale fr --dry-run
+  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} translations-fr.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} fr ${flagName(IMPORT_OPTION_TABLE.dryRun)}
 
   # Import JSON file (format auto-detected from .json extension)
-  $ lingo-tracker import --source translated-de.json --locale de
+  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} translated-de.json ${flagName(IMPORT_OPTION_TABLE.locale)} de
 
   # Migrate from another translation system with rich metadata
-  $ lingo-tracker import --source old-system.json --locale es \\
-      --strategy migration --create-missing --update-comments --update-tags
+  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} old-system.json ${flagName(IMPORT_OPTION_TABLE.locale)} es \\
+      ${flagName(IMPORT_OPTION_TABLE.strategy)} migration ${flagName(IMPORT_OPTION_TABLE.createMissing)} ${flagName(IMPORT_OPTION_TABLE.updateComments)} ${flagName(IMPORT_OPTION_TABLE.updateTags)}
 
   # Language expert verification workflow
-  $ lingo-tracker import --source verified-ja.xlf --locale ja --strategy verification
+  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} verified-ja.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} ja ${flagName(IMPORT_OPTION_TABLE.strategy)} verification
 
   # Bulk update existing translations (preserves current status)
-  $ lingo-tracker import --source updates-pt.json --locale pt --strategy update
+  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} updates-pt.json ${flagName(IMPORT_OPTION_TABLE.locale)} pt ${flagName(IMPORT_OPTION_TABLE.strategy)} update
 
   # Import to specific collection with verbose logging
-  $ lingo-tracker import --source admin-ko.xlf --locale ko \\
-      --collection admin --verbose
+  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} admin-ko.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} ko \\
+      ${flagName(IMPORT_OPTION_TABLE.collection)} admin ${flagName(IMPORT_OPTION_TABLE.verbose)}
 
 Import Strategies:
   translation-service  Professional translation import (default)
@@ -35,7 +40,7 @@ Import Strategies:
                        - Indicates higher confidence level
 
   migration           Migrate from another translation system
-                       - Allows creating missing resources (with --create-missing)
+                       - Allows creating missing resources (with ${flagName(IMPORT_OPTION_TABLE.createMissing)})
                        - Resolves Transloco-style references: {{t('key')}}
                        - Can update comments and tags
                        - Best for one-time migration
@@ -47,34 +52,34 @@ Import Strategies:
 
 Notes:
   - Format is auto-detected from file extension (.xlf, .xliff, .json)
-  - Use --dry-run to preview changes before committing
+  - Use ${flagName(IMPORT_OPTION_TABLE.dryRun)} to preview changes before committing
   - Summary report saved to {translationsFolder}/import-summary.md
   - Large files (>5MB) will show a warning
 `;
 
-export const validateHelpText = `
+export const validateHelpText = () => `
 Examples:
   # Basic validation (strict mode - requires all translations verified)
   $ lingo-tracker validate
 
   # Relaxed mode - allow translated status with warnings
-  $ lingo-tracker validate --allow-translated
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.allowTranslated)}
 
   # Skip specific locales (e.g. newly-added locale still in progress)
-  $ lingo-tracker validate --skip-locales fr
-  $ lingo-tracker validate --skip-locales fr,de
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.skipLocales)} fr
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.skipLocales)} fr,de
 
   # Skip ICU compilation; other checks still apply
-  $ lingo-tracker validate --skip-icu
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.skipIcu)}
 
   # Also warn about base-locale plurals that break when copied to ja/ko
-  $ lingo-tracker validate --require-portable-plurals
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.requirePortablePlurals)}
 
   # Skip the placeholder-agreement check
-  $ lingo-tracker validate --skip-placeholders
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.skipPlaceholders)}
 
   # Skip the protected-term preservation check
-  $ lingo-tracker validate --skip-protected-terms
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.skipProtectedTerms)}
 
   # Use in CI pipeline (exits with code 1 on validation failure)
   $ lingo-tracker validate || exit 1
@@ -145,7 +150,7 @@ CI Integration Examples:
     run: |
       npm install -g lingo-tracker
       lingo-tracker validate
-      # Or with relaxed mode: lingo-tracker validate --allow-translated
+      # Or with relaxed mode: lingo-tracker validate ${flagName(VALIDATE_FLAGS.allowTranslated)}
 
   # GitLab CI
   validate-translations:
@@ -176,7 +181,7 @@ Validation Rules:
   ❌ new        Resource not yet translated → FAILURE
   ⚠️  stale      Translation out of sync with source → FAILURE
   ✏️  translated Has translation but not verified → FAILURE (default)
-                                                  → WARNING (--allow-translated)
+                                                  → WARNING (${flagName(VALIDATE_FLAGS.allowTranslated)})
   ✅ verified   Translation reviewed and approved → SUCCESS
   ⚠️  terminology Base value uses a discouraged term → WARNING (never fails)
 
@@ -190,43 +195,43 @@ Notes:
   - Compiles every stored value under its own locale; values that fail are failures
   - Plural categories are per-language, so a 'verified' value can still fail to compile
   - The base locale is compiled too: its value is copied into every translation slot
-  - Use --skip-icu to skip compilation; other checks still apply, including
-    --require-portable-plurals, which parses rather than compiles
+  - Use ${flagName(VALIDATE_FLAGS.skipIcu)} to skip compilation; other checks still apply, including
+    ${flagName(VALIDATE_FLAGS.requirePortablePlurals)}, which parses rather than compiles
   - Checks that every translation interpolates the same placeholders as its base
     value; a renamed one ('{name}' translated to '{nombre}') renders as empty
-    text rather than raising, so no other check sees it. Use --skip-placeholders
+    text rather than raising, so no other check sees it. Use ${flagName(VALIDATE_FLAGS.skipPlaceholders)}
     to turn this off
   - Checks translations for dropped or altered protected terms from the project
-    and collection lists. Use --skip-protected-terms to turn this off
+    and collection lists. Use ${flagName(VALIDATE_FLAGS.skipProtectedTerms)} to turn this off
   - Scans each collection's base-locale values for discouraged terms from the
     preferred terminology file (.lingo-tracker-preferred-terminology.json, or
     preferredTerminologyFile in .lingo-tracker.json). Findings are warnings,
     reported once per key and rule; a broken file is a failure. No opt-out flag
-  - --skip-locales excludes target locales only; the base locale is always
+  - ${flagName(VALIDATE_FLAGS.skipLocales)} excludes target locales only; the base locale is always
     compiled, since its value is copied into every translation slot
   - Validates ALL collections and ALL target locales (no filtering) by default
-  - Use --skip-locales to exclude specific locales; skipped locales appear in the report
-  - Unknown locale values in --skip-locales emit a warning and are ignored
+  - Use ${flagName(VALIDATE_FLAGS.skipLocales)} to exclude specific locales; skipped locales appear in the report
+  - Unknown locale values in ${flagName(VALIDATE_FLAGS.skipLocales)} emit a warning and are ignored
   - Collects ALL failures before reporting (comprehensive check)
   - Perfect for pre-release quality gates in CI/CD pipelines
-  - Use --allow-translated for staging environments
+  - Use ${flagName(VALIDATE_FLAGS.allowTranslated)} for staging environments
   - Strict mode (default) recommended for production releases
 `;
 
-export const preferredTerminologyHelpText = `
+export const preferredTerminologyHelpText = () => `
 Examples:
   # List rules
-  $ lingo-tracker preferred-terminology --list
+  $ lingo-tracker preferred-terminology ${flagName(PREFERRED_TERMINOLOGY_FLAGS.list)}
 
   # Add a rule (the file is created if absent)
-  $ lingo-tracker preferred-terminology --add "Expenditure" --preferred "Investment" --reason "Brand voice"
+  $ lingo-tracker preferred-terminology ${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} "Expenditure" ${flagName(PREFERRED_TERMINOLOGY_FLAGS.preferred)} "Investment" ${flagName(PREFERRED_TERMINOLOGY_FLAGS.reason)} "Brand voice"
 
-  # Update a rule: --add on an existing discouraged term replaces the whole rule,
-  # so omitting --reason clears any previous reason
-  $ lingo-tracker preferred-terminology --add "expenditure" --preferred "Spending"
+  # Update a rule: ${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} on an existing discouraged term replaces the whole rule,
+  # so omitting ${flagName(PREFERRED_TERMINOLOGY_FLAGS.reason)} clears any previous reason
+  $ lingo-tracker preferred-terminology ${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} "expenditure" ${flagName(PREFERRED_TERMINOLOGY_FLAGS.preferred)} "Spending"
 
   # Remove a rule
-  $ lingo-tracker preferred-terminology --remove "Expenditure"
+  $ lingo-tracker preferred-terminology ${flagName(PREFERRED_TERMINOLOGY_FLAGS.remove)} "Expenditure"
 
 Rules live in .lingo-tracker-preferred-terminology.json beside .lingo-tracker.json,
 or in the file named by "preferredTerminologyFile" in .lingo-tracker.json.

@@ -1,5 +1,6 @@
 import type prompts from 'prompts';
-import { commaListOption, option, type OptionDefinition, type OptionSpec } from '../runner/options';
+import type { OptionSpec } from '../runner/options';
+import type { FlagRecord } from '../runner/flag-record';
 
 interface RegistrationFields extends Omit<OptionSpec<unknown>, 'helpDefault' | 'parse' | 'defaultValue'> {
   readonly description: string;
@@ -54,25 +55,24 @@ export type OrderedCommandOptionTable<
   readonly [Key in keyof Required<Options>]: OrderedCommandOptionRecord<Values, Context, Results[Key]>;
 };
 
-export function tableOptions(table: Record<string, TableRegistration>): OptionDefinition[] {
-  return Object.values(table).flatMap((record) => {
-    const spec = {
-      flags: record.flags,
-      description: record.description,
-      helpDefault: record.defaultMode === 'help' ? record.defaultValue : undefined,
-      defaultValue: record.defaultMode === 'commander' ? record.defaultValue : undefined,
-      parse: record.parse,
-    };
-    const definition = record.list
-      ? commaListOption({
-          flags: spec.flags,
-          description: spec.description,
-          helpDefault: spec.helpDefault,
-          empty: record.list === 'preserve' ? 'preserve' : undefined,
-        })
-      : option(spec);
-    return record.negative ? [definition, option(record.negative)] : [definition];
-  });
+/** Adapt the richer import/export records to the same registration path as other commands. */
+export function tableFlags<Table extends Record<string, TableRegistration>>(
+  table: Table,
+): { readonly [Key in keyof Table]: FlagRecord } {
+  return Object.fromEntries(
+    Object.entries(table).map(([key, record]) => [
+      key,
+      {
+        flags: record.flags,
+        description: record.description,
+        helpDefault: record.defaultMode === 'help' ? record.defaultValue : undefined,
+        defaultValue: record.defaultMode === 'commander' ? record.defaultValue : undefined,
+        parse: record.parse,
+        list: record.list,
+        negative: record.negative,
+      },
+    ]),
+  ) as { readonly [Key in keyof Table]: FlagRecord };
 }
 
 export function tableQuestions<Values, Context>(

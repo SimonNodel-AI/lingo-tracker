@@ -32,3 +32,4 @@ export {
   type PlanBundleParams,
   planBundle,
 } from './plan-bundle';
+export { bundleResultWarnings } from './result-warnings';

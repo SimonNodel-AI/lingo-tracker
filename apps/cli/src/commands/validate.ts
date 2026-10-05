@@ -1,3 +1,4 @@
+import { VALIDATE_FLAGS } from './validate-options';
 import { type Collection, runValidate } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
@@ -151,6 +152,7 @@ export interface ValidateCommandOptions {
  * ```
  */
 export const validateCommand = defineCommand<ValidateCommandOptions>()({
+  flags: VALIDATE_FLAGS,
   name: 'Validate',
   collection: 'many',
   run: ({ collections, answers }) => validate(answers, collections),

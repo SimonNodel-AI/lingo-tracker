@@ -1,3 +1,4 @@
+import { flagName } from '../runner/flag-record';
 import { DEFAULT_CONFIG, type ExportFormat, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import type prompts from 'prompts';
 import { type ExplicitEmptyList, parseListSelection, selectionNames, selectionPrompt, type Selection } from '../utils';
@@ -52,7 +53,9 @@ export function resolveExportOptions(values: ExportAnswers) {
   const options = resolveExportTable(values, tableContext({ config: {}, targetLocales: [] }));
   const advisories =
     options.basePropertyName && !options.includeBase
-      ? ['--base-property-name has no effect without --include-base']
+      ? [
+          `${flagName(EXPORT_OPTION_TABLE.basePropertyName)} has no effect without ${flagName(EXPORT_OPTION_TABLE.includeBase)}`,
+        ]
       : [];
   return { options, advisories };
 }

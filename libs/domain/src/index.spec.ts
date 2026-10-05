@@ -6,9 +6,14 @@ import * as domain from './index';
 describe('domain public surface', () => {
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(domain).sort()).toEqual([
+      'CONFIG_FILENAME',
       'DEFAULT_BASE_LOCALE',
+      'DEFAULT_BUNDLE_DIST',
+      'DEFAULT_BUNDLE_NAME',
+      'DEFAULT_CONFIG',
       'DEFAULT_IMPORT_STRATEGY',
       'DEFAULT_MISSING_METADATA_STATUS',
+      'DEFAULT_TYPE_DIST_FILE',
       'IMPORT_STRATEGIES',
       'JS_IDENTIFIER_PATTERN',
       'NEEDS_WORK_STATUSES',

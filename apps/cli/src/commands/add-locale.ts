@@ -1,6 +1,7 @@
+import { ADD_LOCALE_FLAGS } from './add-locale-flags';
 import { addLocaleToCollection } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, missingTextQuestions } from '../utils';
+import { ConsoleFormatter } from '../utils';
 
 export interface AddLocaleOptions {
   collection?: string;
@@ -8,10 +9,10 @@ export interface AddLocaleOptions {
 }
 
 export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
+  flags: ADD_LOCALE_FLAGS,
   name: 'Add locale',
   collection: 'writable',
-  prompts: (options) =>
-    missingTextQuestions(options, [{ name: 'locale', message: 'Enter locale to add (e.g. fr-ca, de, es)' }]),
+
   required: ['locale'],
   run: async ({ collection, answers }) => {
     const result = await addLocaleToCollection(collection, answers.locale);

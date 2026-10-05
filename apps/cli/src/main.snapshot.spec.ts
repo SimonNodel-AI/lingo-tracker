@@ -1,5 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { createCli } from './program';
 import { Command } from 'commander';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+
+const baselineHelp: unknown = JSON.parse(readFileSync(join(__dirname, 'testing/cli-help-baseline.json'), 'utf8'));
 
 const argvByCommand: Record<string, string[]> = {
   init: ['--collection-name', 'app', '--locales', 'en', 'fr', '--setup-bundle', 'false', '--token-casing', 'camelCase'],
@@ -74,5 +80,23 @@ describe('Commander surface baseline', () => {
     casing?.exitOverride();
     expect(() => casing?.parseOptions(['--token-casing', 'invalid'])).toThrowErrorMatchingSnapshot();
     expect(() => command('init')?.parseOptions(['--setup-bundle', 'invalid'])).toThrowErrorMatchingSnapshot();
+  });
+  it('matches the base outputHelp for every command, including appended examples', () => {
+    const program = createCli();
+    const help = Object.fromEntries(
+      [program, ...program.commands].map((command) => {
+        let output = '';
+        command
+          .configureHelp({ helpWidth: 80 })
+          .configureOutput({
+            writeOut: (text) => {
+              output += text;
+            },
+          })
+          .outputHelp();
+        return [command.name(), output];
+      }),
+    );
+    expect(help).toEqual(baselineHelp);
   });
 });

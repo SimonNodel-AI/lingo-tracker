@@ -261,3 +261,4 @@ export {
   type ExecuteMoveResult,
 } from './lib/resource/execute-move';
 export type { MoveResult } from './lib/resource/move-report';
+export { bundleResultWarnings } from './lib/bundle';

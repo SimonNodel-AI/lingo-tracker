@@ -912,6 +912,9 @@ Progress fires before each locale selection, with its locale, index, total, and 
 
 This preflight holds every locale selection and JSON tree in memory at once, alongside the collection read cache and base keys. Memory grows with the total selected keys across all requested locales. This costs more memory than locale-at-a-time writes but permits conflict refusal before output. `bundleRunConflicts` and `bundleRunWarnings` apply the same output policy to planning and generation. Base conflicts matter only when types or debug keys consume the base tree. Duplicate token paths name both source keys and refuse type output.
 
+
+`bundleResultWarnings(result)` projects the complete warning array from a bundle result for both CLI reports and API job DTOs. It preserves generation → config → type order and returns a fresh array. See [Bundle Result Warnings](glossary.md#bundle-result-warnings).
+
 ### Bundle Selection
 
 **Entry points:** `resolveBundleCollections(definition, config, { cwd })` and `selectBundleEntries(collections, locale, options)` in `lib/bundle/bundle-selection.ts`
@@ -984,3 +987,5 @@ Export ignores errors and hierarchical conflicts in a dry run; import still fail
 For the [staleness](glossary.md#staleness) detection mechanism that produces `stale` status entries in the first place, see [domain-and-data-model.md — Checksum-Driven Staleness Detection](domain-and-data-model.md#checksum-driven-staleness-detection).
 
 For the CLI command signatures and flags that call into this library, see [cli.md](cli.md) *(phase 4, coming soon)*. For the API endpoints that expose these operations over HTTP, see [api.md](api.md) *(phase 4, coming soon)*.
+
+[Project Defaults](glossary.md#project-defaults) now owns browser-safe setup constants in domain. Core retains its existing exports; CLI metadata uses domain directly to keep core off the help startup path.

@@ -1,3 +1,4 @@
+import { createCli } from './program';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const handlers = vi.hoisted(() => ({
@@ -477,9 +478,9 @@ const cases: Case[] = [
     name: 'edit-collection',
     handler: handlers.editCollection,
     fullArgv: ['app', '--add-tag', 'one', '--add-tag', 'two', '--remove-tag', 'old', '--set-tags', 'ui,common'],
-    fullCall: ['app', { addTag: ['one', 'two'], removeTag: ['old'], setTags: ['ui', 'common'] }],
+    fullCall: [{ name: 'app', addTag: ['one', 'two'], removeTag: ['old'], setTags: ['ui', 'common'] }],
     defaultArgv: ['app'],
-    defaultCall: ['app', { addTag: [], removeTag: [] }],
+    defaultCall: [{ name: 'app', addTag: [], removeTag: [] }],
   },
   {
     name: 'protected-terms',
@@ -538,29 +539,23 @@ const cases: Case[] = [
   },
 ];
 
-const originalArgv = process.argv;
-
-async function invoke(name: string, argv: string[], handler: Handler): Promise<void> {
-  process.argv = ['node', 'lingo-tracker', name, ...argv];
-  vi.resetModules();
-  await import('./main');
-  await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
+async function invoke(name: string, argv: string[]): Promise<void> {
+  await createCli().parseAsync([name, ...argv], { from: 'user' });
 }
 
 describe('every CLI handler registration', () => {
   afterEach(() => {
-    process.argv = originalArgv;
     vi.clearAllMocks();
   });
 
   for (const entry of cases) {
     it(`${entry.name} passes parsed full argv to its handler`, async () => {
-      await invoke(entry.name, entry.fullArgv, entry.handler);
+      await invoke(entry.name, entry.fullArgv);
       expect(entry.handler).toHaveBeenCalledWith(...entry.fullCall);
     });
 
     it(`${entry.name} passes parsed defaults to its handler`, async () => {
-      await invoke(entry.name, entry.defaultArgv ?? [], entry.handler);
+      await invoke(entry.name, entry.defaultArgv ?? []);
       expect(entry.handler).toHaveBeenCalledWith(...entry.defaultCall);
     });
   }

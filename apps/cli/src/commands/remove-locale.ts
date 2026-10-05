@@ -1,3 +1,4 @@
+import { REMOVE_LOCALE_FLAGS } from './remove-locale-flags';
 import { removeLocaleFromCollection } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
@@ -8,25 +9,10 @@ export interface RemoveLocaleOptions {
 }
 
 export const removeLocaleCommand = defineCommand<RemoveLocaleOptions>()({
+  flags: REMOVE_LOCALE_FLAGS,
   name: 'Remove locale',
   collection: 'writable',
-  prompts: (options, { collection }) => {
-    if (options.locale) {
-      return [];
-    }
-    // Called before `required` is checked, so this reason wins over "missing --locale".
-    if (collection.targetLocales.length === 0) {
-      throw new Error(`No removable locales in collection "${collection.name}".`);
-    }
-    return [
-      {
-        type: 'select',
-        name: 'locale',
-        message: 'Select locale to remove',
-        choices: collection.targetLocales.map((locale) => ({ title: locale, value: locale })),
-      },
-    ];
-  },
+
   required: ['locale'],
   run: async ({ collection, answers }) => {
     const result = await removeLocaleFromCollection(collection, answers.locale);

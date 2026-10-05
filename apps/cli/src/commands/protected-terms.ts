@@ -1,4 +1,5 @@
 import { displayTermPath, planProjectTermsUpdate } from '@simoncodes-ca/core';
+import { PROTECTED_TERMS_FLAGS } from './protected-terms-flags';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -13,6 +14,7 @@ export interface ProtectedTermsOptions {
 }
 
 export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
+  flags: PROTECTED_TERMS_FLAGS,
   name: 'Protected terms',
   // `--collection` is optional: absent means the global scope, so the runner opens nothing.
   collection: 'none',

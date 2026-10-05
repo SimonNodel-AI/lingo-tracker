@@ -1,14 +1,17 @@
+import { EDIT_COLLECTION_FLAGS } from './edit-collection-flags';
 import { editCollectionTags } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
 export interface EditCollectionOptions {
+  name: string;
   addTag?: string[];
   removeTag?: string[];
   setTags?: string[];
 }
 
-const run = defineCommand<EditCollectionOptions & { name: string }>()({
+export const editCollectionCommand = defineCommand<EditCollectionOptions>()({
+  flags: EDIT_COLLECTION_FLAGS,
   name: 'Edit collection',
   // Edits the collection's registration (tags), not its resources, so a read-only collection is allowed.
   collection: 'read',
@@ -27,8 +30,3 @@ const run = defineCommand<EditCollectionOptions & { name: string }>()({
     }
   },
 });
-
-/** `edit-collection <name>`: the collection is the positional argument. */
-export function editCollectionCommand(collectionName: string, options: EditCollectionOptions): Promise<void> {
-  return run({ ...options, name: collectionName });
-}
