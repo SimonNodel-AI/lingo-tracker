@@ -1,3 +1,5 @@
+export { ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
+export type { DomainErrorCode, ErrorCode, KnownProviderErrorCode, ProviderErrorCode } from './error-codes';
 // Core errors declare domain kinds and details; adapters own presentation.
 
 export type { FolderPathPart } from './error-messages';

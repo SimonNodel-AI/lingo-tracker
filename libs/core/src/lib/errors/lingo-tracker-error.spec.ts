@@ -1,3 +1,4 @@
+import { ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
 import { describe, expect, it } from 'vitest';
 import {
   AutoTranslationDisabledError,
@@ -272,6 +273,19 @@ describe('LingoTrackerError subclasses', () => {
     new InvalidBundleLocalesError('bad locale'),
     new CoreOperationError('operation failed'),
   ];
+
+  it('covers every declared domain code with a known subclass code', () => {
+    const instances = [...cases.map(({ error }) => error), ...additional];
+    const domainCodes: readonly string[] = Object.keys(ERROR_CODES);
+    const knownCodes: readonly string[] = [...domainCodes, ...PROVIDER_ERROR_CODES];
+    for (const error of instances) {
+      expect(knownCodes).toContain(error.code);
+    }
+    const producedDomainCodes = [
+      ...new Set(instances.map((error) => error.code).filter((code) => domainCodes.includes(code))),
+    ].sort();
+    expect(producedDomainCodes).toEqual([...domainCodes].sort());
+  });
 
   it('requires a kind on every error class in the core errors module', () => {
     const instances = [...cases.map(({ error }) => error), ...additional];

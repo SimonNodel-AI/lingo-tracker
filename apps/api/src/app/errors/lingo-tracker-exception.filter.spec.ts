@@ -3,46 +3,25 @@ import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
 import {
+  ERROR_CODES,
+  PROVIDER_ERROR_CODES,
   AutoTranslationDisabledError,
-  BaseLocaleImmutableError,
-  BundleAlreadyExistsError,
   BundleNotFoundError,
-  CannotTranslateBaseLocaleError,
-  CollectionAlreadyExistsError,
   CollectionNotFoundError,
-  CollectionRenameBundleConflictError,
-  CollectionRequiredByBundleError,
-  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
-  FolderMoveIntoDescendantError,
-  FolderNotFoundError,
   ImportSourceError,
-  InvalidBundleDefinitionError,
-  InvalidBundleLocalesError,
   InvalidCollectionError,
-  InvalidCollectionFolderError,
   InvalidConfigError,
-  InvalidFolderPathError,
-  InvalidLocaleError,
-  InvalidNameError,
   InvalidProjectTermsEditError,
-  InvalidResourceKeyError,
-  InvalidTranslationStatusError,
   LingoTrackerError,
-  LocaleAlreadyExistsError,
-  LocaleNotFoundError,
   MultipleBundleConstantNameError,
-  NoTranslationTargetLocalesError,
-  ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
-  ResourceNotFoundError,
   TranslationError,
-  TranslationLocaleNotConfiguredError,
 } from '@simoncodes-ca/core';
 // Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
 import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
@@ -52,7 +31,7 @@ import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-ex
 describe('toHttpException', () => {
   const cases = [
     [
-      new InvalidNameError(),
+      new internalErrors.InvalidNameError(),
       400,
       { message: 'name must be a non-empty string', error: 'Bad Request', statusCode: 400 },
     ],
@@ -62,12 +41,12 @@ describe('toHttpException', () => {
       { message: 'Collection "app" not found', error: 'Not Found', statusCode: 404 },
     ],
     [
-      new ResourceNotFoundError('a.b'),
+      new internalErrors.ResourceNotFoundError('a.b'),
       404,
       { message: 'Resource not found: a.b', error: 'Not Found', statusCode: 404 },
     ],
     [
-      new FolderNotFoundError('apps.missing'),
+      new internalErrors.FolderNotFoundError('apps.missing'),
       404,
       { message: 'Folder not found: apps.missing', error: 'Not Found', statusCode: 404 },
     ],
@@ -78,7 +57,7 @@ describe('toHttpException', () => {
       { message: 'Translation job "missing-job" not found', error: 'Not Found', statusCode: 404 },
     ],
     [
-      new ConfigChangedError(),
+      new internalErrors.ConfigChangedError(),
       409,
       {
         message: 'The configuration file changed after it was read; run the command again',
@@ -87,7 +66,7 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales'),
+      new internalErrors.InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales'),
       400,
       {
         message: 'Unknown locale "xx": must be defined in the project locales',
@@ -105,7 +84,7 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new BundleAlreadyExistsError('main'),
+      new internalErrors.BundleAlreadyExistsError('main'),
       409,
       { message: 'Bundle "main" already exists', error: 'Conflict', statusCode: 409 },
     ],
@@ -115,12 +94,12 @@ describe('toHttpException', () => {
       { message: 'Resource already exists: apps.ok', error: 'Conflict', statusCode: 409 },
     ],
     [
-      new CollectionAlreadyExistsError('app'),
+      new internalErrors.CollectionAlreadyExistsError('app'),
       409,
       { message: 'Collection "app" already exists', error: 'Conflict', statusCode: 409 },
     ],
     [
-      new CollectionRequiredByBundleError('app', ['main', 'other']),
+      new internalErrors.CollectionRequiredByBundleError('app', ['main', 'other']),
       409,
       {
         message:
@@ -130,7 +109,7 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new CollectionRenameBundleConflictError('app', 'legacy', ['main', 'other']),
+      new internalErrors.CollectionRenameBundleConflictError('app', 'legacy', ['main', 'other']),
       409,
       {
         message:
@@ -149,7 +128,7 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new InvalidFolderPathError('folder name', 'a b'),
+      new internalErrors.InvalidFolderPathError('folder name', 'a b'),
       400,
       {
         message: 'Validation error: Invalid folder name segment "a b". Segments must match pattern [A-Za-z0-9_-]+',
@@ -158,7 +137,7 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new FolderMoveIntoDescendantError('apps.common', 'apps.common.buttons'),
+      new internalErrors.FolderMoveIntoDescendantError('apps.common', 'apps.common.buttons'),
       400,
       {
         message: 'Validation error: Cannot move folder "apps.common" into its own descendant "apps.common.buttons"',
@@ -167,12 +146,12 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new InvalidResourceKeyError('a..b', 'Key validation: bad'),
+      new internalErrors.InvalidResourceKeyError('a..b', 'Key validation: bad'),
       400,
       { message: 'Key validation: bad', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new InvalidTranslationStatusError('verifed'),
+      new internalErrors.InvalidTranslationStatusError('verifed'),
       400,
       {
         message: 'Invalid translation status "verifed". Valid statuses: new, translated, stale, verified',
@@ -181,27 +160,27 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new InvalidLocaleError('x!', 'Invalid locale format: "x!"'),
+      new internalErrors.InvalidLocaleError('x!', 'Invalid locale format: "x!"'),
       400,
       { message: 'Invalid locale format: "x!"', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new LocaleNotFoundError('ja', 'app'),
+      new internalErrors.LocaleNotFoundError('ja', 'app'),
       400,
       { message: 'Locale "ja" not found in collection "app"', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new LocaleAlreadyExistsError('fr', 'app'),
+      new internalErrors.LocaleAlreadyExistsError('fr', 'app'),
       400,
       { message: 'Locale "fr" already exists in collection "app"', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new BaseLocaleImmutableError('en'),
+      new internalErrors.BaseLocaleImmutableError('en'),
       400,
       { message: 'Cannot add or remove the base locale "en"', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new NoTranslationTargetLocalesError('en'),
+      new internalErrors.NoTranslationTargetLocalesError('en'),
       400,
       {
         message: 'No target locales configured. Add locales other than the base locale "en".',
@@ -210,17 +189,17 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new CannotTranslateBaseLocaleError('en'),
+      new internalErrors.CannotTranslateBaseLocaleError('en'),
       400,
       { message: 'Cannot translate to the base locale "en".', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new TranslationLocaleNotConfiguredError('ja', ['en', 'fr']),
+      new internalErrors.TranslationLocaleNotConfiguredError('ja', ['en', 'fr']),
       400,
       { message: 'Locale "ja" is not configured. Available locales: en, fr', error: 'Bad Request', statusCode: 400 },
     ],
     [
-      new InvalidBundleDefinitionError(['a', 'b']),
+      new internalErrors.InvalidBundleDefinitionError(['a', 'b']),
       400,
       { message: 'Invalid bundle definition', error: 'Bad Request', statusCode: 400, errors: ['a', 'b'] },
     ],
@@ -235,7 +214,7 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new InvalidCollectionFolderError({
+      new internalErrors.InvalidCollectionFolderError({
         kind: 'unreadable',
         folderPath: 'link',
         absolutePath: '/translations/link',
@@ -275,7 +254,7 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new ParentDirectoryMissingError('protected terms file', '/p/terms.json', '/p'),
+      new internalErrors.ParentDirectoryMissingError('protected terms file', '/p/terms.json', '/p'),
       400,
       {
         message: 'Cannot write protected terms file — directory does not exist: /p',
@@ -472,62 +451,7 @@ describe('toHttpException', () => {
   });
 
   it('pins every core, provider, and API job error code', () => {
-    // A later step replaces this HEAD snapshot with ERROR_CODES/PROVIDER_ERROR_CODES.
-    const expectedCodes = [
-      'AUTH_ERROR',
-      'AUTO_TRANSLATION_DISABLED',
-      'BASE_LOCALE_IMMUTABLE',
-      'BUNDLE_ALREADY_EXISTS',
-      'BUNDLE_NOT_FOUND',
-      'CANNOT_TRANSLATE_BASE_LOCALE',
-      'COLLECTION_ALREADY_EXISTS',
-      'COLLECTION_BASE_LOCALE_MISMATCH',
-      'COLLECTION_NOT_FOUND',
-      'COLLECTION_READ_ONLY',
-      'COLLECTION_RENAME_BUNDLE_CONFLICT',
-      'COLLECTION_REQUIRED_BY_BUNDLE',
-      'CONFIG_CHANGED',
-      'CONFIG_NOT_FOUND',
-      'CONFIG_PARSE_FAILED',
-      'CORE_OPERATION_ERROR',
-      'FOLDER_MOVE_INTO_DESCENDANT',
-      'FOLDER_NOT_FOUND',
-      'GLOSSARY_EXTRACTOR_ERROR',
-      'GLOSSARY_NO_COLLECTIONS',
-      'IMPORT_SOURCE_ERROR',
-      'INVALID_BUNDLE_DEFINITION',
-      'INVALID_BUNDLE_LOCALES',
-      'INVALID_COLLECTION',
-      'INVALID_COLLECTION_FOLDER',
-      'INVALID_CONFIG',
-      'INVALID_FOLDER_PATH',
-      'INVALID_IMPORT_LOCALE',
-      'INVALID_LOCALE',
-      'INVALID_NAME',
-      'INVALID_PREFERRED_TERMINOLOGY',
-      'INVALID_PROJECT_TERMS_EDIT',
-      'INVALID_PROTECTED_TERMS_FILE',
-      'INVALID_REQUEST',
-      'INVALID_REQUEST_TIMEOUT',
-      'INVALID_RESOURCE_KEY',
-      'INVALID_RESPONSE',
-      'INVALID_TRANSLATION_STATUS',
-      'JOB_NOT_FOUND',
-      'LOCALE_ALREADY_EXISTS',
-      'LOCALE_NOT_FOUND',
-      'MISSING_API_KEY',
-      'MULTIPLE_BUNDLE_CONSTANT_NAME',
-      'NO_TRANSLATION_TARGET_LOCALES',
-      'PARENT_DIRECTORY_MISSING',
-      'PROTECTED_TERMS_FILE_NOT_SET',
-      'RATE_LIMIT',
-      'RESOURCE_ALREADY_EXISTS',
-      'RESOURCE_NOT_FOUND',
-      'SERVER_ERROR',
-      'TIMEOUT',
-      'TRANSLATION_LOCALE_NOT_CONFIGURED',
-      'UNKNOWN_PROVIDER',
-    ];
+    const expectedCodes = [...Object.keys(ERROR_CODES), ...PROVIDER_ERROR_CODES, 'JOB_NOT_FOUND'].sort();
     const caseCodes = cases
       .map(([error]) => error)
       .filter((error): error is LingoTrackerError => error instanceof LingoTrackerError)
@@ -614,12 +538,12 @@ describe('toHttpException', () => {
 class ThrowingController {
   @Get('resource')
   resource(): never {
-    throw new ResourceNotFoundError('a.b');
+    throw new internalErrors.ResourceNotFoundError('a.b');
   }
 
   @Get('locale')
   locale(): never {
-    throw new LocaleAlreadyExistsError('fr', 'app');
+    throw new internalErrors.LocaleAlreadyExistsError('fr', 'app');
   }
 
   @Get('http')

@@ -1,3 +1,4 @@
+import type { KnownProviderErrorCode } from '../errors/error-codes';
 /**
  * Translator — the one way core machine-translates text for a collection.
  *
@@ -146,7 +147,7 @@ function readApiKey(apiKeyEnv: string): string {
   if (!apiKey) {
     throw new TranslationError(
       `Translation API key not found. Set the ${apiKeyEnv} environment variable.`,
-      'MISSING_API_KEY',
+      'MISSING_API_KEY' satisfies KnownProviderErrorCode,
       false,
     );
   }
@@ -190,7 +191,7 @@ async function translateForLocale(
   if (results.length !== sendable.length) {
     throw new TranslationError(
       `Translation provider returned ${results.length} results for ${sendable.length} texts.`,
-      'INVALID_RESPONSE',
+      'INVALID_RESPONSE' satisfies KnownProviderErrorCode,
       false,
     );
   }
