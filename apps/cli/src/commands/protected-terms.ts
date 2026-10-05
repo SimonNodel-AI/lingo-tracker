@@ -1,12 +1,4 @@
-import {
-  displayTermPath,
-  InvalidProjectTermsEditError,
-  isProtectedTermsEditProblem,
-  type ProtectedTermsEditProblem,
-  type ProjectTermsUpdateResult,
-  ProtectedTermsFileNotSetError,
-  planProjectTermsUpdate,
-} from '@simoncodes-ca/core';
+import { displayTermPath, type ProjectTermsUpdateResult, planProjectTermsUpdate } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -19,11 +11,6 @@ export interface ProtectedTermsOptions {
   /** Path to the protected terms file for this scope. An empty string clears the pointer. */
   file?: string;
 }
-
-const protectedEditWording: Partial<Record<ProtectedTermsEditProblem, string>> = {
-  'protected-conflict': '--set cannot be combined with --add or --remove',
-  'protected-missing': 'Provide at least one of --add, --remove, --set, --list, or --file',
-};
 
 export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
   name: 'Protected terms',
@@ -86,15 +73,6 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
       result = plan.apply();
     } catch (error) {
       if (pointerLinePrinted) ConsoleFormatter.warning('Protected terms file change was reverted.');
-      if (error instanceof InvalidProjectTermsEditError && isProtectedTermsEditProblem(error.problem)) {
-        const message = protectedEditWording[error.problem];
-        if (message !== undefined) throw new Error(message);
-      }
-      if (error instanceof ProtectedTermsFileNotSetError) {
-        throw new Error(
-          `Collection "${error.collectionName}" has no protected terms file. Set one first with --file <path>.`,
-        );
-      }
       throw error;
     }
 

@@ -177,6 +177,32 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ---
 
+### CLI Error Wording
+
+The CLI adapter for core [typed errors](#typed-errors), in `apps/cli/src/runner/cli-error-wording.ts`.
+`cliErrorWording(error, commandName?)` returns a message, optional details, an optional hint, and a rule for displaying its cause.
+It returns `undefined` for values outside `LingoTrackerError`.
+An exhaustive `ErrorCode` table covers domain and known provider codes.
+Separate exhaustive problem tables supply flag text for collection-tag, protected-term, and preferred-terminology edits.
+Unknown typed codes retain their message.
+
+The [Command Runner](#command-runner) applies this module before command-specific hooks and generic error text.
+`printCliError(error, options?)` prints complete diagnostics on stderr and retains the original error.
+The runner, bundle outcomes, and normalize's read-only catch use this helper.
+`ADD_RESOURCE_COMMAND_NAME` links the command definition to its advice, so only add-resource receives existing-key replacement advice.
+A contract spec covers every code and problem through core error fixtures.
+
+Typed import errors include `Error` causes unless their wording rule suppresses them.
+Import source and invalid-import-locale rules suppress causes.
+The scoped catch for untyped `runImport` errors also suppresses causes.
+Result-display and summary errors use normal runner reporting, with their message and cause.
+Typed translation errors omit the command-specific `Translation failed:` prefix.
+Import source and invalid-import-locale errors retain `Import failed:`, except source format-detection errors.
+
+Explained in context: [`cli.md`](cli.md#cli-error-wording)
+
+---
+
 ### Collection
 
 A named group of translation [resources](#resource-entry) that share a common `translationsFolder` on disk and optional configuration overrides (base locale, locales, import/export folders, auto-translation settings, collection-level tags). Collections are defined under the `collections` key in `.lingo-tracker.json`.
@@ -301,7 +327,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### Command Runner
 
-The CLI execution path. `registerCommand(program, registration)` applies the command's flags to Commander; `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function its lazy action calls. A command spec has a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its optional `preflight(ctx)` for preconditions, its `prompts` for missing values, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. Its opened collection carries that config snapshot; the locale and tag commands pass it with a write handle to core. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalizeCollections` in core applies the named versus all read-only rule after receiving the opened collections. After resources open, the runner awaits `preflight` in both modes before building command questions. Its context supplies those resources and the original flags as `options`. A thrown preflight error uses normal reporting (`❌ <message>`, exit 1); `formatError` receives `duringRun: false`. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
+The CLI execution path. `registerCommand(program, registration)` applies the command's flags to Commander; `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function its lazy action calls. A command spec has a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its optional `preflight(ctx)` for preconditions, its `prompts` for missing values, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. Its opened collection carries that config snapshot; the locale and tag commands pass it with a write handle to core. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalizeCollections` in core applies the named versus all read-only rule after receiving the opened collections. After resources open, the runner awaits `preflight` in both modes before building command questions. Its context supplies those resources and the original flags as `options`. A thrown preflight error uses normal reporting (`❌ <message>`, exit 1). Shared core wording takes precedence. For untyped errors, `formatError` receives `duringRun: false`. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
 
 `runCommand(command, flags, { cwd, ask?, interactive?, output?, summaryDirectory? })` runs that same pipeline in an explicit environment and returns `Promise<{ exitCode: 0 | 1, stdout, stderr }>`. It does not mutate process state. Tests use temporary projects and real core; injected `ask` answers questions or throws `CommandCancelledError`. The runner's async-scoped output port captures formatter output, direct command output and summary announcements separately for each run. Production supplies the process root, real prompts and TTY detection, uses the real console/streams, and sets `process.exitCode`.
 
@@ -1088,7 +1114,7 @@ The direct file-edit side of [Project Terms](#project-terms), owned by core conf
 
 Protected-term requests use `{ target, change }`. `change.kind: 'replace'` supplies a complete list; `change.kind: 'edit'` supplies a `ListEdit`.
 
-`ProtectedTermsEditProblem` and `PreferredTerminologyEditProblem` define each command’s own problem codes. Each CLI wording table covers every code with a string.
+`ProtectedTermsEditProblem` and `PreferredTerminologyEditProblem` define each command’s own problem codes. The [CLI Error Wording](#cli-error-wording) module covers every problem with a presentation rule.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`cli.md`](cli.md#protected-terms-scoping), [`api.md`](api.md#error-mapping)
 
@@ -1227,11 +1253,11 @@ The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/c
 
 The API maps `kind` to a default HTTP status. An API-owned code table declares message transforms, status overrides, and inclusion of core `details` as response `errors`. `ErrorCode` combines domain and known provider codes so the API can require a complete HTTP table. All core error classes live in `errors/`, including translation and terminology validation errors. Core exposes domain facts without HTTP metadata. The filter reads these facts without checks for specific subclasses. The API may define its own `LingoTrackerError` subclasses, such as `JobNotFoundError` with kind `not-found`, because the filter reads only `kind`, `code` and `exposeMessage` to select their HTTP mapping. A core spec reserves kind `upstream` for `TranslationError`, so unknown provider codes keep the same prefix and default 502.
 
-A missing move destination is `CollectionNotFoundError` with the same `not-found` kind and a destination-specific message; a read-only destination is `ReadOnlyCollectionError` with kind `forbidden`. `CollectionBaseLocaleMismatchError` has kind `invalid` and maps a whole-collection source-locale disagreement to HTTP 400. Project-term and collection-tag edit errors name data, not CLI flags, and so do the glossary extractor and bundle constant-name errors (`GlossaryExtractorError`, `MultipleBundleConstantNameError`), so the API shows flag-free text; their `problem` fields identify invalid edit combinations so the commands in `apps/cli/src/commands/` can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
+A missing move destination is `CollectionNotFoundError` with the same `not-found` kind and a destination-specific message; a read-only destination is `ReadOnlyCollectionError` with kind `forbidden`. `CollectionBaseLocaleMismatchError` has kind `invalid` and maps a whole-collection source-locale disagreement to HTTP 400. Project-term and collection-tag edit errors name data, not CLI flags, and so do the glossary extractor and bundle constant-name errors (`GlossaryExtractorError`, `MultipleBundleConstantNameError`), so the API shows flag-free text; their `problem` fields identify invalid edit combinations so [CLI Error Wording](#cli-error-wording) can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
 
 Transaction rollback preserves the original error type and message. A restoration failure becomes its cause, so existing HTTP status mappings stay unchanged.
 
-`InvalidProjectTermsEditError.problem` accepts `ProtectedTermsEditProblem` or `PreferredTerminologyEditProblem`. The exported type guards narrow each command to its own codes. The error retains its invalid kind and HTTP 400 mapping.
+`InvalidProjectTermsEditError.problem` accepts `ProtectedTermsEditProblem` or `PreferredTerminologyEditProblem`. The CLI Error Wording tables cover both problem types. The error retains its invalid kind and HTTP 400 mapping.
 
 Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
 

@@ -4,13 +4,8 @@ import { validateCommand } from './validate';
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
   return {
+    ...actual,
     loadConfig: vi.fn(),
-    openCollection: actual.openCollection,
-    ConfigNotFoundError: actual.ConfigNotFoundError,
-    ConfigParseError: actual.ConfigParseError,
-    CollectionNotFoundError: actual.CollectionNotFoundError,
-    ReadOnlyCollectionError: actual.ReadOnlyCollectionError,
-    CONFIG_FILENAME: '.lingo-tracker.json',
     runValidate: vi.fn(),
   };
 });

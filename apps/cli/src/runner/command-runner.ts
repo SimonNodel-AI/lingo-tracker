@@ -12,12 +12,13 @@ import {
 import { readFileSync } from 'node:fs';
 import * as path from 'path';
 import prompts from 'prompts';
-import { CommandOutput, withCommandOutput, type CommandOutputSink } from './command-output';
+import { withCommandOutput, type CommandOutputSink } from './command-output';
 import { parseCommaSeparatedList } from '../utils/string-parsers';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { type Selection, selectionPrompt } from '../utils/prompt-utils';
 import { CommandCancelledError } from './command-cancelled-error';
 import { isInteractiveTerminal } from './terminal';
+import { printCliError } from './cli-error-wording';
 
 export { CommandCancelledError } from './command-cancelled-error';
 
@@ -161,7 +162,7 @@ export interface CommandSpec<
   readonly required?: readonly Required[];
   /** Text prompt fields that use the same comma parser as flag definitions. */
   readonly commaListAnswers?: readonly (keyof Options & string)[];
-  /** Formats a command error without replacing the original error seen by the runner. */
+  /** Formats an untyped error after shared core wording; keeps the original error and cause. */
   readonly formatError?: (error: unknown, duringRun: boolean) => string | undefined;
   /** The core call(s) and the output. Throw to fail with `❌ <message>`. */
   readonly run: (
@@ -379,7 +380,7 @@ async function execute<
     const result = await spec.run({ ...promptContext, ...resources, answers, ...selectionResources });
     return result ? result.exitCode : 0;
   } catch (error) {
-    return report(error, spec.name, spec.formatError?.(error, duringRun));
+    return report(error, spec.name, () => spec.formatError?.(error, duringRun));
   }
 }
 
@@ -437,26 +438,12 @@ async function ask(questions: prompts.PromptObject | prompts.PromptObject[]): Pr
 }
 
 /** Prints the failure and returns the exit code: 0 for a cancel, 1 for anything else. */
-function report(error: unknown, name: string, formattedMessage?: string): 0 | 1 {
+function report(error: unknown, name: string, formatError: () => string | undefined): 0 | 1 {
   if (error instanceof CommandCancelledError) {
     ConsoleFormatter.error(`${name} cancelled.`);
     return 0;
   }
-  if (error instanceof ConfigNotFoundError) {
-    CommandOutput.error(`❌ Configuration file ${CONFIG_FILENAME} not found.`);
-    CommandOutput.error('Run "lingo-tracker init" to initialize a project.');
-    return 1;
-  }
-  if (error instanceof ConfigParseError) {
-    CommandOutput.error(`❌ Failed to parse configuration file: ${error.reason}`);
-    return 1;
-  }
-  // A wrapping error may keep its message fixed (it can reach an API client) and hold the
-  // underlying reason, such as `EACCES: permission denied`, in `cause`; the CLI shows it.
-  const message = formattedMessage ?? (error instanceof Error ? error.message : String(error));
-  const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
-  if (cause instanceof Error) ConsoleFormatter.error(message, [cause.message]);
-  else ConsoleFormatter.error(message);
+  printCliError(error, { commandName: name, formatError });
   return 1;
 }
 

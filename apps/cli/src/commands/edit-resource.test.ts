@@ -77,6 +77,15 @@ describe('editResourceCommand (real project)', () => {
       ok: { source: 'Original' },
     });
   });
+  it('reports a move-to collision without add-resource replacement advice', async () => {
+    await project.seed('shared.ok', 'Destination');
+    const result = await project.run(editResourceCommand, { key, targetFolder: 'shared' });
+    expect(result).toEqual({ exitCode: 1, stdout: '', stderr: '❌ Resource already exists: shared.ok\n' });
+    expect(entries()).toMatchObject({ ok: { source: 'Original' } });
+    expect(project.json('translations/main/shared/resource_entries.json')).toMatchObject({
+      ok: { source: 'Destination' },
+    });
+  });
   it('prints a core error when resource is missing', async () => {
     const result = await project.run(editResourceCommand, { key: 'apps.missing', baseValue: 'x' });
     expect(result.exitCode).toBe(1);
