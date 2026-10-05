@@ -50,8 +50,9 @@ import { filterFolderTree } from '../../store/folder-tree.utils';
 import { EditorAdvisories, filteredEditorTagSuggestions } from './editor-advisories';
 import { EditorEntryForm } from './editor-entry-form';
 import { editorTagSuggestions } from './editor-entry-sources';
+import { EditorFocus } from './editor-focus';
 import { EditorLocation } from './editor-location';
-import { type EditorFocusTarget, EditorPanels } from './editor-panels';
+import { EditorPanels } from './editor-panels';
 import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { FolderPicker } from './folder-picker/folder-picker';
 import { PreferredTermAdvisories } from './preferred-term-advisories/preferred-term-advisories';
@@ -141,6 +142,16 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   @ViewChild('otherLocalesRow') otherLocalesRow?: ElementRef<HTMLButtonElement>;
   @ViewChild('folderFilterInput') folderFilterInput?: ElementRef<HTMLInputElement>;
   @ViewChild('drawerFirstControl') drawerFirstControl?: ElementRef<HTMLElement>;
+
+  readonly #focus = new EditorFocus({
+    key: () => this.keyInput?.nativeElement,
+    'base-value': () => this.baseValueInput?.nativeElement,
+    comment: () => this.commentInput?.nativeElement,
+    'location-pill': () => this.locationPill?.nativeElement,
+    'locales-row': () => this.otherLocalesRow?.nativeElement,
+    'folder-filter': () => this.folderFilterInput?.nativeElement,
+    'drawer-first-control': () => this.drawerFirstControl?.nativeElement,
+  });
 
   readonly #resetLocationFlash = injectRestartableDelay(900);
   readonly #keyCopiedFlash = injectFlash(1500);
@@ -454,9 +465,9 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   ngAfterViewInit(): void {
     this.dialogRef.afterOpened().subscribe(() => {
       if (this.isEditMode()) {
-        this.baseValueInput?.nativeElement.focus();
+        this.#focus.focus('base-value');
       } else {
-        this.keyInput?.nativeElement.focus();
+        this.#focus.focus('key');
       }
     });
   }
@@ -565,31 +576,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       if (!request) {
         return;
       }
-      setTimeout(() => this.#focusTarget(request.target));
+      setTimeout(() => this.#focus.focus(request.target));
     });
-  }
-
-  #focusTarget(target: EditorFocusTarget): void {
-    const anchors: Record<EditorFocusTarget, ElementRef<HTMLElement> | undefined> = {
-      'location-pill': this.locationPill,
-      'locales-row': this.otherLocalesRow,
-      'folder-filter': this.folderFilterInput,
-      'drawer-first-control': this.drawerFirstControl,
-      comment: this.commentInput,
-      'base-value': this.baseValueInput,
-    };
-    const element = anchors[target]?.nativeElement;
-    if (!element) {
-      return;
-    }
-    element.focus();
-    if (target === 'comment' && element instanceof HTMLTextAreaElement) {
-      // The field may be below the fold on a scrolled form.
-      element.scrollIntoView?.({ block: 'nearest' });
-      // Selects whatever is there, so a rewrite types over it; an empty field
-      // just parks the caret.
-      element.setSelectionRange(0, element.value.length);
-    }
   }
 
   /** Writes a status from the per-locale pill menu into the same FormArray as before. */
@@ -723,8 +711,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     this.panels.closeAll();
 
     queueMicrotask(() => {
-      const target = this.form.controls.key.invalid ? this.keyInput : this.baseValueInput;
-      target?.nativeElement.focus();
+      this.#focus.focus(this.form.controls.key.invalid ? 'key' : 'base-value');
     });
   }
 
