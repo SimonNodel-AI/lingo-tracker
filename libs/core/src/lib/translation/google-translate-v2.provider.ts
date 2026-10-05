@@ -1,3 +1,4 @@
+import type { KnownProviderErrorCode } from '../errors/error-codes';
 import type {
   ProviderCapabilities,
   TranslateRequest,
@@ -82,7 +83,12 @@ function mapGoogleErrorToTranslationError(httpStatus: number, errorBody: GoogleE
   const firstReason = errorBody.error?.errors?.[0]?.reason;
 
   if (httpStatus === 400) {
-    return new TranslationError(`Invalid translation request: ${googleMessage}`, 'INVALID_REQUEST', false, firstReason);
+    return new TranslationError(
+      `Invalid translation request: ${googleMessage}`,
+      'INVALID_REQUEST' satisfies KnownProviderErrorCode,
+      false,
+      firstReason,
+    );
   }
 
   if (httpStatus === 403) {
@@ -91,7 +97,7 @@ function mapGoogleErrorToTranslationError(httpStatus: number, errorBody: GoogleE
     if (isRateLimit) {
       return new TranslationError(
         `Google Translate rate limit exceeded: ${googleMessage}`,
-        'RATE_LIMIT',
+        'RATE_LIMIT' satisfies KnownProviderErrorCode,
         true,
         firstReason,
       );
@@ -99,19 +105,24 @@ function mapGoogleErrorToTranslationError(httpStatus: number, errorBody: GoogleE
 
     return new TranslationError(
       `Google Translate authentication failed: ${googleMessage}`,
-      'AUTH_ERROR',
+      'AUTH_ERROR' satisfies KnownProviderErrorCode,
       false,
       firstReason,
     );
   }
 
   if (httpStatus === 500 || httpStatus === 503) {
-    return new TranslationError(`Google Translate server error: ${googleMessage}`, 'SERVER_ERROR', true, firstReason);
+    return new TranslationError(
+      `Google Translate server error: ${googleMessage}`,
+      'SERVER_ERROR' satisfies KnownProviderErrorCode,
+      true,
+      firstReason,
+    );
   }
 
   return new TranslationError(
     `Unexpected Google Translate error (HTTP ${httpStatus}): ${googleMessage}`,
-    'SERVER_ERROR',
+    'SERVER_ERROR' satisfies KnownProviderErrorCode,
     true,
     firstReason,
   );
@@ -139,7 +150,7 @@ export class GoogleTranslateV2Provider implements TranslationProvider {
     if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
       throw new TranslationError(
         'Google Translate requestTimeoutMs must be a positive finite number',
-        'INVALID_REQUEST_TIMEOUT',
+        'INVALID_REQUEST_TIMEOUT' satisfies KnownProviderErrorCode,
         false,
       );
     }
@@ -200,7 +211,7 @@ export class GoogleTranslateV2Provider implements TranslationProvider {
         reject(
           new TranslationError(
             `Google Translate request timed out after ${this.#requestTimeoutMs} ms`,
-            'TIMEOUT',
+            'TIMEOUT' satisfies KnownProviderErrorCode,
             true,
           ),
         );
@@ -241,7 +252,7 @@ export class GoogleTranslateV2Provider implements TranslationProvider {
       if (controller.signal.aborted) {
         throw new TranslationError(
           `Google Translate request timed out after ${this.#requestTimeoutMs} ms`,
-          'TIMEOUT',
+          'TIMEOUT' satisfies KnownProviderErrorCode,
           true,
         );
       }

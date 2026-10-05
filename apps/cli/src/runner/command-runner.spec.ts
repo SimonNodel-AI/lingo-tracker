@@ -5,7 +5,6 @@ import {
   ConfigNotFoundError,
   ConfigParseError,
   InvalidConfigError,
-  InvalidResourceKeyError,
   type LingoTrackerConfig,
   loadConfig,
 } from '@simoncodes-ca/core';
@@ -14,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseListSelection } from '../utils/prompt-utils';
 import { CommandCancelledError } from './command-cancelled-error';
 import { type CollectionNeed, type CommandSpec, defineCommand } from './command-runner';
+import * as internalErrors from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import { isInteractiveTerminal } from './terminal';
 
 vi.mock('prompts');
@@ -616,7 +616,7 @@ describe('defineCommand', () => {
       const { invoke } = command({
         collection: 'none',
         run: () => {
-          throw new InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
+          throw new internalErrors.InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
         },
       });
 
@@ -627,7 +627,7 @@ describe('defineCommand', () => {
     });
 
     it('formats a message without replacing the typed error', async () => {
-      const error = new InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
+      const error = new internalErrors.InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
       const formatError = vi.fn((caught: unknown, duringRun: boolean) => {
         expect(caught).toBe(error);
         expect(duringRun).toBe(true);
