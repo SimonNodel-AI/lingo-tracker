@@ -21,7 +21,7 @@ const run = defineCommand<EditCollectionOptions & { name: string }>()({
   run: async ({ collection, answers }) => {
     let currentTags: string[];
     try {
-      currentTags = editCollectionTags(collection, {
+      currentTags = await editCollectionTags(collection, {
         add: answers.addTag,
         remove: answers.removeTag,
         set: answers.setTags,

@@ -1,6 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
-import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import { openResourceEntry } from '../resource/resource-entry';
 import type { ResourceFolder } from '../resource/resource-folder';
 

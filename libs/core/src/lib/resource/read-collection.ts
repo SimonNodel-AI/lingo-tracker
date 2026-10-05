@@ -9,7 +9,7 @@ import {
   type WalkCollectionFoldersOptions,
   walkCollectionFolders,
 } from './collection-folders';
-import type { ResourceTreeEntry } from './load-resource-tree';
+import type { ResourceTreeEntry } from './resource-tree-types';
 import { openResourceFolder } from './resource-folder';
 
 /**

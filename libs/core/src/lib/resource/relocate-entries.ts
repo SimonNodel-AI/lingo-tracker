@@ -2,7 +2,7 @@ import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { openFolders } from './folder-batch';
-import type { ResourceTreeEntry } from './load-resource-tree';
+import type { ResourceTreeEntry } from './resource-tree-types';
 import type { MovePlan } from './move-plan';
 import type { ResourceFolder, ResourceFolderEntry } from './resource-folder';
 import {

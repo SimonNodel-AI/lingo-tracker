@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type { Collection } from '../config/open-collection';
-import type { ResourceTreeEntry } from './load-resource-tree';
+import type { ResourceTreeEntry } from './resource-tree-types';
 
 /**
  * One change that a core write made to a translations folder.
