@@ -141,7 +141,7 @@ graph TD
     end
 
     subgraph core["@simoncodes-ca/core"]
-        COREOPS["addResource · addResources · editResource · deleteResource\nmoveResource · moveResources · createFolder · deleteFolder\nmoveFolder · addLocaleToCollection\nremoveLocaleFromCollection · readCollection\ntranslateExistingResource · translateLocale\nResourceTreeIndex · searchResources"]
+        COREOPS["addResource · addResources · editResource · deleteResource\nmoveResource · moveResources · createFolder · deleteFolder\nmoveFolder · addLocaleToCollection\nremoveLocaleFromCollection · readCollection\ntranslateExistingResource · prepareTranslationRun\nResourceTreeIndex · searchResources"]
     end
 
     TRACKER -->|"REST /api/*"| controllers
@@ -171,7 +171,7 @@ graph TD
     RESC -->|"delegate writes"| COREOPS
     FOLDC -->|"delegate writes"| COREOPS
     LOCALEC -->|"delegate writes"| COREOPS
-    JOBS -->|"translateLocale()"| COREOPS
+    JOBS -->|"LocaleTranslationRun.execute()"| COREOPS
 
     style api fill:#d1ecf1,stroke:#17a2b8,color:#000
     style controllers fill:#e8f4fd,stroke:#17a2b8,color:#000
@@ -313,7 +313,7 @@ reindex or failed patch
 
 ### Writes: Resource Mutations
 
-Each core write with mutation support, including `addResources`, `moveResources`, and `translateLocale`, accepts `onMutation` in its last object argument. `openCollection` also accepts a default sink and exposes it on the returned `Collection`. One core helper, `resolveMutationSink`, selects `options.onMutation ?? collection.onMutation`, so explicit callbacks still win. `RouteCollectionPipe` attaches `CollectionIndex.sink` when it opens a writable collection; resource, folder, and locale controllers inherit it. Collection update and delete routes open their own handles with the same sink, preserving their registration-specific access rules. `createCollection` now reports a benign `reindex` mutation for the newly registered folder after its config write. The translation job service receives the same writable route collection and inherits its sink. Core delivers mutations synchronously after disk operations; locale translation coalesces them at each batch boundary, so the index follows disk order even when requests overlap. A successful Resource Folder save delivers an `upsert` or `remove`; one that throws delivers `reindex`, since one JSON file may already be on disk. Earlier completed batch items remain delivered if a later item fails. The sink catches and logs any index error, so indexing cannot fail a write. There is no rollback. Resource Tree Index matches mutations by absolute `translationsFolder`, including both sides of a cross-collection move.
+Core writes such as `addResources` and `moveResources` accept `onMutation` in their last object argument. Locale runs accept this override in `prepareTranslationRun(collection, options)`. `openCollection` also accepts a default sink and exposes it on the returned `Collection`. One core helper, `resolveMutationSink`, selects `options.onMutation ?? collection.onMutation`, so explicit callbacks still win. `RouteCollectionPipe` attaches `CollectionIndex.sink` when it opens a writable collection; resource, folder, and locale controllers inherit it. Collection update and delete routes open their own handles with the same sink, preserving their registration-specific access rules. `createCollection` now reports a benign `reindex` mutation for the newly registered folder after its config write. The translation job service receives a bound run prepared from the writable route collection and inherits its sink. Core delivers mutations synchronously after disk operations; locale translation coalesces them at each batch boundary, so the index follows disk order even when requests overlap. A successful Resource Folder save delivers an `upsert` or `remove`; one that throws delivers `reindex`, since one JSON file may already be on disk. Earlier completed batch items remain delivered if a later item fails. The sink catches and logs any index error, so indexing cannot fail a write. There is no rollback. Resource Tree Index matches mutations by absolute `translationsFolder`, including both sides of a cross-collection move.
 
 | Mutation | Delivered by | Core Resource Tree Index action |
 |---|---|---|
@@ -321,7 +321,7 @@ Each core write with mutation support, including `addResources`, `moveResources`
 | `remove` (key) | `deleteResource`, `moveResource` / `moveResources` / `moveFolder` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → return `reload`; the API removes the cache entry. |
 | `add-folder` (path) | `createFolder` | Create the folder node (and missing parents). |
 | `remove-folder` (path) | `deleteFolder`, `moveFolder` (every removed source folder, deepest first) | Remove the folder node. Missing folder → return `reload`; the API removes the cache entry. |
-| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`, `deleteCollection`, `translateLocale`, API `createCollection`; a move, folder create/delete, or Resource Folder save whose write failed part-way | Return `reload`; the API removes the cache entry. The change is broad or uncertain. |
+| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`, `deleteCollection`, locale runs, API `createCollection`; a move, folder create/delete, or Resource Folder save whose write failed part-way | Return `reload`; the API removes the cache entry. The change is broad or uncertain. |
 
 A relocation delivers a `remove` for every moved key first, then an `upsert` for every moved key. A folder move then delivers `remove-folder` for each folder it removes, deepest first. Removes come first because one batch can move an entry into a key that another entry of the same batch leaves (`a.*` to `a.b`). Thus the index follows partial moves, merges into an existing folder, and `nestUnderDestination: false` in the same way as the disk. The translate-locale job inherits the sink from its opened route collection.
 
@@ -381,12 +381,16 @@ sequenceDiagram
     participant Core as @simoncodes-ca/core
 
     UI->>RC: POST /translate-locale { locale: "fr" }
-    RC->>JS: startJob(collection, locale)
+    RC->>Core: prepareTranslationRun(collection)
+    Core-->>RC: TranslationRun handle
+    RC->>Core: handle.forLocale(locale)
+    Core-->>RC: LocaleTranslationRun
+    RC->>JS: startJob(run)
     JS->>JS: Job Registry creates UUID and queues job (status: "pending")
     JS-->>RC: pending TranslateLocaleJobDto
     RC-->>UI: 202 Accepted TranslateLocaleJobDto\n{ jobId, status: "pending", ... }
 
-    JS->>Core: executeTranslateLocale(prepared, { onProgress }) [when earlier translations settle]
+    JS->>Core: run.execute({ onProgress }) [when earlier translations settle]
 
     loop Poll until status is "completed" or "failed"
         UI->>RC: GET /translate-locale/{jobId}
@@ -402,19 +406,23 @@ sequenceDiagram
     RC-->>UI: 200 OK\n{ status: "completed", translatedCount: N, skippedCount: M }
 ```
 
-**Starting a job.** The controller calls `prepareTranslateLocale(collection, locale)` synchronously, then passes the prepared run to `startJob(prepared)`. Existing errors retain their statuses: disabled auto-translation gives 422, invalid locales give 400, and read-only collections give 403. An enabled collection without target locales now also gives 400, with the existing CLI message. The job calls `executeTranslateLocale(prepared, { onProgress })` and inherits the collection sink. Translation Run emits one collection `reindex` per batch with save attempts, including partial failures, before progress updates. A batch without save attempts emits none.
+**Starting a job.** The controller calls `prepareTranslationRun(collection).forLocale(locale)` synchronously, then passes the bound run to `startJob(run)`. Disabled auto-translation gives 422, invalid locales give 400, and read-only collections give 403. An enabled collection without target locales also gives 400, with the existing CLI message. The job calls `run.execute({ onProgress })` and inherits the collection sink.
+
+Translation Run emits one collection `reindex` per batch with save attempts, including partial failures, before progress updates. A batch without save attempts emits none.
 
 **Start and lookup protocol.** Registry `start` returns the initial pending DTO snapshot directly. The services return it to controllers, which use `@HttpCode(202)` and Nest's return handling. Registry `get` returns a fresh snapshot or raises API-local `JobNotFoundError` (kind `not-found`). Translation lookup supplies the route collection as an owner check; a wrong owner has the same 404 as an unknown or evicted ID. The filter maps kind `not-found` to Nest's `NotFoundException`, preserving `{ statusCode: 404, message, error: "Not Found" }` and the existing bundle/translation job messages. Bundle preparation stays in the bundle service; translation preconditions stay in the controller.
 
 **Job lifecycle states:** `pending` → `running` → `completed` | `failed`. The [Job Registry](glossary.md#job-registry) owns the map, queue, timestamps, error text, and DTO snapshots for both services. Each service has one registry instance: translations run serially with translations, and bundles run serially with bundles. A bundle and a translation may run concurrently. Bundle generation reads resource folders and writes its configured `dist` and optional type output; translation writes resource folders. Their usual output paths do not overlap, so this avoids two jobs writing the same files. Output paths are configurable and are not checked for overlap; a bundle may also read resources while translation writes them. Finished jobs older than 30 minutes are evicted on the next start; when the count would exceed 100, the oldest finished jobs are evicted first. Queued and running jobs are never evicted. If the process restarts, all jobs are lost and the UI must re-issue any in-progress operations.
 
-**Progress reporting.** `executeTranslateLocale()` in `@simoncodes-ca/core` accepts an `onProgress` callback. `TranslationJobService` subscribes to this callback and updates the in-memory job's `translatedCount`, `failedCount`, and `skippedCount` fields on each tick. Polling clients see live progress, not just a final result.
+**Progress reporting.** The bound run's `execute({ onProgress })` method emits `TranslateLocaleProgress`, which includes resource counts and batch position. `TranslationJobService` stores this progress value and maps its four resource counters to the unchanged HTTP DTO. Polling clients see live progress and the final result.
 
-**Unreadable folders.** `translateLocale` returns a `warnings` line for each folder the Collection Reader could not read (its resources are not translated). The service logs each one with `Logger.warn`; the DTO does not carry them.
+**Unreadable folders.** The bound run returns a `warnings` line for each folder the Collection Reader could not read (its resources are not translated). The service logs each one with `Logger.warn`; the DTO does not carry them.
 
 **Skips.** `skippedCount` and `skippedKeys` cover every resource the Translator did not store: complex ICU, a lost placeholder, a translation that dropped a [protected term](glossary.md#protected-term), or a base or target value changed during the provider call. The DTO does not carry the reason.
 
-**Error handling.** If `translateLocale()` rejects with a `TranslationError` (a missing API key, which is only checked when some resource needs work) or any other error, the job transitions to `failed` and its `error` is set: the error's message, or `An unexpected error occurred` for a rejection that is not an `Error`. `TranslateLocaleJobDto.error` carries it, so a polling client can show why the job failed. The DTO has `error` only when it is set. A provider or folder write failure in one batch does not reject: that batch's resources are listed in `failures`, and later batches continue. No retry is attempted.
+**Error handling.** If `run.execute()` rejects, the job transitions to `failed`. Its `error` contains the error's message, or `An unexpected error occurred` for a rejection that is not an `Error`. A missing API key raises `TranslationError` only when some resource needs work. `TranslateLocaleJobDto.error` carries the message, so a polling client can show why the job failed. The DTO has `error` only when it is set.
+
+A provider or folder write failure in one batch does not reject the run. That batch's resources appear in `failures`, and later batches continue. The run does not retry failures.
 
 **Clients.** The Tracker does not start or poll translate-locale jobs today; it translates one resource at a time (`POST /resources/translate`). The job endpoints serve other clients (scripts, tools). A client shows `error` for a `failed` job and can offer a manual re-trigger.
 
