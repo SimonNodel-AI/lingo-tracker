@@ -47,6 +47,34 @@ export interface CollectionLinks {
   readonly port: BundlePort | null;
 }
 
+/** Measured viewport rectangles for the hovered bundle and its linked collection cards. */
+export interface CollectionLinkRects {
+  readonly container: LinkRect;
+  readonly column: LinkRect;
+  readonly bundle: CollectionLinkCard;
+  readonly collections: ReadonlyMap<string, LinkRect>;
+}
+
+/** Order the measured cards for rendering and delegate their connector geometry. */
+export function collectionLinksFromRects(
+  rects: CollectionLinkRects | undefined,
+  collectionNames: readonly string[],
+): CollectionLinks {
+  if (!rects) return { links: [], port: null };
+  const collections: CollectionLinkCard[] = [];
+  for (const name of collectionNames) {
+    const rect = rects.collections.get(name);
+    if (rect) collections.push({ name, rect });
+  }
+  return collectionLinks({
+    container: rects.container,
+    bundlesColumn: rects.column,
+    collections,
+    bundles: [{ ...rects.bundle, collectionNames: new Set(rects.collections.keys()) }],
+    hoveredBundle: rects.bundle.name,
+  });
+}
+
 /** Padding plus half the bundle card's identity tile, measured from its top edge. */
 const BUNDLE_PORT_OFFSET = 35;
 /** Keeps the port clear of the scrolling bundles column's rim. */

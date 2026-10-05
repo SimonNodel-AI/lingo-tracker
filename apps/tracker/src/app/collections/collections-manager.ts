@@ -27,7 +27,8 @@ import { NotificationService } from '../shared/notification';
 import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData } from './bundle-form-dialog/bundle-form-dialog-data';
 import type { CollectionFormDialogData } from './collection-form-dialog/collection-form-dialog-data';
-import { type BundleLink, type BundlePort, collectionLinks, type LinkRect } from './collection-links';
+import type { BundleLink, BundlePort } from './collection-links';
+import { measureCollectionLinks } from './collection-links-measurement';
 import { bundleCards, collectionCards } from './collection-cards';
 import { CollectionsStore } from './store/collections.store';
 
@@ -168,49 +169,18 @@ export class CollectionsManager {
    * tint carries the relation on its own.
    */
   #measureLinks(): void {
-    const hovered = this.hoveredBundle();
-    if (hovered === null) {
-      this.#clearLinks();
-      return;
-    }
-    const split = this.#host.nativeElement.querySelector('.split');
-    const column = split?.querySelector('.bundles-col');
-    const target = Array.from(split?.querySelectorAll('[data-bundle]') ?? []).find(
-      (element) => element.getAttribute('data-bundle') === hovered,
+    const { links, port } = measureCollectionLinks(
+      this.#host.nativeElement,
+      this.hoveredBundle(),
+      this.linkedCollections(),
+      this.cards().map((card) => card.name),
     );
-
-    if (!split || !column || !target) {
+    if (links.length === 0) {
       this.#clearLinks();
       return;
     }
-
-    const linked = this.linkedCollections();
-    const collectionElements = new Map<string, Element>();
-    for (const element of Array.from(split.querySelectorAll('[data-collection]'))) {
-      const name = element.getAttribute('data-collection');
-      if (name !== null && linked.has(name) && !collectionElements.has(name)) collectionElements.set(name, element);
-    }
-    const collections: { name: string; rect: LinkRect }[] = [];
-    for (const card of this.cards()) {
-      if (!linked.has(card.name)) continue;
-      const element = collectionElements.get(card.name);
-      if (!element) continue;
-      collections.push({ name: card.name, rect: this.#measureRect(element) });
-    }
-    const { links, port } = collectionLinks({
-      container: this.#measureRect(split),
-      bundlesColumn: this.#measureRect(column),
-      collections,
-      bundles: [{ name: hovered, rect: this.#measureRect(target), collectionNames: linked }],
-      hoveredBundle: hovered,
-    });
     this.bundleLinks.set(links);
     this.bundlePort.set(port);
-  }
-
-  #measureRect(element: Element): LinkRect {
-    const { left, top, right, bottom, height } = element.getBoundingClientRect();
-    return { left, top, right, bottom, height };
   }
 
   #clearLinks(): void {
