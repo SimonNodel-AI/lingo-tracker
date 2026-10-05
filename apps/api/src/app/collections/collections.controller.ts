@@ -28,6 +28,7 @@ export class CollectionsController {
   @Delete(':collectionName')
   async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
     const current = openCollection(this.#configService.getConfig(), collectionName, {
+      cwd: this.#configService.projectRoot,
       forDeletion: true,
       onMutation: this.#index.sink,
     });
@@ -67,7 +68,10 @@ export class CollectionsController {
   ): Promise<{ message: string }> {
     const { name, collection } = body;
     const patch = mapDtoToCollection(collection);
-    const current = openCollection(this.#configService.getConfig(), collectionName, { onMutation: this.#index.sink });
+    const current = openCollection(this.#configService.getConfig(), collectionName, {
+      cwd: this.#configService.projectRoot,
+      onMutation: this.#index.sink,
+    });
     const result = await updateCollection(current, name, patch, {
       protectedTerms: collection.protectedTerms,
     });

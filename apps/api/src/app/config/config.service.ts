@@ -4,20 +4,24 @@ import {
   ConfigParseError,
   InvalidConfigError,
   type LingoTrackerConfig,
-  type OpenedProject,
   loadConfig,
+  type OpenedProject,
 } from '@simoncodes-ca/core';
 
 @Injectable()
 export class ConfigService {
+  get projectRoot(): string {
+    return process.cwd();
+  }
+
   openProject(): OpenedProject {
-    return { projectRoot: process.cwd(), sourceConfig: this.getConfig() };
+    return { projectRoot: this.projectRoot, sourceConfig: this.getConfig() };
   }
 
   /** Reads once per call; read routes own their HTTP responses, including without a global filter. */
   getConfig(): LingoTrackerConfig {
     try {
-      return loadConfig({ cwd: process.cwd() });
+      return loadConfig({ cwd: this.projectRoot });
     } catch (error) {
       if (error instanceof ConfigNotFoundError) throw new NotFoundException('Configuration file not found');
       if (error instanceof ConfigParseError)
