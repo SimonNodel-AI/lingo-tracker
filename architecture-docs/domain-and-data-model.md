@@ -447,3 +447,7 @@ Two functions use the regular expression, with opposite case sensitivity:
 That difference is the mechanism. LingoTracker flags a source string however it was typed. It then requires the translation to hold the term exactly as stored. This is what catches `iPhone` returning from a translation service as `iphone` or as `Iphone`.
 
 All of this lives in `libs/domain/src/lib/protected-terms.ts`, and all of it is pure. Resolving and reading the files is core's job. See [core-library.md — Protected Terms Resolution](core-library.md#protected-terms-resolution).
+
+## Key Tree
+
+The domain [Key Tree](glossary.md#key-tree) converts flat dot-delimited entries to nested JSON and back. It has no Node dependencies, so browser callers can use the same rules. Branches have null prototypes; rich leaf objects remain opaque. Conflict detection is independent of key order. An optional path transformation reports distinct source keys that map to the same output path. Flattening preserves empty segments. Parent leaves win, and callers choose whether to reject or report the conflicts.

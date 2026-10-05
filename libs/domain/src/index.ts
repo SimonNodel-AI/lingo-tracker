@@ -159,3 +159,5 @@ export {
 
 // Locale seeding input
 export { parseTranslationInputs, type TranslationInput, type TranslationInputsResult } from './lib/translation-inputs';
+
+export { buildKeyTree, flattenKeyTree, type KeyTree } from './lib/key-tree';

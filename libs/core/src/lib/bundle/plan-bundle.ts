@@ -12,17 +12,22 @@ import * as path from 'node:path';
 import {
   type BundleDefinition,
   bundleOutputFile,
-  detectHierarchicalConflicts,
   hasTypeDistConfigured,
   type TokenCasing,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { type BundleSelection, selectBundleEntries } from './bundle-selection';
-import { prepareBundleRun, selectPreparedBundleLocale } from './prepare-bundle-run';
-import { type BundleLocale, COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
+import type { BundleSelection } from './bundle-selection';
+import {
+  type BundleRunOutputOptions,
+  bundleRunConflicts,
+  bundleRunWarnings,
+  type PreparedBundleRun,
+  prepareBundleRun,
+} from './prepare-bundle-run';
+import { bundleTypeOutputFile } from './type-generation/generate-types';
 import { segmentToPropertyName, splitKeyIntoSegments } from './type-generation/key-transformer';
 
-export interface PlanBundleParams {
+export interface PlanBundleParams extends BundleRunOutputOptions {
   readonly bundleKey: string;
   readonly bundleDefinition: BundleDefinition;
   readonly config: LingoTrackerConfig;
@@ -75,7 +80,7 @@ export interface BundlePlan {
   /** Keys defined by more than one collection. */
   readonly conflictKeys: string[];
   /**
-   * Base-locale keys that are both a leaf and a parent, e.g. `buttons.ok`
+   * Selected locale or base keys that are both a leaf and a parent, e.g. `buttons.ok`
    * alongside `buttons.ok.label`. Generation cannot build a hierarchy from
    * these, so a plan that reports any of them describes a bundle that would
    * fail. Each one is also echoed in `warnings`.
@@ -93,57 +98,37 @@ export interface BundlePlan {
  * Plans a bundle run without writing anything. Core trims the supplied bundle key before validation.
  */
 export function planBundle(params: PlanBundleParams): BundlePlan {
-  const prepared = prepareBundleRun({ ...params, source: 'supplied' });
+  return planPreparedBundle(prepareBundleRun({ ...params, source: 'supplied' }), params);
+}
+
+/** Describes the exact selections that generation will consume. */
+export function planPreparedBundle(prepared: PreparedBundleRun, options: BundleRunOutputOptions = {}): BundlePlan {
   const { bundleKey, cwd } = prepared;
   const { definition: bundleDefinition, settings, locales: targetLocales } = prepared;
-  const warnings = [...prepared.collections.warnings];
+  const content = prepared.content();
+  const warnings = bundleRunWarnings(prepared, content, options);
   const keysPerLocale: Record<string, number> = {};
   const files: BundlePlanFile[] = [];
-  const cache: CollectionReadCache = new Map();
-  const select = (locale: BundleLocale): BundleSelection =>
-    selectBundleEntries(prepared.collections.collections, locale, {
-      transformICUToTransloco: settings.transformICUToTransloco,
-      cache,
-    });
-
-  for (const locale of targetLocales) {
-    const selection = selectPreparedBundleLocale(prepared, locale, cache);
-    warnings.push(...selection.warnings);
-
+  for (const { locale, selection } of content.locales) {
     const keysCount = selection.entries.size;
     keysPerLocale[locale] = keysCount;
-
-    const outputPath = bundleOutputFile(bundleDefinition, locale);
-    files.push(describeFile(outputPath, 'bundle', keysCount, cwd, locale));
+    if (keysCount > 0) {
+      files.push(describeFile(bundleOutputFile(bundleDefinition, locale), 'bundle', keysCount, cwd, locale));
+    }
   }
-
-  // The key set drives conflict detection, the example key and the types count. It is read
-  // once, from every collection's own base values (a collection may override the base locale).
-  // Conflicts are a property of the key set, not of a locale. Its warnings were already reported
-  // by the locale passes, so they are dropped unless there were none.
-  const base = select(COLLECTION_BASE_LOCALE);
-  if (targetLocales.length === 0) {
-    warnings.push(...base.warnings);
+  const { base, baseKeys } = content;
+  if (options.debugKeysLocale && baseKeys.length > 0) {
+    const locale = options.debugKeysLocale;
+    keysPerLocale[locale] = baseKeys.length;
+    files.push(describeFile(bundleOutputFile(bundleDefinition, locale), 'bundle', baseKeys.length, cwd, locale));
   }
-  const baseKeys = Array.from(base.entries.keys());
-
   const typesConfigured = hasTypeDistConfigured(bundleDefinition);
-
-  if (typesConfigured && bundleDefinition.typeDistFile) {
-    files.push(describeFile(bundleDefinition.typeDistFile, 'types', baseKeys.length, cwd));
+  const typeFile = bundleTypeOutputFile(bundleDefinition);
+  if (typesConfigured && typeFile && baseKeys.length > 0) {
+    files.push(describeFile(typeFile, 'types', baseKeys.length, cwd));
   }
-
-  const conflictKeys = Array.from(base.conflicts).sort();
-
-  // A key that is both a leaf and a parent makes `buildHierarchy` throw during
-  // generation, so surface it in the plan rather than letting the run explode.
-  const hierarchicalConflicts = detectHierarchicalConflicts(baseKeys).sort();
-  for (const key of hierarchicalConflicts) {
-    warnings.push(
-      `Hierarchical conflict: bundled key '${key}' has a value and child keys; generation would fail. ` +
-        `Remove the entry or its children from bundle '${bundleKey}'.`,
-    );
-  }
+  const conflictKeys = [...base.conflicts].sort();
+  const hierarchicalConflicts = bundleRunConflicts(prepared, content, options);
 
   const exampleKey = pickExampleKey(base, typesConfigured, settings.tokenConstantName, settings.tokenCasing);
 

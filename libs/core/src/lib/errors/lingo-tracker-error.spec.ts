@@ -4,6 +4,7 @@ import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
+  BundleHierarchicalConflictError,
   BundleNotFoundError,
   CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
@@ -59,6 +60,13 @@ describe('LingoTrackerError subclasses', () => {
   });
 
   const cases: ReadonlyArray<{ error: LingoTrackerError; name: string; code: string; message: string }> = [
+    {
+      error: new BundleHierarchicalConflictError('main', ['a.b']),
+      name: 'BundleHierarchicalConflictError',
+      code: 'BUNDLE_HIERARCHICAL_CONFLICT',
+      message:
+        "Hierarchical conflicts in bundle 'main': a.b. Remove the entry or its children from bundle 'main'; for token collisions, rename one of the keys.",
+    },
     {
       error: new ConfigNotFoundError('/w/.lingo-tracker.json'),
       name: 'ConfigNotFoundError',
@@ -340,5 +348,6 @@ describe('LingoTrackerError subclasses', () => {
     expect(new LocaleNotFoundError('ja', 'app')).toMatchObject({ locale: 'ja', collectionName: 'app' });
     expect(new InvalidFolderPathError('parent path', 'x y')).toMatchObject({ part: 'parent path', segment: 'x y' });
     expect(new InvalidBundleDefinitionError(['a']).errors).toEqual(['a']);
+    expect(new BundleHierarchicalConflictError('main', ['a.b']).conflicts).toEqual(['a.b']);
   });
 });

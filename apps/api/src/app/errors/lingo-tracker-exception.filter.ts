@@ -111,6 +111,7 @@ const HTTP_BY_CODE = {
   CANNOT_TRANSLATE_BASE_LOCALE: { kind: 'invalid' },
   TRANSLATION_LOCALE_NOT_CONFIGURED: { kind: 'invalid' },
   MULTIPLE_BUNDLE_CONSTANT_NAME: { kind: 'internal' },
+  BUNDLE_HIERARCHICAL_CONFLICT: { kind: 'invalid' },
   BUNDLE_NOT_FOUND: { kind: 'not-found' },
   INVALID_BUNDLE_LOCALES: { kind: 'invalid' },
   BUNDLE_ALREADY_EXISTS: { kind: 'conflict' },

@@ -30,6 +30,16 @@ import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-ex
 describe('toHttpException', () => {
   const cases = [
     [
+      new internalErrors.BundleHierarchicalConflictError('main', ['a.b']),
+      400,
+      {
+        message:
+          "Hierarchical conflicts in bundle 'main': a.b. Remove the entry or its children from bundle 'main'; for token collisions, rename one of the keys.",
+        error: 'Bad Request',
+        statusCode: 400,
+      },
+    ],
+    [
       new internalErrors.InvalidNameError(),
       400,
       { message: 'name must be a non-empty string', error: 'Bad Request', statusCode: 400 },

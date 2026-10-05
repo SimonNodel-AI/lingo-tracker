@@ -48,7 +48,7 @@ libs/core/src/lib/bundle/
 ├── plan-bundle.ts              # planBundle(): the dry-run plan, writes nothing
 ├── bundle-selection.ts         # resolveBundleCollections() + selectBundleEntries(): the Bundle Selection
 ├── resource-loader.ts          # loadCollectionResources(): one collection's FlatResource list per locale, via readCollection()
-├── hierarchy-builder.ts        # buildHierarchy(): dot-keys → nested JSON object
+├── hierarchy-builder.ts        # buildBundleHierarchy(): Key Tree adapter and token conflict checks
 ├── pattern-matcher.ts          # matchesPattern(): glob-style key filtering
 ├── tag-filter.ts               # matchesTags(): AND/OR tag filter logic
 └── type-generation/
@@ -184,6 +184,8 @@ A more complex example demonstrating `bundledKeyPrefix`, filtered rules, and tag
 
 ## Entry Filtering Pipeline
 
+Prepared `content()` selects each locale and the base values once, on first use. Progress reports each locale before selection, with its output path. All selections remain in memory until output completes, so conflicts stop all writes. Planning and generation consume that same content. Empty locales have counts and warnings but no planned or generated file. Base selection uses the resolved ICU flag and adds only warnings absent from locale selections.
+
 The pipeline is the [Bundle Selection](glossary.md#bundle-selection) (`bundle-selection.ts`). `resolveBundleCollections()` opens the collections once per run. Then, for each locale, `selectBundleEntries()` iterates over each `CollectionBundleDefinition`, loads resources, applies the filtering pipeline, and merges results into a single flat key-value map with the winning origin of each key. `generateBundle()`, `planBundle()` (the dry run) and the type file (keys only) all consume the same selection, so the rules below are applied in one place. The pipeline for a single collection runs as follows.
 
 ### Pipeline Flowchart
@@ -259,7 +261,7 @@ flowchart TD
 
     NEXT_COLLECTION --> BUILD_HIERARCHY
 
-    BUILD_HIERARCHY["generateBundle: buildHierarchy(values)\nFlat { 'a.b.c': 'val' }\n→ Nested { a: { b: { c: 'val' } } }"]
+    BUILD_HIERARCHY["Prepared content: buildKeyTree(entries)\nFlat { 'a.b.c': 'val' }\n→ Nested { a: { b: { c: 'val' } } }"]
 
     BUILD_HIERARCHY --> WRITE_JSON
 
@@ -377,7 +379,9 @@ dist/i18n/
 └── ja.json
 ```
 
-Each file is a hierarchical JSON object. Dot-delimited keys are expanded into nested objects by `buildHierarchy()`. Example:
+Generation rejects hierarchical conflicts with `BundleHierarchicalConflictError` (`BUNDLE_HIERARCHICAL_CONFLICT`, kind `invalid`) before creating directories or files. Selected locale conflicts always block output. Base conflicts block only when types or debug keys consume the base tree. Types also reject distinct source keys that map to one token path. Bundle diagnostics use the source keys and omit duplicate token paths. Filesystem errors after preflight can still leave earlier output files.
+
+Each file is a hierarchical JSON object. Dot-delimited keys are expanded into nested objects by the domain `buildKeyTree()`. Example:
 
 Input flat map (after filtering and ICU conversion):
 
@@ -510,7 +514,7 @@ interface TypeHierarchyNode {
 }
 ```
 
-For each key, the segments are iterated left to right. At each level, a child node is created (or reused if already present) under the property name produced by `segmentToPropertyName()`. The final segment sets `node.value` to the **full original key string** — this is what Angular's `translate()` receives at runtime.
+The adapter uses the domain [Key Tree](glossary.md#key-tree) to construct the hierarchy. It rejects parent/leaf conflicts and duplicate token paths after `segmentToPropertyName()` transforms the segments. Diagnostics retain the source keys. It converts the result into serializer nodes, with the original key as each leaf value. The serializer also rejects manually supplied mixed nodes. Direct `generateBundleTypes` calls propagate the typed hierarchical error before writes.
 
 Keys are sorted alphabetically before hierarchy building, so the generated file has a deterministic order regardless of the order resources were added.
 

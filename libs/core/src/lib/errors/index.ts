@@ -9,6 +9,7 @@ export {
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  BundleHierarchicalConflictError,
   CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
   CollectionBaseLocaleMismatchError,

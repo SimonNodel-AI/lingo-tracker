@@ -195,7 +195,7 @@ describe('export-to-json', () => {
     it('should correctly detect hierarchical conflict when custom basePropertyName is used', () => {
       // 'a' is set first as a rich value with property name 'original'.
       // Then 'a.b' tries to traverse into 'a', which should be detected as a conflict
-      // (leaf treated as parent). Without threading basePropertyName into isRichValue,
+      // (leaf treated as parent). With incorrect rich leaf detection,
       // 'a' would not be recognised as a rich value and traversal would silently corrupt the tree.
       const conflictResources: FilteredResource[] = [
         { key: 'a', value: 'leaf', baseValue: 'Leaf', status: 'translated', collection: 'Core', locale: 'es' },
@@ -209,7 +209,7 @@ describe('export-to-json', () => {
       });
 
       expect(result.hierarchicalConflicts).toHaveLength(1);
-      expect(result.hierarchicalConflicts[0]).toContain('conflicts with parent');
+      expect(result.hierarchicalConflicts[0]).toContain('has a value and child keys; skipped');
     });
   });
 
@@ -233,10 +233,15 @@ describe('export-to-json', () => {
       },
     ];
 
-    const result = exportToJson(conflictResources, defaultOptions);
-
-    expect(result.hierarchicalConflicts).toHaveLength(1);
-    expect(result.hierarchicalConflicts[0]).toContain('conflicts with parent');
+    for (const ordered of [conflictResources, [...conflictResources].reverse()]) {
+      const result = exportToJson(ordered, defaultOptions);
+      expect(result.hierarchicalConflicts).toHaveLength(1);
+      expect(result.hierarchicalConflicts[0]).toContain('has a value and child keys; skipped');
+      expect(result.resourcesExported).toBe(1);
+      expect(result.hierarchicalConflicts).toEqual(['[es] a has a value and child keys; skipped a.b']);
+      const lastCall = vi.mocked(jsonFileOps.writeJsonFile).mock.calls.slice(-1)[0];
+      expect(lastCall?.[0].data).toEqual({ a: 'Value A' });
+    }
   });
 
   describe('standalone include-* flags without --rich', () => {
@@ -306,7 +311,7 @@ describe('export-to-json', () => {
 
     const singleFileContent = (resources: FilteredResource[], options: ExportOptions): Record<string, unknown> => {
       exportToJson(resources, { ...options, jsonStructure: 'flat' });
-      const callArgs = vi.mocked(jsonFileOps.writeJsonFile).mock.calls.at(-1)?.[0];
+      const callArgs = vi.mocked(jsonFileOps.writeJsonFile).mock.calls.slice(-1)[0]?.[0];
       expect(callArgs).toBeDefined();
       return callArgs?.data as Record<string, unknown>;
     };
@@ -332,5 +337,21 @@ describe('export-to-json', () => {
       const content = singleFileContent([baseRow], { ...defaultOptions, richJson: true });
       expect(content['brand.title']).toEqual({ value: 'Inicio iPhone' });
     });
+  });
+
+  it('names every skipped descendant and counts only surviving rich leaves', () => {
+    const keys = ['a.b.c', 'a.b', 'a.b.d', 'other'];
+    const resources: FilteredResource[] = keys.map((key) => ({
+      ...mockResources[0],
+      key,
+      value: key,
+    }));
+    for (const ordered of [resources, [...resources].reverse()]) {
+      const result = exportToJson(ordered, { ...defaultOptions, richJson: true });
+      expect(result.resourcesExported).toBe(2);
+      expect(result.hierarchicalConflicts).toEqual(['[es] a.b has a value and child keys; skipped a.b.c, a.b.d']);
+      const lastCall = vi.mocked(jsonFileOps.writeJsonFile).mock.calls.slice(-1)[0];
+      expect(lastCall?.[0].data).toEqual({ a: { b: { value: 'a.b' } }, other: { value: 'other' } });
+    }
   });
 });
