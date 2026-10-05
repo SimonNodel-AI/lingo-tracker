@@ -68,7 +68,6 @@ describe('core public surface', () => {
       'deleteFolder',
       'deleteResource',
       'describeFolderProblem',
-      'describeTypeOutcome',
       'detectImportFormat',
       'displayTermPath',
       'editCollectionTags',

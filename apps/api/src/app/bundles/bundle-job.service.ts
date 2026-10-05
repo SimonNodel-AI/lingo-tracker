@@ -67,8 +67,9 @@ export class BundleJobService {
             progress: { current: total, total },
             result: mapGenerateBundleResultToJobResult(result),
           });
-        } finally {
+        } catch (error) {
           if (prepared.typeWarning) this.#logger.warn(prepared.typeWarning);
+          throw error;
         }
       },
       onError: (jobId, message) => {

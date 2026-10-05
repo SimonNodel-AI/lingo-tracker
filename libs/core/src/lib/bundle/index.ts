@@ -18,7 +18,6 @@ export {
   type GenerateBundleResult,
   generateBundle,
   generatePreparedBundle,
-  describeTypeOutcome,
 } from './generate-bundle';
 export {
   generateBundles,

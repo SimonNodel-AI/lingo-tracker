@@ -146,6 +146,38 @@ describe('bundleCommand (real project)', () => {
     expect(result.stderr).toContain("  - Collection 'missing' not found in config");
     expectLocales('out');
   });
+
+  it('prints each legacy and failed type warning once from the result', async () => {
+    const legacy = { ...mainBundle, typeDist: 'types/invalid.txt' };
+    configure({ main: legacy });
+    const result = await project.run(bundleCommand, { name: ['main'], verbose: true });
+    const legacyWarning =
+      "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.";
+    const outcomeWarning =
+      "Type generation failed: typeDistFile must end with a .ts extension (e.g. './src/types/tokens.ts'), but got: types/invalid.txt";
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(`${legacyWarning}\n❌ ${outcomeWarning}\n`);
+    expect(result.stderr.split(legacyWarning)).toHaveLength(2);
+    expect(result.stderr.split(outcomeWarning)).toHaveLength(2);
+    expectLocales('out');
+  });
+  it('prints the legacy deprecation before the error when a bundle write throws', async () => {
+    const legacy = { ...mainBundle, dist: 'blocked-output', typeDist: 'types/main.ts' };
+    configure({ main: legacy });
+    project.write('blocked-output', 'A file cannot contain generated locale files');
+    const result = await project.run(bundleCommand, { name: ['main'], quiet: true });
+    const warning =
+      "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.";
+
+    expect(result).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: `${warning}\n❌ ENOTDIR: not a directory, open '${join(project.cwd, 'blocked-output/en.json')}'\n`,
+    });
+    expect(result.stderr.split(warning)).toHaveLength(2);
+    expect(files('out')).toEqual([]);
+  });
   it('filters generated locales and excludes es', async () => {
     const result = await project.run(bundleCommand, { name: ['main'], locale: ['en', 'fr'] });
     expect(result.exitCode).toBe(0);

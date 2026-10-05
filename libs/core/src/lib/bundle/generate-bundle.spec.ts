@@ -12,7 +12,6 @@ import {
   type BundleTypeOutcome,
   type GenerateBundleParams,
   bundleTypeOutcomeDetail,
-  describeTypeOutcome,
   generateBundle as generateBundleByName,
   generatePreparedBundle,
 } from './generate-bundle';
@@ -355,7 +354,7 @@ describe('generateBundle (real fs)', () => {
   });
 
   describe('type generation', () => {
-    it('orders collection, locale, prepared and outcome warnings for every type status', async () => {
+    it('separates config warnings from ordered run warnings for every type status', async () => {
       for (const legacy of [false, true]) {
         for (const status of ['written', 'skipped', 'failed', 'not-configured'] as const) {
           const name = `${status}-${legacy}`;
@@ -393,8 +392,9 @@ describe('generateBundle (real fs)', () => {
                   ]
                 : [];
           expect(result.typeOutcome.status).toBe(status);
-          expect(result.warnings).toEqual([...ordinary, ...(legacy ? [preparedWarning] : [])]);
-          expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toBe(outcomeWarning[0]);
+          expect(result.configWarning).toBe(legacy ? preparedWarning : undefined);
+          expect(result.warnings).toEqual(ordinary);
+          expect(result.typeWarning).toBe(outcomeWarning[0]);
         }
       }
     });
@@ -442,7 +442,8 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome.status).toBe('written');
       expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-      expect(result.warnings.join()).toContain("'typeDist' is deprecated");
+      expect(result.configWarning).toContain("'typeDist' is deprecated");
+      expect(result.warnings).toEqual([]);
       expect(warn).not.toHaveBeenCalled();
     });
 
@@ -494,7 +495,7 @@ describe('generateBundle (real fs)', () => {
       expect(result.typeOutcome).toMatchObject({ status: 'failed' });
       expect(result.outcome).toBe('failed');
       expect(result.warnings).toEqual([]);
-      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toMatch(/^Type generation failed for 'main': /);
+      expect(result.typeWarning).toMatch(/^Type generation failed for 'main': /);
     });
 
     it('describes a rejected type file path as a failed outcome', async () => {
@@ -509,7 +510,7 @@ describe('generateBundle (real fs)', () => {
       expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
       expect(result.outcome).toBe('failed');
       expect(result.warnings).toEqual([]);
-      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toMatch(/^Type generation failed for 'main': /);
+      expect(result.typeWarning).toMatch(/^Type generation failed for 'main': /);
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
     });
 
@@ -542,9 +543,7 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
       expect(result.warnings).toEqual([]);
-      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toBe(
-        "Type generation skipped for 'main': bundle is empty",
-      );
+      expect(result.typeWarning).toBe("Type generation skipped for 'main': bundle is empty");
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(false);
     });
 
