@@ -87,6 +87,7 @@ const CLI_BY_CODE = {
   }),
   BASE_LOCALE_IMMUTABLE: original,
   BUNDLE_ALREADY_EXISTS: original,
+  BUNDLE_HIERARCHICAL_CONFLICT: original,
   BUNDLE_NOT_FOUND: (error) => ({ message: `${error.message}.` }),
   CANNOT_TRANSLATE_BASE_LOCALE: original,
   COLLECTION_ALREADY_EXISTS: original,

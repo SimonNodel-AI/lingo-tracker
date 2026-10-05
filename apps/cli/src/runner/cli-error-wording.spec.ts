@@ -28,6 +28,7 @@ const cases = {
   }),
   BASE_LOCALE_IMMUTABLE: unchanged(new core.BaseLocaleImmutableError('en')),
   BUNDLE_ALREADY_EXISTS: unchanged(new core.BundleAlreadyExistsError('main')),
+  BUNDLE_HIERARCHICAL_CONFLICT: unchanged(new core.BundleHierarchicalConflictError('main', ['a.b'])),
   BUNDLE_NOT_FOUND: changed(new core.BundleNotFoundError('main'), { message: 'Bundle "main" not found.' }),
   CANNOT_TRANSLATE_BASE_LOCALE: unchanged(new core.CannotTranslateBaseLocaleError('en')),
   COLLECTION_ALREADY_EXISTS: unchanged(new core.CollectionAlreadyExistsError('main')),
