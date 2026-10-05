@@ -217,6 +217,17 @@ describe('BundleForm preview', () => {
     expect(model.keysPerLocale()).toBe(12);
   });
 
+  it('keeps the planned tree reference across draft and locale changes', () => {
+    const projectLocales = signal<readonly string[]>(['en', 'fr']);
+    const model = build({ locales: projectLocales });
+    vi.advanceTimersByTime(300);
+    const tree = model.previewTree();
+    model.form.controls.dist.setValue('./other');
+    expect(model.previewTree()).toBe(tree);
+    projectLocales.set(['en', 'de']);
+    expect(model.previewTree()).toBe(tree);
+  });
+
   it('cancels the previous request when the next debounced request starts', () => {
     const first = new Subject<BundleDryRunResultDto>();
     const second = new Subject<BundleDryRunResultDto>();

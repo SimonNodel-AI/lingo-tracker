@@ -18,7 +18,6 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import {
   bundleKeyToConstantName,
-  bundleOutputFile,
   checkBundleDefinition,
   hasBundleCollections,
   hasBundleRules,
@@ -33,6 +32,7 @@ import { type DialogCloser, type FormSubmitEnv, NamedEntrySubmit } from '../stor
 import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
+import { bundleOutputPreview, bundlePlannedOutputPreview } from './bundle-output-preview';
 
 export interface BundleFormOptions {
   data: BundleFormDialogData;
@@ -145,15 +145,19 @@ export class BundleForm {
       : this.form.controls.collections.length;
   });
 
-  /** Rail summary under Output: `dist/pattern.json` (the placeholder kept), or nothing until one is typed. */
-  readonly outputSummary = computed(() => outputSummary(this.#draft()));
+  readonly #localOutputPreview = computed(() =>
+    bundleOutputPreview({ draft: this.#draft(), locales: this.projectLocales() }),
+  );
 
-  readonly typeFileName = computed(() => typeFileName(this.#draft()));
+  /** Rail summary under Output: `dist/pattern.json` (the placeholder kept), or nothing until one is typed. */
+  readonly outputSummary = computed(() => this.#localOutputPreview().outputSummary);
+
+  readonly typeFileName = computed(() => this.#localOutputPreview().typeFileName);
 
   readonly derivedConstantName = computed(() => bundleKeyToConstantName(this.#draft().name.trim() || 'bundle'));
 
   /** The bundle file per project locale, relative to the output folder. */
-  readonly patternFiles = computed(() => patternFiles(this.#draft(), this.projectLocales()));
+  readonly patternFiles = computed(() => this.#localOutputPreview().patternFiles);
 
   /** Sections whose fields are invalid and worth flagging in the rail. */
   readonly sectionErrors = computed<ReadonlySet<BundleSection>>(() => {
@@ -177,12 +181,12 @@ export class BundleForm {
   );
 
   /** Client-side tree from the form alone; used while waiting and when the dry run fails. */
-  readonly localTree = computed<readonly PreviewFolder[]>(() => localTree(this.#draft(), this.projectLocales()));
+  readonly localTree = computed(() => this.#localOutputPreview().folders);
 
-  readonly previewTree = computed<readonly PreviewFolder[]>(() => {
+  readonly previewTree = computed(() => {
     const result = this.dryRun();
     if (!result || this.previewStatus() === 'error') return this.localTree();
-    return plannedTree(result.files);
+    return bundlePlannedOutputPreview(result);
   });
 
   readonly previewFileCount = computed(() =>
@@ -221,7 +225,7 @@ export class BundleForm {
   readonly tokenPathParts = computed<readonly string[]>(() => {
     const tokenPath = this.dryRun()?.exampleKey?.tokenPath;
     if (!tokenPath) return [];
-    return splitAfterSeparators(tokenPath, TOKEN_SEPARATORS);
+    return tokenPath.split(TOKEN_SEPARATORS);
   });
 
   readonly hasOverride = computed(() => {
@@ -641,28 +645,6 @@ interface BundleDraft {
   transformICUToTransloco: IcuChoice;
 }
 
-export interface PreviewFolder {
-  readonly path: string;
-  readonly pathParts: readonly string[];
-  readonly files: readonly PreviewFile[];
-}
-
-interface PreviewFile {
-  readonly name: string;
-  readonly nameParts: readonly string[];
-  readonly kind: 'bundle' | 'types';
-  readonly exists: boolean | undefined;
-}
-
-interface PreviewPath {
-  path: string;
-  kind: PreviewFile['kind'];
-  exists: boolean | undefined;
-}
-
-export const LOCALE_PLACEHOLDER = '{locale}';
-const PATH_SEPARATORS = /(?<=[._\-/])/;
-
 function toDraft(definition: BundleDefinitionDto | undefined, allCollectionNames: readonly string[]): BundleDraft {
   const bundle = definition === undefined ? undefined : normalizeBundleDefinition(definition);
   const collections = bundle?.collections;
@@ -747,66 +729,6 @@ function dryRunRequest(draft: BundleDraft): BundleDryRunRequestDto | undefined {
   const name = draft.name.trim();
   if (!name || !draft.dist.trim() || !draft.bundleName.trim()) return undefined;
   return { name, bundle: toDefinition(draft) };
-}
-
-function outputSummary(draft: BundleDraft): string {
-  if (!draft.dist.trim() && !draft.bundleName.trim()) return '';
-  return bundleOutputFile({ dist: draft.dist.trim(), bundleName: draft.bundleName.trim() }, LOCALE_PLACEHOLDER);
-}
-
-function typeFileName(draft: BundleDraft): string {
-  if (!draft.typesEnabled) return '';
-  return draft.typeDistFile.trim().split('/').pop() ?? '';
-}
-
-function patternFiles(draft: BundleDraft, locales: readonly string[]): string[] {
-  const bundleName = draft.bundleName.trim();
-  if (!bundleName) return [];
-  return locales.map((locale) => bundleOutputFile({ dist: '', bundleName }, locale));
-}
-
-function outputFiles(draft: BundleDraft, locales: readonly string[]): string[] {
-  const bundleName = draft.bundleName.trim();
-  if (!bundleName) return [];
-  return locales.map((locale) => bundleOutputFile({ dist: draft.dist.trim(), bundleName }, locale));
-}
-
-function localTree(draft: BundleDraft, locales: readonly string[]): readonly PreviewFolder[] {
-  const files: PreviewPath[] = outputFiles(draft, locales).map((path) => ({ path, kind: 'bundle', exists: undefined }));
-  if (draft.typesEnabled && draft.typeDistFile.trim()) {
-    files.push({ path: stripDotSlash(draft.typeDistFile.trim()), kind: 'types', exists: undefined });
-  }
-  return groupIntoFolders(files);
-}
-
-/** The API plan echoes configured type paths, so tidy those paths for the tree. */
-function stripDotSlash(path: string): string {
-  return path.replace(/^\.\//, '').replace(/\/+$/, '');
-}
-
-function plannedTree(files: readonly PreviewPath[]): readonly PreviewFolder[] {
-  return groupIntoFolders(files.map((file) => ({ ...file, path: stripDotSlash(file.path) })));
-}
-
-function groupIntoFolders(files: readonly PreviewPath[]): readonly PreviewFolder[] {
-  const folders = new Map<string, PreviewFile[]>();
-  for (const file of files) {
-    const slash = file.path.lastIndexOf('/');
-    const folder = slash >= 0 ? file.path.slice(0, slash) : '';
-    const name = slash >= 0 ? file.path.slice(slash + 1) : file.path;
-    const list = folders.get(folder) ?? [];
-    list.push({ name, nameParts: splitAfterSeparators(name, PATH_SEPARATORS), kind: file.kind, exists: file.exists });
-    folders.set(folder, list);
-  }
-  return [...folders.entries()].map(([path, files]) => ({
-    path,
-    pathParts: splitAfterSeparators(path, PATH_SEPARATORS),
-    files,
-  }));
-}
-
-function splitAfterSeparators(value: string, separators: RegExp): readonly string[] {
-  return value.length === 0 ? [] : value.split(separators);
 }
 
 /** Keep the form's error keys while using the domain definition rules. */

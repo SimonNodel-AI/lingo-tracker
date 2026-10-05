@@ -90,6 +90,14 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ---
 
+### Bundle Output Preview
+
+The pure projection of the [Bundle Form](#bundle-form)'s draft output choices, project locales, and optional API dry-run plan. `bundleOutputPreview({ draft, locales, plan? })` in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-output-preview.ts` returns the output summary, locale filenames, type filename, and folders with file kinds, existing-file flags, and path segments for wrapping. The form owns the signals and selects the draft fallback when the dry run fails.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
+
+---
+
 ### Bundle Run Preparation
 
 The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, typeWarning, tokenConstantNameOverride }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `selectPreparedBundleLocale` selects one locale and adds the empty-bundle warning in one place. A prepared `typeWarning` enters the result warning list once. If generation throws, that warning still reaches the CLI event or API log.
