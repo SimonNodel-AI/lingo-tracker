@@ -621,3 +621,18 @@ export class CoreOperationError extends LingoTrackerError {
     this.name = 'Error';
   }
 }
+
+/** A bundle or token hierarchy cannot represent both a leaf and its descendants. */
+export class BundleHierarchicalConflictError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor(
+    readonly bundleKey: string,
+    readonly conflicts: readonly string[],
+  ) {
+    super(
+      `Hierarchical conflicts in bundle '${bundleKey}': ${conflicts.join(', ')}. ` +
+        `Remove the entry or its children from bundle '${bundleKey}'; for token collisions, rename one of the keys.`,
+      ERROR_CODES.BUNDLE_HIERARCHICAL_CONFLICT,
+    );
+  }
+}

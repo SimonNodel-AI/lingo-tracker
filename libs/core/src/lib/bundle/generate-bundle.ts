@@ -5,13 +5,11 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { bundleOutputFile, hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
+import { buildKeyTree, bundleOutputFile, hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { RunOutcome } from '../run-outcome';
-import { type BundleSelection, selectBundleEntries, selectionValues } from './bundle-selection';
-import { buildHierarchy } from './hierarchy-builder';
-import { type PreparedBundleRun, prepareBundleRun, selectPreparedBundleLocale } from './prepare-bundle-run';
-import { COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
+import { BundleHierarchicalConflictError } from '../errors';
+import { bundleRunConflicts, bundleRunWarnings, type PreparedBundleRun, prepareBundleRun } from './prepare-bundle-run';
 import {
   type GenerateBundleTypesParams,
   type GenerateTypesResult,
@@ -43,7 +41,7 @@ export interface GenerateBundleParams {
    */
   readonly debugKeysLocale?: string;
   /**
-   * Called at the start of each locale iteration (the debug-keys locale, when
+   * Called before selecting each locale, before any output write (the debug-keys locale, when
    * requested, is included in `total` and emitted last).
    */
   readonly onProgress?: (event: BundleProgressEvent) => void;
@@ -55,13 +53,13 @@ export interface GenerateBundleParams {
 }
 
 export interface BundleProgressEvent {
-  /** Locale about to be processed (the debug-keys locale code for the debug file). */
+  /** Locale about to be selected (the debug-keys locale code for the debug file). */
   readonly locale: string;
   /** 1-based position of this locale in the run. */
   readonly index: number;
   /** Total number of files this run will attempt, including the debug-keys file. */
   readonly total: number;
-  /** Output path of the file about to be written. */
+  /** Output path for the locale being selected. */
   readonly file: string;
 }
 
@@ -155,57 +153,41 @@ export async function generatePreparedBundle(
   const { debugKeysLocale, onProgress } = options;
   const bundleDefinition = prepared.definition;
   const { tokenCasing } = prepared.settings;
-  const warnings = [...prepared.collections.warnings];
-  const cache: CollectionReadCache = new Map();
-  const selectBase = (): BundleSelection => {
-    const selection = selectBundleEntries(prepared.collections.collections, COLLECTION_BASE_LOCALE, {
-      transformICUToTransloco: false,
-      cache,
-    });
-    warnings.push(...selection.warnings);
-    return selection;
-  };
-  // Every collection's base keys, so a collection with its own base locale is not left out.
-  let baseKeys: string[] | undefined;
-  const selectBaseKeys = (): string[] => {
-    baseKeys ??= Array.from(selectBase().entries.keys());
-    return baseKeys;
-  };
+  const total = prepared.locales.length + (debugKeysLocale ? 1 : 0);
+  const progress = (locale: string, index: number): void =>
+    onProgress?.({ locale, index, total, file: bundleOutputFile(bundleDefinition, locale) });
+  const content = prepared.content({
+    onLocale: progress,
+    onBase: debugKeysLocale ? () => progress(debugKeysLocale, total) : undefined,
+  });
+  const conflicts = bundleRunConflicts(prepared, content, options);
+  if (conflicts.length > 0) throw new BundleHierarchicalConflictError(bundleKey, conflicts);
+  const warnings = bundleRunWarnings(prepared, content, options);
+  const { baseKeys } = content;
 
   const localesProcessed: string[] = [];
   const writtenFiles: string[] = [];
   const keysPerLocale: Record<string, number> = {};
 
-  const write = (locale: string, data: Record<string, string>): void => {
+  const write = (locale: string, data: Record<string, unknown>, keysCount: number): void => {
     const outputFile = bundleOutputFile(bundleDefinition, locale);
-    writeBundleFile(path.resolve(cwd, outputFile), buildHierarchy(data));
+    writeBundleFile(path.resolve(cwd, outputFile), data);
     writtenFiles.push(toProjectRelative(outputFile, cwd));
     localesProcessed.push(locale);
-    keysPerLocale[locale] = Object.keys(data).length;
+    keysPerLocale[locale] = keysCount;
   };
 
-  const targetLocales = prepared.locales;
-  const total = targetLocales.length + (debugKeysLocale ? 1 : 0);
-  const progress = (locale: string, index: number): void =>
-    onProgress?.({ locale, index, total, file: bundleOutputFile(bundleDefinition, locale) });
-
-  targetLocales.forEach((locale, index) => {
-    progress(locale, index + 1);
-    const selection = selectPreparedBundleLocale(prepared, locale, cache);
-    warnings.push(...selection.warnings);
+  content.locales.forEach(({ locale, selection, tree }) => {
     if (selection.entries.size === 0) {
       return;
     }
-    write(locale, selectionValues(selection));
+    write(locale, tree, selection.entries.size);
   });
 
   if (debugKeysLocale) {
-    progress(debugKeysLocale, total);
-    const keys = selectBaseKeys();
-    if (keys.length === 0) {
-      warnings.push(`Bundle '${bundleKey}' debug bundle is empty`);
-    } else {
-      write(debugKeysLocale, Object.fromEntries(keys.map((key) => [key, key])));
+    const keys = baseKeys;
+    if (keys.length > 0) {
+      write(debugKeysLocale, buildKeyTree(keys.map((key) => [key, key] as const)).tree, keys.length);
     }
   }
 
@@ -219,7 +201,7 @@ export async function generatePreparedBundle(
           warning: prepared.typeWarning,
           cwd,
         },
-        selectBaseKeys,
+        baseKeys,
       )
     : { status: 'not-configured' as const };
 
@@ -241,15 +223,10 @@ export async function generatePreparedBundle(
   };
 }
 
-/**
- * The keys are selected inside the `try`, so a failed read is reported like a failed write.
- */
-function generateTypes(
-  params: Omit<GenerateBundleTypesParams, 'keys'>,
-  selectKeys: () => readonly string[],
-): BundleTypeOutcome {
+/** Reports type-file failures through the structured outcome. */
+function generateTypes(params: Omit<GenerateBundleTypesParams, 'keys'>, keys: readonly string[]): BundleTypeOutcome {
   try {
-    const result = generateBundleTypes({ ...params, keys: selectKeys() });
+    const result = generateBundleTypes({ ...params, keys });
     return typeOutcomeFromResult(result, params.cwd ?? process.cwd());
   } catch (error) {
     return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };

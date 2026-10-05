@@ -1,15 +1,27 @@
 import * as path from 'node:path';
-import { type BundleDefinition, checkBundleDefinition, findBundleDefinition } from '@simoncodes-ca/domain';
+import {
+  type BundleDefinition,
+  checkBundleDefinition,
+  findBundleDefinition,
+  hasTypeDistConfigured,
+} from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { BundleNotFoundError, InvalidBundleDefinitionError, InvalidBundleLocalesError } from '../errors';
+import {
+  BundleHierarchicalConflictError,
+  BundleNotFoundError,
+  InvalidBundleDefinitionError,
+  InvalidBundleLocalesError,
+} from '../errors';
 import {
   type BundleSelection,
   type ResolvedBundleCollections,
   resolveBundleCollections,
   selectBundleEntries,
+  selectionValues,
 } from './bundle-selection';
 import { type BundleSettings, type BundleSettingsOverrides, resolveBundleSettings } from './resolve-bundle-settings';
-import type { CollectionReadCache } from './resource-loader';
+import { COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
+import { buildBundleHierarchy } from './hierarchy-builder';
 import { legacyTypeDistWarning } from './type-generation/generate-types';
 
 interface BundleRunOptions extends BundleSettingsOverrides {
@@ -33,8 +45,25 @@ export interface PreparedBundleRun {
   readonly settings: BundleSettings;
   readonly locales: readonly string[];
   readonly collections: ResolvedBundleCollections;
+  content(progress?: {
+    readonly onLocale?: (locale: string, index: number) => void;
+    readonly onBase?: () => void;
+  }): PreparedBundleContent;
   readonly typeWarning?: string;
   readonly tokenConstantNameOverride?: string;
+}
+
+export interface PreparedBundleContent {
+  readonly locales: readonly {
+    readonly locale: string;
+    readonly selection: BundleSelection;
+    readonly tree: Record<string, unknown>;
+  }[];
+  readonly base: BundleSelection;
+  readonly baseKeys: readonly string[];
+  readonly localeConflicts: readonly string[];
+  readonly baseConflicts: readonly string[];
+  readonly warnings: readonly string[];
 }
 
 /** Resolves a saved run or fully validates a supplied dry-run definition. */
@@ -58,7 +87,8 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
 
   validateBundleLocales(params.locales, params.config);
   let collections: ResolvedBundleCollections | undefined;
-  return {
+  let content: PreparedBundleContent | undefined;
+  const prepared: PreparedBundleRun = {
     bundleKey,
     cwd,
     definition,
@@ -68,9 +98,21 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
       collections ??= resolveBundleCollections(definition, params.config, { cwd });
       return collections;
     },
+    content(progress) {
+      if (content) {
+        content.locales.forEach(({ locale }, index) => {
+          progress?.onLocale?.(locale, index + 1);
+        });
+        progress?.onBase?.();
+      } else {
+        content = selectPreparedContent(prepared, progress);
+      }
+      return content;
+    },
     typeWarning: legacyTypeDistWarning(bundleKey, definition),
     tokenConstantNameOverride: params.tokenConstantName,
   };
+  return prepared;
 }
 
 /** Validates an optional project locale subset, including malformed API bodies. */
@@ -88,19 +130,74 @@ export function validateBundleLocales(locales: readonly string[] | undefined, co
   }
 }
 
-/** Selects one output locale and appends the shared empty-bundle warning. */
-export function selectPreparedBundleLocale(
+/** Reads and selects once, before either planning or writing. */
+function selectPreparedContent(
   prepared: PreparedBundleRun,
-  locale: string,
-  cache: CollectionReadCache,
-): BundleSelection {
-  const selection = selectBundleEntries(prepared.collections.collections, locale, {
-    transformICUToTransloco: prepared.settings.transformICUToTransloco,
-    cache,
+  progress?: Parameters<PreparedBundleRun['content']>[0],
+): PreparedBundleContent {
+  const cache: CollectionReadCache = new Map();
+  const warnings: string[] = [];
+  const conflicts = new Set<string>();
+  const select = (locale: string | typeof COLLECTION_BASE_LOCALE): BundleSelection =>
+    selectBundleEntries(prepared.collections.collections, locale, {
+      transformICUToTransloco: prepared.settings.transformICUToTransloco,
+      cache,
+    });
+  const locales = prepared.locales.map((locale, index) => {
+    progress?.onLocale?.(locale, index + 1);
+    const selection = select(locale);
+    warnings.push(...selection.warnings);
+    if (selection.entries.size === 0) warnings.push(`Bundle '${prepared.bundleKey}' for locale '${locale}' is empty`);
+    const built = buildBundleHierarchy(Object.entries(selectionValues(selection)));
+    for (const key of built.conflicts) conflicts.add(key);
+    return { locale, selection, tree: built.tree };
   });
-  if (selection.entries.size > 0) return selection;
+  progress?.onBase?.();
+  const base = select(COLLECTION_BASE_LOCALE);
+  for (const warning of base.warnings) {
+    if (!warnings.includes(warning)) warnings.push(warning);
+  }
+  const baseKeys = [...base.entries.keys()];
+  const baseHierarchy = buildBundleHierarchy(
+    baseKeys.map((key) => [key, key] as const),
+    hasTypeDistConfigured(prepared.definition) ? prepared.settings.tokenCasing : undefined,
+  );
   return {
-    ...selection,
-    warnings: [...selection.warnings, `Bundle '${prepared.bundleKey}' for locale '${locale}' is empty`],
+    locales,
+    base,
+    baseKeys,
+    localeConflicts: [...conflicts].sort(),
+    baseConflicts: baseHierarchy.conflicts,
+    warnings: [...prepared.collections.warnings, ...warnings],
   };
+}
+
+export interface BundleRunOutputOptions {
+  readonly debugKeysLocale?: string;
+}
+
+/** Base hierarchy matters only when types or debug keys consume it. */
+export function bundleRunConflicts(
+  prepared: PreparedBundleRun,
+  content: PreparedBundleContent,
+  options: BundleRunOutputOptions = {},
+): string[] {
+  const baseWritten = hasTypeDistConfigured(prepared.definition) || Boolean(options.debugKeysLocale);
+  return [...new Set([...content.localeConflicts, ...(baseWritten ? content.baseConflicts : [])])].sort();
+}
+
+/** Plan and generation use the same output policy and diagnostics. */
+export function bundleRunWarnings(
+  prepared: PreparedBundleRun,
+  content: PreparedBundleContent,
+  options: BundleRunOutputOptions = {},
+): string[] {
+  const conflicts = bundleRunConflicts(prepared, content, options);
+  return [
+    ...content.warnings,
+    ...(conflicts.length > 0 ? [new BundleHierarchicalConflictError(prepared.bundleKey, conflicts).message] : []),
+    ...(options.debugKeysLocale && content.baseKeys.length === 0
+      ? [`Bundle '${prepared.bundleKey}' debug bundle is empty`]
+      : []),
+  ];
 }

@@ -1,4 +1,5 @@
 import type { ExportRunResult, LingoTrackerConfig } from '@simoncodes-ca/core';
+import { Command } from 'commander';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,8 +48,18 @@ const originalInitCwd = process.env.INIT_CWD;
 async function runCli(...args: string[]): Promise<void> {
   process.argv = ['node', 'lingo-tracker', ...args];
   vi.resetModules();
+  // main uses parse(), which starts an async action without returning its completion.
+  // Capture that action through parseAsync so slow module loading cannot leak into the next test.
+  const parseAsync = Command.prototype.parseAsync;
+  let completion: Promise<Command> | undefined;
+  vi.spyOn(Command.prototype, 'parse').mockImplementation(function (this: Command, ...args) {
+    completion = parseAsync.apply(this, args);
+    return this;
+  });
   await import('./main');
-  await vi.waitFor(() => expect(process.exitCode).toBeDefined());
+  expect(completion).toBeDefined();
+  if (!completion) throw new Error('CLI did not parse the supplied arguments');
+  await completion;
 }
 
 function askedNames(): unknown[] {

@@ -1,5 +1,6 @@
-import { segmentToPropertyName, splitKeyIntoSegments, constantNameToTypeName } from './key-transformer';
-import type { TokenCasing } from '@simoncodes-ca/domain';
+import { segmentToPropertyName, constantNameToTypeName } from './key-transformer';
+import { buildKeyTree, type KeyTree, type TokenCasing } from '@simoncodes-ca/domain';
+import { BundleHierarchicalConflictError } from '../../errors';
 
 export interface TypeHierarchyNode {
   children: Record<string, TypeHierarchyNode>;
@@ -27,41 +28,34 @@ export interface TypeHierarchyNode {
  *   }
  * }
  */
-export function buildTypeHierarchy(keys: string[], casing: TokenCasing = 'upperCase'): TypeHierarchyNode {
-  const root = createTypeNode();
-
-  for (const key of keys) {
-    const segments = splitKeyIntoSegments(key);
-    let currentNode = root;
-
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const propertyName = segmentToPropertyName(segment, casing);
-
-      // Own properties only (lib es2020 has no Object.hasOwn)
-      const existing = Object.getOwnPropertyDescriptor(currentNode.children, propertyName)?.value as
-        | TypeHierarchyNode
-        | undefined;
-      const child = existing ?? createTypeNode();
-      currentNode.children[propertyName] = child;
-      currentNode = child;
-
-      // If this is the last segment, set the value
-      if (i === segments.length - 1) {
-        currentNode.value = key;
-      }
-    }
-  }
-
-  return root;
+export function buildTypeHierarchy(
+  keys: string[],
+  casing: TokenCasing = 'upperCase',
+  bundleKey = 'types',
+): TypeHierarchyNode {
+  const built = buildKeyTree(
+    keys.map((key) => [key, key] as const),
+    {
+      path: (key) =>
+        key
+          .split('.')
+          .map((segment) => segmentToPropertyName(segment, casing))
+          .join('.'),
+    },
+  );
+  if (built.conflicts.length > 0) throw new BundleHierarchicalConflictError(bundleKey, built.conflicts);
+  return toTypeNode(built.tree);
 }
 
-/**
- * A node whose `children` has no prototype, so a property named `__proto__` or `constructor` is an
- * ordinary child rather than a member of `Object.prototype`.
- */
-function createTypeNode(): TypeHierarchyNode {
-  return { children: Object.create(null) as Record<string, TypeHierarchyNode> };
+function toTypeNode(tree: KeyTree<string>): TypeHierarchyNode {
+  const children = Object.create(null) as Record<string, TypeHierarchyNode>;
+  for (const [key, value] of Object.entries(tree)) {
+    children[key] =
+      typeof value === 'string'
+        ? { children: Object.create(null) as Record<string, TypeHierarchyNode>, value }
+        : toTypeNode(value);
+  }
+  return { children };
 }
 
 /**
@@ -76,12 +70,12 @@ function createTypeNode(): TypeHierarchyNode {
  *
  * export type CommonTokens = typeof COMMON_TOKENS;
  */
-export function serializeHierarchy(node: TypeHierarchyNode, constantName: string): string {
+export function serializeHierarchy(node: TypeHierarchyNode, constantName: string, bundleKey = 'types'): string {
   const lines: string[] = [];
 
   // Generate the constant object
   lines.push(`export const ${constantName} = {`);
-  lines.push(serializeNode(node, 1));
+  lines.push(serializeNode(node, 1, bundleKey));
   lines.push(`} as const;`);
   lines.push('');
 
@@ -95,7 +89,7 @@ export function serializeHierarchy(node: TypeHierarchyNode, constantName: string
   return lines.join('\n');
 }
 
-function serializeNode(node: TypeHierarchyNode, indentLevel: number): string {
+function serializeNode(node: TypeHierarchyNode, indentLevel: number, bundleKey: string): string {
   const indent = '  '.repeat(indentLevel);
   const lines: string[] = [];
 
@@ -107,28 +101,14 @@ function serializeNode(node: TypeHierarchyNode, indentLevel: number): string {
   for (const [key, childNode] of entries) {
     // If it's a leaf node (has value), output key: value
     if (childNode.value) {
-      // Check if it also has children (mixed node)
       if (Object.keys(childNode.children).length > 0) {
-        // This is a tricky case: a key is both a value and a parent.
-        // TypeScript objects can't easily represent this directly if we want strict typing for the value.
-        // However, in i18n bundles, usually a key is EITHER a leaf OR a parent.
-        // If it happens, we prioritize the children structure but we might lose the direct value access
-        // or we need a special property like `_value`.
-        // For this implementation, we will treat it as an object and ignore the leaf value at this level
-        // because standard i18n libraries usually expect keys to be leaves.
-        // But to be safe and follow the spec "Leaf values are the original translation key strings",
-        // we'll recurse.
-
-        lines.push(`${indent}${key}: {`);
-        lines.push(serializeNode(childNode, indentLevel + 1));
-        lines.push(`${indent}},`);
-      } else {
-        lines.push(`${indent}${key}: '${childNode.value}',`);
+        throw new BundleHierarchicalConflictError(bundleKey, [childNode.value]);
       }
+      lines.push(`${indent}${key}: '${childNode.value}',`);
     } else {
       // It's a parent node
       lines.push(`${indent}${key}: {`);
-      lines.push(serializeNode(childNode, indentLevel + 1));
+      lines.push(serializeNode(childNode, indentLevel + 1, bundleKey));
       lines.push(`${indent}},`);
     }
   }
