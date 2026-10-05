@@ -113,12 +113,13 @@ describe('bundle.mapper', () => {
       expect(dto.warnings).not.toBe(warnings);
     });
 
-    it('composes the core warning for a failed type file with the bundle key', () => {
+    it('copies the core warning for a failed type file with the bundle key', () => {
       for (const bundleKey of ['main', 'second']) {
         const dto = mapGenerateBundleResultToJobResult({
           ...result,
           bundleKey,
           outcome: 'failed',
+          typeWarning: `Type generation failed for '${bundleKey}': disk full`,
           writtenFiles: result.writtenFiles.slice(0, 2),
           typeOutcome: { status: 'failed', reason: 'disk full' },
         });
@@ -128,16 +129,22 @@ describe('bundle.mapper', () => {
       }
     });
 
-    it('composes a skipped type warning after generation and prepared warnings', () => {
-      const warnings: readonly string[] = ['generation warning', 'prepared deprecation warning'];
+    it('merges config and run warnings without repeating the skipped type warning', () => {
+      const warnings: readonly string[] = ['generation warning'];
       const dto = mapGenerateBundleResultToJobResult({
         ...result,
         warnings,
+        configWarning: 'prepared deprecation warning',
+        typeWarning: "Type generation skipped for 'main': bundle is empty",
         writtenFiles: result.writtenFiles.slice(0, 2),
         typeOutcome: { status: 'skipped', reason: 'empty-bundle' },
       });
-      expect(dto.warnings).toEqual([...warnings, "Type generation skipped for 'main': bundle is empty"]);
-      expect(warnings).toEqual(['generation warning', 'prepared deprecation warning']);
+      expect(dto.warnings).toEqual([
+        ...warnings,
+        'prepared deprecation warning',
+        "Type generation skipped for 'main': bundle is empty",
+      ]);
+      expect(dto.warnings).not.toBe(warnings);
       expect(dto.typeDistFile).toBeUndefined();
       expect(dto.typesKeysCount).toBeUndefined();
     });

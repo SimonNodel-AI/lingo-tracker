@@ -80,7 +80,6 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
 
   const debugKeysLocale = options.debugKeys === true ? DEFAULT_DEBUG_KEYS_LOCALE : options.debugKeys || undefined;
 
-  const reportedTypeWarnings = new Set<string>();
   let warningsCount = 0;
   const runResult = await generateBundles(config, {
     names: selectedNames,
@@ -101,12 +100,8 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         }
         return;
       }
-      if (event.kind === 'type-warning') {
-        reportedTypeWarnings.add(event.warning);
-        CommandOutput.warn(event.warning);
-        return;
-      }
       const { outcome } = event;
+      if (outcome.configWarning) CommandOutput.warn(outcome.configWarning);
       if (outcome.error !== undefined) {
         const errorMessage =
           outcome.error instanceof BundleNotFoundError
@@ -123,7 +118,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
       }
       printTypeOutcome(result.typeOutcome, options.quiet ?? false);
-      const warnings = result.warnings.filter((warning) => !reportedTypeWarnings.has(warning));
+      const warnings = result.warnings;
       warningsCount += warnings.length;
       if (warnings.length > 0) {
         ConsoleFormatter.warning(

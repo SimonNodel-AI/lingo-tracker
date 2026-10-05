@@ -13,22 +13,24 @@ export interface GenerateBundlesOptions {
   >;
   readonly cwd?: string;
   /** Called after validation and before writing, then after each attempt. */
-  readonly onEvent?: (
-    event:
-      | { kind: 'start'; name: string }
-      | { kind: 'type-warning'; warning: string }
-      | { kind: 'result'; outcome: BundleRunOutcome },
-  ) => void;
+  readonly onEvent?: (event: { kind: 'start'; name: string } | { kind: 'result'; outcome: BundleRunOutcome }) => void;
 }
 
 export type BundleRunOutcome =
   | {
       readonly name: string;
+      readonly configWarning?: string;
       readonly outcome: RunOutcome;
       readonly result: GenerateBundleResult;
       readonly error?: never;
     }
-  | { readonly name: string; readonly outcome: 'failed'; readonly error: unknown; readonly result?: never };
+  | {
+      readonly name: string;
+      readonly configWarning?: string;
+      readonly outcome: 'failed';
+      readonly error: unknown;
+      readonly result?: never;
+    };
 
 export interface GenerateBundlesResult {
   readonly outcome: RunOutcome;
@@ -57,18 +59,17 @@ export async function generateBundles(
       onEvent?.({ kind: 'result', outcome });
       continue;
     }
+    const configWarning = prepared.typeWarning ? { configWarning: prepared.typeWarning } : {};
     onEvent?.({ kind: 'start', name });
     try {
       const result = await generatePreparedBundle(prepared, { debugKeysLocale: overrides?.debugKeysLocale });
-      outcome = { name, outcome: result.outcome, result };
+      outcome = { name, outcome: result.outcome, result, ...configWarning };
       totals.bundlesProcessed++;
       totals.filesGenerated += result.filesGenerated;
-      totals.warningsCount += result.warnings.length;
+      totals.warningsCount += result.warnings.length + (result.configWarning ? 1 : 0);
     } catch (error) {
-      outcome = { name, outcome: 'failed', error };
+      outcome = { name, outcome: 'failed', error, ...configWarning };
     }
-    const typeWarning = prepared.typeWarning;
-    if (typeWarning) onEvent?.({ kind: 'type-warning', warning: typeWarning });
     outcomes.push(outcome);
     onEvent?.({ kind: 'result', outcome });
   }

@@ -59,4 +59,37 @@ describe('bundle plan and generation parity', () => {
     expect(generated.writtenFiles).toEqual(['out/fr.json', 'types/tokens.ts']);
     expect(generated.typeOutcome).toMatchObject({ status: 'written', keysCount: 2 });
   });
+
+  it('returns legacy and type-outcome warnings exactly once', async () => {
+    const definition = {
+      bundleName: '{locale}',
+      dist: 'out',
+      collections: 'All' as const,
+      typeDist: 'types/tokens.ts',
+    };
+    const config: LingoTrackerConfig = {
+      exportFolder: 'export',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en'],
+      collections: {},
+      bundles: { main: definition },
+    };
+    const prepared = prepareBundleRun({ source: 'saved', bundleKey: 'main', config, cwd: root() });
+    const result = await generatePreparedBundle(prepared);
+
+    expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
+    expect(prepared.typeWarning).toBeDefined();
+    expect(result.configWarning).toBe(prepared.typeWarning);
+    expect(result.warnings).toEqual(["Bundle 'main' for locale 'en' is empty"]);
+    expect(result.typeWarning).toBe("Type generation skipped for 'main': bundle is empty");
+    expect(result.warnings.filter((warning) => warning === prepared.typeWarning)).toHaveLength(0);
+    const allWarnings = [
+      ...result.warnings,
+      ...(result.configWarning ? [result.configWarning] : []),
+      ...(result.typeWarning ? [result.typeWarning] : []),
+    ];
+    expect(allWarnings.filter((warning) => warning === prepared.typeWarning)).toHaveLength(1);
+    expect(allWarnings.filter((warning) => warning === result.typeWarning)).toHaveLength(1);
+  });
 });

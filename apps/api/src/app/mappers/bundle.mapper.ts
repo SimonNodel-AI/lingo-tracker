@@ -1,4 +1,4 @@
-import { type BundlePlan, type GenerateBundleResult, describeTypeOutcome } from '@simoncodes-ca/core';
+import type { BundlePlan, GenerateBundleResult } from '@simoncodes-ca/core';
 import type { BundleDryRunResultDto, BundleGenerateJobResultDto } from '@simoncodes-ca/data-transfer';
 
 /** Upper bound on conflict keys returned by a dry run so huge bundles stay cheap to serialise. */
@@ -32,12 +32,15 @@ export function mapBundlePlanToDto(plan: BundlePlan): BundleDryRunResultDto {
 export function mapGenerateBundleResultToJobResult(result: GenerateBundleResult): BundleGenerateJobResultDto {
   const types = result.typeOutcome;
   const typeDistFile = types.status === 'written' ? types.path : undefined;
-  const typeWarning = describeTypeOutcome(result.bundleKey, types);
 
   return {
     filesGenerated: [...result.writtenFiles],
     keysPerLocale: { ...result.keysPerLocale },
-    warnings: [...result.warnings, ...(typeWarning ? [typeWarning] : [])],
+    warnings: [
+      ...result.warnings,
+      ...(result.configWarning ? [result.configWarning] : []),
+      ...(result.typeWarning ? [result.typeWarning] : []),
+    ],
     localesProcessed: [...result.localesProcessed],
     ...(typeDistFile !== undefined && { typeDistFile }),
     ...(types.status === 'written' && { typesKeysCount: types.keysCount }),

@@ -71,8 +71,12 @@ export interface GenerateBundleResult {
   readonly filesGenerated: number;
   /** Every successfully written file, in write order, relative to `cwd` with `/` separators. An output outside `cwd` begins with `../`. */
   readonly writtenFiles: string[];
-  /** Generation warnings in encounter order, followed by the prepared type warning. */
+  /** Generation warnings in encounter order. */
   readonly warnings: readonly string[];
+  /** Config deprecation printed separately from run warnings by the CLI. */
+  readonly configWarning?: string;
+  /** Core warning text for a failed or skipped type outcome. */
+  readonly typeWarning?: string;
   readonly localesProcessed: string[];
   /** Number of keys written per processed locale (empty locales are omitted). */
   readonly keysPerLocale: Record<string, number>;
@@ -113,7 +117,7 @@ export function bundleTypeOutcomeDetail(outcome: BundleTypeOutcome): string {
 }
 
 /** Presentation-free warning for a failed or skipped type result; successful results have none. */
-export function describeTypeOutcome(bundleKey: string, outcome: BundleTypeOutcome): string | undefined {
+function describeTypeOutcome(bundleKey: string, outcome: BundleTypeOutcome): string | undefined {
   switch (outcome.status) {
     case 'failed':
     case 'skipped':
@@ -132,8 +136,9 @@ export function describeTypeOutcome(bundleKey: string, outcome: BundleTypeOutcom
  * Generates a bundle's files: one JSON file per locale (a locale with no entries is skipped with a
  * warning), the debug-keys file when `debugKeysLocale` is set, and the type file when the
  * definition configures one. Collections the config lacks, unreadable folders, ICU values that do
- * not carry to Transloco are reported in `warnings`, followed by the prepared type warning.
- * Type generation has a separate structured outcome; `describeTypeOutcome` supplies its warning.
+ * not carry to Transloco are reported in `warnings`. A legacy type setting is reported as
+ * `configWarning`; a failed or skipped type outcome is reported as `typeWarning`.
+ * Type generation also has a structured outcome.
  */
 export async function generateBundle(params: GenerateBundleParams): Promise<GenerateBundleResult> {
   const prepared = prepareBundleRun({ ...params, source: 'saved' });
@@ -220,7 +225,7 @@ export async function generatePreparedBundle(
 
   if (typeOutcome.status === 'written') writtenFiles.push(typeOutcome.path);
 
-  if (prepared.typeWarning) warnings.push(prepared.typeWarning);
+  const typeOutcomeWarning = describeTypeOutcome(bundleKey, typeOutcome);
 
   return {
     outcome: typeOutcome.status === 'failed' ? 'failed' : 'succeeded',
@@ -228,6 +233,8 @@ export async function generatePreparedBundle(
     filesGenerated: localesProcessed.length,
     writtenFiles,
     warnings,
+    ...(prepared.typeWarning && { configWarning: prepared.typeWarning }),
+    ...(typeOutcomeWarning && { typeWarning: typeOutcomeWarning }),
     localesProcessed,
     keysPerLocale,
     typeOutcome,
