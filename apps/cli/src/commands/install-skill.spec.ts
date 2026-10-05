@@ -106,6 +106,12 @@ describe('substituteSkillTemplate (single collection)', () => {
     expect(output).toContain('npx lingo-tracker preferred-terminology --remove "<discouraged term>"');
   });
 
+  it('emits a project-wide validation command without collection filtering', () => {
+    const output = substituteSkillTemplate(template, singleCollection);
+    expect(output).toContain('npx lingo-tracker validate\n');
+    expect(output).not.toContain('validate --collection');
+  });
+
   it('contains the bundle command with the correct bundle name', () => {
     expect(substituteSkillTemplate(template, singleCollection)).toContain('npx lingo-tracker bundle --name my-bundle');
   });

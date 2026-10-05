@@ -1,4 +1,4 @@
-import type { Command } from 'commander';
+import { type Command, Option } from 'commander';
 import type prompts from 'prompts';
 import { choiceOption, commaListOption, option, repeatableListOption, type OptionSpec } from './options';
 
@@ -70,17 +70,23 @@ export function registerFlags(command: Command, records: Readonly<Record<string,
   }
 }
 
+/** Handler values use only record keys, independent of Commander camel-casing. */
 export function flagValues(
   records: Readonly<Record<string, FlagRecord>>,
   raw: Record<string, unknown>,
   args: readonly unknown[],
 ): Record<string, unknown> {
-  const values = { ...raw };
+  const values: Record<string, unknown> = {};
+  const attributes = new Set(Object.keys(raw));
   let index = 0;
   for (const [key, record] of Object.entries(records)) {
     if ('argument' in record) values[key] = args[index++];
-    else if (values[key] === undefined && record.runtimeDefault !== undefined)
-      values[key] = Array.isArray(record.runtimeDefault) ? [...record.runtimeDefault] : record.runtimeDefault;
+    else {
+      const attribute = new Option(record.flags).attributeName();
+      if (attributes.has(attribute)) values[key] = raw[attribute];
+      if (values[key] === undefined && record.runtimeDefault !== undefined)
+        values[key] = Array.isArray(record.runtimeDefault) ? [...record.runtimeDefault] : record.runtimeDefault;
+    }
   }
   return values;
 }

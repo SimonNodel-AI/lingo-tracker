@@ -347,7 +347,7 @@ On both shapes, the interpolation pass strands a branch with no body. The ICU co
 
 `hasUnbundlableBranchBody()` from `@simoncodes-ca/domain` reports both shapes. The bundler pushes one warning per locale to `GenerateBundleResult.warnings`, emits the value as `icuToTransloco()` produced it, and exits 0.
 
-**The `transformICUToTransloco` flag** (resolved via CLI override → bundle config → global config → default `true`) controls whether `icuToTransloco()` is called at all. Setting it to `false` emits raw ICU values — useful when the bundle consumer is not Transloco, or when you want to inspect the raw stored values.
+**The `transformICUToTransloco` flag** (resolved via CLI override → bundle config → global config → default `true`) controls whether `icuToTransloco()` is called at all. The CLI negation `--no-transform-icu-to-transloco` supplies `transformICUToTransloco: false` through the flag-record boundary. Setting it to `false` emits raw ICU values — useful when the bundle consumer is not Transloco, or when you want to inspect the raw stored values.
 
 **Malformed ICU handling**: before calling `icuToTransloco()`, the pipeline calls `validateICUSyntax()` from `@simoncodes-ca/domain`. If validation fails and the value contains `{`, a warning is pushed to `GenerateBundleResult.warnings` and the value is included as-is rather than being dropped.
 
@@ -608,7 +608,7 @@ CLI flag  →  BundleDefinition field  →  global config field  →  hard defau
 |---|---|---|---|---|
 | Token casing | `--token-casing` | `tokenCasing` | `tokenCasing` | `'upperCase'` |
 | Constant name | `--token-constant-name` | `tokenConstantName` | *(none)* | `<BUNDLE_KEY>_TOKENS` |
-| ICU transformation | `--transform-icu-to-transloco` | `transformICUToTransloco` | `transformICUToTransloco` | `true` |
+| ICU transformation | `--no-transform-icu-to-transloco` | `transformICUToTransloco` | `transformICUToTransloco` | `true` |
 
 ---
 

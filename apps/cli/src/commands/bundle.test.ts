@@ -2,6 +2,9 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { Command } from 'commander';
+import { BUNDLE_REGISTRATION } from './bundle-flags';
+import { registerCommand } from '../runner/register-command';
 import { CommandCancelledError } from '../runner/command-runner';
 import { createCommandProject, type CommandProject } from '../testing/command-project';
 import { bundleCommand, type BundleOptions } from './bundle';
@@ -257,6 +260,25 @@ describe('bundleCommand (real project)', () => {
     expect(project.json('translations/main/resource_entries.json')).toMatchObject({
       greeting: { source: 'Hello {name}' },
     });
+  });
+  it('parses the negated ICU flag and overrides enabled transformation in a real project', async () => {
+    await project.seed('greeting', 'Hello {name}');
+    configure({ main: { ...mainBundle, transformICUToTransloco: true } });
+    const cli = new Command();
+    registerCommand(cli, {
+      ...BUNDLE_REGISTRATION,
+      load: async () => async (options: BundleOptions) => {
+        const result = await project.run(bundleCommand, options);
+        expect(result.exitCode).toBe(0);
+        expect(result.stderr).toBe('');
+      },
+    });
+    await cli.parseAsync(['bundle', '--name', 'main', '--locale', 'en'], { from: 'user' });
+    expect(project.json('out/en.json')).toMatchObject({ greeting: 'Hello {{ name }}' });
+    await cli.parseAsync(['bundle', '--name', 'main', '--locale', 'en', '--no-transform-icu-to-transloco'], {
+      from: 'user',
+    });
+    expect(project.json('out/en.json')).toMatchObject({ greeting: 'Hello {name}' });
   });
   it('writes a default debug bundle whose values are their complete keys', async () => {
     await project.seed('title', 'Title');
