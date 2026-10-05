@@ -361,6 +361,14 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ---
 
+### Editor Focus
+
+The translation editor's named focus anchors in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-focus.ts`. `EditorFocus` registers lazy anchor getters so conditional views resolve their current element when `focus(target)` runs. It focuses the named field or panel control and, for Comment, scrolls it into view and selects its text. Missing anchors do nothing. [Editor Panels](#editor-panels) owns focus intent; the dialog keeps its ViewChild refs and scheduling after render or validation.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
 ### Editor Location
 
 The translation editor's folder-selection state in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-location.ts`. It owns the selected folder, dotted-key continuation, known entries from the browser and [Folder Peek](#folder-peek), the live key collision and "Where it lands" tree, and the decision to peek an unknown target folder. An edit can peek its original folder or a destination; its own key is exempt from collision only in the original folder. [Editor Panels](#editor-panels) keeps popover staging, filter and focus; [Editor Entry Form](#editor-entry-form) owns the form. [Editor Submit](#editor-submit) owns the save protocol.
@@ -379,7 +387,7 @@ Explained in context: [`frontend.md`](frontend.md#the-editor-outcome)
 
 ### Editor Panels
 
-The translation editor's transient panels in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-panels.ts`. `EditorPanels` owns which of the folder popover, the other-locales drawer and the context disclosure is open, the popover's staged folder and filter, and the order Escape dismisses them: `dismissNearest()` closes the popover, then the drawer, and returns true when it consumed the key. It also owns focus intent as a signal. Opening a panel asks for focus inside it; closing one asks for focus on its opener, but only if it was open. `closeAll()` closes both without any focus ask, so a validation failure can focus the offending field. The class never touches the DOM. The dialog keeps the template and its element refs, and one effect turns `focusRequest` into a `focus()` after render. [Editor Location](#editor-location) owns the committed folder; the dialog owns the accidental-close guard.
+The translation editor's transient panels in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-panels.ts`. `EditorPanels` owns which of the folder popover, the other-locales drawer and the context disclosure is open, the popover's staged folder and filter, and the order Escape dismisses them: `dismissNearest()` closes the popover, then the drawer, and returns true when it consumed the key. It also owns focus intent as a signal. Opening a panel asks for focus inside it; closing one asks for focus on its opener, but only if it was open. `closeAll()` closes both without any focus ask, so a validation failure can focus the offending field. The class never touches the DOM. The dialog keeps the template and its element refs, and one effect passes `focusRequest` to [Editor Focus](#editor-focus) after render. [Editor Location](#editor-location) owns the committed folder; the dialog owns the accidental-close guard.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
