@@ -1,4 +1,4 @@
-import type { BundlePlan, GenerateBundleResult } from '@simoncodes-ca/core';
+import { bundleResultWarnings, type BundlePlan, type GenerateBundleResult } from '@simoncodes-ca/core';
 import type { BundleDryRunResultDto, BundleGenerateJobResultDto } from '@simoncodes-ca/data-transfer';
 
 /** Upper bound on conflict keys returned by a dry run so huge bundles stay cheap to serialise. */
@@ -36,11 +36,7 @@ export function mapGenerateBundleResultToJobResult(result: GenerateBundleResult)
   return {
     filesGenerated: [...result.writtenFiles],
     keysPerLocale: { ...result.keysPerLocale },
-    warnings: [
-      ...result.warnings,
-      ...(result.configWarning ? [result.configWarning] : []),
-      ...(result.typeWarning ? [result.typeWarning] : []),
-    ],
+    warnings: bundleResultWarnings(result),
     localesProcessed: [...result.localesProcessed],
     ...(typeDistFile !== undefined && { typeDistFile }),
     ...(types.status === 'written' && { typesKeysCount: types.keysCount }),

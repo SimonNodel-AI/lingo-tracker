@@ -5,6 +5,8 @@ import {
   readCollection,
   searchResources,
 } from '@simoncodes-ca/core';
+import { FIND_SIMILAR_FLAGS } from './find-similar-flags';
+import { flagName } from '../runner/flag-record';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand, requireOptions } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
@@ -16,20 +18,18 @@ export interface FindSimilarOptions {
 }
 
 export const findSimilarCommand = defineCommand<FindSimilarOptions>()({
+  flags: FIND_SIMILAR_FLAGS,
   name: 'Find similar',
   collection: 'read',
-  prompts: (options) =>
-    (options.value ?? '').trim().length === 0
-      ? [{ type: 'text', name: 'value', message: 'Base locale text to search for' }]
-      : [],
+
   run: ({ collection, answers, interactive }) => {
     const request = normalizeSearchRequest(
       { query: answers.value ?? '', mode: 'similar-value', limit: answers.maxResults },
-      5,
+      FIND_SIMILAR_FLAGS.maxResults.runtimeDefault,
     );
     if (request.kind === 'blank') {
-      requireOptions(answers, ['value'], interactive);
-      throw new Error('--value must not be blank');
+      requireOptions(answers, ['value'], interactive, FIND_SIMILAR_FLAGS);
+      throw new Error(`${flagName(FIND_SIMILAR_FLAGS.value)} must not be blank`);
     }
     reportSimilar(collection, request.query, request.limit);
   },

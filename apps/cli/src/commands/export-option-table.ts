@@ -1,3 +1,4 @@
+import { flagName } from '../runner/flag-record';
 import type { ExportRunOptions } from '@simoncodes-ca/core';
 import { TRANSLATION_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
@@ -62,14 +63,19 @@ export function stringList(value: unknown): string[] | undefined {
 function resolveStatuses(values: ExportAnswers, defaultValue: string): string[] {
   const status = values.status;
   if (status !== undefined && Array.isArray(status) === false) {
-    throw new Error(`Invalid --status "${status.input}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`);
+    throw new Error(
+      `Invalid ${flagName(EXPORT_OPTION_TABLE.status)} "${status.input}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
+    );
   }
   const statuses =
     (Array.isArray(status) ? status : undefined) ??
     stringList(values.statusFilter) ??
     parseCommaSeparatedList(defaultValue) ??
     [];
-  if (statuses.length === 0) throw new Error(`Invalid --status "". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`);
+  if (statuses.length === 0)
+    throw new Error(
+      `Invalid ${flagName(EXPORT_OPTION_TABLE.status)} "". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
+    );
   return statuses;
 }
 

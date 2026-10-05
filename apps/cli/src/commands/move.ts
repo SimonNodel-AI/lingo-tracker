@@ -1,6 +1,7 @@
+import { MOVE_FLAGS } from './move-flags';
 import { moveResource } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, missingTextQuestions, printRunReport } from '../utils';
+import { ConsoleFormatter, printRunReport } from '../utils';
 
 export interface MoveResourceOptions {
   collection?: string;
@@ -11,13 +12,10 @@ export interface MoveResourceOptions {
 }
 
 export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
+  flags: MOVE_FLAGS,
   name: 'Move resource',
   collection: 'writable',
-  prompts: (options) =>
-    missingTextQuestions(options, [
-      { name: 'source', message: 'Source key or pattern (e.g. common.buttons.ok or common.buttons.*)', required: true },
-      { name: 'dest', message: 'Destination key (e.g. common.actions.ok)', required: true },
-    ]),
+
   required: ['source', 'dest'],
   run: async ({ collection, config, cwd, answers }) => {
     const params = { source: answers.source, destination: answers.dest, override: answers.override };

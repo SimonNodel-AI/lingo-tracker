@@ -1,6 +1,8 @@
 import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
+import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
+import { flagName } from '../runner/flag-record';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, missingTextQuestions, printTerminologyFindings } from '../utils';
+import { ConsoleFormatter, printTerminologyFindings } from '../utils';
 
 export interface EditResourceOptions {
   collection?: string;
@@ -14,19 +16,18 @@ export interface EditResourceOptions {
 }
 
 export const editResourceCommand = defineCommand<EditResourceOptions>()({
+  flags: EDIT_RESOURCE_FLAGS,
   name: 'Edit resource',
   collection: 'writable',
-  prompts: (options) =>
-    missingTextQuestions(options, [
-      { name: 'key', message: 'Resource key', required: true },
-      { name: 'baseValue', message: 'New base value (leave empty to keep current)' },
-    ]),
+
   required: ['key'],
   run: async ({ collection, answers }) => {
     const translations =
       answers.locale && answers.localeValue ? { [answers.locale]: { value: answers.localeValue } } : undefined;
     if (!translations && (answers.locale || answers.localeValue)) {
-      ConsoleFormatter.warning('Both --locale and --localeValue must be provided to update a translation.');
+      ConsoleFormatter.warning(
+        `Both ${flagName(EDIT_RESOURCE_FLAGS.locale)} and ${flagName(EDIT_RESOURCE_FLAGS.localeValue)} must be provided to update a translation.`,
+      );
     }
 
     const changes: EditResourceChanges = {

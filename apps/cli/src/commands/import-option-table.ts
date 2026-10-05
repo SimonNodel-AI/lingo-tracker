@@ -1,3 +1,4 @@
+import { flagName } from '../runner/flag-record';
 import type { ImportRunOptions, ImportFormat } from '@simoncodes-ca/core';
 import {
   canImportLocale,
@@ -48,7 +49,9 @@ function importOptionState(
 export function resolveStrategy(value: unknown): ImportStrategy {
   if (value === undefined) value = IMPORT_OPTION_TABLE.strategy.defaultValue;
   if (isImportStrategy(value)) return value;
-  throw new Error(`Invalid --strategy "${String(value)}". Valid strategies: ${IMPORT_STRATEGIES.join(', ')}.`);
+  throw new Error(
+    `Invalid ${flagName(IMPORT_OPTION_TABLE.strategy)} "${String(value)}". Valid strategies: ${IMPORT_STRATEGIES.join(', ')}.`,
+  );
 }
 
 export const IMPORT_OPTION_TABLE: OrderedCommandOptionTable<

@@ -1,3 +1,4 @@
+import { PREFERRED_TERMINOLOGY_FLAGS } from './preferred-terminology-flags';
 import {
   displayTermPath,
   type OpenedProject,
@@ -27,6 +28,7 @@ function formatRule(rule: PreferredTermRule): string {
 }
 
 export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOptions>()({
+  flags: PREFERRED_TERMINOLOGY_FLAGS,
   name: 'Preferred terminology',
   collection: 'none',
   run: ({ project, cwd, answers }) => run(answers, project, cwd),

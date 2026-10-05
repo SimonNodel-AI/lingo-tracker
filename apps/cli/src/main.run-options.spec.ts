@@ -1,3 +1,4 @@
+import { createCli } from './program';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -26,7 +27,6 @@ import {
 } from '@simoncodes-ca/core';
 import { isInteractiveTerminal } from './runner/terminal';
 
-const originalArgv = process.argv;
 const originalInitCwd = process.env.INIT_CWD;
 
 const config: LingoTrackerConfig = {
@@ -74,12 +74,7 @@ const exportResult: ExportRunResult = {
 };
 
 async function invoke(...args: string[]): Promise<void> {
-  process.argv = ['node', 'lingo-tracker', ...args];
-  vi.resetModules();
-  await import('./main');
-  await vi.waitFor(() =>
-    expect(vi.mocked(runImport).mock.calls.length + vi.mocked(runExport).mock.calls.length).toBe(1),
-  );
+  await createCli().parseAsync(args, { from: 'user' });
 }
 
 describe('registered import and export options reaching core', () => {
@@ -100,7 +95,6 @@ describe('registered import and export options reaching core', () => {
   });
 
   afterEach(() => {
-    process.argv = originalArgv;
     if (originalInitCwd === undefined) delete process.env.INIT_CWD;
     else process.env.INIT_CWD = originalInitCwd;
     process.exitCode = undefined;
@@ -245,10 +239,8 @@ describe('registered import and export options reaching core', () => {
       collections: ['__ALL__'],
       locales: [],
     });
-    process.argv = ['node', 'lingo-tracker', 'export'];
-    vi.resetModules();
-    await import('./main');
-    await vi.waitFor(() => expect(process.exitCode).toBe(1));
+    await invoke('export');
+    expect(process.exitCode).toBe(1);
 
     expect(runExport).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('❌ Select at least one target locale.');
@@ -263,10 +255,8 @@ describe('registered import and export options reaching core', () => {
   ])('refuses an empty interactive collection or status selection', async (answers, message) => {
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     vi.mocked(prompts).mockResolvedValue(answers);
-    process.argv = ['node', 'lingo-tracker', 'export'];
-    vi.resetModules();
-    await import('./main');
-    await vi.waitFor(() => expect(process.exitCode).toBe(1));
+    await invoke('export');
+    expect(process.exitCode).toBe(1);
 
     expect(runExport).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith(`❌ ${message}`);

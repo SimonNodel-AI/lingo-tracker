@@ -125,12 +125,16 @@ describe('normalizeCommand (real project)', () => {
     expectFailure(result.stderr);
     expect(writes).toEqual([result.stdout]);
     expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
   });
   it('reports read-only collection on stderr while keeping JSON on stdout', async () => {
     const result = await project.run(normalizeCommand, { collection: 'vendor', json: true });
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe('❌ Collection "vendor" is read-only. Its resources cannot be modified.\n');
+    expect(result.stderr).toBe(
+      '❌ Errors (1):\n  - Collection "vendor" is read-only. Its resources cannot be modified.\n',
+    );
     expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
   });
   it.skipIf(process.getuid?.() === 0)('reports a pruning removal failure and retains the empty folder', async () => {
     const root = join(project.cwd, 'translations/main');
@@ -199,6 +203,7 @@ describe('normalizeCommand (real project)', () => {
     expect(result.exitCode).toBe(1);
     expectFailure(result.stderr);
     expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
     expect(project.read(entriesPath)).toBe(before);
     expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
   });
@@ -236,7 +241,9 @@ describe('normalizeCommand (real project)', () => {
     const before = project.read('translations/vendor/resource_entries.json');
     const result = await project.run(normalizeCommand, { collection: 'vendor' });
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe('❌ Collection "vendor" is read-only. Its resources cannot be modified.\n');
+    expect(result.stderr).toBe(
+      '❌ Errors (1):\n  - Collection "vendor" is read-only. Its resources cannot be modified.\n',
+    );
     expect(project.read('translations/vendor/resource_entries.json')).toBe(before);
   });
   it('skips read-only collections during all without failing the run', async () => {
@@ -250,7 +257,7 @@ describe('normalizeCommand (real project)', () => {
     const result = await project.run(normalizeCommand, { collection: 'vendor', dryRun: true });
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toBe(
-      '❌ Collection "vendor" is read-only. Its resources cannot be modified.\n⚠️  Dry run completed - no changes were made.\n',
+      '⚠️  Dry run completed - no changes were made.\n❌ Errors (1):\n  - Collection "vendor" is read-only. Its resources cannot be modified.\n',
     );
   });
   it('keeps stdout to one JSON payload when all skips only read-only collection', async () => {
@@ -262,6 +269,7 @@ describe('normalizeCommand (real project)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(skippedVendor);
     expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
   });
   it('offers collection choices and all in interactive mode', async () => {
     rawEntry();

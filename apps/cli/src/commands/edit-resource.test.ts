@@ -37,7 +37,7 @@ describe('editResourceCommand (real project)', () => {
   it('warns when locale is supplied without its value and leaves translation unchanged', async () => {
     const result = await project.run(editResourceCommand, { key, locale: 'fr' });
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain('Both --locale and --localeValue must be provided');
+    expect(result.stderr).toContain('Both --locale and --locale-value must be provided');
     expect(entries()).toMatchObject({ ok: { fr: 'Original' } });
   });
   it('does not update when config is missing', async () => {

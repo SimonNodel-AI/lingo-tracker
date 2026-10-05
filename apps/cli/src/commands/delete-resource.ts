@@ -1,7 +1,8 @@
+import { DELETE_RESOURCE_FLAGS } from './delete-resource-flags';
 import { deleteResource } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, printRunReport } from '../utils';
+import { ConsoleFormatter, confirmOrCancel, printRunReport } from '../utils';
 
 export interface DeleteResourceOptions {
   collection?: string;
@@ -10,13 +11,11 @@ export interface DeleteResourceOptions {
 }
 
 export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
+  flags: DELETE_RESOURCE_FLAGS,
   name: 'Delete resource',
   collection: 'writable',
   commaListAnswers: ['key'],
-  prompts: (options) =>
-    missingTextQuestions(options, [
-      { name: 'key', message: 'Resource key(s) (single key or comma-separated)', required: true },
-    ]),
+
   required: ['key'],
   run: async ({ collection, answers, interactive, ask }) => {
     const keys = answers.key;

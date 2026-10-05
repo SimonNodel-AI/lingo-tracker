@@ -1,3 +1,5 @@
+import { flagName } from '../runner/flag-record';
+import { GLOSSARY_FLAGS } from './glossary-flags';
 import * as fs from 'fs';
 import * as path from 'path';
 import { buildGlossary, type Collection, describeFolderProblem } from '@simoncodes-ca/core';
@@ -52,7 +54,9 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string, stdin: C
     }
   }
 
-  ConsoleFormatter.error('No input provided. Use --text "...", --input <file>, or pipe text via stdin.');
+  ConsoleFormatter.error(
+    `No input provided. Use ${flagName(GLOSSARY_FLAGS.text)} "...", ${flagName(GLOSSARY_FLAGS.input)} <file>, or pipe text via stdin.`,
+  );
   return null;
 }
 
@@ -64,6 +68,7 @@ function buildOutputPath(options: GlossaryCommandOptions, cwd: string): string {
 }
 
 export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
+  flags: GLOSSARY_FLAGS,
   name: 'Glossary',
   collection: 'many',
   many: { select: (answers) => parseNameSelection(answers.collection) ?? { kind: 'all' } },

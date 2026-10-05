@@ -1,9 +1,11 @@
+import { flagName } from '../runner/flag-record';
+import { ADD_RESOURCE_FLAGS } from './add-resource-flags';
 import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
 import { parseTranslationInputs, TRANSLATION_STATUSES, type TranslationInput } from '@simoncodes-ca/domain';
 import { ADD_RESOURCE_COMMAND_NAME } from '../runner/cli-error-wording';
 import { type Ask, defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, printTerminologyFindings } from '../utils';
+import { ConsoleFormatter, confirmOrCancel, printTerminologyFindings } from '../utils';
 
 export interface AddResourceOptions {
   collection?: string;
@@ -18,17 +20,11 @@ export interface AddResourceOptions {
 }
 
 export const addResourceCommand = defineCommand<AddResourceOptions>()({
+  flags: ADD_RESOURCE_FLAGS,
   name: ADD_RESOURCE_COMMAND_NAME,
   collection: 'writable',
   commaListAnswers: ['tags'],
-  prompts: (options) =>
-    missingTextQuestions(options, [
-      { name: 'key', message: 'Resource key (dot-delimited, e.g., apps.common.buttons.ok)', required: true },
-      { name: 'value', message: 'Base value (source text)', required: true },
-      { name: 'comment', message: 'Comment (optional, press enter to skip)' },
-      { name: 'tags', message: 'Tags (optional, comma-separated)' },
-      { name: 'targetFolder', message: 'Target folder (optional, dot-delimited override)' },
-    ]),
+
   required: ['key', 'value'],
   run: async ({ collection, answers, interactive, ask }) => {
     const { key, value } = answers;
@@ -81,7 +77,9 @@ function parseTranslations(raw: string): TranslationInput[] {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new Error(`Invalid --translations JSON: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Invalid ${flagName(ADD_RESOURCE_FLAGS.translations)} JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
   return checkedTranslations(parsed);
 }
@@ -90,7 +88,7 @@ function checkedTranslations(raw: unknown): TranslationInput[] {
   const result = parseTranslationInputs(raw);
   if (result.success === false) {
     const location = result.index === null ? '' : `item ${result.index}: `;
-    throw new Error(`Invalid --translations: ${location}${result.reason}`);
+    throw new Error(`Invalid ${flagName(ADD_RESOURCE_FLAGS.translations)}: ${location}${result.reason}`);
   }
   return result.translations;
 }

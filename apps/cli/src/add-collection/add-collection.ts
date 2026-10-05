@@ -1,13 +1,14 @@
+import { ADD_COLLECTION_FLAGS } from './add-collection-flags';
 import { addCollection, CONFIG_FILENAME } from '@simoncodes-ca/core';
 import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import { type Ask, defineCommand } from '../runner/command-runner';
 import type { InitOptions } from '../types/init-options.js';
-import { ConsoleFormatter, collectionSetupQuestions } from '../utils';
+import { ConsoleFormatter } from '../utils';
 
-export const addCollectionCommand = defineCommand<InitOptions>()({
+export const addCollectionCommand = defineCommand<AddCollectionOptions>()({
+  flags: ADD_COLLECTION_FLAGS,
   name: 'Add collection',
   collection: 'none',
-  prompts: (options, { config }) => collectionSetupQuestions(options, config),
   required: ['collectionName', 'translationsFolder'],
   // Core refuses a duplicate name (CollectionAlreadyExistsError) and defaults a folder under
   // node_modules to read-only when the flag is left unset.
@@ -57,3 +58,8 @@ async function resolveReadOnly(
 
   return Boolean(result.readOnly);
 }
+
+export type AddCollectionOptions = Pick<
+  InitOptions,
+  'collectionName' | 'translationsFolder' | 'exportFolder' | 'importFolder' | 'baseLocale' | 'locales' | 'readOnly'
+>;

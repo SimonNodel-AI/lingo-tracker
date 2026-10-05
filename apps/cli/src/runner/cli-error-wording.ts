@@ -1,3 +1,10 @@
+import { flagName } from './flag-record';
+import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
+import { BUNDLE_FLAGS } from '../commands/bundle-flags';
+import { GLOSSARY_FLAGS } from '../commands/glossary-flags';
+import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
+import { PROTECTED_TERMS_FLAGS } from '../commands/protected-terms-flags';
+import { EDIT_COLLECTION_FLAGS } from '../commands/edit-collection-flags';
 import {
   CONFIG_FILENAME,
   type CollectionTagEditProblem,
@@ -29,24 +36,38 @@ type Rule = (error: LingoTrackerError, commandName?: string) => CliErrorWording;
 const original: Rule = (error) => ({ message: error.message });
 
 const tagProblems = {
-  'tag-conflict': () => ({ message: '--set-tags cannot be combined with --add-tag or --remove-tag' }),
-  'tag-missing': () => ({ message: 'Provide at least one of --add-tag, --remove-tag, or --set-tags' }),
+  'tag-conflict': () => ({
+    message: `${flagName(EDIT_COLLECTION_FLAGS.setTags)} cannot be combined with ${flagName(EDIT_COLLECTION_FLAGS.addTag)} or ${flagName(EDIT_COLLECTION_FLAGS.removeTag)}`,
+  }),
+  'tag-missing': () => ({
+    message: `Provide at least one of ${flagName(EDIT_COLLECTION_FLAGS.addTag)}, ${flagName(EDIT_COLLECTION_FLAGS.removeTag)}, or ${flagName(EDIT_COLLECTION_FLAGS.setTags)}`,
+  }),
 } satisfies Record<CollectionTagEditProblem, Rule>;
 
 const protectedProblems = {
-  'protected-conflict': () => ({ message: '--set cannot be combined with --add or --remove' }),
-  'protected-missing': () => ({ message: 'Provide at least one of --add, --remove, --set, --list, or --file' }),
+  'protected-conflict': () => ({
+    message: `${flagName(PROTECTED_TERMS_FLAGS.set)} cannot be combined with ${flagName(PROTECTED_TERMS_FLAGS.add)} or ${flagName(PROTECTED_TERMS_FLAGS.remove)}`,
+  }),
+  'protected-missing': () => ({
+    message: `Provide at least one of ${flagName(PROTECTED_TERMS_FLAGS.add)}, ${flagName(PROTECTED_TERMS_FLAGS.remove)}, ${flagName(PROTECTED_TERMS_FLAGS.set)}, ${flagName(PROTECTED_TERMS_FLAGS.list)}, or ${flagName(PROTECTED_TERMS_FLAGS.file)}`,
+  }),
   'protected-file-path': original,
   'protected-replacement-conflict': original,
 } satisfies Record<ProtectedTermsEditProblem, Rule>;
 
 const preferredProblems = {
   'preferred-missing': () => ({
-    message: 'Provide one of --list, --add <discouraged> --preferred <preferred>, or --remove <discouraged>',
+    message: `Provide one of ${flagName(PREFERRED_TERMINOLOGY_FLAGS.list)}, ${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} <discouraged> ${flagName(PREFERRED_TERMINOLOGY_FLAGS.preferred)} <preferred>, or ${flagName(PREFERRED_TERMINOLOGY_FLAGS.remove)} <discouraged>`,
   }),
-  'preferred-conflict': () => ({ message: '--add and --remove cannot be combined; run them separately' }),
-  'preferred-orphan-flags': () => ({ message: '--preferred and --reason can only be used with --add' }),
-  'preferred-incomplete-flags': () => ({ message: '--add requires --preferred <preferred>' }),
+  'preferred-conflict': () => ({
+    message: `${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} and ${flagName(PREFERRED_TERMINOLOGY_FLAGS.remove)} cannot be combined; run them separately`,
+  }),
+  'preferred-orphan-flags': () => ({
+    message: `${flagName(PREFERRED_TERMINOLOGY_FLAGS.preferred)} and ${flagName(PREFERRED_TERMINOLOGY_FLAGS.reason)} can only be used with ${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)}`,
+  }),
+  'preferred-incomplete-flags': () => ({
+    message: `${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} requires ${flagName(PREFERRED_TERMINOLOGY_FLAGS.preferred)} <preferred>`,
+  }),
   'preferred-remove-shape': original,
   'preferred-replacement-shape': original,
   'preferred-upsert-shape': original,
@@ -109,7 +130,9 @@ const CLI_BY_CODE = {
   FOLDER_NOT_FOUND: original,
   GLOSSARY_EXTRACTOR_ERROR: (error) =>
     'mode' in error && error.mode === 'ai'
-      ? { message: 'The "ai" extractor is not yet implemented. Use --extractor ngram (the default).' }
+      ? {
+          message: `The "ai" extractor is not yet implemented. Use ${flagName(GLOSSARY_FLAGS.extractor)} ngram (the default).`,
+        }
       : original(error),
   GLOSSARY_NO_COLLECTIONS: original,
   IMPORT_SOURCE_ERROR: (error) => ({
@@ -133,16 +156,19 @@ const CLI_BY_CODE = {
   LOCALE_ALREADY_EXISTS: original,
   LOCALE_NOT_FOUND: original,
   MULTIPLE_BUNDLE_CONSTANT_NAME: () => ({
-    message: 'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
+    message: `Cannot use ${flagName(BUNDLE_FLAGS.tokenConstantName)} with multiple bundles. Please target a single bundle.`,
   }),
   NO_TRANSLATION_TARGET_LOCALES: original,
   PARENT_DIRECTORY_MISSING: original,
   PROTECTED_TERMS_FILE_NOT_SET: (error) => ({
-    message: `Collection "${'collectionName' in error ? String(error.collectionName) : ''}" has no protected terms file. Set one first with --file <path>.`,
+    message: `Collection "${'collectionName' in error ? String(error.collectionName) : ''}" has no protected terms file. Set one first with ${flagName(PROTECTED_TERMS_FLAGS.file)} <path>.`,
   }),
   RESOURCE_ALREADY_EXISTS: (error, commandName) =>
     commandName === ADD_RESOURCE_COMMAND_NAME
-      ? { message: error.message, details: ['Use --override to replace it, or edit-resource to change it.'] }
+      ? {
+          message: error.message,
+          details: [`Use ${flagName(ADD_RESOURCE_FLAGS.override)} to replace it, or edit-resource to change it.`],
+        }
       : original(error),
   RESOURCE_NOT_FOUND: original,
   TRANSLATION_LOCALE_NOT_CONFIGURED: original,

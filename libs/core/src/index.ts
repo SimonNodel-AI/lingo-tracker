@@ -257,3 +257,4 @@ export {
   DEFAULT_TYPE_DIST_FILE,
 } from './lib/config/init-project';
 export type { InitProjectAnswers, InitProjectResult } from './lib/config/init-project';
+export { bundleResultWarnings } from './lib/bundle';

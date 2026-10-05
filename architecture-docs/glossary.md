@@ -52,7 +52,7 @@ During bundle generation, ICU simple placeholder syntax (`{varName}`) is convert
 
 Core generates a saved bundle by its name for the API. For a CLI run, `generateBundles(config, { names?, locales?, overrides, cwd })` selects all or named bundles, prepares each request once, continues after an individual failure, and returns one outcome per bundle plus totals. [Bundle Run Preparation](#bundle-run-preparation) supplies the shared settings for generation and planning. Type generation has one outcome: written, skipped, failed, or not configured. A skipped outcome carries the `empty-bundle` reason code.
 
-Core returns generation `warnings`, optional `configWarning` for the legacy type-setting deprecation, optional `typeWarning` for a failed or skipped type outcome, and structured `typeOutcome`. Core formats warning text internally; callers compose named fields. The API DTO keeps warning order: generation warnings, config deprecation, then type-outcome warning. The CLI prints the deprecation before processing the per-bundle outcome and renders type status separately, keeping both outside its warning summary.
+Core returns generation `warnings`, optional `configWarning` for the legacy type-setting deprecation, optional `typeWarning` for a failed or skipped type outcome, and structured `typeOutcome`. Core formats warning text internally. [Bundle Result Warnings](#bundle-result-warnings) combines generation warnings, config deprecation, then type-outcome warning for both the API DTO and CLI Bundle Presentation. The CLI retains successful and skipped type-file tree lines as progress.
 
 The CLI renders its own tree lines from `typeOutcome` and prints the prepared config warning carried by the per-bundle outcome. Config and type warnings stay outside its generation warning summary.
 
@@ -98,6 +98,22 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ---
 
+### Bundle Presentation
+
+The CLI's event-driven renderer in `apps/cli/src/commands/bundle-report.ts`. `printBundleEvent(event, { quiet?, verbose?, localeFilter? })` prints progress and diagnostics. `printBundleSummary(run, options)` derives the existing generation-only warning totals. Bundle keeps this presentation because its streams are pinned byte-for-byte and differ from [Run Report](#run-report)'s grouped lists. It uses the complete [Bundle Result Warnings](#bundle-result-warnings) projection, retains each finding's source, and preserves separate raw config deprecation, type tree/failure, and generation warning output. Only verbose mode shows generation warning details. Quiet mode retains diagnostics and warning totals. Neither function changes exit status; the command uses the completed run outcome.
+
+Explained in context: [`cli.md`](cli.md)
+
+---
+
+### Bundle Result Warnings
+
+The core projection `bundleResultWarnings(result: Pick<GenerateBundleResult, 'warnings' | 'configWarning' | 'typeWarning'>): string[]` in `libs/core/src/lib/bundle/result-warnings.ts`. It returns a new array in generation, config, then type-warning order, omitting absent optional fields. It preserves warning text and repeated generation findings without mutating the result. The API mapper and CLI Bundle Presentation use this same projection.
+
+Explained in context: [`bundle-generation.md`](bundle-generation.md)
+
+---
+
 ### Bundle Run Controller
 
 The plain Tracker controller in `apps/tracker/src/app/collections/store/bundle-run-controller.ts`. `start(name, locales?, defaultLocaleCount?)` ignores a running bundle and replaces a finished result. `startAll(names, defaultLocaleCount?)` skips running bundles and keeps an active batch. `restore()` restores persisted runs, immediately queries active jobs and polls them to completion; a failed resumed request removes the run. `clear(name)` cancels that bundle’s subscription and persists dismissal (removing the key when the run map is empty), and `destroy()` cancels requests and polling. Starting or resuming a bundle replaces its previous subscription. Its three ports supply jobs, Keyed Storage, and a clock with a poll scheduler. `changes` publishes run maps, started batch names, batch position and busy state. Start/poll errors become failed runs with a localized fallback and any API rule details; storage errors never break a run. Batch names are not persisted.
@@ -130,7 +146,7 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#hierarchy-bu
 
 The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Run Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
 
-The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. Bundle warnings travel through named result fields: `warnings` carries generation warnings, `configWarning` carries the legacy type-setting deprecation, and `typeWarning` carries a skipped or failed type-outcome warning. The prepared config deprecation also travels on `BundleRunOutcome`, including when generation throws. The CLI prints that deprecation before success or error handling and renders type status separately, counting only generation warnings in its summary. The API composes generation warnings, config deprecation, then type-outcome warning into the unchanged job result DTO `warnings`, each once. Core totals count generation warnings and config deprecations only for returned generation results, as before. There is no separate warning event. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
+The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. Bundle warnings travel through named result fields: `warnings` carries generation warnings, `configWarning` carries the legacy type-setting deprecation, and `typeWarning` carries a skipped or failed type-outcome warning. The prepared config deprecation also travels on `BundleRunOutcome`, including when generation throws. The CLI Bundle Presentation preserves event ordering and its existing presentation: config deprecation before progress or a thrown error, type failures after progress, and generation warning details only in verbose mode. The API and CLI use `bundleResultWarnings` to combine generation warnings, config deprecation, then type-outcome warning. The CLI selects generation warnings for its warning list; deprecation and type diagnostics retain their separate framing. The job result DTO is unchanged. Core totals count generation warnings and config deprecations only for returned generation results, as before. There is no separate warning event. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
@@ -169,7 +185,7 @@ Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
 ### CLI Help Text
 
-The long examples appended to `import`, `validate`, and `preferred-terminology` help. `apps/cli/src/runner/help-text.ts` holds these strings so the [Command Registration](#command-registration) list stays short. Registration passes each string to Commander's `addHelpText('after', ...)` unchanged.
+The long examples appended to `import`, `validate`, and `preferred-terminology` help. `apps/cli/src/runner/help-text.ts` holds factories for these strings so the [Command Registration](#command-registration) list stays short. The factories read flag spellings from records. Registration calls them after metadata loads and passes the result to Commander's `addHelpText('after', ...)`; the output is unchanged.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
@@ -177,11 +193,13 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### CLI Option Definitions
 
-Reusable Commander flag declarations in `apps/cli/src/runner/options.ts`. A definition registers one option when the [Command Registration](#command-registration) is applied. `option({ flags, description?, defaultValue?, helpDefault?, parse? })` states which strings are help descriptions and which values Commander parses by default. Its `parse` callback converts and validates a supplied value before the command loads; `find-similar --max-results` uses it to reject non-numeric input. The module owns the collection flag, token casing choices, repeatable list parser, shared `init` and `add-collection` flags, `--yes`, resource field groups, and the value conversion for `--setup-bundle`. `commaListOption({ flags, description?, helpDefault?, empty? })` uses `parseCommaSeparatedList` to deliver trimmed `string[]` values with empty items removed. A raw empty optional flag (`""`) becomes undefined, so prompt and required-option gates still run. Non-empty inputs with no items (such as `" , "`) retain `[]` and count as supplied flags. `empty: 'clear'` preserves `[]` for replacement flags. `empty: 'preserve'` returns `{ kind: 'empty', input }` for deferred diagnostics. Export reads this explicit empty state to reject `--status` after collection resolution, before core validation and advisories. Commands declare `commaListAnswers` for comma-string prompt fields, which the runner converts with the same parser before required checks and selection. `validate-options.ts` beside validate owns its defaults; `find-similar-options.ts` owns the numeric parser.
+The CLI's records for spellings, descriptions, defaults, parsing, list behavior, choices and optional questions. Every command has an adjacent record table. `defineFlags<Options, Context>()(records)` in `apps/cli/src/runner/flag-record.ts` requires exactly the Options keys, including object spreads. A record can declare a positional argument instead of a flag. Shared records cover collection and locale spellings, setup and resource fields, token casing and consent. `flagName(record)` supplies the long spelling for diagnostics. `registerFlags` creates fresh Commander options; `flagValues` maps positional values and applies runtime defaults. The runner asks record questions in record order before workflow questions.
+
+`runner/options.ts` contains the low-level Commander constructors. `commaListOption` omits an exactly empty optional flag (`""`) so prompts and missing-option gates still run. Comma-only input keeps `[]` and counts as supplied. Clear mode preserves `[]`; preserve mode returns `{ kind: 'empty', input }` for deferred diagnostics. Prompt list answers use the same parser. Find-similar's one default limit lives in its flag record; `find-similar-options.ts` supplies its numeric parser. Validate's records replace the separate registration conversion.
 
 Export and import each have one option table in `commands/export-option-table.ts` and `commands/import-option-table.ts`. Each record defines the flag spelling, description, default, optional prompt factory, and resolution rule. An explicit `defaultValue: undefined` means no default. `defaultMode` selects a help label or a Commander default. Prompt initials can differ from resolution defaults. Import records read strategy-dependent help values and migration prompt initials from the Import Strategy Policy.
 
-`commands/option-table.ts` builds registrations and questions from these records. Its resolution helper preserves the exact result type of each record. Each command assembles a complete resolved result, and the compiler rejects missing fields. A mapped type requires a record for every command options key.
+`commands/option-table.ts` projects registration fields with `tableFlags` and builds questions from these records. Its resolution helper preserves the exact result type of each record. Each command assembles a complete resolved result, and the compiler rejects missing fields. A mapped type requires a record for every command options key.
 
 Export prompts follow record order. Every prompted import record specifies its dependency order. List records cannot define a custom parser. The tables use type-only core imports and leave handlers lazy. Export status choices derive from `TRANSLATION_STATUSES` and retain their existing labels and order.
 
@@ -329,9 +347,17 @@ Explained in context: [`core-library.md`](core-library.md#collection-sweep)
 
 ---
 
+### CLI Program
+
+The CLI assembly in `apps/cli/src/program.ts`. `createCli(): Command` returns a fresh, unparsed Commander program with every command registered and handlers still lazy. `main.ts` supplies process argv through Commander. Wiring tests call the factory and await `parseAsync` directly; no process-argument replacement, module-cache reset or completion polling is needed.
+
+Explained in context: [`cli.md`](cli.md#command-runner)
+
+---
+
 ### Command Registration
 
-The CLI declaration that connects a name, description, ordered option definitions, optional positional argument and help text to a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander, then loads and invokes the handler when the action runs. Its optional `mapOptions(raw, args)` converts raw flags and positional arguments before invocation. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated flags and parsers.
+The CLI declaration that connects a name, description, flag records, help text and a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander. Its action maps positional records and runtime defaults, awaits the lazy import, then awaits the handler. Every handler takes one options object. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated records and parsers.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
@@ -339,7 +365,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### Command Runner
 
-The CLI execution path. `registerCommand(program, registration)` applies the command's flags to Commander; `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function its lazy action calls. A command spec has a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its optional `preflight(ctx)` for preconditions, its `prompts` for missing values, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. Its opened collection carries that config snapshot; the locale and tag commands pass it with a write handle to core. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalizeCollections` in core applies the named versus all read-only rule after receiving the opened collections. After resources open, the runner awaits `preflight` in both modes before building command questions. Its context supplies those resources and the original flags as `options`. A thrown preflight error uses normal reporting (`❌ <message>`, exit 1). Shared core wording takes precedence. For untyped errors, `formatError` receives `duringRun: false`. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
+The CLI execution path. `registerCommand(program, registration)` applies the command's flags to Commander; `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function its lazy action calls. A command spec has a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its optional `preflight(ctx)` for preconditions, its `flags` for record questions and diagnostic spellings, any `prompts` for workflow questions, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. Its opened collection carries that config snapshot; the locale and tag commands pass it with a write handle to core. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalizeCollections` in core applies the named versus all read-only rule after receiving the opened collections. After resources open, the runner awaits `preflight` in both modes before building command questions. Its context supplies those resources and the original flags as `options`. A thrown preflight error uses normal reporting (`❌ <message>`, exit 1). Shared core wording takes precedence. For untyped errors, `formatError` receives `duringRun: false`. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
 
 `runCommand(command, flags, { cwd, ask?, interactive?, output?, summaryDirectory? })` runs that same pipeline in an explicit environment and returns `Promise<{ exitCode: 0 | 1, stdout, stderr }>`. It does not mutate process state. Tests use temporary projects and real core; injected `ask` answers questions or throws `CommandCancelledError`. The runner's async-scoped output port captures formatter output, direct command output and summary announcements separately for each run. Production supplies the process root, real prompts and TTY detection, uses the real console/streams, and sets `process.exitCode`.
 
@@ -765,6 +791,14 @@ Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ---
 
+### Project Defaults
+
+The browser-safe setup constants in `libs/domain/src/lib/project-defaults.ts`: `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `DEFAULT_BUNDLE_DIST`, `DEFAULT_BUNDLE_NAME`, and `DEFAULT_TYPE_DIST_FILE`. Core re-exports the same values through its existing public surface. CLI flag records and prompt builders import them from domain, so importing metadata or generating help does not load core. Values and prompt defaults are unchanged.
+
+Explained in context: [`core-library.md`](core-library.md)
+
+---
+
 ### Project Init
 
 The core operation `initProject(cwd, answers)` creates the initial project config from plain setup values. It applies built-in defaults, creates the first Collection Entry and Bundle Definition, and builds optional translation config. It validates and writes through [Config Write](#config-write), with an exclusive create that refuses an existing file. The result contains `config` and its absolute `configPath`. The CLI supplies flags and prompt answers, then prints the result.
@@ -987,7 +1021,7 @@ Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](fron
 
 ### Run Report
 
-The CLI's one rendering of a completed run's counts, warnings, and errors. `printRunReport({ counts?, warnings, errors, outcome, dryRun?, summaryPath? })` in `apps/cli/src/utils/run-report.ts` prints counts on stdout, then `Warnings (N):` and `Errors (N):` on stderr with `- ` bullets, and returns `exitForRunOutcome(outcome)`. A list longer than 10 is capped as `... and N more (full list in <summaryPath>)` only when the command wrote a [Run Summary](#run-summary-writer) file; with no `summaryPath`, or in a dry run, every item is printed. `move`, `delete-resource`, `import`, `export`, `normalize`, and `translate-locale` use it, so none formats these lists itself. Import and export save their summary first (`saveRunSummary`) so the report can name the file, then announce it after the results.
+The CLI module that renders run counts, warnings, and errors. `printRunReport({ counts?, warnings, errors, outcome, presentation?, section?, notice?, dryRun?, summaryPath? })` in `apps/cli/src/utils/run-report.ts` prints counts on stdout, then `Warnings (N):` and `Errors (N):` on stderr with `- ` bullets, and returns `exitForRunOutcome(outcome)`. A list longer than 10 is capped as `... and N more (full list in <summaryPath>)` only when the command wrote a [Run Summary](#run-summary-writer) file; with no `summaryPath`, or in a dry run, every item is printed. `move`, `delete-resource`, `import`, `export`, `normalize`, and `translate-locale` use this grouped presentation, so none formats these lists itself. Import and export save their summary first (`saveRunSummary`) so the report can name the file, then announce it after the results. JSON presentation accepts `{ kind: 'json', payload }` and writes two-space JSON plus a newline instead of text counts, section or notice. Diagnostics and exit outcomes are independent of presentation. Normalize declares its unchanged `{ collections, totals }` payload once. Bundle is excluded from this grouped presentation. It keeps its own [Bundle Presentation](#bundle-presentation) to preserve its pinned event-driven streams.
 
 ### Run Options Resolution
 

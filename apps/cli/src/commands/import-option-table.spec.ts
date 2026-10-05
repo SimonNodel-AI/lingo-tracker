@@ -1,3 +1,4 @@
+import { registerFlags } from '../runner/flag-record';
 import { Command } from 'commander';
 import { describe, expect, it, vi } from 'vitest';
 import type { ImportCommandOptions } from './import-options';
@@ -7,7 +8,7 @@ import {
   type ImportTableContext,
   type ResolvedImportOptions,
 } from './import-option-table';
-import { tableOptions, orderedTableQuestions, type OrderedCommandOptionRecord } from './option-table';
+import { tableFlags, orderedTableQuestions, type OrderedCommandOptionRecord } from './option-table';
 
 vi.mock('@simoncodes-ca/core', () => {
   throw new Error('Option tables must load without core or command handlers.');
@@ -49,7 +50,7 @@ describe('import option table', () => {
   for (const [key, record] of Object.entries(IMPORT_OPTION_TABLE)) {
     it(`defines registration, defaults and resolution for ${key}`, () => {
       const command = new Command();
-      for (const register of tableOptions({ [key]: record })) register(command);
+      registerFlags(command, tableFlags({ [key]: record }));
       const testCase = flagCases[key];
       expect(testCase).toBeDefined();
       command.parse(testCase.argv, { from: 'user' });
@@ -58,10 +59,10 @@ describe('import option table', () => {
   }
 
   it('covers every command options key and registers without loading handlers', () => {
-    const registrations = tableOptions(IMPORT_OPTION_TABLE);
-    expect(registrations).toHaveLength(13);
+    const registrations = tableFlags(IMPORT_OPTION_TABLE);
     const command = new Command();
-    for (const register of registrations) register(command);
+    registerFlags(command, registrations);
+    expect(command.options).toHaveLength(13);
     command.parse([], { from: 'user' });
     expect(command.opts()).toEqual({ dryRun: false, verbose: false });
     const helpDefaults = {

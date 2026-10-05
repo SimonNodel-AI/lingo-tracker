@@ -1,3 +1,4 @@
+import { TRANSLATE_LOCALE_FLAGS } from './translate-locale-flags';
 import {
   prepareTranslationRun,
   type Collection,
@@ -26,6 +27,7 @@ export function createTranslateLocaleCommand(options: TranslationRunOptions = {}
   const preparedRuns = new WeakMap<Collection, TranslationRun>();
 
   return defineCommand<TranslateLocaleOptions>()({
+    flags: TRANSLATE_LOCALE_FLAGS,
     name: 'Translate locale',
     collection: 'writable',
     formatError: (error, duringRun) => {
@@ -36,20 +38,6 @@ export function createTranslateLocaleCommand(options: TranslationRunOptions = {}
       const run = prepareTranslationRun(collection, options);
       if (flags.locale) run.forLocale(flags.locale);
       preparedRuns.set(collection, run);
-    },
-    prompts: (options, { collection }) => {
-      const prepared = preparedRuns.get(collection);
-      if (!prepared) throw new Error('Translation run was not prepared');
-      return options.locale
-        ? []
-        : [
-            {
-              type: 'select',
-              name: 'locale',
-              message: 'Select target locale to translate',
-              choices: prepared.targetLocales.map((locale) => ({ title: locale, value: locale })),
-            },
-          ];
     },
     required: ['locale'],
     run: async ({ collection, answers }) => {
