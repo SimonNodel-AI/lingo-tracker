@@ -1,5 +1,9 @@
 import { existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 
+export type ConfigWriteOutcome =
+  | { readonly status: 'succeeded' }
+  | { readonly status: 'failed'; readonly error: unknown; readonly reverted: boolean };
+
 /** A prepared companion write; all destinations are snapshotted before the first write. */
 export interface CompanionFileWrite {
   readonly path: string;
@@ -36,8 +40,13 @@ function attachRestoreFailure(original: unknown, failures: unknown[]): void {
 export function runConfigWriteTransaction(
   writes: readonly CompanionFileWrite[],
   shouldRestore: (path: string) => boolean,
-): void {
-  const snapshots = new Map(writes.map(({ path }) => [path, snapshotFile(path)]));
+): ConfigWriteOutcome {
+  let snapshots: Map<string, FileSnapshot>;
+  try {
+    snapshots = new Map(writes.map(({ path }) => [path, snapshotFile(path)]));
+  } catch (error) {
+    return { status: 'failed', error, reverted: false };
+  }
   const attempted = new Set<string>();
   try {
     for (const write of writes) {
@@ -52,7 +61,7 @@ export function runConfigWriteTransaction(
       restorePaths = [...attempted].reverse().filter(shouldRestore);
     } catch (restoreError) {
       attachRestoreFailure(error, [restoreError]);
-      throw error;
+      return { status: 'failed', error, reverted: false };
     }
     const failures: unknown[] = [];
     for (const path of restorePaths) {
@@ -69,6 +78,7 @@ export function runConfigWriteTransaction(
       }
     }
     attachRestoreFailure(error, failures);
-    throw error;
+    return { status: 'failed', error, reverted: failures.length === 0 && restorePaths.length === attempted.size };
   }
+  return { status: 'succeeded' };
 }

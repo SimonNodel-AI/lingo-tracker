@@ -4,7 +4,7 @@ import { patchCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
 import { resolveRenameTarget } from '../lib/config/entry-name';
 import { type Collection, type OpenedCollection, openCollection } from '../lib/config/open-collection';
-import { assertProtectedTerms } from '../lib/config/set-protected-terms';
+import { assertProtectedTerms } from '../lib/config/protected-terms-request';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
 import { resolveMutationSink, type MutationSinkOptions, reindexMutation } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';

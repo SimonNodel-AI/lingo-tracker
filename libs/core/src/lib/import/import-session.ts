@@ -1,12 +1,7 @@
 import type { Collection } from '../config/open-collection';
 import { canImportLocale, DEFAULT_IMPORT_STRATEGY, importStrategyPolicy } from '@simoncodes-ca/domain';
 import { InvalidImportLocaleError } from '../errors';
-import {
-  describeTermFileProblem,
-  type ProjectTerms,
-  readProjectTerms,
-  requireProtectedTerms,
-} from '../config/project-terms';
+import { type ProjectTerms, readProjectTerms } from '../config/project-terms';
 import { calculateImportStatistics, calculateStatusTransitions } from './import-statistics';
 import type {
   ICUAutoFix,
@@ -65,9 +60,7 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
   }
 
   const terms = readProjectTerms(collection);
-  requireProtectedTerms(terms);
-  const relevant = isBaseLocaleImport ? 'preferred-terminology' : 'protected-terms';
-  const warnings = terms.problems.filter((problem) => problem.file === relevant).map(describeTermFileProblem);
+  const { warnings } = terms.forGuard(isBaseLocaleImport ? 'source' : 'target');
 
   return {
     collection,

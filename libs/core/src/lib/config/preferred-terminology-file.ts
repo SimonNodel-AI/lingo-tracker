@@ -141,7 +141,7 @@ export function editPreferredTerminology(
   config: Pick<LingoTrackerConfig, 'preferredTerminologyFile'>,
   edit: PreferredTerminologyEdit,
   cwd: string = process.cwd(),
-  previous?: LoadPreferredTerminologyResult,
+  previous: LoadPreferredTerminologyResult | undefined,
 ): PreferredTerminologyEditResult {
   const replacement: unknown = edit.set;
   if (replacement !== undefined && !Array.isArray(replacement)) {
@@ -173,11 +173,10 @@ export function editPreferredTerminology(
   if (edit.set !== undefined) {
     next = [...edit.set];
   } else {
-    loaded = previous ?? loadPreferredTerminology(config, cwd);
+    if (previous === undefined)
+      throw new CoreOperationError('Project Terms must read the rules before an incremental edit');
+    loaded = previous;
     if (edit.upsert === undefined && edit.remove === undefined) return loaded;
-    if (loaded.error !== undefined) {
-      throw new CoreOperationError(loaded.error);
-    }
 
     next = [...loaded.rules];
     if (edit.remove !== undefined) {

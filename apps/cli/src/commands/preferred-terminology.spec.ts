@@ -131,6 +131,7 @@ describe('preferredTerminologyCommand', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         expect.stringContaining('Preferred terminology file is not valid JSON'),
       );
+      expect(ConsoleFormatter.error).toHaveBeenCalledTimes(1);
       expect(process.exitCode).toBe(1);
     });
 
@@ -213,6 +214,7 @@ describe('preferredTerminologyCommand', () => {
       expect(ConsoleFormatter.error).toHaveBeenCalledWith(
         expect.stringContaining('Preferred terminology file has invalid rules'),
       );
+      expect(ConsoleFormatter.error).toHaveBeenCalledTimes(1);
       expect(process.exitCode).toBe(1);
       expect(readFileSync(filePath, 'utf8')).toBe(before);
     });

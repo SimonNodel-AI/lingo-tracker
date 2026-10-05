@@ -9,15 +9,23 @@ import { hasFsErrorCode } from '../file-io/fs-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import type { OpenedProject } from './open-collection';
 import { configContentHash, configReadVersion, loadConfig } from './load-config';
-import { type CompanionFileWrite, runConfigWriteTransaction } from './config-write-transaction';
+import {
+  type CompanionFileWrite,
+  type ConfigWriteOutcome,
+  runConfigWriteTransaction,
+} from './config-write-transaction';
 
 export interface ConfigFileOperations {
   /** Read the configuration file */
   read(): LingoTrackerConfig;
   /** Write the configuration file */
   write(config: LingoTrackerConfig): void;
-  /** Write optional config and staged companion files, restoring exact bytes on failure. */
-  transaction(config: LingoTrackerConfig | undefined, companions: readonly CompanionFileWrite[]): void;
+  /** Write config and companions; observe the explicit restore outcome, then throw the original failure. */
+  transaction(
+    config: LingoTrackerConfig | undefined,
+    companions: readonly CompanionFileWrite[],
+    onOutcome?: (outcome: ConfigWriteOutcome) => void,
+  ): void;
   /** Refuse a write based on a config snapshot if the file has changed since that read. */
   assertUnchanged(): void;
   /** Create the file only if absent, using the same validation and serialization as write. */
@@ -105,13 +113,13 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
       writeConfig(config, false);
     },
 
-    transaction(config, companions): void {
+    transaction(config, companions, onOutcome): void {
       assertUnchanged();
       const previousVersion = expectedVersion;
       let configWriteStarted = false;
       let configWritten = false;
       try {
-        runConfigWriteTransaction(
+        const outcome = runConfigWriteTransaction(
           [
             ...(config === undefined
               ? []
@@ -139,6 +147,8 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
             return true;
           },
         );
+        onOutcome?.(outcome);
+        if (outcome.status === 'failed') throw outcome.error;
       } catch (error) {
         expectedVersion = previousVersion;
         throw error;

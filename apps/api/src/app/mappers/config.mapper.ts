@@ -1,7 +1,7 @@
 import type {
   LingoTrackerCollection,
   LingoTrackerConfig,
-  ProjectTermsView,
+  ProjectTermsConfigView,
   LoadPreferredTerminologyResult,
   ResolvedProtectedTerms,
 } from '@simoncodes-ca/core';
@@ -50,7 +50,7 @@ function mapPreferredTerminology(
 }
 
 /** Projects a full project snapshot to the DTO without file I/O or refusal policy. */
-export function mapConfigToDto(snapshot: ProjectTermsView): LingoTrackerConfigDto {
+export function mapConfigToDto(snapshot: ProjectTermsConfigView): LingoTrackerConfigDto {
   const { config, protectedTerms: resolved, preferredTerminology: terminology, projectName } = snapshot;
   return {
     exportFolder: config.exportFolder,
