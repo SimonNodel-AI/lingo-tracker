@@ -223,6 +223,16 @@ describe('ResourcesController HTTP (real project)', () => {
       });
       expect(entries()).toEqual({ save: { source: 'OK', 'fr-ca': 'OK', es: 'OK' } });
     });
+    it('returns 200 with errors when no requested resource can be deleted', async () => {
+      expect(await request('DELETE', { keys: ['app.button.missing'] })).toEqual({
+        status: 200,
+        body: {
+          entriesDeleted: 0,
+          errors: [{ key: 'app.button.missing', error: 'Resource not found: app.button.missing' }],
+        },
+      });
+      expect(entries()).toHaveProperty('ok.source', 'OK');
+    });
     it('passes the route param through verbatim', async () => {
       await project.seed(dto.key, 'Percent', {}, 'My%Collection');
       expect(await request('DELETE', { keys: [dto.key] }, '', 'My%Collection')).toEqual({
@@ -271,6 +281,14 @@ describe('ResourcesController HTTP (real project)', () => {
       expect(project.exists('translations/test/app/button/resource_entries.json')).toBe(false);
       expect(entries('app/actions')).toMatchObject({ ok: { source: 'OK', 'fr-ca': 'OK', es: 'OK' } });
       expect(metadata('app/actions')).toHaveProperty('ok');
+    });
+    it('returns 201 with errors when no requested resource can be moved', async () => {
+      expect(await move([{ source: 'app.button.missing', destination: 'app.actions.missing' }])).toEqual({
+        status: 201,
+        body: { movedCount: 0, warnings: [], errors: ['Source key not found: app.button.missing'] },
+      });
+      expect(entries()).toHaveProperty('ok.source', 'OK');
+      expect(project.exists('translations/test/app/actions')).toBe(false);
     });
     it('answers 400 without mutations for a malformed pattern after a valid operation', async () => {
       await project.seed('later.ok');

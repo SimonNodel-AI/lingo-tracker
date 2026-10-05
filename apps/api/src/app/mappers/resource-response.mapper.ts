@@ -60,13 +60,13 @@ export function mapUpdateResourceResultToDto(
   };
 }
 
-/** Maps a deletion result, preserving the errors field even when undefined. */
+/** Projects the public payload, excluding internal outcome; preserves present-undefined errors. */
 export function mapDeleteResourceResultToDto(result: DeleteResourceResult): DeleteResourceResponseDto {
   return { entriesDeleted: result.entriesDeleted, errors: result.errors };
 }
 
-/** Maps a move result, preserving empty warning and error arrays. */
-export function mapMoveResourcesResultToDto(result: MoveResult): MoveResourceResponseDto {
+/** Projects the resource payload, excluding internal outcome and folder counts; keeps empty diagnostics. */
+export function mapMoveResourcesResultToDto(result: MoveResult): Required<MoveResourceResponseDto> {
   return { movedCount: result.movedCount, warnings: result.warnings, errors: result.errors };
 }
 

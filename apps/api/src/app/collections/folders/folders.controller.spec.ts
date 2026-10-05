@@ -122,6 +122,37 @@ describe('FoldersController HTTP (real project)', () => {
     expect(readEntries('shared.buttons', 'another-collection')).not.toMatchObject({ key0: { es: expect.any(String) } });
     expect(existsSync(join(cwd, 'translations/test/apps/buttons'))).toBe(false);
   });
+  it('returns 201 with errors when a folder move has incompatible base locales', async () => {
+    await seed('apps.buttons');
+    config.collections = {
+      ...config.collections,
+      'another-collection': {
+        translationsFolder: join(cwd, 'translations/another'),
+        baseLocale: 'fr',
+        locales: ['fr', 'en'],
+      },
+    };
+    configure();
+    expect(
+      await move({
+        sourceFolderPath: 'apps.buttons',
+        destinationFolderPath: 'shared',
+        toCollection: 'another-collection',
+      }),
+    ).toEqual({
+      status: 201,
+      body: {
+        movedCount: 0,
+        foldersDeleted: 0,
+        warnings: ['Source folder kept; resources not moved: apps.buttons.key0'],
+        errors: [
+          'Cannot move resources from collection "test-collection" (base locale "en") to "another-collection" (base locale "fr")',
+        ],
+      },
+    });
+    expect(readEntries('apps.buttons')).toMatchObject({ key0: { source: 'Value 0' } });
+    expect(existsSync(join(cwd, 'translations/another/shared'))).toBe(false);
+  });
   it('should map a missing source collection to 404', async () => {
     const result = await move(
       { sourceFolderPath: 'apps.buttons', destinationFolderPath: 'apps.actions' },
