@@ -1,4 +1,4 @@
-import { displayTermPath, type ProjectTermsUpdateResult, planProjectTermsUpdate } from '@simoncodes-ca/core';
+import { displayTermPath, planProjectTermsUpdate } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
@@ -25,28 +25,24 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
 
     const collectionName = options.collection;
     const target = { collection: collectionName };
-    let pointerLinePrinted = false;
-    let result: ProjectTermsUpdateResult;
-    try {
-      const plan = planProjectTermsUpdate(project, {
-        protectedTerms: {
-          target,
-          change: {
-            kind: 'edit',
-            edit: {
-              add: options.add,
-              remove: options.remove,
-              ...(hasSet && { set: options.set ?? [] }),
-            },
+    const plan = planProjectTermsUpdate(project, {
+      protectedTerms: {
+        target,
+        change: {
+          kind: 'edit',
+          edit: {
+            add: options.add,
+            remove: options.remove,
+            ...(hasSet && { set: options.set ?? [] }),
           },
-          list: hasList,
-          ...(hasFile && { file: options.file }),
         },
-      });
-      const { protectedTerms: view, protectedTermsFileChange } = plan.view;
+        list: hasList,
+        ...(hasFile && { file: options.file }),
+      },
+    });
+    const result = plan.report(({ protectedTerms: view, protectedTermsFileChange }) => {
       if (protectedTermsFileChange !== undefined) {
         ConsoleFormatter.success(protectedTermsFileChange.message);
-        pointerLinePrinted = true;
       }
       if (view !== undefined) {
         // A named file that does not exist reads as empty; print its warning before a later write can fail.
@@ -70,11 +66,11 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
           ConsoleFormatter.keyValue('Terms', view.globalTerms.join(', ') || '(none)');
         }
       }
-      result = plan.apply();
-    } catch (error) {
-      if (pointerLinePrinted) ConsoleFormatter.warning('Protected terms file change was reverted.');
-      throw error;
+    });
+    if (result.protectedTermsFileChange !== undefined && result.reverted) {
+      ConsoleFormatter.warning('Protected terms file change was reverted.');
     }
+    if (result.status === 'failed') throw result.error;
 
     if (hasAdd || hasRemove || hasSet) {
       const written = result.protectedTermsResult;

@@ -24,7 +24,7 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
 import { checkTranslatedValue, classifyICUContent, translocoToICU } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
-import { protectedTermsWarnings, readProjectTerms, requireProtectedTerms } from '../config/project-terms';
+import { readProjectTerms } from '../config/project-terms';
 import { AutoTranslationDisabledError, TranslationError } from '../errors/lingo-tracker-error';
 import { type ExtractedPlaceholder, protectPlaceholders, restorePlaceholders } from './placeholder-protector';
 import type { TranslationProvider } from './translation-provider';
@@ -122,12 +122,12 @@ export function openPreparedTranslator(
   options: OpenTranslatorOptions = {},
 ): Translator {
   const provider = options.provider ?? createTranslationProvider(config.provider, readApiKey(config.apiKeyEnv));
-  const terms = options.protectedTerms === undefined ? readProjectTerms(collection) : undefined;
-  const protectedTerms = options.protectedTerms ?? (terms ? requireProtectedTerms(terms) : []);
+  const terms = options.protectedTerms === undefined ? readProjectTerms(collection).forGuard() : undefined;
+  const protectedTerms = options.protectedTerms ?? terms?.protectedTerms ?? [];
   const { baseLocale } = collection;
 
   return {
-    problems: terms ? protectedTermsWarnings(terms) : [],
+    problems: terms?.warnings ?? [],
     async translate(entries, locales) {
       const prepared = entries.map(prepare);
       const targets = [...new Set(locales)].filter((locale) => locale !== baseLocale);

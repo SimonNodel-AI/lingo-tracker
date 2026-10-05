@@ -188,6 +188,30 @@ describe('CLI Error Wording contract', () => {
     expect(cliErrorWording(new core.InvalidCollectionError('Core edit message', { problem }))).toEqual({ message });
   });
 
+  it('prints supplied core-operation causes without suppressing repeated messages', async () => {
+    const print = (error: core.CoreOperationError) =>
+      runCommand(
+        defineCommand<object>()({
+          name: 'Cause print',
+          collection: 'none',
+          config: false,
+          run: () => {
+            throw error;
+          },
+        }),
+        {},
+        { cwd: process.cwd() },
+      );
+    expect(
+      await print(new core.CoreOperationError('Broken terminology', { cause: new Error('Broken terminology') })),
+    ).toEqual({ exitCode: 1, stdout: '', stderr: '❌ Broken terminology\n  Broken terminology\n' });
+    expect(await print(new core.CoreOperationError('Write failed', { cause: new Error('Disk full') }))).toEqual({
+      exitCode: 1,
+      stdout: '',
+      stderr: '❌ Write failed\n  Disk full\n',
+    });
+  });
+
   it('keeps format detection text without an import prefix or duplicate cause', () => {
     expect(
       cliErrorWording(

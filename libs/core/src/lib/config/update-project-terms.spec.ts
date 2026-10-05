@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   CollectionNotFoundError,
+  CoreOperationError,
   ConfigChangedError,
   InvalidCollectionError,
   InvalidProjectTermsEditError,
@@ -196,7 +197,7 @@ describe('updateProjectTerms', () => {
     const changed = `${JSON.stringify({ ...config, baseLocale: 'fr' })}\n`;
     writeFileSync(configPath, changed);
 
-    expect(() => plan.apply()).toThrow(ConfigChangedError);
+    expect(plan.report().error).toBeInstanceOf(ConfigChangedError);
     expect(readFileSync(configPath, 'utf8')).toBe(changed);
     expect(existsSync(join(cwd, 'new-protected.json'))).toBe(false);
   });
@@ -231,6 +232,110 @@ describe('updateProjectTerms', () => {
     expect((JSON.parse(readFileSync(configPath, 'utf8')) as LingoTrackerConfig).protectedTermsFile).toBe(
       'protected.json',
     );
+  });
+
+  it('reports the original failure and confirmed pointer restoration', () => {
+    const before = readFileSync(join(cwd, '.lingo-tracker.json'), 'utf8');
+    mkdirSync(join(cwd, 'directory'));
+    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), {
+      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'directory', list: true },
+    }).report();
+    expect(report.status).toBe('failed');
+    expect(report.error).toBeInstanceOf(Error);
+    expect(report.reverted).toBe(true);
+    expect(report.protectedTerms?.globalFilePath).toBe(join(cwd, 'directory'));
+    expect(report.protectedTermsFileChange?.filePath).toBe(join(cwd, 'directory'));
+    expect(readFileSync(join(cwd, '.lingo-tracker.json'), 'utf8')).toBe(before);
+  });
+
+  it('does not claim a pointer was reverted when a stale config prevents writing', () => {
+    const plan = planProjectTermsUpdate(project(loadConfig({ cwd })), {
+      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
+    });
+    writeFileSync(join(cwd, '.lingo-tracker.json'), JSON.stringify({ ...config, baseLocale: 'fr' }));
+    const report = plan.report();
+    expect(report.status).toBe('failed');
+    expect(report.error).toBeInstanceOf(ConfigChangedError);
+    expect(report.reverted).toBe(false);
+    expect(existsSync(join(cwd, 'new-protected.json'))).toBe(false);
+  });
+
+  it('reports list paths without claiming a write', () => {
+    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), {
+      protectedTerms: { target: {}, change: { kind: 'view' }, list: true },
+      preferredTerminology: { list: true },
+    }).report();
+    expect(report.status).toBe('succeeded');
+    expect(report.protectedTerms?.globalFilePath).toBe(protectedFile);
+    expect(report.preferredTerminology?.filePath).toBe(preferredFile);
+    expect(report.reverted).toBe(false);
+  });
+
+  it('reports completed edits with stored paths, terms and warnings', () => {
+    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), {
+      protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['New'] } }, file: 'new-protected.json' },
+    }).report();
+    expect(report.status).toBe('succeeded');
+    expect(report.protectedTermsResult?.filePath).toBe(join(cwd, 'new-protected.json'));
+    expect(report.protectedTermsResult?.terms).toContain('New');
+    expect(report.reverted).toBe(false);
+    expect(report.protectedTerms?.warnings).toEqual([]);
+  });
+
+  it.each([
+    { upsert: { discouraged: 'Old', preferred: 'New' } },
+    { remove: 'Old' },
+  ])('keeps broken-file rule-edit refusals typed without a synthetic cause: %j', (edit) => {
+    writeFileSync(preferredFile, '{bad');
+    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), { preferredTerminology: edit }).report();
+    expect(report.status).toBe('failed');
+    expect(report.error).toBeInstanceOf(CoreOperationError);
+    expect((report.error as CoreOperationError).cause).toBeUndefined();
+    expect((report.error as CoreOperationError).message).toBe(report.preferredTerminology?.error);
+    expect(report.reverted).toBe(false);
+    expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
+  });
+
+  it('returns a broken preferred file as advisory data for a list-only core request', () => {
+    writeFileSync(preferredFile, '{bad');
+    const report = updateProjectTerms(project(loadConfig({ cwd })), { preferredTerminology: { list: true } });
+    expect(report.status).toBe('succeeded');
+    expect(report.preferredTerminology?.error).toContain('not valid JSON');
+    expect(report.error).toBeUndefined();
+  });
+
+  it('does not let a preferred list-only failure block a combined protected replacement', () => {
+    writeFileSync(preferredFile, '{bad');
+    const report = updateProjectTerms(project(loadConfig({ cwd })), {
+      protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Brand'] } },
+      preferredTerminology: { list: true },
+    });
+    expect(report.status).toBe('succeeded');
+    expect(report.preferredTerminology?.error).toContain('not valid JSON');
+    expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual(['Brand']);
+    expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
+  });
+
+  it('carries a replacement scope through the shared reader without guarding unrelated global terms', () => {
+    writeFileSync(protectedFile, '{bad');
+    const ownFile = join(cwd, 'own.json');
+    writeFileSync(ownFile, '["Own"]');
+    const sourceConfig = {
+      ...config,
+      collections: { app: { translationsFolder: 'i18n', protectedTermsFile: 'own.json' } },
+    };
+    writeFileSync(join(cwd, '.lingo-tracker.json'), JSON.stringify(sourceConfig));
+    const report = updateProjectTerms(project(loadConfig({ cwd })), {
+      protectedTerms: {
+        target: { collection: 'app' },
+        change: { kind: 'replace', replace: ['New'] },
+        file: 'carried.json',
+      },
+    });
+    expect(report.status).toBe('succeeded');
+    expect(JSON.parse(readFileSync(join(cwd, 'carried.json'), 'utf8'))).toEqual(['New']);
+    expect(readFileSync(protectedFile, 'utf8')).toBe('{bad');
+    expect(readFileSync(ownFile, 'utf8')).toBe('["Own"]');
   });
 
   it('reports an unknown collection for a replacement with a collection pointer change', () => {

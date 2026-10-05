@@ -7,6 +7,7 @@ import {
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   CollectionNotFoundError,
+  CoreOperationError,
   InvalidProjectTermsEditError,
   InvalidCollectionError,
   PreferredTerminologyValidationError,
@@ -23,8 +24,8 @@ import {
 } from './preferred-terminology-file';
 import {
   assertWritableProtectedTermsPath,
-  readCollectionProtectedTerms,
-  readGlobalProtectedTerms,
+  resolveCollectionProtectedTermsFilePath,
+  resolveGlobalProtectedTermsFile,
   resolveGlobalProtectedTermsFilePath,
   resolveProtectedTermsFilePath,
   resolveWritableCollectionProtectedTermsPath,
@@ -35,10 +36,11 @@ import {
   type ProtectedTermsEdit,
   type ProtectedTermsEditResult,
   type ProtectedTermsView,
-} from './set-protected-terms';
+} from './protected-terms-request';
 import { assertWritableTermFilePath } from './term-file';
-import { protectedTermsTargetView, readProjectTermsView } from './project-terms-view';
-import type { CompanionFileWrite } from './config-write-transaction';
+import { readProjectTermsView } from './project-terms-view';
+import { readStoredProjectProtectedTerms } from './project-term-files';
+import type { CompanionFileWrite, ConfigWriteOutcome } from './config-write-transaction';
 
 /** Replacements and incremental edits both write the explicitly selected scope. */
 export type ProtectedTermsChange =
@@ -62,14 +64,20 @@ export interface ProjectTermsUpdateView {
   readonly protectedTermsFileChange?: { readonly message: string; readonly filePath?: string };
 }
 
-export interface ProjectTermsUpdateResult extends ProjectTermsUpdateView {
-  readonly protectedTermsResult?: ProtectedTermsEditResult;
-  readonly preferredTerminologyResult?: PreferredTerminologyEditResult;
-}
-
 export interface ProjectTermsUpdatePlan {
   readonly view: ProjectTermsUpdateView;
-  apply(): ProjectTermsUpdateResult;
+  /** Format the preview before writes; application failures return the original error in-band. */
+  report(onPreview?: (preview: ProjectTermsUpdateView) => void): ProjectTermsUpdateReport;
+}
+
+/** Completed update with its pre-write display and original error, if application failed. */
+export interface ProjectTermsUpdateReport extends ProjectTermsUpdateView {
+  readonly protectedTermsResult?: ProtectedTermsEditResult;
+  readonly preferredTerminologyResult?: PreferredTerminologyEditResult;
+  readonly status: 'succeeded' | 'failed';
+  /** True only when every attempted write was successfully restored. */
+  readonly reverted: boolean;
+  readonly error?: unknown;
 }
 
 interface ValidatedEdit {
@@ -193,9 +201,18 @@ function planProtectedTermsPointer(
       filePath = resolveGlobalProtectedTermsFilePath({ ...currentConfig, protectedTermsFile: pointer }, cwd);
     }
     if (filePath !== undefined) assertWritableProtectedTermsPath(filePath);
-    const carried = collectionName
-      ? readCollectionProtectedTerms(currentConfig.collections[collectionName], cwd).terms
-      : readGlobalProtectedTerms(currentConfig, cwd).terms;
+    const oldCollectionPath = collectionName
+      ? resolveCollectionProtectedTermsFilePath(currentConfig.collections[collectionName], cwd)
+      : undefined;
+    const carried =
+      protectedTerms?.storedTerms ??
+      readStoredProjectProtectedTerms(
+        collectionName
+          ? oldCollectionPath === undefined
+            ? undefined
+            : { path: oldCollectionPath, explicit: true }
+          : resolveGlobalProtectedTermsFile(currentConfig, cwd),
+      );
     let message = `Global protected terms file set to ${filePath}`;
     if (collectionName) {
       message =
@@ -255,7 +272,7 @@ export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTe
   const snapshot = needsProtectedView || needsPreferredView ? readProjectTermsView(project) : undefined;
   let protectedTerms: ProtectedTermsView | undefined;
   if (needsProtectedView && protectedRequest !== undefined && snapshot !== undefined) {
-    protectedTerms = protectedTermsTargetView(snapshot, protectedRequest.target);
+    protectedTerms = snapshot.forTarget(protectedRequest.target);
   }
   const preferredTerminology =
     preferredRequest !== undefined && preferredRequest.set === undefined ? snapshot?.preferredTerminology : undefined;
@@ -288,7 +305,34 @@ export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTe
   };
   return {
     view,
-    apply: () => applyProjectTermsUpdate(project, update, resolved),
+    report: (onPreview) => {
+      onPreview?.(view);
+      let reverted = false;
+      try {
+        if (
+          (preferredRequest?.upsert !== undefined || preferredRequest?.remove !== undefined) &&
+          view.preferredTerminology?.error !== undefined
+        ) {
+          throw new CoreOperationError(view.preferredTerminology.error);
+        }
+        const result = applyProjectTermsUpdate(project, update, resolved, (outcome) => {
+          reverted = outcome.status === 'failed' && outcome.reverted;
+        });
+        return {
+          ...view,
+          ...result,
+          status: 'succeeded',
+          reverted: false,
+        };
+      } catch (error) {
+        return {
+          ...view,
+          error,
+          status: 'failed',
+          reverted,
+        };
+      }
+    },
   };
 }
 
@@ -297,7 +341,8 @@ function applyProjectTermsUpdate(
   project: OpenedProject,
   update: ProjectTermsUpdate,
   resolved: ResolvedProjectTermsUpdate,
-): ProjectTermsUpdateResult {
+  onOutcome: (outcome: ConfigWriteOutcome) => void,
+): Pick<ProjectTermsUpdateReport, 'protectedTermsResult' | 'preferredTerminologyResult'> {
   const { projectRoot: cwd } = project;
   const configWrite = guardedConfigWrite(project);
   configWrite.assertUnchanged();
@@ -350,11 +395,13 @@ function applyProjectTermsUpdate(
       });
     }
   }
-  configWrite.transaction(pointer === undefined ? undefined : resolved.nextConfig, writes);
-  return { ...view, protectedTermsResult, preferredTerminologyResult };
+  configWrite.transaction(pointer === undefined ? undefined : resolved.nextConfig, writes, onOutcome);
+  return { protectedTermsResult, preferredTerminologyResult };
 }
 
 /** Convenience entry point for callers that do not show a preview. */
-export function updateProjectTerms(project: OpenedProject, update: ProjectTermsUpdate): ProjectTermsUpdateResult {
-  return planProjectTermsUpdate(project, update).apply();
+export function updateProjectTerms(project: OpenedProject, update: ProjectTermsUpdate): ProjectTermsUpdateReport {
+  const report = planProjectTermsUpdate(project, update).report();
+  if (report.status === 'failed') throw report.error;
+  return report;
 }

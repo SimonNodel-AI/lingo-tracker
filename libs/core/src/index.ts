@@ -72,6 +72,7 @@ export {
   planProjectTermsUpdate,
   readProjectTermsView,
   preferredTerminologyRequestFromFlags,
+  type ProjectTermsConfigView,
   type ProjectTermsView,
   type PreferredTerminologyFlags,
   type ResolvedProtectedTerms,
@@ -81,12 +82,12 @@ export {
   updateProjectTerms,
 } from './lib/config';
 export { assertCollectionFields } from './lib/config/collection-entry';
-export { assertProtectedTerms } from './lib/config/set-protected-terms';
+export { assertProtectedTerms } from './lib/config/protected-terms-request';
 export type {
   ProtectedTermsChange,
   ProjectTermsUpdate,
   ProjectTermsUpdatePlan,
-  ProjectTermsUpdateResult,
+  ProjectTermsUpdateReport,
   ProjectTermsUpdateView,
 } from './lib/config/update-project-terms';
 export {

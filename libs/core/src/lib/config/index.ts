@@ -23,7 +23,7 @@ export {
   type PreferredTerminologyEditResult,
   resolvePreferredTerminologyFilePath,
 } from './preferred-terminology-file';
-export { describeTermFileProblem, readProjectTerms, type TerminologyFindings } from './project-terms';
+export { readProjectTerms, type TerminologyFindings } from './project-terms';
 export {
   type ResolvedProtectedTerms,
   readCollectionProtectedTerms,
@@ -37,10 +37,10 @@ export {
   type ProtectedTermsChange,
   type ProjectTermsUpdate,
   type ProjectTermsUpdatePlan,
-  type ProjectTermsUpdateResult,
+  type ProjectTermsUpdateReport,
   planProjectTermsUpdate,
   updateProjectTerms,
 } from './update-project-terms';
 
-export { readProjectTermsView, type ProjectTermsView } from './project-terms-view';
+export { readProjectTermsView, type ProjectTermsConfigView, type ProjectTermsView } from './project-terms-view';
 export { preferredTerminologyRequestFromFlags, type PreferredTerminologyFlags } from './preferred-terminology-request';

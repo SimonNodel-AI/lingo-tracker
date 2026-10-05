@@ -1,6 +1,6 @@
 import { collectionSetTargetLocales } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
-import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
+import { readProjectTerms } from '../config/project-terms';
 import type { RunOutcome } from '../run-outcome';
 import { generateValidationSummary } from './generate-validation-summary';
 import type { ResourceValidationResult, ValidationOptions } from './types';
@@ -98,19 +98,9 @@ export function runValidate(collections: readonly Collection[], options: Validat
   // then the protected-term check covers nothing. A named rule file that is missing also warns.
   const termsByCollection = new Map(collections.map((collection) => [collection, readProjectTerms(collection)]));
   const projectTerms = [...termsByCollection.values()];
-  const problems = projectTerms.flatMap((terms) => terms.problems);
-  warnings.push(
-    ...new Set(
-      problems
-        .filter((problem) => problem.file === 'protected-terms' || problem.severity === 'warning')
-        .map(describeTermFileProblem),
-    ),
-  );
-  // A broken rule file becomes terminology.loadError and fails validation: otherwise a typo
-  // would silently switch the check off in CI.
-  const ruleFileError = problems.find(
-    (problem) => problem.file === 'preferred-terminology' && problem.severity === 'error',
-  )?.message;
+  const views = projectTerms.map((terms) => terms.forValidation());
+  warnings.push(...new Set(views.flatMap((view) => view.warnings)));
+  const ruleFileError = views.find((view) => view.loadError !== undefined)?.loadError;
   // Preferred terminology is one file for the project. The first collection with rules wins;
   // later rule lists are not checked for agreement. An empty first read cannot hide later rules.
   const rules = [...(projectTerms.find((terms) => terms.preferredTerminology.length > 0)?.preferredTerminology ?? [])];

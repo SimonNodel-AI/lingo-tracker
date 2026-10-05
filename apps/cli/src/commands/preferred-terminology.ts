@@ -33,25 +33,31 @@ export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOpt
 });
 
 /** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
-function run(options: PreferredTerminologyOptions, project: OpenedProject, cwd: string): void {
+function run(options: PreferredTerminologyOptions, project: OpenedProject, cwd: string): undefined | { exitCode: 1 } {
   const hasList = options.list === true;
   const plan = planProjectTermsUpdate(project, {
     preferredTerminology: preferredTerminologyRequestFromFlags(options),
   });
-  const { preferredTerminology: loaded } = plan.view;
-  if (loaded !== undefined) {
-    const where = displayTermPath(loaded.filePath, cwd);
-    if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
-    if (hasList) {
-      ConsoleFormatter.section('Preferred Terminology');
-      ConsoleFormatter.keyValue('File', where);
-      if (loaded.error) throw new Error(loaded.error);
-      if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
-      else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
+  const report = plan.report(({ preferredTerminology: loaded }) => {
+    if (loaded !== undefined) {
+      const where = displayTermPath(loaded.filePath, cwd);
+      if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
+      if (hasList) {
+        ConsoleFormatter.section('Preferred Terminology');
+        ConsoleFormatter.keyValue('File', where);
+        if (loaded.error === undefined) {
+          if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
+          else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
+        }
+      }
     }
-    if (loaded.error) throw new Error(loaded.error);
+  });
+  if (report.status === 'failed') throw report.error;
+  if (report.preferredTerminology?.error !== undefined) {
+    ConsoleFormatter.error(report.preferredTerminology.error);
+    return { exitCode: 1 };
   }
-  const result = plan.apply().preferredTerminologyResult;
+  const result = report.preferredTerminologyResult;
 
   if (result?.action && result.changedRule) {
     const verb = result.action === 'added' ? 'Added' : result.action === 'updated' ? 'Updated' : 'Removed';

@@ -4,7 +4,7 @@ import { DEFAULT_CONFIG } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { describeFolderProblem } from '../resource/collection-folders';
 import { collectionSetTargetLocales, readCollectionSet } from '../collection-set/collection-set';
-import { describeTermFileProblem, readProjectTerms } from '../config/project-terms';
+import { readProjectTerms } from '../config/project-terms';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { assertTranslationStatusList } from '../resource/translation-status-input';
 import type { RunOutcome } from '../run-outcome';
@@ -211,12 +211,9 @@ export async function runExport(
    */
   function protectedTermsOf(collection: Collection): string[] | undefined {
     if (!augmentProtectedTerms) return undefined;
-    const terms = readProjectTerms(collection);
-    for (const problem of terms.problems) {
-      if (problem.file === 'protected-terms') {
-        (problem.severity === 'error' ? totals.errors : totals.warnings).push(describeTermFileProblem(problem));
-      }
-    }
+    const terms = readProjectTerms(collection).forReport();
+    totals.errors.push(...terms.errors);
+    totals.warnings.push(...terms.warnings);
     return [...terms.protectedTerms];
   }
 }

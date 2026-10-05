@@ -457,7 +457,7 @@ The translate-locale job service already returns a DTO. The controller passes it
 
 **Why does `config.mapper.ts` take a project snapshot?** Protected terms live in JSON files outside `.lingo-tracker.json`. Building the DTO therefore requires reading the filesystem.
 
-The mapper keeps no file access. `ConfigController.getConfig()` opens the project and passes core `readProjectTermsView(project)` to `mapConfigToDto(snapshot)`. The snapshot includes protected terms, preferred rules, file paths, file problems, and workspace name. The controller rejects the first broken protected file, checking collections before the global scope. The mapper preserves JSON fields and their order. Preferred-file problems remain advisory.
+The mapper keeps no file access. `ConfigController.getConfig()` opens the project and passes core `readProjectTermsView(project).forConfig()` to `mapConfigToDto(snapshot)`. The snapshot includes protected terms, preferred rules, file paths and workspace name. Core rejects the first broken protected file, checking collections before the global scope. The mapper preserves JSON fields and their order. Preferred-file problems remain advisory.
 
 The resolved terms and their file paths then reach the UI as read-only DTO fields, `protectedTerms` and `protectedTermsFilePath`. The writable `protectedTermsFile` setting travels alongside them.
 

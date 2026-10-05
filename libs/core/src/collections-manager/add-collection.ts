@@ -3,7 +3,7 @@ import type { LingoTrackerCollection } from '../config/lingo-tracker-collection'
 import { addCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
 import type { OpenedProject } from '../lib/config/open-collection';
-import { assertProtectedTerms } from '../lib/config/set-protected-terms';
+import { assertProtectedTerms } from '../lib/config/protected-terms-request';
 import { type MutationSinkOptions, reindexMutation } from '../lib/resource/resource-mutation';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 
