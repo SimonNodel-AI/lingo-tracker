@@ -1,6 +1,7 @@
 import type { BundleTypeOutcome, LingoTrackerConfig } from '@simoncodes-ca/core';
 import type { TokenCasing } from '@simoncodes-ca/domain';
-import { BundleNotFoundError, generateBundles, MultipleBundleConstantNameError } from '@simoncodes-ca/core';
+import { generateBundles } from '@simoncodes-ca/core';
+import { printCliError } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
@@ -30,14 +31,6 @@ export interface BundleOptions {
 }
 
 const DEFAULT_DEBUG_KEYS_LOCALE = '99';
-
-/** Core names the data (one bundle per constant name); the command words it as the flag. */
-function wordConstantNameConflict(error: unknown): never {
-  if (error instanceof MultipleBundleConstantNameError) {
-    throw new Error('Cannot use --token-constant-name with multiple bundles. Please target a single bundle.');
-  }
-  throw error;
-}
 
 export const bundleCommand = defineCommand<BundleOptions>()({
   name: 'Bundle generation',
@@ -103,13 +96,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
       const { outcome } = event;
       if (outcome.configWarning) CommandOutput.warn(outcome.configWarning);
       if (outcome.error !== undefined) {
-        const errorMessage =
-          outcome.error instanceof BundleNotFoundError
-            ? `Bundle "${outcome.name}" not found.`
-            : outcome.error instanceof Error
-              ? outcome.error.message
-              : 'Failed to generate bundle';
-        ConsoleFormatter.error(errorMessage);
+        printCliError(outcome.error, { fallbackMessage: 'Failed to generate bundle' });
         return;
       }
       const result = outcome.result;
@@ -127,7 +114,7 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
         );
       }
     },
-  }).catch(wordConstantNameConflict);
+  });
 
   if (runResult.outcomes.length > 1) {
     const { totals } = runResult;

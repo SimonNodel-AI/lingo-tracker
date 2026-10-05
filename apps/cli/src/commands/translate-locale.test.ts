@@ -67,9 +67,9 @@ describe('translateLocaleCommand', () => {
     expect(result.stderr).toContain('❌ Errors (1):\n  - a.b: quota');
     expect(result.exitCode).toBe(1);
   });
-  it('prefixes a run that cannot start with "Translation failed:" and exits 1', async () => {
+  it('reports a typed provider startup error and exits 1', async () => {
     const result = await project.run(translateLocaleCommand, { locale: 'fr' });
-    expect(result.stderr).toContain('Translation failed:');
+    expect(result.stderr).toMatch(/^❌ /);
     expect(result.stderr).toContain('TRANSLATE_CLI_SPEC_KEY');
     expect(result.exitCode).toBe(1);
   });
@@ -113,7 +113,7 @@ describe('translateLocaleCommand', () => {
       },
     });
     const result = await project.run(failing, { locale: 'fr' });
-    expect(result.stderr).toContain('Translation failed: Cannot translate');
+    expect(result.stderr).toContain('❌ Cannot translate');
     expect(result.stderr).toContain('API request failed');
   });
   it.each([

@@ -5,6 +5,7 @@ import {
   normalizeCollections,
   ReadOnlyCollectionError,
 } from '@simoncodes-ca/core';
+import { printCliError } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, parseNameSelection, printRunReport, selectionPrompt } from '../utils';
@@ -104,7 +105,7 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       });
     } catch (error) {
       if (!(error instanceof ReadOnlyCollectionError)) throw error;
-      ConsoleFormatter.error(error.message);
+      printCliError(error);
       if (answers.json) printJsonSummary(emptyNormalizeCollectionsResult());
       else printDryRunWarning(answers);
       return { exitCode: 1 };

@@ -3,7 +3,6 @@ import {
   type Collection,
   type TranslationRun,
   type TranslationRunOptions,
-  AutoTranslationDisabledError,
 } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
@@ -31,9 +30,6 @@ export function createTranslateLocaleCommand(options: TranslationRunOptions = {}
     collection: 'writable',
     formatError: (error, duringRun) => {
       const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof AutoTranslationDisabledError) {
-        return `${message}. Set translation.enabled = true in your configuration`;
-      }
       return duringRun ? `Translation failed: ${message}` : undefined;
     },
     preflight: ({ options: flags, collection }) => {

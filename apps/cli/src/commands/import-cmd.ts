@@ -1,12 +1,7 @@
-import {
-  type ImportResult,
-  type ImportRunOptions,
-  ImportSourceError,
-  type RunOutcome,
-  runImport,
-} from '@simoncodes-ca/core';
+import { type ImportResult, type ImportRunOptions, type RunOutcome, runImport } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
+import { cliErrorWording } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
@@ -58,12 +53,10 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
         },
       });
     } catch (error) {
-      // Report only runImport failures here, without replacing a typed source error
-      // or exposing the duplicate cause line that the runner would print.
-      const message = error instanceof Error ? error.message : String(error);
-      ConsoleFormatter.error(
-        error instanceof ImportSourceError && error.stage === 'format' ? message : `Import failed: ${message}`,
-      );
+      // Typed failures use the shared wording. Only untyped import execution failures
+      // keep this command-specific prefix; later reporting failures use the runner unchanged.
+      if (cliErrorWording(error) !== undefined) throw error;
+      ConsoleFormatter.error(`Import failed: ${error instanceof Error ? error.message : String(error)}`);
       return { exitCode: 1 };
     }
     const { result } = run;

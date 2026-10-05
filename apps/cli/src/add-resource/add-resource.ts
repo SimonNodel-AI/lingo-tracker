@@ -1,6 +1,7 @@
 import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
 import { parseTranslationInputs, TRANSLATION_STATUSES, type TranslationInput } from '@simoncodes-ca/domain';
+import { ADD_RESOURCE_COMMAND_NAME } from '../runner/cli-error-wording';
 import { type Ask, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, printTerminologyFindings } from '../utils';
 
@@ -17,7 +18,7 @@ export interface AddResourceOptions {
 }
 
 export const addResourceCommand = defineCommand<AddResourceOptions>()({
-  name: 'Add resource',
+  name: ADD_RESOURCE_COMMAND_NAME,
   collection: 'writable',
   commaListAnswers: ['tags'],
   prompts: (options) =>
@@ -55,10 +56,7 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
       result = await addResource(collection, params, { onExisting: answers.override ? 'replace' : 'fail' });
     } catch (error) {
       if (!(error instanceof ResourceAlreadyExistsError) || answers.override) throw error;
-      if (!interactive) {
-        ConsoleFormatter.error(error.message, ['Use --override to replace it, or edit-resource to change it.']);
-        return { exitCode: 1 };
-      }
+      if (!interactive) throw error;
       await confirmOrCancel({
         ask,
         interactive,
