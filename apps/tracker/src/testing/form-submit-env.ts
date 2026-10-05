@@ -18,7 +18,9 @@ export function fakeEnv(): FormSubmitEnv & { destroy(): void } {
   return {
     translate: (token) => token,
     destroyRef,
-    destroy: () => callbacks.splice(0).forEach((callback) => callback()),
+    destroy: () => {
+      for (const callback of callbacks.splice(0)) callback();
+    },
   };
 }
 

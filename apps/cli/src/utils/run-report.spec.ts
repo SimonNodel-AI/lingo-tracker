@@ -6,7 +6,16 @@ function report(input: Partial<RunReport> = {}) {
   let stdout = '';
   let stderr = '';
   const result = withCommandOutput(
-    { sink: { stdout: (text) => (stdout += text), stderr: (text) => (stderr += text) } },
+    {
+      sink: {
+        stdout: (text) => {
+          stdout += text;
+        },
+        stderr: (text) => {
+          stderr += text;
+        },
+      },
+    },
     () => printRunReport({ warnings: [], errors: [], outcome: 'succeeded', ...input }),
   );
   return { result, stdout, stderr };

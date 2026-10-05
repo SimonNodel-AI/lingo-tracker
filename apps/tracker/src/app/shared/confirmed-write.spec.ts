@@ -120,7 +120,13 @@ describe('confirmed write', () => {
     it('lets the write finish after destroy, without a toast', async () => {
       let settled = false;
       const outcome = new Subject<{ feedback: Feedback }>();
-      const done = setup().runWrite(outcome.pipe(finalize(() => (settled = true))));
+      const done = setup().runWrite(
+        outcome.pipe(
+          finalize(() => {
+            settled = true;
+          }),
+        ),
+      );
       TestBed.resetTestingModule();
       expect(outcome.observed).toBe(true);
       outcome.next({ feedback: success });
