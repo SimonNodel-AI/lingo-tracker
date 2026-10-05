@@ -2,8 +2,8 @@ import {
   Body,
   Controller,
   type DynamicModule,
-  forwardRef,
   type ForwardReference,
+  forwardRef,
   Module,
   Post,
   Query,
@@ -27,9 +27,9 @@ import { ConfigController } from '../config/config.controller';
 import { ConfigService } from '../config/config.service';
 import { TranslationJobService } from '../translation-job/translation-job.service';
 import * as schemas from './dto-schemas';
+import { exactMessage } from './exact-message.test-support';
 import type { Schema } from './schema';
 import { SchemaPipe } from './valid-body';
-import { exactMessage } from './exact-message.test-support';
 
 const collection = {
   translationsFolder: './translations',
@@ -514,7 +514,7 @@ const wiring = [
   [ResourcesController, 'delete', RouteParamtypes.BODY, schemas.deleteResourcesBody],
   [ResourcesController, 'move', RouteParamtypes.BODY, schemas.moveResourcesBody],
   [ResourcesController, 'update', RouteParamtypes.BODY, schemas.updateResourceBody],
-  [ResourcesController, 'translateLocale', RouteParamtypes.BODY, schemas.translateLocaleBody],
+  [ResourcesController, 'startTranslationJob', RouteParamtypes.BODY, schemas.translateLocaleBody],
   [ResourcesController, 'getTree', RouteParamtypes.QUERY, schemas.treeQuery],
   [ResourcesController, 'search', RouteParamtypes.QUERY, schemas.searchQuery],
 ] as const;

@@ -12,11 +12,11 @@ import {
 } from '@nestjs/common';
 import {
   addResources,
-  prepareTranslateLocale,
   type Collection,
   deleteResource,
   editResource,
   moveResources,
+  prepareTranslationRun,
   translateExistingResource,
 } from '@simoncodes-ca/core';
 import type {
@@ -179,11 +179,11 @@ export class ResourcesController {
 
   @Post('translate-locale')
   @HttpCode(HttpStatus.ACCEPTED)
-  async translateLocale(
+  async startTranslationJob(
     @RouteCollection() collection: Collection,
     @ValidBody(translateLocaleBody) dto: TranslateLocaleRequestDto,
   ): Promise<TranslateLocaleJobDto> {
-    return this.#translationJobService.startJob(prepareTranslateLocale(collection, dto.locale));
+    return this.#translationJobService.startJob(prepareTranslationRun(collection).forLocale(dto.locale));
   }
 
   @Get('translate-locale/:jobId')

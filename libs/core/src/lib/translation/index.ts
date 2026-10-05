@@ -10,12 +10,7 @@ export {
   type TranslateExistingResourceResult,
   translateExistingResource,
 } from './translate-existing-resource';
-export {
-  type TranslateLocaleParams,
-  type TranslateLocaleProgress,
-  type TranslateLocaleResult,
-  translateLocale,
-} from './translate-locale';
+export type { TranslateLocaleProgress, TranslateLocaleResult } from './translate-locale';
 export type {
   ProviderCapabilities,
   TranslateRequest,
@@ -35,11 +30,9 @@ export {
 } from './translator';
 
 export {
-  prepareTranslateLocale,
-  executeTranslateLocale,
-  selectPreparedTranslateLocale,
-  type PreparedTranslateLocale,
-  type PreparedTranslationTargets,
+  prepareTranslationRun,
+  type TranslationRun,
+  type LocaleTranslationRun,
+  type TranslationRunExecutionOptions,
   type TranslationRunOptions,
-  type TranslationRunTally,
 } from './translation-run';

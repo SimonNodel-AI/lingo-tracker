@@ -246,14 +246,13 @@ export {
 } from './lib/resource';
 export type {
   OpenTranslatorOptions,
-  PreparedTranslateLocale,
-  PreparedTranslationTargets,
+  TranslationRun,
+  LocaleTranslationRun,
+  TranslationRunExecutionOptions,
   TranslationRunOptions,
-  TranslationRunTally,
   ProviderCapabilities,
   TranslateExistingResourceOptions,
   TranslateExistingResourceResult,
-  TranslateLocaleParams,
   TranslateLocaleProgress,
   TranslateLocaleResult,
   TranslateRequest,
@@ -262,11 +261,8 @@ export type {
 } from './lib/translation';
 export {
   assertAutoTranslationEnabled,
-  prepareTranslateLocale,
-  executeTranslateLocale,
-  selectPreparedTranslateLocale,
+  prepareTranslationRun,
   translateExistingResource,
-  translateLocale,
 } from './lib/translation';
 export type {
   ResourceValidationResult,

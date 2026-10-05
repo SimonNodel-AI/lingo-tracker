@@ -20,8 +20,8 @@ jest.mock('@simoncodes-ca/core', () => {
       actual.addResources(collection, items, { ...options, provider: mockProvider }),
     translateExistingResource: (...[collection, key, options]: Parameters<typeof actual.translateExistingResource>) =>
       actual.translateExistingResource(collection, key, { ...options, provider: mockProvider }),
-    executeTranslateLocale: (...[run, options]: Parameters<typeof actual.executeTranslateLocale>) =>
-      actual.executeTranslateLocale(run, { ...options, provider: mockProvider }),
+    prepareTranslationRun: (...[collection, options]: Parameters<typeof actual.prepareTranslationRun>) =>
+      actual.prepareTranslationRun(collection, { ...options, provider: mockProvider }),
   };
 });
 
