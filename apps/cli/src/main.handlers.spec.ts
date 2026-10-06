@@ -428,7 +428,6 @@ const cases: Case[] = [
     defaultCall: [
       {
         allowTranslated: false,
-        skipLocales: [],
         skipIcu: false,
         requirePortablePlurals: false,
         skipPlaceholders: false,
@@ -441,7 +440,7 @@ const cases: Case[] = [
     handler: handlers.findSimilar,
     fullArgv: ['--collection', 'app', '--value', 'Hello', '--max-results', '8'],
     fullCall: [{ collection: 'app', value: 'Hello', maxResults: 8 }],
-    defaultCall: [{ maxResults: 5 }],
+    defaultCall: [{}],
   },
   {
     name: 'glossary',

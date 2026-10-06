@@ -1,13 +1,15 @@
 import { type Command, Option } from 'commander';
 import type prompts from 'prompts';
+import { parseListSelection, parseNameSelection, type Selection } from '../utils/prompt-utils';
 import { choiceOption, commaListOption, option, repeatableListOption, type OptionSpec } from './options';
 
 /** A flag or positional value, including the conversion applied at the Commander boundary. */
 type FlagFields = Omit<OptionSpec<unknown>, 'parse'> & {
-  readonly negative?: { readonly flags: string; readonly description: string };
+  readonly positive?: { readonly flags: string; readonly description: string };
   /** Applied after parsing; unlike defaultValue, this does not change help. */
   readonly runtimeDefault?: unknown;
-  /** Command fallback for an optional-value flag present without its value. */
+  readonly selection?: SelectionRecord;
+  /** Resolver fallback for an optional-value flag present without its value. */
   readonly implicitValue?: string;
 };
 
@@ -25,21 +27,22 @@ export type FlagRecord =
   | { readonly argument: readonly [name: string, description: string] };
 
 /** Every Options key has exactly one record. Object literals reject extra keys as well. */
-export type FlagRecords<Options, Context = never> = {
+export type FlagRecords<Options, Context = never, PromptAnswers = Options> = {
   readonly [Key in keyof Required<Options>]: FlagRecord & {
+    readonly selection?: SelectionRecord<Options, PromptAnswers>;
     readonly prompt?: (options: Options, context: Context) => prompts.PromptObject[];
   };
 };
 
 /** Enforce both directions even for records assembled with object spreads. */
-export function defineFlags<Options, Context = never>() {
-  return <const Records extends FlagRecords<Options, Context>>(
+export function defineFlags<Options, Context = never, PromptAnswers = Options>() {
+  return <const Records extends FlagRecords<Options, Context, PromptAnswers>>(
     records: Records & Record<Exclude<keyof Records, keyof Options>, never>,
   ): Records => records;
 }
 
 export function flagQuestions<Options, Context>(
-  records: FlagRecords<Options, Context>,
+  records: FlagRecords<Options, Context, Record<string, unknown>>,
   options: Options,
   context: Context,
 ): prompts.PromptObject[] {
@@ -54,6 +57,8 @@ export function registerFlags(command: Command, records: Readonly<Record<string,
     if ('argument' in record) {
       command.argument(...record.argument);
     } else {
+      if (record.positive) option({ ...record, ...record.positive })(command);
+      const registration = record.positive ? { flags: record.flags, description: record.description } : record;
       if (record.choices)
         choiceOption(
           record.flags,
@@ -64,8 +69,7 @@ export function registerFlags(command: Command, records: Readonly<Record<string,
       else if (record.list === 'repeatable') repeatableListOption(record.flags, record.description ?? '')(command);
       else if (record.list)
         commaListOption({ ...record, empty: record.list === 'optional' ? undefined : record.list })(command);
-      else option(record)(command);
-      if (record.negative) option(record.negative)(command);
+      else option(registration)(command);
     }
   }
 }
@@ -84,11 +88,73 @@ export function flagValues(
     else {
       const attribute = new Option(record.flags).attributeName();
       if (attributes.has(attribute)) values[key] = raw[attribute];
-      if (values[key] === undefined && record.runtimeDefault !== undefined)
-        values[key] = Array.isArray(record.runtimeDefault) ? [...record.runtimeDefault] : record.runtimeDefault;
     }
   }
   return values;
+}
+
+/** Selection metadata keeps prompt-only answer names at the input boundary. */
+export interface SelectionRecord<Options = Record<string, unknown>, PromptAnswers = Options> {
+  readonly prompt?: keyof PromptAnswers & string;
+  readonly allFlag?: keyof Options & string;
+  readonly defaultAll?: boolean;
+  readonly emptyFlagFallsBack?: boolean;
+  readonly emptyPromptError?: string;
+}
+
+/** Shared decoder for flag records and the richer export option table. */
+function resolveSelection(
+  record: Extract<FlagRecord, { readonly flags: string }>,
+  flag: unknown,
+  input: object,
+): Selection | undefined {
+  const selection = record.selection;
+  if (!selection) return undefined;
+  const answers = input as Readonly<Record<string, unknown>>;
+  const answer = selection.prompt ? answers[selection.prompt] : undefined;
+  if (Array.isArray(answer) && answer.length === 0 && selection.emptyPromptError)
+    throw new Error(selection.emptyPromptError);
+  const prompt = parseNameSelection(undefined, answer);
+  if (selection.allFlag && (answers[selection.allFlag] === true || prompt?.kind === 'all')) return { kind: 'all' };
+  const selected = !record.list
+    ? parseNameSelection(typeof flag === 'string' ? flag : undefined, answer)
+    : parseListSelection(typeof flag === 'string' || Array.isArray(flag) ? flag : undefined, answer);
+  return (
+    selected ??
+    (selection.emptyFlagFallsBack ? prompt : undefined) ??
+    (selection.defaultAll ? { kind: 'all' } : undefined)
+  );
+}
+
+/** Resolve parsed values under record keys, for both production and command tests. */
+export function resolveFlagValues<Options extends object = Record<string, unknown>>(
+  records: Readonly<Record<string, FlagRecord>>,
+  input: object,
+  submitted: object = {},
+): { values: Options; selections: Partial<Record<keyof Options, Selection>> } {
+  const values: Record<string, unknown> = {};
+  const selections: Partial<Record<keyof Options, Selection>> = {};
+  const raw = input as Readonly<Record<string, unknown>>;
+  const answers = { ...raw, ...submitted };
+  for (const [key, record] of Object.entries<FlagRecord>(records)) {
+    let value = answers[key];
+    if ('flags' in record) {
+      if (value === true && record.implicitValue !== undefined) value = record.implicitValue;
+      // Mirror Commander defaults so runCommand receives production values.
+      const fallback =
+        record.runtimeDefault ??
+        record.defaultValue ??
+        (record.list === 'repeatable' ? [] : new Option(record.flags).negate && !record.positive ? true : undefined);
+      if (value === undefined && fallback !== undefined) value = Array.isArray(fallback) ? [...fallback] : fallback;
+      if (record.selection) {
+        const selection = resolveSelection(record, raw[key] ?? value, answers);
+        if (selection) selections[key as keyof Options] = selection;
+      }
+    }
+    if (value !== undefined || key in answers) values[key] = value;
+  }
+  // The records enforce every Options key; parsed inputs are checked at their transport boundary.
+  return { values: values as Options, selections };
 }
 
 /** Long spelling for user-facing advice; placeholders and short aliases are omitted. */

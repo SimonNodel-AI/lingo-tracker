@@ -5,8 +5,13 @@ import { defineFlags, tokenCasingFlag } from '../runner/flag-record';
 
 const DEFAULT_DEBUG_KEYS_LOCALE = '99';
 
-export const BUNDLE_FLAGS = defineFlags<BundleOptions, PromptContext<'none'>>()({
+export const BUNDLE_FLAGS = defineFlags<
+  BundleOptions,
+  PromptContext<'none'>,
+  BundleOptions & { bundleOrAll?: string }
+>()({
   name: {
+    selection: { prompt: 'bundleOrAll', defaultAll: true, emptyFlagFallsBack: true },
     list: 'optional',
     flags: '--name <names>',
     description: 'Bundle name(s) - single name or comma-separated (e.g., core,admin)',
@@ -27,6 +32,7 @@ export const BUNDLE_FLAGS = defineFlags<BundleOptions, PromptContext<'none'>>()(
     },
   },
   locale: {
+    selection: { defaultAll: true },
     list: 'optional',
     flags: '--locale <locales>',
     description: 'Locale(s) to generate - comma-separated (e.g., en,fr)',

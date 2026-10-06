@@ -1,13 +1,12 @@
 import { flagName } from '../runner/flag-record';
 import { DEFAULT_CONFIG, type ExportFormat, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import type prompts from 'prompts';
-import { type ExplicitEmptyList, parseListSelection, selectionNames, selectionPrompt, type Selection } from '../utils';
+import { type ExplicitEmptyList, selectionNames, selectionPrompt, type Selection } from '../utils';
 import {
   EXPORT_OPTION_TABLE,
   type ExportAnswers,
   type ExportTableContext,
   resolveExportTable,
-  stringList,
 } from './export-option-table';
 import { tableQuestions } from './option-table';
 
@@ -37,19 +36,20 @@ export interface ExportOptionsContext {
   readonly targetLocales: string[];
 }
 
-/** Checks prompt selections before the runner looks up requested collection names. */
-export function exportSelection(answers: ExportAnswers): Selection {
-  for (const [name, label] of [
-    ['collections', 'collection'],
-    ['locales', 'target locale'],
-    ['statusFilter', 'translation status'],
-  ] as const) {
-    if (stringList(answers[name])?.length === 0) throw new Error(`Select at least one ${label}.`);
-  }
-  return parseListSelection(answers.collection, stringList(answers.collections)) ?? { kind: 'all' };
+/** The runner has already decoded and validated every selection. */
+export function exportSelection(selections: Partial<Record<keyof ExportCommandOptions, Selection>>): Selection {
+  return selections.collection ?? { kind: 'all' };
 }
 
-export function resolveExportOptions(values: ExportAnswers) {
+export function resolveExportOptions(
+  values: ExportAnswers,
+  selections: Partial<Record<keyof ExportCommandOptions, Selection>>,
+) {
+  values = {
+    ...values,
+    locale: selectionNames(selections.locale),
+    status: selections.status?.kind === 'some' ? selections.status.names : values.status,
+  };
   const options = resolveExportTable(values, tableContext({ config: {}, targetLocales: [] }));
   const advisories =
     options.basePropertyName && !options.includeBase
@@ -64,8 +64,6 @@ function tableContext(context: ExportOptionsContext): ExportTableContext {
     ...context,
     outputInitial: context.config.exportFolder || DEFAULT_CONFIG.exportFolder,
     selectionPrompt,
-    selectionNames,
-    parseListSelection,
   };
 }
 export function exportQuestions(options: ExportCommandOptions, context: ExportOptionsContext): prompts.PromptObject[] {

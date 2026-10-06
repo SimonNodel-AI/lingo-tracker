@@ -5,8 +5,13 @@ import { defineFlags, flagName, collectionFlag, yesFlag } from '../runner/flag-r
 
 const allFlag = { flags: '--all', description: 'Normalize all collections' };
 
-export const NORMALIZE_FLAGS = defineFlags<NormalizeOptions, PromptContext<'many'>>()({
+export const NORMALIZE_FLAGS = defineFlags<
+  NormalizeOptions,
+  PromptContext<'many'>,
+  NormalizeOptions & { collectionOrAll?: string }
+>()({
   collection: {
+    selection: { prompt: 'collectionOrAll', allFlag: 'all' },
     ...collectionFlag(`Collection name (required unless ${flagName(allFlag)})`),
     prompt: (options, { config }) => {
       const collections = Object.keys(config.collections ?? {});
@@ -35,3 +40,6 @@ export const NORMALIZE_REGISTRATION = {
   description: 'Normalize translation resources (fix checksums, add missing locales, clean up empty folders)',
   flags: NORMALIZE_FLAGS,
 };
+
+/** Derived once for the workflow's required-selection check. */
+export const NORMALIZE_SELECTION_ERROR = `Missing required option in non-interactive mode: ${flagName(NORMALIZE_FLAGS.collection)} or ${flagName(NORMALIZE_FLAGS.all)}`;

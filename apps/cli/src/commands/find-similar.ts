@@ -5,10 +5,9 @@ import {
   readCollection,
   searchResources,
 } from '@simoncodes-ca/core';
-import { FIND_SIMILAR_FLAGS } from './find-similar-flags';
-import { flagName } from '../runner/flag-record';
+import { FIND_SIMILAR_FLAGS, FIND_SIMILAR_BLANK_VALUE_ERROR, DEFAULT_MAX_RESULTS } from './find-similar-flags';
 import { CommandOutput } from '../runner/command-output';
-import { defineCommand, requireOptions } from '../runner/command-runner';
+import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 
 export interface FindSimilarOptions {
@@ -22,15 +21,13 @@ export const findSimilarCommand = defineCommand<FindSimilarOptions>()({
   name: 'Find similar',
   collection: 'read',
 
-  run: ({ collection, answers, interactive }) => {
+  required: ['value', 'maxResults'],
+  run: ({ collection, answers }) => {
     const request = normalizeSearchRequest(
-      { query: answers.value ?? '', mode: 'similar-value', limit: answers.maxResults },
-      FIND_SIMILAR_FLAGS.maxResults.runtimeDefault,
+      { query: answers.value, mode: 'similar-value', limit: answers.maxResults },
+      DEFAULT_MAX_RESULTS,
     );
-    if (request.kind === 'blank') {
-      requireOptions(answers, ['value'], interactive, FIND_SIMILAR_FLAGS);
-      throw new Error(`${flagName(FIND_SIMILAR_FLAGS.value)} must not be blank`);
-    }
+    if (request.kind === 'blank') throw new Error(FIND_SIMILAR_BLANK_VALUE_ERROR);
     reportSimilar(collection, request.query, request.limit);
   },
 });

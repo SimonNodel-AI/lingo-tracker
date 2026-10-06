@@ -1,16 +1,21 @@
 import type prompts from 'prompts';
 import type { OptionSpec } from '../runner/options';
-import type { FlagRecord } from '../runner/flag-record';
+import type { FlagRecord, SelectionRecord } from '../runner/flag-record';
 
-interface RegistrationFields extends Omit<OptionSpec<unknown>, 'helpDefault' | 'parse' | 'defaultValue'> {
+interface RegistrationFields<Options, Answers>
+  extends Omit<OptionSpec<unknown>, 'helpDefault' | 'parse' | 'defaultValue'> {
   readonly description: string;
   /** Undefined explicitly means no default; prompt initials may differ. */
   readonly defaultValue: string | boolean | undefined;
   readonly defaultMode?: 'help' | 'commander';
-  readonly negative?: { readonly flags: string; readonly description: string };
+  readonly selection?: SelectionRecord<Options, Answers>;
+  readonly positive?: { readonly flags: string; readonly description: string };
 }
 
-export type TableRegistration = RegistrationFields &
+export type TableRegistration<
+  Options = Record<string, unknown>,
+  Answers = Record<string, unknown>,
+> = RegistrationFields<Options, Answers> &
   (
     | { readonly list: 'optional' | 'preserve'; readonly parse?: never }
     | { readonly list?: never; readonly parse?: (value: string) => unknown }
@@ -22,7 +27,12 @@ type PromptFactory<Values, Context> = (
   defaultValue: string | boolean | undefined,
 ) => prompts.PromptObject[];
 
-export type CommandOptionRecord<Values, Context, Resolved = object> = TableRegistration & {
+export type CommandOptionRecord<
+  Values,
+  Context,
+  Resolved = object,
+  Options = Record<string, unknown>,
+> = TableRegistration<Options, Values> & {
   readonly prompt?: PromptFactory<Values, Context>;
   readonly resolve: (values: Values, defaultValue: string | boolean | undefined, context: Context) => Resolved;
 };
@@ -33,14 +43,15 @@ export type CommandOptionTable<
   Context,
   Results extends Record<keyof Required<Options>, object> = Record<keyof Required<Options>, object>,
 > = {
-  readonly [Key in keyof Required<Options>]: CommandOptionRecord<Values, Context, Results[Key]>;
+  readonly [Key in keyof Required<Options>]: CommandOptionRecord<Values, Context, Results[Key], Options>;
 };
 
-export type OrderedCommandOptionRecord<Values, Context, Resolved = object> = CommandOptionRecord<
+export type OrderedCommandOptionRecord<
   Values,
   Context,
-  Resolved
-> &
+  Resolved = object,
+  Options = Record<string, unknown>,
+> = CommandOptionRecord<Values, Context, Resolved, Options> &
   (
     | { readonly prompt: PromptFactory<Values, Context>; readonly promptOrder: number }
     | { readonly prompt?: never; readonly promptOrder?: never }
@@ -52,13 +63,13 @@ export type OrderedCommandOptionTable<
   Context,
   Results extends Record<keyof Required<Options>, object> = Record<keyof Required<Options>, object>,
 > = {
-  readonly [Key in keyof Required<Options>]: OrderedCommandOptionRecord<Values, Context, Results[Key]>;
+  readonly [Key in keyof Required<Options>]: OrderedCommandOptionRecord<Values, Context, Results[Key], Options>;
 };
 
 /** Adapt the richer import/export records to the same registration path as other commands. */
 export function tableFlags<Table extends Record<string, TableRegistration>>(
   table: Table,
-): { readonly [Key in keyof Table]: FlagRecord } {
+): { readonly [Key in keyof Table]: FlagRecord & { readonly selection?: Table[Key]['selection'] } } {
   return Object.fromEntries(
     Object.entries(table).map(([key, record]) => [
       key,
@@ -69,10 +80,11 @@ export function tableFlags<Table extends Record<string, TableRegistration>>(
         defaultValue: record.defaultMode === 'commander' ? record.defaultValue : undefined,
         parse: record.parse,
         list: record.list,
-        negative: record.negative,
+        positive: record.positive,
+        selection: record.selection,
       },
     ]),
-  ) as { readonly [Key in keyof Table]: FlagRecord };
+  ) as { readonly [Key in keyof Table]: FlagRecord & { readonly selection?: Table[Key]['selection'] } };
 }
 
 export function tableQuestions<Values, Context>(

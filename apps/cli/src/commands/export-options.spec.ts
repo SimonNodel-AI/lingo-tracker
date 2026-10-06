@@ -1,7 +1,22 @@
+import { resolveFlagValues } from '../runner/flag-record';
+import { EXPORT_FLAGS } from './export-cmd-flags';
 import type { ExportRunOptions } from '@simoncodes-ca/core';
 import type prompts from 'prompts';
 import { describe, expect, it } from 'vitest';
-import { type ExportCommandOptions, exportQuestions, exportSelection, resolveExportOptions } from './export-options';
+import {
+  type ExportCommandOptions,
+  exportQuestions,
+  exportSelection,
+  resolveExportOptions as resolveDecodedExportOptions,
+} from './export-options';
+
+function resolveExportOptions(answers: ExportCommandOptions & Record<string, unknown>) {
+  const resolved = resolveFlagValues<ExportCommandOptions>(EXPORT_FLAGS, answers);
+  return resolveDecodedExportOptions(resolved.values, resolved.selections);
+}
+function selectExport(answers: ExportCommandOptions & Record<string, unknown>) {
+  return exportSelection(resolveFlagValues<ExportCommandOptions>(EXPORT_FLAGS, answers).selections);
+}
 
 const context = {
   config: { exportFolder: 'custom/export', collections: { main: { translationsFolder: 'translations' } } },
@@ -14,8 +29,8 @@ const defaultOptions = {
   status: ['new', 'stale'],
   tags: undefined,
   filenamePattern: undefined,
-  dryRun: undefined,
-  verbose: undefined,
+  dryRun: false,
+  verbose: false,
   jsonStructure: 'hierarchical',
   richJson: false,
   includeBase: false,
@@ -294,15 +309,15 @@ describe('export Run Options Resolution', () => {
     },
   ];
   for (const { answers, message } of emptySelections) {
-    it(`validates selection order: ${message}`, () => expect(() => exportSelection(answers)).toThrow(message));
+    it(`validates selection order: ${message}`, () => expect(() => selectExport(answers)).toThrow(message));
   }
 
   it('resolves collection flags and all answers with Selection', () => {
-    expect(exportSelection({ collection: ['main'], collections: ['__ALL__'] })).toEqual({
+    expect(selectExport({ collection: ['main'], collections: ['__ALL__'] })).toEqual({
       kind: 'some',
       names: ['main'],
     });
-    expect(exportSelection({ collections: ['main', '__ALL__'] })).toEqual({ kind: 'all' });
+    expect(selectExport({ collections: ['main', '__ALL__'] })).toEqual({ kind: 'all' });
   });
 
   for (const status of ['', ' , ']) {
