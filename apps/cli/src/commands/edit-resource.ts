@@ -2,7 +2,7 @@ import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
 import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 import { flagName } from '../runner/flag-record';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, printTerminologyFindings } from '../utils';
+import { ConsoleFormatter, printRunReport, printTerminologyFindings } from '../utils';
 
 export interface EditResourceOptions {
   collection?: string;
@@ -51,5 +51,6 @@ export const editResourceCommand = defineCommand<EditResourceOptions>()({
     } else {
       ConsoleFormatter.info(result.message || 'No changes detected');
     }
+    return printRunReport({ warnings: result.warnings ?? [], errors: [], outcome: 'succeeded' });
   },
 });

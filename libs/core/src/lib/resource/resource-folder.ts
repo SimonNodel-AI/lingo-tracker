@@ -117,7 +117,8 @@ export interface ResourceFolder {
 
   /**
    * Writes both files (creating the folder if needed). When the folder has no entries,
-   * both files are deleted instead. With `dryRun`, reports what would happen without touching disk.
+   * both files are deleted and the result reports the emptied folder for operation-end pruning.
+   * With `dryRun`, reports file changes without touching disk or emitting mutations.
    */
   save(options?: { readonly dryRun?: boolean }): ResourceFolderSaveResult;
 }
@@ -143,6 +144,12 @@ export interface NormalizeEntryReport {
 }
 
 export interface ResourceFolderSaveResult {
+  /**
+   * True when this save left the folder without entries; saving never removes directories.
+   * Callers that may empty folders must pass them to `pruneEmptiedFolders` at operation end;
+   * normalize prunes in batch instead.
+   */
+  readonly emptied: boolean;
   /** Files written (both files, or none). */
   readonly written: string[];
   /** Subset of `written` that did not exist before. */
@@ -498,7 +505,7 @@ class FileResourceFolder implements ResourceFolder {
         this.entriesExist = false;
         this.metaExists = false;
       }
-      return { written: [], created: [], removed };
+      return { written: [], created: [], removed, emptied: true };
     }
 
     const created = [...(this.entriesExist ? [] : [this.entriesPath]), ...(this.metaExists ? [] : [this.metaPath])];
@@ -508,7 +515,7 @@ class FileResourceFolder implements ResourceFolder {
       this.entriesExist = true;
       this.metaExists = true;
     }
-    return { written: [this.entriesPath, this.metaPath], created, removed: [] };
+    return { written: [this.entriesPath, this.metaPath], created, removed: [], emptied: false };
   }
 
   /** The one seeding rule: a missing `locale` becomes a copy of the base value with status `new`. */

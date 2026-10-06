@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import type { ResourceMutation } from '../resource/resource-mutation';
 import {
   existsSync,
@@ -11,7 +12,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
@@ -19,6 +20,8 @@ import { addResource } from '../resource/add-resource';
 import { openResourceFolder } from '../resource/resource-folder';
 import { PRUNABLE_OS_JUNK_FILES } from '../resource/folder-pruning';
 import { executeMove } from '../resource/execute-move';
+
+vi.mock('node:fs', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:fs')>()) }));
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {
@@ -197,6 +200,7 @@ describe('executeMove for folders to the root without nesting (real fs)', () => 
       ['remove', 'apps.deep.one'],
       ['upsert', 'deep.one'],
       ['remove-folder', ''],
+      ['remove-folder', ''],
     ]);
   });
 
@@ -313,6 +317,70 @@ describe('executeMove for folders across collections and around content outside 
     expect(collected).toEqual([]);
     expect(result.warnings).toHaveLength(2);
     expect(readFileSync(join(source.translationsFolder, 'apps', 'README.md'), 'utf8')).toBe('notes');
+  });
+
+  it('fails when an already-empty source folder cannot be removed', () => {
+    const source = collection(join(root, 'main'));
+    const sourcePath = join(source.translationsFolder, 'apps');
+    mkdirSync(sourcePath, { recursive: true });
+    const rmdir = fs.rmdirSync;
+    const removal = vi.spyOn(fs, 'rmdirSync').mockImplementation((path) => {
+      if (path === sourcePath) throw new Error('Injected removal failure');
+      rmdir(path);
+    });
+    try {
+      const result = executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+      expect(result).toMatchObject({ outcome: 'failed', movedCount: 0, foldersDeleted: 0 });
+      expect(result.errors).toEqual([
+        "Failed to delete empty source folder: Could not remove folder 'apps': Injected removal failure",
+      ]);
+      expect(result.warnings).toEqual(['No resources found in source folder. Nothing to move.']);
+      expect(existsSync(sourcePath)).toBe(true);
+      expect(collected).toEqual([]);
+    } finally {
+      removal.mockRestore();
+    }
+  });
+
+  it('only warns about an ancestor problem when the already-empty source was removed', () => {
+    const source = collection(join(root, 'main'));
+    const sourcePath = join(source.translationsFolder, 'parent', 'apps');
+    mkdirSync(sourcePath, { recursive: true });
+    writeFileSync(join(source.translationsFolder, 'parent', 'tracker_meta.json'), '{ malformed');
+    const result = executeMove(
+      source,
+      { kind: 'folder', source: 'parent.apps', destination: 'shared' },
+      { onMutation },
+    );
+    expect(result).toMatchObject({ outcome: 'succeeded', movedCount: 0, foldersDeleted: 1, errors: [] });
+    expect(result.warnings).toEqual([
+      'No resources found in source folder. Nothing to move.',
+      expect.stringContaining("Skipped unreadable folder 'parent'"),
+    ]);
+    expect(existsSync(sourcePath)).toBe(false);
+    expect(collected).toEqual([
+      { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'parent.apps' },
+    ]);
+  });
+
+  it('keeps removal problems as warnings after source resources have moved', async () => {
+    const source = collection(join(root, 'main'));
+    await addResource(source, { key: 'apps.one', baseValue: 'One' });
+    const sourcePath = join(source.translationsFolder, 'apps');
+    const rmdir = fs.rmdirSync;
+    const removal = vi.spyOn(fs, 'rmdirSync').mockImplementation((path) => {
+      if (path === sourcePath) throw new Error('Injected removal failure');
+      rmdir(path);
+    });
+    try {
+      const result = executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+      expect(result).toMatchObject({ outcome: 'succeeded', movedCount: 1, foldersDeleted: 0, errors: [] });
+      expect(result.warnings).toEqual(["Could not remove folder 'apps': Injected removal failure"]);
+      expect(existsSync(sourcePath)).toBe(true);
+      expect(collected.map((mutation) => mutation.kind)).toEqual(['remove', 'upsert']);
+    } finally {
+      removal.mockRestore();
+    }
   });
 
   it('removes an empty source folder tree', async () => {

@@ -32,6 +32,7 @@ vi.mock('node:fs');
 describe('deleteResource', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(fs.readdirSync).mockReturnValue([]);
     vi.mocked(fs.lstatSync).mockReturnValue({ isSymbolicLink: () => false } as fs.Stats);
     collected.length = 0;
   });

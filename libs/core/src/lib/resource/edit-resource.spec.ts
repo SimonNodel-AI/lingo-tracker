@@ -414,6 +414,7 @@ describe('editResource (real fs)', () => {
         expect.objectContaining({ kind: 'upsert', key: 'common.save', translationsFolder: target.translationsFolder }),
         expect.objectContaining({ kind: 'remove', key: 'common.save', translationsFolder: target.translationsFolder }),
         expect.objectContaining({ kind: 'upsert', key: 'dialogs.actions.save' }),
+        { kind: 'remove-folder', path: 'common', translationsFolder: target.translationsFolder },
       ]);
     });
 

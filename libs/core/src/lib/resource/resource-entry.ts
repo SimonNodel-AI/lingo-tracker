@@ -1,6 +1,11 @@
 import type { Collection } from '../config/open-collection';
 import { validateAndResolvePaths } from './resource-file-paths';
-import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
+import {
+  openResourceFolder,
+  type ResourceFolder,
+  type ResourceFolderEntry,
+  type ResourceFolderSaveResult,
+} from './resource-folder';
 import {
   type MutationSink,
   removeMutation,
@@ -15,7 +20,7 @@ export interface OpenedResourceEntry {
   readonly folder: ResourceFolder;
   exists(): boolean;
   get(): ResourceFolderEntry | undefined;
-  save(onMutation?: MutationSink): void;
+  save(onMutation?: MutationSink): ResourceFolderSaveResult;
 }
 
 /** Opens one full key with the collection's folder policy and mutation reporting. */

@@ -26,6 +26,7 @@ export class MoveReport {
   merge(result: RelocationResult | MoveResult): void {
     if ('moved' in result) {
       this.movedCount += result.moved.length;
+      this.warnings.push(...(result.warnings ?? []));
       for (const { to } of result.collisions) {
         this.warn(`Destination key already exists: ${to}. Use override option to force move.`);
       }

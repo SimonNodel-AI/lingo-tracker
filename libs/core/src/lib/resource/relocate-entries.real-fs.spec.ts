@@ -285,6 +285,7 @@ describe('relocateEntries (real fs)', () => {
     expect(collected).toEqual([
       { kind: 'remove', translationsFolder: source.translationsFolder, key: 'common.ok' },
       expect.objectContaining({ kind: 'upsert', translationsFolder: target.translationsFolder, key: 'common.ok' }),
+      { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'common' },
     ]);
     expect(keysOf(source.translationsFolder, source)).toEqual([]);
   });

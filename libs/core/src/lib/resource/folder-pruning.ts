@@ -1,10 +1,10 @@
-import { readdirSync, readFileSync, rmdirSync, unlinkSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { readdirSync, rmdirSync, unlinkSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
-import { hasFsErrorCode } from '../file-io/fs-error';
+import { readJsonFile } from '../file-io/json-file-operations';
 import { type CollectionFolderProblem, type CollectionFolderVisit, walkCollectionFolders } from './collection-folders';
-import { validateFolderAddress } from './folder-address';
+import { assertCollectionFolderPath, validateFolderAddress } from './folder-address';
 import { resolveMutationSink, folderMutation, type MutationSinkOptions } from './resource-mutation';
 
 /** The only non-collection files that pruning may delete. */
@@ -30,19 +30,76 @@ export interface PruneResult {
   readonly problems: CollectionFolderProblem[];
 }
 
+type PruningCollection = Pick<Collection, 'translationsFolder' | 'onMutation'>;
+
 /**
  * Folder Pruning: remove only folders left with empty collection files and known OS junk.
  * Hidden directories, stray files, resources and unreadable files protect their ancestors.
  * Uses the collection-folder walk, then checks every remaining directory entry bottom-up.
  * Never recursively deletes: unlink known files individually, then rmdir the empty directory.
  */
-export function pruneEmptyFolders(collection: Collection, options: PruneOptions = {}): PruneResult {
+export function pruneEmptyFolders(collection: PruningCollection, options: PruneOptions = {}): PruneResult {
   validateFolderAddress(options.startPath ?? '', 'folder path');
-  const result: PruneResult = { removed: [], kept: [], problems: [] };
-  const removedPaths = new Set<string>();
   const visits = [...walkCollectionFolders(collection.translationsFolder, { startPath: options.startPath })];
   visits.sort((a, b) => b.segments.length - a.segments.length);
+  return pruneVisits(collection, visits, options);
+}
 
+/** Best-effort operation-end pruning of emptied folders and their ancestors, deepest first. */
+export function pruneEmptiedFolders(
+  collection: PruningCollection,
+  emptiedFolderPaths: Iterable<string>,
+  options: Pick<PruneOptions, 'dryRun' | 'onMutation'> = {},
+): PruneResult {
+  const result: PruneResult = { removed: [], kept: [], problems: [] };
+  const pending = new Map<number, Set<string>>();
+  const visited = new Set<string>();
+  const removedPaths = new Set<string>();
+  const root = resolve(collection.translationsFolder);
+  let deepestDepth = 0;
+  const enqueue = (absolutePath: string): void => {
+    if (absolutePath === root || visited.has(absolutePath)) return;
+    const depth = absolutePath.split(sep).length;
+    const bucket = pending.get(depth) ?? new Set<string>();
+    bucket.add(absolutePath);
+    pending.set(depth, bucket);
+    deepestDepth = Math.max(deepestDepth, depth);
+  };
+  for (const path of emptiedFolderPaths) enqueue(resolve(path));
+  for (; deepestDepth > 0; deepestDepth--) {
+    const bucket = pending.get(deepestDepth);
+    if (bucket === undefined) continue;
+    pending.delete(deepestDepth);
+    // Parents always enter a shallower bucket, so each depth needs only one sort.
+    for (const absolutePath of [...bucket].sort((a, b) => a.localeCompare(b))) {
+      visited.add(absolutePath);
+      const folderPath = relative(root, absolutePath).split(sep).join('.');
+      try {
+        assertCollectionFolderPath(root, absolutePath);
+        validateFolderAddress(folderPath, 'folder path');
+        const visits = [...walkCollectionFolders(root, { startPath: folderPath, maxDepth: 0 })];
+        const pruned = pruneVisits(collection, visits, options, removedPaths);
+        result.removed.push(...pruned.removed);
+        result.kept.push(...pruned.kept);
+        result.problems.push(...pruned.problems);
+        // A kept folder protects its ancestors. Missing folders may already have been removed.
+        if (pruned.kept.length === 0) enqueue(dirname(absolutePath));
+      } catch (error) {
+        result.kept.push({ folderPath, reason: 'problem' });
+        result.problems.push({ kind: 'not-removed', folderPath, absolutePath, message: errorMessage(error) });
+      }
+    }
+  }
+  return result;
+}
+
+function pruneVisits(
+  collection: PruningCollection,
+  visits: Iterable<CollectionFolderVisit>,
+  options: Pick<PruneOptions, 'dryRun' | 'onMutation'>,
+  removedPaths = new Set<string>(),
+): PruneResult {
+  const result: PruneResult = { removed: [], kept: [], problems: [] };
   for (const visit of visits) {
     const { folderPath, absolutePath } = visit;
     const classification = classifyFolder(visit, removedPaths, collection.translationsFolder);
@@ -190,16 +247,11 @@ function removalFailure(removedFiles: readonly string[], message: string): strin
 
 /** Validates object-shaped collection JSON; only the removal preflight permits a missing file. */
 function readCollectionFileEntryCount(filePath: string, allowMissing = false): number {
-  try {
-    const value: unknown = JSON.parse(readFileSync(filePath, 'utf8'));
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-      throw new Error('Expected a JSON object');
-    }
-    return Object.keys(value).length;
-  } catch (error) {
-    if (allowMissing && hasFsErrorCode(error, 'ENOENT')) return 0;
-    throw new Error(`Cannot read ${filePath}: ${errorMessage(error)}`);
+  const value = readJsonFile<unknown>({ filePath, ...(allowMissing ? { defaultValue: {} } : {}) });
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Cannot read ${filePath}: Expected a JSON object`);
   }
+  return Object.keys(value).length;
 }
 
 function errorMessage(error: unknown): string {

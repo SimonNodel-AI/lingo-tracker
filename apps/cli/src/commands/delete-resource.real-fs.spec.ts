@@ -36,4 +36,14 @@ describe('deleteResourceCommand (real core)', () => {
     expect(result.stderr).toContain('No resources were deleted.');
     expect(result.stderr).toContain('❌ Errors (1):\n  - x.missing: Folder not found: x');
   });
+  it('prints pruning warnings and exits 0 after successfully deleting entries', async () => {
+    await project.seed('a.b.ok');
+    project.write('translations/main/a/tracker_meta.json', '{ malformed');
+    const result = await project.run(deleteResourceCommand, { collection: 'main', key: ['a.b.ok'], yes: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Deleted 1 resource(s)');
+    expect(result.stderr).toContain('Warnings (1):');
+    expect(result.stderr).toContain("Skipped unreadable folder 'a'");
+    expect(result.stderr).not.toContain('Errors');
+  });
 });

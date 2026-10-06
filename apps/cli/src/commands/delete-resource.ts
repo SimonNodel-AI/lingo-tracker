@@ -40,7 +40,7 @@ export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
     }
 
     return printRunReport({
-      warnings: [],
+      warnings: result.warnings ?? [],
       errors: (result.errors ?? []).map((error) => `${error.key}: ${error.error}`),
       outcome: result.outcome,
     });

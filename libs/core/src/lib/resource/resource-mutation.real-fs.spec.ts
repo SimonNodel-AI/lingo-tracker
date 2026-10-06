@@ -146,7 +146,7 @@ describe('mutations delivered by core writes (real fs)', () => {
     await executeMove(collection(), { source: 'common.*', destination: 'shared' }, { onMutation });
 
     const kinds = collected.map((mutation) => mutation.kind);
-    expect(kinds).toEqual(['remove', 'remove', 'upsert', 'upsert']);
+    expect(kinds).toEqual(['remove', 'remove', 'upsert', 'upsert', 'remove-folder']);
     expect(collected.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual(
       expect.arrayContaining([
         ['upsert', 'shared.ok'],

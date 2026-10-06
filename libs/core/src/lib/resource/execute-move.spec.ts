@@ -501,7 +501,7 @@ describe('Move Resource (real fs)', () => {
       errors: [new CollectionNotFoundError('missing', 'destination').message],
     });
     expect(fs.existsSync(join(testDir, 'tree'))).toBe(false);
-    expect(fs.existsSync(join(testDir, 'source'))).toBe(true);
+    expect(fs.existsSync(join(testDir, 'source'))).toBe(false);
     expect(fs.existsSync(join(testDir, 'shared', 'tree', RESOURCE_ENTRIES_FILENAME))).toBe(true);
   });
 });
