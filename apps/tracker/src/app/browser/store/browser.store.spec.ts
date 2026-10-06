@@ -18,7 +18,8 @@ import { collectionSettings } from '../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { provideTrackerHttpClient, toApiError } from '../../shared/api-error/api-error';
 import { NotificationService } from '../../shared/notification';
-import { BrowserApiService, CollectionIndexNotReadyError } from '../services/browser-api.service';
+import { BrowserApiService } from '../services/browser-api.service';
+import { CollectionIndexNotReadyError } from '../services/index-readiness';
 import { BrowserStore } from './browser.store';
 
 /**

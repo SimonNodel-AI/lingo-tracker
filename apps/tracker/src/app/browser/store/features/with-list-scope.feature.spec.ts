@@ -8,7 +8,6 @@ import { collectionSettings } from '../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { provideTrackerHttpClient } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
-import { TREE_NOT_READY_RETRIES, TREE_NOT_READY_RETRY_DELAY_MS } from '../../services/browser-api.service';
 import { BrowserStore } from '../browser.store';
 
 const entry = (fullKey: string): ResourceSummaryDto => {
@@ -252,10 +251,9 @@ describe('BrowserStore List Scope', () => {
     open('app', 'welcome');
 
     store.showFolder('a');
-    for (let attempt = 0; attempt <= TREE_NOT_READY_RETRIES; attempt++) {
-      listRead('app', 'a').flush(notReady, { status: 202, statusText: 'Accepted' });
-      vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
-    }
+    listRead('app', 'a').flush(notReady, { status: 202, statusText: 'Accepted' });
+    http.expectOne(url('app', 'cache/status')).flush({ status: 'ready' });
+    listRead('app', 'a').flush(notReady, { status: 202, statusText: 'Accepted' });
 
     expect(store.currentFolderPath()).toBe('');
     expect(keys(store.sortedTranslations())).toEqual(['welcome']);
@@ -272,10 +270,9 @@ describe('BrowserStore List Scope', () => {
     const cancelled = listRead('app', 'a');
     store.showFolder('b');
     expect(cancelled.cancelled).toBe(true);
-    for (let attempt = 0; attempt <= TREE_NOT_READY_RETRIES; attempt++) {
-      listRead('app', 'b').flush(notReady, { status: 202, statusText: 'Accepted' });
-      vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
-    }
+    listRead('app', 'b').flush(notReady, { status: 202, statusText: 'Accepted' });
+    http.expectOne(url('app', 'cache/status')).flush({ status: 'ready' });
+    listRead('app', 'b').flush(notReady, { status: 202, statusText: 'Accepted' });
 
     // `a` never loaded: the rows on screen are the root's, so the list goes back to the root.
     expect(store.listScope()).toEqual({ kind: 'folder', path: '' });
@@ -317,10 +314,12 @@ describe('BrowserStore List Scope', () => {
 
     store.showFolder('slow');
     listRead('a', 'slow').flush(notReady, { status: 202, statusText: 'Accepted' });
+    const cancelledStatus = http.expectOne(url('a', 'cache/status'));
     // B's index is still being checked, so B has sent no list load that could cancel A's.
     store.openCollection(collectionSettings({ name: 'b' }));
     http.expectOne(url('b', 'cache/status'));
-    vi.advanceTimersByTime(TREE_NOT_READY_RETRIES * TREE_NOT_READY_RETRY_DELAY_MS);
+    expect(cancelledStatus.cancelled).toBe(true);
+    vi.advanceTimersByTime(5000);
 
     http.expectNone((req) => req.url.startsWith('/api/collections/a/'));
     // B's status poll kept asking meanwhile; it is not what this test is about.

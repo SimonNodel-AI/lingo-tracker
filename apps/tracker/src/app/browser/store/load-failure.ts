@@ -1,4 +1,4 @@
-import { CollectionIndexNotReadyError } from '../services/browser-api.service';
+import { CollectionIndexNotReadyError } from '../services/index-readiness';
 
 /** What a failed read does to the screen. */
 export interface LoadFailure {

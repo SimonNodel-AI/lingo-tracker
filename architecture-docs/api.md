@@ -136,7 +136,7 @@ graph TD
             SRCHMAP["search-result.mapper\nQuery → SearchRequest\nSearchPage + Collection → SearchResultsDto"]
             RESMAP["resource-response.mapper\nCore results → Resource response DTOs"]
             FOLDMAP["folder-response.mapper\nCore results → Folder response DTOs"]
-            STATUSMAP["index-status.mapper\nIndex read status → Retry body"]
+            STATUSMAP["tree-response.mapper\nTreeRead → HTTP status + body"]
         end
 
         STATIC["Express static middleware\nServes Angular SPA from\ndist/tracker/browser/"]
@@ -356,7 +356,7 @@ sequenceDiagram
         Index->>Core: ResourceTreeIndex.load()
         Index-->>API: { status: "not-started" | "error" }
         API-->>UI: 202 Accepted { status: "not-ready", message: "..." }
-        UI->>UI: wait, then retry
+        UI->>UI: wait through IndexReadiness
     end
 
     alt Indexing
@@ -364,14 +364,23 @@ sequenceDiagram
         API-->>UI: 202 Accepted { status: "indexing", message: "..." }
     end
 
+    opt Tree answered 202
+        loop Index Readiness: synchronously, then 1 s after each response (5 s deadline)
+            UI->>API: GET /resources/cache/status
+            API->>Index: status(collection)
+            Index-->>UI: CacheStatusDto
+        end
+        UI->>API: GET /resources/tree (once more on ready or deadline)
+    end
+
     alt Ready
         Index-->>API: { status: "ready", tree }
-        API->>API: mapResourceTreeToDto(tree, collection)
+        API->>API: describeTreeRead(read, collection, includeNested)
         API-->>UI: 200 OK ResourceTreeDto (404 when the path is not in the tree)
     end
 ```
 
-A 202 Accepted response always means "retry shortly". A 200 OK carries the full or partial tree. The route uses `@Res({ passthrough: true })` only to set the 202 status; Nest serializes the returned DTO. The frontend owns the retry loop, in one place: `BrowserApiService.getResourceTree` asks again (5 times, 1 s apart) and hands its callers only a tree, or a `CollectionIndexNotReadyError` when the index is still not ready. There is no server-sent event or WebSocket.
+A 202 Accepted response always means "retry shortly". A 200 OK carries the full or partial tree. `describeTreeRead` returns the HTTP status and DTO body; the route uses `@Res({ passthrough: true })` to set that status, and Nest serializes the DTO. [Index Readiness](glossary.md#index-readiness) owns the frontend wait: both policies start synchronously. The overlay polls every 2 s without a limit. Tree reads poll sequentially, waiting 1 s after each response, with a five-second deadline. Interval ticks do not cancel a slow status request. `BrowserApiService.getResourceTree` waits for readiness or deadline completion after a 202 and then requests the tree once more, accepting a tree ready by the five-second mark. An index `error` fails the tree wait immediately rather than retrying for five seconds. It, a cache-status HTTP failure, or a second 202 raises `CollectionIndexNotReadyError`. Cache-status HTTP failures retain the API Error message; tree-request HTTP errors pass through without retry. Index failures use the server message when present, otherwise the original 202 message. There is no server-sent event or WebSocket.
 
 Every resource in the tree, in a search result, and in the translate and update responses is a [Resource Summary](glossary.md#resource-summary) (`ResourceSummaryDto`): an explicit address (`fullKey`, `folderPath`, `entryKey`), `base: { locale, value }`, and one `targets` row per target locale of the collection with `value`, `status`, `needsWork` and `sameAsBase`. With `includeNested=true`, `resources` also lists every resource below the folder, each with its own full address.
 
@@ -454,9 +463,9 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 | `folder-response.mapper.ts` | Folder create, delete and move results → endpoint response DTOs | Builds the loaded empty insertion node using core's resolved address and the submitted name; adds `deleted: true`; omits move `outcome` and defaults absent folder counts to zero. |
 | `search-result.mapper.ts` | `SearchQuery` → `NormalizedSearchRequest`; `SearchPage` or blank outcome → `SearchResultsDto` | Translates the mode, parses the limit, and delegates normalization to core. Preserves the original query in the response. |
 | `resource-tree.mapper.ts` | Tree endpoint result + `includeNested` → `ResourceTreeDto` | Includes nested entries only for `includeNested=true`. Resolves their addresses against the requested folder, including the collection root. |
-| `index-status.mapper.ts` | Unavailable `TreeRead` status → `TreeStatusResponseDto` | Supplies the existing retry status and message. The controller sets HTTP 202. |
+| `tree-response.mapper.ts` | `TreeRead` → `TreeAnswer` (HTTP 200/202 and tree/status DTO) | Wraps the tree mapper and preserves status messages. Response Contracts checks the body union and exact non-ready states. |
 
-The request and index-status adapters belong in `mappers/` because they translate API contracts. The Collection Index continues to own reads and indexing.
+The request and tree-response adapters belong in `mappers/` because they translate API contracts. The Collection Index continues to own reads and indexing.
 
 The resource response mappers preserve the existing endpoint differences. Translate always includes `skippedLocales`, including an empty array, and omits empty `warnings`. Create omits empty `skippedLocales`. Update always includes `skippedLocales`, `message`, and `resource` as object fields, even when their values are `undefined`. JSON serialization omits those undefined values. Create and update omit `terminology` only when both findings and problems are empty or absent.
 

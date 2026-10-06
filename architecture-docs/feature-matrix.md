@@ -75,7 +75,7 @@ Each cell shows whether the operation is supported (`Yes`), not supported (`—`
 | Validate all resources (CI gate) | Yes (`validate`) | — | — |
 | View resource status per locale | — | — | Yes (status badge per locale row in item) |
 | **Cache / Indexing** | | | |
-| Poll [Collection Index](glossary.md#collection-index) state | — | Yes (`GET /collections/:name/resources/cache/status`) | Yes (via `withCacheStatusFeature` — auto-polls on collection load) |
+| Poll [Collection Index](glossary.md#collection-index) state | — | Yes (`GET /collections/:name/resources/cache/status`) | Yes (via Index Readiness — unbounded 2 s polling on collection load; sequential status polling after a tree 202, 1 s after each response, with a final tree read at the 5 s deadline) |
 | Trigger cache re-index | — | Yes (implicit on `GET /tree` when state is `NOT_STARTED` or `ERROR`) | Yes (implicit on collection switch in `BrowserStore`) |
 
 ---
