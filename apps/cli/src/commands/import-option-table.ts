@@ -269,11 +269,11 @@ export const IMPORT_OPTION_TABLE: OrderedCommandOptionTable<
     resolve: (values) => ({ createMissing: values.createMissing }),
   },
   validateBase: {
-    flags: '--validate-base',
-    description: 'Warn if source base value differs from existing',
+    flags: '--no-validate-base',
+    description: 'Do not warn when source base value differs from existing',
     defaultValue: true,
     defaultMode: 'help',
-    negative: { flags: '--no-validate-base', description: 'Do not warn when source base value differs from existing' },
+    positive: { flags: '--validate-base', description: 'Warn if source base value differs from existing' },
     resolve: (values, defaultValue) => ({ validateBase: values.validateBase ?? Boolean(defaultValue) }),
   },
   dryRun: {

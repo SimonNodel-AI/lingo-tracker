@@ -4,8 +4,8 @@ import type { TokenCasing } from '@simoncodes-ca/domain';
 import { generateBundles } from '@simoncodes-ca/core';
 import { printBundleEvent, printBundleSummary } from './bundle-report';
 import { exitForRunOutcome } from '../runner/run-outcome';
-import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, parseListSelection, parseNameSelection, selectionNames } from '../utils';
+import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, type Selection, selectionNames } from '../utils';
 
 export interface BundleOptions {
   name?: string[];
@@ -34,10 +34,15 @@ export const bundleCommand = defineCommand<BundleOptions>()({
   flags: BUNDLE_FLAGS,
   name: 'Bundle generation',
   collection: 'none',
-  run: ({ config, cwd, answers }) => run(config, cwd, answers),
+  run: ({ config, cwd, answers, selections }) => run(config, cwd, answers, selections),
 });
 
-async function run(config: LingoTrackerConfig, cwd: string, options: Answers<BundleOptions>): Promise<CommandResult> {
+async function run(
+  config: LingoTrackerConfig,
+  cwd: string,
+  options: BundleOptions,
+  selections: Partial<Record<keyof BundleOptions, Selection>>,
+): Promise<CommandResult> {
   // Check if bundles are configured
   if (!config.bundles || Object.keys(config.bundles).length === 0) {
     ConsoleFormatter.error('No bundles configured in .lingo-tracker.json', [
@@ -46,16 +51,9 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
     return { exitCode: 1 };
   }
 
-  // An empty bundle flag falls back to the single-name prompt answer.
-  const selectedNames = selectionNames(
-    parseListSelection(options.name) ?? parseNameSelection(undefined, options.bundleOrAll),
-  );
-
-  // Parse locale filter if provided
-  const localeFilter = selectionNames(parseListSelection(options.locale));
-
-  const debugKeysLocale =
-    options.debugKeys === true ? BUNDLE_FLAGS.debugKeys.implicitValue : options.debugKeys || undefined;
+  const selectedNames = selectionNames(selections.name);
+  const localeFilter = selectionNames(selections.locale);
+  const debugKeysLocale = typeof options.debugKeys === 'string' ? options.debugKeys || undefined : undefined;
 
   const runResult = await generateBundles(config, {
     names: selectedNames,

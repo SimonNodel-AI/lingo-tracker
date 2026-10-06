@@ -12,13 +12,13 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
   name: 'Export',
   collection: 'many',
   commaListAnswers: ['tags'],
-  many: { select: exportSelection },
+  many: { select: (_answers, _context, selections) => exportSelection(selections) },
   // Locale choices require opened collections only in interactive mode.
   prompts: (options, { config, collections, interactive }) =>
     interactive ? exportQuestions(options, { config, targetLocales: exportTargetLocales(collections) }) : [],
   required: ['format'],
-  run: async ({ config, cwd, collections, answers, summaryDirectory }) => {
-    const { options, advisories } = resolveExportOptions(answers);
+  run: async ({ config, cwd, collections, answers, selections, summaryDirectory }) => {
+    const { options, advisories } = resolveExportOptions(answers, selections);
     const format = answers.format;
     for (const message of advisories) ConsoleFormatter.warning(message);
 

@@ -16,7 +16,7 @@ import { withCommandOutput, type CommandOutputSink } from './command-output';
 import { parseCommaSeparatedList } from '../utils/string-parsers';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { type Selection, selectionPrompt } from '../utils/prompt-utils';
-import { flagQuestions, flagName, type FlagRecords } from './flag-record';
+import { flagQuestions, flagName, resolveFlagValues, type FlagRecords } from './flag-record';
 import { CommandCancelledError } from './command-cancelled-error';
 import { isInteractiveTerminal } from './terminal';
 import { printCliError } from './cli-error-wording';
@@ -113,6 +113,7 @@ export type CommandContext<
   Required extends keyof Options = never,
 > = PromptContext<Need, WithConfig> & {
   readonly answers: CheckedAnswers<Options, Required>;
+  readonly selections: Partial<Record<keyof Options, Selection>>;
 } & SelectionResources<Need>;
 
 export interface CommandSpec<
@@ -124,7 +125,7 @@ export interface CommandSpec<
   /** Operation name for messages: `❌ <name> cancelled.` */
   readonly name: string;
   readonly collection: Need;
-  readonly flags?: FlagRecords<Options, PromptContext<Need, WithConfig>>;
+  readonly flags?: FlagRecords<Options, PromptContext<Need, WithConfig>, Record<string, unknown>>;
   /** Option holding the collection name (default `collection`); named in the missing-option message. */
   readonly collectionOption?: keyof Options & string;
   /** Selection is evaluated after prompts; every collection is opened for reading. */
@@ -133,6 +134,7 @@ export interface CommandSpec<
         readonly select?: (
           answers: Answers<Options>,
           ctx: PromptContext<Need, WithConfig>,
+          selections: Partial<Record<keyof Options, Selection>>,
         ) => Selection | Promise<Selection>;
       }
     : never;
@@ -181,7 +183,7 @@ export function requireOptions<Options extends object, Field extends keyof Optio
   values: Options,
   fields: readonly Field[],
   interactive: boolean,
-  records?: FlagRecords<Options>,
+  records?: FlagRecords<Options, never, Record<string, unknown>>,
 ): asserts values is Options & { readonly [K in Field]-?: NonNullable<Options[K]> } {
   const missing = fields.filter((field) => isMissing(values[field]));
   if (missing.length > 0) {
@@ -365,15 +367,23 @@ async function execute<
         Object.assign(merged, { [field]: parseCommaSeparatedList(value) });
       }
     }
-    requireOptions(merged, spec.required ?? [], interactive, spec.flags);
+    // Resolve once after prompts, when both flags and submitted selection answers are available.
+    const resolved = spec.flags
+      ? resolveFlagValues<Options>(spec.flags, options as Record<string, unknown>, merged as Record<string, unknown>)
+      : { values: merged, selections: {} };
+    requireOptions(resolved.values, spec.required ?? [], interactive, spec.flags);
     // requireOptions has just checked what CheckedAnswers claims; the type cannot follow it.
-    const answers = merged as CheckedAnswers<Options, Required>;
+    const answers = resolved.values as CheckedAnswers<Options, Required>;
 
     let selection: Selection | undefined;
     if (spec.collection === 'many') {
       const config = resources.config;
       if (!config) throw new Error('Configuration was not loaded.');
-      const selected = (await spec.many?.select?.(answers, promptContext as PromptContext<'many', WithConfig>)) ?? {
+      const selected = (await spec.many?.select?.(
+        answers,
+        promptContext as PromptContext<'many', WithConfig>,
+        resolved.selections,
+      )) ?? {
         kind: 'all',
       };
       const names = selected.kind === 'all' ? Object.keys(config.collections ?? {}) : selected.names;
@@ -390,7 +400,13 @@ async function execute<
     duringRun = true;
     // The many branch supplies Selection; TypeScript cannot narrow the generic Need here.
     const selectionResources = (spec.collection === 'many' ? { selection } : {}) as SelectionResources<Need>;
-    const result = await spec.run({ ...promptContext, ...resources, answers, ...selectionResources });
+    const result = await spec.run({
+      ...promptContext,
+      ...resources,
+      answers,
+      selections: resolved.selections,
+      ...selectionResources,
+    });
     return result ? result.exitCode : 0;
   } catch (error) {
     return report(error, spec.name, () => spec.formatError?.(error, duringRun));

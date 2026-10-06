@@ -1,9 +1,10 @@
 import { chmodSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NormalizeCollectionsResult } from '@simoncodes-ca/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
 import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { NORMALIZE_FLAGS } from './normalize-flags';
 import { normalizeCommand, type NormalizeOptions } from './normalize';
 
 type Payload = Pick<NormalizeCollectionsResult, 'collections' | 'totals'>;
@@ -51,6 +52,7 @@ describe('normalizeCommand (real project)', () => {
     });
   });
   afterEach(() => {
+    vi.restoreAllMocks();
     for (const path of restorePermissions.splice(0)) chmodSync(path, 0o755);
     project.cleanup();
   });
@@ -68,17 +70,32 @@ describe('normalizeCommand (real project)', () => {
     const result = await project.run(normalizeCommand, {});
     expect(result).toEqual({ exitCode: 1, stdout: '', stderr: missingSelection });
   });
-  it('normalizes all collections when all answer takes precedence', async () => {
+  it('normalizes all collections when the all answer takes precedence', async () => {
     rawEntry();
-    const flags: NormalizeOptions & { collectionOrAll: string } = { collection: 'vendor', collectionOrAll: '__ALL__' };
-    const result = await project.run(normalizeCommand, flags);
+    const flags: NormalizeOptions = { collection: 'vendor', yes: true };
+    const question = NORMALIZE_FLAGS.collection.prompt({}, { config: project.config } as Parameters<
+      typeof NORMALIZE_FLAGS.collection.prompt
+    >[1]);
+    // Exercise an answer submitted alongside an explicit flag without changing prompt visibility.
+    vi.spyOn(NORMALIZE_FLAGS.collection, 'prompt').mockReturnValue(question);
+    const ask = vi.fn(async () => ({ collectionOrAll: '__ALL__' }));
+    const result = await project.run(normalizeCommand, flags, {
+      interactive: true,
+      ask,
+    });
+    expect(ask).toHaveBeenCalledOnce();
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(skippedVendor);
     expectNormalized();
   });
   it('rejects an empty selection even when a name answer is present', async () => {
-    const flags: NormalizeOptions & { collectionOrAll: string } = { collection: '', collectionOrAll: 'main' };
-    const result = await project.run(normalizeCommand, flags);
+    const flags: NormalizeOptions = { collection: '' };
+    const ask = vi.fn(async () => ({ collectionOrAll: 'main' }));
+    const result = await project.run(normalizeCommand, flags, {
+      interactive: true,
+      ask,
+    });
+    expect(ask).toHaveBeenCalledOnce();
     expect(result).toEqual({ exitCode: 1, stdout: '', stderr: missingSelection });
   });
   it('exits 1 for an unknown collection', async () => {

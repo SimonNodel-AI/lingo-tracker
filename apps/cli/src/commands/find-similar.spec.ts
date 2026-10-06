@@ -1,6 +1,6 @@
 import { loadConfig, openCollection } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { CommandCancelledError } from '../runner/command-runner';
+import { CommandCancelledError, runCommand } from '../runner/command-runner';
 import { createCommandProject, type CommandProject } from '../testing/command-project';
 import { findSimilarCommand, type FindSimilarOptions } from './find-similar';
 
@@ -141,6 +141,19 @@ describe('find-similar (real project)', () => {
     expect(result.exitCode).toBe(0);
     expect(lines(result.stdout)).toHaveLength(5);
     expect(lines(result.stdout)[0]).toBe('  key.k0 → "a" (similarity: 100%)');
+  });
+  it('uses a search limit of five when runCommand receives maxResults zero', async () => {
+    writeMany(10);
+    const result = await runCommand(findSimilarCommand, { value: 'a', maxResults: 0 }, { cwd: project.cwd });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(lines(result.stdout)).toEqual([
+      '  key.k0 → "a" (similarity: 100%)',
+      '  key.k1 → "a" (similarity: 100%)',
+      '  key.k2 → "a" (similarity: 100%)',
+      '  key.k3 → "a" (similarity: 100%)',
+      '  key.k4 → "a" (similarity: 100%)',
+    ]);
   });
   it('caps maxResults at 500', async () => {
     writeMany(501);

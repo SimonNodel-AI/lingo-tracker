@@ -35,11 +35,11 @@ export const ADD_COLLECTION_FLAGS = defineFlags<AddCollectionOptions, PromptCont
       collectionSetupQuestions(options, config).filter((question) => question.name === 'locales'),
   },
   readOnly: {
-    flags: '--read-only',
-    description: 'Mark the collection as read-only (its resources cannot be modified)',
-    negative: {
-      flags: '--no-read-only',
-      description: 'Force the collection writable, overriding node_modules auto-detection',
+    flags: '--no-read-only',
+    description: 'Force the collection writable, overriding node_modules auto-detection',
+    positive: {
+      flags: '--read-only',
+      description: 'Mark the collection as read-only (its resources cannot be modified)',
     },
   },
 });

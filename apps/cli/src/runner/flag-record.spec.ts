@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
-import { defineFlags, flagName } from './flag-record';
+import { defineFlags, flagName, flagValues, resolveFlagValues } from './flag-record';
+import { defineCommand, runCommand } from './command-runner';
 import { registerCommand } from './register-command';
 
 const noRun = async () => undefined;
@@ -20,7 +21,7 @@ describe('command flag records', () => {
       description: 'Copy',
       flags,
       load: async () => async (options) => {
-        calls.push(options);
+        calls.push(resolveFlagValues(flags, options as Record<string, unknown>).values);
       },
     });
     await root.parseAsync(['copy', 'a', 'b', '--tags', ' x, , y '], { from: 'user' });
@@ -33,8 +34,9 @@ describe('command flag records', () => {
       resultLimit: { flags: '--max-results <n>', parse: Number, runtimeDefault: 5 },
       localeIDs: { flags: '--locale-ids <ids>', list: 'optional', runtimeDefault: [] },
       transformICU: {
-        flags: '--transform-icu',
-        negative: { flags: '--no-transform-icu', description: 'Disable transformation' },
+        flags: '--no-transform-icu',
+        description: 'Disable transformation',
+        positive: { flags: '--transform-icu', description: '' },
       },
     });
     const invoke = async (argv: string[]) => {
@@ -44,7 +46,7 @@ describe('command flag records', () => {
         description: '',
         flags,
         load: async () => async (options) => {
-          calls.push(options);
+          calls.push(resolveFlagValues(flags, options as Record<string, unknown>).values);
         },
       });
       await root.parseAsync(['convert', ...argv], { from: 'user' });
@@ -82,6 +84,144 @@ describe('command flag records', () => {
     define({ locale: { flags: '--locale <locale>' }, ...extra });
     // @ts-expect-error List parsing and a custom parser cannot silently replace each other.
     define({ locale: { flags: '--locale <locale>', list: 'optional', parse: Number } });
+    // @ts-expect-error Prompt keys must belong to the declared answer type.
+    define({ locale: { flags: '--locale <name>', selection: { prompt: 'loclae' } } });
+    // @ts-expect-error All flags must belong to Options.
+    define({ locale: { flags: '--locale <name>', selection: { allFlag: 'al' } } });
     expect(define({ locale: { flags: '--locale <locale>' } }).locale.flags).toBe('--locale <locale>');
+  });
+});
+
+describe('flag value resolution', () => {
+  const flags = defineFlags<
+    {
+      debugKeys?: string | boolean;
+      limit?: number;
+      transformICU?: boolean;
+      names?: string[];
+    },
+    never,
+    { nameOrAll?: string | string[] }
+  >()({
+    debugKeys: { flags: '--debug-keys [locale]', implicitValue: '99' },
+    limit: { flags: '--limit <n>', runtimeDefault: 5 },
+    transformICU: { flags: '--no-transform-icu' },
+    names: {
+      flags: '--name <names>',
+      list: 'optional',
+      selection: { prompt: 'nameOrAll', defaultAll: true },
+    },
+  });
+
+  it('leaves an absent optional-value flag absent', () => {
+    expect(resolveFlagValues(flags, {}).values).toEqual({ limit: 5, transformICU: true });
+  });
+  it('applies the implicit value only when the flag has no value', () => {
+    expect(resolveFlagValues(flags, { debugKeys: true }).values.debugKeys).toBe('99');
+    expect(resolveFlagValues(flags, { debugKeys: 'keys' }).values.debugKeys).toBe('keys');
+    expect(resolveFlagValues(flags, { debugKeys: false }).values.debugKeys).toBe(false);
+  });
+  it('uses the runtime default while retaining an explicit limit', () => {
+    expect(resolveFlagValues(flags, {}).values.limit).toBe(5);
+    expect(resolveFlagValues(flags, { limit: 8 }).values.limit).toBe(8);
+  });
+  it('keeps a negated flag under its record key', () => {
+    expect(flagValues(flags, { transformIcu: false }, []).transformICU).toBe(false);
+    expect(resolveFlagValues(flags, { transformICU: false }).values.transformICU).toBe(false);
+  });
+  it('copies array defaults for each resolution', () => {
+    const records = defineFlags<{ names?: string[] }>()({
+      names: { flags: '--names <names>', runtimeDefault: ['first'] },
+    });
+    const first = resolveFlagValues<{ names?: string[] }>(records, {}).values.names;
+    first?.push('second');
+    expect(resolveFlagValues(records, {}).values.names).toEqual(['first']);
+  });
+  it('gives a supplied flag precedence over the prompt answer', () => {
+    expect(resolveFlagValues(flags, { names: ['__ALL__', 'main'] }, { nameOrAll: '__ALL__' }).selections.names).toEqual(
+      { kind: 'some', names: ['__ALL__', 'main'] },
+    );
+  });
+  it('decodes a single name prompt answer', () => {
+    expect(resolveFlagValues(flags, {}, { nameOrAll: 'main' }).selections.names).toEqual({
+      kind: 'some',
+      names: ['main'],
+    });
+  });
+  it('decodes all-items prompt answers in both prompt modes', () => {
+    for (const nameOrAll of ['__ALL__', ['main', '__ALL__']]) {
+      expect(resolveFlagValues(flags, {}, { nameOrAll }).selections.names).toEqual({ kind: 'all' });
+    }
+  });
+  it('defaults to all with no non-interactive input', () => {
+    expect(resolveFlagValues(flags, {}).selections.names).toEqual({ kind: 'all' });
+  });
+  it('can require an explicit single-name or all selection', () => {
+    const records = defineFlags<{ collection?: string; all?: boolean }, never, { collectionOrAll?: string }>()({
+      collection: {
+        flags: '--collection <name>',
+        selection: { prompt: 'collectionOrAll', allFlag: 'all' },
+      },
+      all: { flags: '--all' },
+    });
+    expect(resolveFlagValues(records, {}).selections.collection).toBeUndefined();
+    expect(resolveFlagValues(records, { collection: 'main' }).selections.collection).toEqual({
+      kind: 'some',
+      names: ['main'],
+    });
+    expect(resolveFlagValues(records, { collection: 'main', all: true }).selections.collection).toEqual({
+      kind: 'all',
+    });
+  });
+  it('preserves declared empty-flag fallback and explicit all-answer precedence', () => {
+    const records = defineFlags<{ names?: string[]; all?: boolean }, never, { choice?: string }>()({
+      all: { flags: '--all' },
+      names: {
+        flags: '--name <names>',
+        list: 'optional',
+        selection: { prompt: 'choice', emptyFlagFallsBack: true, allFlag: 'all' },
+      },
+    });
+    expect(resolveFlagValues(records, { names: [] }, { choice: 'main' }).selections.names).toEqual({
+      kind: 'some',
+      names: ['main'],
+    });
+    expect(resolveFlagValues(records, { names: ['main'] }, { choice: '__ALL__' }).selections.names).toEqual({
+      kind: 'all',
+    });
+  });
+  it('uses the same resolver in runCommand, including submitted selections', async () => {
+    const calls: unknown[] = [];
+    const command = defineCommand<{
+      debugKeys?: string | boolean;
+      limit?: number;
+      transformICU?: boolean;
+      names?: string[];
+    }>()({
+      name: 'Resolve',
+      collection: 'none',
+      config: false,
+      flags,
+      prompts: () => [{ type: 'text', name: 'nameOrAll', message: 'Name' }],
+      run: ({ answers, selections }) => {
+        calls.push({ answers, selections });
+      },
+    });
+    const result = await runCommand(
+      command,
+      { debugKeys: true },
+      {
+        cwd: '.',
+        interactive: true,
+        ask: async () => ({ nameOrAll: 'main' }),
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(calls).toEqual([
+      {
+        answers: { debugKeys: '99', limit: 5, transformICU: true },
+        selections: { names: { kind: 'some', names: ['main'] } },
+      },
+    ]);
   });
 });

@@ -1,8 +1,8 @@
 import type { PromptContext } from '../runner/command-runner';
 import type { FindSimilarOptions } from './find-similar';
 import { parseMaxResults } from './find-similar-options';
-import { defineFlags, collectionFlag } from '../runner/flag-record';
-const DEFAULT_MAX_RESULTS = 5;
+import { defineFlags, collectionFlag, flagName } from '../runner/flag-record';
+export const DEFAULT_MAX_RESULTS = 5;
 
 export const FIND_SIMILAR_FLAGS = defineFlags<FindSimilarOptions, PromptContext<'read'>>()({
   collection: collectionFlag('Name of the collection to search'),
@@ -28,3 +28,5 @@ export const FIND_SIMILAR_REGISTRATION = {
   description: 'Find existing translation resources with similar base locale values',
   flags: FIND_SIMILAR_FLAGS,
 };
+
+export const FIND_SIMILAR_BLANK_VALUE_ERROR = `${flagName(FIND_SIMILAR_FLAGS.value)} must not be blank`;
