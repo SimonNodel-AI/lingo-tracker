@@ -15,7 +15,7 @@ export type DestructiveWriteSpec = Pick<ConfirmedWriteSpec, 'title' | 'message' 
 
 /** A write outcome that has already decided what to tell the user. */
 export interface DecidedOutcome {
-  readonly feedback: Feedback | null | undefined;
+  readonly feedback: Feedback | readonly Feedback[] | null | undefined;
 }
 
 /**
@@ -54,7 +54,11 @@ export function injectConfirmedWrite(): {
       new Promise<void>((resolve, reject) => {
         outcome$.subscribe({
           next: (outcome) => {
-            if (!destroyRef.destroyed) feedback.toast(outcome.feedback);
+            if (!destroyRef.destroyed) {
+              const messages = outcome.feedback;
+              if (!messages || 'token' in messages) feedback.toast(messages);
+              else messages.forEach(feedback.toast);
+            }
           },
           error: reject,
           complete: resolve,

@@ -1,15 +1,15 @@
 import { DestroyRef, inject } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TranslocoService } from '@jsverse/transloco';
 import { signalStoreFeature, type, withMethods } from '@ngrx/signals';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { copyWithFeedback } from '../../../../shared/clipboard';
 import { injectConfirmedWrite } from '../../../../shared/confirmed-write';
 import { NotificationService } from '../../../../shared/notification';
-import { injectFeedback } from '../../../feedback';
 import { TranslationEditorLauncher } from '../../../services/translation-editor-launcher';
 import { BrowserStore } from '../../../store/browser.store';
+import { translationChangedRow } from '../../../store/resource-write-outcome';
 
 export function withItemActions() {
   return signalStoreFeature(
@@ -27,7 +27,6 @@ export function withItemActions() {
       const launcher = inject(TranslationEditorLauncher);
       const destroyRef = inject(DestroyRef);
       const notifications = inject(NotificationService);
-      const feedback = injectFeedback();
       const transloco = inject(TranslocoService);
 
       return {
@@ -60,16 +59,15 @@ export function withItemActions() {
           const { fullKey } = translation;
           store.addTranslatingKey(fullKey);
 
-          browserStore
-            .translateResource(fullKey)
-            .pipe(takeUntilDestroyed(destroyRef))
-            .subscribe((outcome) => {
-              store.removeTranslatingKey(fullKey);
-              if (outcome.kind === 'translated' || outcome.kind === 'up-to-date' || outcome.kind === 'partial') {
-                store.flashRecentlyUpdated(fullKey);
-              }
-              outcome.feedback.forEach(feedback.toast);
-            });
+          void write.runWrite(
+            browserStore.translateResource(fullKey).pipe(
+              tap((outcome) => {
+                if (destroyRef.destroyed) return;
+                store.removeTranslatingKey(fullKey);
+                if (translationChangedRow(outcome)) store.flashRecentlyUpdated(fullKey);
+              }),
+            ),
+          );
         },
       };
     }),

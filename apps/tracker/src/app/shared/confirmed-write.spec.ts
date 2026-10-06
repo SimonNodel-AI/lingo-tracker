@@ -110,6 +110,17 @@ describe('confirmed write', () => {
       expect(notifications.error).toHaveBeenCalledWith('server said no');
     });
 
+    it('toasts a readonly feedback array in its decided order', async () => {
+      const messages: readonly Feedback[] = [success, failure];
+      await setup().runWrite(of({ feedback: messages }));
+
+      expect(notifications.success).toHaveBeenCalledWith('done translated');
+      expect(notifications.error).toHaveBeenCalledWith('server said no');
+      expect(notifications.success.mock.invocationCallOrder[0]).toBeLessThan(
+        notifications.error.mock.invocationCallOrder[0],
+      );
+    });
+
     it('toasts nothing for a silent outcome', async () => {
       await setup().runWrite(of({ feedback: null }));
 
