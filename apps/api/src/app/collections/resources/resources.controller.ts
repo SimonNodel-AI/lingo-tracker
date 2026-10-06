@@ -40,7 +40,7 @@ import type {
 import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import { ConfigService } from '../../config/config.service';
-import { describeIndexStatus } from '../../mappers/index-status.mapper';
+import { describeTreeRead } from '../../mappers/tree-response.mapper';
 import {
   mapCreateResourcesResultToDto,
   mapDeleteResourceResultToDto,
@@ -48,7 +48,6 @@ import {
   mapTranslateResourceResultToDto,
   mapUpdateResourceResultToDto,
 } from '../../mappers/resource-response.mapper';
-import { mapGetTreeResultToDto } from '../../mappers/resource-tree.mapper';
 import { blankSearchResults, mapSearchPageToDto, searchRequestFromQuery } from '../../mappers/search-result.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import {
@@ -146,16 +145,13 @@ export class ResourcesController {
     const { path, includeNested } = query;
     const read = this.#index.tree(collection, path ?? '');
 
-    if (read.status !== 'ready') {
-      response.status(HttpStatus.ACCEPTED);
-      return describeIndexStatus(read.status);
-    }
-
-    if (!read.tree) {
+    if (read.status === 'ready' && !read.tree) {
       throw new NotFoundException(`Path "${path}" not found in collection tree`);
     }
 
-    return mapGetTreeResultToDto(read.tree, collection, includeNested);
+    const answer = describeTreeRead(read, collection, includeNested);
+    response.status(answer.httpStatus);
+    return answer.body;
   }
 
   @Get('cache/status')

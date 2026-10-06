@@ -12,12 +12,8 @@ import type {
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, provideTrackerHttpClient } from '../../shared/api-error/api-error';
-import {
-  BrowserApiService,
-  CollectionIndexNotReadyError,
-  TREE_NOT_READY_RETRIES,
-  TREE_NOT_READY_RETRY_DELAY_MS,
-} from './browser-api.service';
+import { BrowserApiService } from './browser-api.service';
+import { CollectionIndexNotReadyError, INDEX_NOT_READY_MESSAGE } from './index-readiness';
 
 describe('BrowserApiService', () => {
   let service: BrowserApiService;
@@ -116,20 +112,23 @@ describe('BrowserApiService', () => {
       beforeEach(() => vi.useFakeTimers());
       afterEach(() => vi.useRealTimers());
 
-      it('asks again after a pause and hands the caller only the tree', () => {
+      it('waits on readiness after 202 then requests the tree once more', () => {
         const received: ResourceTreeDto[] = [];
         service.getResourceTree('c').subscribe((value) => received.push(value));
 
         httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
         httpMock.expectNone(url);
 
-        vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
+        httpMock.expectOne('/api/collections/c/resources/cache/status').flush({ status: 'indexing' });
+        httpMock.expectNone(url);
+        vi.advanceTimersByTime(1000);
+        httpMock.expectOne('/api/collections/c/resources/cache/status').flush({ status: 'ready' });
         httpMock.expectOne(url).flush(tree);
 
         expect(received).toEqual([tree]);
       });
 
-      it('gives up with CollectionIndexNotReadyError once the retries are spent', () => {
+      it('errors with CollectionIndexNotReadyError on a second 202', () => {
         let failure: unknown;
         service.getResourceTree('c').subscribe({
           error: (error: unknown) => {
@@ -137,14 +136,120 @@ describe('BrowserApiService', () => {
           },
         });
 
-        for (let attempt = 0; attempt <= TREE_NOT_READY_RETRIES; attempt++) {
-          httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
-          vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
-        }
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        httpMock.expectOne('/api/collections/c/resources/cache/status').flush({ status: 'ready' });
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        vi.advanceTimersByTime(10000);
 
         httpMock.expectNone(url);
         expect(failure).toBeInstanceOf(CollectionIndexNotReadyError);
         expect((failure as Error).message).toBe(notReady.message);
+      });
+
+      it('surfaces an index failure during a tree wait as CollectionIndexNotReadyError', () => {
+        const error = vi.fn();
+        service.getResourceTree('c').subscribe({ error });
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        httpMock
+          .expectOne('/api/collections/c/resources/cache/status')
+          .flush({ status: 'error', error: 'Index failed' });
+        expect(error.mock.calls[0]?.[0]).toBeInstanceOf(CollectionIndexNotReadyError);
+        expect(error.mock.calls[0]?.[0].message).toBe('Index failed');
+        vi.advanceTimersByTime(5000);
+        httpMock.expectNone(url);
+      });
+
+      it('uses the original not-ready message when the index failure has no message', () => {
+        const error = vi.fn();
+        service.getResourceTree('c').subscribe({ error });
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        httpMock.expectOne('/api/collections/c/resources/cache/status').flush({ status: 'error' });
+        expect(error.mock.calls[0]?.[0]).toBeInstanceOf(CollectionIndexNotReadyError);
+        expect(error.mock.calls[0]?.[0].message).toBe(notReady.message);
+      });
+
+      it('gives up after five seconds with CollectionIndexNotReadyError', () => {
+        const error = vi.fn();
+        service.getResourceTree('c').subscribe({ error });
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        for (let poll = 0; poll < 5; poll++) {
+          httpMock.expectOne('/api/collections/c/resources/cache/status').flush({ status: 'indexing' });
+          if (poll < 4) vi.advanceTimersByTime(1000);
+        }
+        vi.advanceTimersByTime(999);
+        expect(error).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(1);
+        expect(error).not.toHaveBeenCalled();
+        httpMock
+          .expectOne(url)
+          .flush(
+            { status: 'indexing', message: 'Still indexing at the deadline.' },
+            { status: 202, statusText: 'Accepted' },
+          );
+        expect(error.mock.calls[0]?.[0]).toBeInstanceOf(CollectionIndexNotReadyError);
+        expect(error.mock.calls[0]?.[0].message).toBe('Still indexing at the deadline.');
+        httpMock.expectNone(url);
+        httpMock.expectNone('/api/collections/c/resources/cache/status');
+      });
+
+      it('maps a polling HTTP failure to CollectionIndexNotReadyError with its ApiError message', () => {
+        const error = vi.fn();
+        service.getResourceTree('c').subscribe({ error });
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        httpMock
+          .expectOne('/api/collections/c/resources/cache/status')
+          .flush({ message: 'Cache unavailable' }, { status: 500, statusText: 'Server Error' });
+        expect(error.mock.calls[0]?.[0]).toBeInstanceOf(CollectionIndexNotReadyError);
+        expect(error.mock.calls[0]?.[0].message).toBe('Cache unavailable');
+        vi.advanceTimersByTime(5000);
+        httpMock.expectNone(url);
+        httpMock.expectNone('/api/collections/c/resources/cache/status');
+      });
+
+      it('loads a tree that becomes ready at 4.5 seconds through the final request at five seconds', () => {
+        const received: ResourceTreeDto[] = [];
+        const error = vi.fn();
+        service.getResourceTree('c').subscribe({ next: (value) => received.push(value), error });
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        for (let poll = 0; poll < 5; poll++) {
+          httpMock.expectOne('/api/collections/c/resources/cache/status').flush({ status: 'indexing' });
+          if (poll < 4) vi.advanceTimersByTime(1000);
+        }
+        vi.advanceTimersByTime(500);
+        const readyAt = Date.now();
+        httpMock.expectNone(url);
+        vi.advanceTimersByTime(500);
+        const finalTree = httpMock.expectOne(url);
+        expect(Date.now() - readyAt).toBe(500);
+        finalTree.flush(tree);
+        expect(received).toEqual([tree]);
+        expect(error).not.toHaveBeenCalled();
+        vi.advanceTimersByTime(5000);
+        httpMock.expectNone(url);
+        httpMock.expectNone('/api/collections/c/resources/cache/status');
+      });
+
+      it('does not cancel a slow cache response on tree polling intervals', () => {
+        const received: ResourceTreeDto[] = [];
+        service.getResourceTree('c').subscribe((value) => received.push(value));
+        httpMock.expectOne(url).flush(notReady, { status: 202, statusText: 'Accepted' });
+        const status = httpMock.expectOne('/api/collections/c/resources/cache/status');
+        vi.advanceTimersByTime(1500);
+        expect(status.cancelled).toBe(false);
+        httpMock.expectNone('/api/collections/c/resources/cache/status');
+        status.flush({ status: 'ready' });
+        httpMock.expectOne(url).flush(tree);
+        expect(received).toEqual([tree]);
+      });
+      it('handles null bodies in both 202 responses with the default not-ready message', () => {
+        const error = vi.fn();
+        service.getResourceTree('c').subscribe({ error });
+        httpMock.expectOne(url).flush(null, { status: 202, statusText: 'Accepted' });
+        expect(error).not.toHaveBeenCalled();
+        httpMock.expectOne('/api/collections/c/resources/cache/status').flush({ status: 'ready' });
+        httpMock.expectOne(url).flush(null, { status: 202, statusText: 'Accepted' });
+        expect(error.mock.calls[0]?.[0]).toBeInstanceOf(CollectionIndexNotReadyError);
+        expect(error.mock.calls[0]?.[0].message).toBe(INDEX_NOT_READY_MESSAGE);
       });
 
       it('does not retry an HTTP error', () => {
@@ -156,7 +261,7 @@ describe('BrowserApiService', () => {
         });
 
         httpMock.expectOne(url).flush('boom', { status: 500, statusText: 'Server Error' });
-        vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
+        vi.advanceTimersByTime(10000);
 
         httpMock.expectNone(url);
         expect(failure).toBeInstanceOf(ApiError);
