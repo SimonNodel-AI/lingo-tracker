@@ -7,21 +7,22 @@ import type {
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
-import { catchError, defer, from, map, type Observable, of, switchMap, tap } from 'rxjs';
+import type { Observable } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { doesUpdateMoveEntry } from '../does-update-move-entry';
 import {
   type DeleteResourceOutcome,
+  type DeleteResourceResult,
   decideDeleteResource,
+  decideRequestedEntryDelete,
   decideTranslateResource,
   deleteOutcome,
-  deleteRefusal,
   type RequestedEntryDeleteOutcome,
   type TranslateResourceOutcome,
+  type TranslateResourceResult,
   translateOutcome,
-  translateRefusal,
 } from '../resource-write-outcome';
-import { captureSession } from '../session-guard';
+import { confirmThenWrite, editorWrite, writeRun } from '../write-run';
 
 /**
  * Entry Writes owns the read-only rule, session validity and decided feedback for delete/translate.
@@ -47,32 +48,29 @@ export function withEntryWritesFeature<_>() {
     withMethods((store) => {
       const api = inject(BrowserApiService);
 
-      function deleteResource(fullKey: string): Observable<DeleteResourceOutcome> {
-        return defer(() => {
-          if (store.isReadOnly()) return of(decideDeleteResource({ kind: 'read-only' }));
-          const collection = store.selectedCollection();
-          if (!collection) return of(decideDeleteResource({ kind: 'no-collection' }));
-          const inSession = captureSession(store);
-          return api.deleteResource(collection, [fullKey]).pipe(
-            map((response) => {
-              if (!inSession()) return decideDeleteResource({ kind: 'stale-session' });
+      function deleteResource<Outcome>(
+        fullKey: string,
+        decide: (result: DeleteResourceResult) => Outcome,
+      ): Observable<Outcome> {
+        return writeRun<DeleteResourceResult, Outcome>(
+          store,
+          ({ collection, respond }) =>
+            respond(api.deleteResource(collection, [fullKey]), (response) => {
               if (response.entriesDeleted > 0) store.removeEntry(fullKey);
-              return decideDeleteResource(deleteOutcome(response));
+              return deleteOutcome(response);
             }),
-            catchError((error: unknown) =>
-              of(inSession() ? deleteRefusal(error) : decideDeleteResource({ kind: 'stale-session' })),
-            ),
-          );
-        });
+          decide,
+        );
       }
 
       return {
         /** Creates an entry, then reloads the List Scope so the list shows it in place. */
         createResource(collectionName: string, dto: CreateResourceDto): Observable<CreateResourceResponseDto> {
-          return defer(() => {
-            const inSession = captureSession(store);
-            return api.createResource(collectionName, dto).pipe(tap(() => inSession() && store.reloadList()));
-          });
+          return editorWrite(
+            store,
+            () => api.createResource(collectionName, dto),
+            () => store.reloadList(),
+          );
         },
 
         /**
@@ -81,61 +79,47 @@ export function withEntryWritesFeature<_>() {
          * one is patched in place.
          */
         updateResource(collectionName: string, dto: UpdateResourceDto): Observable<UpdateResourceResponseDto> {
-          return defer(() => {
-            const inSession = captureSession(store);
-            return api.updateResource(collectionName, dto).pipe(
-              tap((response) => {
-                if (!inSession()) return;
-                if (doesUpdateMoveEntry(dto)) {
-                  store.removeEntry(dto.key);
-                } else if (response.resource) {
-                  store.replaceEntry(dto.key, response.resource);
-                }
-              }),
-            );
-          });
+          return editorWrite(
+            store,
+            () => api.updateResource(collectionName, dto),
+            (response) => {
+              if (doesUpdateMoveEntry(dto)) {
+                store.removeEntry(dto.key);
+              } else if (response.resource) {
+                store.replaceEntry(dto.key, response.resource);
+              }
+            },
+          );
         },
 
         /** Deletes one entry and returns its decided feedback, without an error channel. */
-        deleteResource,
+        deleteResource(fullKey: string): Observable<DeleteResourceOutcome> {
+          return deleteResource(fullKey, decideDeleteResource);
+        },
 
         /** The caller presents confirmation; the store owns guards and the eventual write. */
         requestEntryDelete(
           fullKey: string,
           confirm: (inSession: () => boolean) => Promise<boolean>,
         ): Observable<RequestedEntryDeleteOutcome> {
-          return defer(() => {
-            if (store.isReadOnly()) return of(decideDeleteResource({ kind: 'read-only' }));
-            if (!store.selectedCollection()) return of(decideDeleteResource({ kind: 'no-collection' }));
-            const inSession = captureSession(store);
-            return from(confirm(inSession)).pipe(
-              switchMap((yes) => {
-                if (!inSession()) return of(decideDeleteResource({ kind: 'stale-session' }));
-                if (!yes) return of({ kind: 'cancelled', feedback: null } as const);
-                return deleteResource(fullKey);
-              }),
-            );
-          });
+          return writeRun<DeleteResourceResult | { kind: 'cancelled' }, RequestedEntryDeleteOutcome>(
+            store,
+            ({ inSession }) => confirmThenWrite(inSession, confirm, () => deleteResource(fullKey, (result) => result)),
+            decideRequestedEntryDelete,
+          );
         },
 
         /** Auto-translates one entry and returns the decided toasts in their existing order. */
         translateResource(fullKey: string): Observable<TranslateResourceOutcome> {
-          return defer(() => {
-            if (store.isReadOnly()) return of(decideTranslateResource({ kind: 'read-only' }));
-            const collection = store.selectedCollection();
-            if (!collection) return of(decideTranslateResource({ kind: 'no-collection' }));
-            const inSession = captureSession(store);
-            return api.translateResource(collection, fullKey).pipe(
-              map((response) => {
-                if (!inSession()) return decideTranslateResource({ kind: 'stale-session' });
+          return writeRun<TranslateResourceResult, TranslateResourceOutcome>(
+            store,
+            ({ collection, respond }) =>
+              respond(api.translateResource(collection, fullKey), (response) => {
                 store.replaceEntry(fullKey, response.resource);
-                return decideTranslateResource(translateOutcome(response));
+                return translateOutcome(response);
               }),
-              catchError((error: unknown) =>
-                of(inSession() ? translateRefusal(error) : decideTranslateResource({ kind: 'stale-session' })),
-              ),
-            );
-          });
+            decideTranslateResource,
+          );
         },
       };
     }),

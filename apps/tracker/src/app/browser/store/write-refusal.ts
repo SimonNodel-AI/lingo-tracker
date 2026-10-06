@@ -3,7 +3,7 @@ import type { Feedback } from '../feedback';
 
 /** The silent guards and typed API refusal shared by Folder Writes and Entry Writes. */
 export type Refusal =
-  | { kind: 'refused'; error: ApiError }
+  | { kind: 'refused'; error: ApiError; cause?: unknown }
   | { kind: 'read-only' }
   | { kind: 'no-collection' }
   | { kind: 'stale-session' };

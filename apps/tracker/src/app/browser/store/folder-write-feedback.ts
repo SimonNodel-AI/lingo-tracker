@@ -90,18 +90,30 @@ export function moveResourceFeedback(result: MoveResourceResult): Feedback | nul
 }
 
 export const decideCreateFolder = (result: CreateFolderResult): CreateFolderOutcome => ({
-  ...result,
+  ...(result.kind === 'refused' ? { kind: result.kind, error: result.error } : result),
   feedback: createFolderFeedback(result),
 });
 export const decideDeleteFolder = (result: DeleteFolderResult): DeleteFolderOutcome => ({
-  ...result,
+  ...(result.kind === 'refused' ? { kind: result.kind, error: result.error } : result),
   feedback: deleteFolderFeedback(result),
 });
 export const decideMoveFolder = (result: MoveFolderResult): MoveFolderOutcome => ({
-  ...result,
+  ...(result.kind === 'refused' ? { kind: result.kind, error: result.error } : result),
   feedback: moveFolderFeedback(result),
 });
 export const decideMoveResource = (result: MoveResourceResult): MoveResourceOutcome => ({
-  ...result,
+  ...(result.kind === 'refused' ? { kind: result.kind, error: result.error } : result),
   feedback: moveResourceFeedback(result),
 });
+
+export function decideRequestedFolderDelete(
+  result: DeleteFolderResult | { kind: 'cancelled' },
+): RequestedFolderDeleteOutcome {
+  return result.kind === 'cancelled' ? { ...result, feedback: null } : decideDeleteFolder(result);
+}
+
+export function decideRequestedFolderMove(
+  result: MoveFolderResult | { kind: 'cancelled' },
+): RequestedFolderMoveOutcome {
+  return result.kind === 'cancelled' ? { ...result, feedback: null } : decideMoveFolder(result);
+}

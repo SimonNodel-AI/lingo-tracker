@@ -45,7 +45,7 @@ export function deleteFeedback(outcome: DeleteResourceResult): Feedback | null {
     case 'not-deleted':
       return { tone: 'error', placement: 'toast', token: TOAST.DELETEFAILED };
     case 'refused':
-      return refusedFeedback(outcome.error, TOAST.DELETEFAILED);
+      return refusedFeedback(outcome.cause ?? outcome.error, TOAST.DELETEFAILED);
     default:
       return null;
   }
@@ -72,7 +72,7 @@ export function translateFeedback(outcome: TranslateResourceResult): Feedback[] 
         },
       ];
     case 'refused':
-      return [refusedFeedback(outcome.error, TOAST.TRANSLATEFAILED)];
+      return [refusedFeedback(outcome.cause ?? outcome.error, TOAST.TRANSLATEFAILED)];
     default:
       return [];
   }
@@ -85,18 +85,29 @@ function translatedFeedback(count: number): Feedback {
 }
 
 export const decideDeleteResource = (result: DeleteResourceResult): DeleteResourceOutcome => ({
-  ...result,
+  ...(result.kind === 'refused' ? { kind: result.kind, error: result.error } : result),
   feedback: deleteFeedback(result),
 });
 export const decideTranslateResource = (result: TranslateResourceResult): TranslateResourceOutcome => ({
-  ...result,
+  ...(result.kind === 'refused' ? { kind: result.kind, error: result.error } : result),
   feedback: translateFeedback(result),
 });
 
 /** Preserve unexpected Error messages as well as API messages while normalising the refusal. */
 export function deleteRefusal(error: unknown): DeleteResourceOutcome {
-  return { ...refused(error), feedback: refusedFeedback(error, TOAST.DELETEFAILED) };
+  return decideDeleteResource({ ...refused(error), cause: error });
 }
 export function translateRefusal(error: unknown): TranslateResourceOutcome {
-  return { ...refused(error), feedback: [refusedFeedback(error, TOAST.TRANSLATEFAILED)] };
+  return decideTranslateResource({ ...refused(error), cause: error });
+}
+
+export function decideRequestedEntryDelete(
+  result: DeleteResourceResult | { kind: 'cancelled' },
+): RequestedEntryDeleteOutcome {
+  return result.kind === 'cancelled' ? { ...result, feedback: null } : decideDeleteResource(result);
+}
+
+/** Successful translate responses replace the row, including up-to-date and partial results. */
+export function translationChangedRow(outcome: TranslateResourceResult): boolean {
+  return outcome.kind === 'translated' || outcome.kind === 'up-to-date' || outcome.kind === 'partial';
 }
