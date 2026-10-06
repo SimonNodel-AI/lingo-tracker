@@ -7,7 +7,7 @@ import { addResource } from './add-resource';
 import { deleteResource } from './delete-resource';
 import { editResource } from './edit-resource';
 import { executeMove } from './execute-move';
-import type { Collection } from '../config/open-collection';
+import type { OpenedCollection } from '../config/open-collection';
 import { FolderNotFoundError } from '../errors/lingo-tracker-error';
 import { createFolder } from '../folder/create-folder';
 import { deleteFolder } from '../folder/delete-folder';
@@ -25,7 +25,7 @@ beforeEach(() => {
 describe('mutations delivered by core writes (real fs)', () => {
   let root: string;
 
-  const collection = (translationsFolder = root, name = 'main'): Collection => ({
+  const collection = (translationsFolder = root, name = 'main'): OpenedCollection => ({
     name,
     translationsFolder,
     baseLocale: 'en',
@@ -38,6 +38,8 @@ describe('mutations delivered by core writes (real fs)', () => {
       preferredTerminology: { path: '/nonexistent/.lingo-tracker-preferred-terminology.json', explicit: false },
     },
     readOnly: false,
+    projectRoot: translationsFolder,
+    sourceConfig: { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} },
     config: { translationsFolder },
   });
 
@@ -161,11 +163,9 @@ describe('mutations delivered by core writes (real fs)', () => {
     const other = mkdtempSync(join(tmpdir(), 'resource-mutation-other-'));
     try {
       await executeMove(
-        collection(),
-        { source: 'common.ok', destination: 'imported.ok', toCollection: 'other' },
         {
-          onMutation,
-          config: {
+          ...collection(),
+          sourceConfig: {
             exportFolder: 'dist',
             importFolder: 'import',
             baseLocale: 'en',
@@ -173,6 +173,8 @@ describe('mutations delivered by core writes (real fs)', () => {
             collections: { other: { translationsFolder: other } },
           },
         },
+        { source: 'common.ok', destination: 'imported.ok', toCollection: 'other' },
+        { onMutation },
       );
 
       expect(collected).toEqual([

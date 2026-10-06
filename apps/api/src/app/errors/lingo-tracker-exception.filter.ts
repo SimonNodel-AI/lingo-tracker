@@ -93,7 +93,6 @@ const HTTP_BY_CODE = {
   COLLECTION_REQUIRED_BY_BUNDLE: { kind: 'conflict' },
   COLLECTION_RENAME_BUNDLE_CONFLICT: { kind: 'conflict' },
   COLLECTION_READ_ONLY: { kind: 'forbidden' },
-  MOVE_CONFIG_REQUIRED: { kind: 'invalid' },
   INVALID_NAME: { kind: 'invalid' },
   PROTECTED_TERMS_FILE_NOT_SET: { kind: 'invalid' },
   PARENT_DIRECTORY_MISSING: { kind: 'invalid' },

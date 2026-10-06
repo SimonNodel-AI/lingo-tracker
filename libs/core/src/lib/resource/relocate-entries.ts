@@ -172,7 +172,7 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
   } catch (error) {
     errors.push(`Failed to write the move: ${error instanceof Error ? error.message : String(error)}`);
     // Some folders may be written: the index reads both collections again.
-    resolveMutationSink(source, options)?.(reindexMutation(destination.translationsFolder));
+    resolveMutationSink(destination, options)?.(reindexMutation(destination.translationsFolder));
     if (!sameCollection) resolveMutationSink(source, options)?.(reindexMutation(source.translationsFolder));
     const warnings = pruneWarnings();
     return { moved: [], collisions, errors, ...(warnings.length > 0 ? { warnings } : {}) };
@@ -186,7 +186,7 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
 
   for (const { from } of moved) resolveMutationSink(source, options)?.(removeMutation(source.translationsFolder, from));
   for (const { to, entry } of moved)
-    resolveMutationSink(source, options)?.(upsertMutation(destination.translationsFolder, to, entry));
+    resolveMutationSink(destination, options)?.(upsertMutation(destination.translationsFolder, to, entry));
   const warnings = pruneWarnings();
   return { moved, collisions, errors, ...(warnings.length > 0 ? { warnings } : {}) };
 }

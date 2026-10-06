@@ -12,6 +12,7 @@ import {
   loadConfig,
   executeMove,
   openCollection,
+  openProjectCollection,
   openResourceFolder,
   ResourceTreeIndex,
   type ResourceTreeNode,
@@ -32,7 +33,7 @@ describe('CollectionIndex', () => {
     };
   }
 
-  function collection(name = 'main'): Collection {
+  function collection(name = 'main') {
     return openCollection(config(name), name, { cwd: root });
   }
 
@@ -164,15 +165,40 @@ describe('CollectionIndex', () => {
       readyTree(other);
 
       await executeMove(
-        collection(),
+        { ...collection(), sourceConfig: config('other'), projectRoot: root },
         { source: 'common.ok', destination: 'imported.ok', toCollection: 'other' },
-        { onMutation: index.sink, config: config('other'), cwd: root },
+        { onMutation: index.sink },
       );
 
       expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);
       expect(keysOf(readyTree(other, 'imported'))).toEqual(['ok']);
       expectIndexMatchesDisk();
       expectIndexMatchesDisk(other);
+    });
+
+    it('updates both collection indexes through the project sink without an explicit move callback', () => {
+      writeEntry('other', 'existing', 'Existing');
+      // Keep revalidation from repairing a missed mutation before these assertions.
+      process.env.LINGO_TRACKER_REVALIDATE_INTERVAL_MS = '60000';
+      index = new CollectionIndex();
+      const project = { sourceConfig: config('main', 'other'), projectRoot: root, onMutation: index.sink };
+      const source = openProjectCollection(project, 'main', { writable: true });
+      const destination = openProjectCollection(project, 'other', { writable: true });
+      readyTree(source);
+      readyTree(destination);
+
+      expect(
+        executeMove(source, {
+          source: 'common.ok',
+          destination: 'imported.ok',
+          toCollection: 'other',
+        }).movedCount,
+      ).toBe(1);
+
+      expect(keysOf(readyTree(source, 'common'))).toEqual(['cancel']);
+      expect(keysOf(readyTree(destination, 'imported'))).toEqual(['ok']);
+      expectIndexMatchesDisk(source);
+      expectIndexMatchesDisk(destination);
     });
 
     it('re-indexes a collection whose locales changed', async () => {

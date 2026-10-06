@@ -13,6 +13,7 @@ import {
 import {
   addResources,
   type Collection,
+  type OpenedCollection,
   deleteResource,
   editResource,
   executeMoves,
@@ -39,7 +40,6 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
-import { ConfigService } from '../../config/config.service';
 import { describeTreeRead } from '../../mappers/tree-response.mapper';
 import {
   mapCreateResourcesResultToDto,
@@ -67,12 +67,10 @@ import { RouteCollection } from '../route-collection';
 
 @Controller('collections/:collectionName/resources')
 export class ResourcesController {
-  readonly #configService: ConfigService;
   readonly #index: CollectionIndex;
   readonly #translationJobService: TranslationJobService;
 
-  constructor(configService: ConfigService, index: CollectionIndex, translationJobService: TranslationJobService) {
-    this.#configService = configService;
+  constructor(index: CollectionIndex, translationJobService: TranslationJobService) {
     this.#index = index;
     this.#translationJobService = translationJobService;
   }
@@ -111,13 +109,10 @@ export class ResourcesController {
 
   @Post('move')
   async move(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(moveResourcesBody) dto: MoveResourceDto,
   ): Promise<MoveResourceResponseDto> {
-    // Cross-collection moves need the config to resolve destination collections.
-    const config = this.#configService.getConfig();
-
-    const result = executeMoves(collection, dto.moves, { config });
+    const result = executeMoves(collection, dto.moves);
     return mapMoveResourcesResultToDto(result);
   }
 

@@ -17,17 +17,13 @@ export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
   collection: 'writable',
 
   required: ['source', 'dest'],
-  run: ({ collection, config, cwd, answers }) => {
-    const result = executeMove(
-      collection,
-      {
-        source: answers.source,
-        destination: answers.dest,
-        override: answers.override,
-        toCollection: answers.destCollection,
-      },
-      { config, cwd },
-    );
+  run: ({ collection, answers }) => {
+    const result = executeMove(collection, {
+      source: answers.source,
+      destination: answers.dest,
+      override: answers.override,
+      toCollection: answers.destCollection,
+    });
     if (result.movedCount > 0) {
       ConsoleFormatter.success(`Moved ${result.movedCount} resource(s)`);
     } else {

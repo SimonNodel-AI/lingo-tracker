@@ -42,6 +42,8 @@ export interface Collection {
 
 /** A project opened from its config, carrying the read version used to guard every config write. */
 export interface OpenedProject {
+  /** Default mutation consumer inherited by collections opened from this project. */
+  readonly onMutation?: MutationSink;
   readonly sourceConfig: LingoTrackerConfig;
   readonly projectRoot: string;
 }
@@ -122,4 +124,17 @@ export function openCollection(
     readOnly,
     config: raw,
   };
+}
+
+/** Opens a collection from the project's existing config snapshot and mutation wiring. */
+export function openProjectCollection(
+  project: OpenedProject,
+  name: string,
+  options: Omit<OpenCollectionOptions, 'cwd'> = {},
+): OpenedCollection {
+  return openCollection(project.sourceConfig, name, {
+    ...options,
+    cwd: project.projectRoot,
+    onMutation: options.onMutation ?? project.onMutation,
+  });
 }

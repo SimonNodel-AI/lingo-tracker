@@ -1,7 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
+import {
+  seedResources,
+  testOpenedCollection as testCollection,
+  useTempDir,
+  writeFolderFiles,
+} from '../../testing/temp-dir.spec-helpers';
 import { calculateChecksum } from './checksum';
 import { deleteResource } from './delete-resource';
 import { editResource } from './edit-resource';
@@ -114,18 +119,18 @@ describe('writes prune emptied folders (real fs)', () => {
     const destination = join(root(), 'other');
     const mutations: ResourceMutation[] = [];
     const result = executeMove(
-      collection(),
-      { source: 'a.b.c.ok', destination: 'shared.ok', toCollection: 'other' },
       {
-        config: {
+        ...collection(),
+        sourceConfig: {
           baseLocale: 'en',
           locales: ['en'],
           exportFolder: 'export',
           importFolder: 'import',
           collections: { other: { translationsFolder: destination } },
         },
-        onMutation: (mutation) => mutations.push(mutation),
       },
+      { source: 'a.b.c.ok', destination: 'shared.ok', toCollection: 'other' },
+      { onMutation: (mutation) => mutations.push(mutation) },
     );
     expect(result.movedCount).toBe(1);
     expect(existsSync(join(root(), 'a'))).toBe(false);

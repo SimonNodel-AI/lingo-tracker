@@ -6,6 +6,7 @@ import { CONFIG_FILENAME, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
+import { RouteProjectPipe } from '../config/route-project';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { createCollectionBody, updateCollectionBody } from '../validation/dto-schemas';
 import { SchemaPipe } from '../validation/valid-body';
@@ -20,6 +21,7 @@ describe('CollectionsController PUT (real core)', () => {
   let projectDir: string;
   let controller: CollectionsController;
   let routeCollectionPipe: RouteCollectionPipe;
+  let routeProjectPipe: RouteProjectPipe;
 
   const stored = {
     translationsFolder: './i18n',
@@ -53,10 +55,16 @@ describe('CollectionsController PUT (real core)', () => {
 
     const module = await Test.createTestingModule({
       controllers: [CollectionsController],
-      providers: [ConfigService, RouteCollectionPipe, { provide: CollectionIndex, useValue: { sink: jest.fn() } }],
+      providers: [
+        ConfigService,
+        RouteCollectionPipe,
+        RouteProjectPipe,
+        { provide: CollectionIndex, useValue: { sink: jest.fn() } },
+      ],
     }).compile();
     controller = module.get(CollectionsController);
     routeCollectionPipe = module.get(RouteCollectionPipe);
+    routeProjectPipe = module.get(RouteProjectPipe);
   });
 
   afterEach(() => {
@@ -133,10 +141,13 @@ describe('CollectionsController PUT (real core)', () => {
   it('answers 400 for invalid protected terms on create without changing config', async () => {
     const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
     const error = await controller
-      .createCollection({
-        name: 'new',
-        collection: { translationsFolder: './new', protectedTerms: ['valid', 42] },
-      } as unknown as CreateCollectionDto)
+      .createCollection(
+        {
+          name: 'new',
+          collection: { translationsFolder: './new', protectedTerms: ['valid', 42] },
+        } as unknown as CreateCollectionDto,
+        routeProjectPipe.transform(true),
+      )
       .catch((cause: unknown) => cause);
     expect(toHttpException(error).getStatus()).toBe(400);
     expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
@@ -145,10 +156,13 @@ describe('CollectionsController PUT (real core)', () => {
   it('answers 400 for malformed terms even when the create name is taken', async () => {
     const before = readFileSync(join(projectDir, CONFIG_FILENAME));
     const error = await controller
-      .createCollection({
-        name: 'app',
-        collection: { translationsFolder: './other', protectedTerms: ['valid', 42] },
-      } as unknown as CreateCollectionDto)
+      .createCollection(
+        {
+          name: 'app',
+          collection: { translationsFolder: './other', protectedTerms: ['valid', 42] },
+        } as unknown as CreateCollectionDto,
+        routeProjectPipe.transform(true),
+      )
       .catch((cause: unknown) => cause);
     expect(toHttpException(error).getStatus()).toBe(400);
     expect(readFileSync(join(projectDir, CONFIG_FILENAME))).toEqual(before);
@@ -164,14 +178,17 @@ describe('CollectionsController PUT (real core)', () => {
   });
 
   it('writes valid protected terms when creating a collection', async () => {
-    await controller.createCollection({
-      name: 'new',
-      collection: {
-        translationsFolder: './new',
-        protectedTermsFile: 'new-terms.json',
-        protectedTerms: [' iPhone ', 'Pixel'],
+    await controller.createCollection(
+      {
+        name: 'new',
+        collection: {
+          translationsFolder: './new',
+          protectedTermsFile: 'new-terms.json',
+          protectedTerms: [' iPhone ', 'Pixel'],
+        },
       },
-    });
+      routeProjectPipe.transform(true),
+    );
 
     expect(readConfig().collections['new'].protectedTermsFile).toBe('new-terms.json');
     expect(JSON.parse(readFileSync(join(projectDir, 'new-terms.json'), 'utf8'))).toEqual(['iPhone', 'Pixel']);
@@ -196,10 +213,13 @@ describe('CollectionsController PUT (real core)', () => {
     const before = readFileSync(join(projectDir, CONFIG_FILENAME));
     const termsBefore = readFileSync(termsPath);
     const error = await controller
-      .createCollection({
-        name: 'new',
-        collection: { translationsFolder: './new', protectedTerms: ['iPhone'] },
-      })
+      .createCollection(
+        {
+          name: 'new',
+          collection: { translationsFolder: './new', protectedTerms: ['iPhone'] },
+        },
+        routeProjectPipe.transform(true),
+      )
       .catch((cause: unknown) => cause);
     expect(toHttpException(error).getStatus()).toBe(400);
     expect(readFileSync(join(projectDir, CONFIG_FILENAME))).toEqual(before);
