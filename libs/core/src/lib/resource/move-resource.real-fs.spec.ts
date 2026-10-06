@@ -98,6 +98,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(collected).toEqual([
       { kind: 'remove', translationsFolder: root, key: 'common.ok' },
       { kind: 'upsert', translationsFolder: root, key: 'shared.buttons.confirm', entry: expect.any(Object) },
+      { kind: 'remove-folder', translationsFolder: root, path: 'common' },
     ]);
     expect(read('resource_entries.json', 'shared', 'buttons')).toEqual({ confirm: entries.ok });
     expect(read('tracker_meta.json', 'shared', 'buttons')).toEqual({ confirm: meta.ok });
@@ -192,7 +193,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     );
     expect(result.movedCount).toBe(1);
     expect(read('resource_entries.json', 'other', 'shared')).toEqual(entries);
-    expect(collected.map(({ translationsFolder }) => translationsFolder)).toEqual([root, join(root, 'other')]);
+    expect(collected.map(({ translationsFolder }) => translationsFolder)).toEqual([root, join(root, 'other'), root]);
   });
 
   it('executeMove with a folder keeps statuses', async () => {
@@ -257,7 +258,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(result.outcome).toBe('failed');
     expect(result.movedCount).toBe(1);
     expect(read('resource_entries.json', 'shared')).toEqual(entries);
-    expect(collected.map(({ kind }) => kind)).toEqual(['remove', 'upsert']);
+    expect(collected.map(({ kind }) => kind)).toEqual(['remove', 'upsert', 'remove-folder']);
   });
 
   it('rejects a malformed batch pattern before any write or mutation', async () => {
@@ -341,7 +342,7 @@ describe('moving resources keeps metadata (real fs)', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.warnings).toHaveLength(1);
     expect(read('resource_entries.json')).toEqual(entries);
-    expect(collected.map(({ kind }) => kind)).toEqual(['remove', 'upsert']);
+    expect(collected.map(({ kind }) => kind)).toEqual(['remove', 'upsert', 'remove-folder']);
   });
 
   it('keeps the first move delivered when the second move write fails', async () => {
@@ -381,6 +382,7 @@ describe('moving resources keeps metadata (real fs)', () => {
       { kind: 'remove', translationsFolder: root, key: 'common.ok' },
       expect.objectContaining({ kind: 'upsert', translationsFolder: root, key: 'shared.ok' }),
       { kind: 'reindex', translationsFolder: root },
+      { kind: 'remove-folder', translationsFolder: root, path: 'common' },
     ]);
   });
 
@@ -437,6 +439,6 @@ describe('moving resources keeps metadata (real fs)', () => {
       errors: ['Collection "vendor" is read-only. Its resources cannot be modified.'],
     });
     expect(read('resource_entries.json', 'other', 'shared')).toEqual(entries);
-    expect(collected.map(({ translationsFolder }) => translationsFolder)).toEqual([root, join(root, 'other')]);
+    expect(collected.map(({ translationsFolder }) => translationsFolder)).toEqual([root, join(root, 'other'), root]);
   });
 });

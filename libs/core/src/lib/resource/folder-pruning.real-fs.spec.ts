@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
-import { PRUNABLE_OS_JUNK_FILES, pruneEmptyFolders } from './folder-pruning';
+import { PRUNABLE_OS_JUNK_FILES, pruneEmptyFolders, pruneEmptiedFolders } from './folder-pruning';
 import type { ResourceMutation } from './resource-mutation';
 
 vi.mock('node:fs', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:fs')>()) }));
@@ -51,6 +51,23 @@ describe('Folder Pruning (real fs)', () => {
     folder('apps.dashboard.alerts');
     const removed = pruneEmptyFolders(collection()).removed;
     expect(removed).toEqual(['apps.common.buttons', 'apps.dashboard.alerts', 'apps.common', 'apps.dashboard', 'apps']);
+  });
+
+  it('prunes deduplicated operation paths by depth and lexical order regardless of input order', () => {
+    const last = folder('z.child.deep');
+    const first = folder('a.child.deep');
+    const unrelated = folder('unrelated');
+    const mutations: ResourceMutation[] = [];
+    const result = pruneEmptiedFolders(collection(), [last, first, last, root(), join(root(), 'a')], {
+      onMutation: (mutation) => mutations.push(mutation),
+    });
+    expect(result.removed).toEqual(['a.child.deep', 'z.child.deep', 'a.child', 'z.child', 'a', 'z']);
+    expect(result.problems).toEqual([]);
+    expect(mutations).toEqual(
+      result.removed.map((path) => ({ kind: 'remove-folder', translationsFolder: root(), path })),
+    );
+    expect(fs.existsSync(unrelated)).toBe(true);
+    expect(fs.existsSync(root())).toBe(true);
   });
 
   it('handles a single level with several empty folders', () => {
@@ -438,10 +455,10 @@ describe('Folder Pruning (real fs)', () => {
   it('keeps an entries file created after classification even when entries were absent', () => {
     const empty = writeFolderFiles(root(), 'empty', { meta: {} });
     const entriesPath = join(empty, 'resource_entries.json');
-    const readFile = fs.readFileSync;
-    vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
+    const exists = fs.existsSync;
+    vi.spyOn(fs, 'existsSync').mockImplementation((...args) => {
       if (args[0] === entriesPath) fs.writeFileSync(entriesPath, JSON.stringify({ first: { source: 'New' } }));
-      return Reflect.apply(readFile, fs, args);
+      return Reflect.apply(exists, fs, args);
     });
     const unlink = vi.spyOn(fs, 'unlinkSync');
     const result = pruneEmptyFolders(collection());

@@ -40,19 +40,21 @@ export function resolveMutationSink(
 }
 
 /** Reports a completed folder save, or reindexes after a save that may have written one file. */
-export function saveReporting(
-  folder: { save(): unknown },
+export function saveReporting<T>(
+  folder: { save(): T },
   translationsFolder: string,
   onMutation: MutationSink | undefined,
   saved: () => readonly ResourceMutation[],
-): void {
+): T {
+  let result: T;
   try {
-    folder.save();
+    result = folder.save();
   } catch (error) {
     onMutation?.(reindexMutation(translationsFolder));
     throw error;
   }
   if (onMutation) for (const mutation of saved()) onMutation(mutation);
+  return result;
 }
 
 /**

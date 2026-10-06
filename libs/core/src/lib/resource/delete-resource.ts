@@ -7,6 +7,8 @@ import {
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
 import type { RunOutcome } from '../run-outcome';
+import { describeFolderProblem } from './collection-folders';
+import { pruneEmptiedFolders } from './folder-pruning';
 import { openResourceEntry } from './resource-entry';
 import { resolveResourcePaths } from './resource-file-paths';
 import { resourceFolderPresence } from './resource-folder';
@@ -20,6 +22,8 @@ export interface DeleteResourceResult {
   /** `failed` when any key could not be deleted, even if others were; same rule as a Move Report. */
   readonly outcome: RunOutcome;
   entriesDeleted: number;
+  /** Folder cleanup problems do not change the outcome of entry deletion. */
+  warnings?: string[];
   errors?: Array<{
     key: string;
     error: string;
@@ -36,6 +40,8 @@ export function deleteResource(
   let entriesDeleted = 0;
   const errors: Array<{ key: string; error: string }> = [];
 
+  const emptiedFolders = new Set<string>();
+
   // Refuse the whole request before writes or mutations if any key targets an inaccessible folder.
   for (const key of params.keys) {
     try {
@@ -49,7 +55,8 @@ export function deleteResource(
 
   for (const key of params.keys) {
     try {
-      deleteSingleResource(collection, key, resolveMutationSink(collection, options));
+      const emptied = deleteSingleResource(collection, key, resolveMutationSink(collection, options));
+      if (emptied) emptiedFolders.add(emptied);
       entriesDeleted++;
     } catch (caughtError) {
       if (caughtError instanceof InvalidCollectionFolderError) throw caughtError;
@@ -61,14 +68,17 @@ export function deleteResource(
     }
   }
 
+  const pruning = pruneEmptiedFolders(collection, emptiedFolders, options);
+  const warnings = pruning.problems.map((problem) => describeFolderProblem(problem));
   return {
+    ...(warnings.length > 0 ? { warnings } : {}),
     outcome: errors.length > 0 ? 'failed' : 'succeeded',
     entriesDeleted,
     errors: errors.length > 0 ? errors : undefined,
   };
 }
 
-function deleteSingleResource(collection: Collection, key: string, onMutation?: MutationSink): void {
+function deleteSingleResource(collection: Collection, key: string, onMutation?: MutationSink): string | undefined {
   validateKey(key);
   const paths = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
   const folderAddress = paths.folderPathSegments.join('.') || '.';
@@ -93,5 +103,6 @@ function deleteSingleResource(collection: Collection, key: string, onMutation?: 
     `could not update folder ${folderAddress}`,
   );
   if (!removed) throw new ResourceNotFoundError(paths.resolvedKey);
-  deletionStep(() => resource.save(onMutation), `could not write folder ${folderAddress}`);
+  const saved = deletionStep(() => resource.save(onMutation), `could not write folder ${folderAddress}`);
+  return saved.emptied ? paths.folderPath : undefined;
 }

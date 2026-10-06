@@ -22,6 +22,6 @@ type Assert<Condition extends true> = Condition;
 export type ResponseContractChecks = [
   Assert<Equal<Readonly<AddLocaleToCollectionResult>, Readonly<AddLocaleResponseDto>>>,
   Assert<Equal<Readonly<RemoveLocaleFromCollectionResult>, Readonly<RemoveLocaleResponseDto>>>,
-  Assert<Equal<Omit<DeleteResourceResult, 'outcome'>, DeleteResourceResponseDto>>,
+  Assert<Equal<Omit<DeleteResourceResult, 'outcome' | 'warnings'>, DeleteResourceResponseDto>>,
   Assert<Equal<Omit<MoveResult, 'outcome' | 'foldersDeleted'>, Required<MoveResourceResponseDto>>>,
 ];

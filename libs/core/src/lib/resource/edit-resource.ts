@@ -43,6 +43,8 @@ export interface EditResourceChanges {
 export interface EditResourceOptions extends OpenTranslatorOptions, MutationSinkOptions {}
 
 export interface EditResourceResult {
+  /** Problems pruning the source folder after a completed move. */
+  readonly warnings?: string[];
   /** The entry's key after the edit: the destination key when it moved. */
   readonly resolvedKey: string;
   readonly updated: boolean;
@@ -214,6 +216,7 @@ export async function editResource(
     resolvedKey,
     updated: true,
     entry: updatedEntry,
+    ...(moved?.warnings && { warnings: moved.warnings }),
     ...(skippedLocales !== undefined && { skippedLocales }),
     ...(baseValue !== undefined && {
       terminology: withTranslatorProblems(
@@ -267,7 +270,7 @@ function moveEntry(
   sourceKey: string,
   destinationKey: string,
   onMutation?: MutationSink,
-): { resolvedKey: string; entry: ResourceTreeEntry } {
+): { resolvedKey: string; entry: ResourceTreeEntry; warnings?: string[] } {
   const plan = planMove({
     source: collection,
     destination: collection,
@@ -282,5 +285,5 @@ function moveEntry(
   if (!moved) {
     throw new CoreOperationError(relocation.errors.join('; ') || `Resource ${sourceKey} was not moved`);
   }
-  return { resolvedKey: moved.to, entry: moved.entry };
+  return { resolvedKey: moved.to, entry: moved.entry, ...(relocation.warnings && { warnings: relocation.warnings }) };
 }
