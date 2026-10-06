@@ -372,7 +372,7 @@ describe('exportCommand (real project)', () => {
     });
     const result = await run();
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('conflicts with parent buttons');
+    expect(result.stderr).toContain('buttons has a value and child keys; skipped buttons.ok');
     expect(result.stderr).toContain('Errors (2)');
   });
   it('should display a locale whose export failed while continuing with other locales', async () => {

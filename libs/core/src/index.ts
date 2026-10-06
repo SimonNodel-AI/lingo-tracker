@@ -45,7 +45,6 @@ export {
   deleteBundleDefinition,
   generateBundles,
   generatePreparedBundle,
-  describeTypeOutcome,
   type PrepareBundleRunParams,
   type PreparedBundleRun,
   planBundle,
@@ -73,6 +72,7 @@ export {
   planProjectTermsUpdate,
   readProjectTermsView,
   preferredTerminologyRequestFromFlags,
+  type ProjectTermsConfigView,
   type ProjectTermsView,
   type PreferredTerminologyFlags,
   type ResolvedProtectedTerms,
@@ -82,63 +82,44 @@ export {
   updateProjectTerms,
 } from './lib/config';
 export { assertCollectionFields } from './lib/config/collection-entry';
-export { assertProtectedTerms } from './lib/config/set-protected-terms';
+export { assertProtectedTerms } from './lib/config/protected-terms-request';
 export type {
   ProtectedTermsChange,
   ProjectTermsUpdate,
   ProjectTermsUpdatePlan,
-  ProjectTermsUpdateResult,
+  ProjectTermsUpdateReport,
   ProjectTermsUpdateView,
 } from './lib/config/update-project-terms';
 export {
   AutoTranslationDisabledError,
-  BaseLocaleImmutableError,
-  BundleAlreadyExistsError,
   BundleNotFoundError,
-  CannotTranslateBaseLocaleError,
-  CollectionAlreadyExistsError,
   CollectionNotFoundError,
-  CollectionRenameBundleConflictError,
-  CollectionRequiredByBundleError,
-  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
   type CollectionTagEditProblem,
   type ErrorKind,
-  FolderMoveIntoDescendantError,
-  FolderNotFoundError,
-  type FolderPathPart,
   GlossaryExtractorError,
   ImportSourceError,
-  InvalidBundleDefinitionError,
-  InvalidBundleLocalesError,
   InvalidCollectionError,
-  InvalidCollectionFolderError,
   InvalidConfigError,
-  InvalidFolderPathError,
-  InvalidLocaleError,
-  InvalidNameError,
   InvalidProjectTermsEditError,
   isProtectedTermsEditProblem,
   isPreferredTerminologyEditProblem,
   type ProtectedTermsEditProblem,
   type PreferredTerminologyEditProblem,
-  InvalidResourceKeyError,
-  InvalidTranslationStatusError,
   LingoTrackerError,
-  LocaleAlreadyExistsError,
-  LocaleNotFoundError,
+  MoveConfigRequiredError,
   MultipleBundleConstantNameError,
-  NoTranslationTargetLocalesError,
-  ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
-  ResourceNotFoundError,
   TranslationError,
-  TranslationLocaleNotConfiguredError,
+  type DomainErrorCode,
+  type ErrorCode,
+  type KnownProviderErrorCode,
+  type ProviderErrorCode,
 } from './lib/errors';
 export { hasFsErrorCode } from './lib/file-io/fs-error';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
@@ -150,11 +131,9 @@ export type {
   CreateFolderResult,
   DeleteFolderParams,
   DeleteFolderResult,
-  MoveFolderParams,
-  MoveFolderResult,
 } from './lib/folder';
 // Operations: folders
-export { createFolder, deleteFolder, moveFolder } from './lib/folder';
+export { createFolder, deleteFolder } from './lib/folder';
 // Operations: glossary
 export { type BuildGlossaryOptions, type BuildGlossaryResult, buildGlossary } from './lib/glossary/build-glossary';
 export type {
@@ -190,9 +169,6 @@ export type {
   EditResourceOptions,
   EditResourceResult,
   ExistingResourcePolicy,
-  MoveResourceParams,
-  MoveResourceResult,
-  MoveResourcesOperation,
   OpenResourceFolderOptions,
   ResourceEntryMetadata,
   ResourceTranslation,
@@ -217,8 +193,6 @@ export {
   type MatchType,
   type MutationSink,
   type MutationSinkOptions,
-  moveResource,
-  moveResources,
   type NormalizedSearchRequest,
   type NormalizeEntryReport,
   normalizeSearchRequest,
@@ -232,7 +206,6 @@ export {
   ResourceTreeIndex,
   type ResourceTreeNode,
   readCollection,
-  reindexMutation,
   saveReporting,
   type SearchableResource,
   type SearchMode,
@@ -246,14 +219,13 @@ export {
 } from './lib/resource';
 export type {
   OpenTranslatorOptions,
-  PreparedTranslateLocale,
-  PreparedTranslationTargets,
+  TranslationRun,
+  LocaleTranslationRun,
+  TranslationRunExecutionOptions,
   TranslationRunOptions,
-  TranslationRunTally,
   ProviderCapabilities,
   TranslateExistingResourceOptions,
   TranslateExistingResourceResult,
-  TranslateLocaleParams,
   TranslateLocaleProgress,
   TranslateLocaleResult,
   TranslateRequest,
@@ -262,11 +234,8 @@ export type {
 } from './lib/translation';
 export {
   assertAutoTranslationEnabled,
-  prepareTranslateLocale,
-  executeTranslateLocale,
-  selectPreparedTranslateLocale,
+  prepareTranslationRun,
   translateExistingResource,
-  translateLocale,
 } from './lib/translation';
 export type {
   ResourceValidationResult,
@@ -283,3 +252,13 @@ export {
   DEFAULT_TYPE_DIST_FILE,
 } from './lib/config/init-project';
 export type { InitProjectAnswers, InitProjectResult } from './lib/config/init-project';
+
+export {
+  executeMove,
+  executeMoves,
+  type MoveRequest,
+  type MoveOptions,
+  type ExecuteMoveResult,
+} from './lib/resource/execute-move';
+export type { MoveResult } from './lib/resource/move-report';
+export { bundleResultWarnings } from './lib/bundle';

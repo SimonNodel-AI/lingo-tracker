@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { useTempDir } from '../../../testing/temp-dir.spec-helpers';
+import { BundleHierarchicalConflictError } from '../../errors';
 import { generateBundleTypes } from './generate-types';
 
 describe('generateBundleTypes (real fs)', () => {
@@ -32,6 +33,16 @@ describe('generateBundleTypes (real fs)', () => {
       ...overrides,
     });
   }
+
+  it('rejects hierarchical conflicts with a typed error before creating the output directory', () => {
+    for (const keys of [
+      ['a', 'a.b'],
+      ['a.b', 'a'],
+    ]) {
+      expect(() => generate({ keys })).toThrow(BundleHierarchicalConflictError);
+      expect(existsSync(join(root(), 'src'))).toBe(false);
+    }
+  });
 
   it('skips generation when typeDistFile is not configured', () => {
     const result = generate({ definition: definition({ typeDistFile: undefined }) });

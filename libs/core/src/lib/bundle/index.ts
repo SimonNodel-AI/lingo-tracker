@@ -18,7 +18,6 @@ export {
   type GenerateBundleResult,
   generateBundle,
   generatePreparedBundle,
-  describeTypeOutcome,
 } from './generate-bundle';
 export {
   generateBundles,
@@ -33,3 +32,4 @@ export {
   type PlanBundleParams,
   planBundle,
 } from './plan-bundle';
+export { bundleResultWarnings } from './result-warnings';

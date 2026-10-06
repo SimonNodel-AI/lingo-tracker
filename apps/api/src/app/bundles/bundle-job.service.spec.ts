@@ -180,7 +180,7 @@ describe('BundleJobService', () => {
     expect(mockGenerateBundle.mock.calls[0][0]).toMatchObject({ locales: ['en', 'fr'] });
   });
 
-  it('logs the legacy type setting warning returned by core', async () => {
+  it('keeps the legacy type setting warning in the job result without logging it again', async () => {
     mockGenerateBundle.mockImplementation(actualCore.generatePreparedBundle);
     const legacy = { ...bundleDefinition, typeDistFile: undefined, typeDist: 'types/invalid.txt' };
     const { jobId } = service.startJob({
@@ -189,7 +189,7 @@ describe('BundleJobService', () => {
     });
     await flush();
 
-    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Bundle 'main': 'typeDist' is deprecated"));
+    expect(logger.warn).not.toHaveBeenCalled();
     expect(service.getJob(jobId)?.result?.warnings).toEqual([
       expect.stringContaining("Bundle 'main': 'typeDist' is deprecated"),
       "Type generation failed for 'main': typeDistFile must end with a .ts extension (e.g. './src/types/tokens.ts'), but got: types/invalid.txt",

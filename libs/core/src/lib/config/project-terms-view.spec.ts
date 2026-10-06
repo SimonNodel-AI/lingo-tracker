@@ -3,7 +3,7 @@ import { basename, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { CollectionNotFoundError, ProtectedTermsFileError } from '../errors/lingo-tracker-error';
-import { protectedTermsTargetView, readProjectTermsView } from './project-terms-view';
+import { readProjectTermsView } from './project-terms-view';
 
 describe('readProjectTermsView', () => {
   const cwd = useTempDir();
@@ -33,18 +33,16 @@ describe('readProjectTermsView', () => {
     expect(view.protectedTerms.collections['app'].filePath).toBe(join(cwd(), 'own.json'));
     expect(view.protectedTerms.collections['inherited']).toEqual({ terms: [], filePath: undefined });
     expect(view.preferredTerminology.rules).toEqual([{ discouraged: 'Old', preferred: 'New' }]);
-    expect(view.problems.filter((problem) => problem.severity === 'warning').map((problem) => problem.message)).toEqual(
-      [expect.stringContaining('own.json')],
-    );
+    expect(view.forTarget({ collection: 'app' }).warnings).toEqual([expect.stringContaining('own.json')]);
   });
 
   it('reports broken files but only refuses protected scopes that use them', () => {
     writeFileSync(join(cwd(), 'own.json'), '{bad');
     writeFileSync(join(cwd(), 'preferred.json'), '{bad');
     const view = readProjectTermsView(project());
-    expect(view.problems.filter((problem) => problem.severity === 'error')).toHaveLength(2);
-    expect(protectedTermsTargetView(view, {}).globalTerms).toEqual([]);
-    expect(() => protectedTermsTargetView(view, { collection: 'app' })).toThrow(ProtectedTermsFileError);
+    expect(view.preferredTerminology.error).toContain('not valid JSON');
+    expect(view.forTarget({}).globalTerms).toEqual([]);
+    expect(() => view.forTarget({ collection: 'app' })).toThrow(ProtectedTermsFileError);
   });
 
   it('reads fresh files on each invocation and computes the selected effective union', () => {
@@ -52,10 +50,8 @@ describe('readProjectTermsView', () => {
     writeFileSync(join(cwd(), 'own.json'), '["Own"]');
     const first = readProjectTermsView(project());
     writeFileSync(join(cwd(), 'own.json'), '["Changed"]');
-    expect(protectedTermsTargetView(first, { collection: 'app' }).effectiveTerms).toEqual(['Global', 'Own']);
-    expect(protectedTermsTargetView(readProjectTermsView(project()), { collection: 'app' }).storedTerms).toEqual([
-      'Changed',
-    ]);
+    expect(first.forTarget({ collection: 'app' }).effectiveTerms).toEqual(['Global', 'Own']);
+    expect(readProjectTermsView(project()).forTarget({ collection: 'app' }).storedTerms).toEqual(['Changed']);
   });
 
   it('reads every scope in one pass, reporting terms and paths', () => {
@@ -79,23 +75,36 @@ describe('readProjectTermsView', () => {
   it('reports a malformed file and rejects its scope exactly as a direct read would', () => {
     writeFileSync(join(cwd(), 'global.json'), '{ "terms": [] }');
     const snapshot = readProjectTermsView(project());
-    expect(snapshot.problems).toContainEqual(
-      expect.objectContaining({ file: 'protected-terms', severity: 'error', filePath: join(cwd(), 'global.json') }),
+    expect(() => snapshot.forTarget({})).toThrow(expect.objectContaining({ filePath: join(cwd(), 'global.json') }));
+    expect(() => snapshot.forConfig()).toThrow(ProtectedTermsFileError);
+    expect(() => snapshot.forTarget({})).toThrow(ProtectedTermsFileError);
+  });
+
+  it('keeps API and selected-scope refusal order behind their intents', () => {
+    writeFileSync(join(cwd(), 'global.json'), '{bad');
+    writeFileSync(join(cwd(), 'own.json'), '{bad');
+    const snapshot = readProjectTermsView(project());
+    expect(() => snapshot.forConfig()).toThrow(expect.objectContaining({ filePath: join(cwd(), 'own.json') }));
+    expect(() => snapshot.forTarget({ collection: 'app' })).toThrow(
+      expect.objectContaining({ filePath: join(cwd(), 'global.json') }),
     );
-    expect(() => protectedTermsTargetView(snapshot, {})).toThrow(ProtectedTermsFileError);
+  });
+
+  it('returns preferred-file failures as config data without rejecting the API view', () => {
+    writeFileSync(join(cwd(), 'preferred.json'), '{bad');
+    const view = readProjectTermsView(project()).forConfig();
+    expect(view.preferredTerminology.error).toContain('not valid JSON');
+    expect(view.preferredTerminology.rules).toEqual([]);
   });
 
   it('rejects an unknown collection with CollectionNotFoundError', () => {
-    expect(() => protectedTermsTargetView(readProjectTermsView(project()), { collection: 'missing' })).toThrow(
-      CollectionNotFoundError,
-    );
+    expect(() => readProjectTermsView(project()).forTarget({ collection: 'missing' })).toThrow(CollectionNotFoundError);
   });
 
   it('returns warnings, stored lists, and the effective union before an edit', () => {
     writeFileSync(join(cwd(), 'own.json'), '["Pixel"]');
     const sourceConfig = { ...project().sourceConfig, protectedTermsFile: 'missing.json' };
-    const read = () =>
-      protectedTermsTargetView(readProjectTermsView({ projectRoot: cwd(), sourceConfig }), { collection: 'app' });
+    const read = () => readProjectTermsView({ projectRoot: cwd(), sourceConfig }).forTarget({ collection: 'app' });
     const view = read();
     expect(view.warnings).toEqual([
       `Protected terms file not found: ${join(cwd(), 'missing.json')}. Treating as an empty list.`,

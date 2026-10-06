@@ -81,4 +81,24 @@ describe('printRunReport', () => {
     expect(report({ outcome: 'succeeded' }).result).toBeUndefined();
     expect(report({ outcome: 'failed' }).result).toEqual({ exitCode: 1 });
   });
+  it('prints the declared JSON payload byte for byte, with diagnostics still on stderr', () => {
+    const payload = { collections: [{ collectionName: 'main', entriesProcessed: 2 }], totals: { entriesProcessed: 2 } };
+    const result = report({
+      presentation: { kind: 'json', payload },
+      counts: { 'Total entries processed': 2 },
+      section: 'Summary',
+      notice: 'Dry run completed - no changes were made.',
+      warnings: ['warning'],
+      errors: ['failure'],
+      outcome: 'failed',
+    });
+    expect(result.stdout).toBe(`${JSON.stringify(payload, null, 2)}\n`);
+    expect(result.stderr).toBe('⚠️  Warnings (1):\n  - warning\n❌ Errors (1):\n  - failure\n');
+    expect(result.result).toEqual({ exitCode: 1 });
+  });
+  it('counts a multiline failure once and keeps its diagnostic details', () => {
+    const result = report({ errors: ['Failure\nCause'], outcome: 'failed' });
+    expect(result.stderr).toBe('❌ Errors (1):\n  - Failure\n  Cause\n');
+    expect(result.result).toEqual({ exitCode: 1 });
+  });
 });

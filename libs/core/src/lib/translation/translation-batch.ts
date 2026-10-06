@@ -1,6 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import { groupByFolder } from '../resource/folder-batch';
-import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import { resolveMutationSink, type MutationSinkOptions, upsertMutation } from '../resource/resource-mutation';
 import { type TranslationSnapshot, writeBackTranslations } from './translation-write-back';
 import type { Translator, TranslationOutcome } from './translator';

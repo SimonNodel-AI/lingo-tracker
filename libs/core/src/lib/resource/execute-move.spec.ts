@@ -5,8 +5,14 @@ import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helper
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
-import { moveResource } from './move-resource';
+import {
+  InvalidResourceKeyError,
+  MoveConfigRequiredError,
+  CollectionNotFoundError,
+  ReadOnlyCollectionError,
+} from '../errors/lingo-tracker-error';
+import * as moveInput from './move-input';
+import { executeMove, executeMoves, type MoveRequest } from './execute-move';
 
 function collection(translationsFolder: string, name = 'main'): Collection {
   return {
@@ -59,7 +65,7 @@ describe('Move Resource (real fs)', () => {
         }),
       );
 
-      const result = await moveResource(collection(testDir), {
+      const result = await executeMove(collection(testDir), {
         source: 'common.buttons.ok',
         destination: 'common.actions.ok',
       });
@@ -107,7 +113,7 @@ describe('Move Resource (real fs)', () => {
         }),
       );
 
-      const result = await moveResource(collection(testDir), {
+      const result = await executeMove(collection(testDir), {
         source: 'a.key',
         destination: 'b.key',
         override: false,
@@ -147,7 +153,7 @@ describe('Move Resource (real fs)', () => {
         }),
       );
 
-      const result = await moveResource(collection(testDir), {
+      const result = await executeMove(collection(testDir), {
         source: 'a.key',
         destination: 'b.key',
         override: true,
@@ -177,7 +183,7 @@ describe('Move Resource (real fs)', () => {
         }),
       );
 
-      const result = await moveResource(collection(testDir), {
+      const result = await executeMove(collection(testDir), {
         source: 'common.buttons.*',
         destination: 'common.actions',
       });
@@ -220,7 +226,7 @@ describe('Move Resource (real fs)', () => {
         }),
       );
 
-      const result = await moveResource(collection(testDir), {
+      const result = await executeMove(collection(testDir), {
         source: 'common.buttons.*',
         destination: 'common.actions',
       });
@@ -262,13 +268,9 @@ describe('Move Resource (real fs)', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       fs.mkdirSync(collectionBFolder, { recursive: true });
 
-      const result = await moveResource(
+      const result = await executeMove(
         collection(collectionAFolder, 'collectionA'),
-        {
-          source: 'common.buttons.ok',
-          destination: 'common.actions.ok',
-          toCollection: 'collectionB',
-        },
+        { source: 'common.buttons.ok', destination: 'common.actions.ok', toCollection: 'collectionB' },
         { config: moveConfig('collectionB', collectionBFolder) },
       );
 
@@ -310,13 +312,9 @@ describe('Move Resource (real fs)', () => {
       const collectionBFolder = join(testDir, 'collectionB');
       fs.mkdirSync(collectionBFolder, { recursive: true });
 
-      const result = await moveResource(
+      const result = await executeMove(
         collection(collectionAFolder, 'collectionA'),
-        {
-          source: 'common.buttons.*',
-          destination: 'common.actions',
-          toCollection: 'collectionB',
-        },
+        { source: 'common.buttons.*', destination: 'common.actions', toCollection: 'collectionB' },
         { config: moveConfig('collectionB', collectionBFolder) },
       );
 
@@ -342,17 +340,19 @@ describe('Move Resource (real fs)', () => {
       const invalidPath = join(testDir, 'invalid@char');
       const exists = vi.spyOn(fs, 'existsSync');
 
-      await expect(
-        moveResource(collection(testDir), {
+      expect(() =>
+        executeMove(collection(testDir), {
           source: invalidPattern,
           destination: 'dest',
         }),
-      ).rejects.toMatchObject({
-        name: InvalidResourceKeyError.name,
-        kind: 'invalid',
-        key: invalidPattern,
-        message: 'Key validation: Invalid key segment "invalid@char". Segments must match pattern [A-Za-z0-9_-]+',
-      });
+      ).toThrow(
+        expect.objectContaining({
+          name: InvalidResourceKeyError.name,
+          kind: 'invalid',
+          key: invalidPattern,
+          message: 'Key validation: Invalid key segment "invalid@char". Segments must match pattern [A-Za-z0-9_-]+',
+        }),
+      );
       expect(exists).not.toHaveBeenCalledWith(invalidPath);
     });
   });
@@ -361,7 +361,7 @@ describe('Move Resource (real fs)', () => {
     writeFolderFiles(testDir, 'source.good', { entries: { ok: { source: 'OK' } } });
     writeFolderFiles(testDir, 'source.bad', { entries: '{ invalid json' });
 
-    const result = await moveResource(collection(testDir), { source: 'source.*', destination: 'dest' });
+    const result = await executeMove(collection(testDir), { source: 'source.*', destination: 'dest' });
 
     expect(result.movedCount).toBe(1);
     expect(result.errors).toHaveLength(1);
@@ -370,10 +370,138 @@ describe('Move Resource (real fs)', () => {
   });
 
   it('fails a single resource move when the source does not exist', async () => {
-    const result = await moveResource(collection(testDir), { source: 'missing.key', destination: 'dest.key' });
+    const result = await executeMove(collection(testDir), {
+      source: 'missing.key',
+      destination: 'dest.key',
+    });
 
     expect(result.movedCount).toBe(0);
     expect(result.errors).toHaveLength(1);
     expect(result.outcome).toBe('failed');
+  });
+  it('throws typed missing config for every selection before any filesystem work', async () => {
+    const exists = vi.spyOn(fs, 'existsSync');
+    for (const kind of ['key', 'pattern', 'folder'] as const) {
+      expect(() =>
+        executeMove(collection(testDir), {
+          ...(kind === 'folder' ? { kind: 'folder' as const } : {}),
+          source: kind === 'pattern' ? 'source.*' : 'source',
+          destination: 'dest',
+          toCollection: 'other',
+        }),
+      ).toThrow(
+        expect.objectContaining({ name: MoveConfigRequiredError.name, code: 'MOVE_CONFIG_REQUIRED', kind: 'invalid' }),
+      );
+    }
+    expect(exists).not.toHaveBeenCalled();
+  });
+
+  it('throws destination refusals for each single selection and reports them in batches without mutations', () => {
+    const onMutation = vi.fn();
+    const write = vi.spyOn(fs, 'writeFileSync');
+    const config = {
+      ...moveConfig('vendor', 'vendor'),
+      collections: { vendor: { translationsFolder: 'vendor', readOnly: true } },
+    };
+    for (const source of ['source.key', 'source.*']) {
+      for (const kind of [undefined, 'folder'] as const) {
+        for (const name of ['missing', 'vendor']) {
+          const error =
+            name === 'missing' ? new CollectionNotFoundError(name, 'destination') : new ReadOnlyCollectionError(name);
+          const request: MoveRequest = {
+            ...(kind === 'folder' ? { kind } : {}),
+            source: kind === 'folder' ? 'source' : source,
+            destination: 'dest',
+            toCollection: name,
+          };
+          expect(() => executeMove(collection(testDir), request, { config, onMutation })).toThrow(error);
+          expect(executeMoves(collection(testDir), [request], { config, onMutation })).toMatchObject({
+            outcome: 'failed',
+            movedCount: 0,
+            errors: [error.message],
+          });
+        }
+      }
+    }
+    expect(write).not.toHaveBeenCalled();
+    expect(onMutation).not.toHaveBeenCalled();
+  });
+
+  it('validates batch resource selections exactly once before execution', async () => {
+    const validate = vi.spyOn(moveInput, 'validateMoveInput');
+    await executeMoves(collection(testDir), [
+      { source: 'missing.key', destination: 'dest.key' },
+      { source: 'missing.*', destination: '' },
+    ]);
+    expect(validate).toHaveBeenCalledTimes(2);
+  });
+
+  it('prevalidates folder inputs and reports missing config per batch operation', () => {
+    const onMutation = vi.fn();
+    const write = vi.spyOn(fs, 'writeFileSync');
+    const first: MoveRequest = { source: 'source.ok', destination: 'dest.ok', toCollection: 'other' };
+    expect(() =>
+      executeMoves(collection(testDir), [first, { kind: 'folder', source: 'invalid@folder', destination: 'dest' }], {
+        onMutation,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'INVALID_FOLDER_PATH' }));
+    expect(
+      executeMoves(
+        collection(testDir),
+        [
+          first,
+          { source: 'source.*', destination: 'dest', toCollection: 'other' },
+          { kind: 'folder', source: 'source', destination: 'dest', toCollection: 'other' },
+        ],
+        { onMutation },
+      ),
+    ).toMatchObject({ outcome: 'failed', movedCount: 0, errors: Array(3).fill(new MoveConfigRequiredError().message) });
+    expect(write).not.toHaveBeenCalled();
+    expect(onMutation).not.toHaveBeenCalled();
+  });
+
+  it('infers key and pattern selections from source addresses', () => {
+    writeFolderFiles(testDir, 'source', { entries: { ok: { source: 'OK' }, cancel: { source: 'Cancel' } } });
+    expect(executeMove(collection(testDir), { source: 'source.ok', destination: 'dest.ok' }).movedCount).toBe(1);
+    expect(executeMove(collection(testDir), { source: 'source.*', destination: 'other' }).movedCount).toBe(1);
+  });
+
+  it('throws for a missing folder in single and batch moves before earlier selections write', () => {
+    writeFolderFiles(testDir, 'source', { entries: { ok: { source: 'OK' } } });
+    const onMutation = vi.fn();
+    const write = vi.spyOn(fs, 'writeFileSync');
+    const missing: MoveRequest = { kind: 'folder', source: 'absent', destination: 'dest' };
+    expect(() => executeMove(collection(testDir), missing, { onMutation })).toThrow(
+      expect.objectContaining({ code: 'FOLDER_NOT_FOUND' }),
+    );
+    expect(() =>
+      executeMoves(collection(testDir), [{ source: 'source.ok', destination: 'dest.ok' }, missing], { onMutation }),
+    ).toThrow(expect.objectContaining({ code: 'FOLDER_NOT_FOUND' }));
+    expect(write).not.toHaveBeenCalled();
+    expect(onMutation).not.toHaveBeenCalled();
+  });
+
+  it('aggregates folder removals and continues mixed selections after a destination refusal', async () => {
+    writeFolderFiles(testDir, 'source', { entries: { ok: { source: 'OK' } } });
+    writeFolderFiles(testDir, 'tree', { entries: { ok: { source: 'Folder OK' } } });
+    const result = await executeMoves(
+      collection(testDir),
+      [
+        { source: 'source.*', destination: 'ignored', toCollection: 'missing' },
+        { source: 'source.ok', destination: 'dest.ok' },
+        { kind: 'folder', source: 'tree', destination: 'shared' },
+      ],
+      { config: moveConfig('main', testDir) },
+    );
+    expect(result).toEqual({
+      outcome: 'failed',
+      movedCount: 2,
+      foldersDeleted: 1,
+      warnings: [],
+      errors: [new CollectionNotFoundError('missing', 'destination').message],
+    });
+    expect(fs.existsSync(join(testDir, 'tree'))).toBe(false);
+    expect(fs.existsSync(join(testDir, 'source'))).toBe(true);
+    expect(fs.existsSync(join(testDir, 'shared', 'tree', RESOURCE_ENTRIES_FILENAME))).toBe(true);
   });
 });

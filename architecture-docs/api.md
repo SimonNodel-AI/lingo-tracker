@@ -11,6 +11,7 @@ Return to [architecture README](README.md).
 - [Endpoint Reference](#endpoint-reference)
 - [Component Diagram](#component-diagram)
 - [Error Mapping](#error-mapping)
+- [Completed Outcome HTTP Policy](#completed-outcome-http-policy)
 - [Static File Serving](#static-file-serving)
 - [Collection Index](#collection-index)
   - [Interface](#interface)
@@ -86,7 +87,7 @@ Renaming a collection through `PUT` updates every explicit bundle reference in t
 
 Bundle definitions live under `bundles` in `.lingo-tracker.json` and are exposed on `GET /config`. Generation runs as an async job (one at a time, in order) that the client polls. Its service has a separate [Job Registry](glossary.md#job-registry) instance from translation jobs.
 
-Bundle create, update, and delete answer 409 if the config changed after this request read it. The [Bundle Definition](glossary.md#bundle-definition) type and its rules are in `@simoncodes-ca/domain`; `BundleDefinitionDto` is an alias of the domain type, so no mapper copies it. The controller does not validate for create and update: it passes the name verbatim and the body definition to core's `addBundleDefinition` / `updateBundleDefinition`, which trim names, normalize definitions, validate and throw typed errors. The dry run passes an unsaved definition to core `planBundle`, which uses [Bundle Run Preparation](glossary.md#bundle-run-preparation) with the full domain check. For generation, the job service prepares the saved bundle synchronously before queuing, checking its name and requested locales only: unknown names (including `constructor`) answer 404 and invalid locale filters answer 400. A saved bundle referencing a deleted collection still answers 202 and completes with a warning. The queued run consumes that prepared result, including its bundle key, root and deprecated type-setting warning. The job service logs that warning even if generation fails. Invalid supplied definitions answer 400 `{ statusCode, message: 'Invalid bundle definition', error, errors[] }`, where `errors` holds every message from the domain rules (see [Error Mapping](#error-mapping)). The Tracker bundle form runs the same check before it submits, and the Tracker store shows a 400 as `Invalid bundle definition: <errors joined by "; ">`.
+Bundle create, update, and delete answer 409 if the config changed after this request read it. The [Bundle Definition](glossary.md#bundle-definition) type and its rules are in `@simoncodes-ca/domain`; `BundleDefinitionDto` is an alias of the domain type, so no mapper copies it. The controller does not validate for create and update: it passes the name verbatim and the body definition to core's `addBundleDefinition` / `updateBundleDefinition`, which trim names, normalize definitions, validate and throw typed errors. The dry run passes an unsaved definition to core `planBundle`, which uses [Bundle Run Preparation](glossary.md#bundle-run-preparation) with the full domain check. For generation, the job service prepares the saved bundle synchronously before queuing, checking its name and requested locales only: unknown names (including `constructor`) answer 404 and invalid locale filters answer 400. A saved bundle referencing a deleted collection still answers 202 and completes with a warning. The queued run consumes cached selections from that prepared result. Selected locale conflicts fail the job before writes with `BUNDLE_HIERARCHICAL_CONFLICT`. Base conflicts block only runs that request types or debug keys. Duplicate type-token paths name both source keys. Selection progress sets the current locale and file before reading. Direct typed error mapping uses HTTP 400. The run consumes the prepared result, including its bundle key, root and deprecated type-setting warning. The job service logs that warning even if generation fails. Invalid supplied definitions answer 400 `{ statusCode, message: 'Invalid bundle definition', error, errors[] }`, where `errors` holds every message from the domain rules (see [Error Mapping](#error-mapping)). The Tracker bundle form runs the same check before it submits, and the Tracker store shows a 400 as `Invalid bundle definition: <errors joined by "; ">`.
 
 Core trims create and rename names. A rename to the current name remains a plain update. A blank bundle create name remains 400 with `errors: ['Bundle name is required.']`.
 
@@ -134,6 +135,7 @@ graph TD
             CFGMAP["config.mapper\nLingoTrackerConfig → LingoTrackerConfigDto"]
             SRCHMAP["search-result.mapper\nQuery → SearchRequest\nSearchPage + Collection → SearchResultsDto"]
             RESMAP["resource-response.mapper\nCore results → Resource response DTOs"]
+            FOLDMAP["folder-response.mapper\nCore results → Folder response DTOs"]
             STATUSMAP["index-status.mapper\nIndex read status → Retry body"]
         end
 
@@ -141,7 +143,7 @@ graph TD
     end
 
     subgraph core["@simoncodes-ca/core"]
-        COREOPS["addResource · addResources · editResource · deleteResource\nmoveResource · moveResources · createFolder · deleteFolder\nmoveFolder · addLocaleToCollection\nremoveLocaleFromCollection · readCollection\ntranslateExistingResource · translateLocale\nResourceTreeIndex · searchResources"]
+        COREOPS["addResource · addResources · editResource · deleteResource\nexecuteMove · executeMoves · createFolder · deleteFolder\nexecuteMove (folder) · addLocaleToCollection\nremoveLocaleFromCollection · readCollection\ntranslateExistingResource · prepareTranslationRun\nResourceTreeIndex · searchResources"]
     end
 
     TRACKER -->|"REST /api/*"| controllers
@@ -162,7 +164,7 @@ graph TD
     RESC --> SRCHMAP
     RESC --> RESMAP
     RESC --> STATUSMAP
-    FOLDC --> TREEMP
+    FOLDC --> FOLDMAP
     CONFIGC --> CFGMAP
     COLLC --> COLMAP
 
@@ -171,7 +173,7 @@ graph TD
     RESC -->|"delegate writes"| COREOPS
     FOLDC -->|"delegate writes"| COREOPS
     LOCALEC -->|"delegate writes"| COREOPS
-    JOBS -->|"translateLocale()"| COREOPS
+    JOBS -->|"LocaleTranslationRun.execute()"| COREOPS
 
     style api fill:#d1ecf1,stroke:#17a2b8,color:#000
     style controllers fill:#e8f4fd,stroke:#17a2b8,color:#000
@@ -190,6 +192,12 @@ Config-writing routes use `ConfigService.openProject()` or an opened collection 
 
 ---
 
+## Completed Outcome HTTP Policy
+
+A completed delete or move report uses the route's normal success status even when core returns `outcome: 'failed'`. Resource deletion returns HTTP 200; resource and folder moves are POST routes and return HTTP 201. Per-item failures stay in `errors`, alongside any successful count. Controllers do not turn these completed outcomes into HTTP errors. The CLI uses the same internal outcome to select an exit code. Response DTOs currently exclude `outcome`; the API mappers project it away. Thrown precondition and operational errors still use the exception filter below; folder deletion throws on failure instead of returning a failed report.
+
+---
+
 ## Error Mapping
 
 Config-writing routes open the config through `ConfigService`: `PUT /config`; `POST /collections`; `PUT` and `DELETE /collections/:collectionName`; `POST /collections/:collectionName/locales`; `DELETE /collections/:collectionName/locales/:locale`; and `POST`, `PUT`, and `DELETE /bundles` (with the name parameter on updates and deletes). A missing config file answers 404 `Configuration file not found`; malformed JSON answers 500 `Invalid configuration file format`. Collection creation and deletion, and bundle create, update, and delete previously returned 500 with core's read error message for these cases.
@@ -198,7 +206,7 @@ Config-writing routes open the config through `ConfigService`: `PUT /config`; `P
 
 `LingoTrackerExceptionFilter` (`errors/lingo-tracker-exception.filter.ts`) uses `APP_FILTER` in `app.module.ts` for global registration. It maps each core [typed error](glossary.md#typed-errors) by its required `kind`. The default statuses are `not-found` → 404, `forbidden` → 403, `conflict` → 409, and `invalid` → 400. The remaining defaults are `unavailable` → 422, `upstream` → 502, and `internal` → 500.
 
-The API owns one `HTTP_BY_CODE` table for message transforms, status overrides, and the decision to include domain `details` as response `errors`. Each rule also checks the expected `kind`, so an unrelated error with a provider code keeps its default response. The filter has no checks for specific error subclasses. `exposeMessage: false` takes precedence over these rules and keeps the generic 500 body.
+The API owns one `HTTP_BY_CODE` table for message transforms, status overrides, and the decision to include domain `details` as response `errors`. The API code table covers every `ErrorCode` and `ApiErrorCode` at compile time and preserves kind defaults for unknown runtime codes. Each rule also checks the expected `kind`, so an unrelated error with a provider code keeps its default response. The filter has no checks for specific error subclasses. `exposeMessage: false` takes precedence over these rules and keeps the generic 500 body.
 
 `TranslationError` is the only core error with kind `upstream`. The core error spec reserves that kind for translation failures. The filter uses it for the provider prefix and the default 502, including unknown provider codes. The same code table holds the translation status overrides. Core keeps its original message and provider code.
 
@@ -313,15 +321,15 @@ reindex or failed patch
 
 ### Writes: Resource Mutations
 
-Each core write with mutation support, including `addResources`, `moveResources`, and `translateLocale`, accepts `onMutation` in its last object argument. `openCollection` also accepts a default sink and exposes it on the returned `Collection`. One core helper, `resolveMutationSink`, selects `options.onMutation ?? collection.onMutation`, so explicit callbacks still win. `RouteCollectionPipe` attaches `CollectionIndex.sink` when it opens a writable collection; resource, folder, and locale controllers inherit it. Collection update and delete routes open their own handles with the same sink, preserving their registration-specific access rules. `createCollection` now reports a benign `reindex` mutation for the newly registered folder after its config write. The translation job service receives the same writable route collection and inherits its sink. Core delivers mutations synchronously after disk operations; locale translation coalesces them at each batch boundary, so the index follows disk order even when requests overlap. A successful Resource Folder save delivers an `upsert` or `remove`; one that throws delivers `reindex`, since one JSON file may already be on disk. Earlier completed batch items remain delivered if a later item fails. The sink catches and logs any index error, so indexing cannot fail a write. There is no rollback. Resource Tree Index matches mutations by absolute `translationsFolder`, including both sides of a cross-collection move.
+Core writes such as `addResources` and `executeMoves` accept `onMutation` in their last object argument. Locale runs accept this override in `prepareTranslationRun(collection, options)`. `openCollection` also accepts a default sink and exposes it on the returned `Collection`. One core helper, `resolveMutationSink`, selects `options.onMutation ?? collection.onMutation`, so explicit callbacks still win. `RouteCollectionPipe` attaches `CollectionIndex.sink` when it opens a writable collection; resource, folder, and locale controllers inherit it. Collection update and delete routes open their own handles with the same sink, preserving their registration-specific access rules. `createCollection` now reports a benign `reindex` mutation for the newly registered folder after its config write. The translation job service receives a bound run prepared from the writable route collection and inherits its sink. Core delivers mutations synchronously after disk operations; locale translation coalesces them at each batch boundary, so the index follows disk order even when requests overlap. A successful Resource Folder save delivers an `upsert` or `remove`; one that throws delivers `reindex`, since one JSON file may already be on disk. Earlier completed batch items remain delivered if a later item fails. The sink catches and logs any index error, so indexing cannot fail a write. There is no rollback. Resource Tree Index matches mutations by absolute `translationsFolder`, including both sides of a cross-collection move.
 
 | Mutation | Delivered by | Core Resource Tree Index action |
 |---|---|---|
-| `upsert` (key, entry) | `addResource` / `addResources`, `editResource` (after each source save and at the destination after a `moveTo`), `translateExistingResource`, `moveResource` / `moveResources` / `moveFolder` (destination) | Insert or replace the entry. Missing folders are created, as on disk. |
-| `remove` (key) | `deleteResource`, `moveResource` / `moveResources` / `moveFolder` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → return `reload`; the API removes the cache entry. |
+| `upsert` (key, entry) | `addResource` / `addResources`, `editResource` (after each source save and at the destination after a `moveTo`), `translateExistingResource`, `executeMove` / `executeMoves` (destination) | Insert or replace the entry. Missing folders are created, as on disk. |
+| `remove` (key) | `deleteResource`, `executeMove` / `executeMoves` (source), `editResource` with a `moveTo` (source) | Remove the entry. Missing entry → return `reload`; the API removes the cache entry. |
 | `add-folder` (path) | `createFolder` | Create the folder node (and missing parents). |
-| `remove-folder` (path) | `deleteFolder`, `moveFolder` (every removed source folder, deepest first) | Remove the folder node. Missing folder → return `reload`; the API removes the cache entry. |
-| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`, `deleteCollection`, `translateLocale`, API `createCollection`; a move, folder create/delete, or Resource Folder save whose write failed part-way | Return `reload`; the API removes the cache entry. The change is broad or uncertain. |
+| `remove-folder` (path) | `deleteFolder`, `executeMove` (every removed source folder, deepest first) | Remove the folder node. Missing folder → return `reload`; the API removes the cache entry. |
+| `reindex` | `addLocaleToCollection`, `removeLocaleFromCollection`, `updateCollection`, `deleteCollection`, locale runs, API `createCollection`; a move, folder create/delete, or Resource Folder save whose write failed part-way | Return `reload`; the API removes the cache entry. The change is broad or uncertain. |
 
 A relocation delivers a `remove` for every moved key first, then an `upsert` for every moved key. A folder move then delivers `remove-folder` for each folder it removes, deepest first. Removes come first because one batch can move an entry into a key that another entry of the same batch leaves (`a.*` to `a.b`). Thus the index follows partial moves, merges into an existing folder, and `nestUnderDestination: false` in the same way as the disk. The translate-locale job inherits the sink from its opened route collection.
 
@@ -381,12 +389,16 @@ sequenceDiagram
     participant Core as @simoncodes-ca/core
 
     UI->>RC: POST /translate-locale { locale: "fr" }
-    RC->>JS: startJob(collection, locale)
+    RC->>Core: prepareTranslationRun(collection)
+    Core-->>RC: TranslationRun handle
+    RC->>Core: handle.forLocale(locale)
+    Core-->>RC: LocaleTranslationRun
+    RC->>JS: startJob(run)
     JS->>JS: Job Registry creates UUID and queues job (status: "pending")
     JS-->>RC: pending TranslateLocaleJobDto
     RC-->>UI: 202 Accepted TranslateLocaleJobDto\n{ jobId, status: "pending", ... }
 
-    JS->>Core: executeTranslateLocale(prepared, { onProgress }) [when earlier translations settle]
+    JS->>Core: run.execute({ onProgress }) [when earlier translations settle]
 
     loop Poll until status is "completed" or "failed"
         UI->>RC: GET /translate-locale/{jobId}
@@ -402,19 +414,23 @@ sequenceDiagram
     RC-->>UI: 200 OK\n{ status: "completed", translatedCount: N, skippedCount: M }
 ```
 
-**Starting a job.** The controller calls `prepareTranslateLocale(collection, locale)` synchronously, then passes the prepared run to `startJob(prepared)`. Existing errors retain their statuses: disabled auto-translation gives 422, invalid locales give 400, and read-only collections give 403. An enabled collection without target locales now also gives 400, with the existing CLI message. The job calls `executeTranslateLocale(prepared, { onProgress })` and inherits the collection sink. Translation Run emits one collection `reindex` per batch with save attempts, including partial failures, before progress updates. A batch without save attempts emits none.
+**Starting a job.** The controller calls `prepareTranslationRun(collection).forLocale(locale)` synchronously, then passes the bound run to `startJob(run)`. Disabled auto-translation gives 422, invalid locales give 400, and read-only collections give 403. An enabled collection without target locales also gives 400, with the existing CLI message. The job calls `run.execute({ onProgress })` and inherits the collection sink.
+
+Translation Run emits one collection `reindex` per batch with save attempts, including partial failures, before progress updates. A batch without save attempts emits none.
 
 **Start and lookup protocol.** Registry `start` returns the initial pending DTO snapshot directly. The services return it to controllers, which use `@HttpCode(202)` and Nest's return handling. Registry `get` returns a fresh snapshot or raises API-local `JobNotFoundError` (kind `not-found`). Translation lookup supplies the route collection as an owner check; a wrong owner has the same 404 as an unknown or evicted ID. The filter maps kind `not-found` to Nest's `NotFoundException`, preserving `{ statusCode: 404, message, error: "Not Found" }` and the existing bundle/translation job messages. Bundle preparation stays in the bundle service; translation preconditions stay in the controller.
 
 **Job lifecycle states:** `pending` → `running` → `completed` | `failed`. The [Job Registry](glossary.md#job-registry) owns the map, queue, timestamps, error text, and DTO snapshots for both services. Each service has one registry instance: translations run serially with translations, and bundles run serially with bundles. A bundle and a translation may run concurrently. Bundle generation reads resource folders and writes its configured `dist` and optional type output; translation writes resource folders. Their usual output paths do not overlap, so this avoids two jobs writing the same files. Output paths are configurable and are not checked for overlap; a bundle may also read resources while translation writes them. Finished jobs older than 30 minutes are evicted on the next start; when the count would exceed 100, the oldest finished jobs are evicted first. Queued and running jobs are never evicted. If the process restarts, all jobs are lost and the UI must re-issue any in-progress operations.
 
-**Progress reporting.** `executeTranslateLocale()` in `@simoncodes-ca/core` accepts an `onProgress` callback. `TranslationJobService` subscribes to this callback and updates the in-memory job's `translatedCount`, `failedCount`, and `skippedCount` fields on each tick. Polling clients see live progress, not just a final result.
+**Progress reporting.** The bound run's `execute({ onProgress })` method emits `TranslateLocaleProgress`, which includes resource counts and batch position. `TranslationJobService` stores this progress value and maps its four resource counters to the unchanged HTTP DTO. Polling clients see live progress and the final result.
 
-**Unreadable folders.** `translateLocale` returns a `warnings` line for each folder the Collection Reader could not read (its resources are not translated). The service logs each one with `Logger.warn`; the DTO does not carry them.
+**Unreadable folders.** The bound run returns a `warnings` line for each folder the Collection Reader could not read (its resources are not translated). The service logs each one with `Logger.warn`; the DTO does not carry them.
 
 **Skips.** `skippedCount` and `skippedKeys` cover every resource the Translator did not store: complex ICU, a lost placeholder, a translation that dropped a [protected term](glossary.md#protected-term), or a base or target value changed during the provider call. The DTO does not carry the reason.
 
-**Error handling.** If `translateLocale()` rejects with a `TranslationError` (a missing API key, which is only checked when some resource needs work) or any other error, the job transitions to `failed` and its `error` is set: the error's message, or `An unexpected error occurred` for a rejection that is not an `Error`. `TranslateLocaleJobDto.error` carries it, so a polling client can show why the job failed. The DTO has `error` only when it is set. A provider or folder write failure in one batch does not reject: that batch's resources are listed in `failures`, and later batches continue. No retry is attempted.
+**Error handling.** If `run.execute()` rejects, the job transitions to `failed`. Its `error` contains the error's message, or `An unexpected error occurred` for a rejection that is not an `Error`. A missing API key raises `TranslationError` only when some resource needs work. `TranslateLocaleJobDto.error` carries the message, so a polling client can show why the job failed. The DTO has `error` only when it is set.
+
+A provider or folder write failure in one batch does not reject the run. That batch's resources appear in `failures`, and later batches continue. The run does not retry failures.
 
 **Clients.** The Tracker does not start or poll translate-locale jobs today; it translates one resource at a time (`POST /resources/translate`). The job endpoints serve other clients (scripts, tools). A client shows `error` for a `failed` job and can offer a manual re-trigger.
 
@@ -422,7 +438,7 @@ sequenceDiagram
 
 ## Mapper Layer
 
-The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. Response transformations happen in `apps/api/src/app/mappers/`. Request DTOs whose types already match core inputs pass through directly, including resource creation, deletion, move operations, and folder requests. Update requests still adapt `locales` to core `translations` inline. Controllers map domain responses to DTOs. Bundle definitions are the one exception: `BundleDefinitionDto` is an alias of the domain `BundleDefinition`, so the bundles controller passes it to core as it is.
+The mapper layer enforces the boundary between `@simoncodes-ca/core`'s domain models and `@simoncodes-ca/data-transfer`'s DTOs. Response transformations happen in `apps/api/src/app/mappers/`. Request DTOs whose types already match core inputs pass through directly, including resource creation, deletion, move operations, and folder requests. Update requests still adapt `locales` to core `translations` inline. Controllers use mappers only when response data needs shaping. Locale results pass through directly, typed as their response DTOs by the controller. Core owns its result interfaces independently of data-transfer; neither library imports the other. API [Response Contracts](glossary.md#response-contracts) enforce equality at this seam. Bundle definitions also pass through: `BundleDefinitionDto` is an alias of the domain `BundleDefinition`, so the bundles controller passes it to core as it is.
 
 For the entity types that mappers transform, see [domain-and-data-model.md](domain-and-data-model.md).
 
@@ -432,9 +448,10 @@ For the entity types that mappers transform, see [domain-and-data-model.md](doma
 | `resource-tree.mapper.ts` | `ResourceTreeEntry` + folder path + `Collection` → `ResourceSummaryDto` | Resolves the entry's full key against the folder it is relative to and calls the domain `buildResourceSummary`. The base locale, the target locales and the `inheritedTags` come from the opened `Collection`; nothing is guessed from the metadata. The translate and update response mappers call `buildResourceSummary` with the full key from the request or result. |
 | `collection.mapper.ts` | `LingoTrackerCollectionDto` ↔ `LingoTrackerCollection` | Bidirectional; shallow clone of `locales[]` and `tags[]` arrays to prevent aliasing. Carries the `protectedTermsFile` setting in both directions. Drops resolved `protectedTerms` on the way back to config, because terms live in a file and the collection lifecycle writes them there. |
 | `config.mapper.ts` | `ProjectTermsView` → `LingoTrackerConfigDto` | Delegates collection mapping to `collection.mapper`; bundles pass through unmapped (the DTO is the domain `BundleDefinition`); shallow clone of `locales[]`. Takes one project snapshot, including both term kinds and the workspace name. The mapper reads no files. |
-| `bundle.mapper.ts` | `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | No definition mapping: `BundleDefinitionDto` is the domain type, and the domain `normalizeBundleDefinition` does the trimming. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper copies core's written paths, includes type metadata when the type outcome is `written`, and restores the previous warning text for failed or skipped type generation so the Tracker sees it. |
+| `bundle.mapper.ts` | `BundlePlan` → `BundleDryRunResultDto`; `GenerateBundleResult` → `BundleGenerateJobResultDto` | No definition mapping: `BundleDefinitionDto` is the domain type, and the domain `normalizeBundleDefinition` does the trimming. The plan mapper drops `absolutePath` and caps `conflictKeys` at 50. The job-result mapper copies core's written paths, includes type metadata when the type outcome is `written`, and calls core's `bundleResultWarnings` for generation, config and type warnings in the existing order. The CLI uses the same projection. |
 | `search-result.mapper.ts` | `SearchResult` + `Collection` → `SearchResultDto` | The hit's Resource Summary (from its `key`, `source`, `translations` and `metadata`) plus `matchType` (`'similar-value'` for `mode=similar`), `matchedLocales`, and `similarity` (0..1) when the search was in similar mode |
-| `resource-response.mapper.ts` | Resource create, update, translate, delete and move results → endpoint response DTOs | Keeps each endpoint's optional-field rules. Supplies the full key and collection for Resource Summaries. Copies terminology findings and problems. |
+| `resource-response.mapper.ts` | Resource create, update, translate, delete and move results → endpoint response DTOs | Keeps optional-field rules, builds Resource Summaries and copies terminology. Delete and move project away internal `outcome`; resource moves also omit folder counts. |
+| `folder-response.mapper.ts` | Folder create, delete and move results → endpoint response DTOs | Builds the loaded empty insertion node using core's resolved address and the submitted name; adds `deleted: true`; omits move `outcome` and defaults absent folder counts to zero. |
 | `search-result.mapper.ts` | `SearchQuery` → `NormalizedSearchRequest`; `SearchPage` or blank outcome → `SearchResultsDto` | Translates the mode, parses the limit, and delegates normalization to core. Preserves the original query in the response. |
 | `resource-tree.mapper.ts` | Tree endpoint result + `includeNested` → `ResourceTreeDto` | Includes nested entries only for `includeNested=true`. Resolves their addresses against the requested folder, including the collection root. |
 | `index-status.mapper.ts` | Unavailable `TreeRead` status → `TreeStatusResponseDto` | Supplies the existing retry status and message. The controller sets HTTP 202. |
@@ -443,13 +460,17 @@ The request and index-status adapters belong in `mappers/` because they translat
 
 The resource response mappers preserve the existing endpoint differences. Translate always includes `skippedLocales`, including an empty array, and omits empty `warnings`. Create omits empty `skippedLocales`. Update always includes `skippedLocales`, `message`, and `resource` as object fields, even when their values are `undefined`. JSON serialization omits those undefined values. Create and update omit `terminology` only when both findings and problems are empty or absent.
 
+The [Folder Response Mapper](glossary.md#folder-response-mapper) owns folder response shaping. Creation preserves the submitted name, including multiple segments, and uses core's resolved `folderAddress` for both `fullPath` and tree `path`. It returns a loaded empty tree even when `created` is false, preserving the existing insertion response. Deletion adds `deleted: true`; a failed folder deletion throws before mapping. Folder moves reuse `mapMoveResourcesResultToDto` for the common payload, then add the folder count while preserving the response field order.
+
+Core's delete and move results own their payload fields, internal `outcome`, and optional move folder counts. `response-contracts.ts` checks equality of locale results against their DTOs (normalizing readonly properties), delete results against `DeleteResourceResponseDto` after omitting `outcome`, and move results against `Required<MoveResourceResponseDto>` after omitting `outcome` and `foldersDeleted`. Adding, removing, or changing payload fields fails API typecheck. `MoveFolderResponseDto` reuses the required diagnostics shape within data-transfer. These checks introduce no core → data-transfer dependency. Delete and move mappers remain because these current core results are not structurally equal to the HTTP payloads. None of these DTOs has an `outcome` field, so the projections omit it consistently and keep the wire contract unchanged.
+
 Delete always includes the `errors` object field, even when its value is `undefined`. Move always includes `warnings` and `errors`, including empty arrays. Blank search responses use `query || ''`; normal search responses use `query ?? ''`. These rules remain unchanged.
 
 The translate-locale job service already returns a DTO. The controller passes it to `response.status(202).json(job)` without another mapper. The route decorators, HTTP statuses, and headers remain unchanged.
 
 **Why does `config.mapper.ts` take a project snapshot?** Protected terms live in JSON files outside `.lingo-tracker.json`. Building the DTO therefore requires reading the filesystem.
 
-The mapper keeps no file access. `ConfigController.getConfig()` opens the project and passes core `readProjectTermsView(project)` to `mapConfigToDto(snapshot)`. The snapshot includes protected terms, preferred rules, file paths, file problems, and workspace name. The controller rejects the first broken protected file, checking collections before the global scope. The mapper preserves JSON fields and their order. Preferred-file problems remain advisory.
+The mapper keeps no file access. `ConfigController.getConfig()` opens the project and passes core `readProjectTermsView(project).forConfig()` to `mapConfigToDto(snapshot)`. The snapshot includes protected terms, preferred rules, file paths and workspace name. Core rejects the first broken protected file, checking collections before the global scope. The mapper preserves JSON fields and their order. Preferred-file problems remain advisory.
 
 The resolved terms and their file paths then reach the UI as read-only DTO fields, `protectedTerms` and `protectedTermsFilePath`. The writable `protectedTermsFile` setting travels alongside them.
 
@@ -458,3 +479,7 @@ The resolved terms and their file paths then reach the UI as read-only DTO field
 `PUT /config` sends its protected-terms and preferred-terminology arrays to core `updateProjectTerms()` for one validation and write. Both kinds of request open the config through `ConfigService`; a missing file answers 404 and malformed JSON answers 500 with the standard read message. Invalid preferred-terminology replacement shape answers 400 with `Preferred terminology replacement must be an array of rules`; invalid rules keep their row details. `POST` and `PUT /collections` check the protected-terms array before writing the collection entry, so a malformed list answers 400 with the config file unchanged.
 
 Config and term updates share the [Config Write Transaction](glossary.md#config-write-transaction). Collection create restores config if a companion terms write fails. Collection update restores config only when no locale file write was attempted. After a locale write attempt, a terms failure leaves the new config consistent with the locale files. `PUT /config` maps protected-term arrays to a global `replace` change. Response JSON, success messages, and HTTP error mappings stay unchanged.
+
+### Move execution
+
+Resource and folder move routes call core's synchronous [Move Executor](glossary.md#move-executor), whose error policy owns the single-versus-batch distinction. The resources route passes submitted source addresses directly to `executeMoves`; core infers wildcard patterns. The folders route passes an explicit folder selection to `executeMove`. Neither adapter catches destination errors or adds diagnostic fields. A missing folder-move destination retains HTTP 404 and the existing Nest error body; a read-only destination retains HTTP 403. Resource batches retain their move response body with per-operation errors. CLI errors retain their existing runner presentation. `MOVE_CONFIG_REQUIRED` has kind `invalid` and maps to HTTP 400 in the exhaustive code table.

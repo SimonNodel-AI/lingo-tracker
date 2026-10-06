@@ -1,8 +1,10 @@
+import { ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
 import { describe, expect, it } from 'vitest';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
   BundleAlreadyExistsError,
+  BundleHierarchicalConflictError,
   BundleNotFoundError,
   CannotTranslateBaseLocaleError,
   CollectionAlreadyExistsError,
@@ -34,6 +36,7 @@ import {
   LingoTrackerError,
   LocaleAlreadyExistsError,
   LocaleNotFoundError,
+  MoveConfigRequiredError,
   MultipleBundleConstantNameError,
   NoTranslationTargetLocalesError,
   ParentDirectoryMissingError,
@@ -58,6 +61,13 @@ describe('LingoTrackerError subclasses', () => {
   });
 
   const cases: ReadonlyArray<{ error: LingoTrackerError; name: string; code: string; message: string }> = [
+    {
+      error: new BundleHierarchicalConflictError('main', ['a.b']),
+      name: 'BundleHierarchicalConflictError',
+      code: 'BUNDLE_HIERARCHICAL_CONFLICT',
+      message:
+        "Hierarchical conflicts in bundle 'main': a.b. Remove the entry or its children from bundle 'main'; for token collisions, rename one of the keys.",
+    },
     {
       error: new ConfigNotFoundError('/w/.lingo-tracker.json'),
       name: 'ConfigNotFoundError',
@@ -268,10 +278,24 @@ describe('LingoTrackerError subclasses', () => {
     new ConfigChangedError(),
     new CannotTranslateBaseLocaleError('en'),
     new TranslationLocaleNotConfiguredError('ja', ['en']),
+    new MoveConfigRequiredError(),
     new MultipleBundleConstantNameError(),
     new InvalidBundleLocalesError('bad locale'),
     new CoreOperationError('operation failed'),
   ];
+
+  it('covers every declared domain code with a known subclass code', () => {
+    const instances = [...cases.map(({ error }) => error), ...additional];
+    const domainCodes: readonly string[] = Object.keys(ERROR_CODES);
+    const knownCodes: readonly string[] = [...domainCodes, ...PROVIDER_ERROR_CODES];
+    for (const error of instances) {
+      expect(knownCodes).toContain(error.code);
+    }
+    const producedDomainCodes = [
+      ...new Set(instances.map((error) => error.code).filter((code) => domainCodes.includes(code))),
+    ].sort();
+    expect(producedDomainCodes).toEqual([...domainCodes].sort());
+  });
 
   it('requires a kind on every error class in the core errors module', () => {
     const instances = [...cases.map(({ error }) => error), ...additional];
@@ -326,5 +350,6 @@ describe('LingoTrackerError subclasses', () => {
     expect(new LocaleNotFoundError('ja', 'app')).toMatchObject({ locale: 'ja', collectionName: 'app' });
     expect(new InvalidFolderPathError('parent path', 'x y')).toMatchObject({ part: 'parent path', segment: 'x y' });
     expect(new InvalidBundleDefinitionError(['a']).errors).toEqual(['a']);
+    expect(new BundleHierarchicalConflictError('main', ['a.b']).conflicts).toEqual(['a.b']);
   });
 });

@@ -5,7 +5,6 @@ import {
   ConfigNotFoundError,
   ConfigParseError,
   InvalidConfigError,
-  InvalidResourceKeyError,
   type LingoTrackerConfig,
   loadConfig,
 } from '@simoncodes-ca/core';
@@ -14,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseListSelection } from '../utils/prompt-utils';
 import { CommandCancelledError } from './command-cancelled-error';
 import { type CollectionNeed, type CommandSpec, defineCommand } from './command-runner';
+import * as internalErrors from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import { isInteractiveTerminal } from './terminal';
 
 vi.mock('prompts');
@@ -425,7 +425,7 @@ describe('defineCommand', () => {
     it.each([
       false,
       true,
-    ])('reports preflight and run failures through the same formatter (interactive: %s)', async (interactive) => {
+    ])('reports typed preflight and run failures before the command formatter (interactive: %s)', async (interactive) => {
       mockInteractive.mockReturnValue(interactive);
       const error = new InvalidConfigError('Cannot continue', { cause: new Error('Underlying reason') });
       const fail = () => {
@@ -440,15 +440,15 @@ describe('defineCommand', () => {
       expect(builder).not.toHaveBeenCalled();
       expect(run).not.toHaveBeenCalled();
       expect(mockPrompts).not.toHaveBeenCalled();
-      expect(formatError).toHaveBeenLastCalledWith(error, false);
-      expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Formatted failure'], ['  Underlying reason']]);
+      expect(formatError).not.toHaveBeenCalled();
+      expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Cannot continue'], ['  Underlying reason']]);
       expect(process.exitCode).toBe(1);
 
       vi.mocked(console.error).mockClear();
       await command({ run: fail, formatError }).invoke({ collection: 'main' });
 
-      expect(formatError).toHaveBeenLastCalledWith(error, true);
-      expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Formatted failure'], ['  Underlying reason']]);
+      expect(formatError).not.toHaveBeenCalled();
+      expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Cannot continue'], ['  Underlying reason']]);
       expect(process.exitCode).toBe(1);
     });
 
@@ -616,7 +616,7 @@ describe('defineCommand', () => {
       const { invoke } = command({
         collection: 'none',
         run: () => {
-          throw new InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
+          throw new internalErrors.InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
         },
       });
 
@@ -626,8 +626,8 @@ describe('defineCommand', () => {
       expect(process.exitCode).toBe(1);
     });
 
-    it('formats a message without replacing the typed error', async () => {
-      const error = new InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
+    it('keeps a typed error unchanged and bypasses the command formatter', async () => {
+      const error = new internalErrors.InvalidResourceKeyError('bad..key', 'Invalid key "bad..key"');
       const formatError = vi.fn((caught: unknown, duringRun: boolean) => {
         expect(caught).toBe(error);
         expect(duringRun).toBe(true);
@@ -643,9 +643,9 @@ describe('defineCommand', () => {
 
       await invoke({});
 
-      expect(formatError).toHaveBeenCalledTimes(1);
+      expect(formatError).not.toHaveBeenCalled();
       expect(error.message).toBe('Invalid key "bad..key"');
-      expect(console.error).toHaveBeenCalledWith('❌ Could not continue: Invalid key "bad..key"');
+      expect(console.error).toHaveBeenCalledWith('❌ Invalid key "bad..key"');
       expect(process.exitCode).toBe(1);
     });
 

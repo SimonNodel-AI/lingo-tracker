@@ -1,3 +1,4 @@
+import { createCli } from './program';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // main.ts parses process.argv when imported and lazy-imports each command module;
@@ -24,35 +25,13 @@ import { normalizeCommand } from './commands/normalize';
 import { validateCommand } from './commands/validate';
 import { deleteCollectionCommand } from './delete-collection/delete-collection';
 
-const originalArgv = process.argv;
-
 /** Imports main.ts afresh with these arguments and waits for the lazy action to finish. */
 async function runCli(...args: string[]): Promise<void> {
-  process.argv = ['node', 'lingo-tracker', ...args];
-  vi.resetModules();
-  await import('./main');
-  await vi.waitFor(() => {
-    const calls = [
-      exportCommand,
-      validateCommand,
-      addResourceCommand,
-      deleteCollectionCommand,
-      moveResourceCommand,
-      normalizeCommand,
-      findSimilarCommand,
-      importCommand,
-      editCollectionCommand,
-      protectedTermsCommand,
-    ].map((command) => vi.mocked(command).mock.calls.length);
-    if (calls.every((count) => count === 0)) {
-      throw new Error('command not called yet');
-    }
-  });
+  await createCli().parseAsync(args, { from: 'user' });
 }
 
 describe('main.ts flag wiring', () => {
   afterEach(() => {
-    process.argv = originalArgv;
     vi.clearAllMocks();
   });
 
@@ -76,7 +55,7 @@ describe('main.ts flag wiring', () => {
 
   it('parses edit-collection --set-tags before invoking the command', async () => {
     await runCli('edit-collection', 'app', '--set-tags', 'a, b');
-    expect(editCollectionCommand).toHaveBeenCalledWith('app', expect.objectContaining({ setTags: ['a', 'b'] }));
+    expect(editCollectionCommand).toHaveBeenCalledWith(expect.objectContaining({ name: 'app', setTags: ['a', 'b'] }));
   });
 
   it('parses protected-terms --set before invoking the command', async () => {

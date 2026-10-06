@@ -8,7 +8,7 @@ import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
 import { type Collection, openCollection } from './open-collection';
 import { DEFAULT_PREFERRED_TERMINOLOGY_FILENAME } from './preferred-terminology-file';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from './protected-terms-file';
-import { describeTermFileProblem, readProjectTerms, requireProtectedTerms } from './project-terms';
+import { readProjectTerms } from './project-terms';
 
 const rules = [
   { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' },
@@ -54,7 +54,8 @@ describe('Project Terms', () => {
 
     expect(terms.protectedTerms).toEqual([]);
     expect(terms.preferredTerminology).toEqual([]);
-    expect(terms.problems).toEqual([]);
+    expect(terms.forReport()).toMatchObject({ errors: [], warnings: [] });
+    expect(terms.forValidation()).toMatchObject({ warnings: [], loadError: undefined });
   });
 
   it("unites the global protected terms with the collection's own, deduped", () => {
@@ -68,7 +69,8 @@ describe('Project Terms', () => {
 
     expect(terms.protectedTerms).toEqual(['SimonCodes', 'iPhone', 'Node.js']);
     expect(terms.preferredTerminology).toEqual(rules);
-    expect(terms.problems).toEqual([]);
+    expect(terms.forReport()).toMatchObject({ errors: [], warnings: [] });
+    expect(terms.forValidation()).toMatchObject({ warnings: [], loadError: undefined });
   });
 
   it('reports each named file that does not exist as a warning', () => {
@@ -79,29 +81,18 @@ describe('Project Terms', () => {
       ),
     );
 
-    expect(terms.problems).toEqual([
-      {
-        file: 'protected-terms',
-        severity: 'warning',
-        filePath: join(cwd, 'global.json'),
-        message: `Protected terms file not found: ${join(cwd, 'global.json')}. Treating as an empty list.`,
-      },
-      {
-        file: 'protected-terms',
-        severity: 'warning',
-        filePath: join(cwd, 'own.json'),
-        message: `Protected terms file not found: ${join(cwd, 'own.json')}. Treating as an empty list.`,
-      },
-      {
-        file: 'preferred-terminology',
-        severity: 'warning',
-        filePath: join(cwd, 'rules.json'),
-        message: `Preferred terminology file not found: ${join(cwd, 'rules.json')}. Treating as an empty list.`,
-      },
+    expect(terms.forReport().warnings).toEqual([
+      `Protected terms file not found: ${join(cwd, 'global.json')}. Treating as an empty list.`,
+      `Protected terms file not found: ${join(cwd, 'own.json')}. Treating as an empty list.`,
     ]);
-    expect(describeTermFileProblem(terms.problems[2])).toBe(
+    expect(terms.forGuard().warnings).toEqual(terms.forReport().warnings);
+    expect(terms.forGuard('source').warnings).toEqual([
       `Preferred terminology file not found: ${join(cwd, 'rules.json')}. Treating as an empty list.`,
-    );
+    ]);
+    expect(terms.forValidation().warnings).toEqual([
+      ...terms.forReport().warnings,
+      ...terms.forGuard('source').warnings,
+    ]);
   });
 
   it('reports a broken file as an error, reads it as empty, and describes the skipped check', () => {
@@ -112,16 +103,15 @@ describe('Project Terms', () => {
 
     expect(terms.protectedTerms).toEqual([]);
     expect(terms.preferredTerminology).toEqual([]);
-    expect(terms.problems).toEqual([
-      expect.objectContaining({ file: 'protected-terms', severity: 'error', filePath: protectedPath }),
-      expect.objectContaining({ file: 'preferred-terminology', severity: 'error', filePath: rulesPath }),
+    const protectedError = `Protected terms checks skipped: Protected terms file is not valid JSON: ${protectedPath} (${jsonError('["iPhone",')})`;
+    const preferredError = `Preferred terminology file must contain a JSON array of rules: ${rulesPath}`;
+    expect(terms.forReport()).toMatchObject({ errors: [protectedError], warnings: [] });
+    expect(terms.forValidation()).toEqual({ warnings: [protectedError], loadError: preferredError });
+    expect(() => terms.forGuard()).toThrow(ProtectedTermsFileError);
+    expect(() => terms.forGuard('source')).toThrow(ProtectedTermsFileError);
+    expect(terms.checkBaseValue('key', 'value').problems).toEqual([
+      `Preferred terminology checks skipped: ${preferredError}`,
     ]);
-    expect(describeTermFileProblem(terms.problems[0])).toBe(
-      `Protected terms checks skipped: Protected terms file is not valid JSON: ${protectedPath} (${jsonError('["iPhone",')})`,
-    );
-    expect(describeTermFileProblem(terms.problems[1])).toBe(
-      `Preferred terminology checks skipped: Preferred terminology file must contain a JSON array of rules: ${rulesPath}`,
-    );
   });
 
   it('reads the files again on every call, so an edit on disk is seen at once', () => {
@@ -132,6 +122,51 @@ describe('Project Terms', () => {
     write(DEFAULT_PROTECTED_TERMS_FILENAME, ['Android', 'Pixel']);
 
     expect(readProjectTerms(collection).protectedTerms).toEqual(['Android', 'Pixel']);
+  });
+
+  it.each([
+    ['protected', 'missing'],
+    ['protected', 'broken'],
+    ['protected', 'ok'],
+    ['preferred', 'missing'],
+    ['preferred', 'broken'],
+    ['preferred', 'ok'],
+  ] as const)('maps a %s file in state %s by intent', (kind, state) => {
+    const protectedFile = 'protected.json';
+    const preferredFile = 'preferred.json';
+    if (state !== 'missing') {
+      write(
+        kind === 'protected' ? protectedFile : preferredFile,
+        state === 'broken' ? '{bad' : kind === 'protected' ? ['Brand'] : rules,
+      );
+    }
+    const terms = readProjectTerms(
+      open(kind === 'protected' ? { protectedTermsFile: protectedFile } : { preferredTerminologyFile: preferredFile }),
+    );
+    const broken = state === 'broken';
+    const missing = state === 'missing';
+    const report = terms.forReport();
+    const validation = terms.forValidation();
+    expect(report.errors).toHaveLength(kind === 'protected' && broken ? 1 : 0);
+    expect(report.warnings).toHaveLength(kind === 'protected' && missing ? 1 : 0);
+    expect(validation.warnings).toHaveLength(missing || (kind === 'protected' && broken) ? 1 : 0);
+    expect(validation.loadError !== undefined).toBe(kind === 'preferred' && broken);
+    if (kind === 'protected' && broken) {
+      expect(() => terms.forGuard()).toThrow(ProtectedTermsFileError);
+      expect(() => terms.forGuard('source')).toThrow(ProtectedTermsFileError);
+    } else {
+      expect(terms.forGuard().warnings).toHaveLength(kind === 'protected' && missing ? 1 : 0);
+      expect(terms.forGuard('source').warnings).toHaveLength(kind === 'preferred' && state !== 'ok' ? 1 : 0);
+    }
+  });
+
+  it('reports a shared protected file once for export notes', () => {
+    const terms = readProjectTerms(
+      open({ protectedTermsFile: 'shared.json' }, { translationsFolder: 'i18n', protectedTermsFile: 'shared.json' }),
+    );
+    expect(terms.forReport().warnings).toEqual([
+      `Protected terms file not found: ${join(cwd, 'shared.json')}. Treating as an empty list.`,
+    ]);
   });
 
   describe('checkBaseValue', () => {
@@ -177,22 +212,25 @@ describe('Project Terms', () => {
     });
   });
 
-  describe('requireProtectedTerms', () => {
+  describe('forGuard', () => {
     it('returns the terms when every protected-terms file is usable, missing named files included', () => {
       write(DEFAULT_PROTECTED_TERMS_FILENAME, ['iPhone']);
       write(DEFAULT_PREFERRED_TERMINOLOGY_FILENAME, 'not json');
       const terms = readProjectTerms(open({}, { translationsFolder: 'i18n', protectedTermsFile: 'absent.json' }));
 
-      expect(requireProtectedTerms(terms)).toEqual(['iPhone']);
+      expect(terms.forGuard().protectedTerms).toEqual(['iPhone']);
+      expect(terms.forGuard('source').warnings).toHaveLength(1);
+      expect(terms.forValidation().loadError).toContain('not valid JSON');
+      expect(terms.forReport().errors).toEqual([]);
     });
 
     it('throws ProtectedTermsFileError, naming the file, when a protected-terms file is broken', () => {
       const filePath = write(DEFAULT_PROTECTED_TERMS_FILENAME, '["iPhone", 42]');
 
-      expect(() => requireProtectedTerms(readProjectTerms(open()))).toThrow(
+      expect(() => readProjectTerms(open()).forGuard()).toThrow(
         expect.objectContaining({ code: 'INVALID_PROTECTED_TERMS_FILE', filePath }),
       );
-      expect(() => requireProtectedTerms(readProjectTerms(open()))).toThrow(ProtectedTermsFileError);
+      expect(() => readProjectTerms(open()).forGuard()).toThrow(ProtectedTermsFileError);
     });
   });
 });

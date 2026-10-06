@@ -1,3 +1,4 @@
+import { ERROR_CODES, type ProviderErrorCode } from './error-codes';
 import type { CollectionFolderProblem } from '../resource/collection-folders';
 import { type PreferredTermRule, type PreferredTermRuleError, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import { ErrorMessages, type FolderPathPart } from './error-messages';
@@ -32,13 +33,21 @@ export abstract class LingoTrackerError extends Error {
   }
 }
 
+/** A named move destination cannot be opened without project config. */
+export class MoveConfigRequiredError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor() {
+    super('Move destination resolution requires config', ERROR_CODES.MOVE_CONFIG_REQUIRED);
+  }
+}
+
 /** A source file could not be detected, read, or parsed before an import writes resources. */
 export class ImportSourceError extends LingoTrackerError {
   readonly kind = 'internal' as const;
   /** `format` keeps the CLI's format-detection message free of the `Import failed:` prefix. */
   readonly stage: 'format' | 'source';
   constructor(message: string, options?: { readonly cause?: unknown; readonly stage?: 'format' | 'source' }) {
-    super(message, 'IMPORT_SOURCE_ERROR', options);
+    super(message, ERROR_CODES.IMPORT_SOURCE_ERROR, options);
     this.stage = options?.stage ?? 'source';
   }
 }
@@ -51,7 +60,7 @@ export class InvalidImportLocaleError extends LingoTrackerError {
     super(
       `Cannot import into base locale "${baseLocale}" with strategy "${strategy}". ` +
         'Only "migration" strategy supports base locale imports.',
-      'INVALID_IMPORT_LOCALE',
+      ERROR_CODES.INVALID_IMPORT_LOCALE,
     );
   }
 }
@@ -62,7 +71,7 @@ export class CollectionBaseLocaleMismatchError extends LingoTrackerError {
   readonly collections: readonly { name: string; baseLocale: string }[];
 
   constructor(collections: readonly { name: string; baseLocale: string }[]) {
-    super(ErrorMessages.collectionBaseLocaleMismatch(collections), 'COLLECTION_BASE_LOCALE_MISMATCH');
+    super(ErrorMessages.collectionBaseLocaleMismatch(collections), ERROR_CODES.COLLECTION_BASE_LOCALE_MISMATCH);
     this.collections = collections;
   }
 }
@@ -71,7 +80,7 @@ export class CollectionBaseLocaleMismatchError extends LingoTrackerError {
 export class GlossaryNoCollectionsError extends LingoTrackerError {
   readonly kind = 'internal' as const;
   constructor() {
-    super(ErrorMessages.glossaryNoCollections(), 'GLOSSARY_NO_COLLECTIONS');
+    super(ErrorMessages.glossaryNoCollections(), ERROR_CODES.GLOSSARY_NO_COLLECTIONS);
   }
 }
 
@@ -81,7 +90,7 @@ export class GlossaryExtractorError extends LingoTrackerError {
   readonly mode: string;
 
   constructor(mode: string) {
-    super(ErrorMessages.glossaryExtractorUnavailable(mode), 'GLOSSARY_EXTRACTOR_ERROR');
+    super(ErrorMessages.glossaryExtractorUnavailable(mode), ERROR_CODES.GLOSSARY_EXTRACTOR_ERROR);
     this.mode = mode;
   }
 }
@@ -94,7 +103,7 @@ export class ConfigNotFoundError extends LingoTrackerError {
   readonly configPath: string;
 
   constructor(configPath: string) {
-    super(`${ErrorMessages.configNotFound()}: ${configPath}`, 'CONFIG_NOT_FOUND');
+    super(`${ErrorMessages.configNotFound()}: ${configPath}`, ERROR_CODES.CONFIG_NOT_FOUND);
     this.configPath = configPath;
   }
 }
@@ -106,7 +115,7 @@ export class ConfigParseError extends LingoTrackerError {
   readonly reason: string;
 
   constructor(configPath: string, reason: string) {
-    super(ErrorMessages.jsonParseFailed(configPath, reason), 'CONFIG_PARSE_FAILED');
+    super(ErrorMessages.jsonParseFailed(configPath, reason), ERROR_CODES.CONFIG_PARSE_FAILED);
     this.configPath = configPath;
     this.reason = reason;
   }
@@ -116,7 +125,7 @@ export class ConfigParseError extends LingoTrackerError {
 export class ConfigChangedError extends LingoTrackerError {
   readonly kind = 'conflict' as const;
   constructor() {
-    super('The configuration file changed after it was read; run the command again', 'CONFIG_CHANGED');
+    super('The configuration file changed after it was read; run the command again', ERROR_CODES.CONFIG_CHANGED);
   }
 }
 
@@ -129,7 +138,7 @@ export class ConfigChangedError extends LingoTrackerError {
 export class InvalidConfigError extends LingoTrackerError {
   readonly kind = 'internal' as const;
   constructor(message: string, options?: { readonly cause?: unknown }) {
-    super(message, 'INVALID_CONFIG', options);
+    super(message, ERROR_CODES.INVALID_CONFIG, options);
   }
 }
 
@@ -142,7 +151,7 @@ export class ProtectedTermsFileError extends LingoTrackerError {
   readonly filePath: string;
 
   constructor(filePath: string, message: string) {
-    super(message, 'INVALID_PROTECTED_TERMS_FILE');
+    super(message, ERROR_CODES.INVALID_PROTECTED_TERMS_FILE);
     this.filePath = filePath;
   }
 }
@@ -191,7 +200,7 @@ export class InvalidProjectTermsEditError extends LingoTrackerError {
   readonly problem: ProtectedTermsEditProblem | PreferredTerminologyEditProblem;
 
   constructor(message: string, problem: ProtectedTermsEditProblem | PreferredTerminologyEditProblem) {
-    super(message, 'INVALID_PROJECT_TERMS_EDIT');
+    super(message, ERROR_CODES.INVALID_PROJECT_TERMS_EDIT);
     this.problem = problem;
   }
 }
@@ -208,7 +217,7 @@ export class CollectionNotFoundError extends LingoTrackerError {
       role === 'destination'
         ? `Destination collection "${collectionName}" not found`
         : ErrorMessages.collectionNotFound(collectionName),
-      'COLLECTION_NOT_FOUND',
+      ERROR_CODES.COLLECTION_NOT_FOUND,
     );
     this.collectionName = collectionName;
   }
@@ -220,7 +229,7 @@ export class CollectionAlreadyExistsError extends LingoTrackerError {
   readonly collectionName: string;
 
   constructor(collectionName: string) {
-    super(ErrorMessages.collectionAlreadyExists(collectionName), 'COLLECTION_ALREADY_EXISTS');
+    super(ErrorMessages.collectionAlreadyExists(collectionName), ERROR_CODES.COLLECTION_ALREADY_EXISTS);
     this.collectionName = collectionName;
   }
 }
@@ -232,7 +241,10 @@ export class CollectionRequiredByBundleError extends LingoTrackerError {
   readonly bundleNames: readonly string[];
 
   constructor(collectionName: string, bundleNames: readonly string[]) {
-    super(ErrorMessages.collectionRequiredByBundles(collectionName, bundleNames), 'COLLECTION_REQUIRED_BY_BUNDLE');
+    super(
+      ErrorMessages.collectionRequiredByBundles(collectionName, bundleNames),
+      ERROR_CODES.COLLECTION_REQUIRED_BY_BUNDLE,
+    );
     this.collectionName = collectionName;
     this.bundleNames = bundleNames;
   }
@@ -248,7 +260,7 @@ export class CollectionRenameBundleConflictError extends LingoTrackerError {
   constructor(collectionName: string, newCollectionName: string, bundleNames: readonly string[]) {
     super(
       ErrorMessages.collectionRenameBundleConflict(collectionName, newCollectionName, bundleNames),
-      'COLLECTION_RENAME_BUNDLE_CONFLICT',
+      ERROR_CODES.COLLECTION_RENAME_BUNDLE_CONFLICT,
     );
     this.collectionName = collectionName;
     this.newCollectionName = newCollectionName;
@@ -262,7 +274,7 @@ export class ReadOnlyCollectionError extends LingoTrackerError {
   readonly collectionName: string;
 
   constructor(collectionName: string) {
-    super(ErrorMessages.collectionReadOnly(collectionName), 'COLLECTION_READ_ONLY');
+    super(ErrorMessages.collectionReadOnly(collectionName), ERROR_CODES.COLLECTION_READ_ONLY);
     this.collectionName = collectionName;
   }
 }
@@ -277,7 +289,7 @@ export class InvalidCollectionError extends LingoTrackerError {
   readonly problem?: CollectionTagEditProblem;
 
   constructor(message: string, options?: { readonly field?: string; readonly problem?: CollectionTagEditProblem }) {
-    super(message, 'INVALID_COLLECTION');
+    super(message, ERROR_CODES.INVALID_COLLECTION);
     this.field = options?.field;
     this.problem = options?.problem;
   }
@@ -287,7 +299,7 @@ export class InvalidCollectionError extends LingoTrackerError {
 export class InvalidNameError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
   constructor() {
-    super(ErrorMessages.nameRequired(), 'INVALID_NAME');
+    super(ErrorMessages.nameRequired(), ERROR_CODES.INVALID_NAME);
   }
 }
 
@@ -297,7 +309,7 @@ export class ProtectedTermsFileNotSetError extends LingoTrackerError {
   readonly collectionName: string;
 
   constructor(collectionName: string) {
-    super(ErrorMessages.protectedTermsFileNotSet(collectionName), 'PROTECTED_TERMS_FILE_NOT_SET');
+    super(ErrorMessages.protectedTermsFileNotSet(collectionName), ERROR_CODES.PROTECTED_TERMS_FILE_NOT_SET);
     this.collectionName = collectionName;
   }
 }
@@ -309,7 +321,7 @@ export class ParentDirectoryMissingError extends LingoTrackerError {
   readonly directory: string;
 
   constructor(what: string, filePath: string, directory: string) {
-    super(ErrorMessages.parentDirectoryMissing(what, directory), 'PARENT_DIRECTORY_MISSING');
+    super(ErrorMessages.parentDirectoryMissing(what, directory), ERROR_CODES.PARENT_DIRECTORY_MISSING);
     this.filePath = filePath;
     this.directory = directory;
   }
@@ -324,7 +336,7 @@ export class InvalidTranslationStatusError extends LingoTrackerError {
   constructor(status: unknown) {
     super(
       `Invalid translation status "${String(status)}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
-      'INVALID_TRANSLATION_STATUS',
+      ERROR_CODES.INVALID_TRANSLATION_STATUS,
     );
   }
 }
@@ -335,7 +347,7 @@ export class InvalidLocaleError extends LingoTrackerError {
   readonly locale: string;
 
   constructor(locale: string, message: string) {
-    super(message, 'INVALID_LOCALE');
+    super(message, ERROR_CODES.INVALID_LOCALE);
     this.locale = locale;
   }
 }
@@ -347,7 +359,7 @@ export class LocaleNotFoundError extends LingoTrackerError {
   readonly collectionName: string;
 
   constructor(locale: string, collectionName: string) {
-    super(ErrorMessages.localeNotFound(locale, collectionName), 'LOCALE_NOT_FOUND');
+    super(ErrorMessages.localeNotFound(locale, collectionName), ERROR_CODES.LOCALE_NOT_FOUND);
     this.locale = locale;
     this.collectionName = collectionName;
   }
@@ -360,7 +372,7 @@ export class LocaleAlreadyExistsError extends LingoTrackerError {
   readonly collectionName: string;
 
   constructor(locale: string, collectionName: string) {
-    super(ErrorMessages.localeAlreadyExists(locale, collectionName), 'LOCALE_ALREADY_EXISTS');
+    super(ErrorMessages.localeAlreadyExists(locale, collectionName), ERROR_CODES.LOCALE_ALREADY_EXISTS);
     this.locale = locale;
     this.collectionName = collectionName;
   }
@@ -372,7 +384,7 @@ export class BaseLocaleImmutableError extends LingoTrackerError {
   readonly locale: string;
 
   constructor(locale: string) {
-    super(ErrorMessages.cannotModifyBaseLocale(locale), 'BASE_LOCALE_IMMUTABLE');
+    super(ErrorMessages.cannotModifyBaseLocale(locale), ERROR_CODES.BASE_LOCALE_IMMUTABLE);
     this.locale = locale;
   }
 }
@@ -385,7 +397,7 @@ export class InvalidResourceKeyError extends LingoTrackerError {
   readonly key: string;
 
   constructor(key: string, message: string) {
-    super(message, 'INVALID_RESOURCE_KEY');
+    super(message, ERROR_CODES.INVALID_RESOURCE_KEY);
     this.key = key;
   }
 }
@@ -396,7 +408,7 @@ export class ResourceNotFoundError extends LingoTrackerError {
   readonly key: string;
 
   constructor(key: string) {
-    super(ErrorMessages.resourceNotFound(key), 'RESOURCE_NOT_FOUND');
+    super(ErrorMessages.resourceNotFound(key), ERROR_CODES.RESOURCE_NOT_FOUND);
     this.key = key;
   }
 }
@@ -407,7 +419,7 @@ export class ResourceAlreadyExistsError extends LingoTrackerError {
   readonly key: string;
 
   constructor(key: string) {
-    super(ErrorMessages.resourceAlreadyExists(key), 'RESOURCE_ALREADY_EXISTS');
+    super(ErrorMessages.resourceAlreadyExists(key), ERROR_CODES.RESOURCE_ALREADY_EXISTS);
     this.key = key;
   }
 }
@@ -418,7 +430,7 @@ export class FolderNotFoundError extends LingoTrackerError {
   readonly folderPath: string;
 
   constructor(folderPath: string) {
-    super(ErrorMessages.folderNotFound(folderPath), 'FOLDER_NOT_FOUND');
+    super(ErrorMessages.folderNotFound(folderPath), ERROR_CODES.FOLDER_NOT_FOUND);
     this.folderPath = folderPath;
   }
 }
@@ -433,7 +445,7 @@ export class InvalidCollectionFolderError extends LingoTrackerError {
   ) {
     const reason =
       targetPath === problem.folderPath ? problem.message : `Folder '${problem.folderPath}': ${problem.message}`;
-    super(`Cannot ${operation} folder '${targetPath || '(root)'}': ${reason}`, 'INVALID_COLLECTION_FOLDER');
+    super(`Cannot ${operation} folder '${targetPath || '(root)'}': ${reason}`, ERROR_CODES.INVALID_COLLECTION_FOLDER);
   }
 }
 
@@ -446,7 +458,7 @@ export class FolderMoveIntoDescendantError extends LingoTrackerError {
   constructor(sourceFolderPath: string, destinationFolderPath: string) {
     super(
       ErrorMessages.folderMoveIntoDescendant(sourceFolderPath, destinationFolderPath),
-      'FOLDER_MOVE_INTO_DESCENDANT',
+      ERROR_CODES.FOLDER_MOVE_INTO_DESCENDANT,
     );
     this.sourceFolderPath = sourceFolderPath;
     this.destinationFolderPath = destinationFolderPath;
@@ -460,7 +472,7 @@ export class InvalidFolderPathError extends LingoTrackerError {
   readonly part: FolderPathPart;
 
   constructor(part: FolderPathPart, segment: string) {
-    super(ErrorMessages.invalidFolderSegment(part, segment), 'INVALID_FOLDER_PATH');
+    super(ErrorMessages.invalidFolderSegment(part, segment), ERROR_CODES.INVALID_FOLDER_PATH);
     this.part = part;
     this.segment = segment;
   }
@@ -473,12 +485,13 @@ export class InvalidFolderPathError extends LingoTrackerError {
  * The provider code taxonomy remains independent of the adapter-facing kind.
  */
 export class TranslationError extends LingoTrackerError {
+  declare readonly code: ProviderErrorCode;
   readonly kind = 'upstream' as const;
   readonly retryable: boolean;
   readonly providerErrorCode: string | undefined;
 
   /** `code` names the failure kind, e.g. `MISSING_API_KEY`, `RATE_LIMIT`, `INVALID_REQUEST`. */
-  constructor(message: string, code: string, retryable: boolean, providerErrorCode?: string) {
+  constructor(message: string, code: ProviderErrorCode, retryable: boolean, providerErrorCode?: string) {
     super(message, code);
     this.retryable = retryable;
     this.providerErrorCode = providerErrorCode;
@@ -491,7 +504,7 @@ export class AutoTranslationDisabledError extends LingoTrackerError {
   readonly collectionName: string;
 
   constructor(collectionName: string) {
-    super(ErrorMessages.autoTranslationDisabled(collectionName), 'AUTO_TRANSLATION_DISABLED');
+    super(ErrorMessages.autoTranslationDisabled(collectionName), ERROR_CODES.AUTO_TRANSLATION_DISABLED);
     this.collectionName = collectionName;
   }
 }
@@ -502,7 +515,7 @@ export class NoTranslationTargetLocalesError extends LingoTrackerError {
   constructor(baseLocale: string) {
     super(
       `No target locales configured. Add locales other than the base locale "${baseLocale}".`,
-      'NO_TRANSLATION_TARGET_LOCALES',
+      ERROR_CODES.NO_TRANSLATION_TARGET_LOCALES,
     );
   }
 }
@@ -513,7 +526,7 @@ export class CannotTranslateBaseLocaleError extends LingoTrackerError {
   readonly locale: string;
 
   constructor(locale: string) {
-    super(ErrorMessages.cannotTranslateBaseLocale(locale), 'CANNOT_TRANSLATE_BASE_LOCALE');
+    super(ErrorMessages.cannotTranslateBaseLocale(locale), ERROR_CODES.CANNOT_TRANSLATE_BASE_LOCALE);
     this.locale = locale;
   }
 }
@@ -525,7 +538,10 @@ export class TranslationLocaleNotConfiguredError extends LingoTrackerError {
   readonly availableLocales: readonly string[];
 
   constructor(locale: string, availableLocales: readonly string[]) {
-    super(ErrorMessages.translationLocaleNotConfigured(locale, availableLocales), 'TRANSLATION_LOCALE_NOT_CONFIGURED');
+    super(
+      ErrorMessages.translationLocaleNotConfigured(locale, availableLocales),
+      ERROR_CODES.TRANSLATION_LOCALE_NOT_CONFIGURED,
+    );
     this.locale = locale;
     this.availableLocales = [...availableLocales];
   }
@@ -537,7 +553,7 @@ export class TranslationLocaleNotConfiguredError extends LingoTrackerError {
 export class MultipleBundleConstantNameError extends LingoTrackerError {
   readonly kind = 'internal' as const;
   constructor() {
-    super('A token constant name override needs exactly one bundle.', 'MULTIPLE_BUNDLE_CONSTANT_NAME');
+    super('A token constant name override needs exactly one bundle.', ERROR_CODES.MULTIPLE_BUNDLE_CONSTANT_NAME);
   }
 }
 
@@ -547,7 +563,7 @@ export class BundleNotFoundError extends LingoTrackerError {
   readonly bundleName: string;
 
   constructor(bundleName: string) {
-    super(ErrorMessages.bundleNotFound(bundleName), 'BUNDLE_NOT_FOUND');
+    super(ErrorMessages.bundleNotFound(bundleName), ERROR_CODES.BUNDLE_NOT_FOUND);
     this.bundleName = bundleName;
   }
 }
@@ -556,7 +572,7 @@ export class BundleNotFoundError extends LingoTrackerError {
 export class InvalidBundleLocalesError extends LingoTrackerError {
   readonly kind = 'invalid' as const;
   constructor(message: string) {
-    super(message, 'INVALID_BUNDLE_LOCALES');
+    super(message, ERROR_CODES.INVALID_BUNDLE_LOCALES);
   }
 }
 
@@ -566,7 +582,7 @@ export class BundleAlreadyExistsError extends LingoTrackerError {
   readonly bundleName: string;
 
   constructor(bundleName: string) {
-    super(ErrorMessages.bundleAlreadyExists(bundleName), 'BUNDLE_ALREADY_EXISTS');
+    super(ErrorMessages.bundleAlreadyExists(bundleName), ERROR_CODES.BUNDLE_ALREADY_EXISTS);
     this.bundleName = bundleName;
   }
 }
@@ -578,7 +594,7 @@ export class InvalidBundleDefinitionError extends LingoTrackerError {
   readonly errors: readonly string[];
 
   constructor(errors: readonly string[]) {
-    super(ErrorMessages.invalidBundleDefinition(errors), 'INVALID_BUNDLE_DEFINITION');
+    super(ErrorMessages.invalidBundleDefinition(errors), ERROR_CODES.INVALID_BUNDLE_DEFINITION);
     this.errors = errors;
     this.details = errors;
   }
@@ -592,7 +608,10 @@ export class PreferredTerminologyValidationError extends LingoTrackerError {
   readonly submittedRules?: readonly PreferredTermRule[];
 
   constructor(errors: PreferredTermRuleError[], submittedRules?: readonly PreferredTermRule[]) {
-    super(`Invalid preferred terminology rules: ${formatRuleErrors(errors)}`, 'INVALID_PREFERRED_TERMINOLOGY');
+    super(
+      `Invalid preferred terminology rules: ${formatRuleErrors(errors)}`,
+      ERROR_CODES.INVALID_PREFERRED_TERMINOLOGY,
+    );
     this.errors = errors;
     this.details = errors;
     this.submittedRules = submittedRules;
@@ -605,8 +624,23 @@ export class CoreOperationError extends LingoTrackerError {
   override readonly exposeMessage = false;
 
   constructor(message: string, options?: { readonly cause?: unknown }) {
-    super(message, 'CORE_OPERATION_ERROR', options);
+    super(message, ERROR_CODES.CORE_OPERATION_ERROR, options);
     // Some import summaries stringify a caught error; retain the old `Error: ...` text.
     this.name = 'Error';
+  }
+}
+
+/** A bundle or token hierarchy cannot represent both a leaf and its descendants. */
+export class BundleHierarchicalConflictError extends LingoTrackerError {
+  readonly kind = 'invalid' as const;
+  constructor(
+    readonly bundleKey: string,
+    readonly conflicts: readonly string[],
+  ) {
+    super(
+      `Hierarchical conflicts in bundle '${bundleKey}': ${conflicts.join(', ')}. ` +
+        `Remove the entry or its children from bundle '${bundleKey}'; for token collisions, rename one of the keys.`,
+      ERROR_CODES.BUNDLE_HIERARCHICAL_CONFLICT,
+    );
   }
 }

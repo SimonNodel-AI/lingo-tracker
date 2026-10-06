@@ -1,4 +1,4 @@
-import { normalizeTags, type TranslationStatus, translocoToICU } from '@simoncodes-ca/domain';
+import { normalizeTags, type TranslationInput, translocoToICU } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
 import { ResourceAlreadyExistsError } from '../errors/lingo-tracker-error';
@@ -14,8 +14,6 @@ import { type OpenedResourceEntry, openResourceEntry } from './resource-entry';
 import { type ResolvedResourcePaths, validateAndResolvePaths } from './resource-file-paths';
 import { resolveMutationSink, type MutationSink, type MutationSinkOptions } from './resource-mutation';
 import { assertTranslationStatus } from './translation-status-input';
-
-type ResourceTranslationInput = Pick<ResourceTranslation, 'locale' | 'value'> & { readonly status?: TranslationStatus };
 
 export interface AddResourceParams {
   /** Dot-delimited key, e.g., "apps.common.buttons.ok". */
@@ -33,7 +31,7 @@ export interface AddResourceParams {
    * (a value for the base locale is ignored). Target locales without one are seeded
    * (see {@link seedLocales}). An omitted status is inferred from the value.
    */
-  readonly translations?: readonly ResourceTranslationInput[];
+  readonly translations?: readonly TranslationInput[];
 }
 
 export type ExistingResourcePolicy = 'replace' | 'fail';
@@ -68,7 +66,7 @@ export interface PreparedResourceAdd {
   readonly params: AddResourceParams;
   readonly paths: ResolvedResourcePaths;
   readonly baseValue: string;
-  readonly translations: ResourceTranslationInput[];
+  readonly translations: TranslationInput[];
   readonly skippedLocales?: string[];
   readonly terminology: TerminologyFindings;
 }
@@ -141,7 +139,7 @@ export async function prepareResourceAdd(
   const baseValue = translocoToICU(params.baseValue);
   // Resolve every value before touching the disk, so a provider failure writes nothing.
   const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) }, options);
-  const translations: ResourceTranslationInput[] = [...supplied, ...seeding.translations];
+  const translations: TranslationInput[] = [...supplied, ...seeding.translations];
 
   return {
     params,

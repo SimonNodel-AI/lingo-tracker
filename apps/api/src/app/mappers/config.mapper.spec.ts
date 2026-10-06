@@ -1,4 +1,4 @@
-import type { LingoTrackerConfig, ProjectTermsView, ResolvedProtectedTerms } from '@simoncodes-ca/core';
+import type { LingoTrackerConfig, ProjectTermsConfigView, ResolvedProtectedTerms } from '@simoncodes-ca/core';
 import { mapCollectionToDto, mapDtoToCollection } from './collection.mapper';
 import { mapConfigToDto, mapDtoToConfigUpdate } from './config.mapper';
 
@@ -25,10 +25,9 @@ describe('config.mapper', () => {
       },
     };
 
-    const snapshot = (overrides: Partial<ProjectTermsView> = {}): ProjectTermsView => ({
+    const snapshot = (overrides: Partial<ProjectTermsConfigView> = {}): ProjectTermsConfigView => ({
       config,
       projectName: '',
-      problems: [],
       protectedTerms: {
         globalTerms: [],
         globalFilePath: '/project/.lingo-tracker-protected-terms.json',
@@ -38,12 +37,10 @@ describe('config.mapper', () => {
       ...overrides,
     });
 
-    it('projects snapshots with protected-file problems without throwing', () => {
+    it('projects config views without applying file refusal policy', () => {
       const dto = mapConfigToDto(
         snapshot({
-          problems: [
-            { file: 'protected-terms', severity: 'error', filePath: '/project/broken.json', message: 'Broken' },
-          ],
+          protectedTerms: { globalTerms: [], globalFilePath: '/project/broken.json', collections: {} },
         }),
       );
       expect(dto.collections).toEqual({ app: expect.objectContaining({ translationsFolder: './i18n' }) });

@@ -7,9 +7,10 @@ import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/da
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
 import { toHttpException } from '../errors/lingo-tracker-exception.filter';
-import { createCollectionBody } from '../validation/dto-schemas';
+import { createCollectionBody, updateCollectionBody } from '../validation/dto-schemas';
 import { SchemaPipe } from '../validation/valid-body';
 import { CollectionsController } from './collections.controller';
+import { RouteCollectionPipe, routeCollectionRef } from './route-collection';
 
 /**
  * PUT /collections/:name through the real mapper and real core, against a temp project: the
@@ -18,6 +19,7 @@ import { CollectionsController } from './collections.controller';
 describe('CollectionsController PUT (real core)', () => {
   let projectDir: string;
   let controller: CollectionsController;
+  let routeCollectionPipe: RouteCollectionPipe;
 
   const stored = {
     translationsFolder: './i18n',
@@ -36,6 +38,14 @@ describe('CollectionsController PUT (real core)', () => {
   };
   const readConfig = (): LingoTrackerConfig => JSON.parse(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8'));
 
+  const updateCollection = async (name: string, body: UpdateCollectionDto): Promise<{ message: string }> => {
+    const current = routeCollectionPipe.transform(
+      routeCollectionRef({ lifecycle: 'update' }, { method: 'PUT', params: { collectionName: name } }),
+    );
+    new SchemaPipe(updateCollectionBody, 'request body').transform(body);
+    return controller.updateCollectionByName(body, current);
+  };
+
   beforeEach(async () => {
     projectDir = mkdtempSync(join(tmpdir(), 'lingo-api-collections-put-'));
     jest.spyOn(process, 'cwd').mockReturnValue(projectDir);
@@ -43,9 +53,10 @@ describe('CollectionsController PUT (real core)', () => {
 
     const module = await Test.createTestingModule({
       controllers: [CollectionsController],
-      providers: [ConfigService, { provide: CollectionIndex, useValue: { sink: jest.fn() } }],
+      providers: [ConfigService, RouteCollectionPipe, { provide: CollectionIndex, useValue: { sink: jest.fn() } }],
     }).compile();
     controller = module.get(CollectionsController);
+    routeCollectionPipe = module.get(RouteCollectionPipe);
   });
 
   afterEach(() => {
@@ -56,12 +67,10 @@ describe('CollectionsController PUT (real core)', () => {
   it('answers the exact 400 body for blank and whitespace renames without changing config', async () => {
     const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
     for (const name of ['', ' ']) {
-      const error = await controller
-        .updateCollectionByName('app', {
-          name,
-          collection: { translationsFolder: './changed', locales: ['en', 'de'] },
-        })
-        .catch((cause: unknown) => cause);
+      const error = await updateCollection('app', {
+        name,
+        collection: { translationsFolder: './changed', locales: ['en', 'de'] },
+      }).catch((cause: unknown) => cause);
       const http = toHttpException(error);
       expect(http.getStatus()).toBe(400);
       expect(http.getResponse()).toEqual({
@@ -86,12 +95,10 @@ describe('CollectionsController PUT (real core)', () => {
 
   it('answers 404 for a missing collection before validating a blank rename', async () => {
     const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
-    const error = await controller
-      .updateCollectionByName('missing', {
-        name: '',
-        collection: { translationsFolder: './i18n' },
-      })
-      .catch((cause: unknown) => cause);
+    const error = await updateCollection('missing', {
+      name: '',
+      collection: { translationsFolder: './i18n' },
+    }).catch((cause: unknown) => cause);
     expect(toHttpException(error).getStatus()).toBe(404);
     expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
   });
@@ -108,14 +115,14 @@ describe('CollectionsController PUT (real core)', () => {
       },
     };
 
-    const result = await controller.updateCollectionByName('app', body);
+    const result = await updateCollection('app', body);
 
     expect(result).toEqual({ message: 'Collection "app" updated successfully' });
     expect(readConfig().collections['app']).toEqual({ ...stored, tags: ['team-x', 'team-y'] });
   });
 
   it('applies the fields a client does send, including clears', async () => {
-    await controller.updateCollectionByName('app', {
+    await updateCollection('app', {
       collection: { translationsFolder: './i18n', tags: [], exportFolder: 'dist/lingo-export' },
     });
 
@@ -149,11 +156,9 @@ describe('CollectionsController PUT (real core)', () => {
 
   it('answers 400 for invalid protected terms on update without changing config', async () => {
     const before = readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8');
-    const error = await controller
-      .updateCollectionByName('app', {
-        collection: { translationsFolder: './changed', protectedTerms: ['valid', 42] },
-      } as unknown as UpdateCollectionDto)
-      .catch((cause: unknown) => cause);
+    const error = await updateCollection('app', {
+      collection: { translationsFolder: './changed', protectedTerms: ['valid', 42] },
+    } as unknown as UpdateCollectionDto).catch((cause: unknown) => cause);
     expect(toHttpException(error).getStatus()).toBe(400);
     expect(readFileSync(join(projectDir, CONFIG_FILENAME), 'utf8')).toBe(before);
   });
@@ -173,7 +178,7 @@ describe('CollectionsController PUT (real core)', () => {
   });
 
   it('writes valid protected terms when updating a collection', async () => {
-    await controller.updateCollectionByName('app', {
+    await updateCollection('app', {
       collection: {
         translationsFolder: './i18n',
         protectedTermsFile: 'app-terms.json',
@@ -207,11 +212,9 @@ describe('CollectionsController PUT (real core)', () => {
     writeFileSync(termsPath, '["old"]');
     const before = readFileSync(join(projectDir, CONFIG_FILENAME));
     const termsBefore = readFileSync(termsPath);
-    const error = await controller
-      .updateCollectionByName('app', {
-        collection: { translationsFolder: './changed', protectedTerms: ['iPhone'] },
-      })
-      .catch((cause: unknown) => cause);
+    const error = await updateCollection('app', {
+      collection: { translationsFolder: './changed', protectedTerms: ['iPhone'] },
+    }).catch((cause: unknown) => cause);
     expect(toHttpException(error).getStatus()).toBe(400);
     expect(readFileSync(join(projectDir, CONFIG_FILENAME))).toEqual(before);
     expect(readFileSync(termsPath)).toEqual(termsBefore);
@@ -223,7 +226,7 @@ describe('CollectionsController PUT (real core)', () => {
       collections: { app: { ...stored, protectedTermsFile: 'renamed-terms.json' } },
     };
     writeFileSync(join(projectDir, CONFIG_FILENAME), JSON.stringify(withPointer));
-    await controller.updateCollectionByName('app', {
+    await updateCollection('app', {
       name: 'renamed',
       collection: { translationsFolder: './i18n', protectedTerms: ['iPhone'] },
     });
@@ -232,7 +235,7 @@ describe('CollectionsController PUT (real core)', () => {
   });
 
   it('uses a pointer supplied with a rename for its terms write', async () => {
-    await controller.updateCollectionByName('app', {
+    await updateCollection('app', {
       name: 'renamed',
       collection: {
         translationsFolder: './i18n',

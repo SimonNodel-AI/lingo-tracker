@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG } from '@simoncodes-ca/core';
+import { DEFAULT_CONFIG } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { CommandCancelledError } from '../runner/command-cancelled-error';
 import type { Ask } from '../runner/command-runner';

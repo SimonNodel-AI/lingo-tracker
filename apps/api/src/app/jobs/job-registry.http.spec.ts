@@ -1,7 +1,7 @@
 import { type INestApplication, Logger } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { prepareTranslateLocale, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { prepareTranslationRun, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { BundleJobService } from '../bundles/bundle-job.service';
 import { BundlesController } from '../bundles/bundles.controller';
 import { CollectionIndex } from '../cache/collection-index.service';
@@ -11,11 +11,23 @@ import { ConfigService } from '../config/config.service';
 import { LingoTrackerExceptionFilter } from '../errors/lingo-tracker-exception.filter';
 import { TranslationJobService } from '../translation-job/translation-job.service';
 
-jest.mock('@simoncodes-ca/core', () => ({
-  ...jest.requireActual('@simoncodes-ca/core'),
-  generatePreparedBundle: jest.fn(() => new Promise<void>(() => {})),
-  executeTranslateLocale: jest.fn(() => new Promise<void>(() => {})),
-}));
+jest.mock('@simoncodes-ca/core', () => {
+  const actual = jest.requireActual<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core');
+  return {
+    ...actual,
+    generatePreparedBundle: jest.fn(() => new Promise<void>(() => {})),
+    prepareTranslationRun: (...args: Parameters<typeof actual.prepareTranslationRun>) => {
+      const run = actual.prepareTranslationRun(...args);
+      return {
+        ...run,
+        forLocale: (locale: string) => ({
+          ...run.forLocale(locale),
+          execute: jest.fn(() => new Promise<never>(() => {})),
+        }),
+      };
+    },
+  };
+});
 
 describe('Job Registry HTTP protocol', () => {
   let app: INestApplication | undefined;
@@ -59,7 +71,9 @@ describe('Job Registry HTTP protocol', () => {
     translationJobId = moduleRef
       .get(TranslationJobService)
       .startJob(
-        prepareTranslateLocale(moduleRef.get(RouteCollectionPipe).transform({ name: 'app', writable: true }), 'fr'),
+        prepareTranslationRun(moduleRef.get(RouteCollectionPipe).transform({ name: 'app', writable: true })).forLocale(
+          'fr',
+        ),
       ).jobId;
   });
 

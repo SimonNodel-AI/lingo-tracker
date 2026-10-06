@@ -1,10 +1,11 @@
-import type { BundleTypeOutcome, LingoTrackerConfig } from '@simoncodes-ca/core';
+import { BUNDLE_FLAGS } from './bundle-flags';
+import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import type { TokenCasing } from '@simoncodes-ca/domain';
-import { BundleNotFoundError, generateBundles, MultipleBundleConstantNameError } from '@simoncodes-ca/core';
-import { CommandOutput } from '../runner/command-output';
-import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
+import { generateBundles } from '@simoncodes-ca/core';
+import { printBundleEvent, printBundleSummary } from './bundle-report';
 import { exitForRunOutcome } from '../runner/run-outcome';
-import { ConsoleFormatter, parseListSelection, parseNameSelection, selectionNames, selectionPrompt } from '../utils';
+import { type Answers, type CommandResult, defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, parseListSelection, parseNameSelection, selectionNames } from '../utils';
 
 export interface BundleOptions {
   name?: string[];
@@ -29,35 +30,10 @@ export interface BundleOptions {
   debugKeys?: string | boolean;
 }
 
-const DEFAULT_DEBUG_KEYS_LOCALE = '99';
-
-/** Core names the data (one bundle per constant name); the command words it as the flag. */
-function wordConstantNameConflict(error: unknown): never {
-  if (error instanceof MultipleBundleConstantNameError) {
-    throw new Error('Cannot use --token-constant-name with multiple bundles. Please target a single bundle.');
-  }
-  throw error;
-}
-
 export const bundleCommand = defineCommand<BundleOptions>()({
+  flags: BUNDLE_FLAGS,
   name: 'Bundle generation',
   collection: 'none',
-  // Interactive without --name: pick one bundle or all. Non-interactive without --name: all bundles.
-  prompts: (options, { config }) => {
-    const bundleKeys = Object.keys(config.bundles ?? {});
-    if (options.name || bundleKeys.length === 0) {
-      return [];
-    }
-    return [
-      selectionPrompt({
-        mode: 'single',
-        name: 'bundleOrAll',
-        message: 'Select bundle to generate',
-        choices: bundleKeys,
-        allTitle: 'All bundles',
-      }),
-    ];
-  },
   run: ({ config, cwd, answers }) => run(config, cwd, answers),
 });
 
@@ -78,10 +54,9 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
   // Parse locale filter if provided
   const localeFilter = selectionNames(parseListSelection(options.locale));
 
-  const debugKeysLocale = options.debugKeys === true ? DEFAULT_DEBUG_KEYS_LOCALE : options.debugKeys || undefined;
+  const debugKeysLocale =
+    options.debugKeys === true ? BUNDLE_FLAGS.debugKeys.implicitValue : options.debugKeys || undefined;
 
-  const reportedTypeWarnings = new Set<string>();
-  let warningsCount = 0;
   const runResult = await generateBundles(config, {
     names: selectedNames,
     locales: localeFilter,
@@ -92,83 +67,9 @@ async function run(config: LingoTrackerConfig, cwd: string, options: Answers<Bun
       debugKeysLocale,
     },
     cwd,
-    onEvent: (event) => {
-      if (event.kind === 'start') {
-        if (!options.quiet) {
-          CommandOutput.log('');
-          ConsoleFormatter.progress(`Generating bundle: ${event.name}`);
-          if (options.verbose && localeFilter) ConsoleFormatter.indent(`Locales: ${localeFilter.join(', ')}`);
-        }
-        return;
-      }
-      if (event.kind === 'type-warning') {
-        reportedTypeWarnings.add(event.warning);
-        CommandOutput.warn(event.warning);
-        return;
-      }
-      const { outcome } = event;
-      if (outcome.error !== undefined) {
-        const errorMessage =
-          outcome.error instanceof BundleNotFoundError
-            ? `Bundle "${outcome.name}" not found.`
-            : outcome.error instanceof Error
-              ? outcome.error.message
-              : 'Failed to generate bundle';
-        ConsoleFormatter.error(errorMessage);
-        return;
-      }
-      const result = outcome.result;
-      if (!options.quiet) {
-        ConsoleFormatter.indent(`✅ Files generated: ${result.filesGenerated}`);
-        ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
-      }
-      printTypeOutcome(result.typeOutcome, options.quiet ?? false);
-      const warnings = result.warnings.filter((warning) => !reportedTypeWarnings.has(warning));
-      warningsCount += warnings.length;
-      if (warnings.length > 0) {
-        ConsoleFormatter.warning(
-          `Warnings: ${warnings.length}`,
-          options.verbose ? warnings.map((warning) => `- ${warning}`) : [],
-        );
-      }
-    },
-  }).catch(wordConstantNameConflict);
+    onEvent: (event) => printBundleEvent(event, { ...options, localeFilter }),
+  });
 
-  if (runResult.outcomes.length > 1) {
-    const { totals } = runResult;
-    if (!options.quiet) {
-      ConsoleFormatter.section(`Summary (${totals.bundlesProcessed} bundles)`);
-      ConsoleFormatter.keyValue('Total files generated', totals.filesGenerated);
-    }
-    if (warningsCount > 0) {
-      ConsoleFormatter.keyValue('Total warnings', warningsCount);
-      if (!options.verbose) ConsoleFormatter.indent('Run with --verbose to see warning details');
-    }
-    const failures = runResult.outcomes.filter((outcome) => outcome.error !== undefined).length;
-    if (failures > 0) ConsoleFormatter.warning(`${failures} bundle(s) failed to generate`);
-  }
-
+  printBundleSummary(runResult, options);
   return exitForRunOutcome(runResult.outcome);
-}
-
-/** Tree lines and error framing belong to the command, not the core warning contract. */
-function printTypeOutcome(outcome: BundleTypeOutcome, quiet: boolean): void {
-  switch (outcome.status) {
-    case 'failed':
-      ConsoleFormatter.error(`Type generation failed: ${outcome.reason}`);
-      return;
-    case 'written':
-      if (!quiet) ConsoleFormatter.indent(`└─ Types: ${outcome.path} (${outcome.keysCount} keys)`);
-      return;
-    case 'skipped':
-      if (!quiet) ConsoleFormatter.indent('└─ Types: Skipped (bundle is empty)');
-      return;
-    case 'not-configured':
-      if (!quiet) ConsoleFormatter.indent('└─ Types: Skipped (no typeDistFile configured)');
-      return;
-    default: {
-      const unhandled: never = outcome;
-      throw new Error(`Unknown bundle type outcome: ${unhandled}`);
-    }
-  }
 }

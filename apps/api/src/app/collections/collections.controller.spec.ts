@@ -25,6 +25,14 @@ describe('CollectionsController HTTP (real project)', () => {
       });
       expect(stored()).not.toHaveProperty('collections.test-collection');
     });
+    it('deletes a read-only collection registration', async () => {
+      expect(await project.request('DELETE', route('vendor'))).toEqual({
+        status: 200,
+        body: { message: 'Collection "vendor" deleted successfully' },
+      });
+      expect(stored()).not.toHaveProperty('collections.vendor');
+      expect(project.exists('translations/vendor')).toBe(true);
+    });
     it('passes the route param through verbatim', async () => {
       expect(await project.request('DELETE', route('My%Collection'))).toEqual({
         status: 200,
@@ -160,6 +168,40 @@ describe('CollectionsController HTTP (real project)', () => {
     });
   });
   describe('updateCollectionByName', () => {
+    it('updates a read-only registration and lets a later update clear readOnly', async () => {
+      const translationsFolder = join(project.root, 'translations/vendor');
+      expect(await update('vendor', { collection: { translationsFolder, tags: ['Team X'] } })).toEqual({
+        status: 200,
+        body: { message: 'Collection "vendor" updated successfully' },
+      });
+      expect(stored()).toHaveProperty('collections.vendor', {
+        translationsFolder,
+        readOnly: true,
+        tags: ['team-x'],
+      });
+      expect(await update('vendor', { collection: { translationsFolder, readOnly: false } })).toEqual({
+        status: 200,
+        body: { message: 'Collection "vendor" updated successfully' },
+      });
+      expect(stored()).toHaveProperty('collections.vendor', { translationsFolder, tags: ['team-x'] });
+    });
+    it('answers 404 for a missing body sent to an unknown collection', async () => {
+      const before = project.read('.lingo-tracker.json');
+      // Collection lookup takes precedence over body validation for unknown collections.
+      expect(await project.request('PUT', route('unknown'))).toEqual({
+        status: 404,
+        body: { statusCode: 404, error: 'Not Found', message: 'Collection "unknown" not found' },
+      });
+      expect(project.read('.lingo-tracker.json')).toBe(before);
+    });
+    it('answers 400 for a missing body sent to an existing collection', async () => {
+      const before = project.read('.lingo-tracker.json');
+      expect(await project.request('PUT', route('test-collection'))).toEqual({
+        status: 400,
+        body: { statusCode: 400, error: 'Bad Request', message: 'request body must be an object' },
+      });
+      expect(project.read('.lingo-tracker.json')).toBe(before);
+    });
     it('answers a rename onto a dangling bundle reference with 409', async () => {
       project.config.bundles = {
         main: {
@@ -232,15 +274,15 @@ describe('CollectionsController HTTP (real project)', () => {
         body: { statusCode: 400, error: 'Bad Request', message: `collection.${field} must not be null` },
       });
     });
-    it('checks malformed terms before an unknown update target', async () => {
+    it('answers 404 for malformed terms sent to an unknown update target', async () => {
       expect(
         (await update('unknown', { collection: { translationsFolder: './x', protectedTerms: ['valid', 42] } })).status,
-      ).toBe(400);
+      ).toBe(404);
     });
-    it('answers 400 for a null field before looking up an unknown collection', async () => {
+    it('answers 404 for a null field sent to an unknown collection', async () => {
       expect(await update('unknown', { collection: { translationsFolder: './x', locales: null } })).toEqual({
-        status: 400,
-        body: { statusCode: 400, error: 'Bad Request', message: 'collection.locales must not be null' },
+        status: 404,
+        body: { statusCode: 404, error: 'Not Found', message: 'Collection "unknown" not found' },
       });
     });
     it('writes the protected terms under the current name when the body does not rename', async () => {

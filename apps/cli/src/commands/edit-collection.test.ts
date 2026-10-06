@@ -1,3 +1,4 @@
+import { createCli } from '../program';
 import { editCollectionTags, InvalidCollectionError, loadConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { editCollectionCommand } from './edit-collection';
@@ -12,13 +13,9 @@ vi.mock('@simoncodes-ca/core', async (importOriginal) => {
 });
 
 const mockEditCollectionTags = vi.mocked(editCollectionTags);
-const originalArgv = process.argv;
 
 async function runCli(...args: string[]): Promise<void> {
-  process.argv = ['node', 'lingo-tracker', 'edit-collection', 'myApp', ...args];
-  vi.resetModules();
-  await import('../main');
-  await vi.waitFor(() => expect(process.exitCode).toBeDefined());
+  await createCli().parseAsync(['edit-collection', 'myApp', ...args], { from: 'user' });
 }
 
 describe('editCollectionCommand', () => {
@@ -40,11 +37,10 @@ describe('editCollectionCommand', () => {
     process.env.INIT_CWD = '/test/project';
     process.exitCode = undefined;
     vi.mocked(loadConfig).mockReturnValue(mockConfig);
-    mockEditCollectionTags.mockReturnValue(['existing-tag', 'new-feature']);
+    mockEditCollectionTags.mockResolvedValue(['existing-tag', 'new-feature']);
   });
 
   afterEach(() => {
-    process.argv = originalArgv;
     process.exitCode = undefined;
   });
 
@@ -69,7 +65,7 @@ describe('editCollectionCommand', () => {
   });
 
   it('passes the stored collection with the new tags and the project root', async () => {
-    await editCollectionCommand('myApp', { addTag: ['new-feature'] });
+    await editCollectionCommand({ name: 'myApp', addTag: ['new-feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
@@ -80,7 +76,7 @@ describe('editCollectionCommand', () => {
   });
 
   it('adds a new tag to the collection', async () => {
-    await editCollectionCommand('myApp', { addTag: ['new-feature'] });
+    await editCollectionCommand({ name: 'myApp', addTag: ['new-feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
@@ -90,7 +86,7 @@ describe('editCollectionCommand', () => {
   });
 
   it('passes a raw tag to core and prints the tags core returns', async () => {
-    await editCollectionCommand('myApp', { addTag: ['New Feature'] });
+    await editCollectionCommand({ name: 'myApp', addTag: ['New Feature'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
@@ -100,8 +96,8 @@ describe('editCollectionCommand', () => {
   });
 
   it('does not duplicate an already-existing tag', async () => {
-    mockEditCollectionTags.mockReturnValueOnce(['existing-tag']);
-    await editCollectionCommand('myApp', { addTag: ['existing-tag'] });
+    mockEditCollectionTags.mockResolvedValueOnce(['existing-tag']);
+    await editCollectionCommand({ name: 'myApp', addTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
@@ -111,8 +107,8 @@ describe('editCollectionCommand', () => {
   });
 
   it('removes a tag from the collection', async () => {
-    mockEditCollectionTags.mockReturnValueOnce([]);
-    await editCollectionCommand('myApp', { removeTag: ['existing-tag'] });
+    mockEditCollectionTags.mockResolvedValueOnce([]);
+    await editCollectionCommand({ name: 'myApp', removeTag: ['existing-tag'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
@@ -122,8 +118,8 @@ describe('editCollectionCommand', () => {
   });
 
   it('replaces all tags with --set-tags', async () => {
-    mockEditCollectionTags.mockReturnValueOnce(['alpha', 'beta']);
-    await editCollectionCommand('myApp', { setTags: ['alpha', 'beta'] });
+    mockEditCollectionTags.mockResolvedValueOnce(['alpha', 'beta']);
+    await editCollectionCommand({ name: 'myApp', setTags: ['alpha', 'beta'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
@@ -133,8 +129,8 @@ describe('editCollectionCommand', () => {
   });
 
   it('clears all tags when --set-tags is empty string', async () => {
-    mockEditCollectionTags.mockReturnValueOnce([]);
-    await editCollectionCommand('myApp', { setTags: [] });
+    mockEditCollectionTags.mockResolvedValueOnce([]);
+    await editCollectionCommand({ name: 'myApp', setTags: [] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),
@@ -149,7 +145,7 @@ describe('editCollectionCommand', () => {
         problem: 'tag-conflict',
       });
     });
-    await editCollectionCommand('myApp', { setTags: ['foo'], addTag: ['bar'] });
+    await editCollectionCommand({ name: 'myApp', setTags: ['foo'], addTag: ['bar'] });
     expect(mockEditCollectionTags).toHaveBeenCalledOnce();
     expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
@@ -161,7 +157,7 @@ describe('editCollectionCommand', () => {
         problem: 'tag-conflict',
       });
     });
-    await editCollectionCommand('myApp', { setTags: ['foo'], removeTag: ['existing-tag'] });
+    await editCollectionCommand({ name: 'myApp', setTags: ['foo'], removeTag: ['existing-tag'] });
     expect(mockEditCollectionTags).toHaveBeenCalledOnce();
     expect(console.error).toHaveBeenCalledWith('❌ --set-tags cannot be combined with --add-tag or --remove-tag');
     expect(process.exitCode).toBe(1);
@@ -173,14 +169,14 @@ describe('editCollectionCommand', () => {
         problem: 'tag-missing',
       });
     });
-    await editCollectionCommand('myApp', {});
+    await editCollectionCommand({ name: 'myApp' });
     expect(mockEditCollectionTags).toHaveBeenCalledOnce();
     expect(console.error).toHaveBeenCalledWith('❌ Provide at least one of --add-tag, --remove-tag, or --set-tags');
     expect(process.exitCode).toBe(1);
   });
 
   it('exits 1 when collection is not found', async () => {
-    await editCollectionCommand('nonexistent', { addTag: ['foo'] });
+    await editCollectionCommand({ name: 'nonexistent', addTag: ['foo'] });
     expect(mockEditCollectionTags).not.toHaveBeenCalled();
     expect(console.error).toHaveBeenCalledWith('❌ Collection "nonexistent" not found');
     expect(process.exitCode).toBe(1);
@@ -191,7 +187,7 @@ describe('editCollectionCommand', () => {
       throw new InvalidCollectionError('A tag edit needs a replacement, addition, or removal');
     });
 
-    await editCollectionCommand('myApp', { addTag: ['beta'] });
+    await editCollectionCommand({ name: 'myApp', addTag: ['beta'] });
 
     expect(mockEditCollectionTags).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'myApp', sourceConfig: mockConfig, projectRoot: '/test/project' }),

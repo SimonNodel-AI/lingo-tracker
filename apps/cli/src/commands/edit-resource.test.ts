@@ -37,7 +37,7 @@ describe('editResourceCommand (real project)', () => {
   it('warns when locale is supplied without its value and leaves translation unchanged', async () => {
     const result = await project.run(editResourceCommand, { key, locale: 'fr' });
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain('Both --locale and --localeValue must be provided');
+    expect(result.stderr).toContain('Both --locale and --locale-value must be provided');
     expect(entries()).toMatchObject({ ok: { fr: 'Original' } });
   });
   it('does not update when config is missing', async () => {
@@ -75,6 +75,15 @@ describe('editResourceCommand (real project)', () => {
     expect(result.exitCode).toBe(0);
     expect(project.json('translations/main/shared/resource_entries.json')).toMatchObject({
       ok: { source: 'Original' },
+    });
+  });
+  it('reports a move-to collision without add-resource replacement advice', async () => {
+    await project.seed('shared.ok', 'Destination');
+    const result = await project.run(editResourceCommand, { key, targetFolder: 'shared' });
+    expect(result).toEqual({ exitCode: 1, stdout: '', stderr: '❌ Resource already exists: shared.ok\n' });
+    expect(entries()).toMatchObject({ ok: { source: 'Original' } });
+    expect(project.json('translations/main/shared/resource_entries.json')).toMatchObject({
+      ok: { source: 'Destination' },
     });
   });
   it('prints a core error when resource is missing', async () => {

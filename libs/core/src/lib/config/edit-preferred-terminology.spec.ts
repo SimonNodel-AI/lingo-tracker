@@ -2,10 +2,36 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { editPreferredTerminology } from './preferred-terminology-file';
+import type { PreferredTerminologyEdit } from './preferred-terminology-file';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { updateProjectTerms } from './update-project-terms';
 import { PreferredTerminologyValidationError } from '../errors/lingo-tracker-error';
 
 const config = {};
+
+function editPreferredTerminology(
+  pointers: Pick<LingoTrackerConfig, 'preferredTerminologyFile'>,
+  edit: PreferredTerminologyEdit,
+  cwd: string,
+) {
+  const report = updateProjectTerms(
+    {
+      projectRoot: cwd,
+      sourceConfig: {
+        baseLocale: 'en',
+        locales: ['en'],
+        collections: {},
+        exportFolder: 'export',
+        importFolder: 'import',
+        ...pointers,
+      },
+    },
+    { preferredTerminology: edit },
+  );
+  const result = report.preferredTerminologyResult;
+  if (result === undefined) throw new Error('Missing preferred terminology edit result');
+  return result;
+}
 
 describe('editPreferredTerminology', () => {
   const tempDir = useTempDir('preferred-edit-');

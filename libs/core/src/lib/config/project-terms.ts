@@ -1,33 +1,8 @@
-/**
- * Project Terms — the terms and rules in force for an opened collection: its protected terms
- * (the global file united with the collection's own) and the project's preferred terminology,
- * read from the paths `openCollection` resolved into `Collection.termFiles`.
- *
- * Reading never throws. A term file that is missing where the config names it, or that exists
- * but cannot be used, is a {@link TermFileProblem}; the lists read as if the file were empty.
- * Each consumer decides what a problem means for it: the Translator and an import refuse to run
- * unguarded on a broken protected-terms file ({@link requireProtectedTerms}) and report a missing
- * named one ({@link protectedTermsWarnings}); a write's terminology check reports the problem next
- * to its findings; export fails on a broken protected-terms file and warns otherwise; validate warns.
- *
- * @module project-terms
- */
+/** Project Terms owns the outcome policy for each intent. Reads are fresh per operation. */
 
 import { effectiveProtectedTerms, findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
-import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
 import type { Collection } from './open-collection';
-import { readPreferredTerminologyFile } from './preferred-terminology-file';
-import { readProtectedTermsFile } from './protected-terms-file';
-import type { TermFileRead } from './term-file';
-
-/** A term file that could not be used as configured. */
-export interface TermFileProblem {
-  readonly file: 'protected-terms' | 'preferred-terminology';
-  /** `error`: the file exists but cannot be used. `warning`: the config names a file that does not exist. */
-  readonly severity: 'error' | 'warning';
-  readonly filePath: string;
-  readonly message: string;
-}
+import { readProjectTermFiles, describeTermFileProblem, assertUsableProtectedFiles } from './project-term-files';
 
 /** A discouraged term in a base value, with the rule that flagged it. */
 export interface TerminologyFinding {
@@ -56,8 +31,12 @@ export interface ProjectTerms {
   readonly protectedTerms: readonly string[];
   /** The preferred-terminology rules, in file order. */
   readonly preferredTerminology: readonly PreferredTermRule[];
-  /** Every term file that could not be used as configured. */
-  readonly problems: readonly TermFileProblem[];
+  /** Refuse broken protected files. Source imports warn about rule files; target guards warn about protected files. */
+  forGuard(kind?: 'source' | 'target'): { readonly protectedTerms: readonly string[]; readonly warnings: string[] };
+  /** Export notes: broken protected files are errors; missing named protected files are warnings. */
+  forReport(): { readonly protectedTerms: readonly string[]; readonly errors: string[]; readonly warnings: string[] };
+  /** Validation warns about protected files and missing rules; a broken rule file is a load error. */
+  forValidation(): { readonly warnings: string[]; readonly loadError?: string };
   /**
    * Checks a base value stored under `key` against the preferred terminology. Advisory: the
    * value is stored either way. The rule-file problems ride along, so a caller that renders the
@@ -72,24 +51,46 @@ export interface ProjectTerms {
  */
 export function readProjectTerms(collection: Pick<Collection, 'termFiles'>): ProjectTerms {
   const { termFiles } = collection;
-  const global = readProtectedTermsFile(termFiles.protectedTerms);
-  const own = termFiles.collectionProtectedTerms && readProtectedTermsFile(termFiles.collectionProtectedTerms);
-  const preferred = readPreferredTerminologyFile(termFiles.preferredTerminology);
-
-  const problems = [
-    ...problemsOf('protected-terms', global),
-    ...(own ? problemsOf('protected-terms', own) : []),
-    ...problemsOf('preferred-terminology', preferred),
-  ];
+  const { protectedFiles, preferred, problems } = readProjectTermFiles(
+    [termFiles.protectedTerms, ...(termFiles.collectionProtectedTerms ? [termFiles.collectionProtectedTerms] : [])],
+    termFiles.preferredTerminology,
+  );
+  const [global, own] = protectedFiles;
+  const protectedTerms = effectiveProtectedTerms(global?.value ?? [], own?.value);
   const preferredTerminology = preferred.value;
   const terminologyProblems = problems
     .filter((problem) => problem.file === 'preferred-terminology')
     .map(describeTermFileProblem);
 
   return {
-    protectedTerms: effectiveProtectedTerms(global.value, own?.value),
+    protectedTerms,
     preferredTerminology,
-    problems,
+    forGuard: (kind = 'target') => {
+      assertUsableProtectedFiles(problems);
+      return {
+        protectedTerms,
+        warnings:
+          kind === 'source'
+            ? terminologyProblems
+            : problems.filter((problem) => problem.file === 'protected-terms').map(describeTermFileProblem),
+      };
+    },
+    forReport: () => ({
+      protectedTerms,
+      errors: problems
+        .filter((problem) => problem.file === 'protected-terms' && problem.severity === 'error')
+        .map(describeTermFileProblem),
+      warnings: problems
+        .filter((problem) => problem.file === 'protected-terms' && problem.severity === 'warning')
+        .map(describeTermFileProblem),
+    }),
+    forValidation: () => ({
+      warnings: problems
+        .filter((problem) => problem.file === 'protected-terms' || problem.severity === 'warning')
+        .map(describeTermFileProblem),
+      loadError: problems.find((problem) => problem.file === 'preferred-terminology' && problem.severity === 'error')
+        ?.message,
+    }),
     checkBaseValue: (key, baseValue) => ({
       findings: findPreferredTermFindings(baseValue, preferredTerminology).map(({ rule }) => ({
         key,
@@ -104,55 +105,9 @@ export function readProjectTerms(collection: Pick<Collection, 'termFiles'>): Pro
 }
 
 /**
- * The protected terms, for a consumer that guards values with them and has no advisory channel.
- *
- * @throws {ProtectedTermsFileError} A protected-terms file exists but is not a JSON array of
- *   strings. Running with an empty list would let altered brand names through unnoticed.
- */
-export function requireProtectedTerms(terms: ProjectTerms): readonly string[] {
-  const broken = terms.problems.find((problem) => problem.file === 'protected-terms' && problem.severity === 'error');
-  if (broken) {
-    throw new ProtectedTermsFileError(broken.filePath, broken.message);
-  }
-  return terms.protectedTerms;
-}
-
-/**
- * The protected-terms problems that do not stop a guarded consumer (a file the config names
- * that does not exist), as printable lines. A broken file is {@link requireProtectedTerms}'s concern.
- */
-export function protectedTermsWarnings(terms: ProjectTerms): string[] {
-  return terms.problems
-    .filter((problem) => problem.file === 'protected-terms' && problem.severity === 'warning')
-    .map(describeTermFileProblem);
-}
-
-/**
- * A problem as one printable line. A broken file says the check it disabled was skipped
- * (`Preferred terminology checks skipped: <why>`); a missing named file is its own message.
- */
-export function describeTermFileProblem(problem: TermFileProblem): string {
-  if (problem.severity === 'warning') {
-    return problem.message;
-  }
-  const check = problem.file === 'protected-terms' ? 'Protected terms checks' : 'Preferred terminology checks';
-  return `${check} skipped: ${problem.message}`;
-}
-
-/**
  * The suggestion as one line, e.g. `consider "Investment" instead of "Expenditure"`.
  * Every surface (add, edit, import, validate, the API) words it the same way.
  */
 export function describePreferredTermRule(rule: PreferredTermRule): string {
   return `consider "${rule.preferred}" instead of "${rule.discouraged}"`;
-}
-
-function problemsOf(file: TermFileProblem['file'], read: TermFileRead<unknown>): TermFileProblem[] {
-  if (read.error !== undefined) {
-    return [{ file, severity: 'error', filePath: read.filePath, message: read.error }];
-  }
-  if (read.warning !== undefined) {
-    return [{ file, severity: 'warning', filePath: read.filePath, message: read.warning }];
-  }
-  return [];
 }

@@ -6,9 +6,8 @@ import { CONFIG_FILENAME, DEFAULT_CONFIG } from '../../constants';
 import { initConfig } from './init-config';
 import { toCollectionEntry } from './collection-entry';
 
-export const DEFAULT_BUNDLE_DIST = './src/assets/i18n';
-export const DEFAULT_BUNDLE_NAME = '{locale}';
-export const DEFAULT_TYPE_DIST_FILE = './src/generated/tokens.ts';
+import { DEFAULT_BUNDLE_DIST, DEFAULT_BUNDLE_NAME } from '@simoncodes-ca/domain';
+export { DEFAULT_BUNDLE_DIST, DEFAULT_BUNDLE_NAME, DEFAULT_TYPE_DIST_FILE } from '@simoncodes-ca/domain';
 
 /** Plain project setup values, independent of flags or prompts. */
 export interface InitProjectAnswers {

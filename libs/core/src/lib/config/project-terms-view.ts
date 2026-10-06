@@ -1,101 +1,94 @@
 import { basename } from 'node:path';
 import { effectiveProtectedTerms } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { CollectionNotFoundError, ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import { CollectionNotFoundError } from '../errors/lingo-tracker-error';
 import type { OpenedProject } from './open-collection';
-import { loadPreferredTerminology, type LoadPreferredTerminologyResult } from './preferred-terminology-file';
+import { resolvePreferredTerminologyFile, type LoadPreferredTerminologyResult } from './preferred-terminology-file';
 import {
-  requireProtectedTermsFile,
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFile,
   type ResolvedProtectedTerms,
 } from './protected-terms-file';
-import type { ProtectedTermsView } from './set-protected-terms';
-import type { TermFileProblem } from './project-terms';
+import type { ProtectedTermsView } from './protected-terms-request';
+import { readProjectTermFiles, assertUsableProtectedFiles } from './project-term-files';
 
 /** The project config and all term scopes, read for one API response or CLI preview. */
-export interface ProjectTermsView {
+export interface ProjectTermsConfigView {
   readonly config: LingoTrackerConfig;
   readonly projectName: string;
   readonly protectedTerms: ResolvedProtectedTerms;
   readonly preferredTerminology: LoadPreferredTerminologyResult;
-  readonly problems: readonly TermFileProblem[];
+}
+
+export interface ProjectTermsView extends ProjectTermsConfigView {
+  forConfig(): ProjectTermsConfigView;
+  forTarget(target: { readonly collection?: string }): ProtectedTermsView;
 }
 
 /** Reads each configured scope without throwing for malformed term files or caching across requests. */
 export function readProjectTermsView(project: OpenedProject): ProjectTermsView {
   const { sourceConfig: config, projectRoot: cwd } = project;
-  const problems: TermFileProblem[] = [];
-  const read = (path: string, explicit: boolean) => {
-    try {
-      const result = requireProtectedTermsFile({ path, explicit });
-      if (result.warning !== undefined) {
-        problems.push({ file: 'protected-terms', severity: 'warning', filePath: path, message: result.warning });
-      }
-      return result.terms;
-    } catch (error) {
-      if (!(error instanceof ProtectedTermsFileError)) throw error;
-      problems.push({ file: 'protected-terms', severity: 'error', filePath: error.filePath, message: error.message });
-      return [];
-    }
-  };
   const collections: ResolvedProtectedTerms['collections'] = {};
-  // Keep the prior API refusal order: collection files before the global file.
-  for (const [name, collection] of Object.entries(config.collections)) {
-    const filePath = resolveCollectionProtectedTermsFilePath(collection, cwd);
-    collections[name] = { terms: filePath === undefined ? [] : read(filePath, true), filePath };
-  }
+  // Preserve API refusal order: collection files before the global file.
+  const scopes = Object.entries(config.collections).map(([name, collection]) => ({
+    name,
+    filePath: resolveCollectionProtectedTermsFilePath(collection, cwd),
+  }));
   const globalFile = resolveGlobalProtectedTermsFile(config, cwd);
-  const globalTerms = read(globalFile.path, globalFile.explicit);
-  const preferredTerminology = loadPreferredTerminology(config, cwd);
-  const { error, warning, filePath } = preferredTerminology;
-  if (error !== undefined)
-    problems.push({ file: 'preferred-terminology', severity: 'error', filePath, message: error });
-  else if (warning !== undefined)
-    problems.push({ file: 'preferred-terminology', severity: 'warning', filePath, message: warning });
-  return {
+  const files = scopes.flatMap(({ filePath }) => (filePath === undefined ? [] : [{ path: filePath, explicit: true }]));
+  const { protectedFiles, preferred, problems } = readProjectTermFiles(
+    [...files, globalFile],
+    resolvePreferredTerminologyFile(config, cwd),
+  );
+  let index = 0;
+  for (const { name, filePath } of scopes) {
+    collections[name] = { terms: filePath === undefined ? [] : (protectedFiles[index++]?.value ?? []), filePath };
+  }
+  const globalTerms = protectedFiles[index]?.value ?? [];
+  const preferredTerminology = {
+    rules: preferred.value,
+    filePath: preferred.filePath,
+    error: preferred.error,
+    warning: preferred.warning,
+  };
+  const snapshot: ProjectTermsView = {
     config,
     projectName: basename(cwd),
     protectedTerms: { globalTerms, globalFilePath: globalFile.path, collections },
     preferredTerminology,
-    problems,
+    forConfig: () => {
+      assertUsableProtectedFiles(problems);
+      return snapshot;
+    },
+    forTarget: (target) => {
+      const { protectedTerms: resolved } = snapshot;
+      const name = target.collection;
+      if (name && config.collections[name] === undefined) throw new CollectionNotFoundError(name);
+      const own = name ? resolved.collections[name] : undefined;
+      const paths = [resolved.globalFilePath, own?.filePath];
+      const relevant = problems.filter(
+        (problem) => problem.file === 'protected-terms' && paths.includes(problem.filePath),
+      );
+      assertUsableProtectedFiles(paths.flatMap((path) => relevant.filter((problem) => problem.filePath === path)));
+      const collectionTerms = own?.terms ?? [];
+      return {
+        globalTerms,
+        collectionTerms,
+        globalFilePath: resolved.globalFilePath,
+        collectionFilePath: own?.filePath,
+        effectiveTerms: effectiveProtectedTerms(globalTerms, collectionTerms),
+        storedTerms: [...(name ? collectionTerms : globalTerms)],
+        warnings: [
+          ...new Set(
+            paths.flatMap((path) =>
+              relevant
+                .filter((problem) => problem.filePath === path && problem.severity === 'warning')
+                .map((problem) => problem.message),
+            ),
+          ),
+        ],
+      };
+    },
   };
-}
-
-/** Select a CLI scope from the snapshot; unrelated malformed files do not block it. */
-export function protectedTermsTargetView(
-  snapshot: ProjectTermsView,
-  target: { readonly collection?: string },
-): ProtectedTermsView {
-  const { protectedTerms: resolved } = snapshot;
-  const name = target.collection;
-  if (name && snapshot.config.collections[name] === undefined) throw new CollectionNotFoundError(name);
-  const own = name ? resolved.collections[name] : undefined;
-  const paths = [resolved.globalFilePath, own?.filePath];
-  const problems = snapshot.problems.filter(
-    (problem) => problem.file === 'protected-terms' && paths.includes(problem.filePath),
-  );
-  // The CLI previously read global before collection terms.
-  for (const path of paths) {
-    const broken = problems.find((problem) => problem.filePath === path && problem.severity === 'error');
-    if (broken !== undefined) throw new ProtectedTermsFileError(broken.filePath, broken.message);
-  }
-  const collectionTerms = own?.terms ?? [];
-  return {
-    globalTerms: resolved.globalTerms,
-    collectionTerms,
-    globalFilePath: resolved.globalFilePath,
-    collectionFilePath: own?.filePath,
-    effectiveTerms: effectiveProtectedTerms(resolved.globalTerms, collectionTerms),
-    storedTerms: [...(name ? collectionTerms : resolved.globalTerms)],
-    warnings: [
-      ...new Set(
-        paths.flatMap((path) =>
-          problems
-            .filter((problem) => problem.filePath === path && problem.severity === 'warning')
-            .map((problem) => problem.message),
-        ),
-      ),
-    ],
-  };
+  return snapshot;
 }

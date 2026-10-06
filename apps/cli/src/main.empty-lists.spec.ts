@@ -1,6 +1,7 @@
 import type { ExportRunResult, LingoTrackerConfig } from '@simoncodes-ca/core';
+import { createCli } from './program';
 import prompts from 'prompts';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const coreMocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),
@@ -41,14 +42,10 @@ const exportResult: ExportRunResult = {
   localeResults: [],
   summary: '',
 };
-const originalArgv = process.argv;
 const originalInitCwd = process.env.INIT_CWD;
 
 async function runCli(...args: string[]): Promise<void> {
-  process.argv = ['node', 'lingo-tracker', ...args];
-  vi.resetModules();
-  await import('./main');
-  await vi.waitFor(() => expect(process.exitCode).toBeDefined());
+  await createCli().parseAsync(args, { from: 'user' });
 }
 
 function askedNames(): unknown[] {
@@ -57,6 +54,17 @@ function askedNames(): unknown[] {
 }
 
 describe('registered empty optional lists', () => {
+  // Pay cold module loading in the suite hook, before any action's test timeout starts.
+  beforeAll(async () => {
+    // Resolve the async partial core mock before commands bind its exports.
+    await import('@simoncodes-ca/core');
+    await Promise.all([
+      import('./commands/bundle'),
+      import('./commands/delete-resource'),
+      import('./commands/export-cmd'),
+      import('./add-resource/add-resource'),
+    ]);
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     process.exitCode = undefined;
@@ -80,7 +88,6 @@ describe('registered empty optional lists', () => {
   });
 
   afterEach(() => {
-    process.argv = originalArgv;
     if (originalInitCwd === undefined) delete process.env.INIT_CWD;
     else process.env.INIT_CWD = originalInitCwd;
     process.exitCode = undefined;

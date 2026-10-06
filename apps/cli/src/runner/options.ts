@@ -1,5 +1,5 @@
 import { type Command, Option } from 'commander';
-import { type ExplicitEmptyList, parseCommaSeparatedList } from '../utils';
+import { type ExplicitEmptyList, parseCommaSeparatedList } from '../utils/string-parsers';
 
 /** One Commander option registration. Each command gets its own Option instance. */
 export type OptionDefinition = (command: Command) => void;
@@ -43,16 +43,6 @@ export function choiceOption(
   };
 }
 
-export function collectionOption(description: string): OptionDefinition {
-  return option({ flags: '--collection <name>', description });
-}
-
-export const tokenCasingOption: OptionDefinition = choiceOption(
-  '--token-casing <casing>',
-  'Token property key casing',
-  ['upperCase', 'camelCase'],
-);
-
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
 }
@@ -61,50 +51,6 @@ export function repeatableListOption(flags: string, description: string): Option
   return (command) => {
     command.option(flags, description, collect, []);
   };
-}
-
-export const collectionSetupOptions: readonly OptionDefinition[] = [
-  option({ flags: '--collection-name <name>', description: 'Name for the translation collection' }),
-  option({ flags: '--translations-folder <path>' }),
-  option({ flags: '--export-folder <path>', description: 'dist/lingo-export' }),
-  option({ flags: '--import-folder <path>', description: 'dist/lingo-import' }),
-  option({ flags: '--base-locale <locale>', description: 'en' }),
-  option({ flags: '--locales <locales...>', description: 'supported locales' }),
-];
-
-export const setupBundleOption: OptionDefinition = option({
-  flags: '--setup-bundle <bool>',
-  description: 'Setup bundle configuration during init (true/false)',
-  parse: (value) => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    throw new Error(`--setup-bundle must be "true" or "false", got "${value}"`);
-  },
-});
-
-export const yesOption: OptionDefinition = option({ flags: '--yes', description: 'Skip confirmation prompt' });
-
-/** Flag order and labels differ between add and edit, but their common fields are declared here. */
-export function resourceFieldOptions(mode: 'add' | 'edit'): readonly OptionDefinition[] {
-  if (mode === 'add') {
-    return [
-      option({ flags: '--key <key>', description: 'Resource key (dot-delimited, e.g., apps.common.buttons.ok)' }),
-      option({ flags: '--value <value>', description: 'Base value (source text)' }),
-      option({ flags: '--comment <comment>', description: 'Optional context for translators' }),
-      commaListOption({ flags: '--tags <tags>', description: 'Optional tags (comma-separated)' }),
-      option({ flags: '--target-folder <folder>', description: 'Optional target folder (dot-delimited)' }),
-    ];
-  }
-  return [
-    option({ flags: '--key <key>', description: 'Resource key (dot-delimited)' }),
-    option({ flags: '--base-value <value>', description: 'New base value (source text)' }),
-    option({ flags: '--comment <comment>', description: 'New comment' }),
-    commaListOption({ flags: '--tags <tags>', description: 'New tags (comma-separated)' }),
-    option({
-      flags: '--target-folder <folder>',
-      description: 'Move the resource into this folder (dot-delimited; "" for the collection root)',
-    }),
-  ];
 }
 
 /** Only raw empty optional flags are omitted; other empty lists retain the supplied-flag gates. */

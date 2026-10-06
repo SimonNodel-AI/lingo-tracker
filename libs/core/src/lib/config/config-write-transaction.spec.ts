@@ -7,12 +7,13 @@ import { updateCollection } from '../../collections-manager/update-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { ConfigChangedError } from '../errors/lingo-tracker-error';
+import { ConfigChangedError, CoreOperationError } from '../errors/lingo-tracker-error';
 import type { ResourceEntries } from '../resource/resource-entry';
 import { guardedConfigWrite } from './config-file-operations';
 import { loadConfig } from './load-config';
 import { openCollection } from './open-collection';
 import { updateProjectTerms } from './update-project-terms';
+import { runConfigWriteTransaction } from './config-write-transaction';
 
 describe('Config write transaction with real files', () => {
   const tempDir = useTempDir('config-transaction-');
@@ -33,6 +34,42 @@ describe('Config write transaction with real files', () => {
     writeFileSync(join(cwd, 'preferred.json'), '[{"discouraged":"Old","preferred":"New"}]\n');
     return { projectRoot: cwd, sourceConfig: loadConfig({ cwd }) };
   };
+
+  it('returns restoration evidence separately from a wrapped or reused error', () => {
+    const path = join(tempDir(), 'terms.json');
+    writeFileSync(path, '["Original"]');
+    const original = new Error('write failed');
+    const wrapped = new CoreOperationError('wrapped failure', { cause: original });
+    const restored = runConfigWriteTransaction(
+      [
+        {
+          path,
+          write: () => {
+            writeFileSync(path, 'partial');
+            throw wrapped;
+          },
+        },
+      ],
+      () => true,
+    );
+    expect(restored).toEqual({ status: 'failed', error: wrapped, reverted: true });
+    expect(readFileSync(path, 'utf8')).toBe('["Original"]');
+    const refused = runConfigWriteTransaction(
+      [
+        {
+          path,
+          write: () => {
+            writeFileSync(path, 'partial');
+            throw wrapped;
+          },
+        },
+      ],
+      () => false,
+    );
+    expect(refused).toEqual({ status: 'failed', error: wrapped, reverted: false });
+    expect(readFileSync(path, 'utf8')).toBe('partial');
+    expect(wrapped.cause).toBe(original);
+  });
 
   it('replaces only the collection file selected by the request', () => {
     const project = setup();

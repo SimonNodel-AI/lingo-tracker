@@ -10,13 +10,24 @@ import { writeJsonFile } from '../file-io/json-file-operations';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 import { InMemoryTranslationProvider } from './in-memory-translation-provider';
-import { type TranslateLocaleProgress, translateLocale as translateLocaleReal } from './translate-locale';
+import type { TranslateLocaleProgress } from './translation-run';
 
 import * as batchModule from './translation-batch';
-import { selectPreparedTranslateLocale, executeTranslateLocale, prepareTranslateLocale } from './translation-run';
+import {
+  prepareTranslationRun,
+  type TranslationRunExecutionOptions,
+  type TranslationRunOptions,
+} from './translation-run';
 
-const translateLocale: typeof translateLocaleReal = (collection, params) =>
-  translateLocaleReal(collection, { ...params, delay: async () => {} });
+const executeLocale = async (
+  collection: Collection,
+  params: TranslationRunOptions & TranslationRunExecutionOptions & { targetLocale: string },
+) => {
+  const { targetLocale, onProgress, ...options } = params;
+  return prepareTranslationRun(collection, { ...options, delay: async () => {} })
+    .forLocale(targetLocale)
+    .execute({ onProgress });
+};
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {
@@ -38,7 +49,7 @@ const AUTO: TranslationConfig = {
   delayMs: 0,
 };
 
-describe('translateLocale', () => {
+describe('Translation Run', () => {
   const dir = useTempDir('translate-locale-');
 
   function collection(overrides: Partial<Collection> = {}): Collection {
@@ -54,7 +65,16 @@ describe('translateLocale', () => {
   }
 
   it.each([
-    { label: 'enabled target', overrides: {}, locale: 'fr', error: undefined },
+    {
+      label: 'enabled target',
+      overrides: {
+        baseLocale: 'de',
+        locales: ['de', 'fr'],
+        translationConfig: { ...AUTO, batchSize: 1, delayMs: 4321 },
+      },
+      locale: 'fr',
+      error: undefined,
+    },
     {
       label: 'disabled first',
       overrides: { translationConfig: undefined },
@@ -64,21 +84,50 @@ describe('translateLocale', () => {
     { label: 'no targets', overrides: { locales: ['en'] }, locale: 'fr', error: 'No target locales configured' },
     { label: 'base', overrides: {}, locale: 'en', error: 'Cannot translate to the base locale' },
     { label: 'unknown', overrides: {}, locale: 'de', error: 'Locale "de" is not configured' },
-  ])('prepareTranslateLocale: $label', ({ overrides, locale, error }) => {
-    const prepare = () => prepareTranslateLocale(collection(overrides), locale);
+  ])('prepareTranslationRun: $label', async ({ overrides, locale, error }) => {
+    const target = collection(overrides);
+    const provider = new InMemoryTranslationProvider();
+    const delays: number[] = [];
+    const prepare = () =>
+      prepareTranslationRun(target, {
+        provider,
+        delay: async (ms) => {
+          delays.push(ms);
+        },
+      }).forLocale(locale);
     if (error) expect(prepare).toThrow(error);
-    else expect(prepare()).toMatchObject({ collection: collection(), targetLocale: 'fr', translationConfig: AUTO });
+    else {
+      seedResources(target, { a: { source: 'First' }, b: { source: 'Second' } });
+      const run = prepare();
+      expect(run).toMatchObject({
+        collectionName: target.name,
+        targetLocale: 'fr',
+        execute: expect.any(Function),
+      });
+      await expect(run.execute()).resolves.toMatchObject({ outcome: 'succeeded', translatedCount: 2 });
+      expect(provider.calls).toEqual([
+        [{ text: 'First', sourceLocale: 'de', targetLocale: 'fr' }],
+        [{ text: 'Second', sourceLocale: 'de', targetLocale: 'fr' }],
+      ]);
+      expect(delays).toEqual([4321]);
+      expect(read(RESOURCE_ENTRIES_FILENAME)).toMatchObject({
+        a: { source: 'First', fr: '[fr] First' },
+        b: { source: 'Second', fr: '[fr] Second' },
+      });
+    }
   });
 
   it('emits one reindex for a batch that writes several folders', async () => {
-    const target = withBatchSize(5);
+    const target = collection({ translationConfig: { ...AUTO, batchSize: 5 }, onMutation });
     seedResources(target, { 'a.one': { source: 'One' }, 'b.two': { source: 'Two' }, 'c.three': { source: 'Three' } });
-    const result = await executeTranslateLocale(prepareTranslateLocale(target, 'fr'), {
+    const result = await prepareTranslationRun(target, {
       provider: new InMemoryTranslationProvider(),
-      onMutation,
       delay: async () => {},
-    });
+    })
+      .forLocale('fr')
+      .execute();
     expect(result.translatedCount).toBe(3);
+    expect(result.outcome).toBe('succeeded');
     expect(collected).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
   });
 
@@ -94,7 +143,7 @@ describe('translateLocale', () => {
       actual.writeJsonFile(options);
     });
     try {
-      const result = await translateLocale(target, {
+      const result = await executeLocale(target, {
         targetLocale: 'fr',
         provider: new InMemoryTranslationProvider(),
         onMutation,
@@ -128,7 +177,7 @@ describe('translateLocale', () => {
       });
     try {
       await expect(
-        translateLocale(target, {
+        executeLocale(target, {
           targetLocale: 'fr',
           provider: new InMemoryTranslationProvider(),
           onMutation: (mutation) => {
@@ -145,16 +194,14 @@ describe('translateLocale', () => {
 
   it('prepares availability before a prompt and selects the final locale afterward', async () => {
     const target = collection();
-    const prepared = prepareTranslateLocale(target);
+    const prepared = prepareTranslationRun(target, { delay: async () => {} });
     expect(prepared.targetLocales).toEqual(['fr']);
     expect(prepared).not.toHaveProperty('targetLocale');
-    await expect(
-      executeTranslateLocale(selectPreparedTranslateLocale(prepared, 'fr'), { delay: async () => {} }),
-    ).resolves.toMatchObject({ totalResources: 0 });
-    expect(() => selectPreparedTranslateLocale(prepared, 'en')).toThrow('Cannot translate to the base locale "en".');
-    expect(() => selectPreparedTranslateLocale(prepared, 'de')).toThrow(
-      'Locale "de" is not configured. Available locales: en, fr',
-    );
+    expect(prepared).not.toHaveProperty('collection');
+    expect(prepared).not.toHaveProperty('translationConfig');
+    await expect(prepared.forLocale('fr').execute()).resolves.toMatchObject({ totalResources: 0 });
+    expect(() => prepared.forLocale('en')).toThrow('Cannot translate to the base locale "en".');
+    expect(() => prepared.forLocale('de')).toThrow('Locale "de" is not configured. Available locales: en, fr');
   });
 
   it('tallies written, skipped, and failed outcomes once across a run', async () => {
@@ -164,13 +211,17 @@ describe('translateLocale', () => {
       b: { source: '{count, plural, one {# item} other {# items}}' },
       c: { source: 'Failed' },
     });
-    const result = await translateLocale(target, {
-      targetLocale: 'fr',
+    const progress: TranslateLocaleProgress[] = [];
+    const result = await prepareTranslationRun(target, {
       provider: new InMemoryTranslationProvider(({ text }) => {
         if (text === 'Failed') throw new Error('provider failed');
         return `[fr] ${text}`;
       }),
-    });
+      onMutation,
+      delay: async () => {},
+    })
+      .forLocale('fr')
+      .execute({ onProgress: (event) => progress.push(event) });
     expect(result).toMatchObject({
       outcome: 'failed',
       totalResources: 3,
@@ -180,45 +231,57 @@ describe('translateLocale', () => {
       skippedKeys: ['b'],
       failures: [{ key: 'c', error: 'provider failed' }],
     });
+    expect(progress).toHaveLength(3);
+    expect(progress[2]).toEqual({
+      totalResources: 3,
+      translatedCount: 1,
+      skippedCount: 1,
+      failedCount: 1,
+      currentBatch: 3,
+      totalBatches: 3,
+    });
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
   });
 
   it('injects the configured delay only between batches', async () => {
     const target = collection({ translationConfig: { ...AUTO, batchSize: 1, delayMs: 4321 } });
     seedResources(target, { a: { source: 'A' }, b: { source: 'B' }, c: { source: 'C' } });
     const delays: number[] = [];
-    await executeTranslateLocale(prepareTranslateLocale(target, 'fr'), {
+    await prepareTranslationRun(target, {
       provider: new InMemoryTranslationProvider(),
       delay: async (ms) => {
         delays.push(ms);
       },
-    });
+    })
+      .forLocale('fr')
+      .execute();
     expect(delays).toEqual([4321, 4321]);
   });
 
   describe('start-time preconditions', () => {
     it('accepts an enabled collection and a configured target locale', async () => {
-      await expect(translateLocale(collection(), { onMutation, targetLocale: 'fr' })).resolves.toMatchObject({
+      await expect(executeLocale(collection(), { onMutation, targetLocale: 'fr' })).resolves.toMatchObject({
         totalResources: 0,
       });
     });
 
     it('rejects disabled auto-translation before checking the locale', async () => {
       const target = collection({ translationConfig: undefined });
-      await expect(translateLocale(target, { onMutation, targetLocale: 'en' })).rejects.toThrow(
+      await expect(executeLocale(target, { onMutation, targetLocale: 'en' })).rejects.toThrow(
         AutoTranslationDisabledError,
       );
     });
 
     it('rejects the base locale with the CLI message', async () => {
       const target = collection();
-      await expect(translateLocale(target, { onMutation, targetLocale: 'en' })).rejects.toThrow(
+      await expect(executeLocale(target, { onMutation, targetLocale: 'en' })).rejects.toThrow(
         'Cannot translate to the base locale "en".',
       );
     });
 
     it('rejects an unknown locale with the available locales', async () => {
       const target = collection();
-      await expect(translateLocale(target, { onMutation, targetLocale: 'de' })).rejects.toThrow(
+      await expect(executeLocale(target, { onMutation, targetLocale: 'de' })).rejects.toThrow(
         'Locale "de" is not configured. Available locales: en, fr',
       );
     });
@@ -226,7 +289,7 @@ describe('translateLocale', () => {
 
   describe('when nothing needs translating', () => {
     it('returns zeros for an empty collection, without an API key', async () => {
-      const result = await translateLocale(collection(), { onMutation, targetLocale: 'fr' });
+      const result = await executeLocale(collection(), { onMutation, targetLocale: 'fr' });
 
       expect(result).toEqual({
         outcome: 'succeeded',
@@ -247,7 +310,7 @@ describe('translateLocale', () => {
         cancel: { source: 'Cancel', translations: { fr: { value: 'Annuler', status: 'verified' } } },
       });
 
-      const result = await translateLocale(collection(), { onMutation, targetLocale: 'fr' });
+      const result = await executeLocale(collection(), { onMutation, targetLocale: 'fr' });
 
       expect(result.totalResources).toBe(0);
     });
@@ -257,7 +320,7 @@ describe('translateLocale', () => {
       { ...AUTO, enabled: false },
     ])('still refuses a collection whose translation config is %j', async (translationConfig) => {
       await expect(
-        translateLocale(collection({ translationConfig }), { onMutation, targetLocale: 'fr' }),
+        executeLocale(collection({ translationConfig }), { onMutation, targetLocale: 'fr' }),
       ).rejects.toThrow(AutoTranslationDisabledError);
     });
   });
@@ -276,7 +339,7 @@ describe('translateLocale', () => {
     folder.save();
     const provider = new InMemoryTranslationProvider();
 
-    const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+    const result = await executeLocale(target, { onMutation, targetLocale: 'fr', provider });
 
     expect(result).toMatchObject({ totalResources: 3, translatedCount: 3, failedCount: 0, skippedCount: 0 });
     const entries = read(RESOURCE_ENTRIES_FILENAME);
@@ -299,7 +362,7 @@ describe('translateLocale', () => {
     });
     const provider = new InMemoryTranslationProvider(({ text }) => text.replace('Hello', 'Bonjour'));
 
-    const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+    const result = await executeLocale(target, { onMutation, targetLocale: 'fr', provider });
 
     expect(result.translatedCount).toBe(2);
     expect(collected).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
@@ -312,7 +375,7 @@ describe('translateLocale', () => {
     const target = collection();
     seedResources(target, { ok: { source: 'OK', translations: { fr: { value: 'OK', status: 'new' } } } });
 
-    const result = await translateLocale(target, {
+    const result = await executeLocale(target, {
       onMutation,
       targetLocale: 'fr',
       provider: new InMemoryTranslationProvider(() => 'OK'),
@@ -320,7 +383,7 @@ describe('translateLocale', () => {
 
     expect(result.translatedCount).toBe(1);
     expect(read(TRACKER_META_FILENAME).ok.fr.status).toBe('translated');
-    expect((await translateLocale(target, { onMutation, targetLocale: 'fr' })).totalResources).toBe(0);
+    expect((await executeLocale(target, { onMutation, targetLocale: 'fr' })).totalResources).toBe(0);
   });
 
   describe('batches', () => {
@@ -328,7 +391,7 @@ describe('translateLocale', () => {
       seedResources(collection(), { a: { source: 'A' }, b: { source: 'B' } });
       const writes: ResourceMutation[] = [];
 
-      const result = await translateLocale(withBatchSize(1), {
+      const result = await executeLocale(withBatchSize(1), {
         targetLocale: 'fr',
         provider: new InMemoryTranslationProvider(),
         onMutation: (mutation) => writes.push(mutation),
@@ -345,7 +408,7 @@ describe('translateLocale', () => {
       seedResources(collection(), { 'first.ok': { source: 'OK' }, 'second.cancel': { source: 'Cancel' } });
       const events: string[] = [];
 
-      await translateLocale(withBatchSize(1), {
+      await executeLocale(withBatchSize(1), {
         targetLocale: 'fr',
         provider: new InMemoryTranslationProvider(),
         onMutation: (mutation) => events.push(mutation.kind),
@@ -370,9 +433,9 @@ describe('translateLocale', () => {
       });
       const events: string[] = [];
 
-      let result: Awaited<ReturnType<typeof translateLocale>>;
+      let result: Awaited<ReturnType<typeof executeLocale>>;
       try {
-        result = await translateLocale(withBatchSize(1), {
+        result = await executeLocale(withBatchSize(1), {
           targetLocale: 'fr',
           provider: new InMemoryTranslationProvider(),
           onMutation: (mutation) => events.push(mutation.kind),
@@ -408,7 +471,7 @@ describe('translateLocale', () => {
       });
       const progress: TranslateLocaleProgress[] = [];
       try {
-        const result = await translateLocale(target, {
+        const result = await executeLocale(target, {
           targetLocale: 'fr',
           provider: new InMemoryTranslationProvider(),
           onProgress: (event) => progress.push(event),
@@ -442,7 +505,7 @@ describe('translateLocale', () => {
       const reported: ResourceMutation[] = [];
 
       await expect(
-        translateLocale(withBatchSize(1), {
+        executeLocale(withBatchSize(1), {
           targetLocale: 'fr',
           provider: new InMemoryTranslationProvider(),
           onMutation: (mutation) => reported.push(mutation),
@@ -472,9 +535,9 @@ describe('translateLocale', () => {
       });
       const writes: ResourceMutation[] = [];
 
-      let result: Awaited<ReturnType<typeof translateLocale>>;
+      let result: Awaited<ReturnType<typeof executeLocale>>;
       try {
-        result = await translateLocale(withBatchSize(5), {
+        result = await executeLocale(withBatchSize(5), {
           targetLocale: 'fr',
           provider: new InMemoryTranslationProvider(),
           onMutation: (mutation) => writes.push(mutation),
@@ -504,9 +567,9 @@ describe('translateLocale', () => {
         actual.writeJsonFile(options);
       });
 
-      let result: Awaited<ReturnType<typeof translateLocale>>;
+      let result: Awaited<ReturnType<typeof executeLocale>>;
       try {
-        result = await translateLocale(withBatchSize(1), {
+        result = await executeLocale(withBatchSize(1), {
           onMutation,
           targetLocale: 'fr',
           provider: new InMemoryTranslationProvider(),
@@ -531,7 +594,7 @@ describe('translateLocale', () => {
       const provider = new InMemoryTranslationProvider();
       const progress: TranslateLocaleProgress[] = [];
 
-      await translateLocale(withBatchSize(2), {
+      await executeLocale(withBatchSize(2), {
         onMutation,
         targetLocale: 'fr',
         provider,
@@ -555,7 +618,7 @@ describe('translateLocale', () => {
         return `${text}-fr`;
       });
 
-      const result = await translateLocale(withBatchSize(2), { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(withBatchSize(2), { onMutation, targetLocale: 'fr', provider });
 
       expect(result.failedCount).toBe(2);
       expect(result.outcome).toBe('failed');
@@ -578,7 +641,7 @@ describe('translateLocale', () => {
         return `${text}-fr`;
       });
 
-      const result = await translateLocale(withBatchSize(1), { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(withBatchSize(1), { onMutation, targetLocale: 'fr', provider });
 
       expect(result).toMatchObject({
         totalResources: 2,
@@ -601,7 +664,7 @@ describe('translateLocale', () => {
         return 'Machine';
       });
 
-      const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(target, { onMutation, targetLocale: 'fr', provider });
 
       expect(result).toMatchObject({ translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
       expect(read(RESOURCE_ENTRIES_FILENAME).ok.fr).toBe('Humain');
@@ -619,7 +682,7 @@ describe('translateLocale', () => {
         return 'Bien';
       });
 
-      const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(target, { onMutation, targetLocale: 'fr', provider });
 
       expect(result).toMatchObject({ translatedCount: 1, skippedCount: 0 });
       expect(read(RESOURCE_ENTRIES_FILENAME, 'common').cancel).toEqual({ source: 'Cancel', fr: 'Annuler' });
@@ -637,7 +700,7 @@ describe('translateLocale', () => {
         return 'Machine';
       });
 
-      const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(target, { onMutation, targetLocale: 'fr', provider });
 
       expect(result).toMatchObject({ translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
       expect(read(RESOURCE_ENTRIES_FILENAME).ok.fr).toBe('OK');
@@ -657,7 +720,7 @@ describe('translateLocale', () => {
         return `[fr] ${text}`;
       });
 
-      const result = await translateLocale(target, { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(target, { onMutation, targetLocale: 'fr', provider });
 
       expect(result).toMatchObject({ totalResources: 1, translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
       expect(read(RESOURCE_ENTRIES_FILENAME).ok).toMatchObject({ source: 'New', fr: 'Old' });
@@ -669,7 +732,7 @@ describe('translateLocale', () => {
       seedResources(collection(), { items: { source: plural }, ok: { source: 'OK' } });
       const provider = new InMemoryTranslationProvider();
 
-      const result = await translateLocale(collection(), { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(collection(), { onMutation, targetLocale: 'fr', provider });
 
       expect(result).toMatchObject({ translatedCount: 1, skippedCount: 1, skippedKeys: ['items'] });
       expect(read(RESOURCE_ENTRIES_FILENAME).items.fr).toBeUndefined();
@@ -680,7 +743,7 @@ describe('translateLocale', () => {
       seedResources(target, { buy: { source: 'Buy an iPhone' }, ok: { source: 'OK' } });
       const provider = new InMemoryTranslationProvider(({ text }) => text.replace('iPhone', 'téléphone'));
 
-      const result = await translateLocale(target, {
+      const result = await executeLocale(target, {
         onMutation,
         targetLocale: 'fr',
         provider,
@@ -700,7 +763,7 @@ describe('translateLocale', () => {
         return text;
       });
 
-      const result = await translateLocale(collection(), { onMutation, targetLocale: 'fr', provider });
+      const result = await executeLocale(collection(), { onMutation, targetLocale: 'fr', provider });
 
       expect(result).toMatchObject({ translatedCount: 0, skippedCount: 1, skippedKeys: ['ok'] });
     });
@@ -710,7 +773,7 @@ describe('translateLocale', () => {
     writeFolderFiles(dir(), 'broken', { entries: '{ not json' });
     seedResources(collection(), { ok: { source: 'OK' } });
 
-    const result = await translateLocale(collection(), {
+    const result = await executeLocale(collection(), {
       onMutation,
       targetLocale: 'fr',
       provider: new InMemoryTranslationProvider(),
@@ -728,7 +791,7 @@ describe('translateLocale', () => {
     });
     seedResources(named, { ok: { source: 'OK' } });
 
-    const result = await translateLocale(named, {
+    const result = await executeLocale(named, {
       onMutation,
       targetLocale: 'fr',
       provider: new InMemoryTranslationProvider(),
@@ -741,7 +804,7 @@ describe('translateLocale', () => {
   it('reports unreadable folders in warnings even when nothing needs translating', async () => {
     writeFolderFiles(dir(), 'broken', { entries: '{ not json' });
 
-    const result = await translateLocale(collection(), { onMutation, targetLocale: 'fr' });
+    const result = await executeLocale(collection(), { onMutation, targetLocale: 'fr' });
 
     expect(result.totalResources).toBe(0);
     expect(result.warnings).toHaveLength(1);
@@ -750,7 +813,7 @@ describe('translateLocale', () => {
   it('throws MISSING_API_KEY when there is work and no provider is injected', async () => {
     seedResources(collection(), { ok: { source: 'OK' } });
 
-    await expect(translateLocale(collection(), { onMutation, targetLocale: 'fr' })).rejects.toMatchObject({
+    await expect(executeLocale(collection(), { onMutation, targetLocale: 'fr' })).rejects.toMatchObject({
       code: 'MISSING_API_KEY',
       retryable: false,
     });
@@ -760,7 +823,7 @@ describe('translateLocale', () => {
     seedResources(collection(), { ok: { source: 'OK' } });
     const onMutation = vi.fn();
 
-    await expect(translateLocale(collection(), { targetLocale: 'fr', onMutation })).rejects.toMatchObject({
+    await expect(executeLocale(collection(), { targetLocale: 'fr', onMutation })).rejects.toMatchObject({
       code: 'MISSING_API_KEY',
     });
 

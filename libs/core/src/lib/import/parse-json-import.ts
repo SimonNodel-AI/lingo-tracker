@@ -1,3 +1,4 @@
+import { flattenKeyTree } from '@simoncodes-ca/domain';
 import { existsSync, readFileSync } from 'node:fs';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { assertTranslationStatus } from '../resource/translation-status-input';
@@ -48,7 +49,7 @@ function isRichObject(value: unknown): value is Record<string, unknown> {
     typeof value === 'object' &&
     value !== null &&
     !Array.isArray(value) &&
-    'value' in value &&
+    Object.getOwnPropertyDescriptor(value, 'value') !== undefined &&
     typeof (value as Record<string, unknown>)['value'] === 'string'
   );
 }
@@ -158,7 +159,7 @@ export function extractFromFlat(data: Record<string, unknown>): ImportedResource
  * Non-leaf objects are recursed into. Arrays, null values, and other types are skipped.
  *
  * @param data - The hierarchical JSON object to extract resources from
- * @param prefix - Internal parameter for recursion; the current key path (default: '')
+ * @param prefix - Internal parameter for recursion; the current key path (default: no prefix)
  * @returns Array of imported resources with fully-qualified dot-delimited keys
  *
  * @example
@@ -196,29 +197,12 @@ export function extractFromFlat(data: Record<string, unknown>): ImportedResource
  * // ]
  * ```
  */
-export function extractFromHierarchical(data: Record<string, unknown>, prefix = ''): ImportedResource[] {
-  const resources: ImportedResource[] = [];
-
-  for (const [key, value] of Object.entries(data)) {
-    const fullKey = prefix ? `${prefix}.${key}` : key;
-
-    if (typeof value === 'string') {
-      // Simple string value - leaf node
-      resources.push({
-        key: fullKey,
-        value,
-      });
-    } else if (isRichObject(value)) {
-      // Rich format object - leaf node
-      resources.push(extractRichResource(fullKey, value));
-    } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-      // Nested object - recurse
-      resources.push(...extractFromHierarchical(value as Record<string, unknown>, fullKey));
-    }
-    // Skip other types (arrays, null, etc.)
-  }
-
-  return resources;
+export function extractFromHierarchical(data: Record<string, unknown>, prefix?: string): ImportedResource[] {
+  return flattenKeyTree(
+    data,
+    (value): value is string | Record<string, unknown> => typeof value === 'string' || isRichObject(value),
+    prefix,
+  ).map(([key, value]) => (typeof value === 'string' ? { key, value } : extractRichResource(key, value)));
 }
 
 /**

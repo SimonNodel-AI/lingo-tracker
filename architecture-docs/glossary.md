@@ -52,9 +52,9 @@ During bundle generation, ICU simple placeholder syntax (`{varName}`) is convert
 
 Core generates a saved bundle by its name for the API. For a CLI run, `generateBundles(config, { names?, locales?, overrides, cwd })` selects all or named bundles, prepares each request once, continues after an individual failure, and returns one outcome per bundle plus totals. [Bundle Run Preparation](#bundle-run-preparation) supplies the shared settings for generation and planning. Type generation has one outcome: written, skipped, failed, or not configured. A skipped outcome carries the `empty-bundle` reason code.
 
-Core returns general `warnings` and a structured `typeOutcome` separately. General warnings contain generation warnings in encounter order, followed by the prepared deprecated-setting warning. Core's exported `describeTypeOutcome(key, outcome)` supplies presentation-free failed or skipped warnings with the bundle key. Written and unconfigured outcomes have no type warning. The API appends this type warning after the general warnings.
+Core returns generation `warnings`, optional `configWarning` for the legacy type-setting deprecation, optional `typeWarning` for a failed or skipped type outcome, and structured `typeOutcome`. Core formats warning text internally. [Bundle Result Warnings](#bundle-result-warnings) combines generation warnings, config deprecation, then type-outcome warning for both the API DTO and CLI Bundle Presentation. The CLI retains successful and skipped type-file tree lines as progress.
 
-The CLI renders its own tree lines from `typeOutcome` and prints the prepared warning through the existing event. The CLI omits the already-reported prepared warning from its warning summary.
+The CLI renders its own tree lines from `typeOutcome` and prints the prepared config warning carried by the per-bundle outcome. Config and type warnings stay outside its generation warning summary.
 
 If generation throws, the prepared warning still reaches the CLI event or API log.
 
@@ -90,19 +90,63 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ---
 
+### Bundle Output Preview
+
+The pure projection of the [Bundle Form](#bundle-form)'s draft output choices, project locales, and optional API dry-run plan. `bundleOutputPreview({ draft, locales, plan? })` in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-output-preview.ts` returns the output summary, locale filenames, type filename, and folders with file kinds, existing-file flags, and path segments for wrapping. The form owns the signals and selects the draft fallback when the dry run fails.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
+
+---
+
+### Bundle Presentation
+
+The CLI's event-driven renderer in `apps/cli/src/commands/bundle-report.ts`. `printBundleEvent(event, { quiet?, verbose?, localeFilter? })` prints progress and diagnostics. `printBundleSummary(run, options)` derives the existing generation-only warning totals. Bundle keeps this presentation because its streams are pinned byte-for-byte and differ from [Run Report](#run-report)'s grouped lists. It uses the complete [Bundle Result Warnings](#bundle-result-warnings) projection, retains each finding's source, and preserves separate raw config deprecation, type tree/failure, and generation warning output. Only verbose mode shows generation warning details. Quiet mode retains diagnostics and warning totals. Neither function changes exit status; the command uses the completed run outcome.
+
+Explained in context: [`cli.md`](cli.md)
+
+---
+
+### Bundle Result Warnings
+
+The core projection `bundleResultWarnings(result: Pick<GenerateBundleResult, 'warnings' | 'configWarning' | 'typeWarning'>): string[]` in `libs/core/src/lib/bundle/result-warnings.ts`. It returns a new array in generation, config, then type-warning order, omitting absent optional fields. It preserves warning text and repeated generation findings without mutating the result. The API mapper and CLI Bundle Presentation use this same projection.
+
+Explained in context: [`bundle-generation.md`](bundle-generation.md)
+
+---
+
+### Bundle Run Controller
+
+The plain Tracker controller in `apps/tracker/src/app/collections/store/bundle-run-controller.ts`. `start(name, locales?, defaultLocaleCount?)` ignores a running bundle and replaces a finished result. `startAll(names, defaultLocaleCount?)` skips running bundles and keeps an active batch. `restore()` restores persisted runs, immediately queries active jobs and polls them to completion; a failed resumed request removes the run. `clear(name)` cancels that bundle’s subscription and persists dismissal (removing the key when the run map is empty), and `destroy()` cancels requests and polling. Starting or resuming a bundle replaces its previous subscription. Its three ports supply jobs, Keyed Storage, and a clock with a poll scheduler. `changes` publishes run maps, started batch names, batch position and busy state. Start/poll errors become failed runs with a localized fallback and any API rule details; storage errors never break a run. Batch names are not persisted.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-runs)
+
+---
+
 ### Bundle Run Preparation
 
-The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, typeWarning, tokenConstantNameOverride }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `selectPreparedBundleLocale` selects one locale and adds the empty-bundle warning in one place. A prepared `typeWarning` enters the result warning list once. If generation throws, that warning still reaches the CLI event or API log.
+The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, typeWarning, tokenConstantNameOverride, content }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `content({ onLocale?, onBase? })` selects all requested locales and each collection’s base values once, on first use. It caches trees, base keys, conflicts, and warnings. `planPreparedBundle(prepared)` describes this content; generation writes it. Empty locales have zero counts and warnings but no planned file. Base-selection warnings appear once unless separate locale selections also report them. Selected locale conflicts stop generation before all writes. Base conflicts stop runs only when types or debug keys consume the base tree. Progress fires before each locale selection. The run holds all selections in memory until output completes. A prepared `typeWarning` becomes the optional result `configWarning`, separate from counted run warnings. If generation throws before returning a result, the API logs that warning once.
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md#where-bundle-generation-lives), [`api.md`](api.md#bundles)
 
 ---
 
+### Key Tree
+
+The pure conversion between dot-delimited keys and nested JSON in `libs/domain/src/lib/key-tree.ts`. `buildKeyTree(entries, { leaf?, path? })` returns `{ tree, conflicts }`. Every branch has a null prototype, and traversal checks own properties. Leaves remain opaque, including rich objects. Parent leaves win over descendants in both key orders; conflicts lists each parent once, sorted. Exact duplicates use the last value. With `path`, distinct source keys that share a transformed path produce conflicts naming every source key. Callers validate key syntax before conversion.
+
+`flattenKeyTree(tree, isLeaf, prefix?)` returns flat entries through own properties. An undefined prefix starts at the root; an empty prefix preserves an empty segment. The caller identifies strings or rich leaves; arrays, null, and unsupported primitives are skipped. JSON import uses this reverse operation. `detectHierarchicalConflicts` is a view of the same forward operation. Bundle and type generation reject conflicts. Export keeps parent leaves, names skipped descendants in conflict messages, and counts only surviving keys.
+
+The core `buildBundleHierarchy(entries, tokenCasing?)` adapter also checks parent conflicts after token casing. It uses Key Tree for both hierarchies. The type adapter converts Key Tree output to the serializer’s node shape.
+
+Explained in context: [`bundle-generation.md`](bundle-generation.md#hierarchy-building), [`domain-and-data-model.md`](domain-and-data-model.md#key-tree)
+
+---
+
 ### Bundle Runs
 
-The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. `withBundlesFeature` stores those names in `bundleBatch` and exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
+The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Run Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
 
-The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The store owns API calls, polling, and session storage. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
+The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. Bundle warnings travel through named result fields: `warnings` carries generation warnings, `configWarning` carries the legacy type-setting deprecation, and `typeWarning` carries a skipped or failed type-outcome warning. The prepared config deprecation also travels on `BundleRunOutcome`, including when generation throws. The CLI Bundle Presentation preserves event ordering and its existing presentation: config deprecation before progress or a thrown error, type failures after progress, and generation warning details only in verbose mode. The API and CLI use `bundleResultWarnings` to combine generation warnings, config deprecation, then type-outcome warning. The CLI selects generation warnings for its warning list; deprecation and type diagnostics retain their separate framing. The job result DTO is unchanged. Core totals count generation warnings and config deprecations only for returned generation results, as before. There is no separate warning event. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
@@ -141,7 +185,7 @@ Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
 ### CLI Help Text
 
-The long examples appended to `import`, `validate`, and `preferred-terminology` help. `apps/cli/src/runner/help-text.ts` holds these strings so the [Command Registration](#command-registration) list stays short. Registration passes each string to Commander's `addHelpText('after', ...)` unchanged.
+The long examples appended to `import`, `validate`, and `preferred-terminology` help. `apps/cli/src/runner/help-text.ts` holds factories for these strings so the [Command Registration](#command-registration) list stays short. The factories read flag spellings from records. Registration calls them after metadata loads and passes the result to Commander's `addHelpText('after', ...)`; the output is unchanged.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
@@ -149,9 +193,43 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### CLI Option Definitions
 
-Reusable Commander flag declarations in `apps/cli/src/runner/options.ts`. A definition registers one option when the [Command Registration](#command-registration) is applied. `option({ flags, description?, defaultValue?, helpDefault?, parse? })` states which strings are help descriptions and which values Commander parses by default. Its `parse` callback converts and validates a supplied value before the command loads; `find-similar --max-results` uses it to reject non-numeric input. The module owns the collection flag, token casing choices, repeatable list parser, shared `init` and `add-collection` flags, `--yes`, resource field groups, and the value conversion for `--setup-bundle`. `commaListOption({ flags, description?, helpDefault?, empty? })` uses `parseCommaSeparatedList` to deliver trimmed `string[]` values with empty items removed. A raw empty optional flag (`""`) becomes undefined, so prompt and required-option gates still run. Non-empty inputs with no items (such as `" , "`) retain `[]` and count as supplied flags. `empty: 'clear'` preserves `[]` for replacement flags. `empty: 'preserve'` returns `{ kind: 'empty', input }` for deferred diagnostics. Export reads this explicit empty state to reject `--status` after collection resolution, before core validation and advisories. Commands declare `commaListAnswers` for comma-string prompt fields, which the runner converts with the same parser before required checks and selection. `validate-options.ts` beside validate owns its defaults; `find-similar-options.ts` owns the numeric parser.
+The CLI's records for spellings, descriptions, defaults, parsing, list behavior, choices and optional questions. Every command has an adjacent record table. `defineFlags<Options, Context>()(records)` in `apps/cli/src/runner/flag-record.ts` requires exactly the Options keys, including object spreads. A record can declare a positional argument instead of a flag. Shared records cover collection and locale spellings, setup and resource fields, token casing and consent. `flagName(record)` supplies the long spelling for diagnostics. `registerFlags` creates fresh Commander options; `flagValues` maps each Commander attribute to its record key, maps positional values, and applies runtime defaults (copying array defaults for each invocation). The runner asks record questions in record order before workflow questions.
+
+`runner/options.ts` contains the low-level Commander constructors. `commaListOption` omits an exactly empty optional flag (`""`) so prompts and missing-option gates still run. Comma-only input keeps `[]` and counts as supplied. Clear mode preserves `[]`; preserve mode returns `{ kind: 'empty', input }` for deferred diagnostics. Prompt list answers use the same parser. Find-similar's one default limit lives in its flag record; `find-similar-options.ts` supplies its numeric parser. Validate's records replace the separate registration conversion.
+
+Export and import each have one option table in `commands/export-option-table.ts` and `commands/import-option-table.ts`. Each record defines the flag spelling, description, default, optional prompt factory, and resolution rule. An explicit `defaultValue: undefined` means no default. `defaultMode` selects a help label or a Commander default. Prompt initials can differ from resolution defaults. Import records read strategy-dependent help values and migration prompt initials from the Import Strategy Policy.
+
+`commands/option-table.ts` projects registration fields with `tableFlags` and builds questions from these records. Its resolution helper preserves the exact result type of each record. Each command assembles a complete resolved result, and the compiler rejects missing fields. A mapped type requires a record for every command options key.
+
+Export prompts follow record order. Every prompted import record specifies its dependency order. List records cannot define a custom parser. The tables use type-only core imports and leave handlers lazy. Export status choices derive from `TRANSLATION_STATUSES` and retain their existing labels and order.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
+
+---
+
+### CLI Error Wording
+
+The CLI adapter for core [typed errors](#typed-errors), in `apps/cli/src/runner/cli-error-wording.ts`.
+`cliErrorWording(error, commandName?)` returns a message, optional details, an optional hint, and a rule for displaying its cause.
+It returns `undefined` for values outside `LingoTrackerError`.
+An exhaustive `ErrorCode` table covers domain and known provider codes.
+Separate exhaustive problem tables supply flag text for collection-tag, protected-term, and preferred-terminology edits.
+Unknown typed codes retain their message.
+
+The [Command Runner](#command-runner) applies this module before command-specific hooks and generic error text.
+`printCliError(error, options?)` prints complete diagnostics on stderr and retains the original error.
+The runner, bundle outcomes, and normalize's read-only catch use this helper.
+`ADD_RESOURCE_COMMAND_NAME` links the command definition to its advice, so only add-resource receives existing-key replacement advice.
+A contract spec covers every code and problem through core error fixtures.
+
+Typed import errors include `Error` causes unless their wording rule suppresses them.
+Import source and invalid-import-locale rules suppress causes.
+The scoped catch for untyped `runImport` errors also suppresses causes.
+Result-display and summary errors use normal runner reporting, with their message and cause.
+Typed translation errors omit the command-specific `Translation failed:` prefix.
+Import source and invalid-import-locale errors retain `Import failed:`, except source format-detection errors.
+
+Explained in context: [`cli.md`](cli.md#cli-error-wording)
 
 ---
 
@@ -163,7 +241,7 @@ Collections may declare a `tags?: string[]` array. These are **collection-level 
 
 Example collections from the project's own config: `trackerResources` (the Tracker UI's own strings), `TestDataPlayground`, and `mockDesignSystem`.
 
-**Collection (resolved).** Code outside the config module never reads a collection's raw entry to get its settings. `openCollection(config, name)` in `@simoncodes-ca/core` applies domain's [Collection Settings](#collection-settings) rule and returns a `Collection` with the effective values: `baseLocale` (non-empty collection value, else non-empty global value, else `en`), `locales` (non-empty collection list, else global list, else none). An empty collection value inherits: `baseLocale: ''` and `locales: []` both use the global setting. Other effective values are `targetLocales` (the locales without the base locale), `translationConfig` (collection, else global; the two are not merged), the absolute `translationsFolder`, normalized `tags`, `termFiles` (the paths of the [protected-terms](#protected-term) and [preferred-terminology](#preferred-terminology) files, resolved but not read; `readProjectTerms(collection)` reads them as the [Project Terms](#project-terms)), and `readOnly`. The returned `OpenedCollection` is also an [Opened Project](#opened-project): it carries `sourceConfig` and `projectRoot`, so registration and locale writes use the config that was opened. It throws `CollectionNotFoundError` for an unknown name, and `ReadOnlyCollectionError` when `{ writable: true }` is set on a read-only collection. The CLI and the API both open collections this way. Every resource and folder operation (`addResource`, `editResource`, `deleteResource`, `moveResource`, `translateExistingResource`, `translateLocale`, `createFolder`, `deleteFolder`, `moveFolder`) takes the opened `Collection` as its first parameter, like the [Import run](#import-run), so the base locale and locales come only from it.
+**Collection (resolved).** Code outside the config module never reads a collection's raw entry to get its settings. `openCollection(config, name)` in `@simoncodes-ca/core` applies domain's [Collection Settings](#collection-settings) rule and returns a `Collection` with the effective values: `baseLocale` (non-empty collection value, else non-empty global value, else `en`), `locales` (non-empty collection list, else global list, else none). An empty collection value inherits: `baseLocale: ''` and `locales: []` both use the global setting. Other effective values are `targetLocales` (the locales without the base locale), `translationConfig` (collection, else global; the two are not merged), the absolute `translationsFolder`, normalized `tags`, `termFiles` (the paths of the [protected-terms](#protected-term) and [preferred-terminology](#preferred-terminology) files, resolved but not read; `readProjectTerms(collection)` reads them as the [Project Terms](#project-terms)), and `readOnly`. The returned `OpenedCollection` is also an [Opened Project](#opened-project): it carries `sourceConfig` and `projectRoot`, so registration and locale writes use the config that was opened. It throws `CollectionNotFoundError` for an unknown name, and `ReadOnlyCollectionError` when `{ writable: true }` is set on a read-only collection. The CLI and the API both open collections this way. Every resource and folder operation (`addResource`, `editResource`, `deleteResource`, `executeMove`, `translateExistingResource`, `prepareTranslationRun`, `createFolder`, `deleteFolder`) takes the opened `Collection` as its first parameter, like the [Import run](#import-run), so the base locale and locales come only from it.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`cli.md`](cli.md), [`core-library.md`](core-library.md#config-and-collection-resolution)
 
@@ -179,7 +257,7 @@ Explained in context: [`frontend.md`](frontend.md#collection-form-dialog)
 
 ### Collection Change
 
-The shared change engine for an existing [Collection Entry](#collection-entry). `changeCollection` in `libs/core/src/collections-manager/collection-change.ts` serves update, add-locale, and remove-locale.
+The shared change engine for an existing [Collection Entry](#collection-entry). `changeCollection` in `libs/core/src/collections-manager/collection-change.ts` serves update, tag edits, add-locale, and remove-locale. Tag edits validate and normalize the list edit, then await this engine; read-only registrations still permit tag edits. Refused edits write nothing and emit no mutation. Changed tags emit one collection reindex.
 
 All preconditions precede writes. Locale sugar refuses read-only before its locale-specific checks and the stale snapshot. Update patches check terms, rename, entry, bundle references, terms destination, and stale snapshot before read-only and added-locale validation. The engine reads every affected folder before writes. It seeds added locales, purges removed locales, writes config, then writes optional terms.
 
@@ -223,7 +301,9 @@ The core operation that registers or changes a [Collection Entry](#collection-en
 
 Collection rename and delete check bundle references before writing. Rename changes the collection registration and every explicit bundle reference in one config write, unless a bundle already references the new name. Delete removes the registration and its explicit references in one config write, unless an affected bundle would become empty. Either conflict leaves config and translation files untouched.
 
-`addCollection(project, name, collection, { protectedTerms? })` and `updateCollection(openedCollection, newName, patch, { protectedTerms? })` check the term list and the resulting entry before their first write. The resulting entry supplies the file pointer, including one supplied in the same request or retained through a rename. A missing pointer raises `ProtectedTermsFileNotSetError` and changes no file. After any locale file changes required by an update, core writes `.lingo-tracker.json` and then the protected-terms file. The [Config Write Transaction](#config-write-transaction) restores both files if no locale file write was attempted. After a locale write attempt, a terms failure leaves the new config in place. Locale resource writes remain outside this transaction. `editCollectionTags(openedCollection, { add?, remove?, set? })` edits inherited tags in the registration, with core enforcing flag combinations and normalization. `initConfig(config, { cwd? })` validates and creates a config through the same config write path with an exclusive file create, refusing an existing file even when it appears during the write.
+`addCollection(project, name, collection, { protectedTerms?, onMutation? })` and `updateCollection(openedCollection, newName, patch, { protectedTerms?, onMutation? })` check the term list and the resulting entry before their first write. The resulting entry supplies the file pointer, including one supplied in the same request or retained through a rename. A missing pointer raises `ProtectedTermsFileNotSetError` and changes no file. After any locale file changes required by an update, core writes `.lingo-tracker.json` and then the protected-terms file. The [Config Write Transaction](#config-write-transaction) restores both files if no locale file write was attempted. After a locale write attempt, a terms failure leaves the new config in place. Locale resource writes remain outside this transaction. `editCollectionTags(openedCollection, { add?, remove?, set? })` edits inherited tags in the registration, with core enforcing flag combinations and normalization. `initConfig(config, { cwd? })` validates and creates a config through the same config write path with an exclusive file create, refusing an existing file even when it appears during the write.
+
+Collection Lifecycle owns Collection Index invalidation through the [Mutation Sink](#mutation-sink). After a successful registration write, `addCollection` sends one `reindex` for the new entry’s absolute translations folder. The API supplies `CollectionIndex.sink`; it does not build mutations or resolve collection paths itself. Existing collection changes and deletion report through the opened collection’s sink. The CLI can omit the sink.
 
 `loadConfig()` records the exact config bytes it read. `guardedConfigWrite(openedProject)` checks that version before every config write, including add, delete, bundle writes, and writes delayed by a CLI prompt. A changed or removed file raises `ConfigChangedError` instead of replacing another process's edit. The locale-change path checks before touching locale files; the handle checks again when it writes config. The API answers 409 with the error message, and the CLI prints it and exits 1.
 
@@ -267,9 +347,17 @@ Explained in context: [`core-library.md`](core-library.md#collection-sweep)
 
 ---
 
+### CLI Program
+
+The CLI assembly in `apps/cli/src/program.ts`. `createCli(): Command` returns a fresh, unparsed Commander program with every command registered and handlers still lazy. `main.ts` supplies process argv through Commander. Wiring tests call the factory and await `parseAsync` directly; no process-argument replacement, module-cache reset or completion polling is needed.
+
+Explained in context: [`cli.md`](cli.md#command-runner)
+
+---
+
 ### Command Registration
 
-The CLI declaration that connects a name, description, ordered option definitions, optional positional argument and help text to a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander, then loads and invokes the handler when the action runs. Its optional `mapOptions(raw, args)` converts raw flags and positional arguments before invocation. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated flags and parsers.
+The CLI declaration that connects a name, description, flag records, help text and a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander. Its action uses `flagValues(records, raw, args)` to map Commander attributes to record keys, positional records in order, and runtime defaults, then awaits the lazy import and handler. Only declared keys reach handlers; absent options stay absent unless they have a default. The test inventory in `apps/cli/src/testing/command-registrations.ts` shares these declarations between handler-coverage and surface-snapshot tests; coverage checks it against every command in `createCli()`. Every handler takes one options object. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated records and parsers.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
@@ -277,7 +365,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### Command Runner
 
-The CLI execution path. `registerCommand(program, registration)` applies the command's flags to Commander; `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function its lazy action calls. A command spec has a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its optional `preflight(ctx)` for preconditions, its `prompts` for missing values, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. Its opened collection carries that config snapshot; the locale and tag commands pass it with a write handle to core. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalizeCollections` in core applies the named versus all read-only rule after receiving the opened collections. After resources open, the runner awaits `preflight` in both modes before building command questions. Its context supplies those resources and the original flags as `options`. A thrown preflight error uses normal reporting (`❌ <message>`, exit 1); `formatError` receives `duringRun: false`. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
+The CLI execution path. `registerCommand(program, registration)` applies the command's flags to Commander; `defineCommand<Options>()(spec)` in `apps/cli/src/runner/command-runner.ts` returns the function its lazy action calls. A command spec has a `name`, what it opens (`collection: 'writable' | 'read' | 'many' | 'none'`, and `config: false` for `init` and `install-skill`), its optional `preflight(ctx)` for preconditions, its `flags` for record questions and diagnostic spellings, any `prompts` for workflow questions, the options it `required` (an absent flag, or an empty answer, fails; `run` sees them typed as present), and `run`, which makes the core call and prints. The runner finds the project root (`INIT_CWD`, else `process.cwd()`), reads the interactive rule, and loads the config. Its opened collection carries that config snapshot; the locale and tag commands pass it with a write handle to core. For one collection it resolves the flag, the only configured name, or an interactive selection. For `many` it supplies all opened collections to prompt builders, then selects all or an ordered, deduplicated list after the prompts. An empty config or unknown name fails with exit 1. The four many-collection commands are `validate`, `export`, `normalize`, and `glossary`; `normalizeCollections` in core applies the named versus all read-only rule after receiving the opened collections. After resources open, the runner awaits `preflight` in both modes before building command questions. Its context supplies those resources and the original flags as `options`. A thrown preflight error uses normal reporting (`❌ <message>`, exit 1). Shared core wording takes precedence. For untyped errors, `formatError` receives `duringRun: false`. The runner handles cancellation and errors, sets `process.exitCode`, and never calls `process.exit()`.
 
 `runCommand(command, flags, { cwd, ask?, interactive?, output?, summaryDirectory? })` runs that same pipeline in an explicit environment and returns `Promise<{ exitCode: 0 | 1, stdout, stderr }>`. It does not mutate process state. Tests use temporary projects and real core; injected `ask` answers questions or throws `CommandCancelledError`. The runner's async-scoped output port captures formatter output, direct command output and summary announcements separately for each run. Production supplies the process root, real prompts and TTY detection, uses the real console/streams, and sets `process.exitCode`.
 
@@ -289,7 +377,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### Config Write Transaction
 
-`guardedConfigWrite(project).transaction(config, companions)` writes optional config and staged companion files together. `CompanionFileWrite` supplies a destination path and a write callback. The shared implementation is `libs/core/src/lib/config/config-write-transaction.ts`.
+`guardedConfigWrite(project).transaction(config, companions, onOutcome?)` writes optional config and staged companion files together. The shared transaction returns `{ status }` on success or `{ status, error, reverted }` after failure. The optional observer receives this outcome before the config writer throws the original error; Project Terms carries the restore fact separately from error identity. `CompanionFileWrite` supplies a destination path and a write callback. The shared implementation is `libs/core/src/lib/config/config-write-transaction.ts`.
 
 The transaction snapshots every destination before the first write. It restores attempted destinations in reverse order after a failure. Existing files regain their exact bytes; new files disappear; existing directories stay intact. After a completed config write, the config guard checks for concurrent changes before any restoration. If config changed, the transaction preserves companion files that the current config can still reference. Validation and version-check failures leave config untouched. Once the config write starts, a failed write restores its previous bytes. Restoration failures become the original error's cause.
 
@@ -327,7 +415,7 @@ Explained in context: [`frontend.md`](frontend.md#lazy-loaded-dialogs)
 
 ### Connector Links
 
-The lines from collection cards to a hovered bundle card in the Tracker's Collections Manager. `apps/tracker/src/app/collections/collections-manager.ts` measures the hovered bundle and only its referenced collection cards, then passes their rectangles to `collectionLinks` in `apps/tracker/src/app/collections/collection-links.ts`. The pure function returns the SVG paths and dot positions. It draws nothing when the columns stack or no referenced collection card is present. Its fixed port offset, column inset, dot standoff, rounding and curve reach keep the lines aligned with the cards.
+The lines from collection cards to a hovered bundle card in the Tracker's Collections Manager. `apps/tracker/src/app/collections/collection-links-measurement.ts` owns the measuring boundary: `readCollectionLinkRects` queries the root's `.split`, `.bundles-col`, `[data-bundle]` and `[data-collection]` elements, measuring only the hovered bundle and its referenced collection cards. The adapter handles absent hover or required elements and filters linked names once. It returns a plain viewport rects object with the container, column, named bundle and a collection-name-to-rect map, or `undefined` when required elements are missing. The pure `collectionLinksFromRects` in `collection-links.ts` takes that object plus collection names in template order, skips missing cards and delegates geometry to `collectionLinks`. `measureCollectionLinks` composes the adapter and pure function to return the rendered `{ links, port }` shape. The component keeps the signals, next-frame effect and captured scroll/resize listener lifecycle. It draws nothing when required elements are missing, the columns stack or no referenced collection card is present. The geometry's fixed port offset, column inset, dot standoff, rounding and curve reach keep the lines aligned with the cards.
 
 Explained in context: [`frontend.md`](frontend.md#collection-connector-links)
 
@@ -345,6 +433,14 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ## E
 
+### Copy with Feedback
+
+The shared clipboard action in `apps/tracker/src/app/shared/clipboard.ts`. `copyWithFeedback(text, feedback)` copies the text and shows one success or error toast. The caller supplies both messages and the notification seam. Only a successful copy runs the optional `onCopied` callback. The result is `copied` or `failed`, including an unavailable clipboard API or a rejected write.
+
+Explained in context: [`frontend.md`](frontend.md#timed-ui-transients-and-clipboard)
+
+---
+
 ### Editor Advisories
 
 The translation editor's advice rules in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-advisories.ts`. `EditorAdvisories.observe()` follows base-value and Similar Values streams until `destroy()`: typed text updates at once, preferred-term findings update after a 300 ms pause, and a failed rule-file load suppresses them. It holds pinned hits and their clear/loading/ready state, identifies a trimmed, case-insensitive exact match, and applies a preferred term through the form's normal value-change path. Its signals are read-only to the dialog. Pure tag suggestion filtering excludes the entry's own and inherited tags. The dialog keeps rendering and focus after Use.
@@ -356,6 +452,14 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 ### Editor Entry Form
 
 The translation editor's typed form and [Resource Entry Draft](#resource-entry-draft) bridge in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-entry-form.ts`. `EditorEntryForm` seeds every non-base locale from the resource summary, gives missing metadata the domain's `new` status, publishes raw form snapshots, selects locales needing work with the domain status helper, and detects unsaved fields, folder or tag changes. It exposes tags for reading and owns `addTag` and `removeTag` through Tag List Edit. Its `draft(folderPath)` is the plain snapshot passed to [Editor Submit](#editor-submit). The dialog keeps the template bindings and UI focus.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
+### Editor Focus
+
+The translation editor's named focus anchors in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-focus.ts`. `EditorFocus` registers lazy anchor getters so conditional views resolve their current element when `focus(target)` runs. It focuses the named field or panel control and, for Comment, scrolls it into view and selects its text. Missing anchors do nothing. [Editor Panels](#editor-panels) owns focus intent; the dialog keeps its ViewChild refs and scheduling after render. [Editor Session](#editor-session) schedules validation focus.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -379,7 +483,17 @@ Explained in context: [`frontend.md`](frontend.md#the-editor-outcome)
 
 ### Editor Panels
 
-The translation editor's transient panels in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-panels.ts`. `EditorPanels` owns which of the folder popover, the other-locales drawer and the context disclosure is open, the popover's staged folder and filter, and the order Escape dismisses them: `dismissNearest()` closes the popover, then the drawer, and returns true when it consumed the key. It also owns focus intent as a signal. Opening a panel asks for focus inside it; closing one asks for focus on its opener, but only if it was open. `closeAll()` closes both without any focus ask, so a validation failure can focus the offending field. The class never touches the DOM. The dialog keeps the template and its element refs, and one effect turns `focusRequest` into a `focus()` after render. [Editor Location](#editor-location) owns the committed folder; the dialog owns the accidental-close guard.
+The translation editor's transient panels in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-panels.ts`. `EditorPanels` owns which of the folder popover, the other-locales drawer and the context disclosure is open, the popover's staged folder and filter, and the order Escape dismisses them: `dismissNearest()` closes the popover, then the drawer, and returns true when it consumed the key. It also owns focus intent as a signal. Opening a panel asks for focus inside it; closing one asks for focus on its opener, but only if it was open. `closeAll()` closes both without any focus ask, so a validation failure can focus the offending field. The class never touches the DOM. The dialog keeps the template and its element refs, and one effect passes `focusRequest` to [Editor Focus](#editor-focus) after render. [Editor Location](#editor-location) owns the committed folder; [Editor Session](#editor-session) owns the accidental-close guard.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
+### Editor Session
+
+The translation editor composition in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-session.ts`. `new EditorSession(data, options)` exposes the entry form, location, advisories, submit protocol, and panels directly. It composes Editor Entry Form, Editor Location, Editor Advisories, and Editor Submit. It owns dotted-key synchronization, absorption feedback, the unsaved-work guard, and submit decision presentation. The options supply store and API seams, confirmation, close, feedback, and named focus. The owner must call `destroy()` to release subscriptions, timers, and pending animation frames.
+
+The component keeps its template, DOM anchors, focus after render, and Escape/backdrop bridge. The focus effect uses `onCleanup` to cancel superseded callbacks and callbacks pending at destruction. Session tests use fakes for confirmation, close, and focus without TestBed.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -387,7 +501,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Editor Submit
 
-The translation editor's save session in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `EditorSubmitSession` owns idle, missing-comment confirmation, key-conflict choice, writing and done phases. It ignores a trigger outside idle and remembers "Save Anyway" after a refused write. Writing and done both keep the dialog's busy indicator on until it closes. Injected functions provide the store writes and both prompts. The session returns an [Editor Outcome](#editor-outcome), a message decision or a focus decision. Message decisions carry [Outcome Feedback](#outcome-feedback), with the existing token, optional server-message detail, error tone, and inline placement. The dialog shows this feedback through `injectFeedback().text` and retains the existing focus behavior. An empty write or rejected prompt gives the unexpected message and restores idle. `submitEditor` builds the create or update request from the [Resource Entry Draft](#resource-entry-draft) and classifies API refusals. `submitGate` keeps the read-only, submitting, invalid-form, collision and comment order. `resolveDraftKey` in `resource-entry-draft.ts` trims the leaf for the preview, create request and conflict hand-off. [Editor Location](#editor-location) gathers known entries; `editor-entry-sources.ts` derives tag suggestions.
+The translation editor's save session in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `EditorSubmitSession` owns idle, missing-comment confirmation, key-conflict choice, writing and done phases. It ignores a trigger outside idle and remembers "Save Anyway" after a refused write. Writing and done both keep the dialog's busy indicator on until it closes. Injected functions provide the store writes and both prompts. The session returns an [Editor Outcome](#editor-outcome), a message decision or a focus decision. Message decisions carry [Outcome Feedback](#outcome-feedback), with the existing token, optional server-message detail, error tone, and inline placement. [Editor Session](#editor-session) shows this feedback through its supplied `feedbackText` function and owns the focus decisions. An empty write or rejected prompt gives the unexpected message and restores idle. `submitEditor` builds the create or update request from the [Resource Entry Draft](#resource-entry-draft) and classifies API refusals. `submitGate` keeps the read-only, submitting, invalid-form, collision and comment order. `resolveDraftKey` in `resource-entry-draft.ts` trims the leaf for the preview, create request and conflict hand-off. [Editor Location](#editor-location) gathers known entries; `editor-entry-sources.ts` derives tag suggestions.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
 
@@ -395,7 +509,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ### Entry Relocation
 
-The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. The [Move Plan](#move-plan) supplies its key pairs and `sameCollection` fact. In code, `relocateEntries(plan, { override?, onMutation? })` in `libs/core/src/lib/resource/relocate-entries.ts` takes a plan with its source and destination collections, relocations, and `sameCollection` and returns `{ moved, collisions, errors }` and delivers changes to the sink. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `moveResource` and `moveFolder` move through it. [Move Report](#move-report) converts relocation collisions to warnings and accumulates errors for resource and folder moves.
+The one way [resource entries](#resource-entry) move between keys, inside a [collection](#collection) or into another one. The [Move Plan](#move-plan) supplies its key pairs and `sameCollection` fact. In code, `relocateEntries(plan, { override?, onMutation? })` in `libs/core/src/lib/resource/relocate-entries.ts` takes a plan with its source and destination collections, relocations, and `sameCollection` and returns `{ moved, collisions, errors }` and delivers changes to the sink. It moves them as one batch: each [Resource Folder](#resource-folder) involved is opened and saved once, and only after every folder it sends entries to, so a failed write leaves no moved entry lost (except inside a cycle of folders that swap entries). The copy is lossless (checksums and statuses are kept; nothing is auto-translated). One collision rule applies: a destination key held by an entry that is not moving away is a collision, unless `override` replaces it; a key the batch frees is free. An entry moved into another collection is fitted to its locales: locales the destination does not have are dropped, and missing ones are seeded as a `new` copy of the base (the [Locale Seeding](#locale-seeding) fallback). Both collections must have the same [base locale](#base-locale). `editResource` (`moveTo`), `executeMove` move through it. [Move Report](#move-report) converts relocation collisions to warnings and accumulates errors for resource and folder moves.
 
 Explained in context: [`core-library.md`](core-library.md#entry-relocation)
 
@@ -425,7 +539,7 @@ Explained in context: [`core-library.md`](core-library.md#add-resource)
 
 ### Export Run
 
-One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, the [Run Outcome](#run-outcome), and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI defaults are in `apps/cli/src/commands/run-option-defaults.ts` and prompt preselection is in `apps/cli/src/commands/export-cmd.ts`; a prompt answer with no selected collection, locale, or status is refused.
+One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, the [Run Outcome](#run-outcome), and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI defaults and prompt preselection are in `apps/cli/src/commands/export-option-table.ts`; a prompt answer with no selected collection, locale, or status is refused.
 
 Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 
@@ -477,6 +591,14 @@ Explained in context: [`core-library.md`](core-library.md#folder-pruning)
 
 ---
 
+### Folder Response Mapper
+
+The pure API projection in `apps/api/src/app/mappers/folder-response.mapper.ts`. `mapCreateFolderResultToDto(result, folderName)` builds a loaded empty insertion node with the submitted name and core's resolved [Folder Address](#folder-address), even for an already-existing folder. `mapDeleteFolderResultToDto(result)` adds the successful deletion marker. `mapMoveFolderResultToDto(result)` reuses the resource move projection to exclude internal [Run Outcome](#run-outcome) and preserve diagnostic arrays, then supplies zero when the folder count is absent. These functions perform no validation or I/O; core errors propagate before mapping.
+
+Explained in context: [`api.md`](api.md#mapper-layer)
+
+---
+
 ### Folder Writes
 
 The Tracker UI's one store feature for creating, deleting and moving folders, and for dropping a resource into a folder. `withFolderWritesFeature` in `apps/tracker/src/app/browser/store/features/with-folder-writes.feature.ts` returns a cold `Observable` of a typed outcome from each write. Its `requestFolderMove` entry point checks the drop, captures the [Browser Session](#browser-session), asks the caller to present confirmation when needed, and then moves the folder. `folder-drop.ts` is the pure rule shared by the sidebar drop targets and the write feature: it returns `canLand` for the CDK target and a separate no-op reason for a folder or resource dragged onto a folder path or the collection root. A folder can land on its current parent; Folder Writes then returns `already-at-location` so the sidebar shows its existing info toast. A resource at the collection root has `folderPath: ''` and can be dropped into a folder. The feature refuses every write in a read-only collection before HTTP and updates cached tree and rows only in the session where the write began. The [Folder Move Plan](#folder-move-plan) decides the tree, expansion, reload, navigation, and rollback effects of folder moves. A failed optimistic move restores only the moved item against current state when its parent is loaded; an unloaded parent gets its children on its next load, so a newer tree load survives. Deletion shows the parent only if the current folder is the deleted folder or one of its descendants. Every outcome carries the [Outcome Feedback](#outcome-feedback) it decided, so a caller renders it and decides nothing; folder writes do not set the shared load `error`. A create refusal reads inline, under the still-open input, in both the sidebar and the picker; a new folder is silent and an existing one toasts info. The sidebar's draft lives in this feature: `confirmFolderDraft` creates from it and closes it when the create ends (created, read-only, no collection). An inline refusal keeps it open and sits in the `folderCreateError` signal until the name is edited, the draft is cancelled or restarted, a create succeeds, or a [Browser Session](#browser-session) opens. The picker keeps an independent draft, because its modal dialog would otherwise open a second input in the sidebar behind it, and holds its own refusal; its `createFolder` never touches the store's draft. The pure `folder-draft.ts` module owns the whole lifecycle of both drafts. It manages identity, start, cancel, error dismissal, and create outcome settlement. The picker additionally closes its draft on a stale-session outcome. The store keeps only inline refusal feedback as the draft error. Toast refusals produce a toast and keep the draft open without an inline error. `requestFolderDelete` mirrors `requestFolderMove`: it asks the caller to confirm inside the session guard.
@@ -501,7 +623,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Import Run
 
-One file import into one locale of one [collection](#collection). `runImport(collection, { source, format?, locale, ...options })` in `libs/core/src/lib/import/run-import.ts` detects the format, reads JSON or XLIFF through its adapter, emits a large-source warning before the run header, applies the resources, and returns the result with a lazy `summary()` renderer. Source failures raise `ImportSourceError` before any resource write. `importResources(collection, resources, options)` remains the entry point for callers with parsed resources. It applies strategy defaults, reads the collection's [Project Terms](#project-terms), resolves Transloco references (migration only), normalizes and repairs placeholders, validates, and merges per [folder](#resource-folder). The session and CLI prompts share domain's `DEFAULT_IMPORT_STRATEGY` and import locale rule; the prompts use `importableLocales` for choices. The session and migration confirmations read defaults from the domain [Import Strategy Policy](#import-strategy-policy). `apps/cli/src/main.ts` leaves import strategy and update switches unset, and `apps/cli/src/commands/import-cmd.ts` passes omitted comment, tag, and create-missing switches as undefined, so `libs/core/src/lib/import/import-session.ts` applies the selected strategy's defaults. The CLI resolves an omitted `--preserve-status` to false before calling core. `apps/cli/src/commands/run-option-defaults.ts` supplies this value, the default strategy, and the base-validation default to both command resolution and help labels. Base-value validation stays on unless the user gives `--no-validate-base`. An `ImportSession` holds its settings, terms, changes, warnings, errors, and written files. A base-locale import without the migration strategy raises `InvalidImportLocaleError`.
+One file import into one locale of one [collection](#collection). `runImport(collection, { source, format?, locale, ...options })` in `libs/core/src/lib/import/run-import.ts` detects the format, reads JSON or XLIFF through its adapter, emits a large-source warning before the run header, applies the resources, and returns the result with a lazy `summary()` renderer. Source failures raise `ImportSourceError` before any resource write. `importResources(collection, resources, options)` remains the entry point for callers with parsed resources. It applies strategy defaults, reads the collection's [Project Terms](#project-terms), resolves Transloco references (migration only), normalizes and repairs placeholders, validates, and merges per [folder](#resource-folder). The session and CLI prompts share domain's `DEFAULT_IMPORT_STRATEGY` and import locale rule; the prompts use `importableLocales` for choices. The session and migration confirmations read defaults from the domain [Import Strategy Policy](#import-strategy-policy). `apps/cli/src/main.ts` leaves import strategy and update switches unset, and `apps/cli/src/commands/import-cmd.ts` passes omitted comment, tag, and create-missing switches as undefined, so `libs/core/src/lib/import/import-session.ts` applies the selected strategy's defaults. The CLI resolves an omitted `--preserve-status` to false before calling core. `apps/cli/src/commands/import-option-table.ts` supplies this value, the default strategy, and the base-validation default to command resolution and help labels. Base-value validation stays on unless the user gives `--no-validate-base`. An `ImportSession` holds its settings, terms, changes, warnings, errors, and written files. A base-locale import without the migration strategy raises `InvalidImportLocaleError`.
 
 Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 
@@ -522,6 +644,16 @@ Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 The API's in-memory runner for background jobs. Each `JobRegistry` instance owns a serial queue, UUID-keyed jobs, lifecycle timestamps, DTO snapshots, and eviction of finished jobs after 30 minutes or when a new job would exceed 100 retained jobs. Queued and running jobs remain until they finish, even above the cap. `BundleJobService` and `TranslationJobService` each have their own instance. Preconditions run synchronously before registration, and a failed run does not stop later jobs in that instance. Start returns the initial pending DTO snapshot. Lookup returns a fresh snapshot or raises API-local `JobNotFoundError` with kind `not-found`; an optional owner check hides another collection's job with the same 404 body as an unknown or evicted ID.
 
 Explained in context: [`api.md`](api.md#translation-job-system)
+
+---
+
+## K
+
+### Keyed Storage
+
+The typed best-effort persistence seam in `apps/tracker/src/app/shared/storage/keyed-storage.ts`. `KeyedStorage<T>` binds one key and a fixed `{ parse, serialize }` codec to a lazy raw adapter. The `json` and `raw` presets keep the wire format paired. `read()` returns a parsed value or absence, `write(value)` persists it, and `remove()` removes only that key. Missing adapters, blocked storage getters, read/parser errors, serialization/quota errors and removal errors are silently contained. No operation throws or logs a storage failure. Injectable browser local/session adapters avoid storage access on the server; `MemoryStorageAdapter` supplies isolated test storage. Theme and UI locale retain raw-string formats; view preferences and bundle runs retain JSON and their existing keys.
+
+Explained in context: [`frontend.md`](frontend.md)
 
 ---
 
@@ -563,9 +695,17 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 ---
 
+### Locale Files
+
+The filesystem phase of [Collection Change](#collection-change), in `libs/core/src/collections-manager/locale-files.ts`. `openLocaleFolders(collection)` opens every [Collection Sweep](#collection-sweep) folder before writes and refuses an unreadable folder. `seedLocaleFiles(folders, locale, onSave?)` and `dropLocaleFiles(folders, locale, onSave?)` return `{ entries, filesUpdated }`, save only changed folders, and call `onSave` after each save attempt, including failures. They never write config. Seeding preserves existing translations and gives missing locales a `new` base-value copy; dropping removes values and metadata.
+
+---
+
 ### Locale Seeding
 
 What each of a [collection's](#collection) target locales gets when a resource's base value is written: the translation the caller supplied, else an auto-translation from the [Translator](#translator) when the collection enables it, else (or when the Translator skipped the locale) a copy of the base value with status `new`, except that on edit a real translation is kept (and is `stale`). In code, `seedLocales(collection, request)` in `libs/core/src/lib/resource/locale-seeding.ts`. `addResource` applies it to every target locale; `editResource` applies it after a base value change, to the locales that need work by the [staleness rule](#staleness-rule), and never replaces a real translation with a copy. A locale that is missing from a stored entry gets the same fallback, a `new` copy of the base, from the [Resource Folder](#resource-folder)'s `seedLocale`, which add-locale, edit-collection and normalize share. The API, the CLI and the Tracker do not decide this themselves.
+
+`parseTranslationInputs(raw)` in domain checks supplied translations once: an array of objects with a non-empty string locale, string value, and optional status from `TRANSLATION_STATUSES`. It returns a typed list of `TranslationInput` values or the first failure's zero-based item index and reason (a null index means the input is not an array). Core's `AddResourceParams.translations` uses the same type. The CLI owns JSON decoding and flag diagnostics; it also parses interactive translation answers through this function.
 
 Explained in context: [`core-library.md`](core-library.md#locale-seeding)
 
@@ -573,7 +713,7 @@ Explained in context: [`core-library.md`](core-library.md#locale-seeding)
 
 ### Locale Selection
 
-The one pure value for density, the locale filter and the remembered compact locale in the Tracker (`apps/tracker/src/app/browser/store/locale-selection.ts`). Its transitions select locales, switch density and restore saved preferences; its projections give the locales and filter label to show. Entering compact remembers the full selection; leaving restores it unless the user changed the compact selection. The default compact locale is the available base locale, else the first available locale. The filter and view-preferences features read and patch this value; persistence stays in the view-preferences feature. Repeating the current density is a no-op, preserving the multi-selection across compact → compact → full.
+The one pure value for density, the locale filter and the remembered compact locale in the Tracker (`apps/tracker/src/app/browser/store/locale-selection.ts`). Its transitions select locales, switch density and restore saved preferences; its projections give the locales and filter label to show. Entering compact remembers the full selection; leaving restores it unless the user changed the compact selection. The default compact locale is the available base locale, else the first available locale. The filter and view-preferences features read and patch this value; the [Stored View Preferences](#stored-view-preferences) module owns the persisted shape, and the feature persists it through [Keyed Storage](#keyed-storage). Repeating the current density is a no-op, preserving the multi-selection across compact → compact → full.
 
 In compact, select-all and clear-all change only the filter; restoration keeps the remembered `compactLocale` even when it displays a fallback. For an empty collection, compact display falls back to the base locale string while restoration selects nothing.
 
@@ -583,15 +723,29 @@ Explained in context: [`frontend.md`](frontend.md#browserstore--feature-composit
 
 ## M
 
+### Move Executor
+
+The synchronous core entry point for key, pattern and folder moves. `executeMove(collection, selection, options?)` in `libs/core/src/lib/resource/execute-move.ts` accepts `MoveRequest` with `source`, `destination`, optional `override` and `toCollection`. Core infers key versus pattern from the trailing `*` in `source`. Folder selections explicitly set `kind: 'folder'` and may set `nestUnderDestination`. Options contain optional `config`, `cwd` and `onMutation`. It validates once, resolves the destination, sweeps keys, applies [Move Plan](#move-plan), relocates entries and prunes folder sources through [Move Report](#move-report). `executeMoves(collection, selections, options?)` uses the same preparation and execution, then combines reports, including folder removals.
+
+**Error policy.** Selection and destination preconditions throw from a single move: `CollectionNotFoundError`, `ReadOnlyCollectionError`, `MoveConfigRequiredError` (`MOVE_CONFIG_REQUIRED`) and `FolderNotFoundError`. A batch converts only the three destination-unavailable errors into per-operation report entries and continues. Malformed addresses, unsafe folder paths, missing source folders and unexpected exceptions throw from either entry point. Every batch validates all submitted addresses, resolves all destinations and checks accepted folder sources before its first write; refused destinations become report errors. Folder no-op refusals still precede source inspection. This preflight is a snapshot, not a filesystem lock: later read/write failures can leave earlier moves and mutations completed.
+
+Batch folder sources must exist when `executeMoves` is called. Preflight plans every selection against the disk before writing, so a folder created by an earlier operation in the same batch is not visible to a later selection.
+
+Per-entry missing/read/write failures and sweep problems become report errors. A folder sweep problem prevents every write because pruning an incompletely enumerated tree could lose resources. Pattern selections keep readable siblings moving and do not prune the tree, so an unreadable child remains safe. This retains the existing selection semantics. Collisions and no-ops are warnings. Failed pruning is an error for an empty-source move and a warning after resources move. The result has no error side channel. CLI output and API statuses and response bodies retain their previous mappings.
+
+Explained in context: [`core-library.md`](core-library.md#move-executor)
+
+---
+
 ### Move Plan
 
 The pure move decision before [Entry Relocation](#entry-relocation). `planMove({ source, destination, selection, destinationPath })` in `libs/core/src/lib/resource/move-plan.ts` compares resolved translations roots without filesystem calls. The source and destination are opened collections. A resource selection returns an `entries` plan with both collections, relocations, and `sameCollection`. A folder selection returns a `folder` plan with only `forKeys(keys)`, or a `refused` result.
 
-Folder refusals are `descendant`, `same-location`, and `already-there`, and apply only within the same collection. Each refusal supplies `warning()`, which returns the existing warning or throws `FolderMoveIntoDescendantError` for a descendant. `moveFolder` calls this method before filesystem reads and does not interpret the refusal reason. The error constructor is the single source of the descendant message. Domain supplies the browser-safe `isDescendantFolderPath(source, destination)` predicate for both Move Plan and the Tracker folder-drop rule.
+Folder refusals are `descendant`, `same-location`, and `already-there`, and apply only within the same collection. Each refusal supplies `warning()`, which returns the existing warning or throws `FolderMoveIntoDescendantError` for a descendant. `executeMove` calls this method before filesystem reads and does not interpret the refusal reason. The error constructor is the single source of the descendant message. Domain supplies the browser-safe `isDescendantFolderPath(source, destination)` predicate for both Move Plan and the Tracker folder-drop rule.
 
 The selection names a resource key, a pattern prefix with keys, a folder path with nest mode, or an edited entry. A folder plan maps keys that the caller enumerates after the move decision. Its `forKeys(keys)` returns an `entries` plan bound to the same collections and `sameCollection` fact. Folder moves nest by default and always nest at the collection root. With `nestUnderDestination: false`, a destination at the same depth renames the folder, and a different depth nests it. An edited entry with an empty or whitespace-only destination moves to the collection root.
 
-`moveFolder`, `moveResource`, and `editResource` pass the bound plan to Entry Relocation. `moveResources` uses the same interface through `moveResource`. `moveFolder`, `moveResource`, and `moveResources` return a [Move Report](#move-report). Malformed folder paths and resource patterns throw typed errors before relocation. Cross-collection moves take a plain `toCollection` name. Core resolves the destination through `config` and optional `cwd` before the move decision. A missing or read-only destination throws a typed error for a single move.
+`executeMove` and `editResource` pass the bound plan to Entry Relocation. `executeMoves` uses the same validated execution body. `executeMove` and `executeMoves` return a [Move Report](#move-report). Malformed folder paths and resource patterns throw typed errors before relocation. Cross-collection moves take a plain `toCollection` name. Core resolves the destination through `config` and optional `cwd` before the move decision. Destination handling follows the [Move Executor error policy](#move-executor).
 
 Explained in context: [`core-library.md`](core-library.md#move-plan)
 
@@ -599,7 +753,7 @@ Explained in context: [`core-library.md`](core-library.md#move-plan)
 
 ### Move Report
 
-The shared result accumulator for `moveResource`, `moveResources`, and `moveFolder`, in `libs/core/src/lib/resource/move-report.ts`. `MoveReport.merge()` accepts an [Entry Relocation](#entry-relocation) result or a completed move result. It counts moved entries, converts collisions to warnings, and preserves errors. `warn()` and `fail()` add diagnostics. `finish()` returns `{ movedCount, warnings, errors, outcome }`. For folder moves, `finish(true)` also returns `foldersDeleted`.
+The shared result accumulator for `executeMove` and `executeMoves`, in `libs/core/src/lib/resource/move-report.ts`. `MoveReport.merge()` accepts an [Entry Relocation](#entry-relocation) result or a completed move result. It counts moved entries, converts collisions to warnings, and preserves errors. `warn()` and `fail()` add diagnostics. `finish()` returns `{ movedCount, warnings, errors, outcome }`. For folder moves, `finish(true)` also returns `foldersDeleted`.
 
 Errors give a failed [Run Outcome](#run-outcome). Warnings alone succeed. `prune()` reports [Folder Pruning](#folder-pruning) results and counts only removal of the source folder. Pruning failure fails an empty-source move, but produces a warning after resources moved. Malformed folder paths throw `InvalidFolderPathError`. Malformed resource patterns throw `InvalidResourceKeyError` with the unchanged validation message. The CLI exits 1 through its typed-error path, and the API returns HTTP 400.
 
@@ -659,6 +813,14 @@ Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ---
 
+### Project Defaults
+
+The browser-safe setup constants in `libs/domain/src/lib/project-defaults.ts`: `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `DEFAULT_BUNDLE_DIST`, `DEFAULT_BUNDLE_NAME`, and `DEFAULT_TYPE_DIST_FILE`. Core re-exports the same values through its existing public surface. CLI flag records and prompt builders import them from domain, so importing metadata or generating help does not load core. Values and prompt defaults are unchanged.
+
+Explained in context: [`core-library.md`](core-library.md)
+
+---
+
 ### Project Init
 
 The core operation `initProject(cwd, answers)` creates the initial project config from plain setup values. It applies built-in defaults, creates the first Collection Entry and Bundle Definition, and builds optional translation config. It validates and writes through [Config Write](#config-write), with an exclusive create that refuses an existing file. The result contains `config` and its absolute `configPath`. The CLI supplies flags and prompt answers, then prints the result.
@@ -669,11 +831,25 @@ Explained in context: [`cli.md`](cli.md), [`core-library.md`](core-library.md#pr
 
 ### Project Terms
 
-The terms and rules in force for an opened [collection](#collection): its [protected terms](#protected-term) (the global list united with the collection's own) and the project's [preferred terminology](#preferred-terminology). In code, `readProjectTerms(collection)` in `libs/core/src/lib/config/project-terms.ts` reads the files `openCollection` resolved into `Collection.termFiles` and returns `ProjectTerms`: `protectedTerms`, `preferredTerminology`, `problems` (every term file that is named but missing, a warning, or exists but cannot be used, an error) and `checkBaseValue(key, value)`, the advisory terminology check of a stored base value (its findings, and the rule-file problems that limited it). Opening a collection reads nothing; each operation reads the Project Terms once, and nothing is cached, so a long-running API sees a hand edit or `git pull` on its next request. Reading never throws. A consumer that guards values with the protected terms and has no advisory channel asks for `requireProtectedTerms(terms)`, which throws `ProtectedTermsFileError` for a broken protected-terms file: the [Translator](#translator) when it opens, and the [import run](#import-run) before it writes. The Translator reports a missing named protected-terms file in its `problems`. Every other consumer reports the problems: `addResource` and `editResource` in their `terminology` result, import in its `warnings`, export in its `warnings` and, for a broken protected-terms file, its `errors` (the command exits 1), `validate` as printed warnings and, for a broken rule file, a failure. The two file kinds share one term-file module (`term-file.ts`: pointer resolution, the missing-file rule, the read that reports instead of throwing, the write with typed errors); each kind adds only its item check and its serialization. Direct writes of the global lists go through [Project Terms Update](#project-terms-update).
+The terms and rules in force for an opened [collection](#collection): effective [protected terms](#protected-term) and project [preferred terminology](#preferred-terminology). `readProjectTerms(collection)` reads fresh files and returns terms, rules, `checkBaseValue(key, value)`, and intent methods. `forGuard(kind = 'target')` throws `ProtectedTermsFileError` for broken protected files and returns terms plus warnings. Source imports warn about preferred files; target guards warn about protected files. `forReport()` splits protected-file errors and warnings for export. `forValidation()` warns about protected files and missing rules, and returns a broken rule file as `loadError`. The advisory base-value check retains its findings and printable rule-file problems. Raw file problems remain internal.
 
-Project-wide edits use the [Project Terms Update](#project-terms-update) request union and the shared [Config Write Transaction](#config-write-transaction). The collection read interface stays unchanged.
+`readProjectTermsView(project)` shares the same file reader. Its `forConfig()` rejects broken protected files, collections before global, and returns data for the API mapper. Its `forTarget({ collection? })` returns stored lists, effective terms, paths and warnings, rejecting broken files global before selected collection. Unrelated collection files do not block a selected scope. Project-wide edits use [Project Terms Update](#project-terms-update).
 
-`readProjectTermsView(project)` returns a project snapshot: config, workspace name, global and collection protected terms, preferred rules, paths, and file problems. API config responses and CLI list previews use this snapshot. It reports malformed term files without throwing; each consumer preserves its existing refusal policy.
+Explained in context: [`core-library.md`](core-library.md#project-terms)
+
+---
+
+### Protected Terms Request
+
+The protected-term shape assertion and request, view, and result types in `libs/core/src/lib/config/protected-terms-request.ts`. `assertProtectedTerms(value)` rejects an untyped non-string list with `InvalidCollectionError`. [Project Terms Update](#project-terms-update) and [Collection Lifecycle](#collection-lifecycle) share this assertion. The module performs no writes.
+
+Explained in context: [`core-library.md`](core-library.md#project-terms)
+
+---
+
+### Project Term Files
+
+The internal read path for [Project Terms](#project-terms) collection and project snapshots. `readProjectTermFiles(protectedFiles, preferredFile)` in `libs/core/src/lib/config/project-term-files.ts` reads file kinds, collects internal `TermFileProblem` objects, and supplies shared diagnostic wording. Identical protected-file descriptors share one read and one diagnostic during the call. Export therefore reports a missing file shared by global and collection pointers once. Stored-scope pointer carry-over uses this reader, and the preferred editor receives an already-read snapshot from Project Terms. Nothing is cached between calls. Consumers use intent methods instead of interpreting raw problems.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms)
 
@@ -681,7 +857,7 @@ Explained in context: [`core-library.md`](core-library.md#project-terms)
 
 ### Project Terms Update
 
-`planProjectTermsUpdate(project, update)` in `libs/core/src/lib/config/update-project-terms.ts` validates structured protected-term and preferred-terminology edits once, reports invalid combinations through a machine-readable `problem` on `InvalidProjectTermsEditError`, and returns a read-only `view` and `apply()`. Core `preferredTerminologyRequestFromFlags` checks incomplete flag groups and builds the request. The CLI shows the snapshot view and applies the plan. `updateProjectTerms` plans and applies in one call for the API. The plan resolves the pointer, term paths, and preview once. Apply uses those resolved values and writes the pointer before the term edit. The separate pointer setters are gone. It stages config and term writes through the [Config Write Transaction](#config-write-transaction). On failure, the transaction restores their exact previous bytes. A concurrent config change prevents restoration of config and companion files. This preserves a carried file that the current config can still reference. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API keeps its config update success message.
+`planProjectTermsUpdate(project, update)` in `libs/core/src/lib/config/update-project-terms.ts` validates structured protected-term and preferred-terminology edits once, reports invalid combinations through a machine-readable `problem` on `InvalidProjectTermsEditError`, and returns a read-only `view` and `report(onPreview?)`. Core `preferredTerminologyRequestFromFlags` checks incomplete flag groups and builds the request. Core invokes the CLI preview formatter before writes, then returns a structured report with preview and written terms/rules, paths and warnings within their views, status, `reverted`, and the original application error. Planning errors still throw. `reverted` is true only when all attempted writes were successfully restored. The transaction returns an explicit outcome; the config writer carries it into the report independently of error identity. Preferred upsert/remove rejects a broken file with `CoreOperationError` carrying the load diagnostic as its message, without a synthetic cause. Core list-only requests carry the broken-file error as advisory data and cannot block combined protected edits. The CLI formats these facts and reports preferred-file load failures once. `updateProjectTerms` plans and applies in one call for the API. The plan resolves the pointer, term paths, and preview once. Apply uses those resolved values and writes the pointer before the term edit. The separate pointer setters are gone. It stages config and term writes through the [Config Write Transaction](#config-write-transaction). On failure, the transaction restores their exact previous bytes. A concurrent config change prevents restoration of config and companion files. This preserves a carried file that the current config can still reference. The original error keeps its type and message if a restore fails, with the restore failure attached as its cause. The API keeps its config update success message.
 
 The protected-term request contains `target` and `change`. `change.kind` selects `replace`, `edit`, or `view`. Both replacements and incremental edits write the selected global or collection scope. A collection replacement requires its own file pointer.
 
@@ -709,11 +885,11 @@ Example file:
 ]
 ```
 
-A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. `protectedTermsTargetView()` selects a stored scope from `readProjectTermsView()`. It returns terms and warnings and throws `ProtectedTermsFileError` for a malformed file. The config endpoint sends edits to core `updateProjectTerms()`, which checks an untyped list before it writes.
+A term matches only as a whole word. LingoTracker uses the list in three places. Export marks each string with the terms found in its source, as a `doNotTranslate` array in JSON and as a `Do not translate:` note in XLIFF. Import rejects any translation that omits a term present in the source. The [Translator](#translator) skips (does not store) a machine translation that omits one. All three read the terms in force for a collection as its [Project Terms](#project-terms); nobody passes the list in. `ProjectTermsView.forTarget()` selects a stored scope from `readProjectTermsView()`. It returns terms and warnings and throws `ProtectedTermsFileError` for a malformed file. The config endpoint sends edits to core `updateProjectTerms()`, which checks an untyped list before it writes.
 
 A protected-term replacement selects its scope through `target.collection`. Core writes the collection file when the request names a collection.
 
-CLI scope selection uses `protectedTermsTargetView` on the project snapshot. It reports global and selected-collection problems, and ignores unrelated collection problems.
+CLI scope selection uses `ProjectTermsView.forTarget` on the project snapshot. It reports global and selected-collection problems, and ignores unrelated collection problems.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#protected-terms), [`core-library.md`](core-library.md#project-terms)
 
@@ -737,7 +913,7 @@ Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ### Public Surface
 
-The names a library's `index.ts` barrel exports — everything a caller must know to use it. The `domain` and `core` barrels list their exports by name, never with `export *`. They list only names that something outside the library uses, plus the types those names' signatures need. A helper that only its own library uses stays exported from its file but not from the barrel. `libs/domain/src/index.spec.ts` pins domain's runtime exports, so adding one is a deliberate change.
+The names a library's `index.ts` barrel exports — everything a caller must know to use it. The `domain` and `core` barrels list their exports by name, never with `export *`. They list only names that something outside the library uses, plus the types those names' signatures need. A helper that only its own library uses stays exported from its file but not from the barrel. Core exports error classes used by app code and `TranslationError`, while internal classes remain available through the errors module. `libs/domain/src/index.spec.ts` and `libs/core/src/index.spec.ts` pin the libraries' runtime exports, so adding one is a deliberate change. `reindexMutation` stays internal to core because Collection Lifecycle reports its own mutations. `openCollection` remains public for CLI and other collection consumers.
 
 Explained in context: [`monorepo-structure.md`](monorepo-structure.md#public-surface), [`core-library.md`](core-library.md#public-surface)
 
@@ -767,7 +943,7 @@ Explained in context: [`libs-domain.md`](libs-domain.md)
 
 ### Resource Batches
 
-Core owns writes of many resource entries. `addResources(collection, items)` checks every item for malformed keys and folder addresses, unknown locales, duplicate or existing resolved keys, and unreadable folder JSON before it translates any item. Translation failures also stop the batch before any write. Preflight reads folders but does not create them or check whether a later filesystem write can succeed. It rejects duplicate resolved keys within the batch with `ResourceAlreadyExistsError`; an existing exact key is refused unless `onExisting: 'replace'` is passed. Parent/child keys remain allowed at add time and may later appear as bundle-plan hierarchical conflicts. It then writes in input order and returns created count, deduplicated skipped locales and terminology problems, all findings. A filesystem write failure after preparation (for example, an existing file in the folder path or a permissions failure) can leave earlier entries, or one of the failing folder's two JSON files, on disk; there is no rollback, but earlier items were already delivered through the [Mutation Sink](#mutation-sink). A failed folder save delivers `reindex`. `moveResources(collection, ops, { config, cwd?, onMutation? })` runs each move in order through the same destination resolution as a single move. Missing and read-only destinations are typed errors at that boundary; the batch records their messages for the affected operation and continues. The optional `cwd` resolves relative destination paths. API batches inherit `CollectionIndex.sink` from the opened source collection; the sink receives changes to both source and destination folders.
+Core owns writes of many resource entries. `addResources(collection, items)` checks every item for malformed keys and folder addresses, unknown locales, duplicate or existing resolved keys, and unreadable folder JSON before it translates any item. Translation failures also stop the batch before any write. Preflight reads folders but does not create them or check whether a later filesystem write can succeed. It rejects duplicate resolved keys within the batch with `ResourceAlreadyExistsError`; an existing exact key is refused unless `onExisting: 'replace'` is passed. Parent/child keys remain allowed at add time and may later appear as bundle-plan hierarchical conflicts. It then writes in input order and returns created count, deduplicated skipped locales and terminology problems, all findings. A filesystem write failure after preparation (for example, an existing file in the folder path or a permissions failure) can leave earlier entries, or one of the failing folder's two JSON files, on disk; there is no rollback, but earlier items were already delivered through the [Mutation Sink](#mutation-sink). A failed folder save delivers `reindex`. `executeMoves(collection, selections, { config?, cwd?, onMutation? }?)` runs each move in order through the same destination resolution as a single move. The batch records destination-unavailable errors and continues under the [Move Executor error policy](#move-executor). The optional `cwd` resolves relative destination paths. API batches inherit `CollectionIndex.sink` from the opened source collection; the sink receives changes to both source and destination folders.
 
 Explained in context: [`core-library.md`](core-library.md#resource-batches), [`api.md`](api.md#resources)
 
@@ -831,7 +1007,7 @@ Explained in context: [`libs-domain.md`](libs-domain.md)
 
 ### Resource Mutation
 
-One change that a core write made to a translations folder: `upsert` (key and stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (a broad or uncertain change). Each carries the absolute `translationsFolder` it applies to. Writes deliver mutations synchronously through `onMutation` as the disk changes; no write returns `mutations`. `saveReporting` sends the saved mutation after a successful Resource Folder save and a `reindex` if the save throws after it may have written one JSON file. `translateLocale` sends one `reindex` per batch with save attempts, including partial failures. With a sink, [Folder Pruning](#folder-pruning) sends `remove-folder` immediately after each removal. Folder move supplies a sink for the API Collection Index. Normalize has no mutation sink. Dry runs send no mutations. Writable API collections carry `CollectionIndex.sink` as the default callback. The type and helper are in `libs/core/src/lib/resource/resource-mutation.ts`.
+One change that a core write made to a translations folder: `upsert` (key and stored entry), `remove` (key), `add-folder` / `remove-folder` (path), or `reindex` (a broad or uncertain change). Each carries the absolute `translationsFolder` it applies to. Writes deliver mutations synchronously through `onMutation` as the disk changes; no write returns `mutations`. `saveReporting` sends the saved mutation after a successful Resource Folder save and a `reindex` if the save throws after it may have written one JSON file. The locale-bound run sends one `reindex` per batch with save attempts, including partial failures. With a sink, [Folder Pruning](#folder-pruning) sends `remove-folder` immediately after each removal. Folder move supplies a sink for the API Collection Index. Normalize has no mutation sink. Dry runs send no mutations. Writable API collections carry `CollectionIndex.sink` as the default callback. The type and helper are in `libs/core/src/lib/resource/resource-mutation.ts`.
 
 The [Resource Tree Index](#resource-tree-index) owns the meaning of each mutation for an in-memory tree. Its `apply(mutation)` returns `patched`, `ignored`, or `reload`. A `reindex` or a patch that cannot match the tree invalidates the tree and returns a reload reason. The API decides when to load the collection again.
 
@@ -865,9 +1041,23 @@ Explained in context: [`core-library.md`](core-library.md#resource-tree-index), 
 
 ---
 
+### Resource Tree Types
+
+The shared read-model types in `libs/core/src/lib/resource/resource-tree-types.ts`: `ResourceTreeEntry`, `ResourceTreeNode`, and `FolderChild`. The [Collection Reader](#collection-reader), Resource Folder, tree loader, and their consumers depend on this type-only module, so the reader does not depend on the tree loader. Core exports these types through its public resource interface.
+
+---
+
+### Response Contracts
+
+The compile-time payload checks in `apps/api/src/app/mappers/response-contracts.ts`. `ResponseContractChecks` asserts equality of core's independently owned locale result types and the response DTOs, normalizing readonly properties. It also checks delete payloads without internal `outcome`, and move payloads without `outcome` or `foldersDeleted`, requiring the always-present diagnostic arrays. A changed payload field fails API typecheck. This module emits no runtime behavior and keeps core independent of HTTP contracts; locale controllers return results directly, while delete and move mappers project internal fields away.
+
+Explained in context: [`api.md`](api.md#mapper-layer), [`core-library.md`](core-library.md#collection-bound-operations)
+
+---
+
 ### Route Collection
 
-The API parameter seam for resource, folder, and locale routes. `@RouteCollection()` supplies the `Collection` opened by `RouteCollectionPipe` from the already-decoded `:collectionName` param. The pipe reads config once and retains that snapshot on the opened collection for locale writes, requires writable access for methods other than `GET` by default, attaches `CollectionIndex.sink` to writable handles, and maps missing or read-only source collections to Nest 404 or 403 exceptions. This is the route source rule: the HTTP contract spec runs without `APP_FILTER`, so the pipe must return its own HTTP body. Move destinations follow one separate core rule; core resolves the plain `toCollection` name, and the app filter maps its typed errors. Collection registration routes do not use it. The Tracker encodes names once in API URL path segments; its router also encodes navigation segments, and `TranslationBrowser` uses the decoded route name directly.
+The API parameter seam for resource, folder, locale, and existing collection registration routes. `@RouteCollection()` supplies the `Collection` opened by `RouteCollectionPipe` from the already-decoded `:collectionName` param. The pipe reads config once and retains that snapshot on the opened collection for locale writes, requires writable access for methods other than `GET` by default, attaches `CollectionIndex.sink` to writable handles, and maps missing or read-only source collections to Nest 404 or 403 exceptions. This is the route source rule: the HTTP contract spec runs without `APP_FILTER`, so the pipe must return its own HTTP body. Move destinations follow one separate core rule; core resolves the plain `toCollection` name, and the app filter maps its typed errors. Route Collection has no body validation or DTO mapping. The collection update route uses `@ValidBody(updateCollectionBody)`; collection lookup takes precedence, so an invalid body sent to an unknown collection now answers 404 instead of 400, while an existing collection still answers 400. `@RouteCollection({ lifecycle: 'update' })` opens without requiring writable resources; core refuses effective locale changes on read-only collections. `@RouteCollection({ lifecycle: 'delete' })` allows read-only collections and registrations with missing or non-string translations folders. Both lifecycle handles carry the index sink. Creation uses an Opened Project and supplies the sink directly to `addCollection`. The Tracker encodes names once in API URL path segments; its router also encodes navigation segments, and `TranslationBrowser` uses the decoded route name directly.
 
 Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](frontend.md#route-structure)
 
@@ -875,11 +1065,11 @@ Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](fron
 
 ### Run Report
 
-The CLI's one rendering of a completed run's counts, warnings, and errors. `printRunReport({ counts?, warnings, errors, outcome, dryRun?, summaryPath? })` in `apps/cli/src/utils/run-report.ts` prints counts on stdout, then `Warnings (N):` and `Errors (N):` on stderr with `- ` bullets, and returns `exitForRunOutcome(outcome)`. A list longer than 10 is capped as `... and N more (full list in <summaryPath>)` only when the command wrote a [Run Summary](#run-summary-writer) file; with no `summaryPath`, or in a dry run, every item is printed. `move`, `delete-resource`, `import`, `export`, `normalize`, and `translate-locale` use it, so none formats these lists itself. Import and export save their summary first (`saveRunSummary`) so the report can name the file, then announce it after the results.
+The CLI module that renders run counts, warnings, and errors. `printRunReport({ counts?, warnings, errors, outcome, presentation?, section?, notice?, dryRun?, summaryPath? })` in `apps/cli/src/utils/run-report.ts` prints counts on stdout, then `Warnings (N):` and `Errors (N):` on stderr with `- ` bullets, and returns `exitForRunOutcome(outcome)`. A list longer than 10 is capped as `... and N more (full list in <summaryPath>)` only when the command wrote a [Run Summary](#run-summary-writer) file; with no `summaryPath`, or in a dry run, every item is printed. `move`, `delete-resource`, `import`, `export`, `normalize`, and `translate-locale` use this grouped presentation, so none formats these lists itself. Import and export save their summary first (`saveRunSummary`) so the report can name the file, then announce it after the results. JSON presentation accepts `{ kind: 'json', payload }` and writes two-space JSON plus a newline instead of text counts, section or notice. Diagnostics and exit outcomes are independent of presentation. Normalize declares its unchanged `{ collections, totals }` payload once. Bundle is excluded from this grouped presentation. It keeps its own [Bundle Presentation](#bundle-presentation) to preserve its pinned event-driven streams.
 
 ### Run Options Resolution
 
-The pure CLI step that builds missing-option questions from flags and resolves the runner's merged answers and defaults to options for an [Export Run](#export-run) or [Import Run](#import-run). Export also returns advisories for the command to print on stderr. In code, `apps/cli/src/commands/export-options.ts` and `import-options.ts` own the option dependencies. Their question callbacks use the flag-over-answer merge in `commands/run-option-defaults.ts`; the [Command Runner](#command-runner) merges submitted answers over flags before final resolution. Export's table controls JSON question visibility and uses `EXPORT_DEFAULTS`. Its resolution rejects an empty status list before the core call and advisories; unknown statuses remain core's responsibility. Import uses `IMPORT_DEFAULTS` and the [Import Strategy Policy](#import-strategy-policy) for locale choices and migration prompt initials; unset strategy switches remain undefined for core to default. [Selection](#selection) validation preserves export's collection → locale → status error order before the runner looks up collection names. The commands own I/O and rendering; core still validates run preconditions.
+The pure CLI step that builds missing-option questions from flags and resolves the runner's merged answers and defaults to options for an [Export Run](#export-run) or [Import Run](#import-run). Export also returns advisories for the command to print on stderr. In code, `apps/cli/src/commands/export-options.ts` and `import-options.ts` own the option dependencies. Their question callbacks use the flag-over-answer merge in `commands/run-option-defaults.ts`; the [Command Runner](#command-runner) merges submitted answers over flags before final resolution. Export's option table controls JSON question visibility and defaults. Its resolution rejects an empty status list before the core call and advisories; unknown statuses remain core's responsibility. Import's option table uses the [Import Strategy Policy](#import-strategy-policy) for locale choices and migration prompt initials. Unset strategy switches remain undefined for core to default. [Selection](#selection) validation preserves export's collection → locale → status error order before the runner looks up collection names. The commands own I/O and rendering; core still validates run preconditions.
 
 Explained in context: [`cli.md`](cli.md#command-inventory)
 
@@ -887,7 +1077,7 @@ Explained in context: [`cli.md`](cli.md#command-inventory)
 
 ### Run Outcome
 
-Core's `RunOutcome` is `succeeded` or `failed`. Its producers are `runExport`, `runImport`, `translateLocale`, `runValidate`, `generateBundles`, `generateBundle`, `generatePreparedBundle`, `moveResource`, `moveResources`, `moveFolder`, `normalizeCollections`, and `deleteResource`. The CLI maps completed outcomes to exit codes through `exitForRunOutcome`. A `failed` outcome gives exit code 1, even with partial output. A warning or intentional skip alone does not fail a run. `deleteResource` fails when any key could not be deleted (the same errors-present rule as a [Move Report](#move-report)), even if others were deleted; the API's delete response does not carry it. Preconditions that throw have no run outcome.
+Core's `RunOutcome` is `succeeded` or `failed`. Its producers are `runExport`, `runImport`, the locale-bound run, `runValidate`, `generateBundles`, `generateBundle`, `generatePreparedBundle`, `executeMove`, `executeMoves`, `normalizeCollections`, and `deleteResource`. The CLI maps completed outcomes to exit codes through `exitForRunOutcome`. A `failed` outcome gives exit code 1, even with partial output. A warning or intentional skip alone does not fail a run. `deleteResource` fails when any key could not be deleted (the same errors-present rule as a [Move Report](#move-report)), even if others were deleted; the API's delete response does not carry it. Preconditions that throw have no run outcome.
 
 Move fails when its result contains errors. Normalize fails when a collection raises an error, including in dry runs. Folder problems and read-only skips under `--all` do not fail normalize. Export ignores errors and hierarchical conflicts in a dry run. Import counts failed resources and errors even in a dry run. Bundle generation reports outcomes per bundle and fails the whole run on a thrown bundle error or failed type generation.
 
@@ -951,6 +1141,14 @@ Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 
 ---
 
+### Stored View Preferences
+
+The pure Tracker module `apps/tracker/src/app/browser/store/view-preferences.ts`. One field schema in `view-preferences.types.ts` defines the persisted type, snapshot fields and validation. `snapshot(state)` copies the eight preferences from plain values or field readers, excluding transient state and copying arrays. Field readers keep the persistence effect subscribed only to those preferences. `restore(saved, ctx)` returns a partial state patch: absent or non-object data is ignored, corrupt fields are omitted independently, and Locale Selection resolves retired `medium` density and locales removed from the collection. An object with no valid fields still resets density to compact and resolves the locale selection against the current collection. Other preference fields remain unchanged. Missing density in a saved object defaults to compact. Restoration never overwrites full-selection memory. The store feature caches one keyed store per collection and owns the persistence effect.
+
+Explained in context: [`frontend.md`](frontend.md#browserstore--feature-composition)
+
+---
+
 ## T
 
 ### Tag List Edit
@@ -1006,7 +1204,7 @@ The direct file-edit side of [Project Terms](#project-terms), owned by core conf
 
 Protected-term requests use `{ target, change }`. `change.kind: 'replace'` supplies a complete list; `change.kind: 'edit'` supplies a `ListEdit`.
 
-`ProtectedTermsEditProblem` and `PreferredTerminologyEditProblem` define each command’s own problem codes. Each CLI wording table covers every code with a string.
+`ProtectedTermsEditProblem` and `PreferredTerminologyEditProblem` define each command’s own problem codes. The [CLI Error Wording](#cli-error-wording) module covers every problem with a presentation rule.
 
 Explained in context: [`core-library.md`](core-library.md#project-terms), [`cli.md`](cli.md#protected-terms-scoping), [`api.md`](api.md#error-mapping)
 
@@ -1040,9 +1238,19 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md)
 
 ### Translate Locale
 
-`translateLocale(collection, params)` translates a collection's resources that need work for one target locale. It delegates preparation, selection, batches, and counts to the [Translation Run](#translation-run). A batch with save attempts emits one `reindex`, including partial failures. Its completed result has a [Run Outcome](#run-outcome): `failed` when any resource failed, otherwise `succeeded`. It stores results through [Translation Write-back](#translation-write-back), so writes made during the provider call survive. Changed or removed entries go into `skippedKeys`. Skipped resources and unreadable folders are reported separately.
+A locale-bound [Translation Run](#translation-run) translates a collection's resources that need work for one target locale. A batch with save attempts emits one `reindex`, including partial failures. Its completed result has a [Run Outcome](#run-outcome): `failed` when any resource failed, otherwise `succeeded`. It stores results through [Translation Write-back](#translation-write-back), so writes made during the provider call survive. Changed or removed entries go into `skippedKeys`. Skipped resources and unreadable folders are reported separately.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline), [`api.md`](api.md#translation-job-system)
+
+---
+
+### Timed UI Transients
+
+The timer helpers in `apps/tracker/src/app/shared/timed-transients.ts`. `createRestartableDelay(durationMs)` exposes `schedule`, `cancel`, and `destroy`. A schedule replaces the pending callback and restarts the delay. Cancellation permits another schedule; destruction cancels the callback and rejects later schedules.
+
+`createFlash(durationMs)` exposes a read-only `active` signal, `trigger`, and `destroy`. A trigger activates the signal and restarts its reset delay. Destruction cancels the reset and rejects later triggers without changing the last signal value. Owners must call `destroy()`. The `injectRestartableDelay` and `injectFlash` wrappers register this cleanup with `DestroyRef`.
+
+Explained in context: [`frontend.md`](frontend.md#timed-ui-transients-and-clipboard)
 
 ---
 
@@ -1068,11 +1276,11 @@ Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
 
 ### Translation Run
 
-The shared execution module above [Translation Batch](#translation-batch), in `libs/core/src/lib/translation/translation-run.ts`. `prepareTranslateLocale(collection, locale)` checks enabled auto-translation, configured target locales, and a valid non-base target. It returns `{ collection, targetLocale, translationConfig, targetLocales }`. Without a locale, preparation checks availability and returns the targets; selection then validates the final prompted locale once. Typed errors keep their existing messages. An enabled collection without target locales raises `NoTranslationTargetLocalesError`.
+The handle prepared by `prepareTranslationRun(collection, options?)` in `libs/core/src/lib/translation/translation-run.ts`, above [Translation Batch](#translation-batch). Preparation checks enabled auto-translation and configured target locales, and exposes only `targetLocales` for a prompt. `forLocale(locale)` validates a configured, non-base target and returns a bound run with `collectionName`, `targetLocale`, and `execute({ onProgress? })`. Typed errors keep their existing messages. An enabled collection without target locales raises `NoTranslationTargetLocalesError`. Collection and translation config stay inside the handle. Provider, protected terms, delay, and mutation sink overrides belong to preparation options.
 
-`executeTranslateLocale(prepared, options)` reads resources and selects work through `selectTranslationRow`, the shared [Staleness Rule](#staleness-rule). `executeTranslationRun(options)` takes selected rows, locales, config, and mutation policy in one object. It batches rows, opens the Translator once, and tallies each key/locale outcome once. The tally contains written, skipped, and failed counts, skipped outcomes, failed outcomes with original errors, and the last fresh entry. Locale results project keys and messages; single-resource results project locales and rethrow the first failure.
+The bound run reads resources and selects work through `selectTranslationRow`, the shared [Staleness Rule](#staleness-rule), then executes batches and returns `TranslateLocaleResult`. Its counts, progress, and result types live beside the run in `translation-run.ts`; core retains the public progress and result exports. It opens the Translator once and tallies each key/locale outcome once. `TranslateLocaleProgress` carries the resource counts and batch position; the API job embeds it and maps its counters to the unchanged HTTP response. Internal `executeTranslationRun` also serves single-resource translation, whose result projects locales and rethrows the first failure.
 
-The run uses the configured delay between batches. Tests inject `delay(ms)` instead of a real timer. Locale runs emit one collection `reindex` after each batch with save attempts, including partial failures. Single-resource runs retain their precise `upsert` notification. The CLI prepares before prompts; a prompted locale selection checks only locale validity. The API controller prepares before queueing, so invalid requests fail before 202.
+The run uses the configured delay between batches. Tests inject `delay(ms)` instead of a real timer. Locale runs emit one collection `reindex` after each batch with save attempts, including partial failures. Single-resource runs retain their precise `upsert` notification. The CLI prepares before prompts and binds the chosen locale. The API controller binds before queueing, so invalid requests fail before 202.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline), [`api.md`](api.md#translation-job-system), [`cli.md`](cli.md)
 
@@ -1089,7 +1297,7 @@ A status (`TranslationStatus` in `@simoncodes-ca/domain`) that tracks the review
 | `stale` | Base locale value changed after translation was written | Failure |
 | `verified` | Translation reviewed and approved by a language expert | Success |
 
-The lifecycle flows: `new` → `translated` → `verified`. If the base value changes after `verified`, the status becomes `stale`. A caller can explicitly mark an identical copy `translated` or `verified`. Core checks status values on resource writes and checks each export filter value with the same `InvalidTranslationStatusError`. The CLI parses `--translations` JSON shape and splits `--status`, rejects an empty status split with its flag message, then passes status values to core.
+The lifecycle flows: `new` → `translated` → `verified`. If the base value changes after `verified`, the status becomes `stale`. A caller can explicitly mark an identical copy `translated` or `verified`. Core checks status values on resource writes and checks each export filter value with the same `InvalidTranslationStatusError`. The CLI decodes `--translations` JSON and passes it to domain’s `parseTranslationInputs` to check shape and statuses. It splits `--status`, rejects an empty status split with its flag message, then passes status values to core.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`bundle-generation.md`](bundle-generation.md), [`domain-and-data-model.md`](domain-and-data-model.md)
 
@@ -1107,7 +1315,7 @@ Explained in context: [`frontend.md`](frontend.md#translation-status-summary)
 
 The shared rule for storing translations after a provider call. `snapshotTranslation` records the stored ICU base checksum and target checksum and status before translation. `writeBackTranslations` in `libs/core/src/lib/translation/translation-write-back.ts` reopens the [Resource Folder](#resource-folder) from disk. It skips missing entries, changed base checksums, changed target checksums or statuses, and targets that no longer need translation. It writes the remaining values and saves once, only if it wrote a value. Sibling entries survive because the folder contains fresh disk state.
 
-`translateLocale` reports skipped keys. Translation Run coalesces save notifications into one `reindex` per batch with save attempts. `translateExistingResource` reports skipped locales and returns the fresh entry with a count of written locales. Phase 2 of `editResource` compares against its saved phase-1 state and preserves concurrent edits or deletions. Edit reports skipped locales only when auto-translation ran. Single-entry callers send `upsert` after success, or `reindex` before a failed save throws. A synchronous TOCTOU gap remains between reopening and saving, and the two-file save is not atomic.
+The locale-bound run reports skipped keys. Translation Run coalesces save notifications into one `reindex` per batch with save attempts. `translateExistingResource` reports skipped locales and returns the fresh entry with a count of written locales. Phase 2 of `editResource` compares against its saved phase-1 state and preserves concurrent edits or deletions. Edit reports skipped locales only when auto-translation ran. Single-entry callers send `upsert` after success, or `reindex` before a failed save throws. A synchronous TOCTOU gap remains between reopening and saving, and the two-file save is not atomic.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline)
 
@@ -1115,7 +1323,7 @@ Explained in context: [`core-library.md`](core-library.md#auto-translation-pipel
 
 ### Translator
 
-The one way core machine-translates text for a [collection](#collection). In code, `openTranslator(collection, { provider?, protectedTerms? })` in `libs/core/src/lib/translation/translator.ts` returns a `Translator`: `translate(entries, locales) → { values, skipped }`, and `problems` (a named protected-terms file that does not exist). Opening it checks that the collection's translation config is enabled (`AutoTranslationDisabledError`) and, unless a provider is injected, reads the API key (`TranslationError` `MISSING_API_KEY`) and builds the configured provider. For a whole-locale translation, core first runs `prepareTranslateLocale`: auto-translation must be enabled, target locales must exist, and the target must be a configured, non-base locale. It reads the collection's [Project Terms](#project-terms) once for the protected terms, unless they are passed (`ProtectedTermsFileError` for a malformed file; a named file that does not exist is in `Translator.problems`, which its callers pass on as warnings). `translate` makes one provider call per locale and ignores the base locale. It never sends complex [ICU](#icu-format). It protects simple placeholders and skips a translation that lost a marker. It skips a translation that dropped a [protected term](#protected-term) present in the source. It returns every value normalized to ICU. Each skip carries a reason: `complex-icu`, `placeholder-mismatch` or `protected-term`. [Locale seeding](#locale-seeding), `translateExistingResource` and `translateLocale` all translate through it; they only choose what needs work (the [staleness rule](#staleness-rule)) and store the values. The provider is the seam: `GoogleTranslateV2Provider` in production, `InMemoryTranslationProvider` (a deterministic transform that records its calls, internal to core) in core's specs. Google requests time out after 30 seconds and fail with a retryable `TranslationError` (`TIMEOUT`); a whole-locale run records that batch in `failures` and continues. An invalid timeout option raises `INVALID_REQUEST_TIMEOUT` when the provider is constructed. `translateLocale`, `translateExistingResource`, and phase 2 of `editResource` store results through [Translation Write-back](#translation-write-back). This shared rule preserves writes made during the provider call. Callers report changed or removed entries in `skippedKeys` or `skippedLocales`.
+The one way core machine-translates text for a [collection](#collection). In code, `openTranslator(collection, { provider?, protectedTerms? })` in `libs/core/src/lib/translation/translator.ts` returns a `Translator`: `translate(entries, locales) → { values, skipped }`, and `problems` (a named protected-terms file that does not exist). Opening it checks that the collection's translation config is enabled (`AutoTranslationDisabledError`) and, unless a provider is injected, reads the API key (`TranslationError` `MISSING_API_KEY`) and builds the configured provider. For a whole-locale translation, core first prepares a Translation Run: auto-translation must be enabled, target locales must exist, and the target must be a configured, non-base locale. It reads the collection's [Project Terms](#project-terms) once for the protected terms, unless they are passed (`ProtectedTermsFileError` for a malformed file; a named file that does not exist is in `Translator.problems`, which its callers pass on as warnings). `translate` makes one provider call per locale and ignores the base locale. It never sends complex [ICU](#icu-format). It protects simple placeholders and skips a translation that lost a marker. It skips a translation that dropped a [protected term](#protected-term) present in the source. It returns every value normalized to ICU. Each skip carries a reason: `complex-icu`, `placeholder-mismatch` or `protected-term`. [Locale seeding](#locale-seeding), `translateExistingResource` and the locale-bound run all translate through it; they only choose what needs work (the [staleness rule](#staleness-rule)) and store the values. The provider is the seam: `GoogleTranslateV2Provider` in production, `InMemoryTranslationProvider` (a deterministic transform that records its calls, internal to core) in core's specs. Google requests time out after 30 seconds and fail with a retryable `TranslationError` (`TIMEOUT`); a whole-locale run records that batch in `failures` and continues. An invalid timeout option raises `INVALID_REQUEST_TIMEOUT` when the provider is constructed. The locale-bound run, `translateExistingResource`, and phase 2 of `editResource` store results through [Translation Write-back](#translation-write-back). This shared rule preserves writes made during the provider call. Callers report changed or removed entries in `skippedKeys` or `skippedLocales`.
 
 Explained in context: [`core-library.md`](core-library.md#auto-translation-pipeline)
 
@@ -1133,13 +1341,13 @@ Explained in context: [`frontend.md`](frontend.md), [`bundle-generation.md`](bun
 
 The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`).
 
-The API maps `kind` to a default HTTP status. An API-owned code table declares message transforms, status overrides, and inclusion of core `details` as response `errors`. All core error classes live in `errors/`, including translation and terminology validation errors. Core exposes domain facts without HTTP metadata. The filter reads these facts without checks for specific subclasses. The API may define its own `LingoTrackerError` subclasses, such as `JobNotFoundError` with kind `not-found`, because the filter reads only `kind`, `code` and `exposeMessage` to select their HTTP mapping. A core spec reserves kind `upstream` for `TranslationError`, so unknown provider codes keep the same prefix and default 502.
+The API maps `kind` to a default HTTP status. An API-owned code table declares message transforms, status overrides, and inclusion of core `details` as response `errors`. `ErrorCode` combines domain and known provider codes so the API can require a complete HTTP table. All core error classes live in `errors/`, including translation and terminology validation errors. Core exposes domain facts without HTTP metadata. The filter reads these facts without checks for specific subclasses. The API may define its own `LingoTrackerError` subclasses, such as `JobNotFoundError` with kind `not-found`, because the filter reads only `kind`, `code` and `exposeMessage` to select their HTTP mapping. A core spec reserves kind `upstream` for `TranslationError`, so unknown provider codes keep the same prefix and default 502.
 
-A missing move destination is `CollectionNotFoundError` with the same `not-found` kind and a destination-specific message; a read-only destination is `ReadOnlyCollectionError` with kind `forbidden`. `CollectionBaseLocaleMismatchError` has kind `invalid` and maps a whole-collection source-locale disagreement to HTTP 400. Project-term and collection-tag edit errors name data, not CLI flags, and so do the glossary extractor and bundle constant-name errors (`GlossaryExtractorError`, `MultipleBundleConstantNameError`), so the API shows flag-free text; their `problem` fields identify invalid edit combinations so the commands in `apps/cli/src/commands/` can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
+A missing move destination is `CollectionNotFoundError` with the same `not-found` kind and a destination-specific message; a read-only destination is `ReadOnlyCollectionError` with kind `forbidden`. `CollectionBaseLocaleMismatchError` has kind `invalid` and maps a whole-collection source-locale disagreement to HTTP 400. Project-term and collection-tag edit errors name data, not CLI flags, and so do the glossary extractor and bundle constant-name errors (`GlossaryExtractorError`, `MultipleBundleConstantNameError`), so the API shows flag-free text; their `problem` fields identify invalid edit combinations so [CLI Error Wording](#cli-error-wording) can supply the exact flag wording. Core converts operational failures at its boundary to typed errors; `CoreOperationError` keeps the CLI message and `String(error)` text of a former plain error while the API keeps its generic 500 body without a message. `ResourceFolder` keeps three programmer-error assertions as plain `Error`. An `InvalidConfigError` still carries a deliberate, client-visible message. On the other side of the wire, the Tracker turns each failed answer back into one [API Error](#api-error).
 
 Transaction rollback preserves the original error type and message. A restoration failure becomes its cause, so existing HTTP status mappings stay unchanged.
 
-`InvalidProjectTermsEditError.problem` accepts `ProtectedTermsEditProblem` or `PreferredTerminologyEditProblem`. The exported type guards narrow each command to its own codes. The error retains its invalid kind and HTTP 400 mapping.
+`InvalidProjectTermsEditError.problem` accepts `ProtectedTermsEditProblem` or `PreferredTerminologyEditProblem`. The CLI Error Wording tables cover both problem types. The error retains its invalid kind and HTTP 400 mapping.
 
 Explained in context: [`core-library.md`](core-library.md#error-model), [`api.md`](api.md#error-mapping), [`cli.md`](cli.md#errors-and-exit-codes)
 

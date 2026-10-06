@@ -12,7 +12,7 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
 import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from './checksum';
 import { assertCollectionFolderPath } from './folder-address';
-import type { ResourceTreeEntry } from './load-resource-tree';
+import type { ResourceTreeEntry } from './resource-tree-types';
 import type { ResourceEntries, ResourceEntry } from './resource-entry';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
 import type { TrackerMetadata } from './tracker-metadata';

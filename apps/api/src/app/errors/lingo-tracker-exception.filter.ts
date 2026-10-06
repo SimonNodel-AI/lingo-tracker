@@ -13,7 +13,8 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
-import { type ErrorKind, LingoTrackerError } from '@simoncodes-ca/core';
+import { type ErrorCode, type ErrorKind, LingoTrackerError } from '@simoncodes-ca/core';
+import type { ApiErrorCode } from './api-error-codes';
 
 /**
  * The HTTP answer for a typed core error. This is the only place the API maps a core
@@ -49,7 +50,9 @@ interface HttpRule {
 }
 
 /** HTTP presentation belongs to the API; the core error keeps its original message and code. */
-const HTTP_BY_CODE: Readonly<Record<string, HttpRule | undefined>> = {
+type MappedCode = ErrorCode | ApiErrorCode;
+
+const HTTP_BY_CODE = {
   INVALID_COLLECTION: {
     kind: 'invalid',
     message: (error) => ('field' in error && error.field !== undefined ? `collection.${error.message}` : error.message),
@@ -74,13 +77,60 @@ const HTTP_BY_CODE: Readonly<Record<string, HttpRule | undefined>> = {
         HttpStatus.TOO_MANY_REQUESTS,
       ),
   },
-};
+  IMPORT_SOURCE_ERROR: { kind: 'internal' },
+  INVALID_IMPORT_LOCALE: { kind: 'internal' },
+  COLLECTION_BASE_LOCALE_MISMATCH: { kind: 'invalid' },
+  GLOSSARY_NO_COLLECTIONS: { kind: 'internal' },
+  GLOSSARY_EXTRACTOR_ERROR: { kind: 'internal' },
+  CONFIG_NOT_FOUND: { kind: 'internal' },
+  CONFIG_PARSE_FAILED: { kind: 'internal' },
+  CONFIG_CHANGED: { kind: 'conflict' },
+  INVALID_CONFIG: { kind: 'internal' },
+  INVALID_PROTECTED_TERMS_FILE: { kind: 'internal' },
+  INVALID_PROJECT_TERMS_EDIT: { kind: 'invalid' },
+  COLLECTION_NOT_FOUND: { kind: 'not-found' },
+  COLLECTION_ALREADY_EXISTS: { kind: 'conflict' },
+  COLLECTION_REQUIRED_BY_BUNDLE: { kind: 'conflict' },
+  COLLECTION_RENAME_BUNDLE_CONFLICT: { kind: 'conflict' },
+  COLLECTION_READ_ONLY: { kind: 'forbidden' },
+  MOVE_CONFIG_REQUIRED: { kind: 'invalid' },
+  INVALID_NAME: { kind: 'invalid' },
+  PROTECTED_TERMS_FILE_NOT_SET: { kind: 'invalid' },
+  PARENT_DIRECTORY_MISSING: { kind: 'invalid' },
+  INVALID_TRANSLATION_STATUS: { kind: 'invalid' },
+  INVALID_LOCALE: { kind: 'invalid' },
+  LOCALE_NOT_FOUND: { kind: 'invalid' },
+  LOCALE_ALREADY_EXISTS: { kind: 'invalid' },
+  BASE_LOCALE_IMMUTABLE: { kind: 'invalid' },
+  INVALID_RESOURCE_KEY: { kind: 'invalid' },
+  RESOURCE_NOT_FOUND: { kind: 'not-found' },
+  RESOURCE_ALREADY_EXISTS: { kind: 'conflict' },
+  FOLDER_NOT_FOUND: { kind: 'not-found' },
+  INVALID_COLLECTION_FOLDER: { kind: 'invalid' },
+  AUTO_TRANSLATION_DISABLED: { kind: 'unavailable' },
+  NO_TRANSLATION_TARGET_LOCALES: { kind: 'invalid' },
+  CANNOT_TRANSLATE_BASE_LOCALE: { kind: 'invalid' },
+  TRANSLATION_LOCALE_NOT_CONFIGURED: { kind: 'invalid' },
+  MULTIPLE_BUNDLE_CONSTANT_NAME: { kind: 'internal' },
+  BUNDLE_HIERARCHICAL_CONFLICT: { kind: 'invalid' },
+  BUNDLE_NOT_FOUND: { kind: 'not-found' },
+  INVALID_BUNDLE_LOCALES: { kind: 'invalid' },
+  BUNDLE_ALREADY_EXISTS: { kind: 'conflict' },
+  CORE_OPERATION_ERROR: { kind: 'internal' },
+  INVALID_REQUEST_TIMEOUT: { kind: 'upstream' },
+  INVALID_RESPONSE: { kind: 'upstream' },
+  SERVER_ERROR: { kind: 'upstream' },
+  TIMEOUT: { kind: 'upstream' },
+  JOB_NOT_FOUND: { kind: 'not-found' },
+} as const satisfies Record<MappedCode, HttpRule>;
+
+const rules: Readonly<Partial<Record<string, HttpRule>>> = HTTP_BY_CODE;
 
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
   if (!error.exposeMessage) {
     return new InternalServerErrorException({ statusCode: 500, error: 'Internal Server Error' });
   }
-  const candidate = HTTP_BY_CODE[error.code];
+  const candidate = rules[error.code];
   const rule = candidate?.kind === error.kind ? candidate : undefined;
   // TranslationError is the only core subclass with kind 'upstream'. Core's error
   // spec reserves that kind for it, so unknown provider codes keep the prefix and

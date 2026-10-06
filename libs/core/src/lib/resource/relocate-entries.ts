@@ -2,7 +2,7 @@ import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { openFolders } from './folder-batch';
-import type { ResourceTreeEntry } from './load-resource-tree';
+import type { ResourceTreeEntry } from './resource-tree-types';
 import type { MovePlan } from './move-plan';
 import type { ResourceFolder, ResourceFolderEntry } from './resource-folder';
 import {
@@ -15,7 +15,7 @@ import {
 
 /**
  * Entry Relocation — the one way entries move between keys, within a collection or into another.
- * `editResource` (`moveTo`), `moveResource` (one key or a pattern) and `moveFolder` all move through it.
+ * `editResource` (`moveTo`) and `executeMove` (key, pattern or folder) move through it.
  *
  * - **Batch**: every folder involved is opened once, and saved once, however many entries move
  *   in or out of it. A folder is saved only after every folder it sends entries to, and the saves

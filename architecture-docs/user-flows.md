@@ -87,7 +87,7 @@ sequenceDiagram
     Core->>Core: resolveBundleCollections() — open each collection once
     Core->>FS: selectBundleEntries() per locale — readCollection(), once per collection
     Core->>Domain: icuToTransloco(value) — per selected entry
-    Core->>Core: buildHierarchy() — dot-keys → nested object
+    Core->>Core: Prepared content: buildKeyTree() — dot-keys → nested object
     Core->>FS: writeBundleFile(dist/i18n/en.json, dist/i18n/fr.json, ...)
     Core->>Core: generateBundleTypes(base keys) [if typeDistFile configured]
     Core->>FS: write TRACKER_TOKENS type file
@@ -387,7 +387,7 @@ sequenceDiagram
     BS->>BS: movesInFlight + 1 — isMoving, so isDisabled is true
 
     BS->>API: POST /api/collections/{name}/resources/move<br/>{ source: "apps.common.ok", destination: "apps.navigation.ok" }
-    API->>Core: moveResource(..., { onMutation: index.sink })
+    API->>Core: executeMoves(collection, selections)
     Core->>Index: onMutation(remove at source)
     Core->>Index: onMutation(upsert at destination)
     API-->>BS: MoveResourceResponseDto { success: true }

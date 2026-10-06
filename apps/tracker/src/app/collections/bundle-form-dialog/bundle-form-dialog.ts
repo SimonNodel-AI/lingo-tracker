@@ -13,9 +13,10 @@ import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ChipInput } from '../../shared/chip-input/chip-input';
 import { CONFIG_FILE_MARKUP, codeMarkup } from '../../shared/code-markup';
 import { CollectionsStore } from '../store/collections.store';
-import { BundleForm, LOCALE_PLACEHOLDER, type MergeStrategy } from './bundle-form';
+import { BundleForm, type MergeStrategy } from './bundle-form';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { SegmentedControl, type SegmentOption } from './segmented-control';
+import { LOCALE_PLACEHOLDER } from './bundle-output-preview';
 
 @Component({
   selector: 'app-bundle-form-dialog',

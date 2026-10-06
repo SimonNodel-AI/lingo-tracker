@@ -3,7 +3,7 @@ import {
   resolveWritableCollectionProtectedTermsPath,
   writeProtectedTermsFile,
 } from '../lib/config/protected-terms-file';
-import { assertProtectedTerms } from '../lib/config/set-protected-terms';
+import { assertProtectedTerms } from '../lib/config/protected-terms-request';
 import { CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
 import type { CompanionFileWrite } from '../lib/config/config-write-transaction';
 

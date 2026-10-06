@@ -6,9 +6,14 @@ import * as domain from './index';
 describe('domain public surface', () => {
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(domain).sort()).toEqual([
+      'CONFIG_FILENAME',
       'DEFAULT_BASE_LOCALE',
+      'DEFAULT_BUNDLE_DIST',
+      'DEFAULT_BUNDLE_NAME',
+      'DEFAULT_CONFIG',
       'DEFAULT_IMPORT_STRATEGY',
       'DEFAULT_MISSING_METADATA_STATUS',
+      'DEFAULT_TYPE_DIST_FILE',
       'IMPORT_STRATEGIES',
       'JS_IDENTIFIER_PATTERN',
       'NEEDS_WORK_STATUSES',
@@ -19,6 +24,7 @@ describe('domain public surface', () => {
       'assertStringArray',
       'autoFixICUPlaceholders',
       'autoFixTranslocoPlaceholders',
+      'buildKeyTree',
       'buildResourceSummary',
       'bundleKeyToConstantName',
       'bundleOutputFile',
@@ -42,6 +48,7 @@ describe('domain public surface', () => {
       'findProtectedTermViolations',
       'findProtectedTerms',
       'findUnportablePluralCases',
+      'flattenKeyTree',
       'hasBundleCollections',
       'hasBundleRules',
       'hasICUPlaceholders',
@@ -77,6 +84,7 @@ describe('domain public surface', () => {
       'normalizeTag',
       'normalizeTags',
       'normalizedLevenshtein',
+      'parseTranslationInputs',
       'recordTranslation',
       'resolveAllReferences',
       'resolveImportStatus',

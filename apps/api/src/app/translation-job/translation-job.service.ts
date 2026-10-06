@@ -1,11 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { PreparedTranslateLocale, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
-import { executeTranslateLocale } from '@simoncodes-ca/core';
+import type { LocaleTranslationRun, TranslateLocaleProgress, TranslateLocaleResult } from '@simoncodes-ca/core';
 import type { TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
 import { JobRegistry } from '../jobs/job-registry';
 
-interface TranslationState
-  extends Pick<TranslateLocaleResult, 'totalResources' | 'translatedCount' | 'failedCount' | 'skippedCount'> {
+interface TranslationState {
+  progress: TranslateLocaleProgress;
   collectionName: string;
   targetLocale: string;
   failures: TranslateLocaleResult['failures'];
@@ -23,10 +22,10 @@ export class TranslationJobService {
       collectionName: state.collectionName,
       targetLocale: state.targetLocale,
       status,
-      totalResources: state.totalResources,
-      translatedCount: state.translatedCount,
-      failedCount: state.failedCount,
-      skippedCount: state.skippedCount,
+      totalResources: state.progress.totalResources,
+      translatedCount: state.progress.translatedCount,
+      failedCount: state.progress.failedCount,
+      skippedCount: state.progress.skippedCount,
       ...(state.failures.length > 0 && { failures: [...state.failures] }),
       ...(state.skippedKeys.length > 0 && { skippedKeys: [...state.skippedKeys] }),
     }),
@@ -38,39 +37,37 @@ export class TranslationJobService {
   }
 
   /** Queues a bulk translation for a run the controller has already prepared. */
-  startJob(prepared: PreparedTranslateLocale): TranslateLocaleJobDto {
-    const { collection, targetLocale } = prepared;
+  startJob(run: LocaleTranslationRun): TranslateLocaleJobDto {
+    const { collectionName, targetLocale } = run;
+    let progress: TranslateLocaleProgress = {
+      totalResources: 0,
+      translatedCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      currentBatch: 0,
+      totalBatches: 0,
+    };
     return this.#jobs.start({
       initial: {
-        collectionName: collection.name,
+        collectionName,
         targetLocale,
-        totalResources: 0,
-        translatedCount: 0,
-        failedCount: 0,
-        skippedCount: 0,
+        progress,
         failures: [],
         skippedKeys: [],
       },
       execute: async (jobId, update) => {
-        const onProgress = (progress: TranslateLocaleProgress): void => {
-          update({
-            totalResources: progress.totalResources,
-            translatedCount: progress.translatedCount,
-            failedCount: progress.failedCount,
-            skippedCount: progress.skippedCount,
-          });
-        };
-        const result = await executeTranslateLocale(prepared, {
-          onProgress,
+        const result = await run.execute({
+          onProgress: (event) => {
+            progress = event;
+            update({ progress });
+          },
         });
         for (const warning of result.warnings) {
           this.#logger.warn(`Translation job ${jobId}: ${warning}`);
         }
+        const { totalResources, translatedCount, failedCount, skippedCount } = result;
         update({
-          totalResources: result.totalResources,
-          translatedCount: result.translatedCount,
-          failedCount: result.failedCount,
-          skippedCount: result.skippedCount,
+          progress: { ...progress, totalResources, translatedCount, failedCount, skippedCount },
           failures: [...result.failures],
           skippedKeys: [...result.skippedKeys],
         });

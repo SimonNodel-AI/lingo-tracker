@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import type { ProtectedTermsEdit, ProtectedTermsEditResult } from './set-protected-terms';
-import { protectedTermsTargetView, readProjectTermsView } from './project-terms-view';
+import type { ProtectedTermsEdit, ProtectedTermsEditResult } from './protected-terms-request';
+import { readProjectTermsView } from './project-terms-view';
 import { loadConfig } from './load-config';
 import { updateProjectTerms } from './update-project-terms';
 
@@ -172,7 +172,7 @@ describe('protected terms edits', () => {
   it('changes a pointer before adding to the new file and reports the list before the edit', () => {
     writeFileSync(defaultPath(), '["iPhone"]');
     changeGlobalTermsPointer('config/terms.json');
-    const view = protectedTermsTargetView(readProjectTermsView(project()), {});
+    const view = readProjectTermsView(project()).forTarget({});
     const result = applyTermsEdit({}, { add: ['Pixel'] });
     expect(view.globalTerms).toEqual(['iPhone']);
     expect(result.terms).toEqual(['iPhone', 'Pixel']);

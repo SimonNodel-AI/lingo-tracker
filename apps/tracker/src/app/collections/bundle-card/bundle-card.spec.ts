@@ -4,7 +4,8 @@ import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat'
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
-import type { BundleEntry, BundleRunState } from '../store/features/with-bundles.feature';
+import type { BundleEntry } from '../store/features/with-bundles.feature';
+import type { BundleRunState } from '../store/bundle-runs';
 import { BundleCard } from './bundle-card';
 
 const trackerEntry: BundleEntry = {

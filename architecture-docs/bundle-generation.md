@@ -48,7 +48,7 @@ libs/core/src/lib/bundle/
 ├── plan-bundle.ts              # planBundle(): the dry-run plan, writes nothing
 ├── bundle-selection.ts         # resolveBundleCollections() + selectBundleEntries(): the Bundle Selection
 ├── resource-loader.ts          # loadCollectionResources(): one collection's FlatResource list per locale, via readCollection()
-├── hierarchy-builder.ts        # buildHierarchy(): dot-keys → nested JSON object
+├── hierarchy-builder.ts        # buildBundleHierarchy(): Key Tree adapter and token conflict checks
 ├── pattern-matcher.ts          # matchesPattern(): glob-style key filtering
 ├── tag-filter.ts               # matchesTags(): AND/OR tag filter logic
 └── type-generation/
@@ -184,6 +184,8 @@ A more complex example demonstrating `bundledKeyPrefix`, filtered rules, and tag
 
 ## Entry Filtering Pipeline
 
+Prepared `content()` selects each locale and the base values once, on first use. Progress reports each locale before selection, with its output path. All selections remain in memory until output completes, so conflicts stop all writes. Planning and generation consume that same content. Empty locales have counts and warnings but no planned or generated file. Base selection uses the resolved ICU flag and adds only warnings absent from locale selections.
+
 The pipeline is the [Bundle Selection](glossary.md#bundle-selection) (`bundle-selection.ts`). `resolveBundleCollections()` opens the collections once per run. Then, for each locale, `selectBundleEntries()` iterates over each `CollectionBundleDefinition`, loads resources, applies the filtering pipeline, and merges results into a single flat key-value map with the winning origin of each key. `generateBundle()`, `planBundle()` (the dry run) and the type file (keys only) all consume the same selection, so the rules below are applied in one place. The pipeline for a single collection runs as follows.
 
 ### Pipeline Flowchart
@@ -259,7 +261,7 @@ flowchart TD
 
     NEXT_COLLECTION --> BUILD_HIERARCHY
 
-    BUILD_HIERARCHY["generateBundle: buildHierarchy(values)\nFlat { 'a.b.c': 'val' }\n→ Nested { a: { b: { c: 'val' } } }"]
+    BUILD_HIERARCHY["Prepared content: buildKeyTree(entries)\nFlat { 'a.b.c': 'val' }\n→ Nested { a: { b: { c: 'val' } } }"]
 
     BUILD_HIERARCHY --> WRITE_JSON
 
@@ -345,7 +347,7 @@ On both shapes, the interpolation pass strands a branch with no body. The ICU co
 
 `hasUnbundlableBranchBody()` from `@simoncodes-ca/domain` reports both shapes. The bundler pushes one warning per locale to `GenerateBundleResult.warnings`, emits the value as `icuToTransloco()` produced it, and exits 0.
 
-**The `transformICUToTransloco` flag** (resolved via CLI override → bundle config → global config → default `true`) controls whether `icuToTransloco()` is called at all. Setting it to `false` emits raw ICU values — useful when the bundle consumer is not Transloco, or when you want to inspect the raw stored values.
+**The `transformICUToTransloco` flag** (resolved via CLI override → bundle config → global config → default `true`) controls whether `icuToTransloco()` is called at all. The CLI negation `--no-transform-icu-to-transloco` supplies `transformICUToTransloco: false` through the flag-record boundary. Setting it to `false` emits raw ICU values — useful when the bundle consumer is not Transloco, or when you want to inspect the raw stored values.
 
 **Malformed ICU handling**: before calling `icuToTransloco()`, the pipeline calls `validateICUSyntax()` from `@simoncodes-ca/domain`. If validation fails and the value contains `{`, a warning is pushed to `GenerateBundleResult.warnings` and the value is included as-is rather than being dropped.
 
@@ -359,11 +361,11 @@ On both shapes, the interpolation pass strands a branch with no body. The ICU co
 
 For each locale in `config.locales` (or the `--locale` CLI override), one JSON file is written to `<dist>/<bundleName>.json`. The `{locale}` placeholder in `bundleName` is replaced with the locale code, and a relative path is resolved against the project directory (`cwd` on `generateBundle`: the CLI's `INIT_CWD`-aware directory, the API's `process.cwd()`). Collection `translationsFolder` values resolve against the same directory. The result's `writtenFiles` lists every successful JSON, debug-keys and type-file write as a project-relative path. `typeOutcome` is `written` (path and key count), `skipped` (`empty-bundle` reason code), `failed` (error reason), or `not-configured`.
 
-Core keeps general warnings and the structured type outcome separate. `warnings: readonly string[]` contains collection warnings first, then locale, debug and selection warnings in encounter order. The prepared deprecated-setting warning follows those generation warnings. Type outcomes do not add a warning to this list.
+Core keeps generation warnings and the structured type outcome separate. `warnings: readonly string[]` contains collection warnings first, then locale, debug and selection warnings in encounter order. Config deprecations and type-outcome warnings have separate named fields.
 
-`describeTypeOutcome(bundleKey, typeOutcome)` is the one exported core formatter for type-outcome warnings. It returns `Type generation failed for '<key>': <reason>` or `Type generation skipped for '<key>': bundle is empty`. Written and unconfigured outcomes return `undefined`. The API mapper copies general warnings and appends this type warning. Thus API response order is generation warnings, the prepared warning, then the type-outcome warning. The API response shape stays unchanged.
+Core supplies generation warnings in `warnings`, the legacy type-setting deprecation in optional `configWarning`, and a failed or skipped type-outcome warning in optional `typeWarning`. The internal type formatter produces `Type generation failed for '<key>': <reason>` or `Type generation skipped for '<key>': bundle is empty`; written and unconfigured outcomes have no type warning. The API mapper and CLI both call `bundleResultWarnings(result)` to combine these named fields in the existing API order: generation warnings, config deprecation, then type-outcome warning. The helper returns a fresh array and preserves every warning string. The API response shape stays unchanged.
 
-Structured `typeOutcome` supplies status, reason, path and key count for decisions and DTO metadata. The CLI renders its own tree lines and error framing from this outcome. It prints the prepared warning through the existing event and omits that already-reported warning from its general warning display. Type-outcome warning text does not enter CLI warning summaries. Core totals count general warnings, including the prepared warning. CLI summaries count general warnings that the CLI displays in its warning summary.
+Structured `typeOutcome` supplies status, reason, path and key count for decisions and DTO metadata. The CLI retains progress and successful/skipped type-file tree lines. The command-side Bundle Presentation owns event output: config deprecation before result progress, then individual type failures and generation warnings. A config deprecation from an attempt that throws still appears once before its error. Core totals retain their original meaning: generation warnings plus a config deprecation for each returned generation result; type-outcome warnings and attempts that throw do not contribute. CLI summaries preserve their generation-only warning count; config deprecation and type-outcome diagnostics do not contribute. Quiet mode suppresses progress and file totals but retains diagnostics and warning totals. Verbose mode adds locale progress and generation warning details; other modes print only the generation warning count.
 
 Example for the `"main"` bundle with `bundleName: "{locale}"` and `dist: "./dist/i18n"`:
 
@@ -377,7 +379,9 @@ dist/i18n/
 └── ja.json
 ```
 
-Each file is a hierarchical JSON object. Dot-delimited keys are expanded into nested objects by `buildHierarchy()`. Example:
+Generation rejects hierarchical conflicts with `BundleHierarchicalConflictError` (`BUNDLE_HIERARCHICAL_CONFLICT`, kind `invalid`) before creating directories or files. Selected locale conflicts always block output. Base conflicts block only when types or debug keys consume the base tree. Types also reject distinct source keys that map to one token path. Bundle diagnostics use the source keys and omit duplicate token paths. Filesystem errors after preflight can still leave earlier output files.
+
+Each file is a hierarchical JSON object. Dot-delimited keys are expanded into nested objects by the domain `buildKeyTree()`. Example:
 
 Input flat map (after filtering and ICU conversion):
 
@@ -510,7 +514,7 @@ interface TypeHierarchyNode {
 }
 ```
 
-For each key, the segments are iterated left to right. At each level, a child node is created (or reused if already present) under the property name produced by `segmentToPropertyName()`. The final segment sets `node.value` to the **full original key string** — this is what Angular's `translate()` receives at runtime.
+The adapter uses the domain [Key Tree](glossary.md#key-tree) to construct the hierarchy. It rejects parent/leaf conflicts and duplicate token paths after `segmentToPropertyName()` transforms the segments. Diagnostics retain the source keys. It converts the result into serializer nodes, with the original key as each leaf value. The serializer also rejects manually supplied mixed nodes. Direct `generateBundleTypes` calls propagate the typed hierarchical error before writes.
 
 Keys are sorted alphabetically before hierarchy building, so the generated file has a deterministic order regardless of the order resources were added.
 
@@ -604,11 +608,11 @@ CLI flag  →  BundleDefinition field  →  global config field  →  hard defau
 |---|---|---|---|---|
 | Token casing | `--token-casing` | `tokenCasing` | `tokenCasing` | `'upperCase'` |
 | Constant name | `--token-constant-name` | `tokenConstantName` | *(none)* | `<BUNDLE_KEY>_TOKENS` |
-| ICU transformation | `--transform-icu-to-transloco` | `transformICUToTransloco` | `transformICUToTransloco` | `true` |
+| ICU transformation | `--no-transform-icu-to-transloco` | `transformICUToTransloco` | `transformICUToTransloco` | `true` |
 
 ---
 
-`generateBundles(config, { names?, locales?, overrides, cwd })` prepares each selected bundle once, catches individual failures in its outcomes, and totals successful bundles, generated files, and warnings. It rejects `tokenConstantName` with more than one selected bundle using `MultipleBundleConstantNameError`. The CLI receives start, type-warning and result events to print in run order. Callback errors propagate instead of becoming bundle failures. The API job service prepares by name before queueing and runs `generatePreparedBundle(prepared, { onProgress })`. `generatePreparedBundle` takes its bundle key and root from the prepared run; debug locale and progress callback remain run options. The prepared legacy `typeDist` warning remains in the result warnings even when the type file fails. If a JSON write throws before there is a type outcome, `generateBundles` emits the warning from the prepared run before the failure result; the API job service logs it with Nest `Logger.warn` while the job fails.
+`generateBundles(config, { names?, locales?, overrides, cwd })` prepares each selected bundle once, catches individual failures in its outcomes, and totals returned generation results, generated files, and warnings. It rejects `tokenConstantName` with more than one selected bundle using `MultipleBundleConstantNameError`. The CLI receives only start and result events. A prepared config deprecation is carried on the per-bundle outcome in both success and error branches; there is no separate warning event. Callback errors propagate instead of becoming bundle failures. The API job service prepares by name before queueing and runs `generatePreparedBundle(prepared, { onProgress })`. Generation takes its bundle key and root from the prepared run; debug locale and progress callback remain run options. A returned result carries generation `warnings`, optional `configWarning`, and optional `typeWarning`. If a JSON write throws before a result exists, the CLI Bundle Presentation prints the outcome's config deprecation, and the API job service logs it once with Nest `Logger.warn` while the job fails.
 
 ---
 

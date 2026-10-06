@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { CollectionsApiService } from '../../services/collections-api.service';
 import { CollectionsStore } from '../collections.store';
-import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from './with-bundles.feature';
+import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from '../bundle-run-controller';
 
 describe('withBundlesFeature', () => {
   let store: InstanceType<typeof CollectionsStore>;

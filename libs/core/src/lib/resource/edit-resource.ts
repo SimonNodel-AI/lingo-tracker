@@ -16,7 +16,7 @@ import {
 } from '../errors/lingo-tracker-error';
 import { snapshotTranslation, writeBackTranslations } from '../translation/translation-write-back';
 import type { OpenTranslatorOptions } from '../translation/translator';
-import type { ResourceTreeEntry } from './load-resource-tree';
+import type { ResourceTreeEntry } from './resource-tree-types';
 import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
 import { planMove } from './move-plan';
 import { relocateEntries } from './relocate-entries';

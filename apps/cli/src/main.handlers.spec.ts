@@ -1,3 +1,6 @@
+import { Option } from 'commander';
+import { commandRegistrations } from './testing/command-registrations';
+import { createCli } from './program';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const handlers = vi.hoisted(() => ({
@@ -252,8 +255,8 @@ const cases: Case[] = [
   {
     name: 'normalize',
     handler: handlers.normalize,
-    fullArgv: ['--collection', 'app', '--all', '--dry-run', '--json'],
-    fullCall: [{ collection: 'app', all: true, dryRun: true, json: true }],
+    fullArgv: ['--collection', 'app', '--all', '--dry-run', '--json', '--yes'],
+    fullCall: [{ collection: 'app', all: true, dryRun: true, json: true, yes: true }],
     defaultCall: [{}],
   },
   {
@@ -289,11 +292,11 @@ const cases: Case[] = [
         verbose: true,
         tokenCasing: 'upperCase',
         tokenConstantName: 'TOKENS',
-        transformIcuToTransloco: false,
+        transformICUToTransloco: false,
         debugKeys: '99',
       },
     ],
-    defaultCall: [{ transformIcuToTransloco: true }],
+    defaultCall: [{ transformICUToTransloco: true }],
   },
   {
     name: 'export',
@@ -477,9 +480,9 @@ const cases: Case[] = [
     name: 'edit-collection',
     handler: handlers.editCollection,
     fullArgv: ['app', '--add-tag', 'one', '--add-tag', 'two', '--remove-tag', 'old', '--set-tags', 'ui,common'],
-    fullCall: ['app', { addTag: ['one', 'two'], removeTag: ['old'], setTags: ['ui', 'common'] }],
+    fullCall: [{ name: 'app', addTag: ['one', 'two'], removeTag: ['old'], setTags: ['ui', 'common'] }],
     defaultArgv: ['app'],
-    defaultCall: ['app', { addTag: [], removeTag: [] }],
+    defaultCall: [{ name: 'app', addTag: [], removeTag: [] }],
   },
   {
     name: 'protected-terms',
@@ -538,29 +541,46 @@ const cases: Case[] = [
   },
 ];
 
-const originalArgv = process.argv;
-
-async function invoke(name: string, argv: string[], handler: Handler): Promise<void> {
-  process.argv = ['node', 'lingo-tracker', name, ...argv];
-  vi.resetModules();
-  await import('./main');
-  await vi.waitFor(() => expect(handler).toHaveBeenCalledTimes(1));
+async function invoke(name: string, argv: string[]): Promise<void> {
+  await createCli().parseAsync([name, ...argv], { from: 'user' });
 }
 
 describe('every CLI handler registration', () => {
   afterEach(() => {
-    process.argv = originalArgv;
     vi.clearAllMocks();
+  });
+
+  it('covers every registered command and every record key with parsed handler values', async () => {
+    expect(commandRegistrations.map((entry) => entry.name)).toEqual(
+      createCli().commands.map((command) => command.name()),
+    );
+    for (const registration of commandRegistrations) {
+      const entry = cases.find((entry) => entry.name === registration.name);
+      expect(entry).toBeDefined();
+      if (!entry) throw new Error(`Missing argv case for ${registration.name}`);
+      const program = createCli();
+      await program.parseAsync([entry.name, ...entry.fullArgv], { from: 'user' });
+      const command = program.commands.find((command) => command.name() === entry.name);
+      const options = entry.handler.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      for (const [key, record] of Object.entries(registration.flags)) {
+        if ('flags' in record) {
+          const attribute = new Option(record.flags).attributeName();
+          expect(command?.getOptionValueSource(attribute), `${registration.name}.${key} supplied in argv`).toBe('cli');
+        }
+        expect(options, `${registration.name}.${key}`).toHaveProperty(key);
+        expect(options?.[key], `${registration.name}.${key}`).not.toBeUndefined();
+      }
+    }
   });
 
   for (const entry of cases) {
     it(`${entry.name} passes parsed full argv to its handler`, async () => {
-      await invoke(entry.name, entry.fullArgv, entry.handler);
+      await invoke(entry.name, entry.fullArgv);
       expect(entry.handler).toHaveBeenCalledWith(...entry.fullCall);
     });
 
     it(`${entry.name} passes parsed defaults to its handler`, async () => {
-      await invoke(entry.name, entry.defaultArgv ?? [], entry.handler);
+      await invoke(entry.name, entry.defaultArgv ?? []);
       expect(entry.handler).toHaveBeenCalledWith(...entry.defaultCall);
     });
   }

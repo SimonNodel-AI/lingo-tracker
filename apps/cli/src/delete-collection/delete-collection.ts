@@ -1,3 +1,4 @@
+import { DELETE_COLLECTION_FLAGS } from './delete-collection-flags';
 import { CONFIG_FILENAME, deleteCollection } from '@simoncodes-ca/core';
 import * as path from 'path';
 import { CommandOutput } from '../runner/command-output';
@@ -16,6 +17,7 @@ export interface DeleteCollectionOptions {
  * collection. Non-interactive, the flags are the consent.
  */
 export const deleteCollectionCommand = defineCommand<DeleteCollectionOptions>()({
+  flags: DELETE_COLLECTION_FLAGS,
   name: 'Delete collection',
   collection: 'deletable',
   collectionOption: 'collectionName',

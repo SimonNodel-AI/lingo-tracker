@@ -1,14 +1,18 @@
 import { Controller, Post, Delete } from '@nestjs/common';
-import { type Collection, createFolder, deleteFolder, moveFolder } from '@simoncodes-ca/core';
+import { type Collection, createFolder, deleteFolder, executeMove } from '@simoncodes-ca/core';
 import type {
   CreateFolderDto,
   CreateFolderResponseDto,
-  FolderNodeDto,
   DeleteFolderDto,
   DeleteFolderResponseDto,
   MoveFolderDto,
   MoveFolderResponseDto,
 } from '@simoncodes-ca/data-transfer';
+import {
+  mapCreateFolderResultToDto,
+  mapDeleteFolderResultToDto,
+  mapMoveFolderResultToDto,
+} from '../../mappers/folder-response.mapper';
 import { ConfigService } from '../../config/config.service';
 import { RouteCollection } from '../route-collection';
 import { createFolderBody, deleteFolderBody, moveFolderBody } from '../../validation/dto-schemas';
@@ -25,25 +29,7 @@ export class FoldersController {
   ): Promise<CreateFolderResponseDto> {
     const result = createFolder(collection, createFolderDto);
 
-    // Build the folder node for the frontend to insert into tree
-    const fullPath = result.folderAddress;
-
-    const folderNode: FolderNodeDto = {
-      name: createFolderDto.folderName,
-      fullPath,
-      loaded: true,
-      tree: {
-        path: fullPath,
-        resources: [],
-        children: [],
-      },
-    };
-
-    return {
-      folderPath: result.folderPath,
-      created: result.created,
-      folder: folderNode,
-    };
+    return mapCreateFolderResultToDto(result, createFolderDto.folderName);
   }
 
   /** Failures are typed core errors: a missing folder answers 404, a malformed path 400. */
@@ -54,11 +40,7 @@ export class FoldersController {
   ): Promise<DeleteFolderResponseDto> {
     const result = deleteFolder(collection, deleteFolderDto);
 
-    return {
-      deleted: true,
-      folderPath: result.folderPath,
-      resourcesDeleted: result.resourcesDeleted,
-    };
+    return mapDeleteFolderResultToDto(result);
   }
 
   /**
@@ -73,13 +55,19 @@ export class FoldersController {
     // Cross-collection moves need the config to resolve the destination.
     const config = this.configService.getConfig();
 
-    const result = await moveFolder(collection, moveFolderDto, { config });
+    const result = executeMove(
+      collection,
+      {
+        kind: 'folder',
+        source: moveFolderDto.sourceFolderPath,
+        destination: moveFolderDto.destinationFolderPath,
+        override: moveFolderDto.override,
+        toCollection: moveFolderDto.toCollection,
+        nestUnderDestination: moveFolderDto.nestUnderDestination,
+      },
+      { config },
+    );
 
-    return {
-      movedCount: result.movedCount,
-      foldersDeleted: result.foldersDeleted,
-      warnings: result.warnings,
-      errors: result.errors,
-    };
+    return mapMoveFolderResultToDto(result);
   }
 }

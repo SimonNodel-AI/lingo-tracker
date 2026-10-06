@@ -6,6 +6,7 @@ import {
   type TokenCasing,
   validateJavaScriptIdentifier,
 } from '@simoncodes-ca/domain';
+import { BundleHierarchicalConflictError } from '../../errors';
 import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
 import { generateFileHeader } from './file-header';
 import { resolveBundleSettings } from '../resolve-bundle-settings';
@@ -40,15 +41,12 @@ export interface GenerateBundleTypesParams {
  * `typeDistFile` (or the deprecated `typeDist`, with a warning). Selecting the keys is the caller's
  * job (see Bundle Selection). Returns `skippedReason` when no file is configured or there are no
  * keys, and `errorReason` for a path that does not end in `.ts`, a path that is a directory, or an
- * invalid constant name.
+ * invalid constant name. Hierarchical conflicts throw `BundleHierarchicalConflictError` before writes.
  */
 export function generateBundleTypes(params: GenerateBundleTypesParams): GenerateTypesResult {
   const { bundleKey, definition: bundleDef, tokenCasing, tokenConstantName } = params;
 
-  // Support deprecated 'typeDist' property — read the legacy value without mutating the config object
-  const legacyTypeDist = (bundleDef as unknown as Record<string, unknown>)['typeDist'];
-  const resolvedTypeDistFile =
-    bundleDef.typeDistFile ?? (typeof legacyTypeDist === 'string' ? legacyTypeDist : undefined);
+  const resolvedTypeDistFile = bundleTypeOutputFile(bundleDef);
 
   const warning = params.warning ?? legacyTypeDistWarning(bundleKey, bundleDef);
 
@@ -122,8 +120,8 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
     }
 
     // Generate content
-    const hierarchy = buildTypeHierarchy(sortedKeys, tokenCasing);
-    const fileContent = `${generateFileHeader(bundleKey)}\n\n${serializeHierarchy(hierarchy, resolvedConstantName)}`;
+    const hierarchy = buildTypeHierarchy(sortedKeys, tokenCasing, bundleKey);
+    const fileContent = `${generateFileHeader(bundleKey)}\n\n${serializeHierarchy(hierarchy, resolvedConstantName, bundleKey)}`;
 
     const outputDir = path.dirname(outputPath);
 
@@ -143,6 +141,7 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
       warning,
     };
   } catch (error) {
+    if (error instanceof BundleHierarchicalConflictError) throw error;
     return {
       bundleKey,
       typeDistFile: resolvedTypeDistFile,
@@ -152,6 +151,12 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
       warning,
     };
   }
+}
+
+/** Shared output path for planning and generation, including saved legacy definitions. */
+export function bundleTypeOutputFile(definition: BundleDefinition): string | undefined {
+  const legacy = (definition as BundleDefinition & { typeDist?: unknown }).typeDist;
+  return definition.typeDistFile ?? (typeof legacy === 'string' ? legacy : undefined);
 }
 
 export function legacyTypeDistWarning(bundleKey: string, definition: BundleDefinition): string | undefined {

@@ -6,12 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { addResource } from './add-resource';
 import { deleteResource } from './delete-resource';
 import { editResource } from './edit-resource';
-import { moveResource } from './move-resource';
+import { executeMove } from './execute-move';
 import type { Collection } from '../config/open-collection';
 import { FolderNotFoundError } from '../errors/lingo-tracker-error';
 import { createFolder } from '../folder/create-folder';
 import { deleteFolder } from '../folder/delete-folder';
-import { moveFolder } from '../folder/move-folder';
 import { openResourceFolder } from './resource-folder';
 
 const collected: ResourceMutation[] = [];
@@ -144,7 +143,7 @@ describe('mutations delivered by core writes (real fs)', () => {
   });
 
   it('moveResource by pattern delivers a remove and an upsert per moved key, removes first', async () => {
-    await moveResource(collection(), { source: 'common.*', destination: 'shared' }, { onMutation });
+    await executeMove(collection(), { source: 'common.*', destination: 'shared' }, { onMutation });
 
     const kinds = collected.map((mutation) => mutation.kind);
     expect(kinds).toEqual(['remove', 'remove', 'upsert', 'upsert']);
@@ -161,13 +160,9 @@ describe('mutations delivered by core writes (real fs)', () => {
   it('moveResource to another translations folder puts the upsert there', async () => {
     const other = mkdtempSync(join(tmpdir(), 'resource-mutation-other-'));
     try {
-      await moveResource(
+      await executeMove(
         collection(),
-        {
-          source: 'common.ok',
-          destination: 'imported.ok',
-          toCollection: 'other',
-        },
+        { source: 'common.ok', destination: 'imported.ok', toCollection: 'other' },
         {
           onMutation,
           config: {
@@ -195,7 +190,7 @@ describe('mutations delivered by core writes (real fs)', () => {
   });
 
   it('moveFolder delivers the per-key moves, then the removal of the source folder', async () => {
-    await moveFolder(collection(), { sourceFolderPath: 'common', destinationFolderPath: 'apps' }, { onMutation });
+    await executeMove(collection(), { kind: 'folder', source: 'common', destination: 'apps' }, { onMutation });
 
     expect(collected).toHaveLength(5);
     expect(collected[collected.length - 1]).toEqual({

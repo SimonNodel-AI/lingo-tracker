@@ -2,4 +2,3 @@
 
 export { type CreateFolderParams, type CreateFolderResult, createFolder } from './create-folder';
 export { type DeleteFolderParams, type DeleteFolderResult, deleteFolder } from './delete-folder';
-export { type MoveFolderParams, type MoveFolderResult, moveFolder } from './move-folder';

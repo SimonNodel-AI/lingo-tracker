@@ -1,3 +1,4 @@
+import type { SortField, SortDirection } from '../../translations/utils/sort-translations';
 import { computed } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
@@ -20,8 +21,8 @@ import {
 export interface FilterState {
   selectedLocales: string[];
   selectedStatuses: TranslationStatus[];
-  sortField: 'key' | 'status';
-  sortDirection: 'asc' | 'desc';
+  sortField: SortField;
+  sortDirection: SortDirection;
 }
 
 export const initialFilterState: FilterState = {
@@ -81,7 +82,7 @@ export function withFilterFeature<_>() {
         patchState(store, clearAll());
       },
 
-      setSortField(field: 'key' | 'status'): void {
+      setSortField(field: SortField): void {
         patchState(store, { sortField: field });
       },
 

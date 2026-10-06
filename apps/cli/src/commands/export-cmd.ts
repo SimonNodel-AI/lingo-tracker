@@ -1,3 +1,4 @@
+import { EXPORT_FLAGS } from './export-cmd-flags';
 import { type ExportRunResult, exportTargetLocales, runExport } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
@@ -7,6 +8,7 @@ import { type ExportCommandOptions, exportQuestions, exportSelection, resolveExp
 export type { ExportCommandOptions } from './export-options';
 
 export const exportCommand = defineCommand<ExportCommandOptions>()({
+  flags: EXPORT_FLAGS,
   name: 'Export',
   collection: 'many',
   commaListAnswers: ['tags'],

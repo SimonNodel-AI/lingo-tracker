@@ -12,12 +12,14 @@ import {
 import { readFileSync } from 'node:fs';
 import * as path from 'path';
 import prompts from 'prompts';
-import { CommandOutput, withCommandOutput, type CommandOutputSink } from './command-output';
+import { withCommandOutput, type CommandOutputSink } from './command-output';
 import { parseCommaSeparatedList } from '../utils/string-parsers';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { type Selection, selectionPrompt } from '../utils/prompt-utils';
+import { flagQuestions, flagName, type FlagRecords } from './flag-record';
 import { CommandCancelledError } from './command-cancelled-error';
 import { isInteractiveTerminal } from './terminal';
+import { printCliError } from './cli-error-wording';
 
 export { CommandCancelledError } from './command-cancelled-error';
 
@@ -122,6 +124,7 @@ export interface CommandSpec<
   /** Operation name for messages: `❌ <name> cancelled.` */
   readonly name: string;
   readonly collection: Need;
+  readonly flags?: FlagRecords<Options, PromptContext<Need, WithConfig>>;
   /** Option holding the collection name (default `collection`); named in the missing-option message. */
   readonly collectionOption?: keyof Options & string;
   /** Selection is evaluated after prompts; every collection is opened for reading. */
@@ -161,7 +164,7 @@ export interface CommandSpec<
   readonly required?: readonly Required[];
   /** Text prompt fields that use the same comma parser as flag definitions. */
   readonly commaListAnswers?: readonly (keyof Options & string)[];
-  /** Formats a command error without replacing the original error seen by the runner. */
+  /** Formats an untyped error after shared core wording; keeps the original error and cause. */
   readonly formatError?: (error: unknown, duringRun: boolean) => string | undefined;
   /** The core call(s) and the output. Throw to fail with `❌ <message>`. */
   readonly run: (
@@ -178,11 +181,19 @@ export function requireOptions<Options extends object, Field extends keyof Optio
   values: Options,
   fields: readonly Field[],
   interactive: boolean,
+  records?: FlagRecords<Options>,
 ): asserts values is Options & { readonly [K in Field]-?: NonNullable<Options[K]> } {
   const missing = fields.filter((field) => isMissing(values[field]));
   if (missing.length > 0) {
     const mode = interactive ? '' : ' in non-interactive mode';
-    throw new Error(`Missing required options${mode}: ${missing.map(toFlag).join(', ')}`);
+    throw new Error(
+      `Missing required options${mode}: ${missing
+        .map((field) => {
+          const record = records?.[field];
+          return record && 'flags' in record ? flagName(record) : toFlag(field);
+        })
+        .join(', ')}`,
+    );
   }
 }
 
@@ -316,7 +327,7 @@ async function execute<
         const name =
           typeof given === 'string' && given.length > 0
             ? given
-            : await selectCollection(config, interactive, flag, ask);
+            : await selectCollection(config, interactive, flag, ask, spec.flags?.[flag as keyof Options]);
         resources = {
           ...resources,
           collection: openCollection(config, name, {
@@ -342,7 +353,10 @@ async function execute<
     } as PromptContext<Need, WithConfig>;
 
     await spec.preflight?.({ ...promptContext, options });
-    const questions = spec.prompts ? await spec.prompts(options, promptContext) : [];
+    const questions = [
+      ...(spec.flags ? flagQuestions(spec.flags, options, promptContext) : []),
+      ...(spec.prompts ? await spec.prompts(options, promptContext) : []),
+    ];
     const merged: Options =
       interactive && questions.length > 0 ? { ...options, ...(await ask(questions)) } : { ...options };
     for (const field of spec.commaListAnswers ?? []) {
@@ -351,7 +365,7 @@ async function execute<
         Object.assign(merged, { [field]: parseCommaSeparatedList(value) });
       }
     }
-    requireOptions(merged, spec.required ?? [], interactive);
+    requireOptions(merged, spec.required ?? [], interactive, spec.flags);
     // requireOptions has just checked what CheckedAnswers claims; the type cannot follow it.
     const answers = merged as CheckedAnswers<Options, Required>;
 
@@ -379,7 +393,7 @@ async function execute<
     const result = await spec.run({ ...promptContext, ...resources, answers, ...selectionResources });
     return result ? result.exitCode : 0;
   } catch (error) {
-    return report(error, spec.name, spec.formatError?.(error, duringRun));
+    return report(error, spec.name, () => spec.formatError?.(error, duringRun));
   }
 }
 
@@ -402,6 +416,7 @@ async function selectCollection(
   interactive: boolean,
   flag: string,
   ask: Ask,
+  record?: { readonly flags: string } | { readonly argument: readonly [string, string] },
 ): Promise<string> {
   const names = Object.keys(config.collections ?? {});
   if (names.length === 0) {
@@ -411,7 +426,7 @@ async function selectCollection(
     return names[0];
   }
   if (!interactive) {
-    throw new Error(`Missing required option: ${toFlag(flag)}`);
+    throw new Error(`Missing required option: ${record && 'flags' in record ? flagName(record) : toFlag(flag)}`);
   }
   const { collection } = await ask(
     selectionPrompt({ mode: 'single', name: 'collection', message: 'Select collection', choices: names }),
@@ -437,26 +452,12 @@ async function ask(questions: prompts.PromptObject | prompts.PromptObject[]): Pr
 }
 
 /** Prints the failure and returns the exit code: 0 for a cancel, 1 for anything else. */
-function report(error: unknown, name: string, formattedMessage?: string): 0 | 1 {
+function report(error: unknown, name: string, formatError: () => string | undefined): 0 | 1 {
   if (error instanceof CommandCancelledError) {
     ConsoleFormatter.error(`${name} cancelled.`);
     return 0;
   }
-  if (error instanceof ConfigNotFoundError) {
-    CommandOutput.error(`❌ Configuration file ${CONFIG_FILENAME} not found.`);
-    CommandOutput.error('Run "lingo-tracker init" to initialize a project.');
-    return 1;
-  }
-  if (error instanceof ConfigParseError) {
-    CommandOutput.error(`❌ Failed to parse configuration file: ${error.reason}`);
-    return 1;
-  }
-  // A wrapping error may keep its message fixed (it can reach an API client) and hold the
-  // underlying reason, such as `EACCES: permission denied`, in `cause`; the CLI shows it.
-  const message = formattedMessage ?? (error instanceof Error ? error.message : String(error));
-  const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
-  if (cause instanceof Error) ConsoleFormatter.error(message, [cause.message]);
-  else ConsoleFormatter.error(message);
+  printCliError(error, { commandName: name, formatError });
   return 1;
 }
 

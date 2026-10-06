@@ -2,6 +2,7 @@ import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import * as core from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as internalErrors from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import { isInteractiveTerminal } from '../runner/terminal';
 import { deleteCollectionCommand } from './delete-collection';
 
@@ -227,7 +228,7 @@ describe('deleteCollectionCommand', () => {
 
   it('prints the typed bundle conflict and exits 1', async () => {
     vi.mocked(core.loadConfig).mockReturnValue(mockConfig);
-    const error = new core.CollectionRequiredByBundleError('Collection1', ['main']);
+    const error = new internalErrors.CollectionRequiredByBundleError('Collection1', ['main']);
     vi.mocked(core.deleteCollection).mockImplementation(() => {
       throw error;
     });

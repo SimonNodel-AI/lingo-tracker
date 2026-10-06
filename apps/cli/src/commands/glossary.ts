@@ -1,6 +1,8 @@
+import { flagName } from '../runner/flag-record';
+import { GLOSSARY_FLAGS } from './glossary-flags';
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGlossary, type Collection, describeFolderProblem, GlossaryExtractorError } from '@simoncodes-ca/core';
+import { buildGlossary, type Collection, describeFolderProblem } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, type CommandStdin, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, parseNameSelection } from '../utils';
@@ -52,7 +54,9 @@ function resolveInputText(options: GlossaryCommandOptions, cwd: string, stdin: C
     }
   }
 
-  ConsoleFormatter.error('No input provided. Use --text "...", --input <file>, or pipe text via stdin.');
+  ConsoleFormatter.error(
+    `No input provided. Use ${flagName(GLOSSARY_FLAGS.text)} "...", ${flagName(GLOSSARY_FLAGS.input)} <file>, or pipe text via stdin.`,
+  );
   return null;
 }
 
@@ -63,23 +67,8 @@ function buildOutputPath(options: GlossaryCommandOptions, cwd: string): string {
   return path.resolve(cwd, `lingo-tracker-glossary-${timestamp}.json`);
 }
 
-/** Core names the extractor, not the flag; the command words the unimplemented "ai" mode as the flag. */
-function buildWithFlagWording(collections: Collection[], block: string, options: GlossaryCommandOptions) {
-  try {
-    return buildGlossary(collections, block, {
-      extractor: options.extractor,
-      locales: options.locales?.length ? options.locales : undefined,
-      includeAll: options.includeAll,
-    });
-  } catch (error) {
-    if (error instanceof GlossaryExtractorError && error.mode === 'ai') {
-      throw new Error('The "ai" extractor is not yet implemented. Use --extractor ngram (the default).');
-    }
-    throw error;
-  }
-}
-
 export const glossaryCommand = defineCommand<GlossaryCommandOptions>()({
+  flags: GLOSSARY_FLAGS,
   name: 'Glossary',
   collection: 'many',
   many: { select: (answers) => parseNameSelection(answers.collection) ?? { kind: 'all' } },
@@ -97,7 +86,11 @@ function runGlossary(
     return { exitCode: 1 };
   }
 
-  const { readProblems, ...glossary } = buildWithFlagWording(collections, block, options);
+  const { readProblems, ...glossary } = buildGlossary(collections, block, {
+    extractor: options.extractor,
+    locales: options.locales?.length ? options.locales : undefined,
+    includeAll: options.includeAll,
+  });
 
   for (const problem of readProblems) {
     ConsoleFormatter.warning(describeFolderProblem(problem, { collectionName: problem.collectionName }));

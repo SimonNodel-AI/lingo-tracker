@@ -6,47 +6,71 @@ import {
   NoTranslationTargetLocalesError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
-import type { ResourceTreeEntry } from '../resource/load-resource-tree';
+import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import { readCollection } from '../resource/read-collection';
 import { reindexMutation, resolveMutationSink, type MutationSinkOptions } from '../resource/resource-mutation';
-import type { TranslateLocaleProgress, TranslateLocaleResult } from './translate-locale';
+import type { RunOutcome } from '../run-outcome';
 import { translationBatch, type TranslationBatchOutcome, type TranslationBatchRow } from './translation-batch';
 import { snapshotTranslation } from './translation-write-back';
 import { assertAutoTranslationEnabled, openPreparedTranslator, type OpenTranslatorOptions } from './translator';
 
-export interface PreparedTranslationTargets {
-  readonly collection: Collection;
-  readonly translationConfig: TranslationConfig;
+export interface TranslateLocaleCounts {
+  /**
+   * Number of resources eligible for translation (status `new`, `stale`, or missing metadata
+   * for the target locale). Does NOT represent the total collection size.
+   * Returns 0 when no resources needed translation.
+   */
+  readonly totalResources: number;
+  readonly translatedCount: number;
+  readonly failedCount: number;
+  readonly skippedCount: number;
+}
+
+export interface TranslateLocaleProgress extends TranslateLocaleCounts {
+  readonly currentBatch: number;
+  readonly totalBatches: number;
+}
+
+export interface TranslateLocaleResult extends TranslateLocaleCounts {
+  readonly outcome: RunOutcome;
+  readonly failures: ReadonlyArray<{ key: string; error: string }>;
+  readonly skippedKeys: string[];
+  /** One line per folder the Collection Reader could not read (its resources were not translated). */
+  readonly warnings: string[];
+}
+
+export interface TranslationRun {
   readonly targetLocales: readonly string[];
+  forLocale(locale: string): LocaleTranslationRun;
 }
 
-export interface PreparedTranslateLocale extends PreparedTranslationTargets {
+export interface LocaleTranslationRun {
+  readonly collectionName: string;
   readonly targetLocale: string;
+  execute(options?: TranslationRunExecutionOptions): Promise<TranslateLocaleResult>;
 }
 
-/** Check availability before selecting or queueing work. Omit the locale before a prompt. */
-export function prepareTranslateLocale(collection: Collection, locale: string): PreparedTranslateLocale;
-export function prepareTranslateLocale(collection: Collection): PreparedTranslationTargets;
-export function prepareTranslateLocale(collection: Collection, locale?: string): PreparedTranslationTargets {
+export interface TranslationRunExecutionOptions {
+  readonly onProgress?: (progress: TranslateLocaleProgress) => void;
+}
+
+/** Check availability before prompting; binding a locale checks its validity before queueing. */
+export function prepareTranslationRun(collection: Collection, options: TranslationRunOptions = {}): TranslationRun {
   const translationConfig = assertAutoTranslationEnabled(collection);
   if (collection.targetLocales.length === 0) throw new NoTranslationTargetLocalesError(collection.baseLocale);
-  const prepared: PreparedTranslationTargets = {
-    collection,
-    translationConfig,
-    targetLocales: [...collection.targetLocales],
+  const targetLocales = [...collection.targetLocales];
+  return {
+    targetLocales,
+    forLocale(locale) {
+      if (locale === collection.baseLocale) throw new CannotTranslateBaseLocaleError(locale);
+      if (!targetLocales.includes(locale)) throw new TranslationLocaleNotConfiguredError(locale, collection.locales);
+      return {
+        collectionName: collection.name,
+        targetLocale: locale,
+        execute: (execution = {}) => executeLocale(collection, locale, translationConfig, { ...options, ...execution }),
+      };
+    },
   };
-  return locale === undefined ? prepared : selectPreparedTranslateLocale(prepared, locale);
-}
-
-/** Validate the final locale once, after availability preparation when a prompt is needed. */
-export function selectPreparedTranslateLocale(
-  run: PreparedTranslationTargets,
-  locale: string,
-): PreparedTranslateLocale {
-  const { collection } = run;
-  if (locale === collection.baseLocale) throw new CannotTranslateBaseLocaleError(locale);
-  if (!run.targetLocales.includes(locale)) throw new TranslationLocaleNotConfiguredError(locale, collection.locales);
-  return { ...run, targetLocale: locale };
 }
 
 export interface TranslationRunOptions extends OpenTranslatorOptions, MutationSinkOptions {
@@ -156,12 +180,13 @@ export async function executeTranslationRun(
   return { tally, warnings: [...translator.problems] };
 }
 
-/** Execute a prepared locale run without checking its preconditions again. */
-export async function executeTranslateLocale(
-  run: PreparedTranslateLocale,
-  options: TranslationRunOptions & { readonly onProgress?: (progress: TranslateLocaleProgress) => void } = {},
+/** Execute a bound locale without checking its preconditions again. */
+async function executeLocale(
+  collection: Collection,
+  targetLocale: string,
+  translationConfig: TranslationConfig,
+  options: TranslationRunOptions & TranslationRunExecutionOptions,
 ): Promise<TranslateLocaleResult> {
-  const { collection, targetLocale, translationConfig } = run;
   const { resources, problems } = readCollection(collection);
   const rows = resources
     .map(({ fullKey, entry }) => selectTranslationRow(fullKey, entry, [targetLocale]))

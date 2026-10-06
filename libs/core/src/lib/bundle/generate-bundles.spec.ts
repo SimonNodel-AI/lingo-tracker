@@ -6,7 +6,7 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { MultipleBundleConstantNameError } from '../errors';
 import { BundleNotFoundError } from '../errors';
-import { generateBundles } from './generate-bundles';
+import { type BundleRunOutcome, generateBundles } from './generate-bundles';
 
 describe('generateBundles', () => {
   const cwd = useTempDir('bundle-runs-');
@@ -70,6 +70,9 @@ describe('generateBundles', () => {
       { cwd: cwd() },
     );
     expect(result.outcomes[0]?.result?.typeOutcome.status).toBe('failed');
+    expect(result.outcomes[0]?.result?.typeWarning).toContain("Type generation failed for 'first':");
+    expect(result.outcomes[0]?.result?.warnings).toEqual([]);
+    expect(result.totals.warningsCount).toBe(0);
     expect(result.outcomes[0]?.outcome).toBe('failed');
     expect(result.outcome).toBe('failed');
   });
@@ -130,7 +133,7 @@ describe('generateBundles', () => {
     expect(existsSync(join(cwd(), 'out/second-en.json'))).toBe(true);
   });
 
-  it('emits start, returned type warning, then result in order', async () => {
+  it('emits start then result carrying the type warning', async () => {
     const populated = populatedConfig();
     const legacy = {
       bundleName: 'first-{locale}',
@@ -149,16 +152,16 @@ describe('generateBundles', () => {
       },
     );
 
-    expect(events).toEqual(['start', 'type-warning', 'result']);
+    expect(events).toEqual(['start', 'result']);
     expect(result.totals.warningsCount).toBe(1);
-    expect(result.outcomes[0]?.result?.warnings).toEqual([
-      expect.stringContaining("Bundle 'first': 'typeDist' is deprecated"),
-    ]);
+    expect(result.outcomes[0]?.configWarning).toBe(result.outcomes[0]?.result?.configWarning);
+    expect(result.outcomes[0]?.result?.warnings).toEqual([]);
+    expect(result.outcomes[0]?.result?.configWarning).toContain("Bundle 'first': 'typeDist' is deprecated");
   });
 
-  it('emits the prepared type warning when a bundle write fails', async () => {
+  it('reports the prepared type warning once when a bundle write fails', async () => {
     writeFileSync(join(cwd(), 'blocked'), 'a file');
-    const events: Array<{ kind: string; warning?: string }> = [];
+    const events: Array<{ kind: string; outcome?: BundleRunOutcome }> = [];
     const legacy = {
       bundleName: 'first-{locale}',
       dist: 'blocked',
@@ -178,8 +181,11 @@ describe('generateBundles', () => {
     );
 
     expect(result.outcomes[0]?.error).toBeInstanceOf(Error);
-    expect(events.map((event) => event.kind)).toEqual(['start', 'type-warning', 'result']);
-    expect(events[1]?.warning).toContain("Bundle 'first': 'typeDist' is deprecated");
+    expect(events.map((event) => event.kind)).toEqual(['start', 'result']);
+    expect(events[1]?.outcome?.configWarning).toContain("Bundle 'first': 'typeDist' is deprecated");
+    expect(events.filter((event) => event.outcome?.configWarning)).toHaveLength(1);
+    expect(result.outcomes[0]?.configWarning).toBe(events[1]?.outcome?.configWarning);
+    expect(result.totals.warningsCount).toBe(0);
   });
 
   it('forwards overrides and allows a constant name for one named bundle', async () => {

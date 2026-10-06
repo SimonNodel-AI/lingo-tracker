@@ -1,14 +1,11 @@
-import type { AddResourceParams, AddResourceResult, Collection } from '@simoncodes-ca/core';
+import { flagName } from '../runner/flag-record';
+import { ADD_RESOURCE_FLAGS } from './add-resource-flags';
+import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
-import { TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import { parseTranslationInputs, TRANSLATION_STATUSES, type TranslationInput } from '@simoncodes-ca/domain';
+import { ADD_RESOURCE_COMMAND_NAME } from '../runner/cli-error-wording';
 import { type Ask, defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, confirmOrCancel, missingTextQuestions, printTerminologyFindings } from '../utils';
-
-interface TranslationInput {
-  locale: string;
-  value: string;
-  status?: unknown;
-}
+import { ConsoleFormatter, confirmOrCancel, printTerminologyFindings } from '../utils';
 
 export interface AddResourceOptions {
   collection?: string;
@@ -23,17 +20,11 @@ export interface AddResourceOptions {
 }
 
 export const addResourceCommand = defineCommand<AddResourceOptions>()({
-  name: 'Add resource',
+  flags: ADD_RESOURCE_FLAGS,
+  name: ADD_RESOURCE_COMMAND_NAME,
   collection: 'writable',
   commaListAnswers: ['tags'],
-  prompts: (options) =>
-    missingTextQuestions(options, [
-      { name: 'key', message: 'Resource key (dot-delimited, e.g., apps.common.buttons.ok)', required: true },
-      { name: 'value', message: 'Base value (source text)', required: true },
-      { name: 'comment', message: 'Comment (optional, press enter to skip)' },
-      { name: 'tags', message: 'Tags (optional, comma-separated)' },
-      { name: 'targetFolder', message: 'Target folder (optional, dot-delimited override)' },
-    ]),
+
   required: ['key', 'value'],
   run: async ({ collection, answers, interactive, ask }) => {
     const { key, value } = answers;
@@ -54,18 +45,14 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
       comment: answers.comment || undefined,
       tags: tagsArray.length > 0 ? tagsArray : undefined,
       targetFolder,
-      // Core checks statuses after JSON shape validation and before writing.
-      translations: translations as AddResourceParams['translations'],
+      translations,
     };
     let result: AddResourceResult;
     try {
       result = await addResource(collection, params, { onExisting: answers.override ? 'replace' : 'fail' });
     } catch (error) {
       if (!(error instanceof ResourceAlreadyExistsError) || answers.override) throw error;
-      if (!interactive) {
-        ConsoleFormatter.error(error.message, ['Use --override to replace it, or edit-resource to change it.']);
-        return { exitCode: 1 };
-      }
+      if (!interactive) throw error;
       await confirmOrCancel({
         ask,
         interactive,
@@ -90,27 +77,20 @@ function parseTranslations(raw: string): TranslationInput[] {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    throw new Error(`Invalid --translations JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  if (!isTranslationList(parsed)) {
     throw new Error(
-      'Invalid --translations: expected a JSON array of { "locale", "value" } with optional "status" ' +
-        `one of ${TRANSLATION_STATUSES.join(', ')}`,
+      `Invalid ${flagName(ADD_RESOURCE_FLAGS.translations)} JSON: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  return parsed;
+  return checkedTranslations(parsed);
 }
 
-function isTranslationList(value: unknown): value is TranslationInput[] {
-  return Array.isArray(value) && value.every(isTranslationInput);
-}
-
-function isTranslationInput(item: unknown): item is TranslationInput {
-  if (typeof item !== 'object' || item === null) {
-    return false;
+function checkedTranslations(raw: unknown): TranslationInput[] {
+  const result = parseTranslationInputs(raw);
+  if (result.success === false) {
+    const location = result.index === null ? '' : `item ${result.index}: `;
+    throw new Error(`Invalid ${flagName(ADD_RESOURCE_FLAGS.translations)}: ${location}${result.reason}`);
   }
-  const { locale, value } = item as Record<string, unknown>;
-  return typeof locale === 'string' && typeof value === 'string';
+  return result.translations;
 }
 
 /** Interactive only: offers a translation and a status for each target locale. */
@@ -133,7 +113,7 @@ async function promptForTranslations(
     return undefined;
   }
 
-  const translations: TranslationInput[] = [];
+  const translations: unknown[] = [];
   for (const locale of collection.targetLocales) {
     const translationPrompt = await ask({
       type: 'text',
@@ -145,12 +125,8 @@ async function promptForTranslations(
       type: 'select',
       name: 'value',
       message: `Status for ${locale}`,
-      choices: [
-        { title: 'new', value: 'new' },
-        { title: 'translated', value: 'translated' },
-        { title: 'verified', value: 'verified' },
-      ],
-      initial: 1, // Default to 'translated'
+      choices: TRANSLATION_STATUSES.map((status) => ({ title: status, value: status })),
+      initial: TRANSLATION_STATUSES.indexOf('translated'),
     });
     translations.push({
       locale,
@@ -159,5 +135,5 @@ async function promptForTranslations(
       status: statusPrompt.value,
     });
   }
-  return translations;
+  return checkedTranslations(translations);
 }

@@ -1,18 +1,12 @@
-import { resolve } from 'node:path';
-import { Controller, Delete, Param, Post, Put } from '@nestjs/common';
-import {
-  addCollection,
-  deleteCollection,
-  openCollection,
-  reindexMutation,
-  updateCollection,
-} from '@simoncodes-ca/core';
+import { Controller, Delete, Post, Put } from '@nestjs/common';
+import { addCollection, deleteCollection, type OpenedCollection, updateCollection } from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
 import { mapDtoToCollection } from '../mappers/collection.mapper';
 import { createCollectionBody, updateCollectionBody } from '../validation/dto-schemas';
 import { ValidBody } from '../validation/valid-body';
+import { RouteCollection } from './route-collection';
 
 @Controller('collections')
 export class CollectionsController {
@@ -24,14 +18,10 @@ export class CollectionsController {
     this.#configService = configService;
   }
 
-  /** Core's typed errors (for example `CollectionNotFoundError`, 404) reach the global exception filter. */
   @Delete(':collectionName')
-  async deleteCollection(@Param('collectionName') collectionName: string): Promise<{ message: string }> {
-    const current = openCollection(this.#configService.getConfig(), collectionName, {
-      cwd: this.#configService.projectRoot,
-      forDeletion: true,
-      onMutation: this.#index.sink,
-    });
+  async deleteCollection(
+    @RouteCollection({ lifecycle: 'delete' }) current: OpenedCollection,
+  ): Promise<{ message: string }> {
     const result = deleteCollection(current);
     return { message: result.message };
   }
@@ -48,9 +38,8 @@ export class CollectionsController {
     const project = this.#configService.openProject();
     const result = addCollection(project, name, mapped, {
       protectedTerms: collection.protectedTerms,
+      onMutation: this.#index.sink,
     });
-    // A newly registered folder may have an index entry from an earlier registration.
-    this.#index.sink(reindexMutation(resolve(project.projectRoot, mapped.translationsFolder)));
     return { message: result.message };
   }
 
@@ -63,15 +52,11 @@ export class CollectionsController {
    */
   @Put(':collectionName')
   async updateCollectionByName(
-    @Param('collectionName') collectionName: string,
     @ValidBody(updateCollectionBody) body: UpdateCollectionDto,
+    @RouteCollection({ lifecycle: 'update' }) current: OpenedCollection,
   ): Promise<{ message: string }> {
     const { name, collection } = body;
     const patch = mapDtoToCollection(collection);
-    const current = openCollection(this.#configService.getConfig(), collectionName, {
-      cwd: this.#configService.projectRoot,
-      onMutation: this.#index.sink,
-    });
     const result = await updateCollection(current, name, patch, {
       protectedTerms: collection.protectedTerms,
     });

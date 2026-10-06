@@ -1,12 +1,9 @@
+import { TRANSLATE_LOCALE_FLAGS } from './translate-locale-flags';
 import {
-  prepareTranslateLocale,
-  selectPreparedTranslateLocale,
+  prepareTranslationRun,
   type Collection,
+  type TranslationRun,
   type TranslationRunOptions,
-  type PreparedTranslateLocale,
-  type PreparedTranslationTargets,
-  AutoTranslationDisabledError,
-  executeTranslateLocale,
 } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
@@ -27,35 +24,20 @@ export interface TranslateLocaleOptions {
  * when several collections are configured.
  */
 export function createTranslateLocaleCommand(options: TranslationRunOptions = {}) {
-  const preparedRuns = new WeakMap<Collection, PreparedTranslationTargets | PreparedTranslateLocale>();
+  const preparedRuns = new WeakMap<Collection, TranslationRun>();
 
   return defineCommand<TranslateLocaleOptions>()({
+    flags: TRANSLATE_LOCALE_FLAGS,
     name: 'Translate locale',
     collection: 'writable',
     formatError: (error, duringRun) => {
       const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof AutoTranslationDisabledError) {
-        return `${message}. Set translation.enabled = true in your configuration`;
-      }
       return duringRun ? `Translation failed: ${message}` : undefined;
     },
-    preflight: ({ options, collection }) => {
-      preparedRuns.set(
-        collection,
-        options.locale ? prepareTranslateLocale(collection, options.locale) : prepareTranslateLocale(collection),
-      );
-    },
-    prompts: (options, { collection }) => {
-      return options.locale
-        ? []
-        : [
-            {
-              type: 'select',
-              name: 'locale',
-              message: 'Select target locale to translate',
-              choices: collection.targetLocales.map((locale) => ({ title: locale, value: locale })),
-            },
-          ];
+    preflight: ({ options: flags, collection }) => {
+      const run = prepareTranslationRun(collection, options);
+      if (flags.locale) run.forLocale(flags.locale);
+      preparedRuns.set(collection, run);
     },
     required: ['locale'],
     run: async ({ collection, answers }) => {
@@ -67,9 +49,7 @@ export function createTranslateLocaleCommand(options: TranslationRunOptions = {}
 
       const prepared = preparedRuns.get(collection);
       if (!prepared) throw new Error('Translation run was not prepared');
-      const run = 'targetLocale' in prepared ? prepared : selectPreparedTranslateLocale(prepared, targetLocale);
-      const result = await executeTranslateLocale(run, {
-        ...options,
+      const result = await prepared.forLocale(targetLocale).execute({
         onProgress: answers.verbose
           ? (progress) => {
               ConsoleFormatter.indent(

@@ -104,7 +104,7 @@ Options:
         "app",
       ],
       "tokenCasing": "upperCase",
-      "transformIcuToTransloco": false,
+      "transformICUToTransloco": false,
     },
   },
   "delete-collection": {
@@ -163,6 +163,7 @@ Options:
         "one",
         "two",
       ],
+      "name": undefined,
       "removeTag": [
         "old",
       ],

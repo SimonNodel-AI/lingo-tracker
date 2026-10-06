@@ -12,7 +12,6 @@ import {
   type BundleTypeOutcome,
   type GenerateBundleParams,
   bundleTypeOutcomeDetail,
-  describeTypeOutcome,
   generateBundle as generateBundleByName,
   generatePreparedBundle,
 } from './generate-bundle';
@@ -355,7 +354,7 @@ describe('generateBundle (real fs)', () => {
   });
 
   describe('type generation', () => {
-    it('orders collection, locale, prepared and outcome warnings for every type status', async () => {
+    it('separates config warnings from ordered run warnings for every type status', async () => {
       for (const legacy of [false, true]) {
         for (const status of ['written', 'skipped', 'failed', 'not-configured'] as const) {
           const name = `${status}-${legacy}`;
@@ -393,8 +392,9 @@ describe('generateBundle (real fs)', () => {
                   ]
                 : [];
           expect(result.typeOutcome.status).toBe(status);
-          expect(result.warnings).toEqual([...ordinary, ...(legacy ? [preparedWarning] : [])]);
-          expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toBe(outcomeWarning[0]);
+          expect(result.configWarning).toBe(legacy ? preparedWarning : undefined);
+          expect(result.warnings).toEqual(ordinary);
+          expect(result.typeWarning).toBe(outcomeWarning[0]);
         }
       }
     });
@@ -442,7 +442,8 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome.status).toBe('written');
       expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-      expect(result.warnings.join()).toContain("'typeDist' is deprecated");
+      expect(result.configWarning).toContain("'typeDist' is deprecated");
+      expect(result.warnings).toEqual([]);
       expect(warn).not.toHaveBeenCalled();
     });
 
@@ -494,7 +495,7 @@ describe('generateBundle (real fs)', () => {
       expect(result.typeOutcome).toMatchObject({ status: 'failed' });
       expect(result.outcome).toBe('failed');
       expect(result.warnings).toEqual([]);
-      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toMatch(/^Type generation failed for 'main': /);
+      expect(result.typeWarning).toMatch(/^Type generation failed for 'main': /);
     });
 
     it('describes a rejected type file path as a failed outcome', async () => {
@@ -509,7 +510,7 @@ describe('generateBundle (real fs)', () => {
       expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
       expect(result.outcome).toBe('failed');
       expect(result.warnings).toEqual([]);
-      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toMatch(/^Type generation failed for 'main': /);
+      expect(result.typeWarning).toMatch(/^Type generation failed for 'main': /);
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
     });
 
@@ -542,9 +543,7 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
       expect(result.warnings).toEqual([]);
-      expect(describeTypeOutcome(result.bundleKey, result.typeOutcome)).toBe(
-        "Type generation skipped for 'main': bundle is empty",
-      );
+      expect(result.typeWarning).toBe("Type generation skipped for 'main': bundle is empty");
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(false);
     });
 
@@ -764,7 +763,7 @@ describe('generateBundle (real fs)', () => {
       expect(existsSync(join(root(), 'dist/bundles/99.json'))).toBe(false);
     });
 
-    it('does not produce ICU warnings during the debug-only pass', async () => {
+    it('reports base-selection ICU warnings during the debug-only pass', async () => {
       const common = seed('common', { greeting: { source: 'Hello {name' } });
       const result = await generateBundle({
         bundleKey: 'main',
@@ -777,7 +776,7 @@ describe('generateBundle (real fs)', () => {
       });
 
       expect(readJson(join(root(), 'dist/bundles/99.json'))).toEqual({ greeting: 'greeting' });
-      expect(result.warnings.some((warning) => warning.includes("Key 'greeting'"))).toBe(false);
+      expect(result.warnings.some((warning) => warning.includes("Key 'greeting'"))).toBe(true);
     });
   });
 
@@ -1020,7 +1019,7 @@ describe('generateBundle (real fs)', () => {
       expect(japanese.emitted['errors.restrictedChildren']).toContain('=1 {{{itemName}}}');
     });
 
-    it('bundles every value and warns once per locale only for the format-carrying key', async () => {
+    it('bundles every value and reports distinct locale and base warnings only for the format-carrying key', async () => {
       const { locales } = fixture();
       const warned: string[] = [];
 
@@ -1030,7 +1029,16 @@ describe('generateBundle (real fs)', () => {
         for (const warning of warnings) warned.push(`${locale}:${warning}`);
       }
 
-      expect(warned).toHaveLength(locales.length);
+      // The French value differs from the base value, so its run reports both.
+      expect(warned).toHaveLength(locales.length + 1);
+      for (const locale of locales) {
+        const localeWarnings = warned.filter((warning) => warning.startsWith(`${locale}:`));
+        expect(localeWarnings).toHaveLength(locale === 'fr-ca' ? 2 : 1);
+        expect(localeWarnings.filter((warning) => warning.includes('value: Synced '))).toHaveLength(1);
+        if (locale === 'fr-ca') {
+          expect(localeWarnings.filter((warning) => warning.includes('value: Synchronisé '))).toHaveLength(1);
+        }
+      }
       for (const warning of warned) {
         expect(warning).toContain(`Key '${FORMAT_CARRYING_KEY}'`);
         expect(warning).toContain('cannot be carried to a Transloco runtime');

@@ -156,3 +156,17 @@ export {
   type TranslatedValueViolation,
   type ValueCheckOptions,
 } from './lib/check-translated-value';
+
+// Locale seeding input
+export { parseTranslationInputs, type TranslationInput, type TranslationInputsResult } from './lib/translation-inputs';
+
+export { buildKeyTree, flattenKeyTree, type KeyTree } from './lib/key-tree';
+
+// Project setup defaults: shared by core and CLI flag metadata without Node dependencies.
+export {
+  CONFIG_FILENAME,
+  DEFAULT_CONFIG,
+  DEFAULT_BUNDLE_DIST,
+  DEFAULT_BUNDLE_NAME,
+  DEFAULT_TYPE_DIST_FILE,
+} from './lib/project-defaults';

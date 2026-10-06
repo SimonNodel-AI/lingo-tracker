@@ -5,11 +5,10 @@ import { seedResources, testCollection, useTempDir } from '../../testing/temp-di
 import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { createFolder } from '../folder/create-folder';
 import { deleteFolder } from '../folder/delete-folder';
-import { moveFolder } from '../folder/move-folder';
+import { executeMove } from './execute-move';
 import { addResource } from './add-resource';
 import { deleteResource } from './delete-resource';
 import { editResource } from './edit-resource';
-import { moveResource } from './move-resource';
 import { openResourceFolder } from './resource-folder';
 
 // Real I/O with a mutable module copy so spies can verify that linked files were never read.
@@ -95,12 +94,12 @@ describe('Collection folder safety (real fs)', () => {
   });
 
   it('refuses a single-key move from a linked ancestor', async () => {
-    await refuses(() => moveResource(collection(), { source: 'link.b.ok', destination: 'dest.ok' }, { onMutation }));
+    await refuses(() => executeMove(collection(), { source: 'link.b.ok', destination: 'dest.ok' }, { onMutation }));
     expect(fs.existsSync(join(root(), 'dest'))).toBe(false);
   });
 
   it('refuses a single-key move into a linked ancestor', async () => {
-    await refuses(() => moveResource(collection(), { source: 'source.ok', destination: 'link.b.new' }, { onMutation }));
+    await refuses(() => executeMove(collection(), { source: 'source.ok', destination: 'link.b.new' }, { onMutation }));
   });
 
   it('refuses creating a folder through a link before mkdir', async () => {
@@ -120,7 +119,8 @@ describe('Collection folder safety (real fs)', () => {
   it('refuses moving a linked folder or a descendant with move wording', async () => {
     for (const sourceFolderPath of ['link', 'link.b']) {
       await refuses(
-        () => moveFolder(collection(), { sourceFolderPath, destinationFolderPath: 'dest' }, { onMutation }),
+        () =>
+          executeMove(collection(), { kind: 'folder', source: sourceFolderPath, destination: 'dest' }, { onMutation }),
         `Cannot move folder '${sourceFolderPath}':`,
       );
     }
@@ -129,7 +129,7 @@ describe('Collection folder safety (real fs)', () => {
 
   it('refuses moving a folder into a linked destination before reading outside files', async () => {
     await refuses(
-      () => moveFolder(collection(), { sourceFolderPath: 'source', destinationFolderPath: 'link.b' }, { onMutation }),
+      () => executeMove(collection(), { kind: 'folder', source: 'source', destination: 'link.b' }, { onMutation }),
       "Cannot move folder 'source':",
     );
   });

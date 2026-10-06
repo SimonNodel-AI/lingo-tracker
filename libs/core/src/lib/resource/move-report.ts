@@ -5,6 +5,8 @@ import type { RelocationResult } from './relocate-entries';
 
 export interface MoveResult {
   readonly outcome: RunOutcome;
+  /** Number of source folders removed; present for folder selections and batches containing them. */
+  readonly foldersDeleted?: number;
   movedCount: number;
   warnings: string[];
   errors: string[];
@@ -29,6 +31,7 @@ export class MoveReport {
       }
     } else {
       this.movedCount += result.movedCount;
+      this.foldersDeleted += result.foldersDeleted ?? 0;
       this.warnings.push(...result.warnings);
     }
     this.errors.push(...result.errors);
