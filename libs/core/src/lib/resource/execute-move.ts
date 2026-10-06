@@ -1,11 +1,9 @@
 import { isFolderPathUnder } from '@simoncodes-ca/domain';
-import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { type Collection, openCollection } from '../config/open-collection';
+import { type Collection, type OpenedCollection, openProjectCollection } from '../config/open-collection';
 import {
   CollectionNotFoundError,
   FolderNotFoundError,
   InvalidCollectionFolderError,
-  MoveConfigRequiredError,
   ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
 import { describeFolderProblem } from './collection-folders';
@@ -21,7 +19,7 @@ import { movePatternPrefix, validateMoveInput } from './move-input';
 import { planMove } from './move-plan';
 import { MoveReport, type MoveResult } from './move-report';
 import { relocateEntries } from './relocate-entries';
-import { type MutationSinkOptions, resolveMutationSink } from './resource-mutation';
+import type { MutationSinkOptions } from './resource-mutation';
 
 /** Submitted addresses; patterns retain the trailing `*` syntax (including root `*`). */
 export type MoveRequest = {
@@ -31,10 +29,7 @@ export type MoveRequest = {
   readonly toCollection?: string;
 } & ({ readonly kind?: 'resource' } | { readonly kind: 'folder'; readonly nestUnderDestination?: boolean });
 
-export type MoveOptions = MutationSinkOptions & {
-  readonly config?: LingoTrackerConfig;
-  readonly cwd?: string;
-};
+export type MoveOptions = MutationSinkOptions;
 
 export type ExecuteMoveResult = MoveResult;
 
@@ -53,31 +48,27 @@ type PreparedMove = { readonly destinationCollection: Collection } & (
 
 /** Synchronous move; selection/destination preconditions throw, operational failures enter the report. */
 export function executeMove(
-  collection: Collection,
+  collection: OpenedCollection,
   request: MoveRequest,
   options: MoveOptions = {},
 ): ExecuteMoveResult {
   const selection = validateSelection(request);
-  const prepared = prepareMove(collection, selection, options);
+  const prepared = prepareMove(collection, selection);
   return finishMoves(collection, [prepared], options, selection.kind === 'folder');
 }
 
 /** Preflight addresses, destinations and folder sources before writes; unavailable destinations are per-operation errors. */
 export function executeMoves(
-  collection: Collection,
+  collection: OpenedCollection,
   requests: readonly MoveRequest[],
   options: MoveOptions = {},
 ): ExecuteMoveResult {
   const selections = requests.map(validateSelection);
   const prepared = selections.map((selection): PreparedMove | { readonly error: string } => {
     try {
-      return prepareMove(collection, selection, options);
+      return prepareMove(collection, selection);
     } catch (error) {
-      if (
-        error instanceof CollectionNotFoundError ||
-        error instanceof ReadOnlyCollectionError ||
-        error instanceof MoveConfigRequiredError
-      ) {
+      if (error instanceof CollectionNotFoundError || error instanceof ReadOnlyCollectionError) {
         return { error: error.message };
       }
       throw error;
@@ -142,8 +133,8 @@ function validateSelection(request: MoveRequest): Selection {
   return { ...request, kind };
 }
 
-function prepareMove(collection: Collection, selection: Selection, options: MoveOptions): PreparedMove {
-  const destinationCollection = resolveDestination(collection, selection.toCollection, options);
+function prepareMove(collection: OpenedCollection, selection: Selection): PreparedMove {
+  const destinationCollection = resolveDestination(collection, selection.toCollection);
   if (selection.kind === 'folder') {
     return {
       kind: 'folder',
@@ -155,11 +146,10 @@ function prepareMove(collection: Collection, selection: Selection, options: Move
   return { kind: 'resource', selection, destinationCollection };
 }
 
-function resolveDestination(source: Collection, name: string | undefined, options: MoveOptions): Collection {
+function resolveDestination(source: OpenedCollection, name: string | undefined): Collection {
   if (!name) return source;
-  if (!options.config) throw new MoveConfigRequiredError();
   try {
-    return openCollection(options.config, name, { cwd: options.cwd, writable: true });
+    return openProjectCollection(source, name, { writable: true });
   } catch (error) {
     if (error instanceof CollectionNotFoundError) throw new CollectionNotFoundError(name, 'destination');
     throw error;
@@ -200,7 +190,7 @@ function executePreparedMove(
     relocateEntries(plan, {
       override,
       emptiedFolders: batch.emptiedFolders,
-      onMutation: resolveMutationSink(collection, options),
+      onMutation: options.onMutation,
     }),
   );
   return report.finish();
@@ -277,7 +267,7 @@ function executeFolder(
     : relocateEntries(plan.forKeys(resourceKeys), {
         override,
         emptiedFolders: batch.emptiedFolders,
-        onMutation: resolveMutationSink(collection, options),
+        onMutation: options.onMutation,
       });
   report.merge(relocation);
 

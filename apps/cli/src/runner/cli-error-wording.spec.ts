@@ -107,7 +107,6 @@ const cases = {
   MULTIPLE_BUNDLE_CONSTANT_NAME: changed(new core.MultipleBundleConstantNameError(), {
     message: 'Cannot use --token-constant-name with multiple bundles. Please target a single bundle.',
   }),
-  MOVE_CONFIG_REQUIRED: unchanged(new core.MoveConfigRequiredError()),
   NO_TRANSLATION_TARGET_LOCALES: unchanged(new core.NoTranslationTargetLocalesError('en')),
   PARENT_DIRECTORY_MISSING: unchanged(
     new core.ParentDirectoryMissingError('Terms file', '/missing/terms.json', '/missing'),

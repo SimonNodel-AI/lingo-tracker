@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import type { Collection } from '../config/open-collection';
+import type { OpenedCollection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { addResource } from '../resource/add-resource';
 import { openResourceFolder } from '../resource/resource-folder';
@@ -31,7 +31,7 @@ beforeEach(() => {
   collected.length = 0;
 });
 
-function collection(translationsFolder: string): Collection {
+function collection(translationsFolder: string): OpenedCollection {
   return {
     name: 'main',
     translationsFolder,
@@ -45,6 +45,8 @@ function collection(translationsFolder: string): Collection {
       preferredTerminology: { path: '/nonexistent/.lingo-tracker-preferred-terminology.json', explicit: false },
     },
     readOnly: false,
+    projectRoot: translationsFolder,
+    sourceConfig: { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} },
     config: { translationsFolder },
   };
 }
@@ -97,9 +99,9 @@ describe('executeMove for folders with an unreadable folder (real fs)', () => {
     const config = { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} };
     expect(() =>
       executeMove(
-        collection(root),
+        { ...collection(root), sourceConfig: config },
         { kind: 'folder', source: 'apps', destination: 'shared', toCollection: 'missing' },
-        { config, onMutation },
+        { onMutation },
       ),
     ).toThrow(CollectionNotFoundError);
     expect(collected).toEqual([]);
@@ -117,9 +119,9 @@ describe('executeMove for folders with an unreadable folder (real fs)', () => {
     };
     expect(() =>
       executeMove(
-        collection(root),
+        { ...collection(root), sourceConfig: config, projectRoot: root },
         { kind: 'folder', source: 'apps', destination: 'shared', toCollection: 'vendor' },
-        { config, cwd: root, onMutation },
+        { onMutation },
       ),
     ).toThrow(ReadOnlyCollectionError);
     expect(collected).toEqual([]);
@@ -489,12 +491,12 @@ describe('executeMove for folders across collections and around content outside 
   });
 
   it('fits entries moved into another collection to its locales', async () => {
-    const source: Collection = {
+    const source: OpenedCollection = {
       ...collection(join(root, 'main')),
       locales: ['en', 'fr', 'es'],
       targetLocales: ['fr', 'es'],
     };
-    const target: Collection = {
+    const target: OpenedCollection = {
       ...collection(join(root, 'other')),
       name: 'other',
       locales: ['en', 'fr', 'de'],
@@ -510,11 +512,9 @@ describe('executeMove for folders across collections and around content outside 
     });
 
     const result = await executeMove(
-      source,
-      { kind: 'folder', source: 'apps', destination: '', toCollection: 'other' },
       {
-        onMutation,
-        config: {
+        ...source,
+        sourceConfig: {
           exportFolder: 'dist',
           importFolder: 'import',
           baseLocale: target.baseLocale,
@@ -522,6 +522,8 @@ describe('executeMove for folders across collections and around content outside 
           collections: { other: { translationsFolder: target.translationsFolder } },
         },
       },
+      { kind: 'folder', source: 'apps', destination: '', toCollection: 'other' },
+      { onMutation },
     );
 
     expect(result.movedCount).toBe(1);

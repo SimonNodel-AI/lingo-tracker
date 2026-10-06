@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { seedResources, testOpenedCollection as testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { createFolder } from '../folder/create-folder';
 import { deleteFolder } from '../folder/delete-folder';

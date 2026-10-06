@@ -14,6 +14,7 @@ export {
   type OpenedCollection,
   type OpenedProject,
   openCollection,
+  openProjectCollection,
   type TermFiles,
 } from './open-collection';
 export {

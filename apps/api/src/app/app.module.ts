@@ -12,6 +12,7 @@ import { ResourcesController } from './collections/resources/resources.controlle
 import { RouteCollectionPipe } from './collections/route-collection';
 import { ConfigController } from './config/config.controller';
 import { ConfigService } from './config/config.service';
+import { RouteProjectPipe } from './config/route-project';
 import { LingoTrackerExceptionFilter } from './errors/lingo-tracker-exception.filter';
 import { TranslationJobService } from './translation-job/translation-job.service';
 
@@ -30,6 +31,7 @@ import { TranslationJobService } from './translation-job/translation-job.service
     AppService,
     ConfigService,
     RouteCollectionPipe,
+    RouteProjectPipe,
     CollectionIndex,
     TranslationJobService,
     BundleJobService,

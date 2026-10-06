@@ -34,7 +34,7 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
     };
   }
 
-  function collection(name = 'main'): Collection {
+  function collection(name = 'main') {
     return openCollection(config(name), name, { cwd: root });
   }
 

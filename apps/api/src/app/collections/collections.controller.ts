@@ -1,8 +1,13 @@
 import { Controller, Delete, Post, Put } from '@nestjs/common';
-import { addCollection, deleteCollection, type OpenedCollection, updateCollection } from '@simoncodes-ca/core';
+import {
+  addCollection,
+  deleteCollection,
+  type OpenedCollection,
+  type OpenedProject,
+  updateCollection,
+} from '@simoncodes-ca/core';
 import type { CreateCollectionDto, UpdateCollectionDto } from '@simoncodes-ca/data-transfer';
-import { CollectionIndex } from '../cache/collection-index.service';
-import { ConfigService } from '../config/config.service';
+import { RouteProject } from '../config/route-project';
 import { mapDtoToCollection } from '../mappers/collection.mapper';
 import { createCollectionBody, updateCollectionBody } from '../validation/dto-schemas';
 import { ValidBody } from '../validation/valid-body';
@@ -10,14 +15,6 @@ import { RouteCollection } from './route-collection';
 
 @Controller('collections')
 export class CollectionsController {
-  readonly #index: CollectionIndex;
-  readonly #configService: ConfigService;
-
-  constructor(index: CollectionIndex, configService: ConfigService) {
-    this.#index = index;
-    this.#configService = configService;
-  }
-
   @Delete(':collectionName')
   async deleteCollection(
     @RouteCollection({ lifecycle: 'delete' }) current: OpenedCollection,
@@ -32,13 +29,14 @@ export class CollectionsController {
    * `mapDtoToCollection` calls core field validation before addCollection reads config.
    */
   @Post()
-  async createCollection(@ValidBody(createCollectionBody) body: CreateCollectionDto): Promise<{ message: string }> {
+  async createCollection(
+    @ValidBody(createCollectionBody) body: CreateCollectionDto,
+    @RouteProject() project: OpenedProject,
+  ): Promise<{ message: string }> {
     const { name, collection } = body;
     const mapped = mapDtoToCollection(collection);
-    const project = this.#configService.openProject();
     const result = addCollection(project, name, mapped, {
       protectedTerms: collection.protectedTerms,
-      onMutation: this.#index.sink,
     });
     return { message: result.message };
   }

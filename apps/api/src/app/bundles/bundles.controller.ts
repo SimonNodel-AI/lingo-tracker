@@ -1,5 +1,11 @@
 import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put } from '@nestjs/common';
-import { addBundleDefinition, deleteBundleDefinition, planBundle, updateBundleDefinition } from '@simoncodes-ca/core';
+import {
+  addBundleDefinition,
+  deleteBundleDefinition,
+  planBundle,
+  type OpenedProject,
+  updateBundleDefinition,
+} from '@simoncodes-ca/core';
 import type {
   BundleDryRunRequestDto,
   BundleDryRunResultDto,
@@ -8,7 +14,7 @@ import type {
   GenerateBundleRequestDto,
   UpdateBundleDto,
 } from '@simoncodes-ca/data-transfer';
-import { ConfigService } from '../config/config.service';
+import { RouteProject } from '../config/route-project';
 import { mapBundlePlanToDto } from '../mappers/bundle.mapper';
 import { bundleDryRunBody, createBundleBody, generateBundleBody, updateBundleBody } from '../validation/dto-schemas';
 import { ValidBody } from '../validation/valid-body';
@@ -23,18 +29,18 @@ import { BundleJobService } from './bundle-job.service';
  */
 @Controller('bundles')
 export class BundlesController {
-  readonly #configService: ConfigService;
   readonly #jobService: BundleJobService;
 
-  constructor(configService: ConfigService, jobService: BundleJobService) {
-    this.#configService = configService;
+  constructor(jobService: BundleJobService) {
     this.#jobService = jobService;
   }
 
   /** Plans a bundle from the request body. The definition need not be saved. */
   @Post('dry-run')
-  dryRun(@ValidBody(bundleDryRunBody) body: BundleDryRunRequestDto): BundleDryRunResultDto {
-    const project = this.#configService.openProject();
+  dryRun(
+    @ValidBody(bundleDryRunBody) body: BundleDryRunRequestDto,
+    @RouteProject() project: OpenedProject,
+  ): BundleDryRunResultDto {
     const plan = planBundle({
       bundleKey: body.name,
       bundleDefinition: body.bundle,
@@ -51,36 +57,37 @@ export class BundlesController {
   }
 
   @Post()
-  createBundle(@ValidBody(createBundleBody) body: CreateBundleDto): { message: string } {
+  createBundle(
+    @ValidBody(createBundleBody) body: CreateBundleDto,
+    @RouteProject() project: OpenedProject,
+  ): { message: string } {
     const definition = body.bundle;
-    return addBundleDefinition(this.#configService.openProject(), body.name, definition);
+    return addBundleDefinition(project, body.name, definition);
   }
 
   @Put(':name')
-  updateBundle(@Param('name') name: string, @ValidBody(updateBundleBody) body: UpdateBundleDto): { message: string } {
+  updateBundle(
+    @Param('name') name: string,
+    @ValidBody(updateBundleBody) body: UpdateBundleDto,
+    @RouteProject() project: OpenedProject,
+  ): { message: string } {
     const definition = body.bundle;
-    return updateBundleDefinition(
-      this.#configService.openProject(),
-      name,
-      definition,
-      body.name === undefined ? {} : { newKey: body.name },
-    );
+    return updateBundleDefinition(project, name, definition, body.name === undefined ? {} : { newKey: body.name });
   }
 
   @Delete(':name')
-  deleteBundle(@Param('name') name: string): { message: string } {
-    return deleteBundleDefinition(this.#configService.openProject(), name);
+  deleteBundle(@Param('name') name: string, @RouteProject() project: OpenedProject): { message: string } {
+    return deleteBundleDefinition(project, name);
   }
 
   /** Starts a generation job for a saved bundle and answers 202 with the job snapshot. */
   @Post(':name/generate')
   @HttpCode(HttpStatus.ACCEPTED)
   generateBundle(
+    @RouteProject() project: OpenedProject,
     @Param('name') name: string,
     @ValidBody(generateBundleBody) body: GenerateBundleRequestDto | undefined,
   ): BundleGenerateJobDto {
-    const project = this.#configService.openProject();
-
     return this.#jobService.startJob({
       bundleName: name,
       project,

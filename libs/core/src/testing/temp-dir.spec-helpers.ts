@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { afterEach, beforeEach } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
-import type { Collection } from '../lib/config/open-collection';
+import type { Collection, OpenedCollection } from '../lib/config/open-collection';
 import { DEFAULT_PREFERRED_TERMINOLOGY_FILENAME } from '../lib/config/preferred-terminology-file';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../lib/config/protected-terms-file';
 import { openResourceFolder } from '../lib/resource/resource-folder';
@@ -114,4 +114,17 @@ export function writeFolderFiles(
   write(RESOURCE_ENTRIES_FILENAME, files.entries);
   write(TRACKER_META_FILENAME, files.meta);
   return folder;
+}
+
+/** A collection carrying the project snapshot required by moves. */
+export function testOpenedCollection(
+  translationsFolder: string,
+  overrides: Partial<OpenedCollection> = {},
+): OpenedCollection {
+  return {
+    ...testCollection(translationsFolder, overrides),
+    projectRoot: translationsFolder,
+    sourceConfig: { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} },
+    ...overrides,
+  };
 }

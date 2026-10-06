@@ -155,7 +155,6 @@ const CLI_BY_CODE = {
   INVALID_TRANSLATION_STATUS: original,
   LOCALE_ALREADY_EXISTS: original,
   LOCALE_NOT_FOUND: original,
-  MOVE_CONFIG_REQUIRED: original,
   MULTIPLE_BUNDLE_CONSTANT_NAME: () => ({
     message: `Cannot use ${flagName(BUNDLE_FLAGS.tokenConstantName)} with multiple bundles. Please target a single bundle.`,
   }),

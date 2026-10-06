@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
-import type { Collection } from '../config/open-collection';
+import type { OpenedCollection } from '../config/open-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   FolderMoveIntoDescendantError,
@@ -11,7 +11,7 @@ import {
 } from '../errors/lingo-tracker-error';
 import { executeMove } from './execute-move';
 
-function collection(translationsFolder: string, name = 'main'): Collection {
+function collection(translationsFolder: string, name = 'main'): OpenedCollection {
   return {
     name,
     translationsFolder,
@@ -25,6 +25,8 @@ function collection(translationsFolder: string, name = 'main'): Collection {
       preferredTerminology: { path: '/nonexistent/.lingo-tracker-preferred-terminology.json', explicit: false },
     },
     readOnly: false,
+    projectRoot: translationsFolder,
+    sourceConfig: { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} },
     config: { translationsFolder },
   };
 }
@@ -458,9 +460,9 @@ describe('Move Folder', () => {
       addDirectory(buttonsFolder);
 
       const result = await executeMove(
-        collection(testDir),
+        { ...collection(testDir), sourceConfig: moveConfig('alias', testDir) },
         { kind: 'folder', source: 'apps.buttons', destination: 'apps.buttons', toCollection: 'alias' },
-        { config: moveConfig('alias', testDir) },
+        {},
       );
 
       expect(result.movedCount).toBe(0);
@@ -537,7 +539,7 @@ describe('Move Folder', () => {
       addDirectory(collectionBFolder);
 
       const result = await executeMove(
-        collection(collectionAFolder, 'collectionA'),
+        { ...collection(collectionAFolder, 'collectionA'), sourceConfig: moveConfig('collectionB', collectionBFolder) },
         {
           kind: 'folder',
           source: 'apps.buttons',
@@ -545,7 +547,7 @@ describe('Move Folder', () => {
           nestUnderDestination: false,
           toCollection: 'collectionB',
         },
-        { config: moveConfig('collectionB', collectionBFolder) },
+        {},
       );
 
       expect(result.movedCount).toBe(1);
@@ -595,7 +597,7 @@ describe('Move Folder', () => {
 
       // Same path but different collection should work
       const result = await executeMove(
-        collection(collectionAFolder, 'collectionA'),
+        { ...collection(collectionAFolder, 'collectionA'), sourceConfig: moveConfig('collectionB', collectionBFolder) },
         {
           kind: 'folder',
           source: 'apps.buttons',
@@ -603,7 +605,7 @@ describe('Move Folder', () => {
           nestUnderDestination: false,
           toCollection: 'collectionB',
         },
-        { config: moveConfig('collectionB', collectionBFolder) },
+        {},
       );
 
       expect(result.movedCount).toBe(1);
