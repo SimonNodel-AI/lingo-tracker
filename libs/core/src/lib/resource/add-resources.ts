@@ -1,17 +1,33 @@
-import { resolveMutationSink } from './resource-mutation';
+import { translocoToICU } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import type { TerminologyFinding, TerminologyFindings } from '../config/project-terms';
+import { readProjectTerms } from '../config/project-terms';
 import { ResourceAlreadyExistsError } from '../errors/lingo-tracker-error';
+import type { OpenTranslatorOptions } from '../translation/translator';
+import { type AddResourceOptions, type AddResourceParams, resolveAddKey } from './add-resource';
+import { seedLocales, withTranslatorProblems } from './locale-seeding';
 import {
-  type AddResourceOptions,
-  type AddResourceParams,
-  type PreparedResourceAdd,
-  prepareResourceAdd,
-  type ResolvedResourceAdd,
-  resolveResourceAdd,
-  assertPreparedResourceCanWrite,
-  writePreparedResourceAdd,
-} from './add-resource';
+  assertAddable,
+  commitAdd,
+  type EntryAddChanges,
+  type EntryAddResult,
+  type ExistingResourcePolicy,
+  validateAddChanges,
+} from './resource-entry';
+import { resolveResourcePaths } from './resource-file-paths';
+import { type MutationSinkOptions, resolveMutationSink } from './resource-mutation';
+
+interface ResolvedResourceAdd {
+  readonly params: AddResourceParams;
+  readonly resolvedKey: string;
+}
+
+interface PreparedResourceAdd {
+  readonly resolvedKey: string;
+  readonly changes: EntryAddChanges;
+  readonly skippedLocales?: string[];
+  readonly terminology: TerminologyFindings;
+}
 
 export interface AddResourcesResult {
   readonly entriesCreated: number;
@@ -46,18 +62,22 @@ export async function addResources(
   const prepared: PreparedResourceAdd[] = [];
 
   for (const item of items) {
-    const candidate = resolveResourceAdd(collection, item, onExisting);
-    const key = candidate.paths.resolvedKey;
+    const key = resolveAddKey(item);
+    // Preserve folder-policy refusal before locale/status diagnostics or folder reads.
+    resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
+    validateAddChanges(collection, item);
+    assertAddable(collection, key, onExisting);
+    const candidate = { params: item, resolvedKey: key };
     if (batchKeys.has(key)) throw new ResourceAlreadyExistsError(key);
     batchKeys.add(key);
     resolved.push(candidate);
   }
   for (const candidate of resolved) {
-    prepared.push(await prepareResourceAdd(collection, candidate, options));
+    prepared.push(await prepareEntryAdd(collection, candidate, options));
   }
   // No await separates this check from the write loop, so a late conflict writes nothing.
   for (const candidate of prepared) {
-    assertPreparedResourceCanWrite(collection, candidate, onExisting);
+    assertAddable(collection, candidate.resolvedKey, onExisting);
   }
 
   let entriesCreated = 0;
@@ -65,12 +85,7 @@ export async function addResources(
   const findings: TerminologyFinding[] = [];
   const problems = new Set<string>();
   for (const candidate of prepared) {
-    const result = writePreparedResourceAdd(
-      collection,
-      candidate,
-      onExisting,
-      resolveMutationSink(collection, options),
-    );
+    const result = writePreparedAdd(collection, candidate, onExisting, options);
     if (result.created) entriesCreated++;
     for (const locale of result.skippedLocales ?? []) skippedLocales.add(locale);
     findings.push(...result.terminology.findings);
@@ -82,5 +97,45 @@ export async function addResources(
     created: entriesCreated > 0,
     skippedLocales: [...skippedLocales],
     terminology: { findings, problems: [...problems] },
+  };
+}
+
+async function prepareEntryAdd(
+  collection: Collection,
+  resolved: ResolvedResourceAdd,
+  options: OpenTranslatorOptions,
+): Promise<PreparedResourceAdd> {
+  const { params, resolvedKey } = resolved;
+  const supplied = (params.translations ?? []).filter(({ locale }) => locale !== collection.baseLocale);
+  const baseValue = translocoToICU(params.baseValue);
+  const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) }, options);
+  return {
+    resolvedKey,
+    changes: { ...params, baseValue, translations: [...supplied, ...seeding.translations] },
+    ...(seeding.skippedLocales !== undefined && { skippedLocales: seeding.skippedLocales }),
+    terminology: withTranslatorProblems(
+      readProjectTerms(collection).checkBaseValue(resolvedKey, baseValue),
+      seeding.problems,
+    ),
+  };
+}
+
+function writePreparedAdd(
+  collection: Collection,
+  prepared: PreparedResourceAdd,
+  onExisting: ExistingResourcePolicy,
+  options: MutationSinkOptions,
+): EntryAddResult {
+  const committed = commitAdd(
+    collection,
+    prepared.resolvedKey,
+    prepared.changes,
+    onExisting,
+    resolveMutationSink(collection, options),
+  );
+  return {
+    ...committed,
+    ...(prepared.skippedLocales !== undefined && { skippedLocales: prepared.skippedLocales }),
+    terminology: prepared.terminology,
   };
 }

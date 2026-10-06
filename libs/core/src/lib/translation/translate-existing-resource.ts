@@ -1,20 +1,9 @@
 import type { Collection } from '../config/open-collection';
-import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
-import type { ResourceTreeEntry } from '../resource/resource-tree-types';
-import { openResourceEntry } from '../resource/resource-entry';
-import type { ResourceFolder } from '../resource/resource-folder';
+import { type TranslateExistingResourceResult, writeEntry } from '../resource/resource-entry';
 
-import { executeTranslationRun, selectTranslationRow, type TranslationRunOptions } from './translation-run';
-import { assertAutoTranslationEnabled } from './translator';
+import type { TranslationRunOptions } from './translation-run';
 
-export interface TranslateExistingResourceResult {
-  readonly translatedCount: number;
-  /** Locales the Translator skipped, or whose value changed on disk during the provider call. */
-  readonly skippedLocales: string[];
-  readonly entry: ResourceTreeEntry;
-  /** Problems that did not stop the Translator (a named protected-terms file that does not exist). */
-  readonly warnings: string[];
-}
+export type { TranslateExistingResourceResult } from '../resource/resource-entry';
 
 /**
  * Auto-translates an existing resource entry of a collection through the Translator, for every
@@ -40,55 +29,6 @@ export async function translateExistingResource(
   key: string,
   options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const translationConfig = assertAutoTranslationEnabled(collection);
-
-  const resource = openResourceEntry(collection, key);
-  const { folder } = resource;
-  const current = resource.get();
-
-  if (!current?.meta) {
-    throw new ResourceNotFoundError(resource.resolvedKey);
-  }
-
-  const treeEntry = requireTreeEntry(folder, resource.entryKey, resource.resolvedKey);
-  const { row, locales: targetLocales } = selectTranslationRow(
-    resource.resolvedKey,
-    treeEntry,
-    collection.targetLocales,
-  );
-
-  if (targetLocales.length === 0) {
-    return {
-      translatedCount: 0,
-      skippedLocales: [],
-      entry: requireTreeEntry(folder, resource.entryKey, resource.resolvedKey),
-      warnings: [],
-    };
-  }
-
-  const { tally, warnings } = await executeTranslationRun({
-    ...options,
-    collection,
-    translationConfig,
-    rows: [row],
-    locales: targetLocales,
-    mutations: 'per-write',
-  });
-  const failure = tally.failures[0];
-  if (failure) throw failure.error;
-  if (!tally.entry) throw new ResourceNotFoundError(resource.resolvedKey);
-  return {
-    translatedCount: tally.translatedCount,
-    skippedLocales: tally.skipped.map(({ locale }) => locale),
-    entry: tally.entry,
-    warnings,
-  };
-}
-
-function requireTreeEntry(folder: ResourceFolder, entryKey: string, resolvedKey: string): ResourceTreeEntry {
-  const treeEntry = folder.treeEntry(entryKey);
-  if (!treeEntry) {
-    throw new ResourceNotFoundError(resolvedKey);
-  }
-  return treeEntry;
+  const outcome = await writeEntry(collection, key, { kind: 'translate' }, options);
+  return outcome.result;
 }

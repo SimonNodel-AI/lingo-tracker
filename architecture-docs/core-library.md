@@ -367,7 +367,7 @@ Rules:
 
 **Translation write status.** `ResourceFolder.setTranslation` computes both checksums and calls `recordTranslation` in `libs/domain/src/lib/staleness.ts`. If the caller omits a status, `recordTranslation` stores `new` for a base copy or `translated` for a different value. It keeps every explicit status. An edit with an unchanged value and no status writes nothing; an explicit status changes only that status. `addResource`, `editResource`, and `importResources` check supplied statuses with `assertTranslationStatus` in `lib/resource/translation-status-input.ts` before they write. `parseJsonImport` checks statuses in rich JSON objects and treats `null` or `""` as absent. `ResourceFolder` checks direct calls too. An invalid status raises `InvalidTranslationStatusError`, which the API maps to HTTP 400.
 
-Resource CRUD operations in `libs/core/src/lib/resource/` take an opened `Collection`. Add, edit, delete, and translate-existing open a [Resource Entry](glossary.md#resource-entry) with `openResourceEntry(collection, key, { targetFolder? })`. The opener validates the key, resolves the folder, and opens the Resource Folder with the collection's base locale. It exposes `exists()`, `get()`, and the folder for changes. Its `save(onMutation)` reports `upsert` after a write or `remove` after a removal. On a failed save, it reports `reindex` and rethrows the error.
+Resource CRUD operations take an opened `Collection`. `writeEntry(collection, resolvedKey, intent, options?)` in `lib/resource/resource-entry.ts` is async and accepts only add, edit, or translate intent. It returns the discriminated `{ kind, result }` outcome. Edit and translate return fresh Resource Tree entries; add returns the stored translations and terminology. `removeEntry(collection, key, options?)` is synchronous and reports `emptied` for the caller's one operation-end prune. The entry module owns opening, staleness-aware changes, seeding, write-back and edit relocation, resolving one mutation sink for its phases. `locateEntry` returns only the resolved key, entry key and folder; `saveEntry` is the shared save/report path. Public callers project the unchanged result shapes. `addResources` owns its private prepared values, translation preflight and late conflict checks, then checks conflicts with `assertAddable` and saves entries in input order through `commitAdd`, shared with single adds. No batch state enters `writeEntry`.
 
 The Resource Folder computes checksums and translation statuses. It writes both files sequentially, not atomically.
 
@@ -417,14 +417,14 @@ Core owns its locale, resource deletion, and move result interfaces and does not
 
 Steps:
 
-1. **Open the entry** — `openResourceEntry(collection, key, { targetFolder })` validates the key and opens its Resource Folder.
+1. **Open the entry** — `addResource` validates and places the key once; the entry write resolves its folder and checks supplied locales and statuses before opening it.
 2. **Check existence** — `entry.exists()` identifies an existing entry, which add refuses by default. `onExisting: 'replace'` allows replacement. This check happens before locale seeding or any write.
 3. **Prepare base value** — `translocoToICU()` supplies an ICU value to locale seeding and terminology checks; the Resource Folder enforces ICU on every write.
 4. **Resolve translations** — [locale seeding](#locale-seeding): supplied translations first, then auto-translation or a copy of the base as `new` for every other target locale. All values are resolved before anything is written, so a provider failure writes nothing.
-5. **Reopen the entry** — after translation, `openResourceEntry` reads current folder state and add checks existence again.
+5. **Reopen the entry** — after translation, `locateResolvedEntry` reads current folder state and add checks existence again.
 6. **Ensure directory** — `ensureDirectoryExists()` creates the folder tree with `mkdirSync({ recursive: true })`.
 7. **Set the entry** — `setEntry` / `setBase` / `setDetails` / `setTranslation` on the `ResourceFolder`. A translation equal to the base value is stored as `new`.
-8. **Save the entry** — `entry.save(onMutation)` saves the folder and reports `upsert`. On a failed save, it reports `reindex`.
+8. **Save the entry** — `saveEntry(collection, entry, onMutation)` saves the folder and reports `upsert`. On a failed save, it reports `reindex`.
 
 ### Resource Batches
 
@@ -440,12 +440,12 @@ Steps:
 
 Steps:
 
-1. **Open the entry** — `openResourceEntry(collection, key)`. `key` is the entry's full key. A `moveTo` is resolved and checked for a collision before anything changes.
+1. **Open the entry** — `locateEntry(collection, key)`. `key` is the entry's full key. A `moveTo` is resolved and checked for a collision before anything changes.
 2. **Throws if not found** — exits immediately if either JSON file or the specific entry key is absent.
 3. **Update base value** (if changed) — `translocoToICU()` normalizes the incoming value; `folder.setBase()` recomputes the base checksum and applies the [staleness rule](glossary.md#staleness-rule) to every non-base locale.
 4. **Update comment/tags** — simple field overwrites with change detection to avoid unnecessary writes.
 5. **Update locale values** — for each changed locale in `changes.translations`, `folder.setTranslation()` normalizes to ICU, recomputes the checksum, and updates `status` (defaults to `'translated'` if not provided).
-6. **Persist initial changes** — `entry.save(onMutation)` before attempting auto-translation, so the base value change is durable even if the translation API call fails.
+6. **Persist initial changes** — `saveEntry(collection, entry, onMutation)` before attempting auto-translation, so the base value change is durable even if the translation API call fails.
 7. **Seed on base change** — if the base value changed, [locale seeding](#locale-seeding) runs for the locales that need work and were not supplied; results are written by a second `folder.save()`.
 8. **Move** — with a `moveTo` naming another folder, the entry moves as stored through the [Entry Relocation](#entry-relocation); a collision there throws `ResourceAlreadyExistsError`. The result's `resolvedKey` is the destination key; the sink receives the saved source edit, then the relocation's `remove` and destination `upsert`.
 
@@ -456,9 +456,9 @@ Steps:
 Steps:
 
 1. **Validate each key** — `validateKey()` from `@simoncodes-ca/domain`.
-2. **Check presence and open the entry** — check the folder and entries file through `resourceFolderPresence`, then call `openResourceEntry(collection, key)`.
+2. **Check presence and open the entry** — check the folder and entries file through `resourceFolderPresence`, then call `locateEntry(collection, key)`.
 3. **Remove** — `folder.remove(entryKey)` removes the entry and its metadata.
-4. **Save** — `entry.save(onMutation)` saves the folder and reports `remove`. An empty folder loses both files.
+4. **Save** — `saveEntry(collection, entry, onMutation)` saves the folder and reports `remove`. An empty folder loses both files.
 5. **Batch errors** — errors per key are collected and returned; the operation does not stop on ordinary per-key failures. A linked address throws `InvalidCollectionFolderError` before its files are read or changed. Missing folders use `FolderNotFoundError` with a Folder Address; missing files or entries use `ResourceNotFoundError` with the key. Read and parse failures say `folder <address> has unreadable resource files`; save failures say `could not write folder <address>`. Both start with `Failed to delete resource <key>:` and keep the original error in `cause`, so `errors[]` contains no server path.
 
 ### Move Executor
@@ -727,9 +727,9 @@ The Google Translate v2 provider bounds each HTTP request to 30 seconds. A timeo
 
 The CLI prepares before prompts. The API controller binds the locale before it queues the job, so invalid requests fail before 202. An enabled collection without target locales raises a typed error, which the API maps to HTTP 400. The bound run's `execute` method returns `TranslateLocaleResult` and emits `TranslateLocaleProgress`. The API job stores this progress value and maps its resource counters to the unchanged HTTP DTO.
 
-Locale handles and `translateExistingResource` select work for the shared internal run. `selectTranslationRow` applies `needsTranslation` and snapshots eligible locales. `executeTranslationRun` owns batching, the injectable `delay(ms)`, and one tally of written, skipped, and failed key/locale outcomes. The tally retains original errors and fresh entries. Locale results report keys and failure messages. Single-resource results report locales and rethrow the first failure.
+Locale handles select work through the internal `selectTranslationRow`, which applies `needsTranslation` and snapshots eligible locales. `executeTranslationRun` owns batching, the injectable `delay(ms)`, and one tally of written, skipped, and failed key/locale outcomes. The tally retains original errors, without an entry readback. Locale results report keys and failure messages and send one reindex per batch with save attempts. `translateExistingResource` delegates to the Resource Entry write: it translates eligible locales, uses the same snapshot comparison, returns fresh disk state and ordered skips, and throws original provider or write errors directly.
 
-**Translation Batch.** The run delegates provider calls and folder writes to [Translation Batch](glossary.md#translation-batch). Its outcomes and write-back rules remain unchanged. Locale runs coalesce all save notifications in a batch into one collection `reindex`, including partial write failures. A batch without save attempts emits none. Single-resource runs retain their precise `upsert` notification.
+**Translation Batch.** The run delegates provider calls and folder writes to [Translation Batch](glossary.md#translation-batch). Its outcomes and write-back rules remain unchanged. Locale runs coalesce all save notifications in a batch into one collection `reindex`, including partial write failures. A batch without save attempts emits none. Single-entry writes retain their precise `upsert` notification.
 
 **Translation Write-back.** Locale runs, `translateExistingResource`, and phase 2 of `editResource` share [Translation Write-back](glossary.md#translation-write-back). The internal `translation-write-back.ts` module snapshots the stored ICU base checksum and target checksum and status before translation. For edit, the snapshot represents the saved phase-1 state. After the await, write-back reopens each Resource Folder from disk. It skips missing entries, changed base checksums, changed target checksums or statuses, and targets that no longer need translation. This preserves sibling entries and concurrent edits, including deletion.
 

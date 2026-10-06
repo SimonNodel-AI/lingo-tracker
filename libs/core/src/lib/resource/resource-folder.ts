@@ -12,9 +12,9 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
 import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from './checksum';
 import { assertCollectionFolderPath } from './folder-address';
-import type { ResourceTreeEntry } from './resource-tree-types';
 import type { ResourceEntries, ResourceEntry } from './resource-entry';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
+import type { ResourceTreeEntry } from './resource-tree-types';
 import type { TrackerMetadata } from './tracker-metadata';
 import { assertTranslationStatus } from './translation-status-input';
 
@@ -42,8 +42,9 @@ export interface ResourceFolder {
   /**
    * The entry as the API/UI sees it. `undefined` when the entry is missing.
    * An entry without a metadata record gets `metadata: {}` (no locale has a status).
+   * With requireMetadata, that entry returns undefined instead.
    */
-  treeEntry(key: string): ResourceTreeEntry | undefined;
+  treeEntry(key: string, options?: { readonly requireMetadata?: boolean }): ResourceTreeEntry | undefined;
 
   /**
    * Sets the base value. Creates the entry when it does not exist.
@@ -237,9 +238,9 @@ class FileResourceFolder implements ResourceFolder {
     return !this.entriesExist || !this.metaExists;
   }
 
-  treeEntry(key: string): ResourceTreeEntry | undefined {
+  treeEntry(key: string, options: { readonly requireMetadata?: boolean } = {}): ResourceTreeEntry | undefined {
     const stored = this.get(key);
-    if (!stored) return undefined;
+    if (!stored || (options.requireMetadata && !stored.meta)) return undefined;
     const { entry, meta } = stored;
 
     const translations: Record<string, string> = {};
