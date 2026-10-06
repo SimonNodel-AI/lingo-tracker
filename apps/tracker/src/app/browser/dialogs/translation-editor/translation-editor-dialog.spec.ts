@@ -278,6 +278,21 @@ describe('TranslationEditorDialog', () => {
       expect(dialogRef.close).toHaveBeenCalled();
     });
 
+    // Absorption leaves malformed dotted input intact; segmentValidator blocks creation.
+    it.each(['apps..common.ok', '.ok', '.'])('rejects unabsorbed malformed dotted input %j', async (key) => {
+      renderDialog(createMockData('create'));
+      component.session.entry.form.controls.baseValue.setValue('OK');
+      component.session.entry.form.controls.key.setValue(key);
+      await component.session.onSubmit();
+      spectator.detectChanges();
+
+      expect(component.session.entry.form.controls.key.value).toBe(key);
+      expect(component.session.entry.form.controls.key.hasError('pattern')).toBe(true);
+      expect(component.session.getKeyErrorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR);
+      expect(spectator.query('#translation-editor-key-error')?.textContent?.trim()).toBeTruthy();
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
+    });
+
     it('should not submit invalid form on Ctrl+Enter', () => {
       component.session.entry.form.controls.key.setValue('');
       component.session.entry.form.controls.baseValue.setValue('');

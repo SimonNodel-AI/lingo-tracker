@@ -1,5 +1,12 @@
 import { resolve } from 'node:path';
-import { isDescendantFolderPath } from '@simoncodes-ca/domain';
+import {
+  folderPathLeaf,
+  folderPathSegments,
+  isDescendantFolderPath,
+  joinFolderPath,
+  parentFolderPath,
+  rebaseFolderPath,
+} from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { FolderMoveIntoDescendantError } from '../errors/lingo-tracker-error';
 import type { Relocation } from './relocate-entries';
@@ -69,14 +76,12 @@ function decideMove({
     // A blank moveTo has always named the collection root.
     const folder = destinationPath.trim() ? destinationPath : '';
     return entries([selection.key], (key) => {
-      const leaf = key.slice(key.lastIndexOf('.') + 1);
-      return folder ? `${folder}.${leaf}` : leaf;
+      return joinFolderPath(folder, folderPathLeaf(key));
     });
   }
   if (selection.kind === 'pattern') {
     return entries(selection.keys, (from) => {
-      const suffix = selection.prefix ? from.slice(selection.prefix.length + 1) : from;
-      return destinationPath ? `${destinationPath}.${suffix}` : suffix;
+      return rebaseFolderPath(from, selection.prefix, destinationPath);
     });
   }
 
@@ -98,20 +103,21 @@ function decideMove({
     };
   }
   const nest = nestUnderDestination || destinationPath === '';
-  const segments = path.split('.');
-  if (sameCollection && nest && segments.slice(0, -1).join('.') === destinationPath) {
+  const segments = folderPathSegments(path);
+  if (sameCollection && nest && (parentFolderPath(path) ?? '') === destinationPath) {
     return {
       kind: 'refused',
       reason: 'already-there',
       warning: () => 'Folder is already at this location. No move performed.',
     };
   }
-  const folderName = segments[segments.length - 1];
+  const folderName = folderPathLeaf(path);
   const prefix =
-    nest || segments.length !== destinationPath.split('.').length
-      ? destinationPath
-        ? `${destinationPath}.${folderName}`
-        : folderName
+    nest || segments.length !== folderPathSegments(destinationPath).length
+      ? joinFolderPath(destinationPath, folderName)
       : destinationPath;
-  return { kind: 'folder', forKeys: (keys) => entries(keys, (from) => `${prefix}${from.slice(path.length)}`) };
+  return {
+    kind: 'folder',
+    forKeys: (keys) => entries(keys, (from) => rebaseFolderPath(from, path, path === '' ? destinationPath : prefix)),
+  };
 }

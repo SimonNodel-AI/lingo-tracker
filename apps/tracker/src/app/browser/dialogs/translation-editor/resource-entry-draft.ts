@@ -7,8 +7,14 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import {
   DEFAULT_MISSING_METADATA_STATUS,
+  folderPathFromSegments,
+  folderPathLeaf,
+  folderPathSegments,
   isValidSegment,
+  joinFolderPath,
+  parentFolderPath,
   resolveResourceKey,
+  splitResolvedKey,
   summaryTarget,
 } from '@simoncodes-ca/domain';
 import { addTagToList, removeTagFromList } from '../../../shared/tag-list-edit';
@@ -62,7 +68,7 @@ export interface KeyAbsorption {
  * and the key field accepts one segment. Rather than reject the one string they
  * have, the dotted prefix becomes the folder and the leaf stays in the field.
  *
- * Empty segments cover leading, trailing and consecutive dots in one pass; a
+ * Leading and consecutive dots leave invalid empty folder segments; a
  * trailing dot means a folder is finished but no leaf started. A prefix with an
  * invalid segment is not absorbed (returns null), so the validator names the
  * real problem instead of a silently mangled key.
@@ -80,8 +86,7 @@ export function absorbDottedKey(
     return null;
   }
 
-  const segments = rawKey.split('.').filter((segment) => segment.length > 0);
-  const leaf = rawKey.endsWith('.') ? '' : (segments.pop() ?? '');
+  const { folderPath: segments, entryKey: leaf } = splitResolvedKey(rawKey);
 
   if (segments.some((segment) => !isValidSegment(segment))) {
     return null;
@@ -90,9 +95,9 @@ export function absorbDottedKey(
     return { leaf };
   }
 
-  const prefix = segments.join('.');
+  const prefix = folderPathFromSegments(segments);
   const continues = folderFromKey !== null && currentFolder === folderFromKey;
-  return { leaf, folder: continues ? `${folderFromKey}.${prefix}` : prefix };
+  return { leaf, folder: continues ? joinFolderPath(folderFromKey, prefix) : prefix };
 }
 
 // ── Key collision ────────────────────────────────────────────────────────────
@@ -181,7 +186,7 @@ export interface ContextTreeInput {
 export function contextTree(input: ContextTreeInput, moreLabel: (hidden: number) => string): ContextTreeNode[] {
   const roots = input.known.rootFolders;
   const targetPath = input.folderPath;
-  const segments = targetPath.split('.').filter((segment) => segment.length > 0);
+  const segments = folderPathSegments(targetPath);
   const nodes: ContextTreeNode[] = [];
 
   if (segments.length === 0) {
@@ -192,12 +197,12 @@ export function contextTree(input: ContextTreeInput, moreLabel: (hidden: number)
     return nodes;
   }
 
-  const parentPath = segments.slice(0, -1).join('.');
+  const parentPath = parentFolderPath(targetPath) ?? '';
   const siblings = parentPath ? (findFolderInTree(roots, parentPath)?.tree?.children ?? []) : roots;
   let depth = 0;
 
   if (parentPath) {
-    nodes.push({ kind: 'folder', name: segments[segments.length - 2], path: parentPath, depth: 0, expanded: true });
+    nodes.push({ kind: 'folder', name: folderPathLeaf(parentPath), path: parentPath, depth: 0, expanded: true });
     depth = 1;
   }
 
@@ -216,7 +221,7 @@ export function contextTree(input: ContextTreeInput, moreLabel: (hidden: number)
   if (!placed) {
     nodes.push({
       kind: 'folder',
-      name: segments[segments.length - 1],
+      name: folderPathLeaf(targetPath),
       path: targetPath,
       depth,
       here: true,

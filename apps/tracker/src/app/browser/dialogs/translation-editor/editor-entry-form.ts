@@ -8,14 +8,17 @@ import {
   addTag as addDraftTag,
   hasUnsavedChanges,
   type LocaleDraft,
-  removeTag as removeDraftTag,
   type ResourceEntryDraft,
+  removeTag as removeDraftTag,
 } from './resource-entry-draft';
 
 /** The editable fields and their plain draft snapshot, independent of the dialog DOM. */
 export class EditorEntryForm {
   readonly form = new FormGroup({
-    key: new FormControl<string>('', { validators: [Validators.required, segmentValidator], nonNullable: true }),
+    key: new FormControl<string>('', {
+      validators: [Validators.required, segmentValidator],
+      nonNullable: true,
+    }),
     baseValue: new FormControl<string>('', { validators: [Validators.required], nonNullable: true }),
     comment: new FormControl<string>('', { nonNullable: true }),
     translations: new FormArray<

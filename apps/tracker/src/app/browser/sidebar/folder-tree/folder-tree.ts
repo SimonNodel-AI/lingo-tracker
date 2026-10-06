@@ -19,6 +19,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { folderPathLeaf } from '@simoncodes-ca/domain';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
@@ -29,7 +30,6 @@ import { injectFeedback } from '../../feedback';
 import { BrowserStore } from '../../store/browser.store';
 import { folderDrop } from '../../store/folder-drop';
 import type { DragData } from '../../types/drag-data';
-import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 import { FolderNode } from './folder-node/folder-node';
 import { InlineFolderInput } from './inline-folder-input/inline-folder-input';
 
@@ -275,7 +275,7 @@ export class FolderTree {
    * Opens confirmation dialog and deletes folder if confirmed.
    */
   onDeleteFolder(folderPath: string): void {
-    const name = extractFolderNameFromPath(folderPath);
+    const name = folderPathLeaf(folderPath);
     const confirm = this.#write.confirmDestructive({
       title: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE,
       message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, params: { name } },
@@ -291,7 +291,7 @@ export class FolderTree {
       message: {
         token: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX,
         params: {
-          name: extractFolderNameFromPath(sourceFolderPath),
+          name: folderPathLeaf(sourceFolderPath),
           dest: destinationFolderPath || { token: TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL },
         },
       },

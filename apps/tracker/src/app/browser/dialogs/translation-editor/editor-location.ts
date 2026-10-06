@@ -1,5 +1,6 @@
 import { computed, type Signal, signal } from '@angular/core';
 import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { folderPathSegments } from '@simoncodes-ca/domain';
 import { type Observable, Subscription } from 'rxjs';
 import {
   absorbDottedKey,
@@ -67,11 +68,7 @@ export class EditorLocation {
     ),
   );
 
-  readonly folderSegments = computed(() =>
-    this.selectedFolderPath()
-      .split('.')
-      .filter((segment) => segment.length > 0),
-  );
+  readonly folderSegments = computed(() => folderPathSegments(this.selectedFolderPath()));
   constructor(options: EditorLocationOptions) {
     this.#options = options;
   }

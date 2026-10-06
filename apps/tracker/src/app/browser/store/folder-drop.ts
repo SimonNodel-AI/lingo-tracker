@@ -1,6 +1,5 @@
-import { isDescendantFolderPath } from '@simoncodes-ca/domain';
+import { isDescendantFolderPath, parentFolderPath } from '@simoncodes-ca/domain';
 import type { DragData } from '../types/drag-data';
-import { parentFolderPath } from './folder-tree.utils';
 
 export interface FolderDropDecision {
   canLand: boolean;

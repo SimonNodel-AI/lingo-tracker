@@ -1,3 +1,4 @@
+import { joinFolderPath } from '@simoncodes-ca/domain';
 /** Checks a value's shape. An empty path denotes the root. */
 export type Schema<T> = (value: unknown, path: string) => T;
 
@@ -15,7 +16,7 @@ export function fail(path: string, requirement: string): never {
 }
 
 export function childPath(path: string, key: string): string {
-  return path ? `${path}.${key}` : key;
+  return joinFolderPath(path, key);
 }
 
 export function indexPath(path: string, index: number): string {
