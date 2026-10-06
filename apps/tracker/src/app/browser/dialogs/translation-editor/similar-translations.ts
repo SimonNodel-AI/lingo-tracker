@@ -1,10 +1,11 @@
-import { Component, ChangeDetectionStrategy, input, output, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { TranslocoPipe } from '@jsverse/transloco';
-import { MatIconModule } from '@angular/material/icon';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { TranslocoPipe } from '@jsverse/transloco';
 import type { SearchResultDto } from '@simoncodes-ca/data-transfer';
+import { folderPathSegments } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 
 type ComponentState = 'idle' | 'loading' | 'empty' | 'results';
@@ -71,7 +72,7 @@ export class SimilarTranslations {
     this.displayedResults().map((result) => {
       return {
         result,
-        parentSegments: result.folderPath.split('.').filter((segment) => segment.length > 0),
+        parentSegments: folderPathSegments(result.folderPath),
         leafSegment: result.entryKey,
         value: this.getTranslationValue(result),
         isExact: this.isExactMatch(result),

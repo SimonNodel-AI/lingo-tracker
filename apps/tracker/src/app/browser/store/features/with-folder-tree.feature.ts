@@ -3,6 +3,7 @@ import { TranslocoService } from '@jsverse/transloco';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { collectAncestorPaths, folderPathSegments, isFolderPathUnder } from '@simoncodes-ca/domain';
 import { catchError, of, pipe, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
@@ -11,7 +12,6 @@ import { BrowserApiService } from '../../services/browser-api.service';
 import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 import { planFolderMove, planFolderMoveRollback } from '../folder-move-plan';
 import {
-  collectAncestorPaths,
   collectExpandablePaths,
   filterFolderTree,
   findFolderInTree,
@@ -68,9 +68,7 @@ export function withFolderTreeFeature<_>() {
         filteredFolders: computed(() => filterFolderTree(rootFolders(), folderTreeFilter())),
 
         breadcrumbs: computed(() => {
-          const path = currentFolderPath();
-          if (!path) return [];
-          return path.split('.');
+          return folderPathSegments(currentFolderPath());
         }),
 
         isLoading: computed(() => isFolderTreeLoading() || isTranslationsLoading()),
@@ -197,7 +195,7 @@ export function withFolderTreeFeature<_>() {
           expandedFolders: prunePathsUnder(store.expandedFolders(), path),
         });
         const shown = store.currentFolderPath();
-        return shown === path || shown.startsWith(`${path}.`);
+        return isFolderPathUnder(path, shown);
       },
       /** Captures only the moved node; concurrent loads can replace the rest of the tree. */
       detachFolder(path: string): FolderNodeDto | undefined {

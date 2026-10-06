@@ -549,7 +549,32 @@ Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 
 ### Folder Address
 
-A dot-delimited path to a folder in a [collection](#collection), such as `apps.common.buttons`. The empty address names the translations root. `lib/resource/folder-address.ts` validates each segment with the domain `isValidSegment` rule, resolves the address beneath the collection's `translationsFolder`, and checks whether that path exists. One shared segment check rejects symbolic links below the translations root. Walks return an unreadable problem; direct resolution raises `InvalidCollectionFolderError` with kind `invalid` (HTTP 400). Production Resource Folder opens also check the collection boundary before reading and saving. Folder create, delete and move decide whether the root is allowed and retain their own error labels; `createFolder` returns the resolved Folder Address as `folderAddress`, with a whitespace-only parent treated as the root; wildcard resource moves use key-style diagnostics for their prefix.
+A dot-delimited path to a folder in a [collection](#collection), such as `apps.common.buttons`. The empty address names the translations root.
+
+Pure Folder Address arithmetic lives in `libs/domain/src/lib/folder-path.ts`, exported through `@simoncodes-ca/domain`.
+`folderPathSegments` and `folderPathFromSegments` convert between addresses and segments.
+`parentFolderPath` returns `null` for the root or a top-level folder; `folderPathLeaf` returns the last segment.
+`collectAncestorPaths` returns strict ancestors, outermost first, excluding the root and the address itself.
+`isDescendantFolderPath` tests strict descendants; `isFolderPathUnder` also includes the source folder.
+Both tests require segment boundaries, so `apps.x` is not under `app`.
+`rebaseFolderPath` replaces a source prefix and leaves unrelated addresses unchanged.
+`joinFolderPath` combines a folder and a key; `resolveResourceKey` delegates to it.
+The root has no segments. Non-root paths keep empty segments verbatim.
+Paths with empty segments are malformed and rejected by key/folder validation, never silently collapsed.
+Arithmetic does not trim whitespace or validate input.
+Resource key resolution retains its whitespace-only target-folder convention: that target means the root.
+
+Core's `libs/core/src/lib/resource/folder-address.ts` retains filesystem resolution and caller-specific validation errors.
+It validates each segment with the domain `isValidSegment` rule and resolves the address beneath the collection's `translationsFolder`.
+It also checks whether that path exists.
+
+One shared segment check rejects symbolic links below the translations root.
+Walks return an unreadable problem; direct resolution raises `InvalidCollectionFolderError` with kind `invalid` (HTTP 400).
+Production Resource Folder opens also check the collection boundary before reading and saving.
+
+Folder create, delete and move decide whether the root is allowed and retain their own error labels.
+`createFolder` returns the resolved Folder Address as `folderAddress`, with a whitespace-only parent treated as the root.
+Wildcard resource moves use key-style diagnostics for their prefix.
 
 Explained in context: [`core-library.md`](core-library.md#resource-crud-flows)
 

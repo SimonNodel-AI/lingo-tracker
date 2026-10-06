@@ -1,15 +1,15 @@
 import { existsSync, lstatSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { isValidSegment } from '@simoncodes-ca/domain';
+import { folderPathFromSegments, folderPathSegments, isValidSegment } from '@simoncodes-ca/domain';
 import type { FolderPathPart } from '../errors/error-messages';
-import type { CollectionFolderProblem } from './collection-folders';
 import { InvalidCollectionFolderError, InvalidFolderPathError } from '../errors/lingo-tracker-error';
 import { hasFsErrorCode } from '../file-io/fs-error';
+import type { CollectionFolderProblem } from './collection-folders';
 
 /** A dot-delimited folder address. The empty address names the collection root. */
 export function validateFolderAddress(address: string, part: FolderPathPart, allowRoot = true): string[] {
-  if (address === '' && allowRoot) return [];
-  const segments = address.split('.');
+  if (address === '' && allowRoot === false) throw new InvalidFolderPathError(part, '');
+  const segments = folderPathSegments(address);
   for (const segment of segments) {
     if (!isValidSegment(segment)) throw new InvalidFolderPathError(part, segment);
   }
@@ -18,7 +18,7 @@ export function validateFolderAddress(address: string, part: FolderPathPart, all
 
 /** Resolve a folder address beneath a collection's translations folder. */
 export function resolveFolderAddress(translationsFolder: string, address: string, cwd = process.cwd()): string {
-  const segments = address === '' ? [] : address.split('.');
+  const segments = folderPathSegments(address);
   const root = resolve(cwd, translationsFolder);
   const absolutePath = resolve(root, ...segments);
   assertCollectionFolderPath(root, absolutePath);
@@ -58,7 +58,7 @@ export function checkCollectionFolderPath(
   }
   for (let length = 1; length <= segments.length; length++) {
     const absolutePath = join(root, ...segments.slice(0, length));
-    const folderPath = segments.slice(0, length).join('.');
+    const folderPath = folderPathFromSegments(segments.slice(0, length));
     const problem = (message: string): CollectionFolderProblem => ({
       kind: 'unreadable',
       folderPath,

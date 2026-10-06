@@ -1,3 +1,4 @@
+import { joinFolderPath } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import {
@@ -91,5 +92,5 @@ export function sweepKeys(
 
 /** The full key of `entryKey` in the folder at `folderPath` (`''` is the collection root). */
 export function fullKeyOf(folderPath: string, entryKey: string): string {
-  return folderPath ? `${folderPath}.${entryKey}` : entryKey;
+  return joinFolderPath(folderPath, entryKey);
 }

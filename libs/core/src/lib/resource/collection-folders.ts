@@ -1,4 +1,5 @@
 import { join, relative, sep } from 'node:path';
+import { folderPathFromSegments, folderPathSegments } from '@simoncodes-ca/domain';
 import { checkCollectionFolderPath } from './folder-address';
 import { walkFolders } from './iterative-folder-walker';
 
@@ -72,12 +73,12 @@ export function* walkCollectionFolders(
   translationsFolder: string,
   options: WalkCollectionFoldersOptions = {},
 ): Generator<CollectionFolderVisit> {
-  const startSegments = (options.startPath ?? '').split('.').filter((segment) => segment.length > 0);
+  const startSegments = folderPathSegments(options.startPath ?? '').filter((segment) => segment.length > 0);
   const addressOf = (absolutePath: string): CollectionFolderAddress => {
     const segments = segmentsOf(translationsFolder, absolutePath);
     return {
       segments,
-      folderPath: segments.join('.'),
+      folderPath: folderPathFromSegments(segments),
       absolutePath,
       // A rejected start-path ancestor (symlink or lstat failure) is the sole visit, at depth 0.
       depth: Math.max(0, segments.length - startSegments.length),

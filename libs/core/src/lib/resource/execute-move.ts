@@ -1,11 +1,12 @@
+import { isFolderPathUnder } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import {
   CollectionNotFoundError,
-  ReadOnlyCollectionError,
-  MoveConfigRequiredError,
   FolderNotFoundError,
   InvalidCollectionFolderError,
+  MoveConfigRequiredError,
+  ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
 import { describeFolderProblem } from './collection-folders';
 import { sweepCollection, sweepKeys } from './collection-sweep';
@@ -106,17 +107,19 @@ function finishMoves(
   } finally {
     const pruning = pruneEmptiedFolders(collection, batch.emptiedFolders, options);
     const failedEmptySourceProblems = new Set<(typeof pruning.problems)[number]>();
+    // validateSelection rejects root folder sources with validateFolderAddress(..., false)
+    // before either executeMove or executeMoves can populate this batch.
     for (const { source, empty } of batch.folderSources) {
       const problems =
         empty && !pruning.removed.includes(source)
-          ? pruning.problems.filter(({ folderPath }) => folderPath === source || folderPath.startsWith(`${source}.`))
+          ? pruning.problems.filter(({ folderPath }) => isFolderPathUnder(source, folderPath))
           : [];
       for (const problem of problems) failedEmptySourceProblems.add(problem);
       report.prune(
         source,
         {
           removed: pruning.removed,
-          kept: pruning.kept.filter(({ folderPath }) => folderPath === source || folderPath.startsWith(`${source}.`)),
+          kept: pruning.kept.filter(({ folderPath }) => isFolderPathUnder(source, folderPath)),
           problems,
         },
         empty,

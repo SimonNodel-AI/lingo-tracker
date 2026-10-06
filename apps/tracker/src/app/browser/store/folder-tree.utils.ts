@@ -1,4 +1,11 @@
 import type { FolderNodeDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
+import {
+  folderPathLeaf,
+  folderPathSegments,
+  isFolderPathUnder,
+  joinFolderPath,
+  rebaseFolderPath,
+} from '@simoncodes-ca/domain';
 
 /**
  * Inserts a new folder into the tree at the specified parent path.
@@ -15,7 +22,7 @@ export function insertFolderIntoTree(
     return updated;
   }
 
-  const parentSegments = parentPath.split('.');
+  const parentSegments = folderPathSegments(parentPath);
 
   const updateChildren = (nodes: FolderNodeDto[], depth: number): FolderNodeDto[] =>
     nodes.map((node) => {
@@ -125,7 +132,7 @@ export function filterFolderTree(folders: FolderNodeDto[], filter: string): Fold
  * - "common.buttons" -> "apps.common.buttons"
  */
 export function rebaseFolderPaths(folder: FolderNodeDto, newParentPath: string): FolderNodeDto {
-  const newFullPath = newParentPath ? `${newParentPath}.${folder.name}` : folder.name;
+  const newFullPath = joinFolderPath(newParentPath, folder.name);
   return {
     ...folder,
     fullPath: newFullPath,
@@ -160,24 +167,6 @@ export function collectExpandablePaths(folders: FolderNodeDto[]): string[] {
   return paths;
 }
 
-/**
- * Returns the strict ancestor paths of a dot-delimited folder path, outermost first.
- * `apps.common.buttons` yields `['apps', 'apps.common']`. The path itself is excluded:
- * revealing a folder does not open it.
- */
-export function collectAncestorPaths(path: string): string[] {
-  if (!path) return [];
-
-  const segments = path.split('.');
-  const ancestors: string[] = [];
-
-  for (let i = 1; i < segments.length; i++) {
-    ancestors.push(segments.slice(0, i).join('.'));
-  }
-
-  return ancestors;
-}
-
 /** Toggles one expansion path without mutating the caller's set. */
 export function toggleExpandedPath(paths: ReadonlySet<string>, path: string): Set<string> {
   const next = new Set(paths);
@@ -199,22 +188,15 @@ export function collectVisibleFolderPaths(folders: readonly FolderNodeDto[], exp
   return paths;
 }
 
-/** Parent of a dot-delimited folder path, or null for a top-level folder. */
-export function parentFolderPath(path: string): string | null {
-  const lastDot = path.lastIndexOf('.');
-  return lastDot < 0 ? null : path.slice(0, lastDot);
-}
-
 /**
  * Removes a path and everything beneath it from a set of expanded paths.
  * Used after a folder is deleted so the set cannot accumulate paths that no longer exist.
  */
 export function prunePathsUnder(paths: ReadonlySet<string>, removedPath: string): Set<string> {
-  const prefix = `${removedPath}.`;
   const next = new Set<string>();
 
   for (const path of paths) {
-    if (path === removedPath || path.startsWith(prefix)) continue;
+    if (isFolderPathUnder(removedPath, path)) continue;
     next.add(path);
   }
 
@@ -230,19 +212,14 @@ export function rebaseExpandedPaths(
   sourcePath: string,
   destinationParentPath: string,
 ): Set<string> {
-  const segments = sourcePath.split('.');
-  const folderName = segments[segments.length - 1];
-  const newSourcePath = destinationParentPath ? `${destinationParentPath}.${folderName}` : folderName;
+  const newSourcePath = joinFolderPath(destinationParentPath, folderPathLeaf(sourcePath));
 
   if (newSourcePath === sourcePath) return new Set(paths);
 
-  const prefix = `${sourcePath}.`;
   const next = new Set<string>();
 
   for (const path of paths) {
-    if (path === sourcePath) next.add(newSourcePath);
-    else if (path.startsWith(prefix)) next.add(`${newSourcePath}.${path.slice(prefix.length)}`);
-    else next.add(path);
+    next.add(rebaseFolderPath(path, sourcePath, newSourcePath));
   }
 
   return next;

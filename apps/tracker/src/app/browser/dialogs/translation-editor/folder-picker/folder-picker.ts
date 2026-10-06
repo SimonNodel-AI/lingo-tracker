@@ -13,6 +13,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { collectAncestorPaths, parentFolderPath } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectFeedback } from '../../../feedback';
 import { BrowserStore } from '../../../store/browser.store';
@@ -23,12 +24,7 @@ import {
   settleFolderDraft,
   startFolderDraft,
 } from '../../../store/folder-draft';
-import {
-  collectAncestorPaths,
-  collectVisibleFolderPaths,
-  parentFolderPath,
-  toggleExpandedPath,
-} from '../../../store/folder-tree.utils';
+import { collectVisibleFolderPaths, toggleExpandedPath } from '../../../store/folder-tree.utils';
 import { PickerFolderNode } from './picker-folder-node/picker-folder-node';
 
 /**

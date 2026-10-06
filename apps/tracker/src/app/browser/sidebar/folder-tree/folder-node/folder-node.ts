@@ -5,6 +5,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslocoModule } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { isDescendantFolderPath } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectFeedback } from '../../../feedback';
 import { BrowserStore } from '../../../store/browser.store';
@@ -144,7 +145,7 @@ export class FolderNode {
     const selected = this.selectedPath();
     const myPath = this.folder().fullPath;
     if (!selected || !myPath) return false;
-    return myPath.startsWith(`${selected}.`);
+    return isDescendantFolderPath(selected, myPath);
   });
 
   /** Determines which icon to display for the folder */

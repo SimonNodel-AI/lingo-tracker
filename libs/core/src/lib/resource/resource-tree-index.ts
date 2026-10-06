@@ -1,11 +1,12 @@
 import { resolve } from 'node:path';
+import { folderPathFromSegments, folderPathSegments, splitResolvedKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import type { CollectionFolderProblem } from './collection-folders';
 import { extractSubtree } from './extract-subtree';
 import { loadResourceTree } from './load-resource-tree';
-import type { ResourceTreeNode } from './resource-tree-types';
 import { readCollection } from './read-collection';
 import type { ResourceMutation } from './resource-mutation';
+import type { ResourceTreeNode } from './resource-tree-types';
 import { type SearchPage, type SearchRequest, searchPage, treeResources } from './search';
 import { computeTreeFingerprint, type TreeFingerprint, treeFingerprintsMatch } from './tree-fingerprint';
 
@@ -163,7 +164,7 @@ function folderAt(tree: ResourceTreeNode, segments: readonly string[], create: b
       node.children.sort((a, b) => a.name.localeCompare(b.name));
     }
 
-    if (!child?.tree) throw new Error(`folder "${fullPathSegments.join('.')}" is not in the index`);
+    if (!child?.tree) throw new Error(`folder "${folderPathFromSegments(fullPathSegments)}" is not in the index`);
     node = child.tree;
   }
 
@@ -171,16 +172,13 @@ function folderAt(tree: ResourceTreeNode, segments: readonly string[], create: b
 }
 
 function segmentsOf(path: string): string[] {
-  return path.split('.').filter((segment) => segment.length > 0);
+  return folderPathSegments(path).filter((segment) => segment.length > 0);
 }
 
 /** Splits `a.b.c` into the folder `['a', 'b']` and the name `c`. */
 function splitKey(key: string): { folder: string[]; name: string } {
-  const segments = segmentsOf(key);
-  return {
-    folder: segments.slice(0, -1),
-    name: segments[segments.length - 1] ?? '',
-  };
+  const { folderPath, entryKey } = splitResolvedKey(folderPathFromSegments(segmentsOf(key)));
+  return { folder: folderPath, name: entryKey };
 }
 
 function countResources(node: ResourceTreeNode): number {

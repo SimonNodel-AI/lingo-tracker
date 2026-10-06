@@ -1,10 +1,15 @@
 import { computed, inject } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
-import { splitResolvedKey } from '@simoncodes-ca/domain';
+import {
+  folderPathFromSegments,
+  folderPathLeaf,
+  parentFolderPath,
+  resolveResourceKey,
+  splitResolvedKey,
+} from '@simoncodes-ca/domain';
 import { defer, finalize, type Observable, of, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
-import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
 import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 import {
   cancelFolderDraft,
@@ -15,7 +20,6 @@ import {
   startFolderDraft,
 } from '../folder-draft';
 import { folderDrop } from '../folder-drop';
-import { parentFolderPath } from '../folder-tree.utils';
 import {
   type CreateFolderOutcome,
   type CreateFolderResult,
@@ -114,7 +118,7 @@ export function withFolderWritesFeature<_>() {
               return of({ kind: 'noop', reason: decision.noOp } as const);
             if (!decision.canLand) return of({ kind: 'invalid-drop' } as const);
             const sourceNode = store.detachFolder(sourceFolderPath);
-            const folderName = extractFolderNameFromPath(sourceFolderPath);
+            const folderName = folderPathLeaf(sourceFolderPath);
             return moving(
               respond(
                 api.moveFolder(collection, sourceFolderPath, destinationFolderPath),
@@ -276,14 +280,14 @@ export function withFolderWritesFeature<_>() {
               const { folderPath, entryKey } = splitResolvedKey(sourceKey);
               if (
                 folderDrop(
-                  { type: 'resource', key: sourceKey, folderPath: folderPath.join('.') },
+                  { type: 'resource', key: sourceKey, folderPath: folderPathFromSegments(folderPath) },
                   destinationFolderPath,
                   false,
                 ).noOp === 'already-in-folder'
               )
                 return of({ kind: 'noop', reason: 'already-in-folder' } as const);
               const removed = store.removeRow(sourceKey);
-              const destinationKey = destinationFolderPath ? `${destinationFolderPath}.${entryKey}` : entryKey;
+              const destinationKey = resolveResourceKey(entryKey, destinationFolderPath);
               return moving(
                 respond(
                   api.moveResource(collection, sourceKey, destinationKey),
