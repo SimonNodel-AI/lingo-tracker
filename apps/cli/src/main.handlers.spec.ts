@@ -1,5 +1,5 @@
 import { Option } from 'commander';
-import { commandRegistrations } from './testing/command-registrations';
+import { commandManifest } from './command-manifest';
 import { createCli } from './program';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -549,11 +549,16 @@ describe('every CLI handler registration', () => {
     vi.clearAllMocks();
   });
 
+  it('matches every manifest loader to the mocked handler and argv case', async () => {
+    expect(cases.map((entry) => entry.name)).toEqual(commandManifest.map((entry) => entry.name));
+    const loadedHandlers = await Promise.all(commandManifest.map((entry) => entry.load()));
+    expect(loadedHandlers).toEqual(cases.map((entry) => entry.handler));
+    expect(new Set(loadedHandlers)).toEqual(new Set(Object.values(handlers)));
+  });
+
   it('covers every registered command and every record key with parsed handler values', async () => {
-    expect(commandRegistrations.map((entry) => entry.name)).toEqual(
-      createCli().commands.map((command) => command.name()),
-    );
-    for (const registration of commandRegistrations) {
+    expect(commandManifest.map((entry) => entry.name)).toEqual(createCli().commands.map((command) => command.name()));
+    for (const registration of commandManifest) {
       const entry = cases.find((entry) => entry.name === registration.name);
       expect(entry).toBeDefined();
       if (!entry) throw new Error(`Missing argv case for ${registration.name}`);

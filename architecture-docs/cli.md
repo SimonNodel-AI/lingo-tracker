@@ -31,7 +31,11 @@ Return to [architecture README](README.md).
 
 ## Command Inventory
 
-All commands are registered in `apps/cli/src/main.ts`. Each row below lists the exact Commander command name, the flags it accepts, and the `@simoncodes-ca/core` function the command action calls.
+The [Command Manifest](glossary.md#command-manifest) in `apps/cli/src/command-manifest.ts` lists each registration and its lazy command loader in help order. `createCli()` in `apps/cli/src/program.ts` registers these entries; `main.ts` supplies process argv.
+
+A new command requires its command file, its registration (flags) file, and one manifest entry. It also requires a mock and an argv case in `main.handlers.spec.ts`. Vitest hoists `vi.mock` calls, so the mock declarations cannot derive from the manifest. The manifest check test fails if the loaders, mocked handlers, and argv cases disagree.
+
+Each row below lists the exact Commander command name, the flags it accepts, and the `@simoncodes-ca/core` function the command action calls.
 
 | Command | Key Options / Flags | Core Function Called |
 |---|---|---|

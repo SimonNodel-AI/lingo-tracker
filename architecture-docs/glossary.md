@@ -349,15 +349,29 @@ Explained in context: [`core-library.md`](core-library.md#collection-sweep)
 
 ### CLI Program
 
-The CLI assembly in `apps/cli/src/program.ts`. `createCli(): Command` returns a fresh, unparsed Commander program with every command registered and handlers still lazy. `main.ts` supplies process argv through Commander. Wiring tests call the factory and await `parseAsync` directly; no process-argument replacement, module-cache reset or completion polling is needed.
+The CLI assembly in `apps/cli/src/program.ts`. `createCli(): Command` returns a fresh, unparsed Commander program with every command registered from the [Command Manifest](#command-manifest) and handlers still lazy. `main.ts` supplies process argv through Commander. Wiring tests call the factory and await `parseAsync` directly; no process-argument replacement, module-cache reset or completion polling is needed.
+
+A new command requires its command file, its registration (flags) file, and one manifest entry. It also requires a mock and an argv case in `main.handlers.spec.ts`. Vitest hoists `vi.mock` calls, so the mock declarations cannot derive from the manifest. The manifest check test fails if the loaders, mocked handlers, and argv cases disagree.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
 ---
 
+### Command Manifest
+
+The ordered command inventory in `apps/cli/src/command-manifest.ts`. Each entry pairs an existing [Command Registration](#command-registration) declaration with its lazy `import()` loader. A typed helper keeps the handler and its options paired when [CLI Program](#cli-program) registers the entries. The manifest order is the Commander help order.
+
+Handler-coverage and surface-snapshot tests use the manifest directly. Startup specs check that metadata imports and help generation do not load core. Handler specs check every loader against the mocked handlers and argv cases.
+
+A new command requires its command file, its registration (flags) file, and one manifest entry. It also requires a mock and an argv case in `main.handlers.spec.ts`. Vitest hoists `vi.mock` calls, so the mock declarations cannot derive from the manifest. The manifest check test fails if the loaders, mocked handlers, and argv cases disagree.
+
+Explained in context: [`cli.md`](cli.md#command-inventory)
+
+---
+
 ### Command Registration
 
-The CLI declaration that connects a name, description, flag records, help text and a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander. Its action uses `flagValues(records, raw, args)` to map Commander attributes to record keys, positional records in order, and runtime defaults, then awaits the lazy import and handler. Only declared keys reach handlers; absent options stay absent unless they have a default. The test inventory in `apps/cli/src/testing/command-registrations.ts` shares these declarations between handler-coverage and surface-snapshot tests; coverage checks it against every command in `createCli()`. Every handler takes one options object. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated records and parsers.
+The CLI declaration that connects a name, description, flag records, help text and a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander. Its action uses `flagValues(records, raw, args)` to map Commander attributes to record keys, positional records in order, and runtime defaults, then awaits the lazy import and handler. Only declared keys reach handlers; absent options stay absent unless they have a default. The [Command Manifest](#command-manifest) pairs each declaration with its loader. Handler-coverage and surface-snapshot tests use the manifest directly. Coverage checks it against every command in `createCli()`. Every handler takes one options object. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated records and parsers.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
