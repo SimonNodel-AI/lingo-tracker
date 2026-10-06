@@ -1,18 +1,12 @@
 import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import {
-  CoreOperationError,
-  FolderNotFoundError,
-  InvalidCollectionFolderError,
-  ResourceNotFoundError,
-} from '../errors/lingo-tracker-error';
+import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import type { RunOutcome } from '../run-outcome';
 import { describeFolderProblem } from './collection-folders';
 import { pruneEmptiedFolders } from './folder-pruning';
-import { openResourceEntry } from './resource-entry';
+import { removeEntry } from './resource-entry';
 import { resolveResourcePaths } from './resource-file-paths';
-import { resourceFolderPresence } from './resource-folder';
-import { resolveMutationSink, type MutationSink, type MutationSinkOptions } from './resource-mutation';
+import type { MutationSinkOptions } from './resource-mutation';
 
 export interface DeleteResourceParams {
   keys: string[];
@@ -55,7 +49,7 @@ export function deleteResource(
 
   for (const key of params.keys) {
     try {
-      const emptied = deleteSingleResource(collection, key, resolveMutationSink(collection, options));
+      const { emptied } = removeEntry(collection, key, options);
       if (emptied) emptiedFolders.add(emptied);
       entriesDeleted++;
     } catch (caughtError) {
@@ -76,33 +70,4 @@ export function deleteResource(
     entriesDeleted,
     errors: errors.length > 0 ? errors : undefined,
   };
-}
-
-function deleteSingleResource(collection: Collection, key: string, onMutation?: MutationSink): string | undefined {
-  validateKey(key);
-  const paths = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
-  const folderAddress = paths.folderPathSegments.join('.') || '.';
-  const presence = resourceFolderPresence(paths.folderPath);
-  if (!presence.folder) throw new FolderNotFoundError(folderAddress);
-  if (!presence.entries) throw new ResourceNotFoundError(paths.resolvedKey);
-
-  const deletionStep = <T>(run: () => T, detail: string): T => {
-    try {
-      return run();
-    } catch (error) {
-      if (error instanceof InvalidCollectionFolderError) throw error;
-      throw new CoreOperationError(`Failed to delete resource ${paths.resolvedKey}: ${detail}`, { cause: error });
-    }
-  };
-  const resource = deletionStep(
-    () => openResourceEntry(collection, paths.resolvedKey),
-    `folder ${folderAddress} has unreadable resource files`,
-  );
-  const removed = deletionStep(
-    () => resource.folder.remove(resource.entryKey),
-    `could not update folder ${folderAddress}`,
-  );
-  if (!removed) throw new ResourceNotFoundError(paths.resolvedKey);
-  const saved = deletionStep(() => resource.save(onMutation), `could not write folder ${folderAddress}`);
-  return saved.emptied ? paths.folderPath : undefined;
 }

@@ -3,9 +3,9 @@ import type { Collection } from '../config/open-collection';
 import { calculateChecksum } from '../resource/checksum';
 import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from '../resource/resource-folder';
 import {
-  resolveMutationSink,
   type MutationSinkOptions,
   type ResourceMutation,
+  resolveMutationSink,
   saveReporting,
 } from '../resource/resource-mutation';
 
@@ -73,6 +73,19 @@ export function writeBackTranslations(
   pending: readonly PendingTranslation[],
   options: TranslationWriteBackOptions,
 ): TranslationWriteBack {
+  return writeBackEntryTranslations(collection, folderPath, pending, {
+    ...options,
+    onMutation: resolveMutationSink(collection, options),
+  });
+}
+
+/** Entry writes already resolved their sink before phase 1. */
+export function writeBackEntryTranslations(
+  collection: Pick<Collection, 'baseLocale' | 'translationsFolder'>,
+  folderPath: string,
+  pending: readonly PendingTranslation[],
+  options: TranslationWriteBackOptions,
+): TranslationWriteBack {
   const folder = openResourceFolder(folderPath, collection);
   const written: PendingTranslation[] = [];
   const skipped: PendingTranslation[] = [];
@@ -86,9 +99,7 @@ export function writeBackTranslations(
     written.push(translation);
   }
   if (written.length > 0) {
-    saveReporting(folder, collection.translationsFolder, resolveMutationSink(collection, options), () =>
-      options.saved(folder, written),
-    );
+    saveReporting(folder, collection.translationsFolder, options.onMutation, () => options.saved(folder, written));
   }
   return { folder, written, skipped };
 }

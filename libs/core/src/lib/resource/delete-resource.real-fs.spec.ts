@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
+import { calculateChecksum } from './checksum';
 import { deleteResource } from './delete-resource';
 import { editResource } from './edit-resource';
 import { executeMove, executeMoves } from './execute-move';
@@ -280,5 +281,229 @@ describe('writes prune emptied folders (real fs)', () => {
     expect(readFileSync(join(path, 'resource_entries.json'), 'utf8')).toBe(entries);
     expect(readFileSync(join(path, 'tracker_meta.json'), 'utf8')).toBe(metadata);
     expect(mutations).toEqual([]);
+  });
+});
+
+describe('deleteResource behavioural cases (real fs)', () => {
+  const root = useTempDir('delete-behaviour-');
+  const collection = () => testCollection(root());
+  const seedPair = () =>
+    seedResources(collection(), { 'app.button.ok': { source: 'OK' }, 'app.button.cancel': { source: 'Cancel' } });
+  const readEntries = () => JSON.parse(readFileSync(join(root(), 'app', 'button', 'resource_entries.json'), 'utf8'));
+  it('requires an entry before removing and emits no mutation when it is missing', () => {
+    writeFolderFiles(root(), '', { entries: {}, meta: {} });
+    const mutations: ResourceMutation[] = [];
+    expect(
+      deleteResource(collection(), { keys: ['missing'] }, { onMutation: (mutation) => mutations.push(mutation) }),
+    ).toMatchObject({ entriesDeleted: 0, errors: [{ key: 'missing', error: 'Resource not found: missing' }] });
+    expect(mutations).toEqual([]);
+  });
+
+  it('retains the missing folder diagnostic when opened for deletion', () => {
+    const mutations: ResourceMutation[] = [];
+    expect(
+      deleteResource(collection(), { keys: ['apps.ok'] }, { onMutation: (mutation) => mutations.push(mutation) })
+        .errors,
+    ).toEqual([{ key: 'apps.ok', error: 'Folder not found: apps' }]);
+    expect(mutations).toEqual([]);
+  });
+
+  it('requires the entries file before reading malformed metadata for deletion', () => {
+    writeFolderFiles(root(), '', { meta: '{ invalid' });
+    const mutations: ResourceMutation[] = [];
+    expect(
+      deleteResource(collection(), { keys: ['ok'] }, { onMutation: (mutation) => mutations.push(mutation) }).errors,
+    ).toEqual([{ key: 'ok', error: 'Resource not found: ok' }]);
+    expect(mutations).toEqual([]);
+  });
+
+  it('retains the unreadable folder diagnostic for deletion', () => {
+    writeFolderFiles(root(), 'apps', { entries: '{ invalid', meta: {} });
+    expect(deleteResource(collection(), { keys: ['apps.ok'] }).errors).toEqual([
+      { key: 'apps.ok', error: 'Failed to delete resource apps.ok: folder apps has unreadable resource files' },
+    ]);
+  });
+
+  it('should delete existing resource successfully', () => {
+    seedPair();
+    expect(deleteResource(collection(), { keys: ['app.button.ok'] })).toMatchObject({
+      entriesDeleted: 1,
+      errors: undefined,
+    });
+    expect(readEntries()).toEqual({ cancel: { source: 'Cancel' } });
+  });
+
+  it('should collect error when resource does not exist', () => {
+    seedPair();
+    expect(deleteResource(collection(), { keys: ['app.button.missing'] })).toMatchObject({
+      entriesDeleted: 0,
+      errors: [{ key: 'app.button.missing', error: 'Resource not found: app.button.missing' }],
+    });
+  });
+
+  it('should collect error when folder does not exist', () => {
+    expect(deleteResource(collection(), { keys: ['app.button.ok'] })).toMatchObject({
+      entriesDeleted: 0,
+      errors: [{ key: 'app.button.ok', error: 'Folder not found: app.button' }],
+    });
+  });
+
+  it('reports a missing resource file by key without exposing its absolute path', () => {
+    writeFolderFiles(root(), 'app.button', { meta: {} });
+    expect(deleteResource(collection(), { keys: ['app.button.ok'] }).errors).toEqual([
+      { key: 'app.button.ok', error: 'Resource not found: app.button.ok' },
+    ]);
+  });
+
+  it('explains malformed resource JSON without exposing its filename', () => {
+    writeFolderFiles(root(), 'app.button', { entries: '{ bad json', meta: {} });
+    expect(deleteResource(collection(), { keys: ['app.button.ok'] }).errors).toEqual([
+      {
+        key: 'app.button.ok',
+        error: 'Failed to delete resource app.button.ok: folder app.button has unreadable resource files',
+      },
+    ]);
+  });
+
+  it('should collect error for invalid key format', () => {
+    expect(deleteResource(collection(), { keys: ['invalid key!'] })).toMatchObject({
+      entriesDeleted: 0,
+      errors: [{ key: 'invalid key!', error: expect.stringContaining('Invalid key segment') }],
+    });
+  });
+
+  it('should remove both JSON files when last entry deleted', () => {
+    seedResources(collection(), { 'app.button.ok': { source: 'OK' } });
+    expect(deleteResource(collection(), { keys: ['app.button.ok'] }).entriesDeleted).toBe(1);
+    expect(existsSync(join(root(), 'app', 'button', 'resource_entries.json'))).toBe(false);
+    expect(existsSync(join(root(), 'app', 'button', 'tracker_meta.json'))).toBe(false);
+  });
+
+  it('should preserve JSON files when other entries remain', () => {
+    seedPair();
+    const folder = join(root(), 'app', 'button');
+    expect(deleteResource(collection(), { keys: ['app.button.ok'] }).entriesDeleted).toBe(1);
+    expect(readEntries()).toEqual({ cancel: { source: 'Cancel' } });
+    expect(JSON.parse(readFileSync(join(folder, 'tracker_meta.json'), 'utf8'))).toEqual({
+      cancel: { en: { checksum: calculateChecksum('Cancel') } },
+    });
+  });
+
+  it('should handle nested folder structures', () => {
+    seedResources(collection(), { 'apps.common.buttons.ok': { source: 'OK' } });
+    expect(deleteResource(collection(), { keys: ['apps.common.buttons.ok'] })).toMatchObject({
+      entriesDeleted: 1,
+      errors: undefined,
+    });
+    expect(existsSync(join(root(), 'apps'))).toBe(false);
+  });
+
+  it('should handle missing tracker_meta.json gracefully', () => {
+    writeFolderFiles(root(), 'app.button', { entries: { ok: { source: 'OK' } } });
+    expect(deleteResource(collection(), { keys: ['app.button.ok'] })).toMatchObject({
+      entriesDeleted: 1,
+      errors: undefined,
+    });
+    expect(existsSync(join(root(), 'app'))).toBe(false);
+  });
+
+  it('should delete multiple resources successfully', () => {
+    seedPair();
+    seedResources(collection(), { 'app.button.save': { source: 'Save' } });
+    expect(deleteResource(collection(), { keys: ['app.button.ok', 'app.button.cancel'] })).toMatchObject({
+      entriesDeleted: 2,
+      errors: undefined,
+    });
+    expect(readEntries()).toEqual({ save: { source: 'Save' } });
+  });
+
+  it('should handle partial failures (some valid, some invalid keys)', () => {
+    seedPair();
+    expect(
+      deleteResource(collection(), { keys: ['app.button.ok', 'invalid key!', 'app.button.cancel'] }),
+    ).toMatchObject({
+      entriesDeleted: 2,
+      outcome: 'failed',
+      errors: [{ key: 'invalid key!', error: expect.stringContaining('Invalid key segment') }],
+    });
+    expect(existsSync(join(root(), 'app'))).toBe(false);
+  });
+
+  it('should handle empty array', () => {
+    expect(deleteResource(collection(), { keys: [] })).toEqual({
+      outcome: 'succeeded',
+      entriesDeleted: 0,
+      errors: undefined,
+    });
+  });
+
+  it('should handle all keys invalid scenario', () => {
+    const keys = ['invalid key!', 'another bad@key', 'bad#key'];
+    const result = deleteResource(collection(), { keys });
+    expect(result.entriesDeleted).toBe(0);
+    expect(result.errors?.map(({ key }) => key)).toEqual(keys);
+  });
+
+  it('should handle mix of found and not found keys', () => {
+    seedResources(collection(), { 'app.button.ok': { source: 'OK' } });
+    expect(
+      deleteResource(collection(), { keys: ['app.button.ok', 'app.button.notfound', 'app.button.missing'] }),
+    ).toMatchObject({
+      entriesDeleted: 1,
+      errors: [
+        { key: 'app.button.notfound', error: 'Resource not found: app.button.notfound' },
+        { key: 'app.button.missing', error: 'Resource not found: app.button.missing' },
+      ],
+    });
+  });
+
+  it('should delete resources from different folders in single operation', () => {
+    seedResources(collection(), { 'app.button.ok': { source: 'OK' }, 'common.cancel': { source: 'Cancel' } });
+    expect(deleteResource(collection(), { keys: ['app.button.ok', 'common.cancel'] })).toMatchObject({
+      entriesDeleted: 2,
+      errors: undefined,
+    });
+    expect(existsSync(join(root(), 'app'))).toBe(false);
+    expect(existsSync(join(root(), 'common'))).toBe(false);
+  });
+
+  it('should reject invalid keys with path traversal characters', () => {
+    const result = deleteResource(collection(), { keys: ['../secret.key'] });
+    expect(result.entriesDeleted).toBe(0);
+    expect(result.errors?.length).toBeGreaterThan(0);
+    expect(result.errors?.[0]?.error).toContain('Key validation: Invalid key format');
+  });
+
+  it('should NOT attempt to delete files for invalid paths', () => {
+    seedPair();
+    const before = readFileSync(join(root(), 'app', 'button', 'resource_entries.json'), 'utf8');
+    expect(deleteResource(collection(), { keys: ['../app.button.ok'] }).entriesDeleted).toBe(0);
+    expect(readFileSync(join(root(), 'app', 'button', 'resource_entries.json'), 'utf8')).toBe(before);
+  });
+
+  it('succeeds when every key is deleted', () => {
+    seedPair();
+    expect(deleteResource(collection(), { keys: ['app.button.ok', 'app.button.cancel'] })).toMatchObject({
+      entriesDeleted: 2,
+      outcome: 'succeeded',
+    });
+  });
+
+  it('fails when some keys are missing, even though others were deleted', () => {
+    seedPair();
+    expect(deleteResource(collection(), { keys: ['app.button.ok', 'app.button.missing'] })).toMatchObject({
+      entriesDeleted: 1,
+      outcome: 'failed',
+    });
+    expect(readEntries()).toEqual({ cancel: { source: 'Cancel' } });
+  });
+
+  it('fails when no key is deleted', () => {
+    seedPair();
+    expect(deleteResource(collection(), { keys: ['app.button.missing'] })).toMatchObject({
+      entriesDeleted: 0,
+      outcome: 'failed',
+    });
+    expect(readEntries()).toEqual({ ok: { source: 'OK' }, cancel: { source: 'Cancel' } });
   });
 });
