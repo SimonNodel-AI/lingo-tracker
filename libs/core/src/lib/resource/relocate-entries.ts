@@ -1,6 +1,6 @@
-import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
+import { InvalidCollectionFolderError, InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import { resolveCheckedResourceKey } from './resource-key';
 import { describeFolderProblem } from './collection-folders';
 import { pruneEmptiedFolders } from './folder-pruning';
 import { openFolders } from './folder-batch';
@@ -228,10 +228,11 @@ function plan(
 ): Planned | string {
   const { from, to } = relocation;
   try {
-    validateKey(from);
-    validateKey(to);
+    resolveCheckedResourceKey(from);
+    resolveCheckedResourceKey(to);
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    if (error instanceof InvalidResourceKeyError) return error.message;
+    throw error;
   }
 
   let fromSlot: Slot;

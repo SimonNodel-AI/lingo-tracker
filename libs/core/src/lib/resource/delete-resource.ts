@@ -1,4 +1,3 @@
-import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import type { RunOutcome } from '../run-outcome';
@@ -39,7 +38,6 @@ export function deleteResource(
   // Refuse the whole request before writes or mutations if any key targets an inaccessible folder.
   for (const key of params.keys) {
     try {
-      validateKey(key);
       resolveResourcePaths({ key, translationsFolder });
     } catch (error) {
       if (error instanceof InvalidCollectionFolderError) throw error;

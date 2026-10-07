@@ -41,6 +41,22 @@ const md5 = calculateChecksum;
 describe('relocateEntries (real fs)', () => {
   const root = useTempDir('relocate-entries-');
   const main = () => testCollection(join(root(), 'main'));
+
+  it('reports the typed validation message for either malformed relocation key', () => {
+    const collection = main();
+    for (const relocation of [
+      { from: 'bad@key', to: 'ok' },
+      { from: 'ok', to: 'bad@key' },
+    ]) {
+      const result = relocateEntries(batchPlan(collection, collection, [relocation]), { onMutation });
+      expect(result).toEqual({
+        moved: [],
+        collisions: [],
+        errors: ['Key validation: Invalid key segment "bad@key". Segments must match pattern [A-Za-z0-9_-]+'],
+      });
+      expect(collected).toEqual([]);
+    }
+  });
   const keysOf = (translationsFolder: string, collection = main()) =>
     readCollection({ ...collection, translationsFolder }).resources.map((resource) => resource.fullKey);
 

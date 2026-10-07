@@ -5,8 +5,6 @@ import {
   type TranslationInput,
   type TranslationStatus,
   translocoToICU,
-  validateKey,
-  validateTargetFolder,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
@@ -14,7 +12,6 @@ import {
   CoreOperationError,
   FolderNotFoundError,
   InvalidCollectionFolderError,
-  InvalidResourceKeyError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
@@ -32,9 +29,10 @@ import {
   seedLocales,
   withTranslatorProblems,
 } from './locale-seeding';
+import { resolveCheckedResourceKey } from './resource-key';
 import { planMove } from './move-plan';
 import { relocateEntries } from './relocate-entries';
-import { type ResolvedResourcePaths, resolveResourcePaths, validateAndResolvePaths } from './resource-file-paths';
+import { type ResolvedResourcePaths, resolveResourcePaths, resolveResolvedResourcePaths } from './resource-file-paths';
 import {
   openResourceFolder,
   type ResourceFolder,
@@ -64,7 +62,7 @@ function locateEntry(
   key: string,
   options: { readonly targetFolder?: string } = {},
 ): LocatedEntry {
-  const paths = validateAndResolvePaths({
+  const paths = resolveResourcePaths({
     key,
     translationsFolder: collection.translationsFolder,
     targetFolder: options.targetFolder,
@@ -74,7 +72,7 @@ function locateEntry(
 
 /** An add's full key has already been validated and placed by its caller. */
 function locateResolvedEntry(collection: Collection, resolvedKey: string): LocatedEntry {
-  const paths = resolveResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
+  const paths = resolveResolvedResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
   return openEntryAt(collection, paths);
 }
 
@@ -312,7 +310,7 @@ export function preflightAdd(
   changes: EntryAddChanges,
   onExisting: ExistingResourcePolicy,
 ): AddPreflight {
-  const paths = resolveResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
+  const paths = resolveResolvedResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
   validateAddChanges(collection, changes);
   checkWriteConflict(openEntryAt(collection, paths), onExisting);
   return {
@@ -591,11 +589,7 @@ function resolveDestination(
   source: { readonly resolvedKey: string; readonly entryKey: string },
   moveTo: string,
 ): string | undefined {
-  try {
-    if (moveTo) validateTargetFolder(moveTo);
-  } catch (error) {
-    throw new InvalidResourceKeyError(source.entryKey, error instanceof Error ? error.message : String(error));
-  }
+  resolveCheckedResourceKey(source.entryKey, moveTo);
   const [relocation] = planMove({
     source: collection,
     destination: collection,
@@ -648,7 +642,6 @@ export function removeEntry(
   options: MutationSinkOptions = {},
 ): ResourceEntryRemoval {
   const onMutation = resolveMutationSink(collection, options);
-  validateKey(key);
   const paths = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
   const folderAddress = paths.folderPathSegments.join('.') || '.';
   const presence = resourceFolderPresence(paths.folderPath);

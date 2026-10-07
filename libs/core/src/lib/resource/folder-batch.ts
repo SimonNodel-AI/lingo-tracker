@@ -1,5 +1,5 @@
 import type { Collection } from '../config/open-collection';
-import { resolveResourcePaths } from './resource-file-paths';
+import { resolveResolvedResourcePaths } from './resource-file-paths';
 import { openResourceFolder, type ResourceFolder } from './resource-folder';
 
 export interface FolderMember<T> {
@@ -13,7 +13,7 @@ export interface FolderGroup<T> {
   readonly members: FolderMember<T>[];
 }
 
-/** Groups full keys without opening folders, preserving first-seen folder and member order. */
+/** Groups stored or validated full keys without validating them or opening folders, preserving first-seen folder and member order. */
 export function groupByFolder<T>(
   collection: Collection,
   items: readonly T[],
@@ -22,7 +22,10 @@ export function groupByFolder<T>(
   const groups = new Map<string, FolderGroup<T>>();
   for (const item of items) {
     const key = keyOf(item);
-    const { folderPath, entryKey } = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
+    const { folderPath, entryKey } = resolveResolvedResourcePaths({
+      key,
+      translationsFolder: collection.translationsFolder,
+    });
     let group = groups.get(folderPath);
     if (!group) {
       group = { folderPath, members: [] };
@@ -44,7 +47,10 @@ export function openFolders(collection: Collection): { entryAt(key: string): Fol
   const folders = new Map<string, ResourceFolder>();
   return {
     entryAt(key) {
-      const { folderPath, entryKey } = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
+      const { folderPath, entryKey } = resolveResolvedResourcePaths({
+        key,
+        translationsFolder: collection.translationsFolder,
+      });
       let folder = folders.get(folderPath);
       if (!folder) {
         folder = openResourceFolder(folderPath, collection);

@@ -1,6 +1,5 @@
-import { resolveResourceKey, validateKey, validateTargetFolder } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import { resolveCheckedResourceKey } from './resource-key';
 import {
   type EntryAddChanges,
   type EntryAddResult,
@@ -47,7 +46,7 @@ export async function addResource(
   params: AddResourceParams,
   options: AddResourceOptions = {},
 ): Promise<EntryAddResult> {
-  const resolvedKey = resolveAddKey(params);
+  const resolvedKey = resolveCheckedResourceKey(params.key, params.targetFolder);
   const outcome = await writeEntry(
     collection,
     resolvedKey,
@@ -55,15 +54,4 @@ export async function addResource(
     options,
   );
   return outcome.result;
-}
-
-/** Validates input and places its key without opening or resolving a filesystem folder. */
-export function resolveAddKey(params: AddResourceParams): string {
-  try {
-    validateKey(params.key);
-    if (params.targetFolder) validateTargetFolder(params.targetFolder);
-  } catch (error) {
-    throw new InvalidResourceKeyError(params.key, error instanceof Error ? error.message : String(error));
-  }
-  return resolveResourceKey(params.key, params.targetFolder);
 }
