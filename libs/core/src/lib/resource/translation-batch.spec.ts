@@ -9,7 +9,7 @@ import { readCollection } from '../resource/read-collection';
 import { openResourceFolder } from '../resource/resource-folder';
 import { translationBatch } from './translation-batch';
 import { snapshotTranslation } from './translation-write-back';
-import type { Translator } from './translator';
+import type { Translator } from '../machine-translation/translator';
 
 vi.mock('../file-io/json-file-operations', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
@@ -218,5 +218,28 @@ describe('translationBatch', () => {
       { key: 'first.ok', locale: 'es', status: 'written' },
     ]);
     expect(read('first')['ok']).toMatchObject({ fr: 'Humain', es: '[es] OK' });
+  });
+  it('resolves an inherited sink once and honors an explicitly resolved absent sink', async () => {
+    const inherited = vi.fn();
+    const readSink = vi.fn(() => inherited);
+    const collection = {
+      ...testCollection(dir()),
+      get onMutation() {
+        return readSink();
+      },
+    };
+    seedResources(collection, { 'first.ok': { source: 'OK' } });
+    readSink.mockClear();
+    inherited.mockClear();
+    const selected = rows(collection);
+    await translationBatch(collection, selected, locales, translator());
+    expect(readSink).toHaveBeenCalledTimes(1);
+    expect(inherited).toHaveBeenCalledTimes(1);
+
+    readSink.mockClear();
+    inherited.mockClear();
+    await translationBatch(collection, selected, locales, translator(), { onMutation: undefined });
+    expect(readSink).not.toHaveBeenCalled();
+    expect(inherited).not.toHaveBeenCalled();
   });
 });

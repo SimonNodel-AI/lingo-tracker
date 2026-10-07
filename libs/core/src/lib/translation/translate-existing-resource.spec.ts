@@ -1,14 +1,15 @@
 import type { ResourceMutation } from '../resource/resource-mutation';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TranslationConfig } from '../../config/translation-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { AutoTranslationDisabledError, ResourceNotFoundError, TranslationError } from '../errors/lingo-tracker-error';
+import * as batchModule from '../resource/translation-batch';
 import { openResourceFolder } from '../resource/resource-folder';
-import { InMemoryTranslationProvider } from './in-memory-translation-provider';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { translateExistingResource } from './translate-existing-resource';
 
 const collected: ResourceMutation[] = [];
@@ -318,5 +319,58 @@ describe('translateExistingResource', () => {
       expect(result.entry.translations['fr']).toBe('Humain');
       expect(collected).toEqual([]);
     });
+  });
+  it('rethrows the original provider failure from a one-row Translation Batch', async () => {
+    const target = collection();
+    seedSave(target);
+    const error = new TranslationError('original provider failure', 'TIMEOUT', true);
+    const batch = vi
+      .spyOn(batchModule, 'translationBatch')
+      .mockResolvedValue([{ key: 'common.save', locale: 'es', status: 'failed', stage: 'provider', error }]);
+    try {
+      await expect(
+        translateExistingResource(target, 'common.save', {
+          onMutation,
+          provider: new InMemoryTranslationProvider(),
+        }),
+      ).rejects.toBe(error);
+      expect(batch).toHaveBeenCalledExactlyOnceWith(
+        target,
+        [expect.objectContaining({ key: 'common.save', source: 'Save' })],
+        ['es', 'de'],
+        expect.objectContaining({ translate: expect.any(Function) }),
+        { onMutation },
+      );
+      expect(collected).toEqual([]);
+    } finally {
+      batch.mockRestore();
+    }
+  });
+
+  it('rethrows the original write failure from a one-row Translation Batch', async () => {
+    const target = collection();
+    seedSave(target);
+    const error = new TranslationError('original write failure', 'TIMEOUT', true);
+    const batch = vi
+      .spyOn(batchModule, 'translationBatch')
+      .mockResolvedValue([{ key: 'common.save', locale: 'es', status: 'failed', stage: 'write', error }]);
+    try {
+      await expect(
+        translateExistingResource(target, 'common.save', {
+          onMutation,
+          provider: new InMemoryTranslationProvider(),
+        }),
+      ).rejects.toBe(error);
+      expect(batch).toHaveBeenCalledExactlyOnceWith(
+        target,
+        [expect.objectContaining({ key: 'common.save', source: 'Save' })],
+        ['es', 'de'],
+        expect.objectContaining({ translate: expect.any(Function) }),
+        { onMutation },
+      );
+      expect(collected).toEqual([]);
+    } finally {
+      batch.mockRestore();
+    }
   });
 });

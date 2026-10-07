@@ -19,12 +19,13 @@ import {
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
-import { snapshotTranslation, writeBackEntryTranslations } from '../translation/translation-write-back';
+import { selectTranslationRow, translationBatch } from './translation-batch';
+import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
 import {
   assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
   openPreparedTranslator,
-} from '../translation/translator';
+} from '../machine-translation/translator';
 import {
   assertCollectionLocales,
   type ResourceTranslation,
@@ -393,27 +394,19 @@ async function translateEntry(
   const config = assertAutoTranslationEnabled(collection);
   const resource = locateEntry(collection, key);
   const entry = requireEntry(resource.folder, resource.entryKey, resource.resolvedKey, { requireMetadata: true });
-  const locales = collection.targetLocales.filter((locale) => needsTranslation(entry.metadata[locale]));
+  const { row, locales } = selectTranslationRow(resource.resolvedKey, entry, collection.targetLocales);
   if (locales.length === 0) return { translatedCount: 0, skippedLocales: [], entry, warnings: [] };
-  const snapshots = new Map(
-    locales.map((locale) => [locale, snapshotTranslation(entry.source, entry.metadata[locale])]),
-  );
   const translator = openPreparedTranslator(collection, config, options);
-  const translated = await translator.translate([{ key: resource.resolvedKey, source: entry.source }], locales);
-  const pending = translated.values.flatMap(({ locale, value }) => {
-    const snapshot = snapshots.get(locale);
-    return snapshot ? [{ entryKey: resource.entryKey, locale, value, snapshot }] : [];
-  });
-  const result = writeBackEntryTranslations(collection, resource.folder.folderPath, pending, {
-    onMutation,
-    saved: (folder) => [
-      upsertMutation(collection.translationsFolder, resource.resolvedKey, folder.treeEntry(resource.entryKey)),
-    ],
-  });
+  const outcomes = await translationBatch(collection, [row], locales, translator, { onMutation });
+  for (const outcome of outcomes) {
+    if (outcome.status === 'failed') throw outcome.error;
+  }
+  const freshEntry = outcomes.find((outcome) => outcome.status !== 'failed')?.entry;
+  if (!freshEntry) throw new ResourceNotFoundError(resource.resolvedKey);
   return {
-    translatedCount: result.written.length,
-    skippedLocales: [...translated.skipped.map(({ locale }) => locale), ...result.skipped.map(({ locale }) => locale)],
-    entry: requireEntry(result.folder, resource.entryKey, resource.resolvedKey),
+    translatedCount: outcomes.filter((outcome) => outcome.status === 'written').length,
+    skippedLocales: outcomes.filter((outcome) => outcome.status === 'skipped').map(({ locale }) => locale),
+    entry: freshEntry,
     warnings: [...translator.problems],
   };
 }
@@ -551,7 +544,7 @@ async function editEntry(
       const snapshot = snapshots.get(translation.locale);
       return snapshot ? [{ entryKey, ...translation, snapshot }] : [];
     });
-    const writeBack = writeBackEntryTranslations(collection, folder.folderPath, pending, {
+    const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
       onMutation,
       saved: (folder) => [upsertMutation(translationsFolder, resource.resolvedKey, folder.treeEntry(entryKey))],
     });
