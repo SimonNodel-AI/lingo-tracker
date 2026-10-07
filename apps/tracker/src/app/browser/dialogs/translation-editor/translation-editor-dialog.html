@@ -5,8 +5,8 @@
       <mat-icon>{{ session.isEditMode() ? 'edit_note' : 'post_add' }}</mat-icon>
     </div>
     <div class="dialog-header-text">
-      <h2 [id]="titleId" class="dialog-title">{{ session.dialogTitle() | transloco }}</h2>
-      <p class="dialog-subtitle">{{ session.dialogSubtitle() | transloco: { collection: data.collectionName } }}</p>
+      <h2 [id]="titleId" class="dialog-title">{{ presentation.dialogTitle() | transloco }}</h2>
+      <p class="dialog-subtitle">{{ presentation.dialogSubtitle() | transloco: { collection: data.collectionName } }}</p>
     </div>
     <button
       mat-icon-button
@@ -52,7 +52,7 @@
             [class.loc-pill--open]="session.panels.isFolderPopoverOpen()"
             [class.loc-pill--flash]="session.locationAbsorbedFlash()"
             [disabled]="session.isReadOnly()"
-            [matTooltip]="session.locationDisabledTooltip()"
+            [matTooltip]="presentation.locationDisabledTooltip()"
             matTooltipPosition="above"
             [attr.aria-expanded]="session.panels.isFolderPopoverOpen()"
             aria-haspopup="dialog"
@@ -113,7 +113,7 @@
 
       @if (session.showKeyError()) {
         <p id="translation-editor-key-error" class="field-error field-error--row" role="alert">
-          {{ session.getKeyErrorMessage() | transloco }}
+          {{ presentation.getKeyErrorMessage() | transloco }}
         </p>
       } @else if (session.location.keyCollision()) {
         <p
@@ -138,7 +138,7 @@
       <!-- English (base) value -->
       <div class="field">
         <label class="field-label" for="translation-editor-base-value">
-          {{ session.baseLocaleName() }}
+          {{ presentation.baseLocaleName() }}
           <span class="base-tag">
             {{ data.baseLocale }}
             <small>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.BASEBADGE | transloco }}</small>
@@ -155,10 +155,10 @@
             required
             autocomplete="off"
             [placeholder]="
-              TOKENS.BROWSER.TRANSLATIONEDITOR.ENTERTRANSLATIONX | transloco: { locale: session.baseLocaleName() }
+              TOKENS.BROWSER.TRANSLATIONEDITOR.ENTERTRANSLATIONX | transloco: { locale: presentation.baseLocaleName() }
             "
             [attr.aria-invalid]="session.showBaseValueError()"
-            [attr.aria-describedby]="session.baseValueDescribedBy()"
+            [attr.aria-describedby]="presentation.baseValueDescribedBy()"
           ></textarea>
         </div>
         @if (session.showBaseValueError()) {
@@ -171,7 +171,7 @@
             <!-- The <code> run is ours, never translator input. -->
             <span
               [innerHTML]="
-                TOKENS.BROWSER.TRANSLATIONEDITOR.ICUHINTX | transloco: { placeholder: session.icuPlaceholderMarkup }
+                TOKENS.BROWSER.TRANSLATIONEDITOR.ICUHINTX | transloco: { placeholder: presentation.icuPlaceholderMarkup }
               "
             ></span>
           </p>
@@ -179,7 +179,7 @@
         @if (session.advisories.preferredTermFindings().length > 0) {
           <app-preferred-term-advisories
             [findings]="session.advisories.preferredTermFindings()"
-            [advisoryId]="session.preferredTermAdvisoriesId"
+            [advisoryId]="presentation.preferredTermAdvisoriesId"
             [readOnly]="session.isReadOnly()"
             (applyRule)="session.onApplyPreferredTerm($event)"
           />
@@ -286,14 +286,14 @@
         data-testid="other-locales-row"
         #otherLocalesRow
         [disabled]="session.otherLocales().length === 0"
-        [matTooltip]="session.otherLocalesDisabledTooltip()"
+        [matTooltip]="presentation.otherLocalesDisabledTooltip()"
         matTooltipPosition="above"
         (click)="session.panels.openLocalesDrawer()"
       >
         <mat-icon class="linkrow-lead" aria-hidden="true">translate</mat-icon>
         <span class="linkrow-title">{{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAB.OTHERLOCALES | transloco }}</span>
         <span class="linkrow-sum">
-          {{ session.otherLocalesSummary() }}
+          {{ presentation.otherLocalesSummary() }}
           <span class="dots" aria-hidden="true">
             @for (locale of session.entry.localeSummaries(); track locale.locale) {
               <span [class]="'dot dot--' + locale.status"></span>
@@ -315,7 +315,7 @@
         >
           <mat-icon class="disclosure-icon" aria-hidden="true">visibility</mat-icon>
           <span class="disclosure-title">{{ TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.TITLE | transloco }}</span>
-          <span class="disclosure-summary">{{ session.contextSummary() }}</span>
+          <span class="disclosure-summary">{{ presentation.contextSummary() }}</span>
           <mat-icon class="disclosure-chevron" aria-hidden="true">expand_more</mat-icon>
         </button>
         @if (session.panels.isContextOpen()) {
@@ -381,7 +381,7 @@
               @let localeCode = localeGroup.controls.locale.value;
               @let localeStatus = localeGroup.controls.status.value;
               <div class="lrow-who">
-                <b>{{ session.getLocaleDisplayName(localeCode) }}</b>
+                <b>{{ presentation.getLocaleDisplayName(localeCode) }}</b>
                 <span class="lc">{{ localeCode }}</span>
               </div>
 
@@ -393,13 +393,13 @@
                   [disabled]="session.isReadOnly()"
                   [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONEDITOR.STATUS | transloco"
                 >
-                  {{ session.statusLabelToken(localeStatus) | transloco }}
+                  {{ presentation.statusLabelToken(localeStatus) | transloco }}
                   <mat-icon class="st-chev" aria-hidden="true">expand_more</mat-icon>
                 </button>
                 <mat-menu #statusMenu="matMenu">
                   @for (statusOption of session.translationStatusOptions; track statusOption) {
                     <button mat-menu-item type="button" (click)="session.setLocaleStatus(i, statusOption)">
-                      <span [class]="'st st--' + statusOption">{{ session.statusLabelToken(statusOption) | transloco }}</span>
+                      <span [class]="'st st--' + statusOption">{{ presentation.statusLabelToken(statusOption) | transloco }}</span>
                     </button>
                   }
                 </mat-menu>
@@ -420,7 +420,7 @@
                   autocomplete="off"
                   [attr.aria-label]="
                     TOKENS.BROWSER.TRANSLATIONEDITOR.LOCALETRANSLATIONX
-                      | transloco: { locale: session.getLocaleDisplayName(localeCode) }
+                      | transloco: { locale: presentation.getLocaleDisplayName(localeCode) }
                   "
                   [placeholder]="
                     (session.isEditMode()
@@ -479,7 +479,7 @@
           <mat-spinner diameter="18" class="submit-spinner"></mat-spinner>
           {{ TOKENS.BROWSER.TRANSLATIONEDITOR.SAVING | transloco }}
         } @else {
-          {{ session.saveButtonLabel() | transloco }}
+          {{ presentation.saveButtonLabel() | transloco }}
         }
       </button>
     }
@@ -614,7 +614,7 @@
       <h4>
         <mat-icon aria-hidden="true">translate</mat-icon>
         {{ TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.LOCALES | transloco }}
-        <span class="blk-note">{{ session.otherLocalesSummary() }}</span>
+        <span class="blk-note">{{ presentation.otherLocalesSummary() }}</span>
       </h4>
       <!-- Only the locales that still owe work; a caught-up entry says so in one line. -->
       <div class="lsum" data-testid="locale-summary">
@@ -628,7 +628,7 @@
             }
             <span
               [class]="'dot dot--' + locale.status"
-              [matTooltip]="session.statusLabelToken(locale.status) | transloco"
+              [matTooltip]="presentation.statusLabelToken(locale.status) | transloco"
             ></span>
           </div>
         } @empty {

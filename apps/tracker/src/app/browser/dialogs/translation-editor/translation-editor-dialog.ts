@@ -110,6 +110,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     notifications: inject(NotificationService),
   });
 
+  readonly presentation = this.session.presentation;
+
   constructor() {
     effect((onCleanup) => {
       const request = this.session.panels.focusRequest();
