@@ -862,6 +862,18 @@ Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ---
 
+### Prepared Add
+
+An add whose values and advice are ready before any resource file is written. Core's `libs/core/src/lib/resource/resource-entry.ts` owns the phases: `preflightAdd` → `prepareAdd` → `commitPrepared`. `preflightAdd` resolves the folder, validates supplied locales and statuses, then checks the [Existence Policy](#existence-policy). It returns the exported `AddPreflight` type that `prepareAdd(preflight, options?)` requires. Preparation returns the exported `PreparedAdd` type that `commitPrepared` requires, so the signatures enforce the phase order.
+
+The Prepared Add contains the collection, resolved key, existence policy, ICU base value, supplied and seeded translations, details, skipped locales when auto-translation ran, and [Project Terms](#project-terms) findings with Translator problems. Preparation uses [Locale Seeding](#locale-seeding) once. Commit reopens fresh state, rechecks existence and writes the captured values through the [Resource Folder](#resource-folder), reporting through the [Mutation Sink](#mutation-sink). Single and batch adds share these phases and retain their result shapes.
+
+[Resource Batches](#resource-batches) preflights every item before preparing any. Each preflight precedes the batch duplicate-key check. Its `recheck` reads fresh state; the batch rechecks every prepared item without an await before its synchronous write loop. Preparation failures and late conflicts write no batch item; filesystem write failures have no rollback.
+
+Explained in context: [`core-library.md`](core-library.md#add-resource)
+
+---
+
 ### Project Defaults
 
 The browser-safe setup constants in `libs/domain/src/lib/project-defaults.ts`: `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `DEFAULT_BUNDLE_DIST`, `DEFAULT_BUNDLE_NAME`, and `DEFAULT_TYPE_DIST_FILE`. Core re-exports the same values through its existing public surface. CLI flag records and prompt builders import them from domain, so importing metadata or generating help does not load core. Values and prompt defaults are unchanged.

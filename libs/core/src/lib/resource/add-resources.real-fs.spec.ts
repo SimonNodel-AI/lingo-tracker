@@ -16,6 +16,7 @@ import { InMemoryTranslationProvider } from '../translation/in-memory-translatio
 import { addResource } from './add-resource';
 import { addResources } from './add-resources';
 import { openResourceFolder } from './resource-folder';
+import * as resourceFolder from './resource-folder';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {
@@ -49,6 +50,50 @@ describe('addResources (real fs)', () => {
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('validates supplied locales before existence and batch duplicate checks', async () => {
+    const provider = new InMemoryTranslationProvider();
+    const target = collection({ translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' } });
+    const invalid = { key: 'common.ok', baseValue: 'Bad', translations: [{ locale: 'es', value: 'Mal' }] };
+    await expect(
+      addResources(target, [{ key: 'common.ok', baseValue: 'First' }, invalid], { provider, onMutation }),
+    ).rejects.toThrow(LocaleNotFoundError);
+    expect(existsSync(join(root, 'translations'))).toBe(false);
+    await addResource(collection(), { key: 'common.ok', baseValue: 'Existing' });
+    const entries = readFileSync(file('common', 'resource_entries.json'));
+    const meta = readFileSync(file('common', 'tracker_meta.json'));
+    await expect(addResources(target, [invalid], { provider, onMutation })).rejects.toThrow(LocaleNotFoundError);
+    expect(readFileSync(file('common', 'resource_entries.json'))).toEqual(entries);
+    expect(readFileSync(file('common', 'tracker_meta.json'))).toEqual(meta);
+    expect(provider.calls).toEqual([]);
+    expect(collected).toEqual([]);
+  });
+
+  it('opens and checks the folder before refusing a duplicate batch key', async () => {
+    const original = resourceFolder.openResourceFolder;
+    const failure = new Error('unreadable second folder read');
+    const opened = vi.spyOn(resourceFolder, 'openResourceFolder');
+    opened.mockImplementationOnce(original).mockImplementationOnce(() => {
+      throw failure;
+    });
+    try {
+      await expect(
+        addResources(
+          collection(),
+          [
+            { key: 'common.ok', baseValue: 'First' },
+            { key: 'common.ok', baseValue: 'Duplicate' },
+          ],
+          { onMutation },
+        ),
+      ).rejects.toBe(failure);
+      expect(opened).toHaveBeenCalledTimes(2);
+      expect(existsSync(join(root, 'translations'))).toBe(false);
+      expect(collected).toEqual([]);
+    } finally {
+      opened.mockRestore();
+    }
   });
 
   it('writes nothing when the third item has an invalid key, including both files of touched folders', async () => {
@@ -194,6 +239,7 @@ describe('addResources (real fs)', () => {
       fr: 'New',
       de: 'New',
     });
+    expect(JSON.parse(readFileSync(file('common', 'resource_entries.json'), 'utf8')).ok.comment).toBeUndefined();
     expect(JSON.parse(readFileSync(file('common', 'tracker_meta.json'), 'utf8')).ok.en.checksum).toBeDefined();
   });
 
