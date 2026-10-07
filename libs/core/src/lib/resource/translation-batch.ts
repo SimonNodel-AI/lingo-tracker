@@ -1,9 +1,10 @@
+import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { groupByFolder } from '../resource/folder-batch';
-import type { ResourceTreeEntry } from '../resource/resource-tree-types';
-import { resolveMutationSink, type MutationSinkOptions, upsertMutation } from '../resource/resource-mutation';
-import { type TranslationSnapshot, writeBackTranslations } from './translation-write-back';
-import type { Translator, TranslationOutcome } from './translator';
+import { groupByFolder } from './folder-batch';
+import type { ResourceTreeEntry } from './resource-tree-types';
+import { type MutationSinkOptions, resolveMutationSink, upsertMutation } from './resource-mutation';
+import { snapshotTranslation, type TranslationSnapshot, writeBackTranslations } from './translation-write-back';
+import type { Translator, TranslationOutcome } from '../machine-translation/translator';
 
 export interface TranslationBatchRow {
   readonly key: string;
@@ -23,13 +24,26 @@ export type TranslationBatchOutcome = { readonly key: string; readonly locale: s
     }
 );
 
+/** Select eligible targets and snapshot them before translation. */
+export function selectTranslationRow(key: string, entry: ResourceTreeEntry, locales: readonly string[]) {
+  const targets = locales.filter((locale) => needsTranslation(entry.metadata[locale]));
+  const row: TranslationBatchRow = {
+    key,
+    source: entry.source,
+    snapshots: Object.fromEntries(
+      targets.map((locale) => [locale, snapshotTranslation(entry.source, entry.metadata[locale])]),
+    ),
+  };
+  return { row, locales: targets };
+}
+
 function pairKey(key: string, locale: string): string {
   return `${key}\0${locale}`;
 }
 
 /**
  * One Translator call followed by one write-back per folder; failures stay at their own stage.
- * Rows have unique full keys and snapshots for every requested, non-base target locale.
+ * The caller passes its resolved mutation sink. Rows have unique full keys and snapshots for every requested, non-base target locale.
  * Translator guarantees exactly one value or skip per entry x non-base locale; an invalid
  * provider response throws INVALID_RESPONSE. The counting invariant relies on this contract.
  * Provider skips are returned first, preserving the single-resource caller's skip ordering.
@@ -42,6 +56,7 @@ export async function translationBatch(
   translator: Translator,
   options: MutationSinkOptions = {},
 ): Promise<TranslationBatchOutcome[]> {
+  const onMutation = 'onMutation' in options ? options.onMutation : resolveMutationSink(collection, options);
   const failed = (
     key: string,
     locale: string,
@@ -77,7 +92,7 @@ export async function translationBatch(
     );
     try {
       const result = writeBackTranslations(collection, folderPath, pending, {
-        onMutation: resolveMutationSink(collection, options),
+        onMutation,
         saved: (folder, written) => {
           const writtenKeys = new Set(written.map(({ entryKey }) => entryKey));
           return members

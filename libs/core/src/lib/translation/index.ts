@@ -4,7 +4,7 @@
 export {
   type InMemoryTranslate,
   InMemoryTranslationProvider,
-} from './in-memory-translation-provider';
+} from '../machine-translation/in-memory-translation-provider';
 export {
   type TranslateExistingResourceOptions,
   type TranslateExistingResourceResult,
@@ -16,7 +16,7 @@ export type {
   TranslateRequest,
   TranslateResult,
   TranslationProvider,
-} from './translation-provider';
+} from '../machine-translation/translation-provider';
 export {
   assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
@@ -27,7 +27,7 @@ export {
   type TranslationSkipReason,
   type Translator,
   type TranslatorEntry,
-} from './translator';
+} from '../machine-translation/translator';
 
 export {
   prepareTranslationRun,

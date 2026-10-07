@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { ResourceAlreadyExistsError, TranslationError } from '../errors/lingo-tracker-error';
-import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { commitPrepared, preflightAdd, prepareAdd } from './resource-entry';
 import type { ResourceMutation } from './resource-mutation';
 

@@ -82,7 +82,7 @@ describe('core error exports', () => {
 
   it('defines all core error subclasses inside errors/', () => {
     const covered = Object.keys(sources).map((file) => new URL(file, import.meta.url).href);
-    expect(covered).toContain(new URL('../translation/translation-provider.ts', import.meta.url).href);
+    expect(covered).toContain(new URL('../machine-translation/translation-provider.ts', import.meta.url).href);
     expect(covered).toContain(new URL('../config/preferred-terminology-file.ts', import.meta.url).href);
     expect(covered).toContain(new URL('../../collections-manager/add-collection.ts', import.meta.url).href);
     const outside = Object.entries(sources)

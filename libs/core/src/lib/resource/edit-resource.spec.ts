@@ -17,7 +17,7 @@ import {
   TranslationError,
 } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
-import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
 import { openResourceFolder } from './resource-folder';

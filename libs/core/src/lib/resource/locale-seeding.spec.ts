@@ -2,7 +2,7 @@ import { writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { LocaleNotFoundError, ProtectedTermsFileError } from '../errors/lingo-tracker-error';
-import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { assertCollectionLocales, seedLocales, withTranslatorProblems } from './locale-seeding';
 
 describe('locale seeding', () => {

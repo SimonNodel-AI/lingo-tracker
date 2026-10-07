@@ -12,7 +12,7 @@ import {
   ResourceAlreadyExistsError,
   TranslationError,
 } from '../errors/lingo-tracker-error';
-import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { addResource } from './add-resource';
 import { addResources } from './add-resources';
 import { openResourceFolder } from './resource-folder';

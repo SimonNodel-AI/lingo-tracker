@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { ResourceAlreadyExistsError, ResourceNotFoundError, TranslationError } from '../errors/lingo-tracker-error';
 import * as fileIO from '../file-io/json-file-operations';
-import { InMemoryTranslationProvider } from '../translation/in-memory-translation-provider';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { calculateChecksum } from './checksum';
 import { pruneEmptiedFolders } from './folder-pruning';
 import { type EntryWriteResult, removeEntry, writeEntry } from './resource-entry';

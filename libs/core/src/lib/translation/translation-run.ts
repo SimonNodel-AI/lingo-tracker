@@ -1,4 +1,3 @@
-import { needsTranslation } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import {
@@ -8,11 +7,18 @@ import {
 } from '../errors/lingo-tracker-error';
 import { readCollection } from '../resource/read-collection';
 import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../resource/resource-mutation';
-import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import type { RunOutcome } from '../run-outcome';
-import { type TranslationBatchOutcome, type TranslationBatchRow, translationBatch } from './translation-batch';
-import { snapshotTranslation } from './translation-write-back';
-import { assertAutoTranslationEnabled, type OpenTranslatorOptions, openPreparedTranslator } from './translator';
+import {
+  type TranslationBatchOutcome,
+  type TranslationBatchRow,
+  selectTranslationRow,
+  translationBatch,
+} from '../resource/translation-batch';
+import {
+  assertAutoTranslationEnabled,
+  type OpenTranslatorOptions,
+  openPreparedTranslator,
+} from '../machine-translation/translator';
 
 export interface TranslateLocaleCounts {
   /**
@@ -83,19 +89,6 @@ interface TranslationRunTally {
   failedCount: number;
   readonly skipped: Array<Extract<TranslationBatchOutcome, { status: 'skipped' }>>;
   readonly failures: Array<Extract<TranslationBatchOutcome, { status: 'failed' }>>;
-}
-
-/** Select eligible targets and snapshot them before translation. */
-function selectTranslationRow(key: string, entry: ResourceTreeEntry, locales: readonly string[]) {
-  const targets = locales.filter((locale) => needsTranslation(entry.metadata[locale]));
-  const row: TranslationBatchRow = {
-    key,
-    source: entry.source,
-    snapshots: Object.fromEntries(
-      targets.map((locale) => [locale, snapshotTranslation(entry.source, entry.metadata[locale])]),
-    ),
-  };
-  return { row, locales: targets };
 }
 
 interface ExecuteTranslationRunOptions extends TranslationRunOptions {
