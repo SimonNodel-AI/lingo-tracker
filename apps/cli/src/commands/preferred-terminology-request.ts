@@ -1,17 +1,9 @@
-import { InvalidProjectTermsEditError } from '../errors/lingo-tracker-error';
-import type { ProjectTermsUpdate } from './update-project-terms';
-
-export interface PreferredTerminologyFlags {
-  readonly list?: boolean;
-  readonly add?: string;
-  readonly preferred?: string;
-  readonly reason?: string;
-  readonly remove?: string;
-}
+import { InvalidProjectTermsEditError, type ProjectTermsUpdate } from '@simoncodes-ca/core';
+import type { PreferredTerminologyOptions } from './preferred-terminology';
 
 /** Convert CLI flag values to a structured request, preserving incomplete-group refusal order. */
 export function preferredTerminologyRequestFromFlags(
-  options: PreferredTerminologyFlags,
+  options: PreferredTerminologyOptions,
 ): NonNullable<ProjectTermsUpdate['preferredTerminology']> {
   if (options.add !== undefined && options.remove !== undefined && options.preferred === undefined) {
     throw new InvalidProjectTermsEditError(

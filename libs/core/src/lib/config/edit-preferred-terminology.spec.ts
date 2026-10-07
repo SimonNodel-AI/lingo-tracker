@@ -105,7 +105,7 @@ describe('editPreferredTerminology', () => {
       tempDir(),
     );
     expect(result.rules).toEqual([{ discouraged: 'Expenditure', preferred: 'Investment' }]);
-    expect(result.error).toBeUndefined();
+    expect(result).not.toHaveProperty('error');
     expect(stored()).toEqual(result.rules);
   });
 
