@@ -1,4 +1,5 @@
 import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
+import { entryChange } from '@simoncodes-ca/domain';
 import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 import { flagName } from '../runner/flag-record';
 import { defineCommand } from '../runner/command-runner';
@@ -32,8 +33,7 @@ export const editResourceCommand = defineCommand<EditResourceOptions>()({
 
     const changes: EditResourceChanges = {
       baseValue: answers.baseValue || undefined,
-      comment: answers.comment || undefined,
-      tags: answers.tags?.length ? answers.tags : undefined,
+      ...entryChange('edit', answers),
       translations,
       // `--target-folder` names the folder the entry moves to ('' for the collection root).
       moveTo: answers.targetFolder,

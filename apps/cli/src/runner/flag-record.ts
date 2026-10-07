@@ -87,7 +87,11 @@ export function flagValues(
     if ('argument' in record) values[key] = args[index++];
     else {
       const attribute = new Option(record.flags).attributeName();
-      if (attributes.has(attribute)) values[key] = raw[attribute];
+      if (attributes.has(attribute)) {
+        // Commander retains raw '' when commaListOption returns undefined.
+        // Optional list handlers receive the declared array-or-undefined value.
+        values[key] = record.list === 'optional' && raw[attribute] === '' ? undefined : raw[attribute];
+      }
     }
   }
   return values;

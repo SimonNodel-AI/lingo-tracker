@@ -193,7 +193,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ### CLI Option Definitions
 
-Each command declares its CLI spellings, help, parsing, defaults and questions once in an adjacent flag record, enforced by `defineFlags<Options, Context>()(records)`. `registerFlags` creates fresh Commander options; negation uses a `--no-…` spelling with an optional `positive` companion. `flagValues` only maps Commander attributes and positional arguments to record keys; after prompts, the runner calls `resolveFlagValues` once to apply implicit values and defaults with fresh array copies in production and `runCommand`. A record's `selection` metadata types its prompt and all-flag names against declared answer and option keys, and defines fallback rules; the runner decodes these inputs into typed `selections` before calling the handler, so commands do not read prompt-only answers or reapply record defaults.
+Each command declares its CLI spellings, help, parsing, defaults and questions once in an adjacent flag record, enforced by `defineFlags<Options, Context>()(records)`. `registerFlags` creates fresh Commander options; negation uses a `--no-…` spelling with an optional `positive` companion. `flagValues` maps Commander attributes and positional arguments to record keys. For `list: 'optional'`, it converts Commander's raw `''` to `undefined` but keeps the key present. After prompts, `resolveFlagValues` applies implicit values and defaults with fresh array copies in production and `runCommand`. A record's `selection` metadata types its prompt and all-flag names against declared answer and option keys, and defines fallback rules; the runner decodes these inputs into typed `selections` before calling the handler, so commands do not read prompt-only answers or reapply record defaults.
 
 `runner/options.ts` contains the low-level Commander constructors. `commaListOption` omits an exactly empty optional flag (`""`) so prompts and missing-option gates still run. Comma-only input keeps `[]` and counts as supplied. Clear mode preserves `[]`; preserve mode returns `{ kind: 'empty', input }` for deferred diagnostics. Prompt list answers use the same parser. Find-similar's one default limit lives in its flag record; `find-similar-options.ts` supplies its numeric parser. Validate's records replace the separate registration conversion.
 
@@ -371,7 +371,7 @@ Explained in context: [`cli.md`](cli.md#command-inventory)
 
 ### Command Registration
 
-The CLI declaration that connects a name, description, flag records, help text and a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander. Its action uses `flagValues(records, raw, args)` to map Commander attributes to record keys, positional records in order, and runtime defaults, then awaits the lazy import and handler. Only declared keys reach handlers; absent options stay absent unless they have a default. The [Command Manifest](#command-manifest) pairs each declaration with its loader. Handler-coverage and surface-snapshot tests use the manifest directly. Coverage checks it against every command in `createCli()`. Every handler takes one options object. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated records and parsers.
+The CLI declaration that connects a name, description, flag records, help text and a lazy command import. `registerCommand<Options>(program, registration)` in `apps/cli/src/runner/register-command.ts` installs it on Commander. Its action uses `flagValues(records, raw, args)` to map Commander attributes and ordered positional arguments to record keys. It then awaits the lazy import and handler. Only declared keys reach handlers. Absent flag attributes stay absent unless Commander supplies a default. An exactly empty optional list retains its key with `undefined`, so `resolveFlagValues` treats it as present and applies defaults or prompt answers. The [Command Manifest](#command-manifest) pairs each declaration with its loader. Handler-coverage and surface-snapshot tests use the manifest directly. Coverage checks it against every command in `createCli()`. Every handler takes one options object. The shared [CLI Option Definitions](#cli-option-definitions) supply repeated records and parsers.
 
 Explained in context: [`cli.md`](cli.md#command-runner)
 
@@ -518,6 +518,16 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 The translation editor's save session in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-submit.ts`. `EditorSubmitSession` owns idle, missing-comment confirmation, key-conflict choice, writing and done phases. It ignores a trigger outside idle and remembers "Save Anyway" after a refused write. Writing and done both keep the dialog's busy indicator on until it closes. Injected functions provide the store writes and both prompts. The session returns an [Editor Outcome](#editor-outcome), a message decision or a focus decision. Message decisions carry [Outcome Feedback](#outcome-feedback), with the existing token, optional server-message detail, error tone, and inline placement. [Editor Session](#editor-session) shows this feedback through its supplied `feedbackText` function and owns the focus decisions. An empty write or rejected prompt gives the unexpected message and restores idle. `submitEditor` builds the create or update request from the [Resource Entry Draft](#resource-entry-draft) and classifies API refusals. `submitGate` keeps the read-only, submitting, invalid-form, collision and comment order. `resolveDraftKey` in `resource-entry-draft.ts` trims the leaf for the preview, create request and conflict hand-off. [Editor Location](#editor-location) gathers known entries; `editor-entry-sources.ts` derives tag suggestions.
 
 Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
+### Entry Change
+
+The rule for an entry's optional comment and tags. The pure `entryChange(intent, input)` function in `libs/domain/src/lib/entry-change.ts` maps these values to core writes. Absent values (`undefined`) leave fields unchanged. Non-empty values set fields. On edit, an empty comment (`''`) clears it and an empty tags list (`[]`) removes tags. On add, empty values mean no comment or tags.
+
+CLI add-resource, CLI edit-resource and API update use this rule. Edit-resource prompts only for key and base value, so comment and tags come from flags. The flag-record boundary omits exactly empty `--tags ""`, while `--tags ,` supplies `[]`.
+
+Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md#entry-change)
 
 ---
 

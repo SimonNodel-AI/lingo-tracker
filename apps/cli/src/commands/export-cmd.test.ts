@@ -1,6 +1,10 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type prompts from 'prompts';
+import { Command } from 'commander';
+import { flagValues, registerFlags } from '../runner/flag-record';
+import { EXPORT_FLAGS } from './export-cmd-flags';
+import { editResourceCommand } from './edit-resource';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
 import { createCommandProject, type CommandProject } from '../testing/command-project';
@@ -8,6 +12,12 @@ import { type ExportCommandOptions, exportCommand } from './export-cmd';
 
 describe('exportCommand (real project)', () => {
   let project: CommandProject;
+  const parsedFlags = (...args: string[]) => {
+    const command = new Command();
+    registerFlags(command, EXPORT_FLAGS);
+    command.parse(args, { from: 'user' });
+    return flagValues(EXPORT_FLAGS, command.opts(), []);
+  };
   const run = (options: ExportCommandOptions = { format: 'json' }) => project.run(exportCommand, options);
   const payload = (locale = 'fr', directory = 'dist/export') => project.json(`${directory}/${locale}.json`);
   const summaries = () => readdirSync(project.cwd).filter((name) => name.startsWith('lingo-tracker-export-summary'));
@@ -254,6 +264,32 @@ describe('exportCommand (real project)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('❌ Export cancelled.\n');
     expect(project.exists('dist/export')).toBe(false);
+  });
+  it('uses prompt selections and tags after parsed empty collection, locale and tags flags', async () => {
+    await project.seed('buttons.cancel', 'Cancel', 'common');
+    const tagged = await project.run(editResourceCommand, {
+      collection: 'common',
+      key: 'buttons.ok',
+      tags: ['selected'],
+    });
+    expect(tagged.exitCode).toBe(0);
+    const flags = parsedFlags('--format', 'json', '--status', 'new', '--collection', '', '--locale', '', '--tags', '');
+    expect(flags).toMatchObject({ collection: undefined, locale: undefined, tags: undefined });
+    const { result, calls } = await interactiveRun(flags, {
+      collections: ['common'],
+      locales: ['fr'],
+      tags: 'selected',
+    });
+    expect(calls[0]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'collections' }),
+        expect.objectContaining({ name: 'locales' }),
+        expect.objectContaining({ name: 'tags' }),
+      ]),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(payload()).toEqual({ buttons: { ok: 'OK' } });
+    expect(project.exists('dist/export/es.json')).toBe(false);
   });
   it('should prompt for collections when not provided', async () => {
     const { result, calls } = await interactiveRun(

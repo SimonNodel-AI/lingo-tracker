@@ -4,6 +4,7 @@ import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
 import { BUNDLE_REGISTRATION, BUNDLE_FLAGS } from './bundle-flags';
+import { flagValues, registerFlags } from '../runner/flag-record';
 import { registerCommand } from '../runner/register-command';
 import { CommandCancelledError } from '../runner/command-runner';
 import { createCommandProject, type CommandProject } from '../testing/command-project';
@@ -19,6 +20,12 @@ const noBundles =
 
 describe('bundleCommand (real project)', () => {
   let project: CommandProject;
+  const parsedFlags = (...args: string[]) => {
+    const command = new Command();
+    registerFlags(command, BUNDLE_FLAGS);
+    command.parse(args, { from: 'user' });
+    return flagValues(BUNDLE_FLAGS, command.opts(), []);
+  };
   const configure = (bundles: Bundles) => project.configure({ ...project.config, bundles });
   const files = (folder: string) => (project.exists(folder) ? readdirSync(`${project.cwd}/${folder}`).sort() : []);
   const expectLocales = (folder: string, locales = ['en', 'fr', 'es']) => {
@@ -325,6 +332,22 @@ describe('bundleCommand (real project)', () => {
     expectPrompt(questions);
     expect(result.exitCode).toBe(0);
     expectLocales('out');
+    expect(files('second')).toEqual([]);
+  });
+  it('uses submitted bundle and locale selections after parsed empty name and locale flags', async () => {
+    const flags = parsedFlags('--name', '', '--locale', '');
+    expect(flags).toMatchObject({ name: undefined, locale: undefined });
+    const questions: unknown[] = [];
+    const result = await project.run(bundleCommand, flags, {
+      interactive: true,
+      ask: async (asked) => {
+        questions.push(asked);
+        return { bundleOrAll: 'main', locale: ['fr'] };
+      },
+    });
+    expectPrompt(questions);
+    expect(result.exitCode).toBe(0);
+    expectLocales('out', ['fr']);
     expect(files('second')).toEqual([]);
   });
   it('processes both bundles from interactive all selection', async () => {

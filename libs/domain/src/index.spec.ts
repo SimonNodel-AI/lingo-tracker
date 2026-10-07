@@ -41,6 +41,7 @@ describe('domain public surface', () => {
       'displayStatus',
       'effectiveProtectedTerms',
       'effectiveTags',
+      'entryChange',
       'escapeRegExp',
       'findBundleDefinition',
       'findCollectionEntry',

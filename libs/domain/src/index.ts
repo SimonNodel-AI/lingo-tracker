@@ -180,3 +180,6 @@ export {
   DEFAULT_BUNDLE_NAME,
   DEFAULT_TYPE_DIST_FILE,
 } from './lib/project-defaults';
+
+// Presence-aware optional entry details
+export { entryChange, type EntryChange } from './lib/entry-change';

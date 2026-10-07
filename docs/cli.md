@@ -617,6 +617,8 @@ lingo-tracker delete-resource \
 
 Edit an existing translation resource.
 
+Omitted comment and tags flags leave their stored values unchanged. Use `--comment ""` to clear a comment and `--tags ,` to remove all tags. Exactly empty `--tags ""` is omitted and leaves tags unchanged. Interactive edit prompts only for the key and base value. A blank base-value answer leaves the stored base value unchanged.
+
 **Usage:**
 
 ```bash
