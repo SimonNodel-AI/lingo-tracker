@@ -51,11 +51,6 @@ export const initialListScopeState: ListScopeState = {
   showNestedResources: true,
 };
 
-export interface RemovedRow {
-  row: ResourceSummaryDto | undefined;
-  atFolder: string | null;
-}
-
 /** One load of the List Scope, with everything captured when it was asked for. */
 interface ListLoad {
   scope: ListScope;
@@ -70,7 +65,7 @@ interface ListLoad {
  * Other code asks it to show a folder (`showFolder`) or a query (`showQuery`), to go back to
  * the folder behind a search (`clearSearch`), or to load what it shows again (`reloadList`).
  * It is the only writer of `currentFolderPath`, the busy flag and `listError`, and the only
- * writer of rows; writes request cache edits through its methods.
+ * loader of rows; Browser Mirror owns write-driven cache edits.
  *
  * Every load runs through one `switchMap`, so the newest scope wins and an older load is
  * cancelled, not merely ignored: its HTTP request and any not-ready retries stop. The Browser
@@ -198,39 +193,6 @@ export function withListScopeFeature<_>() {
 
       return {
         /** Replaces existing entries in both caches, preserving search match metadata. */
-        replaceEntry(fullKey: string, resource: ResourceSummaryDto): void {
-          const translations = store.translations();
-          const searchResults = store.searchResults();
-          patchState(store, {
-            translations: translations.some((entry) => entry.fullKey === fullKey)
-              ? translations.map((entry) => (entry.fullKey === fullKey ? resource : entry))
-              : translations,
-            searchResults: searchResults.some((result) => result.fullKey === fullKey)
-              ? searchResults.map((result) => (result.fullKey === fullKey ? { ...result, ...resource } : result))
-              : searchResults,
-          });
-        },
-        /** Removes a committed deletion or relocation from both caches. */
-        removeEntry(fullKey: string): void {
-          patchState(store, {
-            translations: store.translations().filter((entry) => entry.fullKey !== fullKey),
-            searchResults: store.searchResults().filter((result) => result.fullKey !== fullKey),
-          });
-        },
-        /** Optimistic drag removal affects only folder rows, as before. */
-        removeRow(fullKey: string): RemovedRow {
-          const row = store.translations().find((entry) => entry.fullKey === fullKey);
-          const atFolder = store.loadedFolderPath();
-          patchState(store, { translations: store.translations().filter((entry) => entry.fullKey !== fullKey) });
-          return { row, atFolder };
-        },
-        /** A newer folder load or an already restored row wins over rollback. */
-        restoreRow({ row, atFolder }: RemovedRow): void {
-          const rows = store.translations();
-          if (row && store.loadedFolderPath() === atFolder && !rows.some((entry) => entry.fullKey === row.fullKey)) {
-            patchState(store, { translations: [...rows, row] });
-          }
-        },
         /** Shows one folder's resources (leaving a search, if one is shown). */
         showFolder(path: string): void {
           show({ kind: 'folder', path });
