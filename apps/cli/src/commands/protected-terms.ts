@@ -19,12 +19,6 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
   // `--collection` is optional: absent means the global scope, so the runner opens nothing.
   collection: 'none',
   run: async ({ project, cwd, answers: options }) => {
-    const hasAdd = (options.add ?? []).length > 0;
-    const hasRemove = (options.remove ?? []).length > 0;
-    const hasSet = options.set !== undefined;
-    const hasList = options.list === true;
-    const hasFile = options.file !== undefined;
-
     const collectionName = options.collection;
     const target = { collection: collectionName };
     const plan = planProjectTermsUpdate(project, {
@@ -35,14 +29,14 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
           edit: {
             add: options.add,
             remove: options.remove,
-            ...(hasSet && { set: options.set ?? [] }),
+            set: options.set,
           },
         },
-        list: hasList,
-        ...(hasFile && { file: options.file }),
+        list: options.list,
+        file: options.file,
       },
     });
-    const result = plan.report(({ protectedTerms: view, protectedTermsFileChange }) => {
+    const result = plan.report(({ protectedTerms: view, protectedTermsFileChange, lists }) => {
       if (protectedTermsFileChange !== undefined) {
         ConsoleFormatter.success(protectedTermsFileChange.message);
       }
@@ -50,7 +44,7 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
         // A named file that does not exist reads as empty; print its warning before a later write can fail.
         for (const warning of view.warnings) ConsoleFormatter.warning(warning);
       }
-      if (view !== undefined && hasList) {
+      if (view !== undefined && lists.protectedTerms) {
         ConsoleFormatter.section('Protected Terms');
         if (collectionName) {
           ConsoleFormatter.keyValue('Scope', `Collection "${collectionName}" (global + collection)`);
@@ -74,13 +68,12 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
     }
     if (result.status === 'failed') throw result.error;
 
-    if (hasAdd || hasRemove || hasSet) {
-      const written = result.protectedTermsResult;
-      if (written === undefined) return;
+    const written = result.protectedTermsResult;
+    if (written !== undefined) {
       const scopeLabel = collectionName ? `Collection "${collectionName}"` : 'Global';
       const where = `(${displayTermPath(written.filePath, cwd)})`;
       ConsoleFormatter.success(
-        written.terms.length === 0
+        written.action === 'cleared'
           ? `${scopeLabel} protected terms cleared ${where}`
           : `${scopeLabel} protected terms updated: ${written.terms.join(', ')} ${where}`,
       );

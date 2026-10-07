@@ -44,4 +44,3 @@ export {
 } from './update-project-terms';
 
 export { readProjectTermsView, type ProjectTermsConfigView, type ProjectTermsView } from './project-terms-view';
-export { preferredTerminologyRequestFromFlags, type PreferredTerminologyFlags } from './preferred-terminology-request';

@@ -72,7 +72,6 @@ describe('core public surface', () => {
       'openResourceFolder',
       'planBundle',
       'planProjectTermsUpdate',
-      'preferredTerminologyRequestFromFlags',
       'prepareBundleRun',
       'prepareTranslationRun',
       'readCollection',

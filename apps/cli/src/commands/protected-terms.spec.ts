@@ -7,6 +7,7 @@ import { CONFIG_FILENAME, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConsoleFormatter } from '../utils';
 import { protectedTermsCommand } from './protected-terms';
+import { runCommand } from '../runner/command-runner';
 
 for (const method of ['section', 'keyValue', 'error', 'success', 'warning'] as const) {
   vi.spyOn(ConsoleFormatter, method).mockImplementation(() => undefined);
@@ -49,6 +50,48 @@ describe('protectedTermsCommand (real core)', () => {
   afterEach(() => {
     rmSync(projectDir, { recursive: true, force: true });
     process.exitCode = undefined;
+  });
+
+  it('lists an empty file without a terms success line through the runner', async () => {
+    writeFileSync(globalPath(), '[]');
+    for (const method of ['section', 'keyValue', 'error', 'success', 'warning'] as const) {
+      vi.mocked(ConsoleFormatter[method]).mockRestore();
+    }
+    try {
+      const result = await runCommand(protectedTermsCommand, { list: true }, { cwd: projectDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Terms: (none)');
+      expect(result.stdout).not.toContain('protected terms cleared');
+      expect(result.stdout).not.toContain('protected terms updated');
+      expect(result.stdout).not.toContain('✅');
+      expect(result.stderr).toBe('');
+    } finally {
+      for (const method of ['section', 'keyValue', 'error', 'success', 'warning'] as const) {
+        vi.spyOn(ConsoleFormatter, method).mockImplementation(() => undefined);
+      }
+    }
+  });
+
+  it('points to an empty file without a terms success line through the runner', async () => {
+    writeFileSync(globalPath(), '[]');
+    writeFileSync(join(projectDir, 'empty.json'), '[]');
+    for (const method of ['section', 'keyValue', 'error', 'success', 'warning'] as const) {
+      vi.mocked(ConsoleFormatter[method]).mockRestore();
+    }
+    try {
+      const result = await runCommand(protectedTermsCommand, { file: 'empty.json' }, { cwd: projectDir });
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Global protected terms file set to');
+      expect(result.stdout).not.toContain('protected terms cleared');
+      expect(result.stdout).not.toContain('protected terms updated');
+      expect(result.stdout.match(/✅/g)).toHaveLength(1);
+      expect(result.stderr).toBe('');
+      expect(readJson(join(projectDir, 'empty.json'))).toEqual([]);
+    } finally {
+      for (const method of ['section', 'keyValue', 'error', 'success', 'warning'] as const) {
+        vi.spyOn(ConsoleFormatter, method).mockImplementation(() => undefined);
+      }
+    }
   });
 
   it('writes a trimmed --set comma list', async () => {
