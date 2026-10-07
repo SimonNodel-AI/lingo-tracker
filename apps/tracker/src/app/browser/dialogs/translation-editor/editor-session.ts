@@ -69,8 +69,20 @@ export class EditorSession {
   readonly presentation: EditorPresentation;
 
   readonly errorMessage = signal<string | null>(null);
-  readonly entry = new EditorEntryForm();
-  readonly advisories: EditorAdvisories;
+  private readonly entry = new EditorEntryForm();
+  private readonly advisories: EditorAdvisories;
+
+  readonly form = this.entry.form;
+  readonly localeSummaries = this.entry.localeSummaries;
+  readonly localesNeedingWork = this.entry.localesNeedingWork;
+  readonly tags = this.entry.tags;
+  readonly contextTree: EditorLocation['contextTree'];
+  readonly folderSegments: EditorLocation['folderSegments'];
+  readonly fullKeyPreview: EditorLocation['fullKeyPreview'];
+  readonly keyCollision: EditorLocation['keyCollision'];
+  readonly isSearchingSimilar: EditorAdvisories['isSearchingSimilar'];
+  readonly preferredTermFindings: EditorAdvisories['preferredTermFindings'];
+  readonly similarResources: EditorAdvisories['similarResources'];
   /** True while the location pill is highlighting a folder it just absorbed from the key field. */
   readonly locationAbsorbedFlash = signal(false);
   /** Live-region text announcing the same move to a screen reader, which cannot see the flash. */
@@ -89,8 +101,9 @@ export class EditorSession {
   readonly tagInputText = signal('');
   readonly inheritedTagsList = computed(() => this.data.resource?.inheritedTags ?? []);
 
-  readonly location: EditorLocation;
-  readonly submit: EditorSubmitSession;
+  private readonly location: EditorLocation;
+  private readonly submit: EditorSubmitSession;
+  readonly isSubmitting: Signal<boolean>;
 
   readonly otherLocales = computed(() =>
     this.data.availableLocales.filter((locale) => locale !== this.data.baseLocale),
@@ -172,6 +185,13 @@ export class EditorSession {
       moreLabel: (count) =>
         this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
     });
+    this.contextTree = this.location.contextTree;
+    this.folderSegments = this.location.folderSegments;
+    this.fullKeyPreview = this.location.fullKeyPreview;
+    this.keyCollision = this.location.keyCollision;
+    this.isSearchingSimilar = this.advisories.isSearchingSimilar;
+    this.preferredTermFindings = this.advisories.preferredTermFindings;
+    this.similarResources = this.advisories.similarResources;
     this.submit = new EditorSubmitSession({
       writes: {
         create: (dto) => this.options.browser.createResource(this.data.collectionName, dto),
@@ -181,8 +201,22 @@ export class EditorSession {
       chooseConflict: (fullKey) => this.#showKeyConflictDialog(fullKey),
       onWriteStart: () => this.errorMessage.set(null),
     });
+    this.isSubmitting = this.submit.isSubmitting;
     this.#tagSuggestions = editorTagSuggestions(options.browser);
-    this.presentation = new EditorPresentation(this, data, options);
+    this.presentation = new EditorPresentation(
+      {
+        isEditMode: this.isEditMode,
+        isReadOnly: this.isReadOnly,
+        showBaseValueError: this.showBaseValueError,
+        otherLocales: this.otherLocales,
+        similarCount: this.similarCount,
+        entry: this.entry,
+        advisories: this.advisories,
+        location: this.location,
+      },
+      data,
+      options,
+    );
     this.#initialize();
   }
 

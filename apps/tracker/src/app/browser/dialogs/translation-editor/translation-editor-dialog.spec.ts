@@ -104,7 +104,7 @@ describe('TranslationEditorDialog', () => {
 
       expect(component.session.tagInputText()).toBe('');
       expect(input.value).toBe('');
-      expect(component.session.entry.tags()).toEqual([]);
+      expect(component.session.tags()).toEqual([]);
     });
   });
 
@@ -245,9 +245,9 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should trigger save on Ctrl+Enter', async () => {
-      component.session.entry.form.controls.key.setValue('test_key');
-      component.session.entry.form.controls.baseValue.setValue('Test Value');
-      component.session.entry.form.controls.comment.setValue('Test comment'); // Add comment to skip confirmation
+      component.session.form.controls.key.setValue('test_key');
+      component.session.form.controls.baseValue.setValue('Test Value');
+      component.session.form.controls.comment.setValue('Test comment'); // Add comment to skip confirmation
 
       const event = new KeyboardEvent('keydown', {
         key: 'Enter',
@@ -262,9 +262,9 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should trigger save on Cmd+Enter', async () => {
-      component.session.entry.form.controls.key.setValue('test_key');
-      component.session.entry.form.controls.baseValue.setValue('Test Value');
-      component.session.entry.form.controls.comment.setValue('Test comment'); // Add comment to skip confirmation
+      component.session.form.controls.key.setValue('test_key');
+      component.session.form.controls.baseValue.setValue('Test Value');
+      component.session.form.controls.comment.setValue('Test comment'); // Add comment to skip confirmation
 
       const event = new KeyboardEvent('keydown', {
         key: 'Enter',
@@ -281,13 +281,13 @@ describe('TranslationEditorDialog', () => {
     // Absorption leaves malformed dotted input intact; segmentValidator blocks creation.
     it.each(['apps..common.ok', '.ok', '.'])('rejects unabsorbed malformed dotted input %j', async (key) => {
       renderDialog(createMockData('create'));
-      component.session.entry.form.controls.baseValue.setValue('OK');
-      component.session.entry.form.controls.key.setValue(key);
+      component.session.form.controls.baseValue.setValue('OK');
+      component.session.form.controls.key.setValue(key);
       await component.session.onSubmit();
       spectator.detectChanges();
 
-      expect(component.session.entry.form.controls.key.value).toBe(key);
-      expect(component.session.entry.form.controls.key.hasError('pattern')).toBe(true);
+      expect(component.session.form.controls.key.value).toBe(key);
+      expect(component.session.form.controls.key.hasError('pattern')).toBe(true);
       expect(component.presentation.getKeyErrorMessage()).toBe(
         TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR,
       );
@@ -296,8 +296,8 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should not submit invalid form on Ctrl+Enter', () => {
-      component.session.entry.form.controls.key.setValue('');
-      component.session.entry.form.controls.baseValue.setValue('');
+      component.session.form.controls.key.setValue('');
+      component.session.form.controls.baseValue.setValue('');
 
       const event = new KeyboardEvent('keydown', {
         key: 'Enter',
@@ -314,9 +314,9 @@ describe('TranslationEditorDialog', () => {
     it('should ignore Ctrl+Enter while the comment confirmation is open', async () => {
       const answer = new Subject<boolean>();
       mockDialog.open.mockReturnValue({ afterClosed: () => answer.asObservable() });
-      component.session.entry.form.controls.key.setValue('test_key');
-      component.session.entry.form.controls.baseValue.setValue('Test Value');
-      component.session.entry.form.controls.comment.setValue('');
+      component.session.form.controls.key.setValue('test_key');
+      component.session.form.controls.baseValue.setValue('Test Value');
+      component.session.form.controls.comment.setValue('');
 
       const first = component.session.onSubmit();
       await vi.waitFor(() => expect(mockDialog.open).toHaveBeenCalledTimes(1));
@@ -334,9 +334,9 @@ describe('TranslationEditorDialog', () => {
     it('should focus the comment field when user clicks "Add Comment"', async () => {
       mockDialog.open.mockReturnValue({ afterClosed: vi.fn().mockReturnValue(of(false)) });
 
-      component.session.entry.form.controls.key.setValue('test_key');
-      component.session.entry.form.controls.baseValue.setValue('Test Value');
-      component.session.entry.form.controls.comment.setValue('');
+      component.session.form.controls.key.setValue('test_key');
+      component.session.form.controls.baseValue.setValue('Test Value');
+      component.session.form.controls.comment.setValue('');
 
       await component.session.onSubmit();
       // Focus is deferred a task past afterClosed() so the confirmation's focus
@@ -356,7 +356,7 @@ describe('TranslationEditorDialog', () => {
       );
       mockDialog.open.mockReturnValue({ afterClosed: vi.fn().mockReturnValue(of(false)) });
 
-      component.session.entry.form.controls.comment.setValue('');
+      component.session.form.controls.comment.setValue('');
 
       await component.session.onSubmit();
       spectator.detectChanges();
@@ -370,9 +370,9 @@ describe('TranslationEditorDialog', () => {
     it('should select any existing comment text when the field is focused', async () => {
       mockDialog.open.mockReturnValue({ afterClosed: vi.fn().mockReturnValue(of(false)) });
 
-      component.session.entry.form.controls.key.setValue('test_key');
-      component.session.entry.form.controls.baseValue.setValue('Test Value');
-      component.session.entry.form.controls.comment.setValue('   ');
+      component.session.form.controls.key.setValue('test_key');
+      component.session.form.controls.baseValue.setValue('Test Value');
+      component.session.form.controls.comment.setValue('   ');
       spectator.detectChanges();
 
       await component.session.onSubmit();
@@ -440,17 +440,17 @@ describe('TranslationEditorDialog', () => {
 
       component.session.setLocaleStatus(0, 'verified');
 
-      expect(component.session.entry.form.controls.translations.at(0).value.status).toBe('verified');
+      expect(component.session.form.controls.translations.at(0).value.status).toBe('verified');
     });
   });
 
   describe('Context column', () => {
     it('should split the folder path for the location pill', () => {
-      expect(component.session.location.folderSegments()).toEqual(['common', 'buttons']);
+      expect(component.session.folderSegments()).toEqual(['common', 'buttons']);
     });
 
     it('should highlight the row of the entry being created, not just pill it', () => {
-      component.session.entry.form.controls.key.setValue('ok');
+      component.session.form.controls.key.setValue('ok');
       spectator.detectChanges();
 
       const rows = spectator.queryAll('[data-testid="context-tree"] .ftree-n--target');
@@ -488,7 +488,7 @@ describe('TranslationEditorDialog', () => {
         ),
       );
 
-      expect(component.session.entry.localesNeedingWork().map((locale) => locale.locale)).toEqual(['fr']);
+      expect(component.session.localesNeedingWork().map((locale) => locale.locale)).toEqual(['fr']);
       const rows = spectator.queryAll('[data-testid="locale-summary"] .lsum-r');
       expect(rows).toHaveLength(1);
       expect(rows[0]?.textContent).toContain('fr');
@@ -506,7 +506,7 @@ describe('TranslationEditorDialog', () => {
         ),
       );
 
-      expect(component.session.entry.localesNeedingWork()).toHaveLength(0);
+      expect(component.session.localesNeedingWork()).toHaveLength(0);
       expect(spectator.queryAll('[data-testid="locale-summary"] .lsum-r')).toHaveLength(0);
       expect(spectator.query('[data-testid="locales-all-up-to-date"]')).not.toBeNull();
     });
@@ -527,10 +527,10 @@ describe('TranslationEditorDialog', () => {
     it('should detect a collision against the entries the browser already holds', () => {
       seedBrowserFolder('common.buttons', ['ok', 'cancel']);
 
-      component.session.entry.form.controls.key.setValue('ok');
+      component.session.form.controls.key.setValue('ok');
       spectator.detectChanges();
 
-      expect(component.session.location.keyCollision()).toBe(true);
+      expect(component.session.keyCollision()).toBe(true);
       expect(spectator.query('[data-testid="key-collision-error"]')).not.toBeNull();
     });
 
@@ -539,9 +539,9 @@ describe('TranslationEditorDialog', () => {
         of({ path, resources: path === 'common.errors' ? [entry('notFound')] : [], children: [] }),
       );
 
-      component.session.entry.form.controls.key.setValue('notFound');
+      component.session.form.controls.key.setValue('notFound');
       spectator.detectChanges();
-      expect(component.session.location.keyCollision()).toBe(false);
+      expect(component.session.keyCollision()).toBe(false);
 
       component.session.panels.openFolderPopover();
       component.session.panels.stageFolder('common.errors');
@@ -549,7 +549,7 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
 
       expect(apiSpies.getResourceTree).toHaveBeenCalledWith('test-collection', 'common.errors', false);
-      expect(component.session.location.keyCollision()).toBe(true);
+      expect(component.session.keyCollision()).toBe(true);
     });
 
     it('should detect a collision when an edit picks a folder holding its key', () => {
@@ -564,7 +564,7 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
 
       expect(apiSpies.getResourceTree).toHaveBeenCalledWith('test-collection', 'common.errors', false);
-      expect(component.session.location.keyCollision()).toBe(true);
+      expect(component.session.keyCollision()).toBe(true);
       expect(spectator.query('[data-testid="key-collision-error"]')).not.toBeNull();
     });
 
@@ -582,26 +582,26 @@ describe('TranslationEditorDialog', () => {
       apiSpies.getResourceTree.mockReturnValue(pending);
 
       component.session.onFolderConfirmed('common.errors');
-      component.session.entry.form.controls.key.setValue('notFound');
+      component.session.form.controls.key.setValue('notFound');
       spectator.detectChanges();
 
-      expect(component.session.location.keyCollision()).toBe(false);
-      expect(component.session.location.contextTree().some((node) => node.kind === 'entry')).toBe(false);
+      expect(component.session.keyCollision()).toBe(false);
+      expect(component.session.contextTree().some((node) => node.kind === 'entry')).toBe(false);
 
       pending.next({ path: 'common.errors', resources: [entry('notFound')], children: [] });
       pending.complete();
       spectator.detectChanges();
 
-      expect(component.session.location.keyCollision()).toBe(true);
+      expect(component.session.keyCollision()).toBe(true);
     });
 
     it('should mark the colliding leaf as an existing entry in the context tree', () => {
       seedBrowserFolder('common.buttons', ['ok']);
 
-      component.session.entry.form.controls.key.setValue('ok');
+      component.session.form.controls.key.setValue('ok');
       spectator.detectChanges();
 
-      const leaf = component.session.location.contextTree().find((node) => node.kind === 'entry' && node.name === 'ok');
+      const leaf = component.session.contextTree().find((node) => node.kind === 'entry' && node.name === 'ok');
       expect(leaf?.mark).toBe('exists');
       expect(spectator.query('[data-testid="tree-exists-pill"]')).not.toBeNull();
     });
@@ -609,7 +609,7 @@ describe('TranslationEditorDialog', () => {
     it('should mark the colliding row error-coloured rather than accented', () => {
       seedBrowserFolder('common.buttons', ['ok']);
 
-      component.session.entry.form.controls.key.setValue('ok');
+      component.session.form.controls.key.setValue('ok');
       spectator.detectChanges();
 
       expect(spectator.queryAll('[data-testid="context-tree"] .ftree-n--taken')).toHaveLength(1);
@@ -619,7 +619,7 @@ describe('TranslationEditorDialog', () => {
     it('should turn the footer key the error colour', () => {
       seedBrowserFolder('common.buttons', ['ok']);
 
-      component.session.entry.form.controls.key.setValue('ok');
+      component.session.form.controls.key.setValue('ok');
       spectator.detectChanges();
 
       expect(spectator.query('[data-testid="footer-key"]')).toHaveClass('mono--dup');
@@ -628,7 +628,7 @@ describe('TranslationEditorDialog', () => {
     it('should leave the footer key unmarked while the key is free', () => {
       seedBrowserFolder('common.buttons', ['ok']);
 
-      component.session.entry.form.controls.key.setValue('cancel');
+      component.session.form.controls.key.setValue('cancel');
       spectator.detectChanges();
 
       expect(spectator.query('[data-testid="footer-key"]')).not.toHaveClass('mono--dup');
@@ -637,18 +637,18 @@ describe('TranslationEditorDialog', () => {
     it('should take the footer validity glyph back to idle', () => {
       seedBrowserFolder('common.buttons', ['ok']);
 
-      component.session.entry.form.controls.key.setValue('ok');
-      component.session.entry.form.controls.baseValue.setValue('OK');
+      component.session.form.controls.key.setValue('ok');
+      component.session.form.controls.baseValue.setValue('OK');
       spectator.detectChanges();
 
-      expect(component.session.entry.form.valid).toBe(true);
+      expect(component.session.form.valid).toBe(true);
       expect(component.session.isFormValid()).toBe(false);
     });
 
     it('should close with shouldOpenEdit from "Open existing"', async () => {
       seedBrowserFolder('common.buttons', ['ok']);
 
-      component.session.entry.form.controls.key.setValue('ok');
+      component.session.form.controls.key.setValue('ok');
       spectator.detectChanges();
 
       spectator.click('[data-testid="open-existing"]');
@@ -661,9 +661,9 @@ describe('TranslationEditorDialog', () => {
     it('should offer the conflict dialog instead of saving when the key is taken', async () => {
       seedBrowserFolder('common.buttons', ['ok']);
 
-      component.session.entry.form.controls.key.setValue('ok');
-      component.session.entry.form.controls.baseValue.setValue('OK');
-      component.session.entry.form.controls.comment.setValue('The affirmative button');
+      component.session.form.controls.key.setValue('ok');
+      component.session.form.controls.baseValue.setValue('OK');
+      component.session.form.controls.comment.setValue('The affirmative button');
       spectator.detectChanges();
 
       await component.session.onSubmit();
@@ -698,7 +698,7 @@ describe('TranslationEditorDialog', () => {
 
     /** Types a value and lets the 300ms debounce run out. */
     const typeAndSettle = (value: string): void => {
-      component.session.entry.form.controls.baseValue.setValue(value);
+      component.session.form.controls.baseValue.setValue(value);
       vi.advanceTimersByTime(300);
       spectator.detectChanges();
     };
@@ -726,7 +726,7 @@ describe('TranslationEditorDialog', () => {
       expect(component.session.showSimilarContext()).toBe(true);
 
       // Work elsewhere in the form leaves the pinned block alone.
-      component.session.entry.form.controls.comment.setValue('A comment');
+      component.session.form.controls.comment.setValue('A comment');
       component.session.addTagValue('browser');
       vi.advanceTimersByTime(1000);
       spectator.detectChanges();
@@ -740,7 +740,7 @@ describe('TranslationEditorDialog', () => {
       typeAndSettle('Save changes');
       expect(component.session.similarCount()).toBe(1);
 
-      component.session.entry.form.controls.baseValue.setValue('Save changes now');
+      component.session.form.controls.baseValue.setValue('Save changes now');
       spectator.detectChanges();
 
       // Before the debounce has even started to run out.
@@ -757,18 +757,18 @@ describe('TranslationEditorDialog', () => {
       }>();
       apiSpies.searchTranslations.mockReturnValue(pending);
       typeAndSettle('Save changes');
-      expect(component.session.advisories.isSearchingSimilar()).toBe(true);
+      expect(component.session.isSearchingSimilar()).toBe(true);
 
-      component.session.entry.form.controls.baseValue.setValue('Save changes now');
-      expect(component.session.advisories.isSearchingSimilar()).toBe(true);
+      component.session.form.controls.baseValue.setValue('Save changes now');
+      expect(component.session.isSearchingSimilar()).toBe(true);
       vi.advanceTimersByTime(299);
-      expect(component.session.advisories.isSearchingSimilar()).toBe(true);
+      expect(component.session.isSearchingSimilar()).toBe(true);
       vi.advanceTimersByTime(1);
       pending.next({ query: 'Save changes now', results: [], totalFound: 0, limited: false });
-      expect(component.session.advisories.isSearchingSimilar()).toBe(false);
+      expect(component.session.isSearchingSimilar()).toBe(false);
 
-      component.session.entry.form.controls.baseValue.setValue('Sa');
-      expect(component.session.advisories.isSearchingSimilar()).toBe(false);
+      component.session.form.controls.baseValue.setValue('Sa');
+      expect(component.session.isSearchingSimilar()).toBe(false);
     });
 
     it('should stay silent below the three-character floor', () => {
@@ -843,7 +843,7 @@ describe('TranslationEditorDialog', () => {
 
       typeAndSettle('Save draft');
 
-      expect(component.session.advisories.similarResources().map((result) => result.fullKey)).toEqual([
+      expect(component.session.similarResources().map((result) => result.fullKey)).toEqual([
         'common.actions.saveDraft',
         'browser.translationEditor.saveAnyway',
       ]);
@@ -893,7 +893,7 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
       vi.advanceTimersByTime(0);
 
-      expect(document.activeElement).toBe(component.folderFilterInput?.nativeElement);
+      expect(document.activeElement).toBe(document.querySelector('[data-testid="folder-filter"]'));
 
       component.session.confirmStagedFolder();
       spectator.detectChanges();
@@ -914,7 +914,7 @@ describe('TranslationEditorDialog', () => {
         configurable: true,
       });
       renderDialog(createMockData('create'));
-      component.session.entry.form.controls.key.setValue('ok');
+      component.session.form.controls.key.setValue('ok');
       spectator.detectChanges();
     });
 
@@ -978,7 +978,7 @@ describe('TranslationEditorDialog', () => {
     };
 
     const type = (value: string, settle = true): void => {
-      component.session.entry.form.controls.baseValue.setValue(value);
+      component.session.form.controls.baseValue.setValue(value);
       if (settle) {
         vi.advanceTimersByTime(PREFERRED_TERM_DEBOUNCE_MS);
       }
@@ -996,7 +996,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should wait for a typing pause before advising', () => {
-      component.session.entry.form.controls.baseValue.setValue('Capital Expenditure');
+      component.session.form.controls.baseValue.setValue('Capital Expenditure');
       vi.advanceTimersByTime(PREFERRED_TERM_DEBOUNCE_MS - 1);
       spectator.detectChanges();
       expect(advisories()).toHaveLength(0);
@@ -1036,16 +1036,16 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should replace every occurrence on Use without saving', () => {
-      component.session.entry.form.controls.key.setValue('label');
+      component.session.form.controls.key.setValue('label');
       type('Expenditure, expenditure-report and {expenditure} stay');
 
       spectator.click('[data-testid="preferred-term-use"]');
       spectator.detectChanges();
 
-      expect(component.session.entry.form.controls.baseValue.value).toBe(
+      expect(component.session.form.controls.baseValue.value).toBe(
         'Investment, Investment-report and {expenditure} stay',
       );
-      expect(component.session.entry.form.controls.baseValue.dirty).toBe(true);
+      expect(component.session.form.controls.baseValue.dirty).toBe(true);
       expect(apiSpies.createResource).not.toHaveBeenCalled();
       expect(apiSpies.updateResource).not.toHaveBeenCalled();
       expect(dialogRef.close).not.toHaveBeenCalled();
@@ -1071,7 +1071,7 @@ describe('TranslationEditorDialog', () => {
       spectator.click('[data-testid="preferred-term-use"]');
       vi.advanceTimersByTime(300);
 
-      expect(component.session.advisories.baseValueText()).toBe('Total Investment for the year');
+      expect(component.session.form.controls.baseValue.value).toBe('Total Investment for the year');
       expect(apiSpies.searchTranslations).toHaveBeenCalledWith(
         'test-collection',
         'Total Investment for the year',
@@ -1100,11 +1100,11 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should not block saving or make the field invalid', async () => {
-      component.session.entry.form.controls.key.setValue('label');
-      component.session.entry.form.controls.comment.setValue('A comment');
+      component.session.form.controls.key.setValue('label');
+      component.session.form.controls.comment.setValue('A comment');
       type('Expenditure');
 
-      expect(component.session.entry.form.controls.baseValue.valid).toBe(true);
+      expect(component.session.form.controls.baseValue.valid).toBe(true);
       expect(component.session.isFormValid()).toBe(true);
 
       await component.session.onSubmit();
@@ -1146,7 +1146,7 @@ describe('TranslationEditorDialog', () => {
     it('should keep the base-value error in the description alongside the advisories', () => {
       type('Expenditure');
       component.session.submitAttempted.set(true);
-      component.session.entry.form.controls.baseValue.setErrors({ required: true });
+      component.session.form.controls.baseValue.setErrors({ required: true });
       spectator.detectChanges();
 
       expect(baseTextarea()?.getAttribute('aria-describedby')).toBe(
