@@ -1028,6 +1028,8 @@ Example: key `ok` with target folder `apps.common.buttons` resolves to `apps.com
 
 The resolved key determines the filesystem path: `apps/common/buttons/` folder, entry key `ok` in `resource_entries.json`.
 
+Core's `resolveCheckedResourceKey` validates the input key and optional target folder before it combines them. It raises `InvalidResourceKeyError` with the unchanged domain message. Single and batch add callers, move input and relocation use this check without filesystem access. `resolveResourcePaths` uses the same check for submitted keys before folder resolution, including for `removeEntry`. `resolveResolvedResourcePaths` maps validated or stored full keys without another syntax check. Add preflight, folder batches, import lookup and locale translation use this path resolver. Both path entries retain collection-folder policy. Delete and relocation retain their per-key message reporting.
+
 Explained in context: [`libs-domain.md`](libs-domain.md)
 
 ---
@@ -1437,6 +1439,8 @@ Explained in context: [`frontend.md`](frontend.md), [`bundle-generation.md`](bun
 ### Typed Errors
 
 The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`).
+
+Core converts domain key and target-folder errors once at the [Resolved Key](#resolved-key) seam. Locale validation uses `assertValidLocale` and raises `InvalidLocaleError` with the unchanged domain message. Both errors have kind `invalid` and map to HTTP 400. Delete and relocation report the typed key error's message in their results.
 
 The API maps `kind` to a default HTTP status. An API-owned code table declares message transforms, status overrides, and inclusion of core `details` as response `errors`. `ErrorCode` combines domain and known provider codes so the API can require a complete HTTP table. All core error classes live in `errors/`, including translation and terminology validation errors. Core exposes domain facts without HTTP metadata. The filter reads these facts without checks for specific subclasses. The API may define its own `LingoTrackerError` subclasses, such as `JobNotFoundError` with kind `not-found`, because the filter reads only `kind`, `code` and `exposeMessage` to select their HTTP mapping. A core spec reserves kind `upstream` for `TranslationError`, so unknown provider codes keep the same prefix and default 502.
 

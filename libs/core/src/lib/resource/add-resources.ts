@@ -1,8 +1,9 @@
 import type { Collection } from '../config/open-collection';
 import type { TerminologyFinding, TerminologyFindings } from '../config/project-terms';
 import { ResourceAlreadyExistsError } from '../errors/lingo-tracker-error';
-import { type AddResourceOptions, type AddResourceParams, resolveAddKey } from './add-resource';
+import type { AddResourceOptions, AddResourceParams } from './add-resource';
 import { type AddPreflight, commitPrepared, type PreparedAdd, preflightAdd, prepareAdd } from './resource-entry';
+import { resolveCheckedResourceKey } from './resource-key';
 import { resolveMutationSink } from './resource-mutation';
 
 export interface AddResourcesResult {
@@ -38,7 +39,7 @@ export async function addResources(
   const prepared: PreparedAdd[] = [];
 
   for (const item of items) {
-    const key = resolveAddKey(item);
+    const key = resolveCheckedResourceKey(item.key, item.targetFolder);
     const candidate = preflightAdd(collection, key, item, onExisting);
     if (batchKeys.has(key)) throw new ResourceAlreadyExistsError(key);
     batchKeys.add(key);

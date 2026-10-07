@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Collection, openCollection } from '../config/open-collection';
 import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
-import { addResource, resolveAddKey } from './add-resource';
+import { addResource } from './add-resource';
+import { resolveCheckedResourceKey } from './resource-key';
 import { preflightAdd, removeEntry } from './resource-entry';
 import * as resourceFolder from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
@@ -56,7 +57,7 @@ describe('resource entry writes', () => {
       vi.spyOn(folder, 'has');
       return folder;
     });
-    const key = resolveAddKey({ key: 'buttons.ok', targetFolder: 'apps.common', baseValue: 'Bonjour' });
+    const key = resolveCheckedResourceKey('buttons.ok', 'apps.common');
     const preflight = preflightAdd(collection, key, { baseValue: 'Bonjour' }, 'fail');
     expect(preflight.resolvedKey).toBe('apps.common.buttons.ok');
     expect(opened).toHaveBeenCalledExactlyOnceWith(join(root, 'apps', 'common', 'buttons'), collection);
@@ -113,6 +114,13 @@ describe('resource entry writes', () => {
     vi.spyOn(resourceFolder, 'openResourceFolder').mockReturnValue(folder);
     await expect(addResource(collection, { key: 'ok', baseValue: 'Bonjour' }, { onMutation })).rejects.toThrow(error);
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: root }]);
+  });
+
+  it('rejects a malformed removal key before opening files or emitting mutations', () => {
+    const opened = vi.spyOn(resourceFolder, 'openResourceFolder');
+    expect(() => removeEntry(collection, 'invalid key', { onMutation })).toThrow(InvalidResourceKeyError);
+    expect(opened).not.toHaveBeenCalled();
+    expect(mutations).toEqual([]);
   });
 
   it('removes the entry, deletes the last pair of files and reports remove after saving', async () => {

@@ -17,6 +17,22 @@ describe('deleteResource failure injection', () => {
     vi.restoreAllMocks();
     mutations.length = 0;
   });
+  it('keeps malformed-key messages in per-key reporting', () => {
+    expect(remove(['', '.apps', 'bad@key'])).toEqual({
+      outcome: 'failed',
+      entriesDeleted: 0,
+      errors: [
+        { key: '', error: 'Key validation: Key cannot be empty' },
+        { key: '.apps', error: 'Key validation: Invalid key format ".apps" (leading or trailing dot not allowed)' },
+        {
+          key: 'bad@key',
+          error: 'Key validation: Invalid key segment "bad@key". Segments must match pattern [A-Za-z0-9_-]+',
+        },
+      ],
+    });
+    expect(mutations).toEqual([]);
+  });
+
   it('wraps a failed remove and emits no mutation', () => {
     seedResources(collection(), { ok: { source: 'OK' } });
     const folder = resourceFolder.openResourceFolder(root(), collection());

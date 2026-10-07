@@ -1,5 +1,4 @@
-import { validateKey } from '@simoncodes-ca/domain';
-import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import { resolveCheckedResourceKey } from './resource-key';
 
 /** Retains the existing `prefix*`, `prefix.*`, and root `*` selection rules. */
 export function movePatternPrefix(pattern: string): string {
@@ -17,16 +16,8 @@ export function validateMoveInput({
 }): 'key' | 'pattern' {
   const pattern = source.endsWith('*');
   const prefix = pattern ? movePatternPrefix(source) : source;
-  if (pattern === false || prefix.length > 0) validateMoveKey(prefix, source);
+  if (pattern === false || prefix.length > 0) resolveCheckedResourceKey(prefix, undefined, source);
   // Only a pattern destination can name the collection root.
-  if (pattern === false || destination.length > 0) validateMoveKey(destination, destination);
+  if (pattern === false || destination.length > 0) resolveCheckedResourceKey(destination);
   return pattern ? 'pattern' : 'key';
-}
-
-function validateMoveKey(key: string, input: string): void {
-  try {
-    validateKey(key);
-  } catch (error) {
-    throw new InvalidResourceKeyError(input, error instanceof Error ? error.message : String(error));
-  }
 }
