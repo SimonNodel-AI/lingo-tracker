@@ -114,18 +114,6 @@ describe('EditorSession', () => {
       session.entry.form.controls.key.setValue('');
       expect(session.entry.form.controls.key.hasError('required')).toBe(true);
     });
-
-    it('should return correct error message for required key', () => {
-      session.entry.form.controls.key.setValue('');
-      session.entry.form.controls.key.markAsTouched();
-      expect(session.getKeyErrorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYREQUIRED);
-    });
-
-    it('should return correct error message for invalid pattern', () => {
-      session.entry.form.controls.key.setValue('test key');
-      session.entry.form.controls.key.markAsTouched();
-      expect(session.getKeyErrorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR);
-    });
   });
   describe('Dotted Keys - Location Absorption', () => {
     it('should split a pasted full key into folder path and leaf', () => {
@@ -277,20 +265,6 @@ describe('EditorSession', () => {
       await session.onCancel();
 
       expect(dialogRef.close).not.toHaveBeenCalled();
-    });
-  });
-  describe('Edit Mode', () => {
-    it('should display correct save button label in edit mode', async () => {
-      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
-
-      const editData = createMockData('edit', mockResource);
-      openSession(editData);
-
-      expect(session.saveButtonLabel()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UPDATEBUTTON);
-    });
-
-    it('should display correct save button label in create mode', () => {
-      expect(session.saveButtonLabel()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.SAVEBUTTON);
     });
   });
   describe('Comment Confirmation Flow', () => {

@@ -511,9 +511,19 @@ Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-res
 
 ---
 
+### Editor Presentation
+
+The translation editor's display derivations in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-presentation.ts`. `EditorPresentation` reads session state and supplies localized summaries, locale names, error tokens, tooltips, button labels, markup, and aria IDs. It has no injector, DOM access, side effects, or cleanup. [Editor Session](#editor-session) creates it, and the dialog exposes it as `presentation` for template reads. Its small input interface declares the required state without a session type dependency. Pure tests supply state and compare the resulting strings.
+
+Explained in context: [`frontend.md`](frontend.md#translation-editor-and-the-resource-entry-draft)
+
+---
+
 ### Editor Session
 
 The translation editor composition in `apps/tracker/src/app/browser/dialogs/translation-editor/editor-session.ts`. `new EditorSession(data, options)` exposes the entry form, location, advisories, submit protocol, and panels directly. It composes Editor Entry Form, Editor Location, Editor Advisories, and Editor Submit. It owns dotted-key synchronization, absorption feedback, the unsaved-work guard, and submit decision presentation. The options supply store and API seams, confirmation, close, feedback, and named focus. The owner must call `destroy()` to release subscriptions, timers, and pending animation frames.
+
+The session creates [Editor Presentation](#editor-presentation) for display derivations. Absorption announcements remain session state because absorption events write them.
 
 The component keeps its template, DOM anchors, focus after render, and Escape/backdrop bridge. The focus effect uses `onCleanup` to cancel superseded callbacks and callbacks pending at destruction. Session tests use fakes for confirmation, close, and focus without TestBed.
 

@@ -184,16 +184,16 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should display create mode title and subtitle', () => {
-      expect(component.session.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATETITLE);
-      expect(component.session.dialogSubtitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATESUBTITLEX);
+      expect(component.presentation.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATETITLE);
+      expect(component.presentation.dialogSubtitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATESUBTITLEX);
     });
 
     it('should display edit mode title and subtitle', async () => {
       const editData = createMockData('edit', summary('common.buttons.test_key', 'Test Value'));
       renderDialog(editData);
 
-      expect(component.session.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE);
-      expect(component.session.dialogSubtitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITSUBTITLEX);
+      expect(component.presentation.dialogTitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE);
+      expect(component.presentation.dialogSubtitle()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITSUBTITLEX);
     });
   });
 
@@ -288,7 +288,9 @@ describe('TranslationEditorDialog', () => {
 
       expect(component.session.entry.form.controls.key.value).toBe(key);
       expect(component.session.entry.form.controls.key.hasError('pattern')).toBe(true);
-      expect(component.session.getKeyErrorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR);
+      expect(component.presentation.getKeyErrorMessage()).toBe(
+        TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR,
+      );
       expect(spectator.query('#translation-editor-key-error')?.textContent?.trim()).toBeTruthy();
       expect(apiSpies.createResource).not.toHaveBeenCalled();
     });
@@ -472,7 +474,7 @@ describe('TranslationEditorDialog', () => {
     });
 
     it('should summarise only the folder and the similar count', () => {
-      expect(component.session.contextSummary()).toBe('common.buttons');
+      expect(component.presentation.contextSummary()).toBe('common.buttons');
     });
 
     it('should list only the locales that are new or stale', () => {
@@ -1130,10 +1132,10 @@ describe('TranslationEditorDialog', () => {
 
       type('Expenditure');
 
-      const container = spectator.query(`#${component.session.preferredTermAdvisoriesId}`);
+      const container = spectator.query(`#${component.presentation.preferredTermAdvisoriesId}`);
       expect(container).not.toBeNull();
       expect(baseTextarea()?.getAttribute('aria-describedby')).toBe(
-        `translation-editor-icu-hint ${component.session.preferredTermAdvisoriesId}`,
+        `translation-editor-icu-hint ${component.presentation.preferredTermAdvisoriesId}`,
       );
 
       type('Investment');
@@ -1148,7 +1150,7 @@ describe('TranslationEditorDialog', () => {
       spectator.detectChanges();
 
       expect(baseTextarea()?.getAttribute('aria-describedby')).toBe(
-        `translation-editor-base-value-error ${component.session.preferredTermAdvisoriesId}`,
+        `translation-editor-base-value-error ${component.presentation.preferredTermAdvisoriesId}`,
       );
     });
 
