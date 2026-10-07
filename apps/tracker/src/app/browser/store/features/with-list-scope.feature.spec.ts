@@ -330,40 +330,44 @@ describe('BrowserStore List Scope', () => {
   });
   it('restores only the removed row against newer rows in the same loaded folder', () => {
     open('app', 'a.one', 'a.two');
-    const removed = store.removeRow('a.one');
+    const removed = store.beginMirrorMove({ kind: 'row', key: 'a.one' });
     expect(removed.atFolder).toBe('');
     expect(keys(store.translations())).toEqual(['a.two']);
     patchState(unprotected(store), { translations: [entry('a.new')] });
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['a.new', 'a.one']);
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['a.new', 'a.one']);
   });
 
   it('does not restore a row after another folder loads or nesting invalidates its folder', () => {
     open('app', 'one');
-    const removed = store.removeRow('one');
+    const removed = store.beginMirrorMove({ kind: 'row', key: 'one' });
     store.showFolder('b');
     listRead('app', 'b').flush(folder('b', 'b.two'));
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['b.two']);
-    const second = store.removeRow('b.two');
+    const second = store.beginMirrorMove({ kind: 'row', key: 'b.two' });
     store.setNestedResources(false);
-    store.restoreRow(second);
+    store.rollbackMirrorMove(second);
     expect(store.translations()).toEqual([]);
     http.expectOne((req) => req.params.get('path') === 'b').flush(folder('b', 'b.three'));
   });
 
   it('keeps a newer copy, ignores missing rows, and allows rollback while search is shown', () => {
     open('app', 'one');
-    const removed = store.removeRow('one');
+    const removed = store.beginMirrorMove({ kind: 'row', key: 'one' });
     store.showQuery('one');
     searchRead('app', 'one').flush(found('one', 'one'));
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['one']);
-    store.replaceEntry('one', { ...entry('one'), base: { locale: 'en', value: 'newer' } });
-    store.restoreRow(removed);
-    store.restoreRow(store.removeRow('missing'));
+    store.mirrorWrite({
+      kind: 'entry-replaced',
+      key: 'one',
+      resource: { ...entry('one'), base: { locale: 'en', value: 'newer' } },
+    });
+    store.rollbackMirrorMove(removed);
+    store.rollbackMirrorMove(store.beginMirrorMove({ kind: 'row', key: 'missing' }));
     expect(store.translations()[0]?.base.value).toBe('newer');
     expect(store.searchResults()[0]?.matchType).toBe('partial-value');
     expect(store.searchResults()[0]?.base.value).toBe('newer');
@@ -373,10 +377,10 @@ describe('BrowserStore List Scope', () => {
     open('app', 'one', 'two');
     store.showQuery('one');
     searchRead('app', 'one').flush(found('one', 'one', 'other'));
-    store.replaceEntry('missing', entry('missing'));
+    store.mirrorWrite({ kind: 'entry-replaced', key: 'missing', resource: entry('missing') });
     expect(keys(store.translations())).toEqual(['one', 'two']);
     expect(keys(store.searchResults())).toEqual(['one', 'other']);
-    store.removeEntry('one');
+    store.mirrorWrite({ kind: 'entry-removed', key: 'one' });
     expect(keys(store.translations())).toEqual(['two']);
     expect(keys(store.searchResults())).toEqual(['other']);
   });

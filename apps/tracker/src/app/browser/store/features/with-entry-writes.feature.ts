@@ -3,12 +3,12 @@ import { signalStoreFeature, type, withMethods } from '@ngrx/signals';
 import type {
   CreateResourceDto,
   CreateResourceResponseDto,
-  ResourceSummaryDto,
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 import type { Observable } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
+import type { BrowserWriteResult } from '../browser-mirror';
 import { doesUpdateMoveEntry } from '../does-update-move-entry';
 import {
   type DeleteResourceOutcome,
@@ -40,9 +40,7 @@ export function withEntryWritesFeature<_>() {
         isReadOnly: boolean;
       }>(),
       methods: type<{
-        reloadList(): void;
-        replaceEntry(key: string, resource: ResourceSummaryDto): void;
-        removeEntry(key: string): void;
+        mirrorWrite(result: BrowserWriteResult): void;
       }>(),
     },
     withMethods((store) => {
@@ -56,7 +54,7 @@ export function withEntryWritesFeature<_>() {
           store,
           ({ collection, respond }) =>
             respond(api.deleteResource(collection, [fullKey]), (response) => {
-              if (response.entriesDeleted > 0) store.removeEntry(fullKey);
+              if (response.entriesDeleted > 0) store.mirrorWrite({ kind: 'entry-removed', key: fullKey });
               return deleteOutcome(response);
             }),
           decide,
@@ -69,7 +67,7 @@ export function withEntryWritesFeature<_>() {
           return editorWrite(
             store,
             () => api.createResource(collectionName, dto),
-            () => store.reloadList(),
+            () => store.mirrorWrite({ kind: 'entry-created' }),
           );
         },
 
@@ -84,9 +82,9 @@ export function withEntryWritesFeature<_>() {
             () => api.updateResource(collectionName, dto),
             (response) => {
               if (doesUpdateMoveEntry(dto)) {
-                store.removeEntry(dto.key);
+                store.mirrorWrite({ kind: 'entry-removed', key: dto.key });
               } else if (response.resource) {
-                store.replaceEntry(dto.key, response.resource);
+                store.mirrorWrite({ kind: 'entry-replaced', key: dto.key, resource: response.resource });
               }
             },
           );
@@ -115,7 +113,7 @@ export function withEntryWritesFeature<_>() {
             store,
             ({ collection, respond }) =>
               respond(api.translateResource(collection, fullKey), (response) => {
-                store.replaceEntry(fullKey, response.resource);
+                store.mirrorWrite({ kind: 'entry-replaced', key: fullKey, resource: response.resource });
                 return translateOutcome(response);
               }),
             decideTranslateResource,

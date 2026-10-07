@@ -1,13 +1,6 @@
 import { computed, inject } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
-import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
-import {
-  folderPathFromSegments,
-  folderPathLeaf,
-  parentFolderPath,
-  resolveResourceKey,
-  splitResolvedKey,
-} from '@simoncodes-ca/domain';
+import { folderPathFromSegments, folderPathLeaf, resolveResourceKey, splitResolvedKey } from '@simoncodes-ca/domain';
 import { defer, finalize, type Observable, of, tap } from 'rxjs';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
@@ -39,7 +32,7 @@ import {
   type RequestedFolderMoveOutcome,
 } from '../folder-write-feedback';
 import { confirmThenWrite, writeRun } from '../write-run';
-import type { RemovedRow } from './with-list-scope.feature';
+import type { BeginMirrorMove, BrowserWriteResult, MirrorRollback } from '../browser-mirror';
 
 export interface FolderWritesState extends FolderDraft {
   newlyCreatedFolderPath: string | null;
@@ -76,16 +69,9 @@ export function withFolderWritesFeature<_>() {
         isReadOnly: boolean;
       }>(),
       methods: type<{
-        showFolder(path: string): void;
-        reloadList(): void;
-        loadRootFolders(): void;
-        insertFolder(folder: FolderNodeDto, parentPath: string | null): void;
-        removeFolder(path: string): boolean;
-        detachFolder(path: string): FolderNodeDto | undefined;
-        applyFolderMove(sourcePath: string, destinationPath: string, sourceNode: FolderNodeDto | undefined): string;
-        restoreFolder(path: string, node: FolderNodeDto | undefined): void;
-        removeRow(key: string): RemovedRow;
-        restoreRow(removed: RemovedRow): void;
+        mirrorWrite(result: BrowserWriteResult): void;
+        beginMirrorMove: BeginMirrorMove;
+        rollbackMirrorMove(rollback: MirrorRollback): void;
       }>(),
     },
     withCollectionState(initialFolderWritesState),
@@ -117,16 +103,20 @@ export function withFolderWritesFeature<_>() {
             if (decision.noOp === 'same-folder' || decision.noOp === 'already-at-location')
               return of({ kind: 'noop', reason: decision.noOp } as const);
             if (!decision.canLand) return of({ kind: 'invalid-drop' } as const);
-            const sourceNode = store.detachFolder(sourceFolderPath);
+            const rollback = store.beginMirrorMove({ kind: 'folder', path: sourceFolderPath });
             const folderName = folderPathLeaf(sourceFolderPath);
             return moving(
               respond(
                 api.moveFolder(collection, sourceFolderPath, destinationFolderPath),
                 (): MoveFolderResult => {
-                  store.showFolder(store.applyFolderMove(sourceFolderPath, destinationFolderPath, sourceNode));
+                  store.mirrorWrite({
+                    kind: 'folder-moved',
+                    rollback,
+                    destinationPath: destinationFolderPath,
+                  });
                   return { kind: 'moved', folderName, destinationFolderPath };
                 },
-                () => store.restoreFolder(sourceFolderPath, sourceNode),
+                () => store.rollbackMirrorMove(rollback),
               ),
               inSession,
             );
@@ -146,7 +136,7 @@ export function withFolderWritesFeature<_>() {
             return respond(
               api.createFolder(collection, folderName, parentPath || undefined),
               (response): CreateFolderResult => {
-                store.insertFolder(response.folder, parentPath);
+                store.mirrorWrite({ kind: 'folder-created', folder: response.folder, parentPath });
                 patchState(store, {
                   newlyCreatedFolderPath: response.folder.fullPath,
                 });
@@ -186,9 +176,7 @@ export function withFolderWritesFeature<_>() {
                   deletingFolderPath: null,
                 });
                 if (response.deleted) {
-                  if (store.removeFolder(folderPath)) {
-                    store.showFolder(parentFolderPath(folderPath) ?? '');
-                  }
+                  store.mirrorWrite({ kind: 'folder-removed', path: folderPath });
                 }
                 return { kind: 'deleted', deleted: response.deleted };
               },
@@ -286,17 +274,16 @@ export function withFolderWritesFeature<_>() {
                 ).noOp === 'already-in-folder'
               )
                 return of({ kind: 'noop', reason: 'already-in-folder' } as const);
-              const removed = store.removeRow(sourceKey);
+              const rollback = store.beginMirrorMove({ kind: 'row', key: sourceKey });
               const destinationKey = resolveResourceKey(entryKey, destinationFolderPath);
               return moving(
                 respond(
                   api.moveResource(collection, sourceKey, destinationKey),
                   (): MoveResourceResult => {
-                    store.loadRootFolders();
-                    store.reloadList();
+                    store.mirrorWrite({ kind: 'entry-moved' });
                     return { kind: 'moved', entryKey, destinationFolderPath };
                   },
-                  () => store.restoreRow(removed),
+                  () => store.rollbackMirrorMove(rollback),
                 ),
                 inSession,
               );

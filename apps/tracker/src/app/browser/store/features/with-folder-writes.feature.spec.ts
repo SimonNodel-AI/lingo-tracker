@@ -1,5 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
+import { patchState } from '@ngrx/signals';
+import { unprotected } from '@ngrx/signals/testing';
 import type { CreateFolderResponseDto } from '@simoncodes-ca/data-transfer';
 import { NEVER, of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -268,6 +270,107 @@ describe('BrowserStore folder writes', () => {
       await vi.waitFor(() =>
         expect(feedback).toMatchObject({ tone: 'error', placement: 'toast', detail: 'Not empty' }),
       );
+    });
+  });
+  describe('mirror effect ordering', () => {
+    it('removes the row before loading root folders and then reloading the list after a resource move', () => {
+      open();
+      const movedRow = {
+        fullKey: 'a.one',
+        folderPath: 'a',
+        entryKey: 'one',
+        base: { locale: 'en', value: 'One' },
+        targets: [],
+        tags: [],
+        inheritedTags: [],
+      };
+      patchState(unprotected(store), { translations: [movedRow] });
+      const effects: string[] = [];
+      const rowsAtLoad: string[][] = [];
+      vi.mocked(api.getResourceTree).mockImplementation((_collection, path = '', nested) => {
+        expect(path).toBe('');
+        effects.push(nested ? 'reload-list' : 'load-root');
+        rowsAtLoad.push(store.translations().map((row) => row.fullKey));
+        return of({ path, resources: [], children: [] });
+      });
+      vi.spyOn(api, 'moveResource').mockImplementation(() => {
+        expect(store.translations()).toEqual([]);
+        effects.push('optimistic-removal');
+        return of({ movedCount: 1 });
+      });
+      let outcome: string | undefined;
+
+      store.moveResource({ sourceKey: 'a.one', destinationFolderPath: 'b' }).subscribe((result) => {
+        outcome = result.kind;
+      });
+
+      expect(outcome).toBe('moved');
+      expect(effects).toEqual(['optimistic-removal', 'load-root', 'reload-list']);
+      expect(rowsAtLoad).toEqual([[], []]);
+    });
+
+    it('patches the moved tree before loading children, then expands before showing the folder', () => {
+      open();
+      patchState(unprotected(store), {
+        rootFolders: [
+          { name: 'a', fullPath: 'a', loaded: false },
+          { name: 'b', fullPath: 'b', loaded: false },
+        ],
+        expandedFolders: new Set(['a']),
+      });
+      const effects: string[] = [];
+      const observations: { path: string; selected: string; expanded: string[]; movedPath: string | undefined }[] = [];
+      vi.mocked(api.getResourceTree).mockImplementation((_collection, path = '') => {
+        effects.push(path);
+        observations.push({
+          path,
+          selected: store.currentFolderPath(),
+          expanded: [...store.expandedFolders()],
+          movedPath: store.rootFolders()[0]?.tree?.children?.[0]?.fullPath,
+        });
+        return of({ path, resources: [], children: [{ name: 'a', fullPath: 'b.a', loaded: false }] });
+      });
+      vi.spyOn(api, 'moveFolder').mockReturnValue(of({ movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] }));
+      let outcome: string | undefined;
+
+      store.moveFolder({ sourceFolderPath: 'a', destinationFolderPath: 'b' }).subscribe((result) => {
+        outcome = result.kind;
+      });
+
+      expect(outcome).toBe('moved');
+      expect(effects).toEqual(['b', 'b.a']);
+      expect(observations).toEqual([
+        { path: 'b', selected: '', expanded: ['a'], movedPath: 'b.a' },
+        { path: 'b.a', selected: 'b.a', expanded: ['b.a', 'b'], movedPath: 'b.a' },
+      ]);
+    });
+
+    it('reloads root for an uncached folder before expansion and navigation', () => {
+      open();
+      patchState(unprotected(store), { expandedFolders: new Set(['a']) });
+      const observations: { path: string; nested: boolean | undefined; selected: string; expanded: string[] }[] = [];
+      vi.mocked(api.getResourceTree).mockImplementation((_collection, path = '', nested) => {
+        observations.push({
+          path,
+          nested,
+          selected: store.currentFolderPath(),
+          expanded: [...store.expandedFolders()],
+        });
+        return of({ path, resources: [], children: [{ name: 'b', fullPath: 'b', loaded: false }] });
+      });
+      vi.spyOn(api, 'moveFolder').mockReturnValue(of({ movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] }));
+      let outcome: string | undefined;
+
+      store.moveFolder({ sourceFolderPath: 'a', destinationFolderPath: 'b' }).subscribe((result) => {
+        outcome = result.kind;
+      });
+
+      expect(outcome).toBe('moved');
+      expect(observations).toEqual([
+        { path: '', nested: false, selected: '', expanded: ['a'] },
+        { path: 'b.a', nested: true, selected: 'b.a', expanded: ['b.a', 'b'] },
+      ]);
+      expect(store.rootFolders()[0]?.fullPath).toBe('b');
     });
   });
 });
