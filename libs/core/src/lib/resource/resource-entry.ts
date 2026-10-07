@@ -51,14 +51,14 @@ import {
 import type { ResourceTreeEntry } from './resource-tree-types';
 import { assertTranslationStatus } from './translation-status-input';
 
-export interface LocatedEntry {
+interface LocatedEntry {
   readonly resolvedKey: string;
   readonly entryKey: string;
   readonly folder: ResourceFolder;
 }
 
 /** Validates an address and opens its folder for inspection or an existing-entry write. */
-export function locateEntry(
+function locateEntry(
   collection: Collection,
   key: string,
   options: { readonly targetFolder?: string } = {},
@@ -72,7 +72,7 @@ export function locateEntry(
 }
 
 /** An add's full key has already been validated and placed by its caller. */
-export function locateResolvedEntry(collection: Collection, resolvedKey: string): LocatedEntry {
+function locateResolvedEntry(collection: Collection, resolvedKey: string): LocatedEntry {
   const paths = resolveResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
   return openEntryAt(collection, paths);
 }
@@ -86,7 +86,7 @@ function openEntryAt(collection: Collection, paths: ResolvedResourcePaths): Loca
   };
 }
 
-export function validateAddChanges(collection: Collection, changes: EntryAddChanges): void {
+function validateAddChanges(collection: Collection, changes: EntryAddChanges): void {
   assertCollectionLocales(
     collection,
     (changes.translations ?? []).map(({ locale }) => locale),
@@ -291,10 +291,48 @@ async function addEntry(
   options: EntryWriteOptions,
   onMutation: MutationSink | undefined,
 ): Promise<EntryAddResult> {
+  const prepared = await prepareAdd(preflightAdd(collection, resolvedKey, intent.changes, intent.onExisting), options);
+  return commitPrepared(prepared, onMutation);
+}
+
+export interface AddPreflight {
+  readonly collection: Collection;
+  readonly resolvedKey: string;
+  readonly changes: EntryAddChanges;
+  readonly onExisting: ExistingResourcePolicy;
+  /** Reads fresh disk state; batches call this for every item immediately before writing. */
+  readonly recheck: () => void;
+}
+
+/** Validates supplied values, then checks existence, without seeding or writing. */
+export function preflightAdd(
+  collection: Collection,
+  resolvedKey: string,
+  changes: EntryAddChanges,
+  onExisting: ExistingResourcePolicy,
+): AddPreflight {
   const paths = resolveResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
-  validateAddChanges(collection, intent.changes);
-  checkWriteConflict(openEntryAt(collection, paths), intent.onExisting);
-  const { baseValue: input, translations: requested = [], ...details } = intent.changes;
+  validateAddChanges(collection, changes);
+  checkWriteConflict(openEntryAt(collection, paths), onExisting);
+  return {
+    collection,
+    resolvedKey,
+    changes,
+    onExisting,
+    recheck: () => assertAddable(collection, resolvedKey, onExisting),
+  };
+}
+
+/** All values and advice needed to commit an add; preparation never writes files. */
+export interface PreparedAdd extends AddPreflight {
+  readonly skippedLocales?: string[];
+  readonly terminology: TerminologyFindings;
+}
+
+/** Seeds a preflighted add once, retaining its diagnostics for the eventual write. */
+export async function prepareAdd(preflight: AddPreflight, options: OpenTranslatorOptions = {}): Promise<PreparedAdd> {
+  const { collection, resolvedKey, changes } = preflight;
+  const { baseValue: input, translations: requested = [], ...details } = changes;
   const baseValue = translocoToICU(input);
   const supplied = requested.filter(({ locale }) => locale !== collection.baseLocale);
   const seeding = await seedLocales(collection, { baseValue, supplied: supplied.map(({ locale }) => locale) }, options);
@@ -302,22 +340,32 @@ async function addEntry(
     readProjectTerms(collection).checkBaseValue(resolvedKey, baseValue),
     seeding.problems,
   );
-  const committed = commitAdd(
-    collection,
-    resolvedKey,
-    { baseValue, translations: [...supplied, ...seeding.translations], ...details },
-    intent.onExisting,
-    onMutation,
-  );
   return {
-    ...committed,
+    ...preflight,
+    changes: { baseValue, translations: [...supplied, ...seeding.translations], ...details },
     ...(seeding.skippedLocales !== undefined && { skippedLocales: seeding.skippedLocales }),
     terminology,
   };
 }
 
+/** Reopens fresh state and writes the prepared values through the shared save/report path. */
+export function commitPrepared(prepared: PreparedAdd, onMutation?: MutationSink): EntryAddResult {
+  const committed = commitAdd(
+    prepared.collection,
+    prepared.resolvedKey,
+    prepared.changes,
+    prepared.onExisting,
+    onMutation,
+  );
+  return {
+    ...committed,
+    ...(prepared.skippedLocales !== undefined && { skippedLocales: prepared.skippedLocales }),
+    terminology: prepared.terminology,
+  };
+}
+
 /** Rechecks fresh state, applies the add and reports its one save. Shared by single and batch adds. */
-export function commitAdd(
+function commitAdd(
   collection: Collection,
   resolvedKey: string,
   changes: EntryAddChanges,
@@ -332,7 +380,7 @@ export function commitAdd(
 }
 
 /** Checks a placed key without writing, including the post-translation batch conflict check. */
-export function assertAddable(collection: Collection, resolvedKey: string, onExisting: ExistingResourcePolicy): void {
+function assertAddable(collection: Collection, resolvedKey: string, onExisting: ExistingResourcePolicy): void {
   checkWriteConflict(locateResolvedEntry(collection, resolvedKey), onExisting);
 }
 

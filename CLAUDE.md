@@ -188,10 +188,12 @@ export class ExampleComponent implements OnInit {
 ### Adding a Resource (libs/core/src/lib/resource/add-resource.ts)
 
 1. Validate the key (and optional `targetFolder`) and resolve it to a folder path
-2. Check whether the resolved key exists; fail by default before locale seeding, or replace only when requested
-3. Normalize values to ICU and seed every target locale (supplied value, else auto-translation, else a `new` copy of the base) before touching the disk
-4. Write through `openResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), the one read-modify-write path for `resource_entries.json` + `tracker_meta.json`: it computes MD5 checksums and applies the staleness rule
-5. `save()` writes both files together (not atomically)
+2. Core `preflightAdd` validates supplied locales and statuses, then checks whether the resolved key exists; fail by default before locale seeding, or replace only when requested
+3. Core `prepareAdd` produces a Prepared Add: an ICU base value, every target locale (supplied value, else auto-translation, else a `new` copy of the base), skipped locales and terminology with Translator problems, before writing any resource file
+4. `commitPrepared` reopens fresh state, checks existence again and writes through `openResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), the one read-modify-write path for `resource_entries.json` + `tracker_meta.json`: it computes MD5 checksums and applies the staleness rule
+5. `save()` writes both files together (not atomically) and reports through the Mutation Sink
+
+`addResources` preflights every item before preparing any. Each preflight precedes the batch duplicate-key check. After preparation, it rechecks every item without an await before committing in input order; a preparation failure or late conflict writes no batch item.
 
 ### CLI Command Pattern (apps/cli/src/runner/command-runner.ts)
 

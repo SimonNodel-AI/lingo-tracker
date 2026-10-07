@@ -4,11 +4,12 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Collection, openCollection } from '../config/open-collection';
 import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
-import { commitAdd, locateEntry, removeEntry } from './resource-entry';
+import { addResource, resolveAddKey } from './add-resource';
+import { preflightAdd, removeEntry } from './resource-entry';
 import * as resourceFolder from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
-describe('locateEntry', () => {
+describe('resource entry writes', () => {
   let root: string;
   let collection: Collection;
   let mutations: ResourceMutation[];
@@ -36,75 +37,88 @@ describe('locateEntry', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('rejects an invalid key with a typed error before opening files', () => {
-    expect(() => locateEntry(collection, 'invalid key')).toThrow(InvalidResourceKeyError);
+  it('rejects an invalid key with a typed error before opening files', async () => {
+    await expect(addResource(collection, { key: 'invalid key', baseValue: 'Bonjour' })).rejects.toThrow(
+      InvalidResourceKeyError,
+    );
   });
 
-  it('rejects an invalid target folder with a typed error', () => {
-    expect(() => locateEntry(collection, 'ok', { targetFolder: '../outside' })).toThrow(InvalidResourceKeyError);
+  it('rejects an invalid target folder with a typed error', async () => {
+    await expect(
+      addResource(collection, { key: 'ok', targetFolder: '../outside', baseValue: 'Bonjour' }),
+    ).rejects.toThrow(InvalidResourceKeyError);
   });
 
   it('resolves a target folder and reports a missing entry without creating files', () => {
-    const resource = locateEntry(collection, 'buttons.ok', { targetFolder: 'apps.common' });
-    expect(resource.resolvedKey).toBe('apps.common.buttons.ok');
-    expect(resource.entryKey).toBe('ok');
-    expect(resource.folder.folderPath).toBe(join(root, 'apps', 'common', 'buttons'));
-    expect(resource.folder.has(resource.entryKey)).toBe(false);
-    expect(resource.folder.get(resource.entryKey)).toBeUndefined();
-    expect(existsSync(resource.folder.folderPath)).toBe(false);
+    const open = resourceFolder.openResourceFolder;
+    const opened = vi.spyOn(resourceFolder, 'openResourceFolder').mockImplementation((folderPath, options) => {
+      const folder = open(folderPath, options);
+      vi.spyOn(folder, 'has');
+      return folder;
+    });
+    const key = resolveAddKey({ key: 'buttons.ok', targetFolder: 'apps.common', baseValue: 'Bonjour' });
+    const preflight = preflightAdd(collection, key, { baseValue: 'Bonjour' }, 'fail');
+    expect(preflight.resolvedKey).toBe('apps.common.buttons.ok');
+    expect(opened).toHaveBeenCalledExactlyOnceWith(join(root, 'apps', 'common', 'buttons'), collection);
+    const folder = opened.mock.results[0]?.value;
+    expect(folder).toBeDefined();
+    expect(folder?.folderPath).toBe(join(root, 'apps', 'common', 'buttons'));
+    expect(folder?.has).toHaveBeenCalledExactlyOnceWith('ok');
+    expect(folder?.has('ok')).toBe(false);
+    expect(folder?.get('ok')).toBeUndefined();
+    expect(existsSync(join(root, 'apps', 'common', 'buttons'))).toBe(false);
   });
 
-  it('saves both files with the collection base locale and reports the saved upsert', () => {
-    commitAdd(
+  it('saves both files with the collection base locale and reports the saved upsert', async () => {
+    const result = await addResource(
       collection,
-      'apps.ok',
-      { baseValue: 'Bonjour', translations: [{ locale: 'en', value: 'Hello' }] },
-      'fail',
-      onMutation,
+      { key: 'apps.ok', baseValue: 'Bonjour', translations: [{ locale: 'en', value: 'Hello' }] },
+      { onMutation },
     );
+    expect(result.resolvedKey).toBe('apps.ok');
 
-    const reopened = locateEntry(collection, 'apps.ok');
-    expect(reopened.folder.has(reopened.entryKey)).toBe(true);
-    expect(reopened.folder.get(reopened.entryKey)?.entry).toEqual({ source: 'Bonjour', en: 'Hello' });
-    expect(reopened.folder.get(reopened.entryKey)?.meta?.['fr']?.checksum).toBeDefined();
-    expect(reopened.folder.get(reopened.entryKey)?.meta?.['en']?.status).toBe('translated');
+    const reopened = resourceFolder.openResourceFolder(join(root, 'apps'), collection);
+    expect(reopened.has('ok')).toBe(true);
+    expect(reopened.get('ok')?.entry).toEqual({ source: 'Bonjour', en: 'Hello' });
+    expect(reopened.get('ok')?.meta?.['fr']?.checksum).toBeDefined();
+    expect(reopened.get('ok')?.meta?.['en']?.status).toBe('translated');
     expect(mutations).toEqual([
-      { kind: 'upsert', translationsFolder: root, key: 'apps.ok', entry: reopened.folder.treeEntry('ok') },
+      { kind: 'upsert', translationsFolder: root, key: 'apps.ok', entry: reopened.treeEntry('ok') },
     ]);
     expect(JSON.parse(readFileSync(join(root, 'apps', 'resource_entries.json'), 'utf8'))).toEqual({
       ok: { source: 'Bonjour', en: 'Hello' },
     });
   });
 
-  it('saves without a mutation sink', () => {
-    commitAdd(collection, 'ok', { baseValue: 'Bonjour' }, 'fail');
-    expect(locateEntry(collection, 'ok').folder.has('ok')).toBe(true);
+  it('saves without a mutation sink', async () => {
+    await addResource(collection, { key: 'ok', baseValue: 'Bonjour' });
+    expect(resourceFolder.openResourceFolder(root, collection).has('ok')).toBe(true);
   });
 
   it('recognizes an entry without metadata', () => {
     writeFileSync(join(root, 'resource_entries.json'), JSON.stringify({ ok: { source: 'Bonjour' } }));
-    const resource = locateEntry(collection, 'ok');
-    expect(resource.folder.has(resource.entryKey)).toBe(true);
-    expect(resource.folder.get(resource.entryKey)).toEqual({ entry: { source: 'Bonjour' }, meta: undefined });
-    expect(resource.folder.treeEntry(resource.entryKey)?.metadata).toEqual({});
-    expect(resource.folder.treeEntry(resource.entryKey, { requireMetadata: true })).toBeUndefined();
+    const folder = resourceFolder.openResourceFolder(root, collection);
+    expect(folder.has('ok')).toBe(true);
+    expect(folder.get('ok')).toEqual({ entry: { source: 'Bonjour' }, meta: undefined });
+    expect(folder.treeEntry('ok')?.metadata).toEqual({});
+    expect(folder.treeEntry('ok', { requireMetadata: true })).toBeUndefined();
   });
 
-  it('reports reindex and rethrows the same failed save', () => {
-    const resource = locateEntry(collection, 'ok');
+  it('reports reindex and rethrows the same failed save', async () => {
+    const folder = resourceFolder.openResourceFolder(root, collection);
     const error = new Error('second file failed');
-    vi.spyOn(resource.folder, 'save').mockImplementation(() => {
+    vi.spyOn(folder, 'save').mockImplementation(() => {
       throw error;
     });
-    vi.spyOn(resourceFolder, 'openResourceFolder').mockReturnValue(resource.folder);
-    expect(() => commitAdd(collection, 'ok', { baseValue: 'Bonjour' }, 'fail', onMutation)).toThrow(error);
+    vi.spyOn(resourceFolder, 'openResourceFolder').mockReturnValue(folder);
+    await expect(addResource(collection, { key: 'ok', baseValue: 'Bonjour' }, { onMutation })).rejects.toThrow(error);
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: root }]);
   });
 
-  it('removes the entry, deletes the last pair of files and reports remove after saving', () => {
-    commitAdd(collection, 'ok', { baseValue: 'Bonjour' }, 'fail');
-    const opened = locateEntry(collection, 'ok');
-    expect(opened.folder.has(opened.entryKey)).toBe(true);
+  it('removes the entry, deletes the last pair of files and reports remove after saving', async () => {
+    await addResource(collection, { key: 'ok', baseValue: 'Bonjour' });
+    const opened = resourceFolder.openResourceFolder(root, collection);
+    expect(opened.has('ok')).toBe(true);
     removeEntry(collection, 'ok', {
       onMutation: (mutation) => {
         expect(existsSync(join(root, 'resource_entries.json'))).toBe(false);
@@ -112,7 +126,7 @@ describe('locateEntry', () => {
         onMutation(mutation);
       },
     });
-    expect(locateEntry(collection, 'ok').folder.has('ok')).toBe(false);
+    expect(resourceFolder.openResourceFolder(root, collection).has('ok')).toBe(false);
     expect(mutations).toEqual([{ kind: 'remove', translationsFolder: root, key: 'ok' }]);
   });
 });
