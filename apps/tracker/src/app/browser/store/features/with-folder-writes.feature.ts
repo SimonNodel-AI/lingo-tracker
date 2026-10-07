@@ -1,8 +1,10 @@
-import { computed, inject } from '@angular/core';
+import { computed, DestroyRef, inject } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import { folderPathFromSegments, folderPathLeaf, resolveResourceKey, splitResolvedKey } from '@simoncodes-ca/domain';
 import { defer, finalize, type Observable, of, tap } from 'rxjs';
+import { createRestartableDelay } from '../../../shared/timed-transients';
 import { BrowserApiService } from '../../services/browser-api.service';
+import type { BeginMirrorMove, BrowserWriteResult, MirrorRollback } from '../browser-mirror';
 import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 import {
   cancelFolderDraft,
@@ -32,7 +34,6 @@ import {
   type RequestedFolderMoveOutcome,
 } from '../folder-write-feedback';
 import { confirmThenWrite, writeRun } from '../write-run';
-import type { BeginMirrorMove, BrowserWriteResult, MirrorRollback } from '../browser-mirror';
 
 export interface FolderWritesState extends FolderDraft {
   newlyCreatedFolderPath: string | null;
@@ -80,6 +81,9 @@ export function withFolderWritesFeature<_>() {
     })),
     withMethods((store) => {
       const api = inject(BrowserApiService);
+      const newlyCreatedDelay = createRestartableDelay(3000);
+      store._collectionResets.push({ keys: [], reset: () => newlyCreatedDelay.cancel() });
+      inject(DestroyRef).onDestroy(() => newlyCreatedDelay.destroy());
 
       function moving<T>(request: Observable<T>, inSession: () => boolean): Observable<T> {
         return defer(() => {
@@ -140,11 +144,11 @@ export function withFolderWritesFeature<_>() {
                 patchState(store, {
                   newlyCreatedFolderPath: response.folder.fullPath,
                 });
-                setTimeout(() => {
+                newlyCreatedDelay.schedule(() => {
                   if (inSession() && store.newlyCreatedFolderPath() === response.folder.fullPath) {
                     patchState(store, { newlyCreatedFolderPath: null });
                   }
-                }, 3000);
+                });
                 return {
                   kind: 'created',
                   folder: response.folder,

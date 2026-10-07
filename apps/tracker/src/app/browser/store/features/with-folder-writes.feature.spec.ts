@@ -43,6 +43,60 @@ describe('BrowserStore folder writes', () => {
     vi.spyOn(api, 'getResourceTree').mockReturnValue(of({ path: '', resources: [], children: [] }));
   });
 
+  it('cancels the newly created folder timeout on collection reset and keeps a new session flash', () => {
+    vi.useFakeTimers();
+    try {
+      open('old');
+      vi.spyOn(api, 'createFolder').mockReturnValue(of(created));
+      store.createFolder('new', 'common').subscribe();
+      expect(store.newlyCreatedFolderPath()).toBe('common.new');
+      vi.advanceTimersByTime(1000);
+
+      open('new');
+      expect(store.newlyCreatedFolderPath()).toBeNull();
+      expect(vi.getTimerCount()).toBe(0);
+      store.createFolder('new', 'common').subscribe();
+      vi.advanceTimersByTime(2000);
+      expect(store.newlyCreatedFolderPath()).toBe('common.new');
+      vi.advanceTimersByTime(1000);
+      expect(store.newlyCreatedFolderPath()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    { name: 'different paths', secondPath: 'common.other' },
+    { name: 'the same path twice', secondPath: 'common.new' },
+  ])('keeps the second create flash for its full delay: $name', ({ secondPath }) => {
+    vi.useFakeTimers();
+    try {
+      open();
+      vi.spyOn(api, 'createFolder')
+        .mockReturnValueOnce(of(created))
+        .mockReturnValueOnce(
+          of({
+            ...created,
+            folderPath: secondPath,
+            folder: { ...created.folder, fullPath: secondPath },
+          }),
+        );
+      store.createFolder('new', 'common').subscribe();
+      expect(store.newlyCreatedFolderPath()).toBe('common.new');
+      vi.advanceTimersByTime(1000);
+      store.createFolder(secondPath === 'common.new' ? 'new' : 'other', 'common').subscribe();
+      expect(store.newlyCreatedFolderPath()).toBe(secondPath);
+      vi.advanceTimersByTime(2000);
+      expect(store.newlyCreatedFolderPath()).toBe(secondPath);
+      vi.advanceTimersByTime(999);
+      expect(store.newlyCreatedFolderPath()).toBe(secondPath);
+      vi.advanceTimersByTime(1);
+      expect(store.newlyCreatedFolderPath()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   describe('confirmFolderDraft', () => {
     it('closes the draft on a create, which is silent', () => {
       open();

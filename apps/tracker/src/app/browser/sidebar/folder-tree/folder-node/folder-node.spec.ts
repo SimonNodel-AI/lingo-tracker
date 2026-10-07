@@ -195,18 +195,47 @@ describe('FolderNode', () => {
     component.toggleExpanded.subscribe(toggleSpy);
 
     // Collapsed: ArrowRight opens, ArrowLeft does nothing.
-    component.onExpandKeydown(new KeyboardEvent('keydown'));
-    component.onCollapseKeydown(new KeyboardEvent('keydown'));
+    component.onTreeKeydown(new KeyboardEvent('keydown'), 'ArrowRight');
+    component.onTreeKeydown(new KeyboardEvent('keydown'), 'ArrowLeft');
     expect(expandSpy).toHaveBeenCalledWith('common');
     expect(toggleSpy).not.toHaveBeenCalled();
 
     // Expanded: ArrowLeft closes, ArrowRight does nothing more.
     expandSpy.mockClear();
     fixture.componentRef.setInput('expandedPaths', new Set(['common']));
-    component.onExpandKeydown(new KeyboardEvent('keydown'));
-    component.onCollapseKeydown(new KeyboardEvent('keydown'));
+    component.onTreeKeydown(new KeyboardEvent('keydown'), 'ArrowRight');
+    component.onTreeKeydown(new KeyboardEvent('keydown'), 'ArrowLeft');
     expect(expandSpy).not.toHaveBeenCalled();
     expect(toggleSpy).toHaveBeenCalledWith('common');
+  });
+
+  it.each([
+    { key: 'ArrowRight', open: false, expanded: true, collapsed: false, selected: false, prevent: true },
+    { key: 'ArrowRight', open: true, expanded: false, collapsed: false, selected: false, prevent: false },
+    { key: 'ArrowLeft', open: true, expanded: false, collapsed: true, selected: false, prevent: true },
+    { key: 'ArrowLeft', open: false, expanded: false, collapsed: false, selected: false, prevent: false },
+    { key: 'Enter', open: false, expanded: true, collapsed: false, selected: true, prevent: false },
+    { key: 'Enter', open: true, expanded: false, collapsed: false, selected: true, prevent: false },
+    { key: ' ', open: false, expanded: true, collapsed: false, selected: true, prevent: false },
+    { key: 'ArrowUp', open: false, expanded: false, collapsed: false, selected: false, prevent: false },
+    { key: 'ArrowDown', open: false, expanded: false, collapsed: false, selected: false, prevent: false },
+  ])('wires $key with open=$open to the intended outputs', (test) => {
+    fixture.componentRef.setInput('folder', folderWithChildren);
+    fixture.componentRef.setInput('expandedPaths', new Set(test.open ? ['common'] : []));
+    fixture.detectChanges();
+    const expanded = vi.fn();
+    const collapsed = vi.fn();
+    const selected = vi.fn();
+    component.expandRequested.subscribe(expanded);
+    component.toggleExpanded.subscribe(collapsed);
+    component.folderClick.subscribe(selected);
+    const event = new KeyboardEvent('keydown', { key: test.key, bubbles: true, cancelable: true });
+    const header: HTMLElement | null = fixture.nativeElement.querySelector('.folder-header');
+    header?.dispatchEvent(event);
+    expect(expanded.mock.calls).toEqual(test.expanded ? [['common']] : []);
+    expect(collapsed.mock.calls).toEqual(test.collapsed ? [['common']] : []);
+    expect(selected.mock.calls).toEqual(test.selected ? [[folderWithChildren]] : []);
+    expect(event.defaultPrevented).toBe(test.prevent);
   });
 
   it('should render folder name', () => {

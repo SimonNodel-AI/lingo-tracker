@@ -345,6 +345,8 @@ Consumers use two things. `apiErrorMessage(error, fallback)` is the text to show
 
 `shared/timed-transients.ts` provides injection-context helpers with `DestroyRef` cleanup. `injectFlash(durationMs)` exposes a readonly `active` signal and a restartable `trigger()`. `injectMidpointFlip(durationMs)` keeps the animation active for a full cycle and runs the caller's store write at the midpoint (125 ms into the folder and density toggles' 250 ms cycle). `injectRestartableDelay(durationMs)` shares the timeout handling for the editor's 900 ms location flash, the list's keyed 1500 ms row flash, and the launcher's 3200 ms delayed warning. The location flash retains its animation-frame class reset; hover delays remain in their components.
 
+Folder Writes owns the new-folder highlight's 3000 ms `createRestartableDelay`. A create restarts the delay; collection reset cancels it and clears the highlight through collection state reset. For different paths, the previous path guard already kept the second highlight active until its own timeout. Creating the same path twice previously let the first timeout clear the second highlight early; restarting now gives that second highlight its full 3000 ms. Store destruction destroys the delay. The session and path guards remain on the callback.
+
 `shared/clipboard.ts` returns `copied` or `failed`, including when the clipboard API is unavailable. Its `copyWithFeedback(text, feedback)` function copies once and shows one success or error toast. The editor and list actions supply their existing translated messages. Only a successful copy runs the optional `onCopied` callback.
 
 ### Virtual Scrolling
@@ -376,6 +378,12 @@ Editing happens inside the dialog, which saves through `BrowserStore.updateResou
 
 ---
 
+### Tree Navigation
+
+Both folder trees use the pure [Tree Navigation](glossary.md#tree-navigation) module (`browser/store/tree-navigation.ts`). The picker applies the returned focus, expansion or selection intent to local signals. FolderNode and the sidebar collection root use small switches to emit or apply each intent; store guards still decide whether navigation is accepted. Chevron toggles and explicit opens use `expandTreePath`, which reuses the shared immutable toggle utility. Angular event handling stays in the components. Sidebar callers pass focused-row facts without constructing trees or comparing expansion sets. Only picker Up/Down collects visible folder paths.
+
+The options preserve the existing differences. The picker consumes Up/Down to move through visible loaded folders; sidebar rows keep their browser focus behavior. Picker Left on a collapsed folder focuses its parent, while a top-level folder keeps focus; sidebar Left only collapses. Picker Right can expand a leaf; sidebar Right needs children, except for its collection root. Enter/Space confirms the picker without expansion and clears its focus; sidebar selection opens a folder with children but leaves the collection root expansion unchanged. The picker prevents key defaults for recognized keys whenever the tree is nonempty, including no-ops; sidebar prevents defaults only when Left/Right changes expansion. Pure table-driven tests cover both modes, including the root and empty trees.
+
 ### Drag-and-Drop — Move Resource and Folder
 
 Angular CDK drag-and-drop (`@angular/cdk/drag-drop`) is used for two drag types, distinguished by a `DragData` union type:
@@ -390,7 +398,7 @@ type DragData =
 
 When a drag starts on `TranslationItem`, the `dragStarted` output bubbles up through `TranslationList` → `TranslationBrowser`. `TranslationBrowser` stores the `DragData` in its `activeDragData` signal and passes it to `FolderTree` via an input. `FolderTree` passes it down to `FolderNode` components so they can highlight when a draggable item is over them.
 
-`FolderTree` also implements edge-proximity auto-scroll: a `mousemove` listener during drag checks the cursor position against the folder list's bounding rect. If within `50px` of the top or bottom edge, a `setInterval` scrolls at `15px` per `50ms` until the cursor moves away.
+`FolderTree` attaches the standalone [Drag Auto-Scroll](glossary.md#drag-auto-scroll) directive to the folder list and supplies its combined local and external drag state. The directive uses a host `mousemove` listener to check the list bounding rect. Inside `50px` of an edge it scrolls `15px` every `50ms`, retaining top-edge priority and the strict edge boundaries. Leaving the edge zone, ending the drag or destroying the list cancels the interval.
 
 `folder-drop.ts` returns `canLand` for a folder or root drop target and a separate no-op reason. `FolderTree` computes the tracked root drag decision once for highlighting, the CDK predicate, and the drop handler. Root drops refuse folders while `isDisabled` is true (search shown or a move in flight). Read-only collections also refuse root drops through `effectiveDisabled`.
 
