@@ -453,6 +453,14 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ---
 
+### Drag Auto-Scroll
+
+The standalone `DragAutoScroll` directive in `apps/tracker/src/app/browser/sidebar/folder-tree/drag-auto-scroll.directive.ts`. Its host mousemove listener checks the folder list edges while a drag is active. Inside the 50 px edge zone it scrolls 15 px every 50 ms. Changing direction replaces the interval; leaving the zone, ending the drag or destroying the list cancels it. Folder Tree supplies the combined local and external drag state.
+
+Explained in context: [`frontend.md`](frontend.md#drag-and-drop--move-resource-and-folder)
+
+---
+
 ## E
 
 ### Copy with Feedback
@@ -1433,6 +1441,14 @@ Explained in context: [`core-library.md`](core-library.md#auto-translation-pipel
 The Angular internationalization library ([jsverse/transloco](https://jsverse.github.io/transloco/)) that LingoTracker is designed to integrate with. Transloco consumes locale JSON [bundle](#bundle) files at runtime. LingoTracker converts ICU simple placeholder syntax to Transloco's `{{ varName }}` interpolation syntax during bundle generation.
 
 Explained in context: [`frontend.md`](frontend.md), [`bundle-generation.md`](bundle-generation.md)
+
+---
+
+### Tree Navigation
+
+The pure `tree-navigation.ts` module in `apps/tracker/src/app/browser/store`. `navigateTree(state, key, options)` receives focused-row facts and returns an explicit focus, expand, collapse, select or no-op intent, plus default-event intent. Only picker Up/Down needs the supplied tree and expanded paths to collect visible folders. Sidebar nodes and the collection root supply their own row facts without building a synthetic tree. `expandTreePath` shares the immutable expansion rule with chevrons and explicit store opens. Picker and sidebar options preserve their different keyboard rules: picker Up/Down moves through visible loaded nodes, Left can focus the parent, Right can expand a leaf, and Enter/Space selects without opening. Sidebar Up/Down and collapsed Left do nothing, Right opens only folders with children or the collection root, and Enter/Space selects and opens a folder with children. Picker handles key defaults even for no-ops; sidebar handles only expansion changes. The sidebar collection root selects without opening.
+
+Explained in context: [`frontend.md`](frontend.md#tree-navigation)
 
 ---
 

@@ -13,7 +13,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
-import { collectAncestorPaths, parentFolderPath } from '@simoncodes-ca/domain';
+import { collectAncestorPaths } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectFeedback } from '../../../feedback';
 import { BrowserStore } from '../../../store/browser.store';
@@ -24,7 +24,7 @@ import {
   settleFolderDraft,
   startFolderDraft,
 } from '../../../store/folder-draft';
-import { collectVisibleFolderPaths, toggleExpandedPath } from '../../../store/folder-tree.utils';
+import { expandTreePath, navigateTree, PICKER_NAVIGATION } from '../../../store/tree-navigation';
 import { PickerFolderNode } from './picker-folder-node/picker-folder-node';
 
 /**
@@ -75,7 +75,7 @@ export class FolderPicker implements OnInit {
   readonly hideHeader = input(false);
 
   readonly isExpanded = signal(false);
-  readonly expandedPaths = signal<Set<string>>(new Set());
+  readonly expandedPaths = signal<ReadonlySet<string>>(new Set());
   readonly selectedPath = signal<string | null>(null);
   readonly focusedPath = signal<string | null>(null);
   readonly #draft = signal(initialFolderDraft);
@@ -189,71 +189,37 @@ export class FolderPicker implements OnInit {
   }
 
   onExpandToggle(folderPath: string): void {
-    this.expandedPaths.update((expanded) => toggleExpandedPath(expanded, folderPath));
+    this.expandedPaths.update((expanded) => expandTreePath(expanded, folderPath));
   }
 
   onTreeKeydown(event: KeyboardEvent): void {
-    const visiblePaths = collectVisibleFolderPaths(this.rootFolders(), this.expandedPaths());
-    if (visiblePaths.length === 0) {
-      return;
-    }
-
-    const currentFocus = this.focusedPath();
-    const currentIndex = currentFocus !== null ? visiblePaths.indexOf(currentFocus) : -1;
-
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        if (currentIndex < visiblePaths.length - 1) {
-          this.focusedPath.set(visiblePaths[currentIndex + 1]);
-        } else if (currentIndex === -1) {
-          this.focusedPath.set(visiblePaths[0]);
-        }
+    const next = navigateTree(
+      {
+        focusedPath: this.focusedPath(),
+        expanded: this.expandedPaths().has(this.focusedPath() ?? ''),
+        hasChildren: false,
+        hasRows: this.rootFolders().length > 0,
+        tree: { nodes: this.rootFolders(), expandedPaths: this.expandedPaths() },
+      },
+      event.key,
+      PICKER_NAVIGATION,
+    );
+    if (next.preventDefault) event.preventDefault();
+    const intent = next.intent;
+    switch (intent.kind) {
+      case 'focus':
+        this.focusedPath.set(intent.path);
         break;
-
-      case 'ArrowUp':
-        event.preventDefault();
-        if (currentIndex > 0) {
-          this.focusedPath.set(visiblePaths[currentIndex - 1]);
-        }
+      case 'expand':
+        this.expandedPaths.update((paths) => expandTreePath(paths, intent.path, true));
         break;
-
-      case 'ArrowRight':
-        event.preventDefault();
-        if (currentFocus !== null) {
-          this.expandedPaths.update((expanded) => {
-            const newSet = new Set(expanded);
-            newSet.add(currentFocus);
-            return newSet;
-          });
-        }
+      case 'collapse':
+        this.expandedPaths.update((paths) => expandTreePath(paths, intent.path, false));
         break;
-
-      case 'ArrowLeft':
-        event.preventDefault();
-        if (currentFocus !== null) {
-          const expanded = this.expandedPaths();
-          if (expanded.has(currentFocus)) {
-            this.expandedPaths.update((exp) => {
-              const newSet = new Set(exp);
-              newSet.delete(currentFocus);
-              return newSet;
-            });
-          } else {
-            const parentPath = parentFolderPath(currentFocus);
-            if (parentPath !== null) {
-              this.focusedPath.set(parentPath);
-            }
-          }
-        }
+      case 'select':
+        this.onFolderSelect(intent.path);
         break;
-
-      case 'Enter':
-      case ' ':
-        event.preventDefault();
-        if (currentFocus !== null) {
-          this.onFolderSelect(currentFocus);
-        }
+      case 'none':
         break;
     }
   }

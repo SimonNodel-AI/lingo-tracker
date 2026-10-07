@@ -123,8 +123,8 @@ describe('FolderTree', () => {
     component.onToggleRootExpanded(new MouseEvent('click'));
     const right = new KeyboardEvent('keydown', { cancelable: true });
     const left = new KeyboardEvent('keydown', { cancelable: true });
-    component.onRootExpandKeydown(right);
-    component.onRootCollapseKeydown(left);
+    component.onRootTreeKeydown(right, 'ArrowRight');
+    component.onRootTreeKeydown(left, 'ArrowLeft');
     expect(right.defaultPrevented).toBe(false);
     expect(left.defaultPrevented).toBe(false);
     component.onToggleExpandAll(new MouseEvent('click'));
@@ -180,26 +180,48 @@ describe('FolderTree', () => {
     expect(component.store.isRootExpanded()).toBe(false);
 
     const right = new KeyboardEvent('keydown', { cancelable: true });
-    component.onRootExpandKeydown(right);
+    component.onRootTreeKeydown(right, 'ArrowRight');
     expect(right.defaultPrevented).toBe(true);
     expect(component.store.isRootExpanded()).toBe(true);
     const rightNoOp = new KeyboardEvent('keydown', { cancelable: true });
-    component.onRootExpandKeydown(rightNoOp);
+    component.onRootTreeKeydown(rightNoOp, 'ArrowRight');
     expect(rightNoOp.defaultPrevented).toBe(false);
     expect(component.store.isRootExpanded()).toBe(true);
 
     const left = new KeyboardEvent('keydown', { cancelable: true });
-    component.onRootCollapseKeydown(left);
+    component.onRootTreeKeydown(left, 'ArrowLeft');
     expect(left.defaultPrevented).toBe(true);
     expect(component.store.isRootExpanded()).toBe(false);
     const leftNoOp = new KeyboardEvent('keydown', { cancelable: true });
-    component.onRootCollapseKeydown(leftNoOp);
+    component.onRootTreeKeydown(leftNoOp, 'ArrowLeft');
     expect(leftNoOp.defaultPrevented).toBe(false);
     expect(component.store.isRootExpanded()).toBe(false);
     expect(selected).not.toHaveBeenCalled();
 
     component.onRootClick();
     expect(selected).toHaveBeenCalledWith('');
+  });
+
+  it.each([
+    { key: 'ArrowRight', open: false, nextOpen: true, selected: false, prevent: true },
+    { key: 'ArrowRight', open: true, nextOpen: true, selected: false, prevent: false },
+    { key: 'ArrowLeft', open: true, nextOpen: false, selected: false, prevent: true },
+    { key: 'ArrowLeft', open: false, nextOpen: false, selected: false, prevent: false },
+    { key: 'Enter', open: false, nextOpen: false, selected: true, prevent: false },
+    { key: ' ', open: false, nextOpen: false, selected: true, prevent: false },
+  ])('wires root $key with open=$open to expansion or selection', (test) => {
+    createComponent();
+    component.store.setRootExpanded(test.open);
+    fixture.detectChanges();
+    const selected = vi.fn();
+    component.folderSelected.subscribe(selected);
+    const setExpanded = vi.spyOn(component.store, 'setRootExpanded');
+    const event = new KeyboardEvent('keydown', { key: test.key, bubbles: true, cancelable: true });
+    spectator.query('.root-row')?.dispatchEvent(event);
+    expect(component.store.isRootExpanded()).toBe(test.nextOpen);
+    expect(setExpanded.mock.calls).toEqual(test.open !== test.nextOpen ? [[test.nextOpen]] : []);
+    expect(selected.mock.calls).toEqual(test.selected ? [['']] : []);
+    expect(event.defaultPrevented).toBe(test.prevent);
   });
 
   it('shares one root drop decision between highlighting, the predicate and the drop', () => {
