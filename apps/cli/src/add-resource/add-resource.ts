@@ -2,7 +2,12 @@ import { flagName } from '../runner/flag-record';
 import { ADD_RESOURCE_FLAGS } from './add-resource-flags';
 import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
-import { parseTranslationInputs, TRANSLATION_STATUSES, type TranslationInput } from '@simoncodes-ca/domain';
+import {
+  entryChange,
+  parseTranslationInputs,
+  TRANSLATION_STATUSES,
+  type TranslationInput,
+} from '@simoncodes-ca/domain';
 import { ADD_RESOURCE_COMMAND_NAME } from '../runner/cli-error-wording';
 import { type Ask, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, printTerminologyFindings } from '../utils';
@@ -36,14 +41,11 @@ export const addResourceCommand = defineCommand<AddResourceOptions>()({
         ? await promptForTranslations(collection, value, ask)
         : undefined;
 
-    const tagsArray = answers.tags ?? [];
-
     // Locales without a supplied translation are seeded by core (auto-translated or copied as `new`).
     const params = {
       key,
       baseValue: value,
-      comment: answers.comment || undefined,
-      tags: tagsArray.length > 0 ? tagsArray : undefined,
+      ...entryChange('add', answers),
       targetFolder,
       translations,
     };

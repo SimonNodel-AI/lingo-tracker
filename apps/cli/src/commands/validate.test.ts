@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { validateCommand } from './validate';
+import { Command } from 'commander';
+import { flagValues, registerFlags } from '../runner/flag-record';
+import { runCommand } from '../runner/command-runner';
+import { VALIDATE_FLAGS } from './validate-options';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@simoncodes-ca/core')>();
@@ -44,6 +48,12 @@ const config = {
 };
 
 describe('validateCommand', () => {
+  const parsedFlags = (...args: string[]) => {
+    const command = new Command();
+    registerFlags(command, VALIDATE_FLAGS);
+    command.parse(args, { from: 'user' });
+    return flagValues(VALIDATE_FLAGS, command.opts(), []);
+  };
   const originalLog = console.log;
   const originalError = console.error;
   const originalWarn = console.warn;
@@ -89,6 +99,17 @@ describe('validateCommand', () => {
         skipProtectedTerms: true,
         requirePortablePlurals: true,
       },
+    );
+  });
+
+  it('resolves parsed --skip-locales "" to the empty-list default', async () => {
+    const flags = parsedFlags('--skip-locales', '');
+    expect(flags.skipLocales).toBeUndefined();
+    const result = await runCommand(validateCommand, flags, { cwd: '/project' });
+    expect(result.exitCode).toBe(0);
+    expect(mockRunValidate).toHaveBeenCalledExactlyOnceWith(
+      expect.any(Array),
+      expect.objectContaining({ skipLocales: [] }),
     );
   });
 

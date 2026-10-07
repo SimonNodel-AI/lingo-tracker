@@ -20,6 +20,7 @@ import {
   prepareTranslationRun,
   translateExistingResource,
 } from '@simoncodes-ca/core';
+import { entryChange } from '@simoncodes-ca/domain';
 import type {
   CacheStatusDto,
   CreateResourceDto,
@@ -123,8 +124,7 @@ export class ResourcesController {
   ): Promise<UpdateResourceResponseDto> {
     const result = await editResource(collection, dto.key, {
       baseValue: dto.baseValue,
-      comment: dto.comment,
-      tags: dto.tags,
+      ...entryChange('edit', dto),
       translations: dto.locales,
       moveTo: dto.moveTo,
     });

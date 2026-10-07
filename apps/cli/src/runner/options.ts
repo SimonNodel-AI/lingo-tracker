@@ -67,6 +67,7 @@ export function commaListOption(
       if (items !== undefined) return items;
       if (empty === 'clear') return [];
       if (empty === 'preserve') return { kind: 'empty', input: value };
+      // flagValues omits raw '': Commander turns a parser's undefined back into ''.
       return value === '' ? undefined : [];
     },
   });

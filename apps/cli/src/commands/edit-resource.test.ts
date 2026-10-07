@@ -1,3 +1,6 @@
+import { Command } from 'commander';
+import { flagValues, registerFlags } from '../runner/flag-record';
+import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
 import { createCommandProject, type CommandProject } from '../testing/command-project';
@@ -28,6 +31,54 @@ describe('editResourceCommand (real project)', () => {
     const result = await project.run(editResourceCommand, { key, comment: 'New comment', tags: ['ui', 'buttons'] });
     expect(result.exitCode).toBe(0);
     expect(entries()).toMatchObject({ ok: { comment: 'New comment', tags: ['ui', 'buttons'] } });
+  });
+  const storedDetails = { comment: 'Stored comment', tags: ['stored'] };
+  const seedDetails = () => project.run(editResourceCommand, { key, ...storedDetails });
+  const parsedFlags = (...args: string[]) => {
+    const command = new Command();
+    registerFlags(command, EDIT_RESOURCE_FLAGS);
+    command.parse(['--key', key, ...args], { from: 'user' });
+    return flagValues(EDIT_RESOURCE_FLAGS, command.opts(), []);
+  };
+
+  it('clears a stored comment with --comment ""', async () => {
+    await seedDetails();
+    const result = await project.run(editResourceCommand, parsedFlags('--comment', ''));
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: { comment: '', tags: storedDetails.tags } });
+  });
+  it('removes stored tags with --tags ,', async () => {
+    await seedDetails();
+    const flags = parsedFlags('--tags', ',');
+    expect(flags.tags).toEqual([]);
+    const result = await project.run(editResourceCommand, flags);
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: { comment: storedDetails.comment } });
+    expect(entries()).toEqual({ ok: expect.not.objectContaining({ tags: expect.anything() }) });
+  });
+  it('leaves comment and tags alone when flags are omitted', async () => {
+    await seedDetails();
+    const result = await project.run(editResourceCommand, { key, baseValue: 'Changed' });
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: { source: 'Changed', ...storedDetails } });
+  });
+  it('keeps exactly empty --tags "" omitted', async () => {
+    await seedDetails();
+    const flags = parsedFlags('--tags', '');
+    expect(flags.tags).toBeUndefined();
+    const result = await project.run(editResourceCommand, flags);
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: storedDetails });
+  });
+  it('clears explicit empty flags even when the base-value prompt is blank', async () => {
+    await seedDetails();
+    const result = await project.run(editResourceCommand, parsedFlags('--comment', '', '--tags', ','), {
+      interactive: true,
+      ask: async () => ({ baseValue: '' }),
+    });
+    expect(result.exitCode).toBe(0);
+    expect(entries()).toMatchObject({ ok: { source: 'Original', comment: '' } });
+    expect(entries()).toEqual({ ok: expect.not.objectContaining({ tags: expect.anything() }) });
   });
   it('updates a locale value', async () => {
     const result = await project.run(editResourceCommand, { key, locale: 'fr', localeValue: "D'accord" });

@@ -28,6 +28,34 @@ describe('command flag records', () => {
     expect(calls).toEqual([{ source: 'a', destination: 'b', tags: ['x', 'y'], limit: 5 }]);
   });
 
+  it('omits raw empty optional lists while preserving comma-only, clear and preserve values', async () => {
+    const flags = defineFlags<{ tags?: string[]; cleared?: string[]; preserved?: unknown }>()({
+      tags: { flags: '--tags <tags>', list: 'optional' },
+      cleared: { flags: '--cleared <tags>', list: 'clear' },
+      preserved: { flags: '--preserved <tags>', list: 'preserve' },
+    });
+    for (const row of [
+      { input: '', tags: undefined, cleared: [], preserved: { kind: 'empty', input: '' } },
+      { input: ',', tags: [], cleared: [], preserved: { kind: 'empty', input: ',' } },
+      { input: 'ui, buttons', tags: ['ui', 'buttons'], cleared: ['ui', 'buttons'], preserved: ['ui', 'buttons'] },
+    ]) {
+      const root = new Command();
+      const calls: unknown[] = [];
+      registerCommand(root, {
+        name: 'lists',
+        description: '',
+        flags,
+        load: async () => async (options) => {
+          calls.push(options);
+        },
+      });
+      await root.parseAsync(['lists', '--tags', row.input, '--cleared', row.input, '--preserved', row.input], {
+        from: 'user',
+      });
+      expect(calls).toEqual([{ tags: row.tags, cleared: row.cleared, preserved: row.preserved }]);
+    }
+  });
+
   it('maps renamed scalar, list and paired negated attributes without leaking Commander keys', async () => {
     const calls: unknown[] = [];
     const flags = defineFlags<{ resultLimit?: number; localeIDs?: string[]; transformICU?: boolean }>()({
