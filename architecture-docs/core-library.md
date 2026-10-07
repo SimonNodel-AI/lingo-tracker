@@ -462,9 +462,9 @@ Steps:
 
 ### Move Executor
 
-**Entry point:** `executeMove(collection, selection, { config?, cwd?, onMutation? }?)`
+**Entry point:** `executeMove(collection, request, { onMutation? }?)` and `executeMoves(collection, requests, { onMutation? }?)`, where `collection` is an opened collection
 
-`executeMove` in `lib/resource/execute-move.ts` owns validation, destination resolution, sweep, planning, relocation and folder pruning. `MoveRequest` has `source`, `destination`, optional `override` and `toCollection`. Core infers key/pattern selections; folders explicitly set `kind: 'folder'` and may set `nestUnderDestination`. Both entry points are synchronous. `MoveOptions` has optional `config`, `cwd`, and `onMutation`. The same entry point serves the CLI and both API move routes. There are no config-dependent overloads.
+`executeMove` in `lib/resource/execute-move.ts` owns validation, destination resolution, sweep, planning, relocation and folder pruning. `MoveRequest` has `source`, `destination`, optional `override` and `toCollection`. Core infers key/pattern selections; folders explicitly set `kind: 'folder'` and may set `nestUnderDestination`. Both entry points are synchronous. `MoveOptions` has only the optional `onMutation` sink; the collections come from the opened project. The same entry point serves the CLI and both API move routes. There are no config-dependent overloads.
 
 - **Key**: one explicit source/destination pair.
 - **Pattern**: `source` ends with `*` (including `prefix*`, `prefix.*`, and root `*`). Collection Sweep expands it; unreadable children become errors while readable siblings still move.

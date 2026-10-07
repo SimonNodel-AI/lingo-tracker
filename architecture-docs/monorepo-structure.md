@@ -31,7 +31,9 @@ lingo-tracker/                         # Nx workspace root
 │   ├── cli/                           # Node.js CLI binary (Commander)
 │   │   └── src/
 │   │       ├── commands/              # One file per CLI command
-│   │       └── main.ts                # Entry point; wires Commander tree
+│   │       ├── command-manifest.ts    # Command list and lazy loaders
+│   │       ├── program.ts             # createCli(): builds Commander tree
+│   │       └── main.ts                # Entry point; parses argv
 │   ├── api/                           # NestJS REST API + static file host
 │   │   └── src/
 │   │       └── app/

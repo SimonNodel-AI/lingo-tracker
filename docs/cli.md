@@ -587,7 +587,7 @@ lingo-tracker delete-resource \
 **Behavior:**
 
 - **Bulk Operations**: The command uses a best-effort approach. If some keys fail validation or are not found, the operation continues processing remaining keys and reports the count of successful deletions.
-- **File Cleanup**: When the last resource entry is deleted from a folder, both `resource_entries.json` and `tracker_meta.json` are removed. Empty parent folders are preserved (keeps Git structure stable).
+- **File Cleanup**: When the last resource entry is deleted from a folder, both `resource_entries.json` and `tracker_meta.json` are removed. After the write, folders the delete emptied are removed, deepest first. Removal stops at the first folder that still holds other files (for example `.gitkeep`) or entries. The translations folder itself is never removed. If a folder cannot be removed, the command prints a warning on stderr and still succeeds.
 - **Confirmation**: In interactive mode (TTY), you'll be asked to confirm the deletion unless the `--yes` flag is provided. The confirmation shows all keys that will be deleted.
 - **Partial Success**: If some keys succeed and others fail, the command completes successfully and reports both the deletion count and any errors encountered.
 
@@ -671,6 +671,7 @@ lingo-tracker edit-resource \
 - Updating `--base-value` triggers a checksum update and marks all other existing translations as `stale`.
 - Updating a locale value sets its status to `translated` and updates its checksum.
 - If no changes are detected (values match existing), the command reports "No changes detected".
+- With `--target-folder`, the entry moves and folders it emptied are removed like in `delete-resource`. A failed removal prints a warning on stderr and does not fail the command.
 - When the command changes the base value, it prints a warning for each [preferred terminology](./features/preferred-terminology.md) rule the new value breaks. The warnings never change the exit code.
 
 ---
@@ -814,6 +815,7 @@ lingo-tracker move \
 - When using wildcard patterns, the suffix matched by `*` is appended to the destination key.
 - Moving a resource preserves its comments, tags, and translations.
 - The source resource is deleted after a successful move.
+- After the move, source folders it emptied are removed, deepest first, stopping at the first folder that still holds other files (for example `.gitkeep`) or entries. The translations folder itself is never removed. If a folder cannot be removed, the command prints a warning on stderr and still succeeds. The one exception is a folder move whose source folder was already empty: if that folder cannot be removed, the move fails with "Failed to delete empty source folder".
 - A cross-collection move copies the entry and its metadata as they are. If the two collections have different base locales, the stored source text and checksums still belong to the source collection's base locale, and target locales are neither added nor removed.
 
 ---
